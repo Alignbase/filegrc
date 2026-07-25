@@ -1,0 +1,16 @@
+{
+  "name": "soc2-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/soc2",
+    "packages/create-soc2"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "validate": "npm test --workspaces --if-present && node packages/soc2/bin/soc2.js model --check-docs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

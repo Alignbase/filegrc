@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-clear-desk-screen",
+  "type": "policy",
+  "title": "Clear Desk and Clear Screen Policy",
+  "status": "draft",
+  "contentPath": "content/policy-clear-desk-screen.md",
+  "ownerIds": ["person-policy-owner"],
+  "approverIds": ["person-policy-owner"],
+  "policyKind": "information-security",
+  "version": "1.0",
+  "effectiveOn": "{{effective_date}}",
+  "reviewCadence": {
+    "mode": "calendar",
+    "unit": "year",
+    "interval": 1,
+    "anchorDate": "{{effective_date}}"
+  },
+  "audience": ["employees", "contractors"],
+  "acknowledgementRequired": true
+}

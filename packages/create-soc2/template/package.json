@@ -1,0 +1,15 @@
+{
+  "name": "{{project_name}}",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Git-native SOC 2 GRC workspace",
+  "type": "module",
+  "scripts": {
+    "serve": "soc2 serve",
+    "build": "soc2 build",
+    "validate": "soc2 validate"
+  },
+  "dependencies": {
+    "soc2": "{{soc2_version_range}}"
+  }
+}

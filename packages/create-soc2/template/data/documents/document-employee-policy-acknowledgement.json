@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "document-employee-policy-acknowledgement",
+  "type": "document",
+  "title": "Employee Policy Acknowledgement",
+  "status": "draft",
+  "documentKind": "attestation-template",
+  "contentPath": "content/document-employee-policy-acknowledgement.md",
+  "ownerIds": ["person-policy-owner"],
+  "approverIds": ["person-policy-owner"],
+  "version": "1.0",
+  "effectiveOn": "{{effective_date}}",
+  "reviewCadence": {
+    "mode": "calendar",
+    "unit": "year",
+    "interval": 1,
+    "anchorDate": "{{effective_date}}"
+  },
+  "classification": "internal",
+  "audience": ["employees"]
+}

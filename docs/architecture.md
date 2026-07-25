@@ -1,0 +1,338 @@
+# Architecture and Delivery Plan
+
+## Status
+
+The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, the local web app, static builds, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
+
+The next product pass will add licensed framework content, control mappings, evidence-capture workflows, audit completeness reports, and compatibility fixtures from released templates.
+
+## Product
+
+This project is a Git-native GRC workspace for SOC 2 programs. Engineers and agents maintain plain files, while a small Node.js engine renders an audit overview and provides validation, search, filtering, and CRUD utilities.
+
+The system has three layers:
+
+1. Files under `data/` hold canonical GRC records.
+2. Git records who changed those files, when they changed, why they changed, and exactly what changed.
+3. The `soc2` package validates and renders the current files together with their Git history.
+
+There is no application database. A fresh clone contains the complete current record set and its available audit trail.
+
+## Scope
+
+The project manages:
+
+- Governance documents and approvals
+- Control definitions, mappings, tests, and evidence
+- Service commitments, system requirements, and complementary controls
+- Risk, vendor, asset, access, vulnerability, and incident registers
+- Recurring reviews, exercises, training, and follow-up work
+- Audit periods, requests, evidence, findings, and status
+
+The project does not replace operational security systems. Organizations still need appropriate identity, infrastructure logging, alerting, endpoint, backup, deployment, vulnerability, and incident-detection controls. This repository can record those systems and their evidence.
+
+## Monorepo
+
+```text
+/
+├── AGENTS.md
+├── README.md -> packages/create-soc2/template/README.md
+├── docs/
+│   ├── architecture.md
+│   └── data-model.md
+├── package.json
+└── packages/
+    ├── soc2/
+    │   ├── package.json
+    │   ├── bin/
+    │   ├── model/
+    │   │   ├── index.js
+    │   │   └── v1.json
+    │   ├── src/
+    │   └── test/
+    └── create-soc2/
+        ├── package.json
+        ├── src/
+        ├── test/
+        ├── template-parameters.json
+        └── template/
+            ├── README.md
+            ├── AGENTS.md
+            ├── package.json
+            ├── data/
+            └── docs/soc2-home.png
+```
+
+The template README is the source for the monorepo root README. If its screenshot uses a relative path, the monorepo will expose a matching root path without copying the image.
+
+## Package responsibilities
+
+### `soc2`
+
+`soc2` is a zero-dependency Node.js package with no build step. It owns:
+
+- The authoritative, versioned GRC data model
+- Data discovery and parsing
+- Schema and relationship validation
+- Git history queries
+- Search and filtering
+- Safe file creation, editing, and deletion
+- Local HTTP serving
+- Static audit-overview generation
+- HTML, CSS, and browser JavaScript assets
+
+Commands:
+
+```text
+soc2 serve
+soc2 build
+soc2 validate
+soc2 model
+soc2 describe <resource-type>
+```
+
+`soc2 serve` provides the interactive local view and CRUD operations. `soc2 build` creates a read-only static view. `soc2 validate` is suitable for local use and CI.
+
+The package reads older supported data-model versions. It may offer an explicit migration command later, but reading, serving, or building must never mutate source data.
+
+## Model registry
+
+The `soc2` package is the only source of truth for the data model. The initial representation is a versioned JSON registry:
+
+```text
+packages/soc2/model/v1.json
+```
+
+The registry defines:
+
+- Shared primitives
+- Resource types and fields
+- Required and conditional fields
+- Enums and defaults
+- Relationship targets and cardinality
+- Lifecycle states
+- File and content rules
+- Search, filter, list, and form metadata
+- Compatibility and deprecation metadata
+
+The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Markdown through `notesPath`. A source form is evidence for a workflow, not a schema to copy field for field.
+
+The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
+
+`packages/soc2/model/index.js` selects a model version and exposes a stable Node.js API. The package includes every supported historical model version so a current engine can read older repositories.
+
+Generated repositories contain only their records and a `dataModelVersion` in `data/workspace.json`. They do not receive copied schema files.
+
+`docs/data-model.md` is generated from the registry. `npm run validate` fails when the generated document differs from model v1.
+
+The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
+
+### `create-soc2`
+
+`create-soc2` creates a standalone repository with:
+
+- A private `package.json`
+- One dependency, `soc2`
+- A lockfile
+- Scripts for serving, building, and validation
+- Generic seed records
+- A high-level README
+- Detailed consumer instructions in `AGENTS.md`
+- A `data/` directory using the current data-model version
+
+The generator resolves the current `soc2` release and records a normal semver range. This keeps initial output current while the lockfile makes installs repeatable.
+
+The generator reads `packages/create-soc2/template-parameters.json` and asks for three values:
+
+- Company name
+- Policy owner name, shown to the user as "Your name"
+- Security contact email
+
+It generates the initial effective date from the current date. These four values replace tokens such as `{{company_name}}` in the template. Creation fails if the template contains an undeclared token or if any token remains after rendering.
+
+This is the smallest useful initial prompt set. The company name identifies the program and appears in policy text. The policy owner gives the seed records an accountable person. The security email gives people one report and escalation route. Timezone defaults to UTC, and users can edit it later. Jurisdiction, industry, risk scoring, retention periods, and control owners do not need create-time prompts.
+
+## Storage
+
+Structured resources use JSON because Node.js can parse it without dependencies and tools can edit it reliably. All internally authored long-form content uses Markdown, including policies, charters, plans, procedures, minutes, system descriptions, assertions, narratives, templates, and audit responses.
+
+Signed forms, third-party reports, screenshots, and immutable exports are evidence rather than canonical documents. These files may remain PDF, image, CSV, or another fixed format when that representation is part of the proof. Evidence records describe every supporting file or external reference.
+
+```text
+data/
+├── workspace.json
+├── content/
+├── people/
+├── service-accounts/
+├── teams/
+├── systems/
+├── assets/
+├── documents/
+├── evidence/
+├── obligations/
+├── frameworks/
+├── requirements/
+├── commitments/
+├── complementary-controls/
+├── controls/
+├── control-tests/
+├── findings/
+├── exceptions/
+├── action-items/
+├── policies/
+├── policy-reviews/
+├── attestations/
+├── meetings/
+├── training/
+├── risks/
+├── risk-assessments/
+├── vendors/
+├── vendor-reviews/
+├── access-grants/
+├── access-reviews/
+├── vulnerabilities/
+├── vulnerability-scans/
+├── incidents/
+├── exercises/
+├── backup-tests/
+├── penetration-tests/
+├── data-requests/
+├── audits/
+└── audit-requests/
+```
+
+Most records are one JSON file. Long-form content is stored under `data/content/` and referenced from its structured record with a path relative to `data/`. `contentPath` points to reusable governed content. `notesPath` points to variable analysis, procedures, results, or discussion. Evidence that includes local files gets its own directory containing `evidence.json` and the files it describes.
+
+Policies and other authored documents do not carry embedded change-control tables. Git is their change history. A human-facing policy version remains available when it has contractual or organizational meaning.
+
+Generated or cached data never belongs in these directories.
+
+## Git metadata
+
+The engine derives the following for each record:
+
+- First commit and first committed timestamp
+- Latest commit and latest committed timestamp
+- Commit authors
+- Commit messages
+- Diffs and prior versions
+- Current uncommitted state
+
+These are presentation fields, not data fields. Operational dates remain explicit because a commit timestamp does not say when an incident occurred, a review was approved, or a test completed.
+
+The engine follows file renames when possible. A resource ID remains the durable identity if a path changes.
+
+CRUD operations write files atomically but do not create hidden commits. The UI shows uncommitted changes. Suggested commit messages are a later convenience and will never commit without an explicit request.
+
+## Audit evidence
+
+Auditors commonly receive screenshots of rendered GRC pages for the audit period. The engine therefore provides a stable evidence view for every list and detail page.
+
+An evidence snapshot records:
+
+- The rendered route and filters
+- The audit and evidence period
+- The exact Git commit
+- The capture timestamp and method
+- The source resource IDs
+- The screenshot or fixed export
+
+The engine can prepare deterministic evidence views and metadata without a browser dependency. A user or approved capture tool may create the screenshot. The evidence record and image are committed together.
+
+People who do not have repository access may acknowledge policies, training, or tasks with a signed PDF or image. The corresponding attestation records the signer, signing date, acknowledgement statement, exact content revisions, and evidence file. Repository collaborators may use a reviewed Git commit as an attestation when the workflow permits it.
+
+Training material is canonical Markdown. A reusable `training` record defines its audience and assignment cadence. One `attestation` per assigned person records completion, the exact training revision, and any signed evidence.
+
+## Rendering
+
+The homepage provides an audit-oriented program overview:
+
+- Control coverage and recent control-test results
+- Open findings and overdue actions
+- Current risks and accepted risks
+- Due and overdue obligations
+- Recent incidents, vulnerabilities, and reviews
+- Audit request status
+- Data validation errors
+- Uncommitted changes
+
+Primary pages group the resource catalog into:
+
+- Program: frameworks, requirements, commitments, complementary controls, controls, and control tests
+- Governance: policies, documents, teams, meetings, training, attestations, and data requests
+- Risk: risks, assessments, exceptions, and related committee meetings
+- People and Access: people, service accounts, grants, and access reviews
+- Systems and Vendors: systems, assets, vendors, and vendor reviews
+- Security Operations: vulnerabilities, scans, incidents, and penetration tests
+- Resilience: continuity assessments, exercises, recovery objectives, and backup tests
+- Evidence: screenshots, signed acknowledgements, reports, exports, and their provenance
+- Findings and Work: findings, actions, obligations, and due dates
+- Audits: engagements, requests, control testing, exceptions, responses, and reports
+- Repository: Git history, uncommitted changes, validation, and workspace settings
+
+Each resource type gets a list page with search and filters, plus a detail page that combines the current record, linked resources, evidence, and Git history.
+
+The static build is read-only. Search and filtering run in the browser against a generated index. CRUD is available only from the local server.
+
+Audit pages also show:
+
+- Scope, criteria, period, and report opinion
+- The management assertion and system description
+- Controls and applicable criteria
+- Management and service-auditor test procedures
+- Samples, results, exceptions, and management responses
+- Controls not exercised or tested during the period and the reason
+- Complementary user-entity and subservice-organization controls
+- Subservice organizations and the method used to include or exclude them
+
+## Safety
+
+- Resolve and validate all paths against the repository root.
+- Reject duplicate IDs and broken references.
+- Write to a temporary sibling file, flush it, and rename it into place.
+- Do not follow external links or download evidence automatically.
+- Escape rendered content by default.
+- Treat Markdown as untrusted input and allow only a small supported subset.
+- Never render raw secrets into generated output.
+- Make evidence classification visible before export.
+
+## Compatibility
+
+The workspace declares a data-model version. Each resource also carries a schema version so a partial migration can be diagnosed safely.
+
+Compatibility rules:
+
+- Additive optional fields are preferred.
+- Unknown top-level fields produce warnings and are preserved by CRUD.
+- Organization-specific data belongs in `extensions`.
+- Missing required fields, duplicate IDs, invalid enums, and broken references are errors.
+- Changed field meanings or renamed required fields need an explicit migration.
+- Compatibility fixtures represent every supported historical model.
+
+## Delivery state
+
+Implemented:
+
+- Versioned model registry and generated model documentation
+- npm workspace and both zero-build packages
+- Generic policy, plan, acknowledgement, and training Markdown
+- Data discovery, schema checks, relationship checks, and path checks
+- Git repository state and per-file history
+- Overview, list, detail, repository, search, and filter views
+- Live atomic JSON CRUD and a read-only static build
+- Prompt-driven repository creation, dependency resolution, lockfile creation, and Git initialization
+- Unit and end-to-end tests using Node.js built-ins
+
+Next:
+
+- Add edit concurrency checks
+- Add evidence capture metadata and audit completeness reports
+- Add compatibility fixtures for every published model version
+- Add framework requirements and organization-defined control mappings
+- Add explicit migrations when a non-additive model change is needed
+
+## Decisions still open
+
+- Risk scoring method and default thresholds
+- Evidence size limits and confidential-evidence policy
+- Whether the first release includes schema migration commands

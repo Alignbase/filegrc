@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "training-security-awareness",
+  "type": "training",
+  "title": "Security Awareness and Incident Response Training",
+  "status": "draft",
+  "contentPath": "content/training-security-awareness.md",
+  "ownerIds": ["person-policy-owner"],
+  "audience": ["employees", "contractors"],
+  "assignmentTrigger": "onboarding",
+  "recurrence": {
+    "mode": "calendar",
+    "unit": "year",
+    "interval": 1,
+    "anchorDate": "{{effective_date}}"
+  },
+  "completionWindowDays": 30,
+  "policyIds": [
+    "policy-clear-desk-screen",
+    "policy-data-protection-handling",
+    "policy-information-security",
+    "policy-mobile-computing-communications"
+  ]
+}

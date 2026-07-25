@@ -1,0 +1,22 @@
+{
+  "name": "create-soc2",
+  "version": "0.1.0",
+  "description": "Create a Git-native SOC 2 GRC repository",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "create-soc2": "./bin/create-soc2.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "template",
+    "template-parameters.json"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

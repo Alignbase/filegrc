@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-information-security",
+  "type": "policy",
+  "title": "Information Security Policy",
+  "status": "draft",
+  "contentPath": "content/policy-information-security.md",
+  "ownerIds": ["person-policy-owner"],
+  "approverIds": ["person-policy-owner"],
+  "policyKind": "information-security",
+  "version": "1.0",
+  "effectiveOn": "{{effective_date}}",
+  "reviewCadence": {
+    "mode": "calendar",
+    "unit": "year",
+    "interval": 1,
+    "anchorDate": "{{effective_date}}"
+  },
+  "audience": ["employees", "contractors", "vendors"],
+  "acknowledgementRequired": true,
+  "relatedPolicyIds": [
+    "policy-clear-desk-screen",
+    "policy-data-protection-handling",
+    "policy-mobile-computing-communications"
+  ],
+  "relatedDocumentIds": [
+    "document-business-continuity-disaster-recovery"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "person-policy-owner",
+  "type": "person",
+  "title": "{{policy_owner_name}}",
+  "status": "active",
+  "email": "{{security_contact_email}}",
+  "role": "Policy Owner"
+}
