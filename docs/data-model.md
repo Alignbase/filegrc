@@ -13,13 +13,13 @@ Each structured resource is one UTF-8 JSON file. Long-form work is Markdown unde
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `schemaVersion` | integer | Yes | Schema version |
-| `id` | string | Yes | ID |
+| `id` | string (id) | Yes | ID |
 | `type` | string | Yes | Type |
 | `title` | string | Yes | Title |
-| `ownerIds` | array of id | No | Owners |
+| `ownerIds` | array of id | No | Owners References: `person`, `team` |
 | `tags` | array of string | No | Tags |
-| `relatedResourceIds` | array of id | No | Related resources |
-| `notesPath` | string | No | Notes |
+| `relatedResourceIds` | array of id | No | Related resources References: `*` |
+| `notesPath` | string (data-path) | No | Notes References long-form content under `data/`. |
 | `extensions` | object | No | Extensions |
 
 ## Resource groups
@@ -177,7 +177,7 @@ Path: `data/documents/<id>.json`
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `active`, `superseded`, `retired` |
 | `documentKind` | string | Yes |  |
-| `contentPath` | string | Yes | References long-form content under `data/`. |
+| `contentPath` | string (data-path) | Yes | References long-form content under `data/`. |
 | `approverIds` | array of id | No | References: `person`, `team` |
 | `version` | string | No |  |
 | `effectiveOn` | date | No |  |
@@ -201,7 +201,7 @@ Path: `data/policies/<id>.json`
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `in-review`, `approved`, `active`, `superseded`, `retired` |
-| `contentPath` | string | Yes | References long-form content under `data/`. |
+| `contentPath` | string (data-path) | Yes | References long-form content under `data/`. |
 | `approverIds` | array of id | Yes | References: `person`, `team` |
 | `policyNumber` | string | No |  |
 | `policyKind` | string | No |  |
@@ -257,7 +257,7 @@ Path: `data/attestations/<id>.json`
 | `dueOn` | date | No |  |
 | `completedOn` | date | No |  |
 | `attestationMethod` | enum | No | Values: `git-approval`, `signed-document`, `external-record` |
-| `statementPath` | string | No | References long-form content under `data/`. |
+| `statementPath` | string (data-path) | No | References long-form content under `data/`. |
 | `contentRevisions` | object | No |  |
 | `attestedCommit` | string | No |  |
 | `expiresOn` | date | No |  |
@@ -281,8 +281,8 @@ Path: `data/meetings/<id>.json`
 | `endedAt` | timestamp | No |  |
 | `attendeeIds` | array of id | No | References: `person` |
 | `externalAttendees` | array of object | No |  |
-| `agendaPath` | string | No | References long-form content under `data/`. |
-| `minutesPath` | string | No | References long-form content under `data/`. |
+| `agendaPath` | string (data-path) | No | References long-form content under `data/`. |
+| `minutesPath` | string (data-path) | No | References long-form content under `data/`. |
 | `decisionSummary` | string | No |  |
 | `riskIds` | array of id | No | References: `risk` |
 | `findingIds` | array of id | No | References: `finding` |
@@ -298,7 +298,7 @@ Path: `data/training/<id>.json`
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `active`, `retired` |
-| `contentPath` | string | Yes | References long-form content under `data/`. |
+| `contentPath` | string (data-path) | Yes | References long-form content under `data/`. |
 | `audience` | array of string | No |  |
 | `assignmentTrigger` | string | No |  |
 | `recurrence` | object | No |  |
@@ -424,7 +424,7 @@ Path: `data/people/<id>.json`
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `active`, `inactive`, `external` |
-| `email` | string | No |  |
+| `email` | string (email) | No |  |
 | `role` | string | No |  |
 | `department` | string | No |  |
 | `managerId` | id | No | References: `person` |
@@ -768,7 +768,7 @@ Path: `data/evidence/<id>/evidence.json`
 | `classification` | string | Yes |  |
 | `filePaths` | array of data-path | No |  |
 | `externalReference` | object | No |  |
-| `contentPath` | string | No | References long-form content under `data/`. |
+| `contentPath` | string (data-path) | No | References long-form content under `data/`. |
 | `periodStart` | date | No |  |
 | `periodEnd` | date | No |  |
 | `systemIds` | array of id | No | References: `system` |
@@ -804,7 +804,7 @@ Path: `data/obligations/<id>.json`
 | `startsOn` | date | No |  |
 | `endsOn` | date | No |  |
 | `completionResourceIds` | array of id | No | References: `*` |
-| `instructionsPath` | string | No | References long-form content under `data/`. |
+| `instructionsPath` | string (data-path) | No | References long-form content under `data/`. |
 
 #### `finding`
 
@@ -908,7 +908,7 @@ Path: `data/audit-requests/<id>.json`
 | `controlIds` | array of id | No | References: `control` |
 | `periodStart` | date | No |  |
 | `periodEnd` | date | No |  |
-| `responsePath` | string | No | References long-form content under `data/`. |
+| `responsePath` | string (data-path) | No | References long-form content under `data/`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `auditorNotes` | string | No |  |
 | `actionItemIds` | array of id | No | References: `action-item` |
@@ -925,7 +925,7 @@ Path: `data/workspace.json`
 | --- | --- | --- | --- |
 | `dataModelVersion` | string | Yes | Data model version |
 | `organizationName` | string | Yes | Organization |
-| `timezone` | string | Yes | Timezone |
+| `timezone` | string (timezone) | Yes | Timezone |
 | `description` | string | No | Description |
 | `repositoryUrl` | string | No | Repository URL |
 | `riskMethodology` | object | No | Risk methodology |

@@ -81,7 +81,7 @@
       "fields": {
         "dataModelVersion": {"type": "string", "label": "Data model version"},
         "organizationName": {"type": "string", "label": "Organization", "search": true},
-        "timezone": {"type": "string", "label": "Timezone"},
+        "timezone": {"type": "string", "format": "timezone", "label": "Timezone"},
         "description": {"type": "string", "label": "Description", "search": true},
         "repositoryUrl": {"type": "string", "label": "Repository URL"},
         "riskMethodology": {"type": "object", "label": "Risk methodology"},

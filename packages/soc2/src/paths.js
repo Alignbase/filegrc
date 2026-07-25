@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export function resolveWorkspaceRoot(input = process.cwd()) {
@@ -6,16 +6,16 @@ export function resolveWorkspaceRoot(input = process.cwd()) {
   if (existsSync(current) && !isDirectory(current)) current = dirname(current);
 
   while (true) {
-    if (existsSync(join(current, "data", "workspace.json"))) return current;
+    if (existsSync(join(current, "data", "workspace.json"))) return canonicalWorkspaceRoot(current);
     if (existsSync(join(current, "workspace.json")) && current.endsWith(`${sep}data`)) {
-      return dirname(current);
+      return canonicalWorkspaceRoot(dirname(current));
     }
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
 
-  throw new Error(`No SOC 2 workspace found from ${resolve(input)}`);
+  throw new Error("No SOC 2 workspace was found from the requested path.");
 }
 
 export function isWithin(parent, candidate) {
@@ -35,8 +35,22 @@ export function resolveDataPath(root, dataRelativePath) {
   if (!isWithin(dataRoot, target)) throw new Error(`Path leaves data/: ${dataRelativePath}`);
   const realDataRoot = realpathSync(dataRoot);
   const existing = nearestExistingPath(target);
-  if (!isWithin(realDataRoot, realpathSync(existing))) {
+  if (!isWithin(realDataRoot, realExistingPath(existing, dataRelativePath))) {
     throw new Error(`Path resolves outside data/: ${dataRelativePath}`);
+  }
+  return target;
+}
+
+export function resolveWorkspacePath(root, workspacePath) {
+  if (typeof workspacePath !== "string" || !workspacePath) {
+    throw new Error("A non-empty workspace path is required");
+  }
+  const workspaceRoot = resolveWorkspaceRoot(root);
+  const target = resolve(workspaceRoot, workspacePath);
+  if (!isWithin(workspaceRoot, target)) throw new Error(`Path leaves the workspace: ${workspacePath}`);
+  const existing = nearestExistingPath(target);
+  if (!isWithin(workspaceRoot, realExistingPath(existing, workspacePath))) {
+    throw new Error(`Path resolves outside the workspace: ${workspacePath}`);
   }
   return target;
 }
@@ -66,12 +80,39 @@ function isDirectory(path) {
   }
 }
 
+function canonicalWorkspaceRoot(path) {
+  const root = realpathSync(path);
+  const dataRoot = realpathSync(join(root, "data"));
+  if (!isWithin(root, dataRoot)) {
+    throw new Error("The data directory resolves outside the workspace.");
+  }
+  return root;
+}
+
 function nearestExistingPath(path) {
   let current = path;
-  while (!existsSync(current)) {
+  while (!entryExists(current)) {
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
   return current;
+}
+
+function entryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function realExistingPath(path, displayPath) {
+  try {
+    return realpathSync(path);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error(`Path contains an unavailable symlink: ${displayPath}`);
+    throw error;
+  }
 }

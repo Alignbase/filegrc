@@ -12,8 +12,8 @@ test("creates a complete generic repository with one dependency", async (context
   const target = join(parent, "security-program");
   const result = await createSoc2({
     target,
-    companyName: "Example \"Engineering\"",
-    policyOwnerName: "Example Owner",
+    companyName: "  Example \"Engineering\"  ",
+    policyOwnerName: "  Example Owner  ",
     securityContactEmail: "security@example.test",
     soc2Version: "1.2.3",
     install: false,
@@ -26,6 +26,8 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal((await readFile(join(target, "README.md"), "utf8")).includes("{{"), false);
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
+  const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
+  assert.equal(owner.title, "Example Owner");
   await access(join(target, "package-lock.json"));
   await access(join(target, ".gitignore"));
   await access(join(target, ".git"));
@@ -73,4 +75,29 @@ test("rejects force mode before writing when a template file would be overwritte
   }), /would overwrite: README\.md/);
   assert.equal(await readFile(join(target, "README.md"), "utf8"), "keep me");
   await assert.rejects(access(join(target, "data", "workspace.json")), /ENOENT/);
+});
+
+test("rejects multiline identity values before writing the target", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-soc2-invalid-input-"));
+  const target = join(parent, "security-program");
+  const tokenTarget = join(parent, "token-program");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  await assert.rejects(createSoc2({
+    target,
+    companyName: "Example Company\nInjected heading",
+    policyOwnerName: "Example Owner",
+    securityContactEmail: "security@example.test",
+    soc2Version: "1.2.3",
+    install: false
+  }), /single line/);
+  await assert.rejects(access(target), /ENOENT/);
+  await assert.rejects(createSoc2({
+    target: tokenTarget,
+    companyName: "{{policy_owner_name}}",
+    policyOwnerName: "Example Owner",
+    securityContactEmail: "security@example.test",
+    soc2Version: "1.2.3",
+    install: false
+  }), /template token syntax/);
+  await assert.rejects(access(tokenTarget), /ENOENT/);
 });

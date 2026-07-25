@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { buildWorkspace, renderMarkdown, serveWorkspace } from "../src/index.js";
+import { renderIndex } from "../src/web.js";
 import { makeWorkspace } from "./helpers.js";
 
 test("builds a self-contained read-only site", async (context) => {
@@ -19,6 +21,52 @@ test("builds a self-contained read-only site", async (context) => {
   await access(join(output, "soc2.css"));
 });
 
+test("static builds cannot leave the workspace through paths or symlinks", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-build-boundary-"));
+  const outside = await mkdtemp(join(tmpdir(), "soc2-build-outside-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => Promise.all([
+    rm(root, { recursive: true, force: true }),
+    rm(outside, { recursive: true, force: true })
+  ])));
+  await makeWorkspace(root);
+  await assert.rejects(buildWorkspace(root, { output: outside }), /leaves the workspace/);
+  await symlink(outside, join(root, ".soc2"));
+  await assert.rejects(buildWorkspace(root), /resolves outside the workspace/);
+});
+
+test("static builds reject output files that are external symlinks", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-build-file-boundary-"));
+  const outside = await mkdtemp(join(tmpdir(), "soc2-build-file-outside-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => Promise.all([
+    rm(root, { recursive: true, force: true }),
+    rm(outside, { recursive: true, force: true })
+  ])));
+  await makeWorkspace(root);
+  await mkdir(join(root, ".soc2", "site"), { recursive: true });
+  const outsideIndex = join(outside, "index.html");
+  await writeFile(outsideIndex, "keep", "utf8");
+  await symlink(outsideIndex, join(root, ".soc2", "site", "index.html"));
+
+  await assert.rejects(buildWorkspace(root), /resolves outside the workspace/);
+  assert.equal(await readFile(outsideIndex, "utf8"), "keep");
+});
+
+test("static builds reject broken output symlinks before creating their external targets", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-build-broken-link-"));
+  const outside = await mkdtemp(join(tmpdir(), "soc2-build-broken-outside-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => Promise.all([
+    rm(root, { recursive: true, force: true }),
+    rm(outside, { recursive: true, force: true })
+  ])));
+  await makeWorkspace(root);
+  await mkdir(join(root, ".soc2", "site"), { recursive: true });
+  const outsideIndex = join(outside, "not-created.html");
+  await symlink(outsideIndex, join(root, ".soc2", "site", "index.html"));
+
+  await assert.rejects(buildWorkspace(root), /unavailable symlink/);
+  await assert.rejects(access(outsideIndex), /ENOENT/);
+});
+
 test("serves state and browser assets", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "soc2-server-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -32,6 +80,9 @@ test("serves state and browser assets", async (context) => {
   assert.equal(state.resources.length, 2);
   const appResponse = await fetch(`${result.url}/soc2-app.js`);
   assert.equal(appResponse.status, 200);
+  assert.equal(appResponse.headers.get("x-frame-options"), "DENY");
+  assert.equal(appResponse.headers.get("referrer-policy"), "no-referrer");
+  assert.match(appResponse.headers.get("content-security-policy"), /frame-ancestors 'none'/);
   assert.match(await appResponse.text(), /function renderHome/);
 
   const person = {
@@ -53,6 +104,12 @@ test("serves state and browser assets", async (context) => {
     body: JSON.stringify(person)
   });
   assert.equal(duplicateResponse.status, 409);
+  const primitiveResponse = await fetch(`${result.url}/api/resources`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "null"
+  });
+  assert.equal(primitiveResponse.status, 400);
   const invalidIdResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -95,6 +152,15 @@ test("serves state and browser assets", async (context) => {
   });
   assert.equal(contentResponse.status, 200);
   assert.match(await readFile(join(root, "data", contentPath), "utf8"), /Updated/);
+  const missingContentResponse = await fetch(`${result.url}/api/content`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: "content/missing.md", source: "# Missing" })
+  });
+  assert.equal(missingContentResponse.status, 404);
+  const missingContentError = (await missingContentResponse.json()).error;
+  assert.equal(missingContentError, "The requested file was not found.");
+  assert.equal(missingContentError.includes(root), false);
 
   const ownerEntry = state.resources.find(({ record }) => record.id === "person-owner");
   const ownerPath = join(root, ownerEntry.relativePath);
@@ -120,6 +186,18 @@ test("serves state and browser assets", async (context) => {
     body: JSON.stringify(person)
   });
   assert.equal(wrongSchemeResponse.status, 403);
+
+  const reboundResponse = await requestWithHeaders(result.url, {
+    host: "attacker.example",
+    origin: "http://attacker.example"
+  });
+  assert.equal(reboundResponse.status, 403);
+
+  await assert.rejects(serveWorkspace(root, { port: 65_536 }), /port must be an integer/);
+  const wildcard = await serveWorkspace(root, { host: "0.0.0.0", port: 0 });
+  context.after(() => new Promise((resolve) => wildcard.server.close(resolve)));
+  assert.match(wildcard.url, /^http:\/\/127\.0\.0\.1:/);
+  assert.equal((await fetch(`${wildcard.url}/api/state`)).status, 200);
 });
 
 test("renders safe Markdown links without changing query parameters", () => {
@@ -127,6 +205,16 @@ test("renders safe Markdown links without changing query parameters", () => {
   assert.match(html, /href="https:\/\/example\.test\/review\?a=1&amp;b=2"/);
   assert.doesNotMatch(html, /&amp;amp;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test("keeps hostile workspace text inert in static HTML", () => {
+  const html = renderIndex({
+    organizationName: "</script><script>globalThis.compromised = true</script>",
+    separator: "\u2028"
+  });
+  assert.doesNotMatch(html, /<\/script><script>globalThis/);
+  assert.match(html, /\\u003c\/script>/);
+  assert.match(html, /\\u2028/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {
@@ -140,3 +228,14 @@ test("builds a recovery view when workspace configuration is malformed", async (
   assert.equal(state.validation.diagnostics.some(({ code }) => code === "missing-workspace"), true);
   assert.equal(state.validation.diagnostics.some(({ code }) => code === "invalid-json"), true);
 });
+
+function requestWithHeaders(url, headers) {
+  return new Promise((resolve, reject) => {
+    const outgoing = request(url, { headers }, (response) => {
+      response.resume();
+      response.once("end", () => resolve({ status: response.statusCode }));
+    });
+    outgoing.once("error", reject);
+    outgoing.end();
+  });
+}

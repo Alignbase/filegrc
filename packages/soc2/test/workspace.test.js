@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,6 +16,35 @@ test("loads, validates, and searches resources", async (context) => {
   assert.equal(validation.counts.resources, 2);
   const loaded = await loadWorkspace(root);
   assert.deepEqual(searchResources(loaded.resources, loaded.model, { query: "program owner" }).map(({ id }) => id), ["person-owner"]);
+  assert.deepEqual(
+    searchResources([{ id: "future-resource", type: "future-type" }], loaded.model, { query: "future-type" }).map(({ id }) => id),
+    ["future-resource"]
+  );
+  await writeFile(join(root, "data", "aaa-workspace.json"), `${JSON.stringify({
+    schemaVersion: 1,
+    dataModelVersion: "999",
+    id: "workspace-alternate",
+    type: "workspace",
+    title: "Alternate workspace",
+    organizationName: "Alternate",
+    timezone: "UTC"
+  })}\n`, "utf8");
+  const reloaded = await loadWorkspace(root);
+  assert.equal(reloaded.workspace.organizationName, "Test Organization");
+  assert.equal(reloaded.model.modelVersion, "1");
+});
+
+test("rejects an invalid workspace timezone", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-timezone-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const workspacePath = join(root, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  await writeFile(workspacePath, `${JSON.stringify({ ...workspace, timezone: "Not/A-Timezone" }, null, 2)}\n`, "utf8");
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, false);
+  assert.equal(validation.diagnostics.some(({ message }) => message.includes("IANA time zone")), true);
 });
 
 test("CRUD writes formatted JSON and never leaves an invalid workspace", async (context) => {
@@ -30,12 +59,30 @@ test("CRUD writes formatted JSON and never leaves an invalid workspace", async (
     status: "active"
   };
   await createResource(root, person);
+  const personPath = join(root, "data", "people", "person-reviewer.json");
+  await chmod(personPath, 0o640);
   person.role = "Reviewer";
   await updateResource(root, "person", "person-reviewer", person);
-  const source = await readFile(join(root, "data", "people", "person-reviewer.json"), "utf8");
+  const source = await readFile(personPath, "utf8");
   assert.match(source, /"role": "Reviewer"/);
+  assert.equal((await stat(personPath)).mode & 0o777, 0o640);
   await deleteResource(root, "person", "person-reviewer");
   assert.equal((await validateWorkspace(root)).ok, true);
+
+  const ownerPath = join(root, "data", "people", "person-owner.json");
+  await chmod(ownerPath, 0o640);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "policy-owner-reference",
+    type: "policy",
+    title: "Owner reference",
+    status: "draft",
+    contentPath: "content/policy-owner-reference.md",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-owner"]
+  }, { content: { "content/policy-owner-reference.md": "# Owner reference" } });
+  await assert.rejects(deleteResource(root, "person", "person-owner"), /leave the workspace invalid/i);
+  assert.equal((await stat(ownerPath)).mode & 0o777, 0o640);
 });
 
 test("rejects traversal through content paths and rolls back the record", async (context) => {
@@ -89,6 +136,36 @@ test("rejects content symlinks that resolve outside data", async (context) => {
   }), /unavailable data path/i);
 });
 
+test("rejects a data directory that resolves outside the workspace", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-external-data-root-"));
+  const outside = await mkdtemp(join(tmpdir(), "soc2-external-data-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => Promise.all([
+    rm(root, { recursive: true, force: true }),
+    rm(outside, { recursive: true, force: true })
+  ])));
+  await makeWorkspace(outside);
+  await symlink(join(outside, "data"), join(root, "data"));
+
+  await assert.rejects(loadWorkspace(root), /data directory resolves outside the workspace/);
+});
+
+test("content and attachment paths must resolve to files", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-data-path-file-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, "data", "content", "directory.md"), { recursive: true });
+  await assert.rejects(createResource(root, {
+    schemaVersion: 1,
+    id: "policy-directory",
+    type: "policy",
+    title: "Directory policy",
+    status: "draft",
+    contentPath: "content/directory.md",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-owner"]
+  }), /unavailable data path/i);
+});
+
 test("validates a realistic workspace containing every resource type", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "soc2-comprehensive-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -112,6 +189,7 @@ test("creates and updates Markdown content with its resource", async (context) =
     ownerIds: ["person-owner"],
     approverIds: ["person-owner"]
   };
+  await assert.rejects(createResource(root, { ...policy, id: "policy-invalid-content" }, { content: "" }), /keyed by data-relative/);
   await createResource(root, policy, { content: { [policy.contentPath]: "# Access Control Policy\n\nDraft content." } });
   assert.match(await readFile(join(root, "data", policy.contentPath), "utf8"), /Draft content/);
   await updateContent(root, policy.contentPath, "# Access Control Policy\n\nUpdated content.");

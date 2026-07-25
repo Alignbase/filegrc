@@ -59,9 +59,9 @@ function parseRoute() {
     return { name: "missing" };
   }
   if (!parts.length) return { name: "home" };
-  if (parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
-  if (parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2] };
-  if (parts[0] === "repository") return { name: "repository" };
+  if (parts.length === 2 && parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
+  if (parts.length === 3 && parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2] };
+  if (parts.length === 1 && parts[0] === "repository") return { name: "repository" };
   return { name: "missing" };
 }
 
@@ -352,7 +352,7 @@ function readGuidedRecord(dialog, base, fields) {
       if (kind === "array") value = raw.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
       else if (kind === "object") value = raw.trim() ? JSON.parse(raw) : undefined;
       else if (kind === "boolean") value = raw === "" ? undefined : raw === "true";
-      else if (kind === "integer") value = raw === "" ? undefined : Number.parseInt(raw, 10);
+      else if (kind === "integer") value = raw === "" ? undefined : Number(raw);
       else if (kind === "number") value = raw === "" ? undefined : Number(raw);
       else value = raw;
     }
@@ -417,6 +417,7 @@ function bindCommon() {
 }
 
 function globalSearch(query) {
+  query = query.trim();
   const matches = state.resources.filter((entry) => entrySearchText(entry).includes(query.toLowerCase()));
   const dialog = document.createElement("dialog");
   dialog.className = "search-results";

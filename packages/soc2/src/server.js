@@ -6,9 +6,12 @@ import { createAppState } from "./state.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
-export function createSoc2Server(input = process.cwd()) {
+export function createSoc2Server(input = process.cwd(), options = {}) {
   return createHttpServer(async (request, response) => {
     try {
+      if (!expectedHost(request, options.allowedHosts)) {
+        return json(response, 403, { error: "The request host is not allowed." });
+      }
       const url = new URL(request.url, "http://localhost");
       if (["POST", "PUT", "DELETE"].includes(request.method) && !sameOrigin(request)) {
         return json(response, 403, { error: "Cross-origin writes are not allowed." });
@@ -62,17 +65,22 @@ export function createSoc2Server(input = process.cwd()) {
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return text(response, 200, renderIndex(), "text/html; charset=utf-8");
       json(response, 404, { error: "Not found." });
     } catch (error) {
-      json(response, statusFor(error), { error: error.message });
+      const status = statusFor(error);
+      json(response, status, { error: publicErrorMessage(error, status) });
     }
   });
 }
 
 export async function serveWorkspace(input = process.cwd(), options = {}) {
-  const host = options.host ?? "127.0.0.1";
+  const host = String(options.host ?? "127.0.0.1").trim();
   const port = Number(options.port ?? 8787);
+  if (!host) throw new Error("The server host must be a non-empty string.");
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("The server port must be an integer from 0 through 65535.");
+  }
   const loaded = await loadWorkspace(input);
   getResourceDefinition(loaded.model, "workspace");
-  const server = createSoc2Server(loaded.root);
+  const server = createSoc2Server(loaded.root, { allowedHosts: [host] });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, resolve);
@@ -81,7 +89,7 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
     server,
     root: loaded.root,
     address: server.address(),
-    url: `http://${host}:${server.address().port}`
+    url: `http://${urlHost(host)}:${server.address().port}`
   };
 }
 
@@ -95,7 +103,11 @@ async function readJson(request) {
   }
   const source = Buffer.concat(chunks).toString("utf8");
   if (!source) throw new Error("A JSON request body is required.");
-  return JSON.parse(source);
+  const value = JSON.parse(source);
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    throw new Error("The JSON request body must be an object.");
+  }
+  return value;
 }
 
 function json(response, status, value) {
@@ -107,6 +119,10 @@ function text(response, status, value, contentType) {
     "content-type": contentType,
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=(), geolocation=(), microphone=()",
+    "cross-origin-resource-policy": "same-origin",
     "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
   });
   response.end(value);
@@ -127,12 +143,47 @@ function sameOrigin(request) {
   }
 }
 
+function expectedHost(request, allowedHosts = []) {
+  const host = request.headers.host;
+  const localAddress = normalizeAddress(request.socket.localAddress);
+  if (typeof host !== "string" || !host || !localAddress) return false;
+  try {
+    const requested = normalizeAddress(new URL(`http://${host}`).hostname);
+    const allowed = new Set(allowedHosts.map(normalizeAddress));
+    return allowed.has(requested)
+      || requested === localAddress
+      || (isLoopback(localAddress) && (requested === "localhost" || isLoopback(requested)));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeAddress(value) {
+  return String(value ?? "").replace(/^\[|\]$/g, "").replace(/^::ffff:/, "").toLowerCase();
+}
+
+function isLoopback(value) {
+  return value === "::1" || /^127(?:\.\d{1,3}){3}$/.test(value);
+}
+
+function urlHost(host) {
+  const normalized = normalizeAddress(host);
+  const display = normalized === "0.0.0.0" ? "127.0.0.1" : normalized === "::" ? "::1" : host;
+  return display.includes(":") && !display.startsWith("[") ? `[${display}]` : display;
+}
+
 function statusFor(error) {
-  if (error instanceof SyntaxError) return 400;
+  if (error instanceof SyntaxError || error instanceof URIError) return 400;
   if (/exceeds 2 MB/i.test(error.message)) return 413;
   if (/changed after you opened/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
   if (/invalid|required|unsafe|match|workspace|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
   return 500;
+}
+
+function publicErrorMessage(error, status) {
+  if (error?.code === "ENOENT") return "The requested file was not found.";
+  if (status === 500) return "The server could not complete the request.";
+  return error.message;
 }

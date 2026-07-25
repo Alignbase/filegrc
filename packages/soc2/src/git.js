@@ -79,7 +79,9 @@ function git(cwd, args) {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 10_000,
+    maxBuffer: 20_000_000
   }).trim();
 }
 

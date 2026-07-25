@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
@@ -99,6 +99,7 @@ async function deleteResourceUnlocked(input, type, id, options) {
   const definition = getResourceDefinition(loaded.model, type);
   if (definition.singleton) throw new Error("The workspace record cannot be deleted.");
   const path = resourcePath(loaded.root, loaded.model, { type, id });
+  const mode = (await stat(path)).mode & 0o777;
   const source = await readFile(path, "utf8");
   assertRevision(source, options.expectedRevision, "The record");
   const record = JSON.parse(source);
@@ -110,9 +111,9 @@ async function deleteResourceUnlocked(input, type, id, options) {
     const introduced = newErrors(result, before);
     if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
   } catch (error) {
-    await writeTextAtomic(path, source);
+    await writeTextAtomic(path, source, { mode });
     for (const item of contentFiles) {
-      if (item.source !== null) await writeTextAtomic(item.path, item.source);
+      if (item.source !== null) await writeTextAtomic(item.path, item.source, { mode: item.mode });
     }
     throw error;
   }
@@ -137,15 +138,23 @@ async function writeAtomic(path, value, options = {}) {
 
 async function writeTextAtomic(path, source, options = {}) {
   await mkdir(dirname(path), { recursive: true });
-  const temp = join(dirname(path), `.${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`);
-  const handle = await open(temp, options.exclusive ? "wx" : "w", 0o600);
-  try {
-    await handle.writeFile(source, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
+  const temp = join(dirname(path), `.${randomUUID()}.tmp`);
+  let mode = options.mode ?? 0o666;
+  if (options.mode === undefined) {
+    try {
+      mode = (await stat(path)).mode & 0o777;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
   }
+  const handle = await open(temp, options.exclusive ? "wx" : "w", mode);
   try {
+    try {
+      await handle.writeFile(source, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     if (options.exclusive) {
       await link(temp, path);
       await rm(temp, { force: true }).catch(() => {});
@@ -176,8 +185,8 @@ function formatWriteFailure(diagnostics, id) {
 }
 
 async function prepareContentWrites(loaded, record, content, options = {}) {
-  if (!content) return [];
-  if (!content || Array.isArray(content) || typeof content !== "object") {
+  if (content === undefined || content === null) return [];
+  if (Array.isArray(content) || typeof content !== "object") {
     throw new Error("Content updates must be keyed by data-relative Markdown path.");
   }
   const definition = getResourceDefinition(loaded.model, record.type);
@@ -234,12 +243,14 @@ async function exclusiveContentFiles(loaded, record) {
       continue;
     }
     let contentSource = null;
+    let mode = 0o666;
     try {
       contentSource = await readFile(contentPath, "utf8");
+      mode = (await stat(contentPath)).mode & 0o777;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    files.push({ path: contentPath, dataRelativePath, source: contentSource });
+    files.push({ path: contentPath, dataRelativePath, source: contentSource, mode });
   }
   return files;
 }

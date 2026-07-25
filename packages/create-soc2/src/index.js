@@ -69,6 +69,9 @@ async function resolvePromptValues(parameters, options) {
     mapped.policy_owner_name ??= "Security Owner";
     mapped.security_contact_email ??= "security@example.com";
   }
+  for (const key of Object.keys(mapped)) {
+    if (mapped[key] !== undefined && mapped[key] !== null) mapped[key] = String(mapped[key]).trim();
+  }
   const missing = parameters.filter(({ key, required }) => required && !mapped[key]);
   if (missing.length) {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -83,6 +86,15 @@ async function resolvePromptValues(parameters, options) {
       }
     } finally {
       prompt.close();
+    }
+  }
+  for (const key of ["company_name", "policy_owner_name"]) {
+    if (/[\u0000-\u001f\u007f]/.test(mapped[key])) {
+      throw new Error(`${key} must be a single line without control characters.`);
+    }
+    if (mapped[key].length > 200) throw new Error(`${key} must be 200 characters or fewer.`);
+    if (/\{\{[a-z0-9_]+\}\}/.test(mapped[key])) {
+      throw new Error(`${key} cannot contain template token syntax.`);
     }
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.security_contact_email)) {
@@ -130,13 +142,11 @@ async function renderTemplate(target, parameterConfig, values) {
     if (!textExtensions.has(extname(path)) && basename(path) !== ".gitignore") continue;
     let source = await readFile(path, "utf8");
     const jsonFile = extname(path) === ".json";
-    const tokens = [...source.matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((match) => match[1]);
-    for (const token of tokens) {
+    source = source.replace(/\{\{([a-z0-9_]+)\}\}/g, (match, token) => {
       if (!declared.has(token)) throw new Error(`Unknown template token "{{${token}}}" in ${path}`);
       if (values[token] === undefined) throw new Error(`No value resolved for template token "{{${token}}}"`);
-      const replacement = jsonFile ? jsonStringContents(values[token]) : String(values[token]);
-      source = source.replaceAll(`{{${token}}}`, replacement);
-    }
+      return jsonFile ? jsonStringContents(values[token]) : String(values[token]);
+    });
     const unresolved = /\{\{([a-z0-9_]+)\}\}/.exec(source);
     if (unresolved) throw new Error(`Unresolved template token "{{${unresolved[1]}}}" in ${path}`);
     await writeFile(path, source, "utf8");

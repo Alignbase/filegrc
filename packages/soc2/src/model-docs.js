@@ -16,7 +16,7 @@ export function generateModelDocumentation(model) {
     "| --- | --- | --- | --- |"
   ];
   for (const [name, field] of Object.entries(model.commonFields)) {
-    lines.push(`| \`${name}\` | ${fieldType(field)} | ${field.required ? "Yes" : "No"} | ${escapeCell(field.label ?? "")} |`);
+    lines.push(`| \`${name}\` | ${fieldType(field)} | ${field.required ? "Yes" : "No"} | ${escapeCell(fieldNotes(field))} |`);
   }
   lines.push("", "## Resource groups", "");
 
@@ -31,17 +31,11 @@ export function generateModelDocumentation(model) {
       lines.push("| Field | Type | Required | Notes |", "| --- | --- | --- | --- |");
       const required = new Set(resource.required ?? []);
       for (const [name, field] of Object.entries(resource.fields ?? {})) {
-        const notes = [
-          field.label,
-          field.values ? `Values: ${field.values.map((item) => `\`${item}\``).join(", ")}` : "",
-          field.relation ? `References: ${field.relation.map((item) => `\`${item}\``).join(", ")}` : "",
-          field.requiredWhen ? `Required when ${Object.entries(field.requiredWhen).map(([key, value]) => `\`${key}\` is \`${value}\``).join(" and ")}` : "",
-          field.content ? "References long-form content under `data/`." : ""
-        ].filter(Boolean).join(" ");
-        lines.push(`| \`${name}\` | ${fieldType(field)} | ${required.has(name) ? "Yes" : field.requiredWhen ? "Conditional" : "No"} | ${escapeCell(notes)} |`);
+        const requiredLabel = required.has(name) || field.required ? "Yes" : field.requiredWhen ? "Conditional" : "No";
+        lines.push(`| \`${name}\` | ${fieldType(field)} | ${requiredLabel} | ${escapeCell(fieldNotes(field))} |`);
       }
-      if (resource.oneOf) {
-        lines.push("", `At least one of ${resource.oneOf.flat().map((name) => `\`${name}\``).join(", ")} is required.`);
+      for (const choices of resource.oneOf ?? []) {
+        lines.push("", `At least one of ${choices.map((name) => `\`${name}\``).join(", ")} is required.`);
       }
       lines.push("");
     }
@@ -57,7 +51,17 @@ export function generateModelDocumentation(model) {
 
 function fieldType(field) {
   if (field.type === "array") return `array of ${field.items ?? "values"}`;
-  return field.type;
+  return field.format && field.format !== field.type ? `${field.type} (${field.format})` : field.type;
+}
+
+function fieldNotes(field) {
+  return [
+    field.label,
+    field.values ? `Values: ${field.values.map((item) => `\`${item}\``).join(", ")}` : "",
+    field.relation ? `References: ${field.relation.map((item) => `\`${item}\``).join(", ")}` : "",
+    field.requiredWhen ? `Required when ${Object.entries(field.requiredWhen).map(([key, value]) => `\`${key}\` is \`${value}\``).join(" and ")}` : "",
+    field.content ? "References long-form content under `data/`." : ""
+  ].filter(Boolean).join(" ");
 }
 
 function escapeCell(value) {

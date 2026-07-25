@@ -12,6 +12,11 @@ test("v1 model exposes the complete resource registry", () => {
   }
 });
 
+test("model versions cannot escape the packaged model registry", () => {
+  assert.throws(() => loadModel("../../package"), /Unsupported data model version/);
+  assert.throws(() => loadModel("/../../package"), /Unsupported data model version/);
+});
+
 test("generated model documentation matches the repository file", async () => {
   const actual = await readFile(new URL("../../../docs/data-model.md", import.meta.url), "utf8");
   assert.equal(actual, generateModelDocumentation(loadModel("1")));

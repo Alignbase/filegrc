@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
 import { resolveContentPath, resolveDataPath } from "./paths.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
@@ -49,7 +49,8 @@ export async function validateWorkspace(input = process.cwd()) {
         for (const item of values) {
           if (typeof item !== "string") continue;
           try {
-            await access(field.content ? resolveContentPath(loaded.root, item) : resolveDataPath(loaded.root, item));
+            const path = field.content ? resolveContentPath(loaded.root, item) : resolveDataPath(loaded.root, item);
+            if (!(await stat(path)).isFile()) throw new Error("The data path is not a file.");
           } catch {
             diagnostics.push(error(
               "missing-content",
@@ -198,6 +199,7 @@ function validateValue(name, value, field, model, path, diagnostics) {
     fail("must be an RFC 3339 timestamp with a timezone.");
   }
   if (field.format === "email" && !EMAIL_PATTERN.test(value)) fail("must be an email address.");
+  if (field.format === "timezone" && !isTimezone(value)) fail("must be an IANA time zone.");
 }
 
 function validateArrayItem(name, value, type, path, diagnostics) {
@@ -214,6 +216,15 @@ function isDate(value) {
   if (!DATE_PATTERN.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().startsWith(value);
+}
+
+function isTimezone(value) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function conditionMatches(record, condition) {

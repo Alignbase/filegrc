@@ -1,7 +1,5 @@
-import { getResourceDefinition } from "../model/index.js";
-
 export function searchResources(resources, model, options = {}) {
-  const query = String(options.query ?? "").trim().toLocaleLowerCase();
+  const query = String(options.query ?? "").trim().toLowerCase();
   const filters = options.filters ?? {};
   return resources.filter((resource) => {
     if (options.type && resource.type !== options.type) return false;
@@ -16,7 +14,8 @@ export function searchResources(resources, model, options = {}) {
 }
 
 export function searchableValues(resource, model) {
-  const definition = getResourceDefinition(model, resource.type);
+  const definition = model.resources[resource.type];
+  if (!definition) return [resource.id, resource.type].map((value) => String(value ?? "").toLowerCase());
   const fields = { ...model.commonFields, ...definition.fields };
   const values = [resource.id, resource.type];
   for (const [name, field] of Object.entries(fields)) {
@@ -24,5 +23,5 @@ export function searchableValues(resource, model) {
     const value = resource[name];
     values.push(...(Array.isArray(value) ? value : [value]));
   }
-  return values.map((value) => String(value).toLocaleLowerCase());
+  return values.map((value) => String(value).toLowerCase());
 }

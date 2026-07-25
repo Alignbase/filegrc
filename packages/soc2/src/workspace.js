@@ -26,7 +26,7 @@ export async function loadWorkspace(input = process.cwd()) {
     }
   }
 
-  const workspaceEntry = resources.find(({ record }) => record?.type === "workspace");
+  const workspaceEntry = resources.find(({ record, relativePath }) => relativePath === "workspace.json" && record?.type === "workspace");
   if (!workspaceEntry) {
     diagnostics.push({
       severity: "error",

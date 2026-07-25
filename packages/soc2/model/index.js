@@ -13,12 +13,14 @@ export function availableModelVersions() {
 }
 
 export function loadModel(version = "1") {
-  const file = path.join(modelDirectory, `v${version}.json`);
-  if (!fs.existsSync(file)) {
+  const requested = String(version);
+  const versions = availableModelVersions();
+  if (!versions.includes(requested)) {
     throw new Error(
-      `Unsupported data model version "${version}". Available versions: ${availableModelVersions().join(", ")}`,
+      `Unsupported data model version "${requested}". Available versions: ${versions.join(", ")}`,
     );
   }
+  const file = path.join(modelDirectory, `v${requested}.json`);
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
