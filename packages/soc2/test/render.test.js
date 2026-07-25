@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { buildWorkspace, renderMarkdown, serveWorkspace } from "../src/index.js";
-import { renderIndex } from "../src/web.js";
+import { APP_STYLES, renderIndex } from "../src/web.js";
 import { makeWorkspace } from "./helpers.js";
 
 test("builds a self-contained read-only site", async (context) => {
@@ -215,6 +215,12 @@ test("keeps hostile workspace text inert in static HTML", () => {
   assert.doesNotMatch(html, /<\/script><script>globalThis/);
   assert.match(html, /\\u003c\/script>/);
   assert.match(html, /\\u2028/);
+});
+
+test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
+  assert.match(APP_STYLES, /html,body\{height:100%;overflow:hidden\}/);
+  assert.match(APP_STYLES, /\.sidebar\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain\}/);
+  assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {
