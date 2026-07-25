@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { buildWorkspace, renderMarkdown, serveWorkspace } from "../src/index.js";
-import { APP_STYLES, renderIndex } from "../src/web.js";
+import { APP_SCRIPT, APP_STYLES, renderIndex } from "../src/web.js";
 import { makeWorkspace } from "./helpers.js";
 
 test("builds a self-contained read-only site", async (context) => {
@@ -221,6 +221,18 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /html,body\{height:100%;overflow:hidden\}/);
   assert.match(APP_STYLES, /\.sidebar\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain\}/);
   assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
+});
+
+test("paginates large result sets and makes the mobile drawer modal", () => {
+  assert.match(APP_SCRIPT, /const LIST_PAGE_SIZE = 25/);
+  assert.match(APP_SCRIPT, /const SEARCH_PAGE_SIZE = 25/);
+  assert.match(APP_SCRIPT, /data-page="previous"/);
+  assert.match(APP_SCRIPT, /data-search-page="next"/);
+  assert.match(APP_SCRIPT, /syncRoute\("push"\)/);
+  assert.match(APP_SCRIPT, /aria-controls="sidebar-navigation"/);
+  assert.match(APP_SCRIPT, /workspace\.inert = open/);
+  assert.match(APP_STYLES, /\.sidebar\.shown\+\.nav-scrim\{opacity:1;pointer-events:auto\}/);
+  assert.match(APP_STYLES, /\.sidebar\{visibility:hidden;transition:/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {

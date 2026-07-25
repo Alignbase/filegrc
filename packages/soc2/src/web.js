@@ -24,6 +24,8 @@ export const APP_SCRIPT = String.raw`
 const root = document.querySelector("#app");
 let state;
 let activeGroup = null;
+const LIST_PAGE_SIZE = 25;
+const SEARCH_PAGE_SIZE = 25;
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could not load the workspace</h1><pre></pre></main>';
@@ -80,12 +82,12 @@ function buildNavigation(route) {
       return '<a class="' + (current ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(item.pluralTitle) + '</span><small>' + count + '</small></a>';
     }).join("") + '</div></section>';
   }).join("");
-  return '<aside class="sidebar"><a href="#/" class="brand"><span class="mark">S2</span><span><strong>SOC 2</strong><small>GRC workspace</small></span></a><nav><a class="nav-home ' + (route.name === "home" ? "current" : "") + '" href="#/"><span>Overview</span></a>' + navGroups + '<a class="nav-home ' + (route.name === "repository" ? "current" : "") + '" href="#/repository"><span>Repository</span></a></nav><div class="side-foot"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span><span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</span></div></aside>';
+  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"><span class="mark">S2</span><span><strong>SOC 2</strong><small>GRC workspace</small></span></a><nav><a class="nav-home ' + (route.name === "home" ? "current" : "") + '" href="#/"><span>Overview</span></a>' + navGroups + '<a class="nav-home ' + (route.name === "repository" ? "current" : "") + '" href="#/repository"><span>Repository</span></a></nav><div class="side-foot"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span><span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</span></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
 }
 
 function topbar(route) {
   const title = route.name === "home" ? "Program overview" : route.name === "repository" ? "Repository" : state.model.resources[route.type]?.pluralTitle || "SOC 2";
-  return '<button class="mobile-nav" type="button" aria-label="Toggle navigation">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(title) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><div class="repo-chip"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</div>';
+  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(title) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><div class="repo-chip"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</div>';
 }
 
 function renderHome(main) {
@@ -124,6 +126,8 @@ function renderList(main, type, params = new URLSearchParams()) {
   const definition = state.model.resources[type];
   if (!definition) return renderNotFound(main);
   const entries = resourcesOfType(type);
+  const requestedPage = Number(params.get("page"));
+  let pageNumber = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const fields = [...new Set(["title", ...(definition.listFields || [])])].filter((name) => name !== "title");
   const modelFields = { ...state.model.commonFields, ...definition.fields };
   const filters = Object.entries(modelFields).filter(([, field]) => field.filter).map(([name, field]) => {
@@ -133,28 +137,61 @@ function renderList(main, type, params = new URLSearchParams()) {
   }).filter(({ values }) => values.length > 1);
   main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(groupTitle(definition.group)) + '</p><h2>' + esc(definition.pluralTitle) + '</h2><p>' + esc(definition.description) + '</p></div>' + (!state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "") + '</div>' +
     '<div class="list-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
-    filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(label.toLowerCase()) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count">' + entries.length + ' records</span></div>' +
-    '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>Title</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section></div>';
+    filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(label.toLowerCase()) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span></div>' +
+    '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>Title</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
+    '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
+  const pagination = main.querySelector(".list-pagination");
+  const pageStatus = pagination.querySelector(".page-status");
+  const previous = pagination.querySelector('[data-page="previous"]');
+  const next = pagination.querySelector('[data-page="next"]');
   const renderRows = () => {
     const query = main.querySelector("#list-search").value.toLowerCase();
     const selections = [...main.querySelectorAll(".field-filter")].filter((select) => select.value).map((select) => [select.dataset.field, select.value]);
     const filtered = entries.filter((entry) => (!query || entrySearchText(entry).includes(query)) && selections.every(([field, expected]) => Array.isArray(entry.record[field]) ? entry.record[field].map(String).includes(expected) : String(entry.record[field] ?? "") === expected));
+    const totalPages = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE));
+    pageNumber = Math.min(pageNumber, totalPages);
+    const start = (pageNumber - 1) * LIST_PAGE_SIZE;
+    const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? filtered.map((entry) => '<tr><td data-label="Title"><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a><small>' + esc(entry.record.id) + '</small></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + formatValue(entry.record[name], name) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="Title"><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a><small>' + esc(entry.record.id) + '</small></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + formatValue(entry.record[name], name) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    pagination.hidden = totalPages === 1;
+    previous.disabled = pageNumber === 1;
+    next.disabled = pageNumber === totalPages;
+    const firstVisible = filtered.length ? start + 1 : 0;
+    const lastVisible = Math.min(start + LIST_PAGE_SIZE, filtered.length);
+    pageStatus.textContent = "Page " + pageNumber + " of " + totalPages + " · " + firstVisible + "–" + lastVisible + " of " + filtered.length;
   };
   main.querySelector("#list-search").value = params.get("q") || "";
   main.querySelectorAll(".field-filter").forEach((select) => { select.value = params.get(select.dataset.field) || ""; });
-  renderRows();
-  const updateFilters = () => {
+  const syncRoute = (mode = "replace") => {
     const next = new URLSearchParams();
     const query = main.querySelector("#list-search").value.trim();
     if (query) next.set("q", query);
     main.querySelectorAll(".field-filter").forEach((select) => { if (select.value) next.set(select.dataset.field, select.value); });
-    history.replaceState(null, "", "#/resources/" + encodeURIComponent(type) + (next.size ? "?" + next : ""));
+    if (pageNumber > 1) next.set("page", String(pageNumber));
+    history[mode + "State"](null, "", "#/resources/" + encodeURIComponent(type) + (next.size ? "?" + next : ""));
+  };
+  const updateFilters = () => {
+    pageNumber = 1;
     renderRows();
+    syncRoute();
   };
   main.querySelector("#list-search").addEventListener("input", updateFilters);
   main.querySelectorAll(".field-filter").forEach((select) => select.addEventListener("change", updateFilters));
+  previous.addEventListener("click", () => {
+    pageNumber -= 1;
+    renderRows();
+    syncRoute("push");
+    root.querySelector(".workspace").scrollTo({ top: 0 });
+  });
+  next.addEventListener("click", () => {
+    pageNumber += 1;
+    renderRows();
+    syncRoute("push");
+    root.querySelector(".workspace").scrollTo({ top: 0 });
+  });
+  renderRows();
+  syncRoute();
   main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type));
 }
 
@@ -400,7 +437,25 @@ function bindCommon() {
     activeGroup = group.classList.contains("open") ? group.dataset.group : "";
     button.setAttribute("aria-expanded", String(group.classList.contains("open")));
   }));
-  root.querySelector(".mobile-nav")?.addEventListener("click", () => root.querySelector(".sidebar").classList.toggle("shown"));
+  const navButton = root.querySelector(".mobile-nav");
+  const sidebar = root.querySelector(".sidebar");
+  const workspace = root.querySelector(".workspace");
+  const setNavigation = (open) => {
+    sidebar.classList.toggle("shown", open);
+    workspace.inert = open;
+    navButton?.setAttribute("aria-expanded", String(open));
+    navButton?.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    if (open) sidebar.querySelector(".nav-close")?.focus();
+  };
+  navButton?.addEventListener("click", () => setNavigation(!sidebar.classList.contains("shown")));
+  root.querySelector(".nav-close")?.addEventListener("click", () => {
+    setNavigation(false);
+    navButton?.focus();
+  });
+  root.querySelector(".nav-scrim")?.addEventListener("click", () => {
+    setNavigation(false);
+    navButton?.focus();
+  });
   const search = root.querySelector("#global-search");
   search?.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && search.value.trim()) {
@@ -409,6 +464,11 @@ function bindCommon() {
     }
   });
   document.onkeydown = (event) => {
+    if (event.key === "Escape" && sidebar.classList.contains("shown")) {
+      setNavigation(false);
+      navButton?.focus();
+      return;
+    }
     if (event.key === "/" && !/input|textarea/i.test(document.activeElement?.tagName)) {
       event.preventDefault();
       search?.focus();
@@ -419,14 +479,43 @@ function bindCommon() {
 function globalSearch(query) {
   query = query.trim();
   const matches = state.resources.filter((entry) => entrySearchText(entry).includes(query.toLowerCase()));
+  let pageNumber = 1;
   const dialog = document.createElement("dialog");
   dialog.className = "search-results";
   dialog.setAttribute("aria-labelledby", "search-results-title");
-  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Search</p><h2 id="search-results-title">' + esc(query) + '</h2></div><button class="icon-button" aria-label="Close">×</button></div><div class="result-list">' + (matches.length ? matches.slice(0, 50).map(({ record }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(state.model.resources[record.type].title) + ' · ' + esc(record.id) + '</small></a>').join("") : empty("No matching records.")) + '</div>' + (matches.length > 50 ? '<p class="result-limit">Showing the first 50 of ' + matches.length + ' matches. Refine your search to narrow the list.</p>' : "");
+  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Search</p><h2 id="search-results-title">' + esc(query) + '</h2></div><button class="icon-button" aria-label="Close">×</button></div><div class="result-list"></div><nav class="pagination search-pagination" aria-label="Search result pages" hidden><button class="button" type="button" data-search-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-search-page="next">Next</button></nav>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelector(".icon-button").onclick = () => dialog.close();
-  dialog.querySelectorAll("a").forEach((link) => link.onclick = () => dialog.close());
+  const results = dialog.querySelector(".result-list");
+  const pagination = dialog.querySelector(".search-pagination");
+  const previous = pagination.querySelector('[data-search-page="previous"]');
+  const next = pagination.querySelector('[data-search-page="next"]');
+  const pageStatus = pagination.querySelector(".page-status");
+  const renderResults = () => {
+    const totalPages = Math.max(1, Math.ceil(matches.length / SEARCH_PAGE_SIZE));
+    const start = (pageNumber - 1) * SEARCH_PAGE_SIZE;
+    const visible = matches.slice(start, start + SEARCH_PAGE_SIZE);
+    results.innerHTML = visible.length ? visible.map(({ record }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(state.model.resources[record.type].title) + ' · ' + esc(record.id) + '</small></a>').join("") : empty("No matching records.");
+    results.querySelectorAll("a").forEach((link) => link.onclick = () => dialog.close());
+    pagination.hidden = totalPages === 1;
+    previous.disabled = pageNumber === 1;
+    next.disabled = pageNumber === totalPages;
+    const firstVisible = matches.length ? start + 1 : 0;
+    const lastVisible = Math.min(start + SEARCH_PAGE_SIZE, matches.length);
+    pageStatus.textContent = "Page " + pageNumber + " of " + totalPages + " · " + firstVisible + "–" + lastVisible + " of " + matches.length;
+  };
+  previous.addEventListener("click", () => {
+    pageNumber -= 1;
+    renderResults();
+    results.scrollTop = 0;
+  });
+  next.addEventListener("click", () => {
+    pageNumber += 1;
+    renderResults();
+    results.scrollTop = 0;
+  });
+  renderResults();
   dialog.addEventListener("close", () => dialog.remove());
 }
 
@@ -527,11 +616,13 @@ export const APP_STYLES = String.raw`
 :root{--ink:#17221e;--muted:#66736d;--line:#dfe5e1;--paper:#f6f7f4;--panel:#fff;--green:#1d6650;--green-2:#dfece6;--lime:#b8d776;--amber:#ad6b16;--red:#a44236;--sidebar:#13231e;--shadow:0 8px 28px rgba(21,40,33,.07);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none}
 *{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#dce7e2;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:grid;place-items:center;width:39px;height:39px;border-radius:10px;background:var(--lime);color:#15271f;font-weight:800;letter-spacing:-.04em}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:15px}.brand small{font-size:11px;color:#91a59d;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:13px;color:#b9c9c2}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#203a31;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#718b81;text-transform:uppercase;letter-spacing:.11em;font-size:10px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{font-size:18px;transform:rotate(0);transition:.15s}.nav-group.open .chevron{transform:rotate(90deg)}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:10px;color:#769087}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#101e1a;border-top:1px solid #294038;color:#9cb0a8;font-size:11px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#7ba399}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:17px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--green);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:9px;margin:0}.search{height:39px;max-width:480px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4f1;border:1px solid #e0e5e1;border-radius:8px;padding:0 10px;color:#6f7a75}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:13px}.search kbd{background:#fff;border:1px solid #d8dfda;border-radius:4px;padding:1px 5px;font-size:10px}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:11px;white-space:nowrap}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#eaf2ee;background:linear-gradient(120deg,#183c31,#245846);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(184,215,118,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#b8d776}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:28px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#b9cec5;font-size:13px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c6d8d0;border-left:1px solid #547568;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:25px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:10px;color:#87918c}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:14px;margin:4px 0 0}.panel-head>a{font-size:11px;color:var(--green);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:30px;font-weight:500;display:block}.progress-number span{font-size:10px;color:var(--muted)}.progress{height:9px;background:#e7ebe8;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#287259,var(--lime));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7d8983}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #edf0ee;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:10px;color:var(--green);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:11px}.due-list small{font-size:9px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:10px}.resource-bars i{height:5px;background:#edf0ee;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#81aa9a;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f5f7f5;border-radius:6px;font-size:10px}.catalog a:hover{background:var(--green-2)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:31px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:13px;margin:0}.button{border:1px solid #ccd5d0;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:12px;font-weight:650}.button.primary{background:var(--green);border-color:var(--green);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:12px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:10px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:11px}.record-table th{background:#f5f7f5;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:9px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #edf0ee;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:9px;color:#64736c}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#8a948f;margin-top:3px}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#edf1ee;padding:3px 7px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:11px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:10px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:9px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:29px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:23px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:15px;margin-top:1.7em}.markdown p,.markdown li{font-size:13px;line-height:1.65;color:#38463f}.markdown code{background:#f1f3f1;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#15241f;color:#dfe9e4;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--lime);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:11px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #edf0ee;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#7d8883}.metadata dd{margin:0;font-size:11px;min-width:0}.compact-json{white-space:pre-wrap;font-size:9px}.git-panel>code{font-size:9px;word-break:break-all}.git-panel p{font-size:10px;color:var(--muted)}.relation{color:var(--green);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #edf0ee}.history>div:first-child{border-top:0}.history code{font-size:9px;color:var(--green)}.history strong,.history small{display:block}.history strong{font-size:10px}.history small{font-size:9px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#7f8a85;text-align:center;font-size:11px;background:#f7f8f6;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:11px;overflow-wrap:anywhere}.diagnostics code{font-size:9px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(13,29,23,.28)}dialog::backdrop{background:rgba(8,20,16,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eef1ef;width:32px;height:32px;border-radius:50%;font-size:22px;cursor:pointer}.editor form>p{font-size:11px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#14231e;color:#dce8e2;padding:15px;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:11px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#929b96}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}.result-limit{margin:12px 0 0;color:var(--muted);font-size:10px}
+.nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:10px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
+.list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}
 .setup-banner{margin:14px 0;background:#f0f5e7;border:1px solid #d7e3bd;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--green);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--green);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#53615a;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--green);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#f1f3f1;color:#69756f}.form-field>small{display:block;color:#85908b;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f4f6f4}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#14231e;color:#dce8e2;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--green);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(13,29,23,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
 @media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.repo-chip{display:none}}
 @media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:20px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.search{max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.record-table{min-width:720px}}
 @media(max-width:760px){.setup-banner{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:8px;font-weight:700}.record-table td[data-label="Title"]{display:block;padding:8px 0 10px}.record-table td[data-label="Title"]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}}
+@media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #365047;border-radius:50%;background:#1b3029;color:#dce7e2;font-size:20px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(8,20,16,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 `;
 
 function safeJson(value) {
