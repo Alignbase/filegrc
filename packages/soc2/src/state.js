@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
-import { resolveDataPath } from "./paths.js";
+import { resolveContentPath } from "./paths.js";
 import { validateWorkspace } from "./validate.js";
 
 export async function createAppState(input = process.cwd(), options = {}) {
@@ -20,8 +21,8 @@ export async function createAppState(input = process.cwd(), options = {}) {
       for (const [name, field] of Object.entries(fields)) {
         if (!field.content || typeof record[name] !== "string") continue;
         try {
-          const source = await readFile(resolveDataPath(loaded.root, record[name]), "utf8");
-          content[name] = { source, html: renderMarkdown(source), path: record[name] };
+          const source = await readFile(resolveContentPath(loaded.root, record[name]), "utf8");
+          content[name] = { source, html: renderMarkdown(source), path: record[name], revision: contentRevision(source) };
         } catch {
           // Validation reports the missing file.
         }
@@ -30,15 +31,27 @@ export async function createAppState(input = process.cwd(), options = {}) {
     entries.push({
       record,
       relativePath: `data/${entry.relativePath}`,
+      revision: contentRevision(entry.source),
       content,
       history: histories.get(`data/${entry.relativePath}`) ?? []
     });
   }
 
+  const git = getGitSummary(loaded.root);
+  delete git.root;
+  const workspace = loaded.workspace ?? {
+    schemaVersion: 1,
+    dataModelVersion: loaded.model.modelVersion,
+    id: "workspace",
+    type: "workspace",
+    title: "SOC 2 workspace",
+    organizationName: "Workspace configuration unavailable",
+    timezone: "UTC"
+  };
   return {
     generatedAt: new Date().toISOString(),
     readOnly: Boolean(options.readOnly),
-    workspace: loaded.workspace,
+    workspace,
     model: loaded.model,
     resources: entries,
     validation: {
@@ -46,6 +59,10 @@ export async function createAppState(input = process.cwd(), options = {}) {
       counts: validation.counts,
       diagnostics: validation.diagnostics
     },
-    git: getGitSummary(loaded.root)
+    git
   };
+}
+
+function contentRevision(source) {
+  return createHash("sha256").update(source).digest("hex");
 }

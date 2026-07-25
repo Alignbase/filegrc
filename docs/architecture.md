@@ -222,7 +222,7 @@ These are presentation fields, not data fields. Operational dates remain explici
 
 The engine follows file renames when possible. A resource ID remains the durable identity if a path changes.
 
-CRUD operations write files atomically but do not create hidden commits. The UI shows uncommitted changes. Suggested commit messages are a later convenience and will never commit without an explicit request.
+CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The UI shows uncommitted changes. Suggested commit messages are a later convenience and will never commit without an explicit request.
 
 ## Audit evidence
 
@@ -247,14 +247,14 @@ Training material is canonical Markdown. A reusable `training` record defines it
 
 The homepage provides an audit-oriented program overview:
 
-- Control coverage and recent control-test results
-- Open findings and overdue actions
-- Current risks and accepted risks
-- Due and overdue obligations
-- Recent incidents, vulnerabilities, and reviews
-- Audit request status
-- Data validation errors
-- Uncommitted changes
+- Data validation state
+- Control and evidence counts
+- Open findings, exceptions, actions, and audit requests
+- Active audit request progress
+- Open dates and deadlines
+- Governance and risk resource counts
+- The complete resource catalog
+- Current Git revision and uncommitted-change count
 
 Primary pages group the resource catalog into:
 
@@ -270,7 +270,7 @@ Primary pages group the resource catalog into:
 - Audits: engagements, requests, control testing, exceptions, responses, and reports
 - Repository: Git history, uncommitted changes, validation, and workspace settings
 
-Each resource type gets a list page with search and filters, plus a detail page that combines the current record, linked resources, evidence, and Git history.
+Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
 The static build is read-only. Search and filtering run in the browser against a generated index. CRUD is available only from the local server.
 
@@ -290,6 +290,7 @@ Audit pages also show:
 - Resolve and validate all paths against the repository root.
 - Reject duplicate IDs and broken references.
 - Write to a temporary sibling file, flush it, and rename it into place.
+- Bind the editable server to loopback by default. Any network deployment needs authentication in front of it.
 - Do not follow external links or download evidence automatically.
 - Escape rendered content by default.
 - Treat Markdown as untrusted input and allow only a small supported subset.
@@ -319,13 +320,12 @@ Implemented:
 - Data discovery, schema checks, relationship checks, and path checks
 - Git repository state and per-file history
 - Overview, list, detail, repository, search, and filter views
-- Live atomic JSON CRUD and a read-only static build
+- Guided live JSON and Markdown CRUD, safe related-content deletion, stale-write detection, and a read-only static build
 - Prompt-driven repository creation, dependency resolution, lockfile creation, and Git initialization
-- Unit and end-to-end tests using Node.js built-ins
+- Full resource fixtures, unit and end-to-end tests using Node.js built-ins, and browser screenshot coverage for every current page
 
 Next:
 
-- Add edit concurrency checks
 - Add evidence capture metadata and audit completeness reports
 - Add compatibility fixtures for every published model version
 - Add framework requirements and organization-defined control mappings

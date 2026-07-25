@@ -1,6 +1,6 @@
 import { createServer as createHttpServer } from "node:http";
 import { getResourceDefinition } from "../model/index.js";
-import { createResource, deleteResource, updateResource } from "./files.js";
+import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
 import { getFileHistory } from "./git.js";
 import { createAppState } from "./state.js";
 import { loadWorkspace } from "./workspace.js";
@@ -22,9 +22,15 @@ export function createSoc2Server(input = process.cwd()) {
         return json(response, 200, getFileHistory(input, path));
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
-        const record = await readJson(request);
-        const result = await createResource(input, record);
+        const payload = await readJson(request);
+        const record = payload.record ?? payload;
+        const result = await createResource(input, record, { content: payload.record ? payload.content : undefined });
         return json(response, 201, { record: result.record });
+      }
+      if (request.method === "PUT" && url.pathname === "/api/content") {
+        const payload = await readJson(request);
+        const result = await updateContent(input, payload.path, payload.source, { expectedRevision: payload.revision });
+        return json(response, 200, { path: result.dataRelativePath });
       }
       const match = /^\/api\/resource\/([^/]+)\/([^/]+)$/.exec(url.pathname);
       if (match) {
@@ -37,13 +43,18 @@ export function createSoc2Server(input = process.cwd()) {
           return entry ? json(response, 200, entry) : json(response, 404, { error: "Resource not found." });
         }
         if (request.method === "PUT") {
-          const record = await readJson(request);
-          const result = await updateResource(input, type, id, record);
+          const payload = await readJson(request);
+          const record = payload.record ?? payload;
+          const result = await updateResource(input, type, id, record, {
+            content: payload.record ? payload.content : undefined,
+            expectedRevision: payload.revision,
+            expectedContentRevisions: payload.contentRevisions
+          });
           return json(response, 200, { record: result.record });
         }
         if (request.method === "DELETE") {
-          await deleteResource(input, type, id);
-          return json(response, 200, { deleted: true, type, id });
+          const result = await deleteResource(input, type, id, { expectedRevision: url.searchParams.get("revision") });
+          return json(response, 200, { deleted: true, type, id, deletedContent: result.deletedContent });
         }
       }
       if (request.method === "GET" && url.pathname === "/soc2-app.js") return text(response, 200, APP_SCRIPT, "text/javascript; charset=utf-8");
@@ -109,7 +120,8 @@ function sameOrigin(request) {
   const origin = request.headers.origin;
   if (!origin) return true;
   try {
-    return new URL(origin).host === request.headers.host;
+    const expectedProtocol = request.socket.encrypted ? "https:" : "http:";
+    return new URL(origin).origin === `${expectedProtocol}//${request.headers.host}`;
   } catch {
     return false;
   }
@@ -117,7 +129,10 @@ function sameOrigin(request) {
 
 function statusFor(error) {
   if (error instanceof SyntaxError) return 400;
+  if (/exceeds 2 MB/i.test(error.message)) return 413;
+  if (/changed after you opened/i.test(error.message)) return 409;
+  if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
-  if (/invalid|required|unsafe|match|exists|workspace/i.test(error.message)) return 400;
+  if (/invalid|required|unsafe|match|workspace|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
   return 500;
 }

@@ -1,6 +1,6 @@
 export { availableModelVersions, getResourceDefinition, loadModel } from "../model/index.js";
 export { buildWorkspace } from "./build.js";
-export { createResource, deleteResource, resourcePath, updateResource } from "./files.js";
+export { createResource, deleteResource, resourcePath, updateContent, updateResource } from "./files.js";
 export { getFileHistory, getGitSummary, getWorkspaceHistories } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";

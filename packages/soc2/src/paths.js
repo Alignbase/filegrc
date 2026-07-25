@@ -27,7 +27,7 @@ export function resolveDataPath(root, dataRelativePath) {
   if (typeof dataRelativePath !== "string" || !dataRelativePath) {
     throw new Error("A non-empty data-relative path is required");
   }
-  if (isAbsolute(dataRelativePath) || dataRelativePath.includes("\0")) {
+  if (isAbsolute(dataRelativePath) || dataRelativePath.includes("\0") || dataRelativePath.includes("\\")) {
     throw new Error(`Unsafe data path: ${dataRelativePath}`);
   }
   const dataRoot = join(resolveWorkspaceRoot(root), "data");
@@ -39,6 +39,19 @@ export function resolveDataPath(root, dataRelativePath) {
     throw new Error(`Path resolves outside data/: ${dataRelativePath}`);
   }
   return target;
+}
+
+export function resolveContentPath(root, dataRelativePath) {
+  const segments = typeof dataRelativePath === "string" ? dataRelativePath.split("/") : [];
+  if (
+    segments.length < 2
+    || segments[0] !== "content"
+    || segments.some((segment) => !segment || segment === "." || segment === "..")
+    || !segments.at(-1).endsWith(".md")
+  ) {
+    throw new Error("Long-form content must be a Markdown file under data/content/.");
+  }
+  return resolveDataPath(root, dataRelativePath);
 }
 
 export function relativeToWorkspace(root, path) {

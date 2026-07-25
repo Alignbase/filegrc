@@ -1,31 +1,53 @@
-import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
-import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
+import { resolveContentPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 
-export async function createResource(input, record) {
+const mutationQueues = new Map();
+
+export async function createResource(input, record, options = {}) {
+  return serializeMutation(input, (root) => createResourceUnlocked(root, record, options));
+}
+
+async function createResourceUnlocked(input, record, options) {
   const loaded = await loadWorkspace(input);
   const before = await validateWorkspace(loaded);
   const path = resourcePath(loaded.root, loaded.model, record);
   try {
     await stat(path);
-    throw new Error(`Resource already exists at ${path}`);
+    throw new Error(`Resource "${record.id}" already exists.`);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  await writeAtomic(path, record, { exclusive: true });
-  const result = await validateWorkspace(loaded.root);
-  const introduced = newErrors(result, before);
-  if (introduced.length) {
-    await rm(path, { force: true });
-    throw new Error(formatWriteFailure(introduced, record.id));
+  const contentWrites = await prepareContentWrites(loaded, record, options.content, { exclusive: true });
+  const written = [];
+  let recordWritten = false;
+  try {
+    for (const item of contentWrites) {
+      await writeTextAtomic(item.path, item.source, { exclusive: true });
+      written.push(item);
+    }
+    await writeAtomic(path, record, { exclusive: true });
+    recordWritten = true;
+    const result = await validateWorkspace(loaded.root);
+    const introduced = newErrors(result, before);
+    if (introduced.length) throw new Error(formatWriteFailure(introduced, record.id));
+  } catch (error) {
+    if (recordWritten) await rm(path, { force: true });
+    for (const item of written) await rm(item.path, { force: true });
+    throw error;
   }
   return { record, path };
 }
 
-export async function updateResource(input, type, id, record) {
+export async function updateResource(input, type, id, record, options = {}) {
+  return serializeMutation(input, (root) => updateResourceUnlocked(root, type, id, record, options));
+}
+
+async function updateResourceUnlocked(input, type, id, record, options) {
   if (record.type !== type || record.id !== id) {
     throw new Error("The type and ID in the record must match the resource being updated.");
   }
@@ -33,31 +55,68 @@ export async function updateResource(input, type, id, record) {
   const before = await validateWorkspace(loaded);
   const path = resourcePath(loaded.root, loaded.model, record);
   const previous = await readFile(path, "utf8");
-  await writeAtomic(path, record);
-  const result = await validateWorkspace(loaded.root);
-  const introduced = newErrors(result, before);
-  if (introduced.length) {
+  assertRevision(previous, options.expectedRevision, "The record");
+  const contentWrites = await prepareContentWrites(loaded, record, options.content, {
+    expectedRevisions: options.expectedContentRevisions
+  });
+  try {
+    for (const item of contentWrites) await writeTextAtomic(item.path, item.source);
+    await writeAtomic(path, record);
+    const result = await validateWorkspace(loaded.root);
+    const introduced = newErrors(result, before);
+    if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
+  } catch (error) {
     await writeTextAtomic(path, previous);
-    throw new Error(formatWriteFailure(introduced, id));
+    for (const item of contentWrites) {
+      if (item.previous === null) await rm(item.path, { force: true });
+      else await writeTextAtomic(item.path, item.previous);
+    }
+    throw error;
   }
   return { record, path };
 }
 
-export async function deleteResource(input, type, id) {
+export async function updateContent(input, dataRelativePath, source, options = {}) {
+  return serializeMutation(input, (root) => updateContentUnlocked(root, dataRelativePath, source, options));
+}
+
+async function updateContentUnlocked(input, dataRelativePath, source, options) {
+  if (typeof source !== "string") throw new Error("Markdown content must be a string.");
+  const path = resolveContentPath(input, dataRelativePath);
+  const previous = await readFile(path, "utf8");
+  assertRevision(previous, options.expectedRevision, "The Markdown file");
+  await writeTextAtomic(path, source.endsWith("\n") ? source : `${source}\n`);
+  return { path, dataRelativePath };
+}
+
+export async function deleteResource(input, type, id, options = {}) {
+  return serializeMutation(input, (root) => deleteResourceUnlocked(root, type, id, options));
+}
+
+async function deleteResourceUnlocked(input, type, id, options) {
   const loaded = await loadWorkspace(input);
   const before = await validateWorkspace(loaded);
   const definition = getResourceDefinition(loaded.model, type);
   if (definition.singleton) throw new Error("The workspace record cannot be deleted.");
   const path = resourcePath(loaded.root, loaded.model, { type, id });
   const source = await readFile(path, "utf8");
-  await rm(path);
-  const result = await validateWorkspace(loaded.root);
-  const introduced = newErrors(result, before);
-  if (introduced.length) {
+  assertRevision(source, options.expectedRevision, "The record");
+  const record = JSON.parse(source);
+  const contentFiles = await exclusiveContentFiles(loaded, record);
+  try {
+    await rm(path);
+    for (const item of contentFiles) await rm(item.path, { force: true });
+    const result = await validateWorkspace(loaded.root);
+    const introduced = newErrors(result, before);
+    if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
+  } catch (error) {
     await writeTextAtomic(path, source);
-    throw new Error(formatWriteFailure(introduced, id));
+    for (const item of contentFiles) {
+      if (item.source !== null) await writeTextAtomic(item.path, item.source);
+    }
+    throw error;
   }
-  return { type, id, path };
+  return { type, id, path, deletedContent: contentFiles.filter(({ source }) => source !== null).map(({ dataRelativePath }) => dataRelativePath) };
 }
 
 export function resourcePath(input, model, record) {
@@ -88,16 +147,12 @@ async function writeTextAtomic(path, source, options = {}) {
   }
   try {
     if (options.exclusive) {
-      try {
-        await stat(path);
-        throw new Error(`Resource already exists at ${path}`);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-    }
-    await rename(temp, path);
+      await link(temp, path);
+      await rm(temp, { force: true }).catch(() => {});
+    } else await rename(temp, path);
   } catch (error) {
     await rm(temp, { force: true });
+    if (error.code === "EEXIST") throw new Error("The target file already exists.");
     throw error;
   }
 }
@@ -118,4 +173,85 @@ function formatWriteFailure(diagnostics, id) {
     .map(({ message }) => message)
     .join(" ");
   return `The write would leave the workspace invalid. ${details}`.trim();
+}
+
+async function prepareContentWrites(loaded, record, content, options = {}) {
+  if (!content) return [];
+  if (!content || Array.isArray(content) || typeof content !== "object") {
+    throw new Error("Content updates must be keyed by data-relative Markdown path.");
+  }
+  const definition = getResourceDefinition(loaded.model, record.type);
+  const fields = { ...loaded.model.commonFields, ...definition.fields };
+  const allowed = new Set(Object.entries(fields)
+    .filter(([, field]) => field.content)
+    .flatMap(([name]) => Array.isArray(record[name]) ? record[name] : [record[name]])
+    .filter(Boolean));
+  const writes = [];
+  for (const [dataRelativePath, source] of Object.entries(content)) {
+    if (!allowed.has(dataRelativePath)) throw new Error(`Content path "${dataRelativePath}" is not referenced by this record.`);
+    if (typeof source !== "string") throw new Error(`Content for "${dataRelativePath}" must be a string.`);
+    const path = resolveContentPath(loaded.root, dataRelativePath);
+    let previous = null;
+    try {
+      previous = await readFile(path, "utf8");
+      if (options.exclusive) throw new Error(`Content already exists at data/${dataRelativePath}.`);
+      assertRevision(previous, options.expectedRevisions?.[dataRelativePath], `Content at data/${dataRelativePath}`);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    writes.push({ path, dataRelativePath, source: source.endsWith("\n") ? source : `${source}\n`, previous });
+  }
+  return writes;
+}
+
+function assertRevision(source, expected, label) {
+  if (expected && contentRevision(source) !== expected) {
+    throw new Error(`${label} changed after you opened it. Reload the workspace and apply your change again.`);
+  }
+}
+
+function contentRevision(source) {
+  return createHash("sha256").update(source).digest("hex");
+}
+
+async function exclusiveContentFiles(loaded, record) {
+  const definition = getResourceDefinition(loaded.model, record.type);
+  const fields = { ...loaded.model.commonFields, ...definition.fields };
+  const candidates = Object.entries(fields)
+    .filter(([, field]) => field.content)
+    .flatMap(([name]) => Array.isArray(record[name]) ? record[name] : [record[name]])
+    .filter((value) => typeof value === "string");
+  const files = [];
+  for (const dataRelativePath of new Set(candidates)) {
+    const shared = loaded.resources.some((other) => other.id !== record.id && Object.values(other).some((value) => (
+      value === dataRelativePath || (Array.isArray(value) && value.includes(dataRelativePath))
+    )));
+    if (shared) continue;
+    let contentPath;
+    try {
+      contentPath = resolveContentPath(loaded.root, dataRelativePath);
+    } catch {
+      continue;
+    }
+    let contentSource = null;
+    try {
+      contentSource = await readFile(contentPath, "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    files.push({ path: contentPath, dataRelativePath, source: contentSource });
+  }
+  return files;
+}
+
+function serializeMutation(input, task) {
+  const root = resolveWorkspaceRoot(input);
+  const previous = mutationQueues.get(root) ?? Promise.resolve();
+  const run = previous.catch(() => {}).then(() => task(root));
+  let tracked;
+  tracked = run.finally(() => {
+    if (mutationQueues.get(root) === tracked) mutationQueues.delete(root);
+  });
+  mutationQueues.set(root, tracked);
+  return tracked;
 }

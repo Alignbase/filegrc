@@ -4,19 +4,24 @@ This repository holds a plain-file SOC 2 GRC program. JSON files under `data/` h
 
 ![SOC 2 program overview](docs/soc2-home.png)
 
-## Use it
+## Create a workspace
 
 ```sh
-npm install
+npx create-soc2@latest company-soc2
+cd company-soc2
 npm run validate
 npm run serve
 ```
 
-Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, search, filters, validation results, and file editing. It never commits changes for you.
+You need Node.js 20 or newer and Git. The setup command asks for the company name, your name as the initial policy owner, and a security contact email.
+
+Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. It never commits changes for you.
+
+The local server has no authentication and binds to loopback by default. Do not expose its write API to an untrusted network.
 
 Run `npm run build` to create a read-only site under `.soc2/site/`. Commit the source records first, then pin evidence to the Git revision shown in the app when you provide rendered pages to an auditor.
 
-Read `AGENTS.md` before changing records or adding automation.
+Review the starter drafts against actual practice before approving them. Read `AGENTS.md` before changing records or adding automation.
 
 ## Scope
 

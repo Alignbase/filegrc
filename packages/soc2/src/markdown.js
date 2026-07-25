@@ -100,7 +100,7 @@ function inline(source) {
   value = value.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   value = value.replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_, label, target) => {
     if (!/^(?:https?:|mailto:|#)/.test(target)) return label;
-    return `<a href="${escapeAttribute(target)}" rel="noreferrer">${label}</a>`;
+    return `<a href="${target.replaceAll("`", "&#96;")}" rel="noreferrer">${label}</a>`;
   });
   return value;
 }
@@ -120,8 +120,4 @@ export function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll("`", "&#96;");
 }

@@ -5,7 +5,7 @@ export function getGitSummary(input = process.cwd()) {
   const root = resolveWorkspaceRoot(input);
   try {
     const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
-    const status = git(root, ["status", "--porcelain=v1"]);
+    const status = git(root, ["status", "--porcelain=v1", "--", "."]);
     const commit = tryGit(root, ["rev-parse", "HEAD"]) || null;
     const branch = tryGit(root, ["symbolic-ref", "--short", "HEAD"]) || null;
     const last = commit ? parseLogLine(tryGit(root, ["log", "-1", "--format=%H%x1f%aI%x1f%an%x1f%s"])) : null;
@@ -53,7 +53,7 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12) {
   const histories = new Map([...wanted].map((path) => [path, []]));
   if (!wanted.size) return histories;
   try {
-    const output = git(root, ["log", "--format=%x1e%H%x1f%aI%x1f%an%x1f%s", "--name-only", "--", "data"]);
+    const output = git(root, ["log", "--relative", "--format=%x1e%H%x1f%aI%x1f%an%x1f%s", "--name-only", "--", "data"]);
     for (const block of output.split("\x1e")) {
       const lines = block.trim().split("\n").filter(Boolean);
       if (lines.length < 2) continue;

@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
-import { resolveDataPath } from "./paths.js";
+import { resolveContentPath, resolveDataPath } from "./paths.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -49,12 +49,12 @@ export async function validateWorkspace(input = process.cwd()) {
         for (const item of values) {
           if (typeof item !== "string") continue;
           try {
-            await access(resolveDataPath(loaded.root, item));
-          } catch (validationError) {
+            await access(field.content ? resolveContentPath(loaded.root, item) : resolveDataPath(loaded.root, item));
+          } catch {
             diagnostics.push(error(
               "missing-content",
               displayPath,
-              `${fieldName} points to unavailable data path "${item}": ${validationError.message}`
+              `${fieldName} points to unavailable data path "${item}".`
             ));
           }
         }
@@ -117,7 +117,7 @@ function validateRecord(record, definition, model, path, diagnostics) {
     if (field.requiredWhen && conditionMatches(record, field.requiredWhen)) required.add(name);
   }
   for (const name of required) {
-    if (record[name] === undefined || record[name] === null || record[name] === "") {
+    if (isMissing(record[name])) {
       diagnostics.push(error("missing-field", path, `Required field "${name}" is missing.`));
     }
   }
@@ -135,10 +135,17 @@ function validateRecord(record, definition, model, path, diagnostics) {
   }
 
   for (const choices of definition.oneOf ?? []) {
-    if (!choices.some((name) => record[name] !== undefined && record[name] !== null && record[name] !== "")) {
+    if (!choices.some((name) => !isMissing(record[name]))) {
       diagnostics.push(error("missing-choice", path, `At least one of ${choices.join(", ")} is required.`));
     }
   }
+}
+
+function isMissing(value) {
+  return value === undefined
+    || value === null
+    || (typeof value === "string" && value.trim() === "")
+    || (Array.isArray(value) && value.length === 0);
 }
 
 function validateValue(name, value, field, model, path, diagnostics) {

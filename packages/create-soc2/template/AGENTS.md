@@ -19,6 +19,7 @@ Using this repository does not establish compliance by itself. Records must matc
 - Put signed forms, screenshots, third-party reports, and immutable exports behind evidence records. These files may be PDF, image, CSV, or another fixed format.
 - Never fetch an external evidence reference automatically.
 - Do not store secrets, credentials, session data, or personal data that may need to be erased from Git history.
+- Keep the editable local server on loopback or behind trusted authentication. Use the read-only static build for audit sharing.
 
 ## Git is the audit trail
 
@@ -47,13 +48,15 @@ Prefer existing fields. Put organization-specific values under `extensions` with
 
 Never change a resource ID after it is committed. Create a replacement and link the records if identity truly changes.
 
+The local app presents the core model fields and relationship pickers. Use its advanced JSON section for optional fields and extensions. It rejects a save if the source file changed after the editor opened, so reload and reapply the change instead of overwriting newer work.
+
 ## Content and approvals
 
 The seed policy owner is {{policy_owner_name}} and the reporting address is {{security_contact_email}}. Replace ownership or contacts when responsibilities change.
 
 Policy and training attestations must identify the exact Git revision of the content that a person acknowledged. Store signatures as evidence attachments and link their evidence IDs from the attestation.
 
-Committee and risk meeting minutes are `meeting` resources with Markdown in `notesPath`. Record attendees, decisions, risks discussed, and action item IDs. Keep action tracking in `action-item` records.
+Committee and risk meeting minutes are `meeting` resources with Markdown in `minutesPath`. Use `agendaPath` for the agenda and `notesPath` only for extra working notes. Record attendees, decisions, risks discussed, and action item IDs. Keep action tracking in `action-item` records.
 
 ## Audit evidence
 

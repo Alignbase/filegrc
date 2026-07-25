@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { cp, lstat, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline/promises";
@@ -13,6 +13,7 @@ export async function createSoc2(options = {}) {
   const parameterConfig = JSON.parse(await readFile(join(packageRoot, "template-parameters.json"), "utf8"));
   const target = resolve(options.target ?? "soc2-program");
   await assertWritableTarget(target, Boolean(options.force));
+  if (options.force) await assertNoTemplateCollisions(target);
 
   const prompted = await resolvePromptValues(parameterConfig.parameters, options);
   const engineVersion = await resolveSoc2Version(options.soc2Version);
@@ -98,6 +99,24 @@ async function assertWritableTarget(target, force) {
     }
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
+  }
+}
+
+async function assertNoTemplateCollisions(target) {
+  const template = join(packageRoot, "template");
+  const collisions = [];
+  for (const source of await collectFiles(template)) {
+    const templatePath = relative(template, source);
+    const destinationPath = templatePath === "gitignore" ? ".gitignore" : templatePath;
+    try {
+      await lstat(join(target, destinationPath));
+      collisions.push(destinationPath);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  if (collisions.length) {
+    throw new Error(`Target contains files create-soc2 would overwrite: ${collisions.slice(0, 5).join(", ")}.`);
   }
 }
 

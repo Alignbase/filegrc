@@ -44,3 +44,33 @@ test("refuses a non-empty target by default", async (context) => {
     install: false
   }), /not empty/);
 });
+
+test("adds a workspace to a non-empty target with force without overwriting files", async (context) => {
+  const target = await mkdtemp(join(tmpdir(), "create-soc2-force-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
+  await writeFile(join(target, "keep.txt"), "keep", "utf8");
+  await createSoc2({
+    target,
+    yes: true,
+    force: true,
+    soc2Version: "1.2.3",
+    install: false
+  });
+  assert.equal(await readFile(join(target, "keep.txt"), "utf8"), "keep");
+  await access(join(target, "README.md"));
+});
+
+test("rejects force mode before writing when a template file would be overwritten", async (context) => {
+  const target = await mkdtemp(join(tmpdir(), "create-soc2-collision-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
+  await writeFile(join(target, "README.md"), "keep me", "utf8");
+  await assert.rejects(createSoc2({
+    target,
+    yes: true,
+    force: true,
+    soc2Version: "1.2.3",
+    install: false
+  }), /would overwrite: README\.md/);
+  assert.equal(await readFile(join(target, "README.md"), "utf8"), "keep me");
+  await assert.rejects(access(join(target, "data", "workspace.json")), /ENOENT/);
+});

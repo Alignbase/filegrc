@@ -73,13 +73,18 @@ export function indexResources(resources) {
   return { byId, byType };
 }
 
-async function collectJsonFiles(directory) {
+async function collectJsonFiles(directory, dataRoot = directory) {
   const paths = [];
   for (const item of await readdir(directory, { withFileTypes: true })) {
     if (item.name.startsWith(".") || item.name === "content") continue;
     const path = join(directory, item.name);
-    if (item.isDirectory()) paths.push(...await collectJsonFiles(path));
-    else if (item.isFile() && item.name.endsWith(".json")) paths.push(path);
+    if (item.isDirectory()) paths.push(...await collectJsonFiles(path, dataRoot));
+    else if (item.isFile() && item.name.endsWith(".json") && !isEvidenceAttachment(path, dataRoot)) paths.push(path);
   }
   return paths.sort();
+}
+
+function isEvidenceAttachment(path, dataRoot) {
+  const parts = relative(dataRoot, path).split(sep);
+  return parts[0] === "evidence" && parts.length > 2 && parts.at(-1) !== "evidence.json";
 }
