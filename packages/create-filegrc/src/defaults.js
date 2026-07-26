@@ -8,18 +8,53 @@ const OVERSIGHT_TEAM_ID = "team-security-risk-oversight";
 const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
 const DATA_POLICY_ID = "policy-data-protection-handling";
 
-const commonCriteriaReferences = [
-  "CC1.1", "CC1.2", "CC1.3", "CC1.4", "CC1.5",
-  "CC2.1", "CC2.2", "CC2.3",
-  "CC3.1", "CC3.2", "CC3.3", "CC3.4",
-  "CC4.1", "CC4.2",
-  "CC5.1", "CC5.2", "CC5.3",
-  "CC6.1", "CC6.2", "CC6.3", "CC6.4", "CC6.5", "CC6.6", "CC6.7", "CC6.8",
-  "CC7.1", "CC7.2", "CC7.3", "CC7.4", "CC7.5",
-  "CC8.1",
-  "CC9.1", "CC9.2"
+const commonCriteria = [
+  ["CC1.1", "Integrity and ethical values", "Set, communicate, and enforce standards for integrity and ethical conduct."],
+  ["CC1.2", "Independent oversight", "Provide independent oversight of the system of internal control."],
+  ["CC1.3", "Roles and accountability structure", "Define reporting lines, authority, and responsibility for achieving objectives."],
+  ["CC1.4", "Competent workforce", "Attract, develop, and retain people with the competence needed for assigned responsibilities."],
+  ["CC1.5", "Individual accountability", "Hold people accountable for their internal-control responsibilities."],
+  ["CC2.1", "Useful information", "Obtain, generate, and use relevant, reliable information to operate controls."],
+  ["CC2.2", "Internal communication", "Communicate objectives, responsibilities, and control information within the organization."],
+  ["CC2.3", "External communication", "Communicate relevant control matters with customers, vendors, regulators, and other outside parties."],
+  ["CC3.1", "Clear objectives", "Define objectives clearly enough to identify and assess risks to them."],
+  ["CC3.2", "Risk identification and analysis", "Identify and analyze risks that could prevent the organization from meeting its objectives."],
+  ["CC3.3", "Fraud risk", "Consider how fraud could affect achievement of objectives."],
+  ["CC3.4", "Change risk", "Identify and assess changes that could materially affect internal control."],
+  ["CC4.1", "Control monitoring", "Use ongoing or separate evaluations to confirm that controls are present and working."],
+  ["CC4.2", "Deficiency communication", "Evaluate control deficiencies and communicate them in time for corrective action."],
+  ["CC5.1", "Risk-based control activities", "Select and develop control activities that reduce identified risks."],
+  ["CC5.2", "Technology controls", "Select and develop general controls over technology that supports the program."],
+  ["CC5.3", "Policies and procedures", "Put control activities into practice through clear policies and procedures."],
+  ["CC6.1", "Logical access safeguards", "Use logical access safeguards to protect information and system resources."],
+  ["CC6.2", "Identity lifecycle", "Authorize identities and credentials before access and remove them when no longer needed."],
+  ["CC6.3", "Access authorization", "Grant, change, and remove access according to role, responsibility, and least privilege."],
+  ["CC6.4", "Physical access", "Restrict physical access to facilities and protected assets."],
+  ["CC6.5", "Secure asset disposal", "Remove logical and physical protections only after assets and data are safely disposed."],
+  ["CC6.6", "External threat protection", "Protect system boundaries against threats originating outside the system."],
+  ["CC6.7", "Data transmission and movement", "Authorize and protect information while it is transmitted, moved, or removed."],
+  ["CC6.8", "Unauthorized software protection", "Prevent or detect unauthorized and malicious software."],
+  ["CC7.1", "Configuration and vulnerability monitoring", "Detect configuration changes and new vulnerabilities that could weaken the system."],
+  ["CC7.2", "Anomaly monitoring", "Monitor system components for anomalies and events that may require investigation."],
+  ["CC7.3", "Security event evaluation", "Evaluate detected events and determine whether they are security incidents."],
+  ["CC7.4", "Incident response", "Respond to identified incidents through a defined response process."],
+  ["CC7.5", "Incident recovery", "Recover from incidents, restore operations, and address resulting weaknesses."],
+  ["CC8.1", "Change management", "Authorize, design, test, approve, and implement system changes through a controlled process."],
+  ["CC9.1", "Risk mitigation", "Select and operate responses to risks from disruption, change, and business dependencies."],
+  ["CC9.2", "Vendor and partner risk", "Assess and manage risks created by vendors and business partners."]
 ];
-const descriptionCriteriaReferences = ["DC1", "DC2", "DC3", "DC4", "DC5", "DC6", "DC7", "DC8", "DC9"];
+const descriptionCriteria = [
+  ["DC1", "Services provided", "Describe the nature of the service and the types of services the system provides."],
+  ["DC2", "Service commitments and requirements", "Describe the principal commitments made to customers and the system requirements needed to meet them."],
+  ["DC3", "System components", "Describe the infrastructure, software, people, procedures, and data that make up the system."],
+  ["DC4", "System incidents", "Describe significant system incidents caused by control failures or resulting in a significant failure to meet service commitments or system requirements."],
+  ["DC5", "Applicable criteria and controls", "Identify the applicable trust services criteria and the controls designed to address them."],
+  ["DC6", "Complementary user entity controls", "Describe controls that customers are expected to operate for the service organization's controls to work as intended."],
+  ["DC7", "Subservice organizations and controls", "Describe relevant subservice organizations, how their controls are treated, and complementary controls they are expected to operate."],
+  ["DC8", "Criteria not relevant", "Identify any trust services criteria within an included category that are not relevant to the system and explain why."],
+  ["DC9", "Significant changes", "Describe significant system changes during the reporting period that could affect a report user's understanding of the system."]
+];
+const commonCriteriaReferences = commonCriteria.map(([reference]) => reference);
 
 const controls = [
   {
@@ -774,24 +809,28 @@ export function baselineRecordFiles(effectiveDate) {
       url: "https://www.aicpa-cima.com/resources/download/get-description-criteria-for-your-organizations-soc-2-r-report"
     }
   };
-  const commonRequirements = commonCriteriaReferences.map((reference) => ({
+  const commonRequirements = commonCriteria.map(([reference, name, description]) => ({
     schemaVersion: 1,
     id: requirementId(reference),
     type: "requirement",
-    title: reference,
+    title: `${reference}: ${name}`,
     frameworkId: FRAMEWORK_ID,
     reference,
     applicability: "applicable",
+    description,
+    applicabilityRationale: "Included in the default SOC 2 Security baseline. Confirm applicability and exact interpretation with the selected auditor.",
     tags: ["security", "common-criteria"]
   }));
-  const descriptionRequirements = descriptionCriteriaReferences.map((reference) => ({
+  const descriptionRequirements = descriptionCriteria.map(([reference, name, description]) => ({
     schemaVersion: 1,
     id: requirementId(reference),
     type: "requirement",
-    title: reference,
+    title: `${reference}: ${name}`,
     frameworkId: DESCRIPTION_FRAMEWORK_ID,
     reference,
     applicability: "applicable",
+    description,
+    applicabilityRationale: "Included for preparing the system description. Confirm the official criterion and expected presentation with the selected auditor.",
     tags: ["description-criteria"]
   }));
   const controlRecords = controls.map((control) => ({

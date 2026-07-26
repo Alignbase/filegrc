@@ -44,6 +44,14 @@ test("creates a complete generic repository with one dependency", async (context
   const controlFiles = await readdir(join(target, "data", "controls"));
   const obligationFiles = await readdir(join(target, "data", "obligations"));
   assert.equal(requirementFiles.length, 42);
+  const firstRequirement = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-cc1-1.json"), "utf8"));
+  assert.equal(firstRequirement.title, "CC1.1: Integrity and ethical values");
+  assert.match(firstRequirement.description, /integrity and ethical conduct/);
+  assert.match(firstRequirement.applicabilityRationale, /Confirm applicability/);
+  const incidentDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc4.json"), "utf8"));
+  assert.equal(incidentDescriptionCriterion.title, "DC4: System incidents");
+  const changeDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc9.json"), "utf8"));
+  assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
   assert.equal(controlFiles.length, 29);
   assert.equal(obligationFiles.length, 33);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));

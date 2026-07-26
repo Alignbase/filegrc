@@ -287,7 +287,7 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
 });
 
 test("persists each sidebar group state between page renders", () => {
-  assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v1"/);
+  assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v2"/);
   assert.match(APP_SCRIPT, /window\.localStorage\.getItem\(NAV_GROUP_STORAGE_KEY\)/);
   assert.match(APP_SCRIPT, /navigationGroupState\[group\] \?\? \(currentGroup === group \|\| DEFAULT_OPEN_NAV_GROUPS\.has\(group\)\)/);
   assert.match(APP_SCRIPT, /setNavigationGroupOpen\(group\.dataset\.group, open\)/);
@@ -318,6 +318,28 @@ test("places record context left of Markdown on wide screens", () => {
   assert.match(APP_STYLES, /\.detail-grid aside\{grid-column:1;grid-row:1\}/);
   assert.match(APP_STYLES, /\.detail-main\{grid-column:2;grid-row:1\}/);
   assert.match(APP_STYLES, /\.detail-grid\{grid-template-columns:1fr\}/);
+});
+
+test("explains the SOC 2 readiness path and connected records in place", () => {
+  assert.match(APP_SCRIPT, /const NAV_GROUP_ORDER = \["program", "systems-vendors", "governance"/);
+  assert.match(APP_SCRIPT, /function navigationGroupIds\(\)/);
+  assert.match(APP_SCRIPT, /<section class="nav-path"><p>Readiness path<\/p>/);
+  assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
+  assert.match(APP_SCRIPT, /Scope", "Define the service, system boundary, people, data, and vendors/);
+  assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
+  assert.match(APP_SCRIPT, /Shortlist independent CPA firms that perform SOC 2 examinations/);
+  assert.match(APP_SCRIPT, /function recordNarrative\(record, fields\)/);
+  assert.match(APP_SCRIPT, /function resourceConnections\(entry\)/);
+  assert.match(APP_SCRIPT, /Linked from /);
+  assert.match(APP_SCRIPT, /Linked by /);
+  assert.match(APP_SCRIPT, /field === "sourceReference"/);
+  assert.match(APP_SCRIPT, /function safeExternalUrl\(value\)/);
+  assert.match(APP_SCRIPT, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
+  assert.match(APP_STYLES, /\.readiness-flow\{display:grid;grid-template-columns:repeat\(6/);
+  assert.match(APP_STYLES, /\.resource-directory\{display:grid/);
+  assert.match(APP_STYLES, /\.record-prose\{max-width:790px\}/);
+  assert.match(APP_STYLES, /\.connections\{display:grid\}/);
+  assert.match(APP_STYLES, /\.external-source\{display:flex/);
 });
 
 test("keeps IDs behind the guided editor and generates them from titles", () => {
@@ -381,9 +403,11 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /type: "system"/);
   assert.match(APP_SCRIPT, /type: "audit"/);
   assert.match(APP_SCRIPT, /Compliance artifacts are files/);
+  assert.match(APP_SCRIPT, /Follow the audit chain/);
   assert.match(APP_SCRIPT, /Commit the change; Git records the rest/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
   assert.match(APP_SCRIPT, /Start a checklist when something changes/);
+  assert.match(APP_SCRIPT, /Engage the auditor early/);
   assert.match(APP_SCRIPT, /Generate the period packet/);
   assert.match(APP_SCRIPT, /filegrc obligations CLI command/);
   assert.match(APP_SCRIPT, /filegrc trigger/);
@@ -404,7 +428,8 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_STYLES, /\.onboarding-shade\{position:fixed;inset:0;z-index:60;pointer-events:none\}/);
   assert.match(APP_STYLES, /\.onboarding-focus\{/);
   assert.match(APP_STYLES, /\.onboarding-dialog\{max-height:56vh\}\.onboarding-actions\{position:sticky/);
-  assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(6,1fr\)/);
+  assert.match(APP_SCRIPT, /--onboarding-step-count:' \+ steps\.length/);
+  assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(var\(--onboarding-step-count\),1fr\)/);
   assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form\{grid-template-columns:1fr\}/);

@@ -52,7 +52,7 @@ Path: `data/frameworks/<id>.json`
 
 Individual criterion references used to document applicability and map controls, commitments, audits, and findings.
 
-Policy basis: Requirements come from the selected framework. Controls explain how policy and actual operation address each applicable criterion.
+Policy basis: Requirements come from the selected framework. Controls explain how policy and actual operation address each applicable criterion. Starter descriptions are plain-language orientation only; use the publisher's official criteria for the examination.
 
 Timing: Review applicability during audit planning and after material scope, service, system, or framework changes.
 
@@ -1103,11 +1103,11 @@ Path: `data/action-items/<id>.json`
 
 #### `audit`
 
-Audit and readiness engagements with criteria, scope, type or period, systems, controls, tests, auditor, system description, assertion, evidence, findings, and opinion.
+One SOC 2 engagement from auditor selection and scope through requests, fieldwork, evidence, findings, and the final report.
 
-Policy basis: The information security policy requires applicable obligations, controls, and evidence to support audit work. The selected frameworks define the actual criteria.
+Policy basis: An independent CPA firm performs the examination against the selected criteria. Policies, controls, operating records, and evidence show how the organization meets them.
 
-Timing: Create one record per engagement. Set an as-of date for Type 1 or a start and end period for Type 2, then keep requests and tests within that scope.
+Timing: Engage the auditor early enough to agree on scope, timing, and evidence expectations. Create one record per engagement, using an as-of date for Type 1 or a start and end period for Type 2.
 
 Default sources: `policy-information-security`
 
