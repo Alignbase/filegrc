@@ -107,6 +107,8 @@ Private exports may be inspected to understand generic workflows, but they are n
 
 After substantive changes, run `npm run validate`.
 
+Run `pnpm dev` from the monorepo root for local UI development. It creates an ignored workspace under `.soc2/dev-workspace` on first run, serves it with the current local engine, and restarts when imported source files change. Set `SOC2_DEV_PORT` to override port `8787`. Delete `.soc2/dev-workspace` when you need fresh starter data.
+
 Before completing a change:
 
 1. Validate JSON and internal resource references.

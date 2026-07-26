@@ -7,6 +7,7 @@
     "packages/create-soc2"
   ],
   "scripts": {
+    "dev": "node --watch scripts/dev.mjs",
     "test": "npm test --workspaces --if-present",
     "validate": "npm test --workspaces --if-present && node packages/soc2/bin/soc2.js model --check-docs"
   },
