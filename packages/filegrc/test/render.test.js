@@ -480,6 +480,12 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /type: "system"/);
   assert.match(APP_SCRIPT, /type: "audit"/);
   assert.match(APP_SCRIPT, /Files are the program/);
+  assert.match(APP_SCRIPT, /SOC 2 is an audit away/);
+  assert.match(APP_SCRIPT, /SOC 2 is a certification that you have adopted a set of information security policies/);
+  assert.match(APP_SCRIPT, /title: "Type 1"/);
+  assert.match(APP_SCRIPT, /title: "Type 2"/);
+  assert.match(APP_SCRIPT, /most commonly six months/);
+  assert.match(APP_SCRIPT, /class="onboarding-sections"/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
   assert.match(APP_SCRIPT, /Complete a checklist when key events occur/);
@@ -506,7 +512,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(var\(--onboarding-step-count\),1fr\)/);
   assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
-  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form,\.setup-steps\{grid-template-columns:1fr\}/);
+  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form,\.onboarding-sections,\.setup-steps\{grid-template-columns:1fr\}/);
 });
 
 test("renders shared obligation and evidence-packet workflows", () => {
