@@ -287,6 +287,21 @@ test("ships local timestamp formatting while preserving calendar dates", () => {
   assert.doesNotMatch(APP_SCRIPT, /function shortDate/);
 });
 
+test("explains purpose, policy basis, and timing on every resource view", () => {
+  assert.match(APP_SCRIPT, /function resourceGuide\(type\)/);
+  assert.match(APP_SCRIPT, /definition\.description/);
+  assert.match(APP_SCRIPT, /guidance\.policyBasis/);
+  assert.match(APP_SCRIPT, /guidance\.sourceResourceIds/);
+  assert.match(APP_SCRIPT, /guidance\.obligationActivityTypes/);
+  assert.match(APP_SCRIPT, /<span>Use<\/span>/);
+  assert.match(APP_SCRIPT, /<span>Policy basis<\/span>/);
+  assert.match(APP_SCRIPT, /<span>Timing<\/span>/);
+  assert.match(APP_SCRIPT, /renderList[\s\S]*resourceGuide\(type\)/);
+  assert.match(APP_SCRIPT, /renderDetail[\s\S]*resourceGuide\(type\)/);
+  assert.match(APP_STYLES, /\.page-guide\{display:grid;grid-template-columns:/);
+  assert.match(APP_STYLES, /\.setup-banner,\.page-guide\{grid-template-columns:1fr\}/);
+});
+
 test("builds a recovery view when workspace configuration is malformed", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "soc2-broken-workspace-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));

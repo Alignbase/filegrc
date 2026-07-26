@@ -10,6 +10,13 @@ test("v1 model exposes the complete resource registry", () => {
   for (const type of ["workspace", "control", "meeting", "risk", "attestation", "evidence", "audit"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }
+  for (const [type, resource] of Object.entries(model.resources)) {
+    assert.ok(resource.description.length >= 60, `${type} explains its purpose`);
+    assert.ok(resource.guidance.policyBasis.length >= 60, `${type} explains its policy basis`);
+    assert.ok(resource.guidance.cadence.length >= 40, `${type} explains its timing`);
+    assert.ok((resource.guidance.sourceResourceIds ?? []).every((id) => typeof id === "string"), `${type} source IDs are strings`);
+    assert.ok((resource.guidance.obligationActivityTypes ?? []).every((activityType) => typeof activityType === "string"), `${type} activity types are strings`);
+  }
   assert.equal(model.resources.person.titleLabel, "Name");
   assert.equal(model.resources.policy.titleLabel, undefined);
 });

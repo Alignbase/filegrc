@@ -76,7 +76,13 @@
       "pluralTitle": "Workspace",
       "group": "repository",
       "singleton": "workspace.json",
-      "description": "Repository-wide configuration.",
+      "description": "Program-wide settings used by validation and rendering, including the organization, time zone, risk method, and classification scheme.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies depend on these settings. Change the method or classifications with the related policies and controls.",
+        "cadence": "Review during the annual policy and risk reviews and after a material scope or methodology change.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["policy-review", "risk-assessment"]
+      },
       "required": ["dataModelVersion", "organizationName", "timezone"],
       "fields": {
         "dataModelVersion": {"type": "string", "label": "Data model version"},
@@ -95,7 +101,13 @@
       "pluralTitle": "People",
       "group": "people-access",
       "collection": "people",
-      "description": "A workforce member or internal participant, with minimal personal data.",
+      "description": "Minimal workforce records used for ownership, approval, training, access, attendance, and accountability without turning Git into an HR system.",
+      "guidance": {
+        "policyBasis": "The information security policy and employee handbook require named responsibility, onboarding, training, role changes, performance review, and offboarding.",
+        "cadence": "Create before assigning work or access, update after role changes, and mark inactive at departure. Training is due within 30 days of starting and annually.",
+        "sourceResourceIds": ["policy-information-security", "policy-employee-handbook"],
+        "obligationActivityTypes": ["training", "performance-review"]
+      },
       "required": ["status"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "inactive", "external"], "filter": true},
@@ -116,7 +128,13 @@
       "pluralTitle": "Service accounts",
       "group": "people-access",
       "collection": "service-accounts",
-      "description": "A non-human identity used by automation or an application.",
+      "description": "Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry.",
+      "guidance": {
+        "policyBasis": "The information security policy requires important identities to be inventoried, owned, protected, reviewed, and removed when unneeded.",
+        "cadence": "Create before use. Review privileged and production access quarterly and other important access annually; retire or expire unused accounts.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["access-review", "inventory-review"]
+      },
       "required": ["status", "purpose", "ownerIds", "systemIds"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "disabled", "retired"], "filter": true},
@@ -136,7 +154,13 @@
       "pluralTitle": "Teams",
       "group": "governance",
       "collection": "teams",
-      "description": "A committee, response team, or accountable group.",
+      "description": "Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records.",
+      "guidance": {
+        "policyBasis": "The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.",
+        "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["meeting"]
+      },
       "required": ["status", "purpose", "memberIds"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "inactive"], "filter": true},
@@ -154,7 +178,13 @@
       "pluralTitle": "Systems",
       "group": "systems-vendors",
       "collection": "systems",
-      "description": "A logical application, service, infrastructure, or business-system boundary.",
+      "description": "Applications, services, infrastructure, and business-system boundaries used to define audit scope, ownership, data, vendors, and recovery objectives.",
+      "guidance": {
+        "policyBasis": "The information security, data handling, and continuity policies require inventories of important systems with owners, criticality, classification, scope, and recovery needs.",
+        "cadence": "Review at least annually and after material architecture, data, vendor, service, or recovery changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["inventory-review"]
+      },
       "required": ["status", "criticality", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "active", "deprecated", "retired"], "filter": true},
@@ -180,7 +210,13 @@
       "pluralTitle": "Assets",
       "group": "systems-vendors",
       "collection": "assets",
-      "description": "An individually managed physical or logical item.",
+      "description": "Individually managed devices, media, software, records, or other physical and logical items with an owner, custodian, criticality, and lifecycle.",
+      "guidance": {
+        "policyBasis": "The information security, mobile computing, and data handling policies require important assets to be inventoried, protected according to classification, and securely returned or disposed.",
+        "cadence": "Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.",
+        "sourceResourceIds": ["policy-information-security", "policy-mobile-computing-communications", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["inventory-review"]
+      },
       "required": ["status", "assetKind", "criticality", "ownerIds", "custodianIds"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "lost", "retired", "disposed"], "filter": true},
@@ -203,7 +239,13 @@
       "pluralTitle": "Documents",
       "group": "governance",
       "collection": "documents",
-      "description": "A governed charter, plan, procedure, standard, agreement, report, or template.",
+      "description": "Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git.",
+      "guidance": {
+        "policyBasis": "Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.",
+        "cadence": "Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["policy-review", "continuity-review"]
+      },
       "required": ["status", "documentKind", "contentPath", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["draft", "active", "superseded", "retired"], "filter": true},
@@ -231,7 +273,12 @@
       "group": "evidence",
       "collection": "evidence",
       "recordPath": "{id}/evidence.json",
-      "description": "Supporting material and the metadata needed to use it in an audit.",
+      "description": "Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions.",
+      "guidance": {
+        "policyBasis": "The information security policy requires retained audit evidence. Acknowledgement and training workflows require signatures or repository revisions tied to the exact content reviewed.",
+        "cadence": "Collect when a control or activity operates, verify before audit use, cover the stated period, and expire or retain according to classification and record rules.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
       "required": ["status", "evidenceKind", "source", "collectedOn", "classification"],
       "oneOf": [["filePaths", "externalReference", "contentPath"]],
       "fields": {
@@ -263,7 +310,12 @@
       "pluralTitle": "Obligations",
       "group": "work",
       "collection": "obligations",
-      "description": "Recurring or event-driven GRC work.",
+      "description": "Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises.",
+      "guidance": {
+        "policyBasis": "Obligations turn policy language into an owned schedule and link each task to its policies, controls, scope, and completion records.",
+        "cadence": "Use the recurrence and start date on each record. Create separate completion records for every period instead of overwriting the obligation.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling", "document-business-continuity-disaster-recovery"]
+      },
       "required": ["status", "activityType", "recurrence", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "paused", "retired"], "filter": true},
@@ -286,7 +338,11 @@
       "pluralTitle": "Frameworks",
       "group": "program",
       "collection": "frameworks",
-      "description": "A compliance framework and version.",
+      "description": "External criteria sets and versions used to define program and audit scope.",
+      "guidance": {
+        "policyBasis": "Frameworks come from the selected audit criteria, not an internal policy. The starter includes SOC 2 Security and system-description references without licensed criteria text.",
+        "cadence": "Add or retire a version only through a deliberate scope decision. Reconfirm the selected version when planning each audit."
+      },
       "required": ["status", "version"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "retired"], "filter": true},
@@ -304,7 +360,11 @@
       "pluralTitle": "Requirements",
       "group": "program",
       "collection": "requirements",
-      "description": "A criterion or requirement within a framework.",
+      "description": "Individual criterion references used to document applicability and map controls, commitments, audits, and findings.",
+      "guidance": {
+        "policyBasis": "Requirements come from the selected framework. Controls explain how policy and actual operation address each applicable criterion.",
+        "cadence": "Review applicability during audit planning and after material scope, service, system, or framework changes."
+      },
       "required": ["frameworkId", "reference", "applicability"],
       "fields": {
         "frameworkId": {"type": "id", "relation": ["framework"]},
@@ -322,7 +382,12 @@
       "pluralTitle": "Commitments",
       "group": "program",
       "collection": "commitments",
-      "description": "A service commitment, system requirement, or business objective.",
+      "description": "Customer-facing commitments, internal system requirements, and business objectives that controls and the system description must support.",
+      "guidance": {
+        "policyBasis": "Policies define baseline safeguards; contracts, service descriptions, and approved business decisions supply the specific commitment.",
+        "cadence": "Create before relying on a promise, review during audit scoping, and supersede it when the service or agreement changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
       "required": ["status", "commitmentKind", "statement", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "superseded", "retired"], "filter": true},
@@ -343,7 +408,12 @@
       "pluralTitle": "Complementary controls",
       "group": "program",
       "collection": "complementary-controls",
-      "description": "A control operated by a customer or subservice organization.",
+      "description": "Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described.",
+      "guidance": {
+        "policyBasis": "The system description and vendor model define these dependencies. Internal policies still require owners to identify, communicate, and monitor them.",
+        "cadence": "Review for every audit and after material customer-responsibility, vendor, contract, integration, or service changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
       "required": ["status", "responsibleParty", "statement", "systemIds"],
       "fields": {
         "status": {"type": "enum", "values": ["active", "superseded", "retired"], "filter": true},
@@ -364,7 +434,13 @@
       "pluralTitle": "Controls",
       "group": "program",
       "collection": "controls",
-      "description": "An organization-defined control.",
+      "description": "Testable operating statements that translate policies and requirements into owned activities, system scope, frequency, and expected evidence.",
+      "guidance": {
+        "policyBasis": "Controls implement the linked policies and map that operation to applicable criteria. A policy statement alone does not prove implementation.",
+        "cadence": "Operate at the frequency on each control. Review ownership, scope, design, and evidence during annual risk and policy reviews and after material changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["risk-assessment", "policy-review"]
+      },
       "required": ["status", "statement", "ownerIds", "requirementIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "implemented", "partially-implemented", "not-applicable", "retired"], "filter": true},
@@ -390,7 +466,12 @@
       "pluralTitle": "Control tests",
       "group": "program",
       "collection": "control-tests",
-      "description": "A point-in-time or period test of one control.",
+      "description": "Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period.",
+      "guidance": {
+        "policyBasis": "The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.",
+        "cadence": "Plan from control frequency, risk, and audit scope. Record the exact period or as-of date and complete review before relying on the result.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
       "required": ["status", "controlId", "testKinds", "performedBy"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "not-performed", "canceled"], "filter": true},
@@ -422,7 +503,12 @@
       "pluralTitle": "Findings",
       "group": "work",
       "collection": "findings",
-      "description": "An audit exception, deficiency, review issue, or other tracked gap.",
+      "description": "Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification.",
+      "guidance": {
+        "policyBasis": "The information security policy requires issues from monitoring, audits, incidents, scans, and reviews to be tracked through corrective action.",
+        "cadence": "Create when identified, assign a risk-based due date, review while open, and close only after remediation is verified.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
       "required": ["status", "severity", "sourceResourceId", "description", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["open", "accepted", "remediating", "resolved", "closed"], "filter": true},
@@ -447,7 +533,12 @@
       "pluralTitle": "Exceptions",
       "group": "risk",
       "collection": "exceptions",
-      "description": "An approved, time-bound departure from an expected control or policy.",
+      "description": "Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require a business reason, risk assessment, compensating controls, suitable approval, and an expiration or review date.",
+        "cadence": "Approve before the departure begins, review through its stated cadence or expiry, and close or renew it through a new risk decision.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
       "required": ["status", "scopeResourceIds", "requestorIds", "ownerIds", "rationale"],
       "fields": {
         "status": {"type": "enum", "values": ["requested", "approved", "expired", "revoked", "closed"], "filter": true},
@@ -471,7 +562,11 @@
       "pluralTitle": "Action items",
       "group": "work",
       "collection": "action-items",
-      "description": "Follow-up work from a GRC activity or finding.",
+      "description": "Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity.",
+      "guidance": {
+        "policyBasis": "Starter policies require material issues and review decisions to produce named owners, due dates, evidence, and tracked corrective work.",
+        "cadence": "Create when work is assigned, review until complete, record blockers, and link completion evidence before closing."
+      },
       "required": ["status", "assigneeIds", "sourceResourceId"],
       "fields": {
         "status": {"type": "enum", "values": ["open", "in-progress", "blocked", "done", "canceled"], "filter": true},
@@ -491,7 +586,13 @@
       "pluralTitle": "Policies",
       "group": "governance",
       "collection": "policies",
-      "description": "A governed policy and its Markdown content.",
+      "description": "Approved rules and responsibilities with Markdown content, owners, approvers, audience, acknowledgement rules, related controls, and Git history.",
+      "guidance": {
+        "policyBasis": "Policies set the program's required behavior. Control, obligation, training, document, and attestation records make those requirements operational and auditable.",
+        "cadence": "Review at least annually and after material changes. Record approval and require a new acknowledgement when a material update affects the audience.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["policy-review"]
+      },
       "required": ["status", "contentPath", "ownerIds", "approverIds"],
       "fields": {
         "status": {"type": "enum", "values": ["draft", "in-review", "approved", "active", "superseded", "retired"], "filter": true},
@@ -520,7 +621,13 @@
       "pluralTitle": "Policy reviews",
       "group": "governance",
       "collection": "policy-reviews",
-      "description": "A review of policies or other governed documents.",
+      "description": "Evidence that named reviewers checked governed policies or documents, recorded the result, approved changes, and assigned follow-up work.",
+      "guidance": {
+        "policyBasis": "Each starter policy and the continuity plan requires review at least annually and after specified material changes.",
+        "cadence": "Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["policy-review"]
+      },
       "required": ["status", "scopeResourceIds", "reviewerIds", "reviewedOn"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
@@ -544,7 +651,13 @@
       "pluralTitle": "Attestations",
       "group": "governance",
       "collection": "attestations",
-      "description": "A person's acknowledgement, training completion, or certification.",
+      "description": "Per-person proof of policy acknowledgement, training completion, certification, or assigned work, tied to exact content revisions and signed evidence when needed.",
+      "guidance": {
+        "policyBasis": "The information security, data handling, workforce, and training materials require workers to review assigned content and acknowledge applicable responsibilities.",
+        "cadence": "Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling", "policy-employee-handbook"],
+        "obligationActivityTypes": ["training"]
+      },
       "required": ["status", "subjectResourceIds", "personId", "attestationKind"],
       "fields": {
         "status": {"type": "enum", "values": ["pending", "completed", "waived", "overdue"], "filter": true},
@@ -570,7 +683,13 @@
       "pluralTitle": "Meetings",
       "group": "governance",
       "collection": "meetings",
-      "description": "Governance meeting metadata, minutes, decisions, and actions.",
+      "description": "Governance meeting records with schedule, chair, attendees, agenda, minutes, decisions, risks, findings, evidence, and assigned actions.",
+      "guidance": {
+        "policyBasis": "The information security policy requires formal security and risk oversight minutes. The continuity plan requires oversight review of exercises and unresolved risks.",
+        "cadence": "Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["meeting"]
+      },
       "required": ["status", "teamId", "scheduledOn", "chairIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "complete", "canceled"], "filter": true},
@@ -597,7 +716,13 @@
       "pluralTitle": "Training",
       "group": "governance",
       "collection": "training",
-      "description": "Reusable training content and assignment rules.",
+      "description": "Reusable Markdown training with audience, assignment trigger, recurrence, completion window, linked policies and controls, and passing criteria.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require security training, acknowledgements, and added role-based training where responsibilities or data warrant it.",
+        "cadence": "Assign security training at onboarding, complete it within 30 days, repeat at least annually, and reassign after relevant material changes or incidents.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["training"]
+      },
       "required": ["status", "contentPath", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["draft", "active", "retired"], "filter": true},
@@ -618,7 +743,13 @@
       "pluralTitle": "Risks",
       "group": "risk",
       "collection": "risks",
-      "description": "A risk and its response lifecycle.",
+      "description": "Identified threats and business impacts with ownership, inherent and residual ratings, response, acceptance, affected scope, controls, and follow-up work.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require risk identification, treatment, ownership, approval, target dates, and time-bound acceptance.",
+        "cadence": "Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["risk-assessment"]
+      },
       "required": ["status", "description", "ownerIds", "categories", "response", "inherentRating"],
       "fields": {
         "status": {"type": "enum", "values": ["draft", "open", "monitoring", "accepted", "closed", "archived"], "filter": true},
@@ -647,7 +778,13 @@
       "pluralTitle": "Risk assessments",
       "group": "risk",
       "collection": "risk-assessments",
-      "description": "A point-in-time assessment of a risk scope.",
+      "description": "Point-in-time assessment records for a defined scope, methodology, participants, systems, vendors, risks, conclusions, evidence, and approval.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require assessment of threats, assets, obligations, controls, likelihood, impact, treatment, and material changes.",
+        "cadence": "Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["risk-assessment"]
+      },
       "required": ["status", "assessmentDate", "assessmentKind", "scope", "assessorIds", "reviewerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
@@ -680,7 +817,13 @@
       "pluralTitle": "Vendors",
       "group": "systems-vendors",
       "collection": "vendors",
-      "description": "A third party that provides a product or service.",
+      "description": "Third parties that provide products or services, with ownership, service, criticality, data, systems, contracts, subprocessors, continuity, and review cadence.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require vendor inventory, risk-based review before access, suitable contract terms, and monitoring of important providers.",
+        "cadence": "Create before access or reliance. Review Critical and High-risk vendors at least annually and after material service changes or incidents.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["inventory-review", "vendor-review"]
+      },
       "required": ["status", "category", "criticality", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["evaluating", "active", "deprecated", "terminated"], "filter": true},
@@ -706,7 +849,13 @@
       "pluralTitle": "Vendor reviews",
       "group": "systems-vendors",
       "collection": "vendor-reviews",
-      "description": "Vendor due diligence or periodic review.",
+      "description": "Pre-access due diligence and periodic vendor reviews covering service, data, access, assurance, recovery, incidents, contracts, risks, evidence, and follow-up.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require review before a vendor handles sensitive data and periodic review of Critical and High-risk providers.",
+        "cadence": "Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["vendor-review"]
+      },
       "required": ["status", "vendorIds", "reviewerIds", "reviewedOn"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "approved", "conditional", "rejected", "complete"], "filter": true},
@@ -730,7 +879,12 @@
       "pluralTitle": "Access grants",
       "group": "people-access",
       "collection": "access-grants",
-      "description": "One person's or service account's access to one system.",
+      "description": "One person's or service account's access to one system, including business role, privilege, request, approval, provisioning, expiry, removal, ticket, and evidence.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require unique identity, business need, least privilege, approval, authorized provisioning, and prompt removal.",
+        "cadence": "Record every grant and material change. Remove access at or before notice for involuntary or high-risk departures and within 24 hours for other departures.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
       "required": ["status", "subjectKind", "subjectId", "systemId", "accessLevel", "privileged"],
       "fields": {
         "status": {"type": "enum", "values": ["requested", "approved", "active", "revoked", "expired"], "filter": true},
@@ -759,7 +913,13 @@
       "pluralTitle": "Access reviews",
       "group": "people-access",
       "collection": "access-reviews",
-      "description": "A point-in-time review of system access.",
+      "description": "Point-in-time review of a defined access population, with systems, reviewers, period, grant decisions, exceptions, approval, evidence, and source revision.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require owners to confirm least privilege and remove dormant, expired, excessive, or unneeded access.",
+        "cadence": "Review privileged and production access at least quarterly and other important-system access at least annually.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["access-review"]
+      },
       "required": ["status", "reviewDate", "reviewerIds", "systemIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
@@ -787,7 +947,12 @@
       "pluralTitle": "Vulnerabilities",
       "group": "security-operations",
       "collection": "vulnerabilities",
-      "description": "A security weakness or grouped set of weaknesses.",
+      "description": "Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification.",
+      "guidance": {
+        "policyBasis": "The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.",
+        "cadence": "Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
       "required": ["status", "severity", "description", "systemIds", "ownerIds", "discoveredOn"],
       "fields": {
         "status": {"type": "enum", "values": ["open", "in-progress", "risk-accepted", "remediated", "closed", "false-positive"], "filter": true},
@@ -817,7 +982,13 @@
       "pluralTitle": "Vulnerability scans",
       "group": "security-operations",
       "collection": "vulnerability-scans",
-      "description": "A vulnerability scan activity and its coverage.",
+      "description": "Scan activities with kind, tools, scope, systems, operator, timestamps, severity counts, resulting vulnerabilities, evidence, failure reason, and review.",
+      "guidance": {
+        "policyBasis": "The information security policy requires monitoring for vulnerabilities and scanning internet-facing and production systems.",
+        "cadence": "Scan at least quarterly and after material changes when practical. Review failures and create vulnerability or finding records for confirmed results.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["vulnerability-scan"]
+      },
       "required": ["status", "scanKind", "scope", "operatorIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "running", "complete", "failed"], "filter": true},
@@ -844,7 +1015,12 @@
       "pluralTitle": "Incidents",
       "group": "security-operations",
       "collection": "incidents",
-      "description": "A suspected or confirmed security or privacy incident.",
+      "description": "Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require immediate reporting, investigation, containment, recovery, evidence preservation, and notification review.",
+        "cadence": "Create on report or detection, update material events as they progress, and complete a retrospective within one week after a material incident.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
       "required": ["status", "severity", "ownerIds", "detectedAt", "description"],
       "fields": {
         "status": {"type": "enum", "values": ["suspected", "declared", "contained", "eradicated", "recovered", "closed"], "filter": true},
@@ -874,7 +1050,13 @@
       "pluralTitle": "Exercises",
       "group": "resilience",
       "collection": "exercises",
-      "description": "A continuity, recovery, incident, privacy, or other simulation.",
+      "description": "Continuity, recovery, incident, privacy, and other simulations with scenario, objective, participants, scope, result, evidence, findings, and actions.",
+      "guidance": {
+        "policyBasis": "The information security policy requires annual incident testing. The continuity plan requires annual exercises and review after material change or disruption.",
+        "cadence": "Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["exercise"]
+      },
       "required": ["status", "exerciseKind", "scheduledOn", "facilitatorIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
@@ -900,7 +1082,13 @@
       "pluralTitle": "Backup tests",
       "group": "resilience",
       "collection": "backup-tests",
-      "description": "A restore or recovery test.",
+      "description": "Restore and recovery tests with systems, operators, date, timing, recovery results, reviewer, evidence, findings, and follow-up work.",
+      "guidance": {
+        "policyBasis": "The information security policy and continuity plan require protected backups, failure monitoring, and proof that data can be restored and used.",
+        "cadence": "Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["backup-test"]
+      },
       "required": ["status", "systemIds", "testDate", "operatorIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "running", "passed", "failed"], "filter": true},
@@ -924,7 +1112,13 @@
       "pluralTitle": "Penetration tests",
       "group": "security-operations",
       "collection": "penetration-tests",
-      "description": "An internal or external penetration test.",
+      "description": "Internal or external penetration tests with scope, period, provider, method, result, affected systems, evidence, vulnerabilities, findings, and review.",
+      "guidance": {
+        "policyBasis": "The information security policy requires an independent test of the in-scope service's external attack surface and tracked resolution of results.",
+        "cadence": "Perform at least annually and reconsider scope after material attack-surface or architecture changes.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["penetration-test"]
+      },
       "required": ["status", "testKind", "scope", "periodStart", "periodEnd", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
@@ -951,7 +1145,12 @@
       "pluralTitle": "Data requests",
       "group": "governance",
       "collection": "data-requests",
-      "description": "A privacy or contractual request concerning data.",
+      "description": "Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion.",
+      "guidance": {
+        "policyBasis": "The data handling policy requires requests to reach the responsible owner and keeps erasable personal data out of immutable Git history.",
+        "cadence": "Create on receipt, set the deadline from applicable law or contract, verify identity outside this repository when needed, and record completion.",
+        "sourceResourceIds": ["policy-data-protection-handling"]
+      },
       "required": ["status", "requestKind", "receivedOn", "ownerIds", "requesterReference"],
       "fields": {
         "status": {"type": "enum", "values": ["received", "verifying", "in-progress", "completed", "denied", "canceled"], "filter": true},
@@ -977,7 +1176,12 @@
       "pluralTitle": "Audits",
       "group": "audits",
       "collection": "audits",
-      "description": "An audit or readiness engagement.",
+      "description": "Audit and readiness engagements with criteria, scope, type or period, systems, controls, tests, auditor, system description, assertion, evidence, findings, and opinion.",
+      "guidance": {
+        "policyBasis": "The information security policy requires applicable obligations, controls, and evidence to support audit work. The selected frameworks define the actual criteria.",
+        "cadence": "Create one record per engagement. Set an as-of date for Type 1 or a start and end period for Type 2, then keep requests and tests within that scope.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
       "required": ["status", "auditKind", "frameworkIds", "scope", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["planned", "in-progress", "fieldwork", "complete"], "filter": true},
@@ -1018,7 +1222,11 @@
       "pluralTitle": "Audit requests",
       "group": "audits",
       "collection": "audit-requests",
-      "description": "One auditor request or prepared-by-client item.",
+      "description": "One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up.",
+      "guidance": {
+        "policyBasis": "Audit requests turn the engagement scope into owned deliverables and preserve the exact evidence and response supplied to the auditor.",
+        "cadence": "Create on receipt, assign immediately, meet the auditor due date, bind evidence to the requested period and Git revision, and close only after acceptance."
+      },
       "required": ["status", "auditId", "requestReference", "description", "ownerIds"],
       "fields": {
         "status": {"type": "enum", "values": ["open", "in-progress", "submitted", "accepted", "needs-follow-up", "closed"], "filter": true},

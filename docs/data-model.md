@@ -28,7 +28,11 @@ Each structured resource is one UTF-8 JSON file. Long-form work is Markdown unde
 
 #### `framework`
 
-A compliance framework and version.
+External criteria sets and versions used to define program and audit scope.
+
+Policy basis: Frameworks come from the selected audit criteria, not an internal policy. The starter includes SOC 2 Security and system-description references without licensed criteria text.
+
+Timing: Add or retire a version only through a deliberate scope decision. Reconfirm the selected version when planning each audit.
 
 The UI labels the common `title` field as **Name**.
 
@@ -46,7 +50,11 @@ Path: `data/frameworks/<id>.json`
 
 #### `requirement`
 
-A criterion or requirement within a framework.
+Individual criterion references used to document applicability and map controls, commitments, audits, and findings.
+
+Policy basis: Requirements come from the selected framework. Controls explain how policy and actual operation address each applicable criterion.
+
+Timing: Review applicability during audit planning and after material scope, service, system, or framework changes.
 
 Path: `data/requirements/<id>.json`
 
@@ -62,7 +70,13 @@ Path: `data/requirements/<id>.json`
 
 #### `commitment`
 
-A service commitment, system requirement, or business objective.
+Customer-facing commitments, internal system requirements, and business objectives that controls and the system description must support.
+
+Policy basis: Policies define baseline safeguards; contracts, service descriptions, and approved business decisions supply the specific commitment.
+
+Timing: Create before relying on a promise, review during audit scoping, and supersede it when the service or agreement changes.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/commitments/<id>.json`
 
@@ -81,7 +95,13 @@ Path: `data/commitments/<id>.json`
 
 #### `complementary-control`
 
-A control operated by a customer or subservice organization.
+Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described.
+
+Policy basis: The system description and vendor model define these dependencies. Internal policies still require owners to identify, communicate, and monitor them.
+
+Timing: Review for every audit and after material customer-responsibility, vendor, contract, integration, or service changes.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/complementary-controls/<id>.json`
 
@@ -100,7 +120,13 @@ Path: `data/complementary-controls/<id>.json`
 
 #### `control`
 
-An organization-defined control.
+Testable operating statements that translate policies and requirements into owned activities, system scope, frequency, and expected evidence.
+
+Policy basis: Controls implement the linked policies and map that operation to applicable criteria. A policy statement alone does not prove implementation.
+
+Timing: Operate at the frequency on each control. Review ownership, scope, design, and evidence during annual risk and policy reviews and after material changes.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/controls/<id>.json`
 
@@ -124,7 +150,13 @@ Path: `data/controls/<id>.json`
 
 #### `control-test`
 
-A point-in-time or period test of one control.
+Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period.
+
+Policy basis: The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.
+
+Timing: Plan from control frequency, risk, and audit scope. Record the exact period or as-of date and complete review before relying on the result.
+
+Default sources: `policy-information-security`
 
 Path: `data/control-tests/<id>.json`
 
@@ -156,7 +188,13 @@ Path: `data/control-tests/<id>.json`
 
 #### `team`
 
-A committee, response team, or accountable group.
+Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records.
+
+Policy basis: The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.
+
+Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes.
+
+Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 The UI labels the common `title` field as **Name**.
 
@@ -173,7 +211,13 @@ Path: `data/teams/<id>.json`
 
 #### `document`
 
-A governed charter, plan, procedure, standard, agreement, report, or template.
+Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git.
+
+Policy basis: Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.
+
+Timing: Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use.
+
+Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/documents/<id>.json`
 
@@ -198,7 +242,13 @@ Path: `data/documents/<id>.json`
 
 #### `policy`
 
-A governed policy and its Markdown content.
+Approved rules and responsibilities with Markdown content, owners, approvers, audience, acknowledgement rules, related controls, and Git history.
+
+Policy basis: Policies set the program's required behavior. Control, obligation, training, document, and attestation records make those requirements operational and auditable.
+
+Timing: Review at least annually and after material changes. Record approval and require a new acknowledgement when a material update affects the audience.
+
+Default sources: `policy-information-security`
 
 Path: `data/policies/<id>.json`
 
@@ -225,7 +275,13 @@ Path: `data/policies/<id>.json`
 
 #### `policy-review`
 
-A review of policies or other governed documents.
+Evidence that named reviewers checked governed policies or documents, recorded the result, approved changes, and assigned follow-up work.
+
+Policy basis: Each starter policy and the continuity plan requires review at least annually and after specified material changes.
+
+Timing: Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.
+
+Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/policy-reviews/<id>.json`
 
@@ -247,7 +303,13 @@ Path: `data/policy-reviews/<id>.json`
 
 #### `attestation`
 
-A person's acknowledgement, training completion, or certification.
+Per-person proof of policy acknowledgement, training completion, certification, or assigned work, tied to exact content revisions and signed evidence when needed.
+
+Policy basis: The information security, data handling, workforce, and training materials require workers to review assigned content and acknowledge applicable responsibilities.
+
+Timing: Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`, `policy-employee-handbook`
 
 Path: `data/attestations/<id>.json`
 
@@ -271,7 +333,13 @@ Path: `data/attestations/<id>.json`
 
 #### `meeting`
 
-Governance meeting metadata, minutes, decisions, and actions.
+Governance meeting records with schedule, chair, attendees, agenda, minutes, decisions, risks, findings, evidence, and assigned actions.
+
+Policy basis: The information security policy requires formal security and risk oversight minutes. The continuity plan requires oversight review of exercises and unresolved risks.
+
+Timing: Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.
+
+Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/meetings/<id>.json`
 
@@ -295,7 +363,13 @@ Path: `data/meetings/<id>.json`
 
 #### `training`
 
-Reusable training content and assignment rules.
+Reusable Markdown training with audience, assignment trigger, recurrence, completion window, linked policies and controls, and passing criteria.
+
+Policy basis: The information security and data handling policies require security training, acknowledgements, and added role-based training where responsibilities or data warrant it.
+
+Timing: Assign security training at onboarding, complete it within 30 days, repeat at least annually, and reassign after relevant material changes or incidents.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 The UI labels the common `title` field as **Name**.
 
@@ -316,7 +390,13 @@ Path: `data/training/<id>.json`
 
 #### `data-request`
 
-A privacy or contractual request concerning data.
+Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion.
+
+Policy basis: The data handling policy requires requests to reach the responsible owner and keeps erasable personal data out of immutable Git history.
+
+Timing: Create on receipt, set the deadline from applicable law or contract, verify identity outside this repository when needed, and record completion.
+
+Default sources: `policy-data-protection-handling`
 
 Path: `data/data-requests/<id>.json`
 
@@ -342,7 +422,13 @@ Path: `data/data-requests/<id>.json`
 
 #### `exception`
 
-An approved, time-bound departure from an expected control or policy.
+Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry.
+
+Policy basis: The information security and data handling policies require a business reason, risk assessment, compensating controls, suitable approval, and an expiration or review date.
+
+Timing: Approve before the departure begins, review through its stated cadence or expiry, and close or renew it through a new risk decision.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/exceptions/<id>.json`
 
@@ -364,7 +450,13 @@ Path: `data/exceptions/<id>.json`
 
 #### `risk`
 
-A risk and its response lifecycle.
+Identified threats and business impacts with ownership, inherent and residual ratings, response, acceptance, affected scope, controls, and follow-up work.
+
+Policy basis: The information security and data handling policies require risk identification, treatment, ownership, approval, target dates, and time-bound acceptance.
+
+Timing: Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/risks/<id>.json`
 
@@ -391,7 +483,13 @@ Path: `data/risks/<id>.json`
 
 #### `risk-assessment`
 
-A point-in-time assessment of a risk scope.
+Point-in-time assessment records for a defined scope, methodology, participants, systems, vendors, risks, conclusions, evidence, and approval.
+
+Policy basis: The information security and data handling policies require assessment of threats, assets, obligations, controls, likelihood, impact, treatment, and material changes.
+
+Timing: Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/risk-assessments/<id>.json`
 
@@ -423,7 +521,13 @@ Path: `data/risk-assessments/<id>.json`
 
 #### `person`
 
-A workforce member or internal participant, with minimal personal data.
+Minimal workforce records used for ownership, approval, training, access, attendance, and accountability without turning Git into an HR system.
+
+Policy basis: The information security policy and employee handbook require named responsibility, onboarding, training, role changes, performance review, and offboarding.
+
+Timing: Create before assigning work or access, update after role changes, and mark inactive at departure. Training is due within 30 days of starting and annually.
+
+Default sources: `policy-information-security`, `policy-employee-handbook`
 
 The UI labels the common `title` field as **Name**.
 
@@ -443,7 +547,13 @@ Path: `data/people/<id>.json`
 
 #### `service-account`
 
-A non-human identity used by automation or an application.
+Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry.
+
+Policy basis: The information security policy requires important identities to be inventoried, owned, protected, reviewed, and removed when unneeded.
+
+Timing: Create before use. Review privileged and production access quarterly and other important access annually; retire or expire unused accounts.
+
+Default sources: `policy-information-security`
 
 The UI labels the common `title` field as **Name**.
 
@@ -462,7 +572,13 @@ Path: `data/service-accounts/<id>.json`
 
 #### `access-grant`
 
-One person's or service account's access to one system.
+One person's or service account's access to one system, including business role, privilege, request, approval, provisioning, expiry, removal, ticket, and evidence.
+
+Policy basis: The information security and data handling policies require unique identity, business need, least privilege, approval, authorized provisioning, and prompt removal.
+
+Timing: Record every grant and material change. Remove access at or before notice for involuntary or high-risk departures and within 24 hours for other departures.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/access-grants/<id>.json`
 
@@ -489,7 +605,13 @@ Path: `data/access-grants/<id>.json`
 
 #### `access-review`
 
-A point-in-time review of system access.
+Point-in-time review of a defined access population, with systems, reviewers, period, grant decisions, exceptions, approval, evidence, and source revision.
+
+Policy basis: The information security and data handling policies require owners to confirm least privilege and remove dormant, expired, excessive, or unneeded access.
+
+Timing: Review privileged and production access at least quarterly and other important-system access at least annually.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/access-reviews/<id>.json`
 
@@ -517,7 +639,13 @@ Path: `data/access-reviews/<id>.json`
 
 #### `system`
 
-A logical application, service, infrastructure, or business-system boundary.
+Applications, services, infrastructure, and business-system boundaries used to define audit scope, ownership, data, vendors, and recovery objectives.
+
+Policy basis: The information security, data handling, and continuity policies require inventories of important systems with owners, criticality, classification, scope, and recovery needs.
+
+Timing: Review at least annually and after material architecture, data, vendor, service, or recovery changes.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
 The UI labels the common `title` field as **Name**.
 
@@ -542,7 +670,13 @@ Path: `data/systems/<id>.json`
 
 #### `asset`
 
-An individually managed physical or logical item.
+Individually managed devices, media, software, records, or other physical and logical items with an owner, custodian, criticality, and lifecycle.
+
+Policy basis: The information security, mobile computing, and data handling policies require important assets to be inventoried, protected according to classification, and securely returned or disposed.
+
+Timing: Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.
+
+Default sources: `policy-information-security`, `policy-mobile-computing-communications`, `policy-data-protection-handling`
 
 The UI labels the common `title` field as **Name**.
 
@@ -565,7 +699,13 @@ Path: `data/assets/<id>.json`
 
 #### `vendor`
 
-A third party that provides a product or service.
+Third parties that provide products or services, with ownership, service, criticality, data, systems, contracts, subprocessors, continuity, and review cadence.
+
+Policy basis: The information security and data handling policies require vendor inventory, risk-based review before access, suitable contract terms, and monitoring of important providers.
+
+Timing: Create before access or reliance. Review Critical and High-risk vendors at least annually and after material service changes or incidents.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 The UI labels the common `title` field as **Name**.
 
@@ -591,7 +731,13 @@ Path: `data/vendors/<id>.json`
 
 #### `vendor-review`
 
-Vendor due diligence or periodic review.
+Pre-access due diligence and periodic vendor reviews covering service, data, access, assurance, recovery, incidents, contracts, risks, evidence, and follow-up.
+
+Policy basis: The information security and data handling policies require review before a vendor handles sensitive data and periodic review of Critical and High-risk providers.
+
+Timing: Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/vendor-reviews/<id>.json`
 
@@ -615,7 +761,13 @@ Path: `data/vendor-reviews/<id>.json`
 
 #### `vulnerability`
 
-A security weakness or grouped set of weaknesses.
+Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification.
+
+Policy basis: The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.
+
+Timing: Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.
+
+Default sources: `policy-information-security`
 
 Path: `data/vulnerabilities/<id>.json`
 
@@ -643,7 +795,13 @@ Path: `data/vulnerabilities/<id>.json`
 
 #### `vulnerability-scan`
 
-A vulnerability scan activity and its coverage.
+Scan activities with kind, tools, scope, systems, operator, timestamps, severity counts, resulting vulnerabilities, evidence, failure reason, and review.
+
+Policy basis: The information security policy requires monitoring for vulnerabilities and scanning internet-facing and production systems.
+
+Timing: Scan at least quarterly and after material changes when practical. Review failures and create vulnerability or finding records for confirmed results.
+
+Default sources: `policy-information-security`
 
 Path: `data/vulnerability-scans/<id>.json`
 
@@ -668,7 +826,13 @@ Path: `data/vulnerability-scans/<id>.json`
 
 #### `incident`
 
-A suspected or confirmed security or privacy incident.
+Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work.
+
+Policy basis: The information security and data handling policies require immediate reporting, investigation, containment, recovery, evidence preservation, and notification review.
+
+Timing: Create on report or detection, update material events as they progress, and complete a retrospective within one week after a material incident.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/incidents/<id>.json`
 
@@ -696,7 +860,13 @@ Path: `data/incidents/<id>.json`
 
 #### `penetration-test`
 
-An internal or external penetration test.
+Internal or external penetration tests with scope, period, provider, method, result, affected systems, evidence, vulnerabilities, findings, and review.
+
+Policy basis: The information security policy requires an independent test of the in-scope service's external attack surface and tracked resolution of results.
+
+Timing: Perform at least annually and reconsider scope after material attack-surface or architecture changes.
+
+Default sources: `policy-information-security`
 
 Path: `data/penetration-tests/<id>.json`
 
@@ -723,7 +893,13 @@ Path: `data/penetration-tests/<id>.json`
 
 #### `exercise`
 
-A continuity, recovery, incident, privacy, or other simulation.
+Continuity, recovery, incident, privacy, and other simulations with scenario, objective, participants, scope, result, evidence, findings, and actions.
+
+Policy basis: The information security policy requires annual incident testing. The continuity plan requires annual exercises and review after material change or disruption.
+
+Timing: Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.
+
+Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/exercises/<id>.json`
 
@@ -747,7 +923,13 @@ Path: `data/exercises/<id>.json`
 
 #### `backup-test`
 
-A restore or recovery test.
+Restore and recovery tests with systems, operators, date, timing, recovery results, reviewer, evidence, findings, and follow-up work.
+
+Policy basis: The information security policy and continuity plan require protected backups, failure monitoring, and proof that data can be restored and used.
+
+Timing: Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.
+
+Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/backup-tests/<id>.json`
 
@@ -771,7 +953,13 @@ Path: `data/backup-tests/<id>.json`
 
 #### `evidence`
 
-Supporting material and the metadata needed to use it in an audit.
+Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions.
+
+Policy basis: The information security policy requires retained audit evidence. Acknowledgement and training workflows require signatures or repository revisions tied to the exact content reviewed.
+
+Timing: Collect when a control or activity operates, verify before audit use, cover the stated period, and expire or retain according to classification and record rules.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/evidence/<id>/evidence.json`
 
@@ -804,7 +992,13 @@ At least one of `filePaths`, `externalReference`, `contentPath` is required.
 
 #### `obligation`
 
-Recurring or event-driven GRC work.
+Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises.
+
+Policy basis: Obligations turn policy language into an owned schedule and link each task to its policies, controls, scope, and completion records.
+
+Timing: Use the recurrence and start date on each record. Create separate completion records for every period instead of overwriting the obligation.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
 Path: `data/obligations/<id>.json`
 
@@ -824,7 +1018,13 @@ Path: `data/obligations/<id>.json`
 
 #### `finding`
 
-An audit exception, deficiency, review issue, or other tracked gap.
+Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification.
+
+Policy basis: The information security policy requires issues from monitoring, audits, incidents, scans, and reviews to be tracked through corrective action.
+
+Timing: Create when identified, assign a risk-based due date, review while open, and close only after remediation is verified.
+
+Default sources: `policy-information-security`
 
 Path: `data/findings/<id>.json`
 
@@ -847,7 +1047,11 @@ Path: `data/findings/<id>.json`
 
 #### `action-item`
 
-Follow-up work from a GRC activity or finding.
+Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity.
+
+Policy basis: Starter policies require material issues and review decisions to produce named owners, due dates, evidence, and tracked corrective work.
+
+Timing: Create when work is assigned, review until complete, record blockers, and link completion evidence before closing.
 
 Path: `data/action-items/<id>.json`
 
@@ -867,7 +1071,13 @@ Path: `data/action-items/<id>.json`
 
 #### `audit`
 
-An audit or readiness engagement.
+Audit and readiness engagements with criteria, scope, type or period, systems, controls, tests, auditor, system description, assertion, evidence, findings, and opinion.
+
+Policy basis: The information security policy requires applicable obligations, controls, and evidence to support audit work. The selected frameworks define the actual criteria.
+
+Timing: Create one record per engagement. Set an as-of date for Type 1 or a start and end period for Type 2, then keep requests and tests within that scope.
+
+Default sources: `policy-information-security`
 
 Path: `data/audits/<id>.json`
 
@@ -906,7 +1116,11 @@ Path: `data/audits/<id>.json`
 
 #### `audit-request`
 
-One auditor request or prepared-by-client item.
+One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up.
+
+Policy basis: Audit requests turn the engagement scope into owned deliverables and preserve the exact evidence and response supplied to the auditor.
+
+Timing: Create on receipt, assign immediately, meet the auditor due date, bind evidence to the requested period and Git revision, and close only after acceptance.
 
 Path: `data/audit-requests/<id>.json`
 
@@ -933,7 +1147,13 @@ Path: `data/audit-requests/<id>.json`
 
 #### `workspace`
 
-Repository-wide configuration.
+Program-wide settings used by validation and rendering, including the organization, time zone, risk method, and classification scheme.
+
+Policy basis: The information security and data handling policies depend on these settings. Change the method or classifications with the related policies and controls.
+
+Timing: Review during the annual policy and risk reviews and after a material scope or methodology change.
+
+Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/workspace.json`
 

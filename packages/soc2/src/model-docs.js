@@ -26,6 +26,11 @@ export function generateModelDocumentation(model) {
     lines.push(`### ${group.title}`, "");
     for (const [type, resource] of resources) {
       lines.push(`#### \`${type}\``, "", resource.description, "");
+      lines.push(`Policy basis: ${resource.guidance.policyBasis}`, "");
+      lines.push(`Timing: ${resource.guidance.cadence}`, "");
+      if (resource.guidance.sourceResourceIds?.length) {
+        lines.push(`Default sources: ${resource.guidance.sourceResourceIds.map((id) => `\`${id}\``).join(", ")}`, "");
+      }
       if (resource.titleLabel) lines.push(`The UI labels the common \`title\` field as **${resource.titleLabel}**.`, "");
       const recordPath = (resource.recordPath ?? "{id}.json").replaceAll("{id}", "<id>");
       lines.push(`Path: \`${resource.singleton ? `data/${resource.singleton}` : `data/${resource.collection}/${recordPath}`}\``, "");

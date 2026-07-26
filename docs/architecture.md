@@ -288,7 +288,9 @@ Primary pages group the resource catalog into:
 - Audits: engagements, requests, control testing, exceptions, responses, and reports
 - Repository: Git history, uncommitted changes, validation, and workspace settings
 
-Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
+Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. This keeps onboarding guidance beside the work instead of maintaining a separate tour.
+
+The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
 The static build is read-only. Search and filtering run in the browser against a generated index. CRUD is available only from the local server.
 
