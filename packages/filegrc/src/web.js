@@ -82,7 +82,7 @@ const READINESS_STAGES = [
   {
     id: "run",
     number: "5",
-    title: "Run the program",
+    title: "Execute Policies",
     description: "Recurring and event work",
     sections: [
       { id: "queue", title: "Work queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", nested: true, defaultOpen: true },
@@ -270,7 +270,7 @@ function readinessOverview() {
     ["Criteria", "Record what the auditor will evaluate and whether it applies.", "#/resources/requirement", requirements.length + " applicable", requirements.length ? "neutral" : "warn"],
     ["Policies", "Set the rules and responsibilities the company adopts.", "#/resources/policy", approvedPolicies.length + " of " + policies.length + " approved", approvedPolicies.length === policies.length && policies.length ? "good" : "warn"],
     ["Controls", "Confirm the repeatable work that satisfies those rules and criteria.", "#/resources/control", confirmedControls.length + " of " + controls.length + " reviewed", confirmedControls.length === controls.length && controls.length ? "good" : "warn"],
-    ["Run the program", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
+    ["Execute Policies", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
     ["Audit", "Track the firm, period, requests, evidence packet, findings, and report.", activeAudit ? "#/resources/audit" : "#/resources/audit?new=1", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
   ];
   return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the audit chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that those controls worked during the audit period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
