@@ -46,8 +46,8 @@ const READINESS_STAGES = [
     title: "Scope",
     description: "Systems and boundary",
     sections: [
-      { id: "boundary", title: "Boundary", types: ["system", "asset"], defaultOpen: true },
-      { id: "dependencies", title: "Dependencies", types: ["vendor", "vendor-review"], defaultOpen: false }
+      { id: "boundary", title: "Boundary", types: ["system", "asset"], nested: true, defaultOpen: true },
+      { id: "dependencies", title: "Dependencies", types: ["vendor", "vendor-review"], nested: true, defaultOpen: false }
     ]
   },
   {
@@ -56,8 +56,8 @@ const READINESS_STAGES = [
     title: "Criteria",
     description: "What the auditor evaluates",
     sections: [
-      { id: "framework", title: "Framework", types: ["framework", "requirement"], defaultOpen: true },
-      { id: "service-description", title: "Service description", types: ["commitment", "complementary-control"], defaultOpen: false }
+      { id: "framework", title: "Framework", types: ["framework", "requirement"], nested: true, defaultOpen: true },
+      { id: "service-description", title: "Service description", types: ["commitment", "complementary-control"], nested: true, defaultOpen: false }
     ]
   },
   {
@@ -85,12 +85,12 @@ const READINESS_STAGES = [
     title: "Run the program",
     description: "Recurring and event work",
     sections: [
-      { id: "queue", title: "Work queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", defaultOpen: true },
-      { id: "governance-risk", title: "Governance and risk", types: ["policy-review", "meeting", "risk-assessment", "risk", "exception"], defaultOpen: false },
-      { id: "access-training", title: "Access and training", types: ["access-grant", "access-review", "service-account", "training", "attestation"], defaultOpen: false },
-      { id: "security", title: "Security operations", types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], defaultOpen: false },
-      { id: "resilience", title: "Resilience", types: ["backup-test", "exercise"], defaultOpen: false },
-      { id: "evidence-issues", title: "Evidence and issues", types: ["evidence", "finding", "data-request"], defaultOpen: false }
+      { id: "queue", title: "Work queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", nested: true, defaultOpen: true },
+      { id: "governance-risk", title: "Governance and risk", types: ["policy-review", "meeting", "risk-assessment", "risk", "exception"], nested: true, defaultOpen: false },
+      { id: "access-training", title: "Access and training", types: ["access-grant", "access-review", "service-account", "training", "attestation"], nested: true, defaultOpen: false },
+      { id: "security", title: "Security operations", types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], nested: true, defaultOpen: false },
+      { id: "resilience", title: "Resilience", types: ["backup-test", "exercise"], nested: true, defaultOpen: false },
+      { id: "evidence-issues", title: "Evidence and issues", types: ["evidence", "finding", "data-request"], nested: true, defaultOpen: false }
     ]
   },
   {
@@ -195,18 +195,20 @@ function buildNavigation(route) {
       const resources = section.types
         .map((type) => [type, state.model.resources[type]])
         .filter(([, definition]) => definition);
-      const recordCount = resources.reduce((total, [type]) => total + resourcesOfType(type).length, 0);
-      return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading" type="button" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span>' + esc(section.title) + '</span><small class="nav-count">' + recordCount + '</small><span class="chevron nav-control">›</span></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + renderSidebarUtility(section.utility, route) + resources.map(([type, definition]) => {
+      const links = renderSidebarUtility(section.utility, route, !section.nested) + resources.map(([type, definition]) => {
         const count = resourcesOfType(type).length;
-        return '<a class="' + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><small class="nav-count">' + count + '</small><span class="nav-control-slot" aria-hidden="true"></span></a>';
-      }).join("") + '</div></section>';
+        return '<a class="' + (!section.nested ? "nav-direct " : "") + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><small class="nav-count">' + count + '</small><span class="nav-control-slot" aria-hidden="true"></span></a>';
+      }).join("");
+      if (!section.nested) return links;
+      const recordCount = resources.reduce((total, [type]) => total + resourcesOfType(type).length, 0);
+      return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading" type="button" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span>' + esc(section.title) + '</span><small class="nav-count">' + recordCount + '</small><span class="chevron nav-control">›</span></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + links + '</div></section>';
     }).join("");
     return '<section class="nav-group nav-stage ' + (stageOpen ? "open" : "") + '" data-group="' + esc(stage.id) + '"><button class="nav-heading" type="button" aria-expanded="' + stageOpen + '" aria-controls="nav-group-' + esc(stage.id) + '"><span class="nav-stage-number">' + esc(stage.number) + '</span><span class="nav-stage-copy"><strong>' + esc(stage.title) + '</strong><small>' + esc(stage.description) + '</small></span><span class="nav-count" aria-hidden="true"></span><span class="chevron nav-control">›</span></button><div class="nav-items" id="nav-group-' + esc(stage.id) + '">' + sections + '</div></section>';
   }).join("");
   const organizationCurrent = route.name === "organization" || route.name === "repository" || ["workspace", "renderer-settings", ...ORGANIZATION_RESOURCE_TYPES].includes(route.type);
   const organizationName = state.workspace.organizationName || "Organization";
   const initial = organizationName.trim().charAt(0).toUpperCase() || "O";
-  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>FileGRC</strong><small>SOC 2 workspace</small></span></a><nav class="sidebar-nav"><a class="nav-home ' + (route.name === "home" ? "current" : "") + '" href="#/"><span>Overview</span></a>' + stages + '</nav><div class="sidebar-footer"><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
+  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"' + (route.name === "home" ? ' aria-current="page"' : "") + '><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>FileGRC</strong><small>SOC 2 workspace</small></span></a><nav class="sidebar-nav">' + stages + '</nav><div class="sidebar-footer"><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
 }
 
 function readinessStageForRoute(route) {
@@ -219,12 +221,13 @@ function readinessStageForType(type) {
   return READINESS_STAGES.find((stage) => stage.sections.some((section) => section.types.includes(type)));
 }
 
-function renderSidebarUtility(utility, route) {
+function renderSidebarUtility(utility, route, direct = false) {
+  const directClass = direct ? "nav-direct " : "";
   if (utility === "obligation-board") {
-    return '<a class="' + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation board</span><small class="nav-count">' + (state.obligations.counts.overdue + state.obligations.counts.due) + '</small><span class="nav-control-slot" aria-hidden="true"></span></a>';
+    return '<a class="' + directClass + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation board</span><small class="nav-count">' + (state.obligations.counts.overdue + state.obligations.counts.due) + '</small><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
   if (utility === "audit-packet") {
-    return '<a class="audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence packet</span><small class="nav-count">Build</small><span class="nav-control-slot" aria-hidden="true"></span></a>';
+    return '<a class="' + directClass + 'audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence packet</span><small class="nav-count">Build</small><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
   return "";
 }
@@ -1839,6 +1842,7 @@ export const APP_STYLES = String.raw`
 .icon-button{position:relative;display:grid;place-items:center;padding:0;color:var(--ink);font-size:0}.icon-button:before,.icon-button:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.icon-button:after{transform:rotate(-45deg)}
 html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .brand{flex:0 0 auto;margin-bottom:18px}.sidebar-nav{--nav-count-width:28px;--nav-control-width:14px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding-right:1px}.nav-home{margin-bottom:10px}.nav-stage>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr) var(--nav-count-width) var(--nav-control-width);gap:6px;align-items:center;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0}.nav-stage>.nav-heading:hover{background:rgba(255,255,255,.08);color:#fff}.nav-stage-number{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:8px}.nav-stage-copy,.nav-stage-copy strong,.nav-stage-copy small{display:block;min-width:0}.nav-stage-copy strong{font-size:10px;line-height:1.25}.nav-stage-copy small{margin-top:2px;color:#aeb6d8;font-size:8px;line-height:1.25;font-weight:500}.nav-stage>.nav-items{margin:2px 0 8px 17px;padding:1px 0 5px 12px;border-left:1px solid rgba(255,255,255,.14)}.nav-subgroup>.nav-subheading,.nav-subgroup>.nav-items a{width:100%;display:grid;grid-template-columns:minmax(0,1fr) var(--nav-count-width) var(--nav-control-width);gap:6px;align-items:center;padding-right:6px}.nav-subgroup>.nav-subheading{border:0;background:none;padding-top:7px;padding-bottom:4px;padding-left:7px;color:#919bc4;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;cursor:pointer}.nav-count{justify-self:end;text-align:right;font-variant-numeric:tabular-nums}.nav-control,.nav-control-slot{justify-self:end;width:var(--nav-control-width);text-align:right}.nav-subheading .nav-count{font-size:8px;letter-spacing:0}.nav-subgroup>.nav-items{padding:1px 0 4px 3px}.nav-subgroup>.nav-items a{padding-top:6px;padding-bottom:6px;padding-left:8px;font-size:11px}.nav-group.open>.nav-heading>.chevron:before,.nav-group.open>.nav-subheading>.chevron:before{transform:rotate(45deg)}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-items{display:none}.sidebar-footer{flex:0 0 auto;margin:10px -18px -18px;padding:10px 18px 14px;background:#000024;border-top:1px solid rgba(255,255,255,.14)}.organization-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 12px;gap:9px;align-items:center;padding:8px;border-radius:8px;color:#eef1ff;text-decoration:none}.organization-nav:hover,.organization-nav.current{background:rgba(255,255,255,.11)}.organization-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);font-size:11px;font-weight:800}.organization-nav strong,.organization-nav small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.organization-nav strong{font-size:10px}.organization-nav small{margin-top:2px;color:#aeb6d8;font-size:8px}.organization-arrow{color:#aeb6d8;font-size:16px}.organization-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.organization-links{display:grid}.organization-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.organization-links a:first-child{padding-top:0;border-top:0}.organization-links strong,.organization-links small{display:block}.organization-links strong{font-size:11px}.organization-links small{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.4}.organization-links b{color:var(--accent);font-size:11px}.organization-links a:hover strong{color:var(--accent)}
+.nav-stage>.nav-items>a.nav-direct{display:grid;grid-template-columns:minmax(0,1fr) var(--nav-count-width) var(--nav-control-width);gap:6px;align-items:center;width:100%;padding:6px 6px 6px 7px;font-size:11px}
 .button{text-decoration:none}
 .home-page{padding-top:16px;padding-bottom:16px}.overview-hero{min-height:72px;padding:10px 20px;align-items:center}.overview-hero h2{font-size:22px;margin:3px 0 2px}.overview-hero p:not(.kicker){font-size:10px}.home-page .readiness-map{padding:12px 15px}.home-page .readiness-map-head{margin-bottom:8px}.home-page .readiness-flow a{padding:7px}
 .overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.overview-grid>.audit-panel{grid-column:1/-1}

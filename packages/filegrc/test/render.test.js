@@ -379,16 +379,23 @@ test("places record context left of Markdown on wide screens", () => {
   assert.match(APP_STYLES, /\.detail-grid\{grid-template-columns:1fr\}/);
 });
 
-test("uses the readiness path as the nested sidebar information architecture", () => {
+test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /const READINESS_STAGES = \[/);
   assert.match(APP_SCRIPT, /title: "Scope",\s+description: "Systems and boundary"/);
   assert.match(APP_SCRIPT, /title: "Run the program",\s+description: "Recurring and event work"/);
+  assert.match(APP_SCRIPT, /title: "Boundary", types: \["system", "asset"\], nested: true/);
+  assert.match(APP_SCRIPT, /title: "Governance and risk", types: \[[^\]]+\], nested: true/);
+  assert.match(APP_SCRIPT, /if \(!section\.nested\) return links/);
+  assert.match(APP_SCRIPT, /!section\.nested \? "nav-direct " : ""/);
   assert.match(APP_SCRIPT, /class="nav-group nav-stage /);
   assert.match(APP_SCRIPT, /class="nav-group nav-subgroup /);
   assert.match(APP_SCRIPT, /class="nav-count"/);
   assert.match(APP_SCRIPT, /class="nav-control-slot"/);
+  assert.doesNotMatch(APP_SCRIPT, /<span>Overview<\/span>/);
+  assert.match(APP_SCRIPT, /class="brand"' \+ \(route\.name === "home" \? ' aria-current="page"'/);
   assert.match(APP_STYLES, /--nav-count-width:28px;--nav-control-width:14px/);
   assert.match(APP_STYLES, /\.nav-subgroup>\.nav-subheading,\.nav-subgroup>\.nav-items a\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--nav-count-width\) var\(--nav-control-width\)/);
+  assert.match(APP_STYLES, /\.nav-stage>\.nav-items>a\.nav-direct\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--nav-count-width\) var\(--nav-control-width\)/);
   assert.match(APP_STYLES, /\.nav-count\{justify-self:end;text-align:right;font-variant-numeric:tabular-nums\}/);
   assert.match(APP_STYLES, /\.chevron\{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none\}/);
   assert.match(APP_STYLES, /\.chevron:before\{[^}]*transform:rotate\(-45deg\)/);
