@@ -483,7 +483,8 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /SOC 2 is an audit away/);
   assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*SOC 2 is an audit away[\s\S]*Files are the program/);
   assert.match(APP_SCRIPT, /SOC 2 is just an auditor's report that you have adopted a set of policies/);
-  assert.match(APP_SCRIPT, /certain criteria\.\\nAt a minimum/);
+  assert.match(APP_SCRIPT, /body: \[[\s\S]*certain criteria\.",[\s\S]*"At a minimum/);
+  assert.match(APP_SCRIPT, /Array\.isArray\(step\.body\)[\s\S]*<p class="onboarding-body">/);
   assert.match(APP_SCRIPT, /availability, processing integrity, confidentiality, and privacy criteria/);
   assert.match(APP_SCRIPT, /title: "Type 1"/);
   assert.match(APP_SCRIPT, /title: "Type 2"/);
@@ -513,7 +514,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_STYLES, /\.onboarding-dialog\{max-height:56vh\}\.onboarding-actions\{position:sticky/);
   assert.match(APP_SCRIPT, /--onboarding-step-count:' \+ steps\.length/);
   assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(var\(--onboarding-step-count\),1fr\)/);
-  assert.match(APP_STYLES, /\.onboarding-body\{[^}]*white-space:pre-line/);
+  assert.match(APP_STYLES, /\.onboarding-body\+\.onboarding-body\{margin-top:8px\}/);
   assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form,\.onboarding-sections,\.setup-steps\{grid-template-columns:1fr\}/);
