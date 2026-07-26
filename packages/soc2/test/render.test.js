@@ -235,6 +235,15 @@ test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_STYLES, /\.sidebar\{visibility:hidden;transition:/);
 });
 
+test("ships local timestamp formatting while preserving calendar dates", () => {
+  assert.match(APP_SCRIPT, /definition\?\.type === "date"/);
+  assert.match(APP_SCRIPT, /definition\?\.type === "timestamp"/);
+  assert.match(APP_SCRIPT, /function formatCalendarDate/);
+  assert.match(APP_SCRIPT, /function formatLocalDateTime/);
+  assert.match(APP_SCRIPT, /timeZoneName: "short"/);
+  assert.doesNotMatch(APP_SCRIPT, /function shortDate/);
+});
+
 test("builds a recovery view when workspace configuration is malformed", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "soc2-broken-workspace-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
