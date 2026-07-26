@@ -389,6 +389,14 @@ test("uses a concise record edit action", () => {
   assert.doesNotMatch(APP_SCRIPT, /id="edit-resource">Edit record<\/button>/);
 });
 
+test("aligns list and record page headers", () => {
+  assert.match(APP_SCRIPT, /class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"/);
+  assert.doesNotMatch(APP_SCRIPT, /class="type-pill"/);
+  assert.match(APP_STYLES, /\.detail-head\{margin-bottom:25px\}/);
+  assert.match(APP_STYLES, /\.detail-head h2\{margin:7px 0\}/);
+  assert.match(APP_STYLES, /\.detail-head \.header-breadcrumbs\{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center\}/);
+});
+
 test("provides model-driven Record Markdown without exposing its path", () => {
   assert.match(APP_SCRIPT, /function recordContentDefinition\(type\)/);
   assert.match(APP_SCRIPT, /!definition \|\| !config\?\.slot \|\| definition\.markdown/);
