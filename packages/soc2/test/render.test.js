@@ -228,6 +228,14 @@ test("centers modal close icons without relying on font metrics", () => {
   assert.match(APP_STYLES, /\.icon-button:before,\.icon-button:after\{content:"";position:absolute;width:13px;height:2px;/);
 });
 
+test("uses the shared blue gradient and follows the browser color scheme", () => {
+  assert.match(renderIndex(), /<meta name="color-scheme" content="light dark">/);
+  assert.match(APP_STYLES, /--primary-gradient:linear-gradient\(135deg,#000070 0%,#000035 60%\)/);
+  assert.match(APP_STYLES, /\.sidebar\{background:var\(--sidebar\);color:#eef1ff\}/);
+  assert.match(APP_STYLES, /\.button\.primary\{background:var\(--primary-gradient\);border-color:#000070;color:#fff\}/);
+  assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)/);
+});
+
 test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_SCRIPT, /const LIST_PAGE_SIZE = 25/);
   assert.match(APP_SCRIPT, /const SEARCH_PAGE_SIZE = 25/);
