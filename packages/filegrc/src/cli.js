@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { loadModel } from "../model/index.js";
 import { buildWorkspace } from "./build.js";
 import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
-import { createResource, deleteResource, updateResource } from "./files.js";
+import { createResource, createResourceAndLink, deleteResource, updateResource } from "./files.js";
 import { generateModelDocumentation } from "./model-docs.js";
 import { createObligationEvent, planObligations } from "./obligations.js";
 import { relativeToWorkspace } from "./paths.js";
@@ -152,6 +152,18 @@ export async function runCli(argv = process.argv.slice(2)) {
     console.log(`Created ${result.record.type}/${result.record.id}`);
     return;
   }
+  if (command === "complete") {
+    const [obligationId, file] = positionals;
+    const record = await readRecord(file);
+    const result = await createResourceAndLink(root, record, {
+      type: "obligation",
+      id: obligationId,
+      field: "completionResourceIds"
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Created ${result.created.type}/${result.created.id} and linked it to obligation/${obligationId}`);
+    return result;
+  }
   if (command === "update") {
     const [type, id, file] = positionals;
     const record = await readRecord(file);
@@ -226,6 +238,7 @@ Usage:
   filegrc evidence-packet --start YYYY-MM-DD --end YYYY-MM-DD [--audit audit-id] [--output .filegrc/path] [--preview] [--json]
   filegrc get <resource-type> <id>
   filegrc create <record.json|->
+  filegrc complete <obligation-id> <completion-record.json|-> [--json]
   filegrc update <resource-type> <id> <record.json|->
   filegrc delete <resource-type> <id> --yes
 

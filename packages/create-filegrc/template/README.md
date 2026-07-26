@@ -23,6 +23,7 @@ The same workflows are available headlessly:
 
 ```sh
 npx filegrc obligations --json
+npx filegrc complete obligation-id completion-record.json
 npx filegrc trigger person-started --occurred-on 2026-07-25 --subject person-id
 npx filegrc evidence-packet --start 2026-01-01 --end 2026-03-31
 ```

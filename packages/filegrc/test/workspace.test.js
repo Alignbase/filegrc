@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createAppState, createResource, deleteResource, loadWorkspace, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
+import { createAppState, createResource, createResourceAndLink, deleteResource, loadWorkspace, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
 import { makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
@@ -83,6 +83,60 @@ test("CRUD writes formatted JSON and never leaves an invalid workspace", async (
   }, { content: { "content/policy-owner-reference.md": "# Owner reference" } });
   await assert.rejects(deleteResource(root, "person", "person-owner"), /leave the workspace invalid/i);
   assert.equal((await stat(ownerPath)).mode & 0o777, 0o640);
+});
+
+test("creates a completion record and links it in one validated mutation", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-linked-completion-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const obligation = {
+    schemaVersion: 1,
+    id: "obligation-quarterly-review",
+    type: "obligation",
+    title: "Quarterly review",
+    status: "active",
+    activityType: "review",
+    recurrence: { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-01" },
+    ownerIds: ["person-owner"]
+  };
+  await createResource(root, obligation);
+  const evidence = {
+    schemaVersion: 1,
+    id: "evidence-quarterly-review",
+    type: "evidence",
+    title: "Quarterly review evidence",
+    status: "collected",
+    evidenceKind: "review",
+    source: "Internal review",
+    collectedOn: "2026-01-20",
+    classification: "Internal",
+    contentPath: "content/evidence-quarterly-review.md"
+  };
+  const result = await createResourceAndLink(root, evidence, {
+    type: "obligation",
+    id: obligation.id,
+    field: "completionResourceIds"
+  }, { content: { [evidence.contentPath]: "# Quarterly review evidence" } });
+  assert.equal(result.created.id, evidence.id);
+  assert.deepEqual(result.linked.completionResourceIds, [evidence.id]);
+  const loaded = await loadWorkspace(root);
+  assert.deepEqual(loaded.resources.find(({ id }) => id === obligation.id).completionResourceIds, [evidence.id]);
+  assert.equal(await readFile(join(root, "data", evidence.contentPath), "utf8"), "# Quarterly review evidence\n");
+
+  const staleEvidence = {
+    ...evidence,
+    id: "evidence-stale-review",
+    title: "Stale review evidence",
+    contentPath: "content/evidence-stale-review.md"
+  };
+  await assert.rejects(createResourceAndLink(root, staleEvidence, {
+    type: "obligation",
+    id: obligation.id,
+    field: "completionResourceIds",
+    expectedRevision: "stale"
+  }, { content: { [staleEvidence.contentPath]: "# Stale review" } }), /changed after you opened/i);
+  await assert.rejects(access(join(root, "data", "evidence", staleEvidence.id, "evidence.json")), /ENOENT/);
+  await assert.rejects(access(join(root, "data", staleEvidence.contentPath)), /ENOENT/);
 });
 
 test("rejects traversal through content paths and rolls back the record", async (context) => {

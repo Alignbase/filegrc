@@ -1,7 +1,7 @@
 export { availableModelVersions, getResourceDefinition, loadModel } from "../model/index.js";
 export { buildWorkspace } from "./build.js";
 export { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
-export { createResource, createResources, deleteResource, resourcePath, updateContent, updateResource } from "./files.js";
+export { createResource, createResourceAndLink, createResources, deleteResource, resourcePath, updateContent, updateResource } from "./files.js";
 export { commitWorkspace, getFileHistory, getGitSummary, getWorkspaceHistories } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";

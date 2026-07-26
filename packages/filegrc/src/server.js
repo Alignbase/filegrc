@@ -4,7 +4,7 @@ import { extname, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
 import { FAVICON_PNG } from "./favicon.js";
-import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
+import { createResource, createResourceAndLink, deleteResource, updateContent, updateResource } from "./files.js";
 import { commitWorkspace, getFileHistory } from "./git.js";
 import { createObligationEvent, planObligations } from "./obligations.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
@@ -42,6 +42,17 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-events") {
         return json(response, 201, await createObligationEvent(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/obligation-completions") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.obligationId)) return json(response, 400, { error: "A safe obligation ID is required." });
+        const result = await createResourceAndLink(input, payload.record, {
+          type: "obligation",
+          id: payload.obligationId,
+          field: "completionResourceIds",
+          expectedRevision: payload.revision
+        }, { content: payload.content });
+        return json(response, 201, result);
       }
       if (request.method === "GET" && url.pathname === "/api/evidence-packet") {
         return json(response, 200, await prepareEvidencePacket(input, {

@@ -15,6 +15,49 @@ export async function createResources(input, records) {
   return serializeWorkspaceMutation(input, (root) => createResourcesUnlocked(root, records));
 }
 
+export async function createResourceAndLink(input, record, linkTarget, options = {}) {
+  return serializeWorkspaceMutation(input, (root) => createResourceAndLinkUnlocked(root, record, linkTarget, options));
+}
+
+async function createResourceAndLinkUnlocked(input, record, linkTarget, options) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error("A resource record is required.");
+  }
+  if (!linkTarget || typeof linkTarget !== "object" || Array.isArray(linkTarget)) {
+    throw new Error("A resource link target is required.");
+  }
+  const loaded = await loadWorkspace(input);
+  const targetEntry = loaded.entries.find(({ record: target }) => target.type === linkTarget.type && target.id === linkTarget.id);
+  if (!targetEntry) throw new Error(`Resource "${linkTarget.type}/${linkTarget.id}" was not found.`);
+  const targetDefinition = getResourceDefinition(loaded.model, linkTarget.type);
+  const targetFields = { ...loaded.model.commonFields, ...targetDefinition.fields };
+  const linkField = targetFields[linkTarget.field];
+  if (linkField?.type !== "array" || !linkField.relation) {
+    throw new Error(`Field "${linkTarget.field}" cannot link resources.`);
+  }
+  const allowedTypes = Array.isArray(linkField.relation) ? linkField.relation : [linkField.relation];
+  if (!allowedTypes.includes("*") && !allowedTypes.includes(record.type)) {
+    throw new Error(`Field "${linkTarget.field}" cannot link resource type "${record.type}".`);
+  }
+  const linkedIds = Array.isArray(targetEntry.record[linkTarget.field]) ? targetEntry.record[linkTarget.field] : [];
+  if (linkedIds.includes(record.id)) throw new Error(`Resource "${record.id}" is already linked.`);
+
+  const created = await createResourceUnlocked(input, record, { content: options.content });
+  try {
+    const linkedRecord = {
+      ...targetEntry.record,
+      [linkTarget.field]: [...linkedIds, record.id]
+    };
+    const linked = await updateResourceUnlocked(input, linkTarget.type, linkTarget.id, linkedRecord, {
+      expectedRevision: linkTarget.expectedRevision
+    });
+    return { created: created.record, linked: linked.record };
+  } catch (error) {
+    await deleteResourceUnlocked(input, record.type, record.id, {});
+    throw error;
+  }
+}
+
 async function createResourcesUnlocked(input, records) {
   if (!Array.isArray(records) || records.length === 0) throw new Error("At least one resource is required.");
   const loaded = await loadWorkspace(input);

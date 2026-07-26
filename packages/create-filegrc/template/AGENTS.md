@@ -83,7 +83,13 @@ npx filegrc obligations --json
 npx filegrc obligations --from 2026-01-01 --through 2026-12-31 --complete --json
 ```
 
-A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Link each dated completion through the obligation’s `completionResourceIds`. Keep prior links because the planner matches each record to its own period.
+A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Use **Record work** in the obligation board, or create and link a completion atomically with:
+
+```sh
+npx filegrc complete obligation-id completion-record.json
+```
+
+Keep prior completion links because the planner matches each dated record to its own period.
 
 Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Start a workflow in the obligation board or run:
 

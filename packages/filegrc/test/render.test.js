@@ -262,6 +262,52 @@ test("persists onboarding resources without requiring Git", async (context) => {
   assert.match((await deleteResponse.json()).error, /Singleton records cannot be deleted/);
 });
 
+test("records and links obligation work through the writable API", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-obligation-completion-api-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, "data", "obligations"), { recursive: true });
+  await writeJson(join(root, "data", "obligations", "obligation-review.json"), {
+    schemaVersion: 1,
+    id: "obligation-review",
+    type: "obligation",
+    title: "Quarterly review",
+    status: "active",
+    activityType: "review",
+    recurrence: { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-01" },
+    ownerIds: ["person-owner"]
+  });
+  const result = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => result.server.close(resolve)));
+  const state = await (await fetch(`${result.url}/api/state`)).json();
+  const obligation = state.resources.find(({ record }) => record.id === "obligation-review");
+  const response = await fetch(`${result.url}/api/obligation-completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      obligationId: obligation.record.id,
+      revision: obligation.revision,
+      record: {
+        schemaVersion: 1,
+        id: "evidence-review",
+        type: "evidence",
+        title: "Quarterly review evidence",
+        status: "collected",
+        evidenceKind: "review",
+        source: "Internal review",
+        collectedOn: "2026-01-20",
+        classification: "Internal",
+        contentPath: "content/evidence-review.md"
+      },
+      content: { "content/evidence-review.md": "# Quarterly review evidence" }
+    })
+  });
+  assert.equal(response.status, 201);
+  const saved = JSON.parse(await readFile(join(root, "data", "obligations", "obligation-review.json"), "utf8"));
+  assert.deepEqual(saved.completionResourceIds, ["evidence-review"]);
+  assert.equal(await readFile(join(root, "data", "content", "evidence-review.md"), "utf8"), "# Quarterly review evidence\n");
+});
+
 test("renders safe Markdown links without changing query parameters", () => {
   const html = renderMarkdown("[Review](https://example.test/review?a=1&b=2) <script>alert(1)</script>");
   assert.match(html, /href="https:\/\/example\.test\/review\?a=1&amp;b=2"/);
@@ -409,18 +455,15 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /onboardingDialog\.addEventListener\("cancel"/);
   assert.match(APP_SCRIPT, /function positionOnboardingShade\(target\)/);
   assert.match(APP_SCRIPT, /function onboardingTarget\(step\)/);
-  assert.match(APP_SCRIPT, /target: \["\.repo-chip", 'a\[href="#\/repository"\]', "\.mobile-nav"\]/);
   assert.match(APP_SCRIPT, /window\.addEventListener\("scroll", positionCurrentOnboarding, true\)/);
   assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
   assert.match(APP_SCRIPT, /type: "system"/);
   assert.match(APP_SCRIPT, /type: "audit"/);
-  assert.match(APP_SCRIPT, /Compliance artifacts are files/);
+  assert.match(APP_SCRIPT, /Files are the program/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
-  assert.match(APP_SCRIPT, /Commit the change; Git records the rest/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
   assert.match(APP_SCRIPT, /Start a checklist when something changes/);
-  assert.match(APP_SCRIPT, /Engage the auditor early/);
-  assert.match(APP_SCRIPT, /Generate the period packet/);
+  assert.match(APP_SCRIPT, /Plan the engagement and generate evidence/);
   assert.match(APP_SCRIPT, /filegrc obligations CLI command/);
   assert.match(APP_SCRIPT, /filegrc trigger/);
   assert.match(APP_SCRIPT, /filegrc evidence-packet/);
@@ -444,7 +487,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(var\(--onboarding-step-count\),1fr\)/);
   assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
-  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form\{grid-template-columns:1fr\}/);
+  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form,\.setup-steps\{grid-template-columns:1fr\}/);
 });
 
 test("renders shared obligation and evidence-packet workflows", () => {
@@ -455,11 +498,30 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /dueWindowEnd/);
   assert.match(APP_SCRIPT, /overdueOn/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/obligation-events"/);
+  assert.match(APP_SCRIPT, /localFetch\(url,[\s\S]*\/api\/obligation-completions/);
+  assert.match(APP_SCRIPT, /function obligationCompletionSeed\(type, item, obligation\)/);
+  assert.match(APP_SCRIPT, /data-record-obligation/);
+  assert.match(APP_SCRIPT, /data-expand-obligations/);
   assert.match(APP_SCRIPT, /function renderAuditPacket\(main/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-packet"/);
   assert.match(APP_SCRIPT, /every dated record/i);
+  assert.match(APP_SCRIPT, /class="packet-preflight"/);
+  assert.match(APP_SCRIPT, /Generate draft/);
   assert.match(APP_STYLES, /\.obligation-board\{display:grid/);
   assert.match(APP_STYLES, /\.packet-builder form\{display:grid/);
+  assert.match(APP_STYLES, /\.packet-preflight\{display:grid/);
+});
+
+test("separates valid data from readiness and uses stage names on resource pages", () => {
+  assert.match(APP_SCRIPT, /metric\("Data health", state\.validation\.ok \? "Valid"/);
+  assert.match(APP_SCRIPT, /function programSetup\(\)/);
+  assert.match(APP_SCRIPT, /The files can be valid while the program is still unconfigured/);
+  assert.match(APP_SCRIPT, /readinessStageForType\(type\)\?\.title/);
+  assert.match(APP_SCRIPT, /\["Run the program", "Complete recurring and event work/);
+  assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
+  assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type\)\)/);
+  assert.match(APP_STYLES, /\.readiness-state\{/);
+  assert.match(APP_STYLES, /\.setup-steps\{display:grid/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {
