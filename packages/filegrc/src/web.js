@@ -894,7 +894,7 @@ function onboardingSteps() {
       target: null,
       kicker: "SOC 2 basics",
       title: "SOC 2 is an audit away",
-      body: "SOC 2 is a certification that you have adopted a set of information security policies fitting certain criteria, and that those policies are actually followed over some period of time.",
+      body: "SOC 2 is just an auditor's attestation that you have adopted a set of policies fitting certain criteria. At a minimum, this includes information security criteria, but it can optionally include additional availability, processing integrity, confidentiality, and privacy criteria.",
       sections: [
         {
           title: "Type 1",
