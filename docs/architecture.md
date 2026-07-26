@@ -120,7 +120,7 @@ The registry defines:
 - Search, filter, list, and form metadata
 - Compatibility and deprecation metadata
 
-The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Markdown through `notesPath`. A source form is evidence for a workflow, not a schema to copy field for field.
+The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Record Markdown through `notesPath`. The model's `recordContent` settings decide which result-bearing resources show this body by default. A source form is evidence for a workflow, not a schema to copy field for field.
 
 The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
 
@@ -227,7 +227,7 @@ data/
 └── audit-requests/
 ```
 
-Most records are one JSON file. Long-form content is stored under `data/content/` and referenced from its structured record with a path relative to `data/`. `contentPath` points to reusable governed content. `notesPath` points to variable analysis, procedures, results, or discussion. Evidence that includes local files gets its own directory containing `evidence.json` and the files it describes.
+Most records are one JSON file. Long-form content is stored under `data/content/` and referenced from its structured record with a path relative to `data/`. `contentPath` points to reusable governed content. `notesPath` points to variable analysis, procedures, results, or discussion and appears as Record Markdown in the renderer. The renderer generates that path from the stable record ID. Evidence that includes local files gets its own directory containing `evidence.json` and the files it describes.
 
 Policies and other authored documents do not carry embedded change-control tables. Git is their change history. A human-facing policy version remains available when it has contractual or organizational meaning.
 
@@ -312,7 +312,7 @@ Primary pages group the resource catalog into:
 
 For active obligations, the dashboard derives the next calendar occurrence from the recurrence rule and anchor date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence.
 
-Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. The sidebar and list-page context use the same six stages: Scope, Criteria, Policies, Controls, Execute Policies, and Audit. The dashboard reports data validity separately from setup and operating state so a valid starter schema is not presented as audit readiness.
+Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. The sidebar and list-page context use the same six stages: Scope, Criteria, Policies, Controls, Operate Controls, and Audit. The dashboard reports data validity separately from setup and operating state so a valid starter schema is not presented as audit readiness.
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 

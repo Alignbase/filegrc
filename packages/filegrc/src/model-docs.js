@@ -18,7 +18,17 @@ export function generateModelDocumentation(model) {
   for (const [name, field] of Object.entries(model.commonFields)) {
     lines.push(`| \`${name}\` | ${fieldType(field)} | ${field.required ? "Yes" : "No"} | ${escapeCell(fieldNotes(field))} |`);
   }
-  lines.push("", "## Resource groups", "");
+  lines.push(
+    "",
+    "## Record Markdown",
+    "",
+    `The renderer uses the common \`${model.recordContent.field}\` field as an optional long-form Record body when a resource has no dedicated Markdown field. The path is generated from the stable resource ID rather than entered by the user.`,
+    "",
+    `Record Markdown is shown by default for: ${model.recordContent.defaultResourceTypes.map((type) => `\`${type}\``).join(", ")}. Other resources without dedicated Markdown can add it when structured fields are not enough.`,
+    "",
+    "## Resource groups",
+    ""
+  );
 
   for (const group of model.groups) {
     const resources = Object.entries(model.resources).filter(([, resource]) => resource.group === group.id);
@@ -34,6 +44,10 @@ export function generateModelDocumentation(model) {
       if (resource.titleLabel) lines.push(`The UI labels the common \`title\` field as **${resource.titleLabel}**.`, "");
       const recordPath = (resource.recordPath ?? "{id}.json").replaceAll("{id}", "<id>");
       lines.push(`Path: \`${resource.singleton ? `data/${resource.singleton}` : `data/${resource.collection}/${recordPath}`}\``, "");
+      const contentMode = recordContentMode(model, type, resource);
+      if (contentMode) {
+        lines.push(`Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} through \`${model.recordContent.field}\`.`, "");
+      }
       lines.push("| Field | Type | Required | Notes |", "| --- | --- | --- | --- |");
       const required = new Set(resource.required ?? []);
       for (const [name, field] of Object.entries(resource.fields ?? {})) {
@@ -53,6 +67,11 @@ export function generateModelDocumentation(model) {
     ""
   );
   return lines.join("\n");
+}
+
+function recordContentMode(model, type, resource) {
+  if (!model.recordContent?.field || Object.values(resource.fields ?? {}).some((field) => field.content)) return null;
+  return model.recordContent.defaultResourceTypes.includes(type) ? "default" : "optional";
 }
 
 function fieldType(field) {

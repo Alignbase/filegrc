@@ -19,6 +19,14 @@ test("v1 model exposes the complete resource registry", () => {
   }
   assert.equal(model.resources.person.titleLabel, "Name");
   assert.equal(model.resources.policy.titleLabel, undefined);
+  assert.equal(model.recordContent.field, "notesPath");
+  assert.equal(model.recordContent.label, "Record");
+  assert.equal(model.recordContent.defaultResourceTypes.length, 15);
+  for (const type of model.recordContent.defaultResourceTypes) {
+    const resource = model.resources[type];
+    assert.ok(resource, `${type} Record Markdown type exists`);
+    assert.equal(Object.values(resource.fields ?? {}).some((field) => field.content), false, `${type} does not duplicate dedicated Markdown`);
+  }
 });
 
 test("model versions cannot escape the packaged model registry", () => {

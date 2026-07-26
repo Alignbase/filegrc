@@ -44,7 +44,7 @@ npx filegrc search "access review"
 npm run serve
 ```
 
-Prefer existing fields. Put organization-specific values under `extensions` with a namespace owned by {{company_name}}. Add structure only when validation, filtering, relationships, due dates, or audit completeness need it. Variable procedures, interviews, observations, rationale, and detailed results belong in Markdown through `notesPath`.
+Prefer existing fields. Put organization-specific values under `extensions` with a namespace owned by {{company_name}}. Add structure only when validation, filtering, relationships, due dates, or audit completeness need it. Variable procedures, interviews, observations, rationale, and detailed results belong in Record Markdown through `notesPath`; FileGRC generates the path from the stable record ID.
 
 Never change a resource ID after it is committed. Create a replacement and link the records if identity truly changes.
 

@@ -2,6 +2,27 @@
   "modelVersion": "1",
   "title": "FileGRC data model",
   "description": "Stable, query-worthy GRC metadata. Variable procedures, questionnaires, observations, rationale, and detailed results belong in Markdown through contentPath or notesPath.",
+  "recordContent": {
+    "field": "notesPath",
+    "label": "Record",
+    "defaultResourceTypes": [
+      "control-test",
+      "finding",
+      "exception",
+      "policy-review",
+      "risk",
+      "risk-assessment",
+      "vendor-review",
+      "access-review",
+      "vulnerability",
+      "vulnerability-scan",
+      "incident",
+      "exercise",
+      "backup-test",
+      "penetration-test",
+      "data-request"
+    ]
+  },
   "commonFields": {
     "schemaVersion": {
       "type": "integer",

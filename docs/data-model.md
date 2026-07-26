@@ -22,6 +22,12 @@ Each structured resource is one UTF-8 JSON file. Long-form work is Markdown unde
 | `notesPath` | string (data-path) | No | Notes References long-form content under `data/`. |
 | `extensions` | object | No | Extensions |
 
+## Record Markdown
+
+The renderer uses the common `notesPath` field as an optional long-form Record body when a resource has no dedicated Markdown field. The path is generated from the stable resource ID rather than entered by the user.
+
+Record Markdown is shown by default for: `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`. Other resources without dedicated Markdown can add it when structured fields are not enough.
+
 ## Resource groups
 
 ### Program
@@ -37,6 +43,8 @@ Timing: Add or retire a version only through a deliberate scope decision. Reconf
 The UI labels the common `title` field as **Name**.
 
 Path: `data/frameworks/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -57,6 +65,8 @@ Policy basis: Requirements come from the selected framework. Controls explain ho
 Timing: Review applicability during audit planning and after material scope, service, system, or framework changes.
 
 Path: `data/requirements/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -79,6 +89,8 @@ Timing: Create before relying on a promise, review during audit scoping, and sup
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/commitments/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -105,6 +117,8 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/complementary-controls/<id>.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `active`, `superseded`, `retired` |
@@ -129,6 +143,8 @@ Timing: Operate at the frequency on each control. Review ownership, scope, desig
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/controls/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -159,6 +175,8 @@ Timing: Plan from control frequency, risk, and audit scope. Record the exact per
 Default sources: `policy-information-security`
 
 Path: `data/control-tests/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -199,6 +217,8 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 The UI labels the common `title` field as **Name**.
 
 Path: `data/teams/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -284,6 +304,8 @@ Timing: Complete annually and after a triggering change, incident, disruption, o
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/policy-reviews/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -400,6 +422,8 @@ Default sources: `policy-data-protection-handling`
 
 Path: `data/data-requests/<id>.json`
 
+Record Markdown: shown by default through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `received`, `verifying`, `in-progress`, `completed`, `denied`, `canceled` |
@@ -432,6 +456,8 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/exceptions/<id>.json`
 
+Record Markdown: shown by default through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `requested`, `approved`, `expired`, `revoked`, `closed` |
@@ -459,6 +485,8 @@ Timing: Assess the register at least annually and after material changes. Review
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/risks/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -492,6 +520,8 @@ Timing: Complete at least annually and after a material change that could alter 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/risk-assessments/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -533,6 +563,8 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/people/<id>.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `active`, `inactive`, `external` |
@@ -559,6 +591,8 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/service-accounts/<id>.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `active`, `disabled`, `retired` |
@@ -581,6 +615,8 @@ Timing: Record every grant and material change. Remove access at or before notic
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/access-grants/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -614,6 +650,8 @@ Timing: Review privileged and production access at least quarterly and other imp
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/access-reviews/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -651,6 +689,8 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/systems/<id>.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `active`, `deprecated`, `retired` |
@@ -682,6 +722,8 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/assets/<id>.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `active`, `lost`, `retired`, `disposed` |
@@ -710,6 +752,8 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 The UI labels the common `title` field as **Name**.
 
 Path: `data/vendors/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -741,6 +785,8 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/vendor-reviews/<id>.json`
 
+Record Markdown: shown by default through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `in-progress`, `approved`, `conditional`, `rejected`, `complete` |
@@ -770,6 +816,8 @@ Timing: Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 
 Default sources: `policy-information-security`
 
 Path: `data/vulnerabilities/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -805,6 +853,8 @@ Default sources: `policy-information-security`
 
 Path: `data/vulnerability-scans/<id>.json`
 
+Record Markdown: shown by default through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `running`, `complete`, `failed` |
@@ -835,6 +885,8 @@ Timing: Create on report or detection, update material events as they progress, 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/incidents/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -870,6 +922,8 @@ Default sources: `policy-information-security`
 
 Path: `data/penetration-tests/<id>.json`
 
+Record Markdown: shown by default through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `in-progress`, `complete`, `canceled` |
@@ -903,6 +957,8 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 
 Path: `data/exercises/<id>.json`
 
+Record Markdown: shown by default through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `in-progress`, `complete`, `canceled` |
@@ -932,6 +988,8 @@ Timing: Test restoration at least annually for important systems and after recov
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/backup-tests/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1029,6 +1087,8 @@ Timing: Create when the event occurs or is scheduled. Complete every generated a
 
 Path: `data/obligation-events/<id>.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `complete`, `canceled` |
@@ -1051,6 +1111,8 @@ Timing: Create when identified, assign a risk-based due date, review while open,
 Default sources: `policy-information-security`
 
 Path: `data/findings/<id>.json`
+
+Record Markdown: shown by default through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1078,6 +1140,8 @@ Policy basis: Starter policies require material issues and review decisions to p
 Timing: Create when work is assigned, review until complete, record blockers, and link completion evidence before closing.
 
 Path: `data/action-items/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1112,6 +1176,8 @@ Timing: Engage the auditor early enough to agree on scope, timing, and evidence 
 Default sources: `policy-information-security`
 
 Path: `data/audits/<id>.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1189,6 +1255,8 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/workspace.json`
 
+Record Markdown: available when needed through `notesPath`.
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `dataModelVersion` | string | Yes | Data model version |
@@ -1208,6 +1276,8 @@ Policy basis: This record configures the local renderer. It is not a SOC 2 contr
 Timing: Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff.
 
 Path: `data/renderer.json`
+
+Record Markdown: available when needed through `notesPath`.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |

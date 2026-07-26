@@ -54,7 +54,7 @@ The authoritative, versioned model is `packages/filegrc/model/v1.json`. `docs/da
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown under `data/content/` and reference it from structured records with paths relative to `data/`.
 - Structure fields only when the engine needs them for validation, filtering, relationships, lifecycle rules, due-date calculations, or audit-period completeness.
-- Put variable procedures, questionnaires, interviews, per-item decisions, detailed results, and provider-specific analysis in Markdown through `notesPath`.
+- Put variable procedures, questionnaires, interviews, per-item decisions, detailed results, and provider-specific analysis in Markdown through `notesPath`. The model's `recordContent` settings determine when the renderer shows this Record Markdown body by default; the renderer generates its path from the stable record ID.
 - Do not reproduce a source form as a nested schema. Add a field only after a stable cross-workflow need is clear.
 - Store all internally authored long-form content in Markdown. Policies, plans, charters, procedures, minutes, training material, assertions, narratives, templates, and audit responses must not use PDF or DOCX as their canonical format.
 - Treat signed forms, third-party reports, screenshots, and immutable exports as evidence attachments. They may be PDF or image files because their fixed representation is part of the evidence.

@@ -82,7 +82,7 @@ const READINESS_STAGES = [
   {
     id: "run",
     number: "5",
-    title: "Execute Policies",
+    title: "Operate Controls",
     description: "Recurring and event work",
     sections: [
       { id: "queue", title: "Work queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", nested: true, defaultOpen: true },
@@ -270,7 +270,7 @@ function readinessOverview() {
     ["Criteria", "Record what the auditor will evaluate and whether it applies.", "#/resources/requirement", requirements.length + " applicable", requirements.length ? "neutral" : "warn"],
     ["Policies", "Set the rules and responsibilities the company adopts.", "#/resources/policy", approvedPolicies.length + " of " + policies.length + " approved", approvedPolicies.length === policies.length && policies.length ? "good" : "warn"],
     ["Controls", "Confirm the repeatable work that satisfies those rules and criteria.", "#/resources/control", confirmedControls.length + " of " + controls.length + " reviewed", confirmedControls.length === controls.length && controls.length ? "good" : "warn"],
-    ["Execute Policies", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
+    ["Operate Controls", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
     ["Audit", "Track the firm, period, requests, evidence packet, findings, and report.", activeAudit ? "#/resources/audit" : "#/resources/audit?new=1", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
   ];
   return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the audit chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that those controls worked during the audit period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
@@ -665,6 +665,7 @@ function renderDetail(main, type, id) {
   const definition = state.model.resources[type];
   if (!entry || !definition) return renderNotFound(main);
   const fields = { ...state.model.commonFields, ...definition.fields };
+  const recordContent = recordContentDefinition(type);
   const narrative = recordNarrative(entry.record, fields);
   const narrativeNames = new Set(narrative.map(([name]) => name));
   const visible = Object.entries(entry.record).filter(([name]) => !["schemaVersion", "id", "type", "title", "notesPath", "contentPath"].includes(name) && !narrativeNames.has(name));
@@ -673,11 +674,15 @@ function renderDetail(main, type, id) {
   const narrativeContent = narrative.length
     ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(fields[name]?.label || humanize(name)) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
     : "";
-  const markdownContent = content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fields[name]?.label || humanize(name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("");
+  const markdownContent = content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fieldLabel(type, name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("");
+  const addRecordContent = recordContent && !entry.content[recordContent.field] && !state.readOnly
+    ? '<div class="record-content-action"><button class="button" type="button" id="add-record-content">Add Record Markdown</button></div>'
+    : "";
   main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(definition.pluralTitle) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(definition.title) + '</span><h2>' + esc(entry.record.title) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Evidence packet</a>' : "") + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div>' + resourceGuide(type) + '<div class="detail-grid"><section class="panel detail-main">' +
-    (narrativeContent || markdownContent ? narrativeContent + markdownContent : '<div class="panel-head"><h3>Record</h3></div>' + empty("Add Markdown notes when this record needs context beyond its structured fields.")) +
+    (narrativeContent || markdownContent ? narrativeContent + markdownContent + addRecordContent : '<div class="panel-head"><h3>Record</h3></div>' + empty("Add Record Markdown when this record needs context beyond its structured fields.") + addRecordContent) +
     '</section><aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File history</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
+  main.querySelector("#add-record-content")?.addEventListener("click", () => openEditor(type, entry, { addRecordContent: true }));
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
   main.querySelector("#delete-resource")?.addEventListener("click", async () => {
     if (!confirm('Delete "' + entry.record.title + '"? Use deletion only for mistakes and uncommitted drafts. Unshared Markdown authored for this record will also be deleted.')) return;
@@ -694,6 +699,16 @@ function renderDetail(main, type, id) {
 
 function recordNarrative(record, fields) {
   return Object.entries(record).filter(([name, value]) => RECORD_TEXT_FIELDS.has(name) && fields[name]?.type === "string" && String(value || "").trim());
+}
+
+function recordContentDefinition(type) {
+  const config = state.model.recordContent;
+  const definition = state.model.resources[type];
+  if (!config?.field || !definition || Object.values(definition.fields || {}).some((field) => field.content)) return null;
+  return {
+    ...config,
+    mode: config.defaultResourceTypes.includes(type) ? "default" : "optional"
+  };
 }
 
 function resourceConnections(entry) {
@@ -1295,13 +1310,15 @@ function openEditor(type, entry = null, options = {}) {
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
   const contentNames = names.filter((name) => fields[name].content);
+  const recordContent = recordContentDefinition(type);
+  const recordContentItem = recordContent ? entry?.content?.[recordContent.field] : null;
   dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || record.title || definition.title) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
     contentNames.map((name) => {
       const path = record[name];
       const generated = !entry?.content?.[name];
       const source = entry?.content?.[name]?.source ?? "# " + (record.title || "New " + definition.title) + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
       return '<label class="content-editor-field" data-content-editor="' + esc(name) + '"><span>' + esc(fields[name].label || humanize(name)) + ' Markdown</span><textarea data-content-source="' + esc(name) + '" data-generated-content="' + generated + '" spellcheck="true">' + esc(source) + '</textarea></label>';
-    }).join("") +
+    }).join("") + renderRecordContentEditor(type, record, entry, options) +
     '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
@@ -1349,10 +1366,24 @@ function openEditor(type, entry = null, options = {}) {
         const path = updated[textarea.dataset.contentSource];
         if (path) content[path] = textarea.value;
       });
+      const recordContentSource = dialog.querySelector("[data-record-content]");
+      if (recordContent && recordContentSource) {
+        const existing = entry?.content?.[recordContent.field];
+        if (recordContentSource.value.trim() || existing) {
+          const path = updated[recordContent.field] || contentPathFor(updated.type, updated.id, recordContent.field);
+          updated[recordContent.field] = path;
+          content[path] = recordContentSource.value;
+        } else {
+          delete updated[recordContent.field];
+        }
+      }
       const url = entry
         ? "/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id)
         : options.obligationCompletion ? "/api/obligation-completions" : "/api/resources";
-      const contentRevisions = Object.fromEntries(contentNames.map((name) => [entry?.content?.[name]?.path, entry?.content?.[name]?.revision]).filter(([path, revision]) => path && revision));
+      const contentRevisions = Object.fromEntries([
+        ...contentNames.map((name) => [entry?.content?.[name]?.path, entry?.content?.[name]?.revision]),
+        [recordContentItem?.path, recordContentItem?.revision]
+      ].filter(([path, revision]) => path && revision));
       const response = await localFetch(url, {
         method: entry ? "PUT" : "POST",
         headers: { "content-type": "application/json" },
@@ -1409,6 +1440,17 @@ function seedRecord(type, definition) {
 function contentPathFor(type, id, name) {
   const suffix = name === "contentPath" ? "" : "-" + name.replace(/Path$/, "").replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase());
   return "content/" + id + suffix + ".md";
+}
+
+function renderRecordContentEditor(type, record, entry, options) {
+  const config = recordContentDefinition(type);
+  if (!config) return "";
+  const item = entry?.content?.[config.field];
+  const source = item?.source || "";
+  const editor = '<label class="content-editor-field record-content-editor"><span>' + esc(config.label) + ' Markdown <small>optional</small></span><textarea data-record-content spellcheck="true" placeholder="Document the work performed, method, results, decisions, and follow-up.">' + esc(source) + '</textarea></label>';
+  if (config.mode === "default") return editor;
+  const open = item || record[config.field] || options.addRecordContent;
+  return '<details class="record-content-details" ' + (open ? "open" : "") + '><summary>' + (item ? "Record Markdown" : "Add Record Markdown") + '</summary><p>Use this when the structured fields do not capture the full record.</p>' + editor + '</details>';
 }
 
 function editorField(type, name, field, value, required, editing, oneOfRequired = false) {
@@ -1754,7 +1796,12 @@ function setNavigationGroupOpen(group, open) {
 }
 function groupTitle(id) { return state.model.groups.find((group) => group.id === id)?.title || "Program"; }
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
-function fieldLabel(type, name) { return name === "title" ? state.model.resources[type]?.titleLabel || state.model.commonFields.title.label : fieldDefinition(type, name)?.label || humanize(name); }
+function fieldLabel(type, name) {
+  if (name === "title") return state.model.resources[type]?.titleLabel || state.model.commonFields.title.label;
+  const recordContent = recordContentDefinition(type);
+  if (recordContent && name === recordContent.field) return recordContent.label;
+  return fieldDefinition(type, name)?.label || humanize(name);
+}
 function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || properCase(value); }
 function humanize(value) { return String(value).replace(/[-_]+/g, " ").replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
 function properCase(value) { return humanize(value).replace(/\b[a-z]/g, (letter) => letter.toUpperCase()).replace(/\bSoc 2\b/g, "SOC 2"); }
@@ -1841,6 +1888,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:10px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
 .list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}
 .setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
+.record-content-action{display:flex;justify-content:flex-start;margin-top:20px}.record-content-details{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.record-content-details summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.record-content-details>p{color:var(--muted);font-size:10px}.record-content-editor>span small{color:var(--muted);font-size:9px;font-weight:500}
 .program-setup{grid-template-columns:minmax(250px,.75fr) minmax(440px,1.4fr)}.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.setup-steps a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);text-decoration:none}.setup-steps a:hover{border-color:var(--accent-light)}.setup-steps a>span:first-child{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:10px}.setup-steps a.done>span:first-child{background:#dcefe4;color:#125733}.setup-steps strong,.setup-steps small{display:block}.setup-steps strong{font-size:10px}.setup-steps small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4;font-weight:500}
 .readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,.65fr) minmax(320px,1fr);gap:28px;align-items:end;margin-bottom:17px}.readiness-map-head h3{font-size:15px;margin:5px 0 0}.readiness-map-head>p{max-width:710px;color:var(--muted);font-size:11px;line-height:1.5;margin:0}.readiness-flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/4;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:8px;font-weight:800}.readiness-flow strong{font-size:10px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:8px;line-height:1.4;margin-top:3px}.readiness-state{grid-column:2;justify-self:start;margin-top:8px;padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:7px;line-height:1.2}.readiness-state.good{background:#dcefe4;color:#125733}.readiness-state.warn{background:#f6e8c9;color:#79500f}.readiness-state.bad{background:#f7dfdc;color:#873027}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:11px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:9px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:9px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:8px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:14px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:10px}.connections small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:8px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:10px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:11px}.external-source:hover strong{text-decoration:underline}
 .page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:-9px 0 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:10px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:8px;font-weight:700}

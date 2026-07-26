@@ -386,10 +386,20 @@ test("places source attributes first in record metadata", () => {
   assert.doesNotMatch(APP_SCRIPT, /<h3>Source<\/h3>/);
 });
 
+test("provides model-driven Record Markdown without exposing its path", () => {
+  assert.match(APP_SCRIPT, /function recordContentDefinition\(type\)/);
+  assert.match(APP_SCRIPT, /Object\.values\(definition\.fields \|\| \{\}\)\.some\(\(field\) => field\.content\)/);
+  assert.match(APP_SCRIPT, /data-record-content/);
+  assert.match(APP_SCRIPT, /Add Record Markdown/);
+  assert.match(APP_SCRIPT, /contentPathFor\(updated\.type, updated\.id, recordContent\.field\)/);
+  assert.match(APP_SCRIPT, /entry\.content\[recordContent\.field\]/);
+  assert.match(APP_STYLES, /\.record-content-details\{/);
+});
+
 test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /const READINESS_STAGES = \[/);
   assert.match(APP_SCRIPT, /title: "Scope",\s+description: "Systems and boundary"/);
-  assert.match(APP_SCRIPT, /title: "Execute Policies",\s+description: "Recurring and event work"/);
+  assert.match(APP_SCRIPT, /title: "Operate Controls",\s+description: "Recurring and event work"/);
   assert.match(APP_SCRIPT, /title: "Boundary", types: \["system", "asset"\], nested: true/);
   assert.match(APP_SCRIPT, /title: "Governance and risk", types: \[[^\]]+\], nested: true/);
   assert.match(APP_SCRIPT, /if \(!section\.nested\) return links/);
@@ -601,7 +611,7 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
 
 test("uses stage names on resource pages and direct setup actions in the program path", () => {
   assert.match(APP_SCRIPT, /readinessStageForType\(type\)\?\.title/);
-  assert.match(APP_SCRIPT, /\["Execute Policies", "Complete recurring and event work/);
+  assert.match(APP_SCRIPT, /\["Operate Controls", "Complete recurring and event work/);
   assert.match(APP_SCRIPT, /inScopeSystems\.length \? "#\/resources\/system" : "#\/resources\/system\?new=1"/);
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
   assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type\)\)/);

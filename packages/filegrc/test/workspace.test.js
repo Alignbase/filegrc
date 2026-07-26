@@ -261,6 +261,41 @@ test("creates and updates Markdown content with its resource", async (context) =
   assert.equal((await validateWorkspace(root)).ok, true);
 });
 
+test("stores common Record Markdown for result-bearing resources", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-record-markdown-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const notesPath = "content/finding-review-delay-notes.md";
+  const finding = {
+    schemaVersion: 1,
+    id: "finding-review-delay",
+    type: "finding",
+    title: "Review completed late",
+    status: "open",
+    severity: "medium",
+    sourceResourceId: "person-owner",
+    description: "The scheduled review completed after its cutoff.",
+    ownerIds: ["person-owner"],
+    notesPath
+  };
+
+  await createResource(root, finding, {
+    content: {
+      [notesPath]: "# Review completed late\n\nDocument the observation, cause, response, and verification."
+    }
+  });
+
+  const entry = (await createAppState(root)).resources.find(({ record }) => record.id === finding.id);
+  assert.match(entry.content.notesPath.source, /observation, cause, response/);
+  assert.match(await readFile(join(root, "data", notesPath), "utf8"), /verification/);
+  await updateResource(root, finding.type, finding.id, { ...finding, description: "The review and follow-up are complete." }, {
+    content: { [notesPath]: "# Review completed late\n\nFollow-up verified." },
+    expectedRevision: entry.revision,
+    expectedContentRevisions: { [notesPath]: entry.content.notesPath.revision }
+  });
+  assert.match(await readFile(join(root, "data", notesPath), "utf8"), /Follow-up verified/);
+});
+
 test("keeps Markdown still referenced by another resource", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-shared-content-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
