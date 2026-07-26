@@ -341,6 +341,11 @@ test("keeps repository and validation status in separate topbar controls", () =>
   assert.match(APP_STYLES, /\.repo-chip,\.validation-chip\{display:flex/);
 });
 
+test("uses compact topbar spacing on wide and narrow screens", () => {
+  assert.match(APP_STYLES, /\.topbar\{height:63px\}/);
+  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}/);
+});
+
 test("persists each sidebar group state between page renders", () => {
   assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v3"/);
   assert.match(APP_SCRIPT, /window\.localStorage\.getItem\(NAV_GROUP_STORAGE_KEY\)/);
@@ -356,9 +361,11 @@ test("uses a black page canvas in dark mode", () => {
   assert.match(APP_STYLES, /\.topbar\{background:rgba\(0,0,0,.9\)\}/);
 });
 
-test("centers modal close icons without relying on font metrics", () => {
+test("centers close icons without relying on font metrics", () => {
   assert.match(APP_STYLES, /\.icon-button\{position:relative;display:grid;place-items:center;padding:0;/);
   assert.match(APP_STYLES, /\.icon-button:before,\.icon-button:after\{content:"";position:absolute;width:13px;height:2px;/);
+  assert.match(APP_STYLES, /\.nav-close\{font-size:0\}/);
+  assert.match(APP_STYLES, /\.nav-close:before,\.nav-close:after\{content:"";position:absolute;width:13px;height:2px;/);
 });
 
 test("uses the shared blue gradient and follows the browser color scheme", () => {
