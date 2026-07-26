@@ -286,7 +286,7 @@ function auditEngagementPrompt(audit = null) {
 function renderObligations(main) {
   const plan = state.obligations;
   const visibleCardLimit = 6;
-  const sections = ["overdue", "due", "upcoming"].map((status) => {
+  const sections = ["upcoming", "due", "overdue"].map((status) => {
     const items = plan.items.filter((item) => item.status === status);
     const cards = items.map((item, index) => obligationCard(item, index >= visibleCardLimit)).join("");
     const more = items.length > visibleCardLimit
@@ -299,12 +299,7 @@ function renderObligations(main) {
     .filter((run) => run.status !== "canceled")
     .sort((a, b) => String(b.occurredAt || b.occurredOn).localeCompare(String(a.occurredAt || a.occurredOn)));
   main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation board</h2><p>Recurring work uses a compliant completion range and an explicit overdue cutoff. Event reminders create a tracked checklist when a policy-triggering change occurs.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit templates</a></div></div>' +
-    '<section class="metrics obligation-metrics">' +
-      metric("Overdue", plan.counts.overdue, "Past the policy cutoff", plan.counts.overdue ? "bad" : "neutral") +
-      metric("Due", plan.counts.due, dueCountdownSummary(plan.items), plan.counts.due ? "warn" : "neutral") +
-      metric("Upcoming", plan.counts.upcoming, "Not open yet", "neutral") +
-      metric("Event runs", runs.length, runs.filter((run) => run.status === "complete").length + " complete", "neutral") +
-    '</section><div class="obligation-board">' + sections + '</div>' +
+    '<div class="obligation-board">' + sections + '</div>' +
     '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Ongoing reminders</p><h2>Start a policy event</h2><p>Use these when the underlying event happens. The generated checklist remains a normal set of Git-tracked records.</p></div></div><div class="event-trigger-grid">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
     '<section class="workflow-section"><div class="section-head"><div><p class="kicker">Event execution</p><h2>Active and recent workflows</h2><p>Link the requested completion records and evidence on each action item before marking it done.</p></div></div><div class="event-run-list">' + (runs.length ? runs.map(eventRunCard).join("") : empty("No policy events have been started.")) + '</div></section></div>';
   main.querySelectorAll("[data-start-event]").forEach((button) => button.addEventListener("click", () => {
@@ -589,13 +584,6 @@ function eventStepSummary(step) {
     owners.length ? "Owner: " + owners.join(", ") : "",
     proof.length ? "Proof: " + proof.join(" or ") : ""
   ].filter(Boolean).join(" · ");
-}
-
-function dueCountdownSummary(items) {
-  const due = items
-    .filter((item) => item.status === "due" && (item.overdueAt || item.overdueOn))
-    .sort((a, b) => String(a.overdueAt || a.overdueOn).localeCompare(String(b.overdueAt || b.overdueOn)))[0];
-  return due ? timingText(due) : "No due work";
 }
 
 function renderList(main, type, params = new URLSearchParams()) {
@@ -1940,7 +1928,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .packet-preflight{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.packet-preflight a{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);text-decoration:none}.packet-preflight .status-dot{margin-top:4px}.packet-preflight small,.packet-preflight strong{display:block}.packet-preflight small{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.07em}.packet-preflight strong{margin-top:3px;font-size:10px}
 @media(max-width:900px){.obligation-board,.event-trigger-grid{grid-template-columns:1fr}.event-run-list{grid-template-columns:1fr}.packet-builder form,.packet-preflight{grid-template-columns:1fr 1fr}.packet-builder .button{align-self:end}}
 @media(max-width:900px){.overview-grid{grid-template-columns:1fr}.overview-grid>.audit-panel{grid-column:auto}}
-@media(max-width:520px){.event-reminder-preview,.packet-builder form,.packet-preflight{grid-template-columns:1fr}.obligation-metrics,.packet-metrics{grid-template-columns:1fr}.obligation-card-head{display:block}.obligation-card-head strong{display:block;text-align:left;margin-top:3px}}
+@media(max-width:520px){.event-reminder-preview,.packet-builder form,.packet-preflight{grid-template-columns:1fr}.packet-metrics{grid-template-columns:1fr}.obligation-card-head{display:block}.obligation-card-head strong{display:block;text-align:left;margin-top:3px}}
 
 @media(prefers-color-scheme:dark){
   :root{--ink:#f4f5ff;--muted:#b8bfd3;--line:#343d5c;--paper:#000;--panel:#141a2e;--accent:#aab7ff;--accent-soft:#252e52;--accent-light:#9aabff;--focus:#bdc7ff;--amber:#ffd08a;--red:#ffaaa0;--surface-soft:#1b2238;--surface-muted:#252d48;--field:#11172a;--field-readonly:#1c2338;--shadow:0 12px 34px rgba(0,0,0,.3)}

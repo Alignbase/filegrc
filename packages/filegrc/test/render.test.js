@@ -561,6 +561,8 @@ test("runs optional onboarding from committed renderer settings", () => {
 
 test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function renderObligations\(main\)/);
+  assert.match(APP_SCRIPT, /const sections = \["upcoming", "due", "overdue"\]\.map/);
+  assert.doesNotMatch(APP_SCRIPT, /class="metrics obligation-metrics"/);
   assert.match(APP_SCRIPT, /state\.obligations\.counts\.overdue/);
   assert.match(APP_SCRIPT, /daysUntilOverdue/);
   assert.match(APP_SCRIPT, /dueWindowStart/);
