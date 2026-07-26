@@ -328,7 +328,7 @@ test("keeps hostile workspace text inert in static HTML", () => {
 test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /html,body\{height:100%;overflow:hidden\}/);
   assert.match(APP_STYLES, /\.sidebar\{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain\}/);
-  assert.match(APP_STYLES, /\.sidebar-nav\{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain/);
+  assert.match(APP_STYLES, /\.sidebar-nav\{[^}]*flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain/);
   assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
   assert.match(APP_STYLES, /\.sidebar-footer\{flex:0 0 auto;[^}]*background:#000024;/);
 });
@@ -375,6 +375,11 @@ test("uses the readiness path as the nested sidebar information architecture", (
   assert.match(APP_SCRIPT, /title: "Run the program",\s+description: "Recurring and event work"/);
   assert.match(APP_SCRIPT, /class="nav-group nav-stage /);
   assert.match(APP_SCRIPT, /class="nav-group nav-subgroup /);
+  assert.match(APP_SCRIPT, /class="nav-count"/);
+  assert.match(APP_SCRIPT, /class="nav-control-slot"/);
+  assert.match(APP_STYLES, /--nav-count-width:28px;--nav-control-width:14px/);
+  assert.match(APP_STYLES, /\.nav-subgroup>\.nav-subheading,\.nav-subgroup>\.nav-items a\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--nav-count-width\) var\(--nav-control-width\)/);
+  assert.match(APP_STYLES, /\.nav-count\{justify-self:end;text-align:right;font-variant-numeric:tabular-nums\}/);
   assert.doesNotMatch(APP_SCRIPT, /<section class="nav-path"><p>Readiness path<\/p>/);
   assert.match(APP_SCRIPT, /function readinessStageForRoute\(route\)/);
   assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
