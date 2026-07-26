@@ -452,6 +452,14 @@ test("proper-cases dropdown labels and uses native required validation", () => {
   assert.match(APP_SCRIPT, /field\.requiredWhen/);
 });
 
+test("lets record editors close without validating required fields", () => {
+  assert.match(APP_SCRIPT, /<button type="button" class="icon-button" data-editor-dismiss aria-label="Close">/);
+  assert.match(APP_SCRIPT, /<button type="button" class="button" data-editor-dismiss>Cancel<\/button>/);
+  assert.match(APP_SCRIPT, /<button type="submit" class="button primary" id="save-record">/);
+  assert.match(APP_SCRIPT, /querySelectorAll\("\[data-editor-dismiss\]"\).*dialog\.close\(\)/);
+  assert.match(APP_SCRIPT, /querySelector\("form"\)\.addEventListener\("submit", async \(event\) => \{\s+event\.preventDefault\(\)/);
+});
+
 test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_SCRIPT, /const LIST_PAGE_SIZE = 25/);
   assert.match(APP_SCRIPT, /const SEARCH_PAGE_SIZE = 25/);

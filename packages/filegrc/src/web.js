@@ -1307,17 +1307,18 @@ function openEditor(type, entry = null, options = {}) {
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
   const contentNames = names.filter((name) => fields[name].content);
-  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || record.title || definition.title) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || record.title || definition.title) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
     contentNames.map((name) => {
       const path = record[name];
       const generated = !entry?.content?.[name];
       const source = entry?.content?.[name]?.source ?? "# " + (record.title || "New " + definition.title) + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
       return '<label class="content-editor-field" data-content-editor="' + esc(name) + '"><span>' + esc(fields[name].label || humanize(name)) + ' Markdown</span><textarea data-content-source="' + esc(name) + '" data-generated-content="' + generated + '" spellcheck="true">' + esc(source) + '</textarea></label>';
     }).join("") +
-    '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
+    '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelectorAll("[data-editor-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   wireEditorRequirements(dialog, record, fields, definition.oneOf || []);
   dialog.querySelector(".advanced-editor textarea").addEventListener("input", () => { dialog.dataset.jsonDirty = "true"; });
   if (!entry) {
@@ -1348,7 +1349,8 @@ function openEditor(type, entry = null, options = {}) {
       previousTitle = nextTitle;
     });
   }
-  dialog.querySelector("#save-record").addEventListener("click", async () => {
+  dialog.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
     try {
       if (!dialog.querySelector("form").reportValidity()) return;
       const updated = dialog.dataset.jsonDirty === "true"
