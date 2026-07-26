@@ -891,18 +891,6 @@ function initialOnboardingDraft() {
 function onboardingSteps() {
   return [
     {
-      target: ".overview-hero",
-      kicker: "Mental model",
-      title: "Files are the program",
-      body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. The renderer edits those files, and Git records their history.",
-      points: [
-        "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
-        "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
-        "Review the workspace diff, then commit in Repository or with Git.",
-        "The dashboard derives program status from the current repository state."
-      ]
-    },
-    {
       target: null,
       kicker: "SOC 2 basics",
       title: "SOC 2 is an audit away",
@@ -916,6 +904,18 @@ function onboardingSteps() {
           title: "Type 2",
           body: "An auditor evaluates whether your controls operated consistently throughout a review period, most commonly six months. You provide dated evidence showing that the policies were followed across that period."
         }
+      ]
+    },
+    {
+      target: ".overview-hero",
+      kicker: "Mental model",
+      title: "Files are the program",
+      body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. The renderer edits those files, and Git records their history.",
+      points: [
+        "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
+        "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
+        "Review the workspace diff, then commit in Repository or with Git.",
+        "The dashboard derives program status from the current repository state."
       ]
     },
     {
