@@ -358,6 +358,52 @@ Compatibility rules:
 - Changed field meanings or renamed required fields need an explicit migration.
 - Compatibility fixtures represent every supported historical model.
 
+## Upgrade experience
+
+Package upgrades and data migrations are separate. Installing a newer `filegrc` updates the engine, renderer, and bundled model registry. It never edits `data/`. A workspace stays on its declared model version until a user or agent explicitly migrates it.
+
+The Repository page should show:
+
+- Installed `filegrc` version
+- Declared dependency range and resolved lockfile version
+- Current workspace data-model version
+- Newest data-model version bundled with the installed engine
+- Whether the installed engine supports the current workspace
+
+This status is available offline. Each engine release includes machine-readable compatibility and migration metadata. The update fields needed before installation are also published as npm package metadata, so an update check does not download or run an unknown release.
+
+Checking npm for a newer engine is an explicit action because the workspace must remain useful without a network connection. The UI exposes a **Check for Updates** button and keeps its cached result under ignored `.filegrc/` state. It presents compatible updates as a quiet notice, security updates as recommended work, and releases that need migration as a review-required notice rather than a blocking modal.
+
+Headless users receive the same information and decisions through planned commands:
+
+```text
+filegrc upgrade --check
+filegrc upgrade --check --json
+filegrc migrate --to <model-version>
+filegrc migrate --to <model-version> --json
+filegrc migrate --to <model-version> --apply
+```
+
+`upgrade --check` may query the package registry because the user invoked it explicitly. `migrate` defaults to a read-only plan. The plan names the source and target model, changed files and fields, required user decisions, compatibility risks, and rollback steps. `--apply` is the only migration form that may change source data.
+
+The guided path is:
+
+1. Require valid, committed FileGRC source files and identify the current commit as the rollback point. Unrelated repository changes outside the workspace do not block migration.
+2. Update the package and lockfile without changing the workspace model.
+3. Validate the existing data with the new engine.
+4. Stage a complete migration candidate under `.filegrc/migrations/`.
+5. Validate the candidate against the target model and present its diff.
+6. Apply only after explicit confirmation, leaving the changes uncommitted.
+7. Validate again and direct the user to review and commit the migration separately.
+
+Migration recipes are ordered, deterministic, idempotent, and machine-readable. Longer upgrades run one model version at a time. A journal records apply progress so an interrupted migration can resume or restore the original files. The workspace version changes only after all target records have been written successfully.
+
+Automatic migration may rename known fields, preserve stable IDs and content paths, and convert values when the mapping is unambiguous. It must stop before writing when a new required fact cannot be derived, an enum value has no safe mapping, or a resource would be removed. The plan asks for those decisions rather than inserting plausible compliance data. Removed or deprecated values remain preserved until the user resolves them.
+
+The installed engine keeps readers, validators, and renderers for every model it claims to support. Removing one of those readers is a breaking package change and requires a released forward migration first. An unsupported workspace receives a recovery page and CLI diagnostic with the current model, supported versions, last compatible engine range, migration command, and Git rollback instructions. It must never fall back to a different model or partially render data under the wrong rules.
+
+Generator templates and user data have a different lifecycle. Updating `filegrc` does not replace the generated README, `AGENTS.md`, policies, training, or starter records. New repositories receive the latest template. Existing repositories may receive a versioned starter-content advisory or three-way proposal, but applying it is explicit and preserves local edits.
+
 ## Delivery state
 
 Implemented:
@@ -378,9 +424,9 @@ Next:
 - Add evidence capture metadata and audit completeness reports
 - Add compatibility fixtures for every published model version
 - Add licensed criteria content and optional trust-category mappings
-- Add explicit migrations when a non-additive model change is needed
+- Add offline version reporting, opt-in update checks, and machine-readable upgrade status
+- Add staged migration planning and apply commands before the first non-additive model change
 
 ## Decisions still open
 
 - Evidence size limits and confidential-evidence policy
-- Whether the first release includes schema migration commands
