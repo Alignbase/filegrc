@@ -342,11 +342,21 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
   assert.match(APP_SCRIPT, /type: "system"/);
   assert.match(APP_SCRIPT, /type: "audit"/);
-  assert.match(APP_SCRIPT, /Agents can use the same files and commands without opening the renderer/);
+  assert.match(APP_SCRIPT, /Compliance artifacts are files/);
+  assert.match(APP_SCRIPT, /Commit the change; Git records the rest/);
+  assert.match(APP_SCRIPT, /Work the recurring queue/);
+  assert.match(APP_SCRIPT, /Create evidence in batches/);
+  assert.match(APP_SCRIPT, /Have an agent prepare a batch, review it, then commit the batch together/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
   assert.match(APP_SCRIPT, /id="start-onboarding"/);
+  assert.match(APP_SCRIPT, /id="commit-workspace"/);
+  assert.match(APP_SCRIPT, /fetch\("\/api\/commit"/);
+  assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
+  assert.match(APP_SCRIPT, /class="panel schedule-panel"/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
   assert.match(APP_STYLES, /\.onboarding-focus\{/);
+  assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(5,1fr\)/);
+  assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form\{grid-template-columns:1fr\}/);
 });
 

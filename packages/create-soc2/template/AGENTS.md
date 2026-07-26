@@ -27,7 +27,7 @@ Git supplies file authors, commit timestamps, messages, diffs, and revisions. Do
 
 Domain events still need explicit dates. Keep values such as `occurredOn`, `approvedOn`, `reviewedOn`, `completedOn`, and audit-period dates in their records.
 
-Make focused commits with messages that explain the reason for the change. The engine writes files but never creates commits automatically. Review `git diff` before every commit.
+Make focused commits with messages that explain the reason for the change. The engine never creates commits automatically. Review the workspace diff, then use Commit changes on Repository or the Git CLI. The renderer validates the workspace and requires an explicit message before it creates a commit.
 
 Do not rewrite or remove committed records that explain prior audit periods. Close or retire them. Delete only mistakes and uncommitted drafts.
 
@@ -54,7 +54,7 @@ The local app keeps IDs out of the guided form, generates them during creation, 
 
 `data/renderer.json` stores committed renderer preferences. New workspaces set `showOnboarding` to `true`. Completing or skipping onboarding sets it to `false`; the app does not commit that change.
 
-Onboarding explains the file and Git workflow, then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a `system` record and may create a planned `audit` record. Treat both as drafts to review against actual scope.
+Onboarding explains the file and Git workflow, recurring obligations, and batch evidence preparation, then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a `system` record and may create a planned `audit` record. Treat both as drafts to review against actual scope.
 
 The renderer is optional. Agents may set `showOnboarding` to `false` and maintain all records headlessly. Restart onboarding from Repository when useful. Read-only builds never run it.
 

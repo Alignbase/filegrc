@@ -2,14 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
+import { serializeWorkspaceMutation } from "./mutation.js";
 import { resolveContentPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 
-const mutationQueues = new Map();
-
 export async function createResource(input, record, options = {}) {
-  return serializeMutation(input, (root) => createResourceUnlocked(root, record, options));
+  return serializeWorkspaceMutation(input, (root) => createResourceUnlocked(root, record, options));
 }
 
 async function createResourceUnlocked(input, record, options) {
@@ -44,7 +43,7 @@ async function createResourceUnlocked(input, record, options) {
 }
 
 export async function updateResource(input, type, id, record, options = {}) {
-  return serializeMutation(input, (root) => updateResourceUnlocked(root, type, id, record, options));
+  return serializeWorkspaceMutation(input, (root) => updateResourceUnlocked(root, type, id, record, options));
 }
 
 async function updateResourceUnlocked(input, type, id, record, options) {
@@ -77,7 +76,7 @@ async function updateResourceUnlocked(input, type, id, record, options) {
 }
 
 export async function updateContent(input, dataRelativePath, source, options = {}) {
-  return serializeMutation(input, (root) => updateContentUnlocked(root, dataRelativePath, source, options));
+  return serializeWorkspaceMutation(input, (root) => updateContentUnlocked(root, dataRelativePath, source, options));
 }
 
 async function updateContentUnlocked(input, dataRelativePath, source, options) {
@@ -90,7 +89,7 @@ async function updateContentUnlocked(input, dataRelativePath, source, options) {
 }
 
 export async function deleteResource(input, type, id, options = {}) {
-  return serializeMutation(input, (root) => deleteResourceUnlocked(root, type, id, options));
+  return serializeWorkspaceMutation(input, (root) => deleteResourceUnlocked(root, type, id, options));
 }
 
 async function deleteResourceUnlocked(input, type, id, options) {
@@ -253,16 +252,4 @@ async function exclusiveContentFiles(loaded, record) {
     files.push({ path: contentPath, dataRelativePath, source: contentSource, mode });
   }
   return files;
-}
-
-function serializeMutation(input, task) {
-  const root = resolveWorkspaceRoot(input);
-  const previous = mutationQueues.get(root) ?? Promise.resolve();
-  const run = previous.catch(() => {}).then(() => task(root));
-  let tracked;
-  tracked = run.finally(() => {
-    if (mutationQueues.get(root) === tracked) mutationQueues.delete(root);
-  });
-  mutationQueues.set(root, tracked);
-  return tracked;
 }

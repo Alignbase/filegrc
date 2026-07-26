@@ -241,7 +241,7 @@ These are presentation fields, not data fields. Operational dates remain explici
 
 The engine follows file renames when possible. A resource ID remains the durable identity if a path changes.
 
-CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The UI shows uncommitted changes. Suggested commit messages are a later convenience and will never commit without an explicit request.
+CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The Repository page shows the workspace diff and offers an explicit Commit changes action after validation. It scopes the commit to the workspace and uses the configured Git identity. The Git CLI remains available for every workflow.
 
 ## Audit evidence
 
@@ -289,11 +289,13 @@ Primary pages group the resource catalog into:
 - Audits: engagements, requests, control testing, exceptions, responses, and reports
 - Repository: Git history, uncommitted changes, validation, and workspace settings
 
+For active obligations, the dashboard derives the next calendar occurrence from the recurrence rule and anchor date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence.
+
 Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. This keeps onboarding guidance beside the work instead of maintaining a separate tour.
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
-New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer uses it to offer a short modal workflow that explains the Git source of truth, resource map, search, validation, and commit boundary. Its setup step collects only compliance-domain scope: the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a system and optional planned audit, then sets `showOnboarding` to `false`. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them.
+New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer uses it to offer a short modal workflow covering the operating model: artifacts are files, Git is the audit trail, recurring obligations form the work queue, and evidence can be prepared in reviewed batches. Its setup step collects only compliance-domain scope: the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a system and optional planned audit, then sets `showOnboarding` to `false`. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them from Repository or the Git CLI.
 
 Onboarding never runs in a read-only build. It can be restarted from Repository, or bypassed entirely by editing the same data files through an agent or other tooling. Repositories created before the renderer settings record remain valid and do not start onboarding automatically.
 

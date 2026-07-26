@@ -15,9 +15,9 @@ npm run serve
 
 You need Node.js 20 or newer and Git. The setup command asks for the company name, your name as the initial policy owner, and a security contact email.
 
-Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. It never commits changes for you.
+Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. Review changes on Repository, then create a validated commit there or use the Git CLI.
 
-The first local run offers optional onboarding for the initial service boundary and audit objective. Completing or skipping it updates `data/renderer.json`. You can restart it from Repository or bypass the UI and edit the same files directly.
+The first local run explains the file and Git workflow, recurring obligations, and bulk evidence preparation before offering optional setup for the initial service boundary and audit objective. Completing or skipping onboarding updates `data/renderer.json`. You can restart it from Repository or bypass the UI and edit the same files directly.
 
 The local server has no authentication and binds to loopback by default. Do not expose its write API to an untrusted network.
 

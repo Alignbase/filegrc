@@ -2,7 +2,7 @@ import { createServer as createHttpServer } from "node:http";
 import { getResourceDefinition } from "../model/index.js";
 import { FAVICON_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
-import { getFileHistory } from "./git.js";
+import { commitWorkspace, getFileHistory } from "./git.js";
 import { createAppState } from "./state.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
@@ -30,6 +30,10 @@ export function createSoc2Server(input = process.cwd(), options = {}) {
         const record = payload.record ?? payload;
         const result = await createResource(input, record, { content: payload.record ? payload.content : undefined });
         return json(response, 201, { record: result.record });
+      }
+      if (request.method === "POST" && url.pathname === "/api/commit") {
+        const payload = await readJson(request);
+        return json(response, 201, await commitWorkspace(input, payload.message));
       }
       if (request.method === "PUT" && url.pathname === "/api/content") {
         const payload = await readJson(request);
@@ -180,7 +184,7 @@ function statusFor(error) {
   if (/changed after you opened/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
-  if (/invalid|required|unsafe|match|workspace|singleton|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
+  if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
   return 500;
 }
 
