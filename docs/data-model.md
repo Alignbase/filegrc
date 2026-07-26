@@ -106,7 +106,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `complementary-control`
 
-Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described.
+Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described. A complementary-control record is not required for SOC 2 when no such dependency applies.
 
 Policy basis: The system description and vendor model define these dependencies. Internal policies still require owners to identify, communicate, and monitor them.
 
@@ -165,7 +165,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `control-test`
 
-Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period.
+Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period. Management-run control-test records are not required for SOC 2; the auditor performs independent testing, while these records support readiness and internal assurance.
 
 Policy basis: The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.
 
@@ -205,7 +205,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `team`
 
-Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records.
+Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records. A separate team register is not required for SOC 2; named people can hold these responsibilities directly.
 
 Policy basis: The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.
 
@@ -230,7 +230,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `document`
 
-Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git.
+Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git. A general document catalog is not required for SOC 2; use it for governed material that is not a policy or another record type.
 
 Policy basis: Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.
 
@@ -426,7 +426,7 @@ Markdown companions:
 
 #### `data-request`
 
-Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion.
+Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion. Data-request tracking is not required for a SOC 2 Security-only report; use it when privacy criteria, law, or contracts make the workflow relevant.
 
 Policy basis: The data handling policy requires requests to reach the responsible owner and keeps erasable personal data out of immutable Git history.
 
@@ -460,7 +460,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `exception`
 
-Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry.
+Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry. An exception record is not required for SOC 2 unless the organization approves a departure.
 
 Policy basis: The information security and data handling policies require a business reason, risk assessment, compensating controls, suitable approval, and an expiration or review date.
 
@@ -593,7 +593,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `service-account`
 
-Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry.
+Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry. A separate service-account register is not required for SOC 2; use this page when non-human identities need their own inventory.
 
 Policy basis: The information security policy requires important identities to be inventoried, owned, protected, reviewed, and removed when unneeded.
 
@@ -821,7 +821,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `vulnerability`
 
-Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification.
+Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification. A separate FileGRC vulnerability register is not required for SOC 2 when a scanner or ticket system remains the source of truth and retains auditor-ready evidence.
 
 Policy basis: The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.
 
@@ -890,7 +890,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `incident`
 
-Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work.
+Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work. An incident record is not required for SOC 2 when no incident has occurred.
 
 Policy basis: The information security and data handling policies require immediate reporting, investigation, containment, recovery, evidence preservation, and notification review.
 
@@ -1067,7 +1067,7 @@ At least one of `filePaths`, `externalReference`, **content Markdown** is requir
 
 #### `obligation`
 
-Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises.
+Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises. Obligation records are not required for SOC 2; they are FileGRC's scheduling layer for policy work.
 
 Policy basis: Obligations turn policy language into an owned schedule and link each task to its policies, controls, scope, and completion records.
 
@@ -1099,7 +1099,7 @@ Markdown companions:
 
 #### `obligation-event`
 
-One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state.
+One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state. Obligation-event records are not required for SOC 2; they keep event-driven policy work complete and auditable.
 
 Policy basis: Event runs make onboarding, offboarding, material changes, incidents, and similar policy triggers explicit and auditable.
 
@@ -1122,7 +1122,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `finding`
 
-Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification.
+Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification. A finding record is not required for SOC 2 when no gap has been identified.
 
 Policy basis: The information security policy requires issues from monitoring, audits, incidents, scans, and reviews to be tracked through corrective action.
 
@@ -1153,7 +1153,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `action-item`
 
-Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity.
+Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity. A separate action-item tracker is not required for SOC 2; use this page when follow-up should stay linked to its source and evidence.
 
 Policy basis: Starter policies require material issues and review decisions to produce named owners, due dates, evidence, and tracked corrective work.
 
@@ -1234,7 +1234,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `audit-request`
 
-One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up.
+One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up. A separate FileGRC request tracker is not required for SOC 2 when the auditor's system remains the source of truth.
 
 Policy basis: Audit requests turn the engagement scope into owned deliverables and preserve the exact evidence and response supplied to the auditor.
 
@@ -1292,7 +1292,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `renderer-settings`
 
-Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow.
+Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow. Renderer settings are not required for SOC 2.
 
 Policy basis: This record configures the local renderer. It is not a SOC 2 control, policy, audit record, or substitute for evidence.
 

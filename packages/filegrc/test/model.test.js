@@ -35,6 +35,25 @@ test("v1 model exposes the complete resource registry", () => {
     content: { label: "Policy", primary: true, required: true }
   });
   assert.equal(model.resources.evidence.oneOf[0].includes("$markdown:content"), true);
+  for (const type of [
+    "renderer-settings",
+    "service-account",
+    "team",
+    "document",
+    "obligation",
+    "obligation-event",
+    "complementary-control",
+    "control-test",
+    "finding",
+    "exception",
+    "action-item",
+    "vulnerability",
+    "incident",
+    "data-request",
+    "audit-request"
+  ]) {
+    assert.match(model.resources[type].description, /not required for (?:a )?SOC 2/, `${type} states that it is optional`);
+  }
 });
 
 test("model versions cannot escape the packaged model registry", () => {

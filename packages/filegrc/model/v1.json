@@ -60,7 +60,7 @@
       "pluralTitle": "Renderer settings",
       "group": "repository",
       "singleton": "renderer.json",
-      "description": "Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow.",
+      "description": "Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow. Renderer settings are not required for SOC 2.",
       "guidance": {
         "policyBasis": "This record configures the local renderer. It is not a SOC 2 control, policy, audit record, or substitute for evidence.",
         "cadence": "Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff."
@@ -104,7 +104,7 @@
       "pluralTitle": "Service accounts",
       "group": "people-access",
       "collection": "service-accounts",
-      "description": "Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry.",
+      "description": "Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry. A separate service-account register is not required for SOC 2; use this page when non-human identities need their own inventory.",
       "guidance": {
         "policyBasis": "The information security policy requires important identities to be inventoried, owned, protected, reviewed, and removed when unneeded.",
         "cadence": "Create before use. Review privileged and production access quarterly and other important access annually; retire or expire unused accounts.",
@@ -130,7 +130,7 @@
       "pluralTitle": "Teams",
       "group": "governance",
       "collection": "teams",
-      "description": "Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records.",
+      "description": "Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records. A separate team register is not required for SOC 2; named people can hold these responsibilities directly.",
       "guidance": {
         "policyBasis": "The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.",
         "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes.",
@@ -215,7 +215,7 @@
       "pluralTitle": "Documents",
       "group": "governance",
       "collection": "documents",
-      "description": "Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git.",
+      "description": "Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git. A general document catalog is not required for SOC 2; use it for governed material that is not a policy or another record type.",
       "guidance": {
         "policyBasis": "Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.",
         "cadence": "Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use.",
@@ -292,7 +292,7 @@
       "pluralTitle": "Obligations",
       "group": "work",
       "collection": "obligations",
-      "description": "Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises.",
+      "description": "Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises. Obligation records are not required for SOC 2; they are FileGRC's scheduling layer for policy work.",
       "guidance": {
         "policyBasis": "Obligations turn policy language into an owned schedule and link each task to its policies, controls, scope, and completion records.",
         "cadence": "Use the recurrence and start date on each record. Create separate completion records for every period instead of overwriting the obligation.",
@@ -324,7 +324,7 @@
       "pluralTitle": "Obligation events",
       "group": "work",
       "collection": "obligation-events",
-      "description": "One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state.",
+      "description": "One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state. Obligation-event records are not required for SOC 2; they keep event-driven policy work complete and auditable.",
       "guidance": {
         "policyBasis": "Event runs make onboarding, offboarding, material changes, incidents, and similar policy triggers explicit and auditable.",
         "cadence": "Create when the event occurs or is scheduled. Complete every generated action within its policy window, then close the event."
@@ -418,7 +418,7 @@
       "pluralTitle": "Complementary controls",
       "group": "program",
       "collection": "complementary-controls",
-      "description": "Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described.",
+      "description": "Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described. A complementary-control record is not required for SOC 2 when no such dependency applies.",
       "guidance": {
         "policyBasis": "The system description and vendor model define these dependencies. Internal policies still require owners to identify, communicate, and monitor them.",
         "cadence": "Review for every audit and after material customer-responsibility, vendor, contract, integration, or service changes.",
@@ -476,7 +476,7 @@
       "pluralTitle": "Control tests",
       "group": "program",
       "collection": "control-tests",
-      "description": "Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period.",
+      "description": "Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period. Management-run control-test records are not required for SOC 2; the auditor performs independent testing, while these records support readiness and internal assurance.",
       "guidance": {
         "policyBasis": "The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.",
         "cadence": "Plan from control frequency, risk, and audit scope. Record the exact period or as-of date and complete review before relying on the result.",
@@ -520,7 +520,7 @@
       "pluralTitle": "Findings",
       "group": "work",
       "collection": "findings",
-      "description": "Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification.",
+      "description": "Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification. A finding record is not required for SOC 2 when no gap has been identified.",
       "guidance": {
         "policyBasis": "The information security policy requires issues from monitoring, audits, incidents, scans, and reviews to be tracked through corrective action.",
         "cadence": "Create when identified, assign a risk-based due date, review while open, and close only after remediation is verified.",
@@ -550,7 +550,7 @@
       "pluralTitle": "Exceptions",
       "group": "risk",
       "collection": "exceptions",
-      "description": "Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry.",
+      "description": "Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry. An exception record is not required for SOC 2 unless the organization approves a departure.",
       "guidance": {
         "policyBasis": "The information security and data handling policies require a business reason, risk assessment, compensating controls, suitable approval, and an expiration or review date.",
         "cadence": "Approve before the departure begins, review through its stated cadence or expiry, and close or renew it through a new risk decision.",
@@ -579,7 +579,7 @@
       "pluralTitle": "Action items",
       "group": "work",
       "collection": "action-items",
-      "description": "Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity.",
+      "description": "Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity. A separate action-item tracker is not required for SOC 2; use this page when follow-up should stay linked to its source and evidence.",
       "guidance": {
         "policyBasis": "Starter policies require material issues and review decisions to produce named owners, due dates, evidence, and tracked corrective work.",
         "cadence": "Create when work is assigned, review until complete, record blockers, and link completion evidence before closing."
@@ -988,7 +988,7 @@
       "pluralTitle": "Vulnerabilities",
       "group": "security-operations",
       "collection": "vulnerabilities",
-      "description": "Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification.",
+      "description": "Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification. A separate FileGRC vulnerability register is not required for SOC 2 when a scanner or ticket system remains the source of truth and retains auditor-ready evidence.",
       "guidance": {
         "policyBasis": "The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.",
         "cadence": "Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.",
@@ -1056,7 +1056,7 @@
       "pluralTitle": "Incidents",
       "group": "security-operations",
       "collection": "incidents",
-      "description": "Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work.",
+      "description": "Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work. An incident record is not required for SOC 2 when no incident has occurred.",
       "guidance": {
         "policyBasis": "The information security and data handling policies require immediate reporting, investigation, containment, recovery, evidence preservation, and notification review.",
         "cadence": "Create on report or detection, update material events as they progress, and complete a retrospective within one week after a material incident.",
@@ -1194,7 +1194,7 @@
       "pluralTitle": "Data requests",
       "group": "governance",
       "collection": "data-requests",
-      "description": "Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion.",
+      "description": "Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion. Data-request tracking is not required for a SOC 2 Security-only report; use it when privacy criteria, law, or contracts make the workflow relevant.",
       "guidance": {
         "policyBasis": "The data handling policy requires requests to reach the responsible owner and keeps erasable personal data out of immutable Git history.",
         "cadence": "Create on receipt, set the deadline from applicable law or contract, verify identity outside this repository when needed, and record completion.",
@@ -1271,7 +1271,7 @@
       "pluralTitle": "Audit requests",
       "group": "audits",
       "collection": "audit-requests",
-      "description": "One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up.",
+      "description": "One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up. A separate FileGRC request tracker is not required for SOC 2 when the auditor's system remains the source of truth.",
       "guidance": {
         "policyBasis": "Audit requests turn the engagement scope into owned deliverables and preserve the exact evidence and response supplied to the auditor.",
         "cadence": "Create on receipt, assign immediately, meet the auditor due date, bind evidence to the requested period and Git revision, and close only after acceptance."
