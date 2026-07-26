@@ -399,6 +399,15 @@ test("aligns list and record page headers", () => {
   assert.match(APP_STYLES, /\.detail-head \.header-breadcrumbs\{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center\}/);
 });
 
+test("places list filters before the create action in the page header", () => {
+  const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
+  assert.match(listSource, /const listTools = '<div class="list-tools list-header-tools">/);
+  assert.match(listSource, /records<\/span>' \+ createButton \+ '<\/div>'/);
+  assert.match(listSource, /\+ listTools \+ '<\/div>' \+ resourceGuide\(type\)/);
+  assert.match(APP_STYLES, /\.list-header-tools\{flex:1;justify-content:flex-end;margin:0 0 0 28px\}/);
+  assert.match(APP_STYLES, /\.page-intro>\.list-header-tools\{justify-content:flex-start;margin:15px 0 0\}/);
+});
+
 test("provides model-driven Record Markdown without exposing its path", () => {
   assert.match(APP_SCRIPT, /function recordContentDefinition\(type\)/);
   assert.match(APP_SCRIPT, /!definition \|\| !config\?\.slot \|\| definition\.markdown/);
