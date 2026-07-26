@@ -15,8 +15,21 @@ function createFavicon() {
     }
   }
 
-  outlineShape(pixels, insideDocument, 3.2, WHITE);
-  drawStroke(pixels, [[39, 9], [39, 20], [50, 20]], 2.6, WHITE);
+  drawStroke(pixels, [
+    [18, 8],
+    [39, 8],
+    [51, 20],
+    [51, 50],
+    [50, 53],
+    [47, 55],
+    [17, 55],
+    [14, 54],
+    [12, 51],
+    [12, 13],
+    [14, 10],
+    [18, 8]
+  ], 2.3, WHITE);
+  drawStroke(pixels, [[39, 8], [39, 20], [51, 20]], 2.3, WHITE);
 
   const rows = Buffer.alloc((SIZE * 4 + 1) * SIZE);
   for (let y = 0; y < SIZE; y += 1) {
@@ -42,39 +55,6 @@ function insideRoundedSquare(x, y, radius) {
   const cornerX = x < radius ? radius - 1 : x >= SIZE - radius ? SIZE - radius : x;
   const cornerY = y < radius ? radius - 1 : y >= SIZE - radius ? SIZE - radius : y;
   return Math.hypot(x - cornerX, y - cornerY) <= radius;
-}
-
-function insideDocument(x, y) {
-  if (!insideRoundedRectangle(x, y, 12, 8, 40, 48, 5)) return false;
-  return y >= 20 || x <= 39 + (y - 8);
-}
-
-function insideRoundedRectangle(x, y, left, top, width, height, radius) {
-  const right = left + width - 1;
-  const bottom = top + height - 1;
-  if (x < left || x > right || y < top || y > bottom) return false;
-  const cornerX = x < left + radius ? left + radius : x > right - radius ? right - radius : x;
-  const cornerY = y < top + radius ? top + radius : y > bottom - radius ? bottom - radius : y;
-  return Math.hypot(x - cornerX, y - cornerY) <= radius;
-}
-
-function outlineShape(pixels, contains, width, color) {
-  const radius = Math.ceil(width);
-  for (let y = 0; y < SIZE; y += 1) {
-    for (let x = 0; x < SIZE; x += 1) {
-      if (!contains(x, y)) continue;
-      let boundary = false;
-      for (let offsetY = -radius; offsetY <= radius && !boundary; offsetY += 1) {
-        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
-          if (Math.hypot(offsetX, offsetY) <= width && !contains(x + offsetX, y + offsetY)) {
-            boundary = true;
-            break;
-          }
-        }
-      }
-      if (boundary) setPixel(pixels, x, y, color);
-    }
-  }
 }
 
 function backgroundColor(x, y) {

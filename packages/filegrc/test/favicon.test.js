@@ -3,15 +3,17 @@ import { inflateSync } from "node:zlib";
 import test from "node:test";
 import { FAVICON_PNG } from "../src/favicon.js";
 
-test("renders a thick transparent document outline", () => {
+test("renders a thick document outline with a clean folded corner", () => {
   const pixels = decodePixels(FAVICON_PNG);
 
   assert.deepEqual(pixelAt(pixels, 0, 0), [0, 0, 0, 0]);
-  assert.deepEqual(pixelAt(pixels, 13, 30), [248, 249, 255, 255]);
+  assert.deepEqual(pixelAt(pixels, 12, 30), [248, 249, 255, 255]);
   assert.deepEqual(pixelAt(pixels, 22, 20), [0, 0, 79, 255]);
   assert.deepEqual(pixelAt(pixels, 32, 42), [0, 0, 54, 255]);
-  assert.deepEqual(pixelAt(pixels, 20, 33), [0, 0, 71, 255]);
-  assert.deepEqual(pixelAt(pixels, 44, 51), [0, 0, 53, 255]);
+  assert.deepEqual(pixelAt(pixels, 45, 14), [248, 249, 255, 255]);
+  assert.deepEqual(pixelAt(pixels, 39, 15), [248, 249, 255, 255]);
+  assert.deepEqual(pixelAt(pixels, 45, 20), [248, 249, 255, 255]);
+  assert.deepEqual(pixelAt(pixels, 42, 15), [0, 0, 68, 255]);
 });
 
 function decodePixels(png) {
