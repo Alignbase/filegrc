@@ -392,7 +392,9 @@ test("uses a concise record edit action", () => {
 test("aligns list and record page headers", () => {
   assert.match(APP_SCRIPT, /class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"/);
   assert.doesNotMatch(APP_SCRIPT, /class="type-pill"/);
-  assert.match(APP_STYLES, /\.detail-head\{margin-bottom:25px\}/);
+  assert.match(APP_STYLES, /\.page-intro,\.detail-head\{margin-bottom:25px\}/);
+  assert.match(APP_STYLES, /\.page-guide\{[^}]*margin:0 0 16px/);
+  assert.doesNotMatch(APP_STYLES, /\.page-guide\{margin-top:-/);
   assert.match(APP_STYLES, /\.detail-head h2\{margin:7px 0\}/);
   assert.match(APP_STYLES, /\.detail-head \.header-breadcrumbs\{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center\}/);
 });
