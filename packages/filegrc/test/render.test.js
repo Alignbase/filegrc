@@ -379,6 +379,13 @@ test("places record context left of Markdown on wide screens", () => {
   assert.match(APP_STYLES, /\.detail-grid\{grid-template-columns:1fr\}/);
 });
 
+test("places source attributes first in record metadata", () => {
+  assert.match(APP_SCRIPT, /const sourceMetadata = '<div><dt>Source file<\/dt>/);
+  assert.match(APP_SCRIPT, /<dt>Workspace revision<\/dt>/);
+  assert.match(APP_SCRIPT, /<dl class="metadata">' \+ sourceMetadata \+ visible\.map/);
+  assert.doesNotMatch(APP_SCRIPT, /<h3>Source<\/h3>/);
+});
+
 test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /const READINESS_STAGES = \[/);
   assert.match(APP_SCRIPT, /title: "Scope",\s+description: "Systems and boundary"/);
