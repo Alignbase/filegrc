@@ -366,6 +366,10 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /!state\.readOnly && rendererSettingsEntry/);
   assert.match(APP_SCRIPT, /onboardingDialog\.showModal\(\)/);
   assert.match(APP_SCRIPT, /onboardingDialog\.addEventListener\("cancel"/);
+  assert.match(APP_SCRIPT, /function positionOnboardingShade\(target\)/);
+  assert.match(APP_SCRIPT, /function onboardingTarget\(step\)/);
+  assert.match(APP_SCRIPT, /target: \["\.repo-chip", 'a\[href="#\/repository"\]', "\.mobile-nav"\]/);
+  assert.match(APP_SCRIPT, /window\.addEventListener\("scroll", positionCurrentOnboarding, true\)/);
   assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
   assert.match(APP_SCRIPT, /type: "system"/);
   assert.match(APP_SCRIPT, /type: "audit"/);
@@ -389,7 +393,10 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
   assert.match(APP_SCRIPT, /class="panel schedule-panel"/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
+  assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{background:transparent;backdrop-filter:none\}/);
+  assert.match(APP_STYLES, /\.onboarding-shade\{position:fixed;inset:0;z-index:60;pointer-events:none\}/);
   assert.match(APP_STYLES, /\.onboarding-focus\{/);
+  assert.match(APP_STYLES, /\.onboarding-dialog\{max-height:56vh\}\.onboarding-actions\{position:sticky/);
   assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(6,1fr\)/);
   assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
