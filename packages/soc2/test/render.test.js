@@ -253,6 +253,7 @@ test("uses the shared blue gradient and follows the browser color scheme", () =>
   assert.match(renderIndex(), /<meta name="color-scheme" content="light dark">/);
   assert.match(APP_STYLES, /--primary-gradient:linear-gradient\(135deg,#000070 0%,#000035 60%\)/);
   assert.match(APP_STYLES, /\.sidebar\{background:var\(--sidebar\);color:#eef1ff\}/);
+  assert.match(APP_SCRIPT, /<img class="mark" src="\.\/favicon\.png" alt="" width="39" height="39">/);
   assert.match(APP_STYLES, /\.button\.primary\{background:var\(--primary-gradient\);border-color:#000070;color:#fff\}/);
   assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)/);
 });

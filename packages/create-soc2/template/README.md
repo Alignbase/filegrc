@@ -23,8 +23,10 @@ Run `npm run build` to create a read-only site under `.soc2/site/`. Commit the s
 
 Review the starter drafts against actual practice before approving them. Read `AGENTS.md` before changing records or adding automation.
 
+The starter uses the SOC 2 Security category. It includes Common Criteria and Description Criteria reference IDs, a planned control catalog, a security and risk oversight team, recurring work from the included policies, a 5x5 risk method, and four data classifications. It does not include the licensed criteria text. Add optional trust categories, systems, vendors, service commitments, audit scope, and evidence during setup.
+
 ## Scope
 
 This repository manages GRC records and audit evidence. It does not replace identity systems, infrastructure logs, monitoring, endpoint controls, backups, vulnerability tooling, deployment controls, or incident detection. Record those systems and link their evidence here.
 
-The included policies and training are starting material. Review them for your systems, contracts, laws, and actual practices before approval.
+The included framework mappings, controls, policies, schedules, and training are starting material. Planned controls are not proof of implementation. Review them for your systems, contracts, laws, and actual practices before approval.

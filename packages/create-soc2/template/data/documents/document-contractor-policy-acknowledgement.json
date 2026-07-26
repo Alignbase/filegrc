@@ -17,5 +17,6 @@
     "anchorDate": "{{effective_date}}"
   },
   "classification": "internal",
-  "audience": ["contractors"]
+  "audience": ["contractors"],
+  "controlIds": ["control-workforce-expectations"]
 }

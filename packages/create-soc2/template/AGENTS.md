@@ -50,6 +50,22 @@ Never change a resource ID after it is committed. Create a replacement and link 
 
 The local app keeps IDs out of the guided form, generates them during creation, and leaves them unchanged when a record is renamed. It presents the core model fields and relationship pickers. Use its advanced JSON section for optional fields and extensions. It rejects a save if the source file changed after the editor opened, so reload and reapply the change instead of overwriting newer work.
 
+## Starter baseline
+
+The generated workspace starts with the SOC 2 Security category:
+
+- Active framework records for the 2017 Trust Services Criteria with revised points of focus (2022) and the 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
+- The 33 Common Criteria reference IDs from CC1.1 through CC9.2, without the licensed criteria text
+- The nine Description Criteria reference IDs from DC1 through DC9, without the licensed criteria text
+- Planned controls mapped to those references and the included policies
+- A security and risk oversight team chaired by the initial policy owner
+- Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
+- A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
+
+Treat every planned control as a proposal until its owner, scope, operation, and evidence match actual practice. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
+
+The recurring obligations mirror the fixed cadences in the starter policies. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.
+
 ## Content and approvals
 
 The seed policy owner is {{policy_owner_name}} and the reporting address is {{security_contact_email}}. Replace ownership or contacts when responsibilities change.

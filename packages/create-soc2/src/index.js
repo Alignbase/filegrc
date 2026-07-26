@@ -4,6 +4,7 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline/promises";
+import { baselineRecordPaths, writeBaselineRecords } from "./defaults.js";
 
 const execute = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -33,6 +34,7 @@ export async function createSoc2(options = {}) {
   });
   await rename(join(target, "gitignore"), join(target, ".gitignore"));
   await renderTemplate(target, parameterConfig, values);
+  await writeBaselineRecords(target, values.effective_date);
 
   if (options.install !== false) {
     await run("npm", ["install", "--ignore-scripts"], target);
@@ -117,9 +119,11 @@ async function assertWritableTarget(target, force) {
 async function assertNoTemplateCollisions(target) {
   const template = join(packageRoot, "template");
   const collisions = [];
-  for (const source of await collectFiles(template)) {
+  const templatePaths = (await collectFiles(template)).map((source) => {
     const templatePath = relative(template, source);
-    const destinationPath = templatePath === "gitignore" ? ".gitignore" : templatePath;
+    return templatePath === "gitignore" ? ".gitignore" : templatePath;
+  });
+  for (const destinationPath of [...templatePaths, ...baselineRecordPaths()]) {
     try {
       await lstat(join(target, destinationPath));
       collisions.push(destinationPath);

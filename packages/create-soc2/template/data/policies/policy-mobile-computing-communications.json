@@ -17,5 +17,13 @@
     "anchorDate": "{{effective_date}}"
   },
   "audience": ["employees", "contractors"],
-  "acknowledgementRequired": true
+  "acknowledgementRequired": true,
+  "controlIds": [
+    "control-policy-management",
+    "control-strong-authentication",
+    "control-physical-workspace-security",
+    "control-encryption-transmission",
+    "control-endpoint-protection",
+    "control-network-security"
+  ]
 }

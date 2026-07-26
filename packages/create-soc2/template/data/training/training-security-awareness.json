@@ -20,5 +20,10 @@
     "policy-data-protection-handling",
     "policy-information-security",
     "policy-mobile-computing-communications"
+  ],
+  "controlIds": [
+    "control-security-communication",
+    "control-security-training",
+    "control-incident-response"
   ]
 }

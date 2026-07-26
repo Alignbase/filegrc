@@ -152,6 +152,24 @@ It generates the initial effective date from the current date. These four values
 
 This is the smallest useful initial prompt set. The company name identifies the program and appears in policy text. The policy owner gives the seed records an accountable person. The security email gives people one report and escalation route. Timezone defaults to UTC, and users can edit it later. Jurisdiction, industry, risk scoring, retention periods, and control owners do not need create-time prompts.
 
+## Starter SOC 2 baseline
+
+`create-soc2` generates a Security-category baseline before organization-specific onboarding:
+
+- The AICPA 2017 Trust Services Criteria with revised points of focus (2022)
+- All 33 Common Criteria reference IDs from CC1.1 through CC9.2
+- The AICPA 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
+- All nine Description Criteria reference IDs from DC1 through DC9
+- A planned control catalog mapped to the Common Criteria and starter policies
+- A security and risk oversight team with a quarterly meeting cadence
+- Recurring obligations derived from the fixed review, scan, test, training, and meeting cadences in the starter policies
+- A default 5x5 likelihood-and-impact risk method
+- Public, Internal, Confidential, and Restricted classification definitions
+
+The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Onboarding will collect that scope and let users add optional Availability, Processing Integrity, Confidentiality, or Privacy criteria.
+
+Every starter control is `planned`. A user must confirm the owner, system scope, actual operation, and evidence before marking it implemented. A policy statement alone does not prove that a control operates.
+
 ## Storage
 
 Structured resources use JSON because Node.js can parse it without dependencies and tools can edit it reliably. All internally authored long-form content uses Markdown, including policies, charters, plans, procedures, minutes, system descriptions, assertions, narratives, templates, and audit responses.
@@ -323,16 +341,16 @@ Implemented:
 - Guided live JSON and Markdown CRUD, safe related-content deletion, stale-write detection, and a read-only static build
 - Prompt-driven repository creation, dependency resolution, lockfile creation, and Git initialization
 - Full resource fixtures, unit and end-to-end tests using Node.js built-ins, and browser screenshot coverage for every current page
+- SOC 2 Security Common Criteria and Description Criteria references, planned controls, oversight ownership, recurring obligations, risk defaults, and classification defaults in newly generated workspaces
 
 Next:
 
 - Add evidence capture metadata and audit completeness reports
 - Add compatibility fixtures for every published model version
-- Add framework requirements and organization-defined control mappings
+- Add licensed criteria content and optional trust-category mappings
 - Add explicit migrations when a non-additive model change is needed
 
 ## Decisions still open
 
-- Risk scoring method and default thresholds
 - Evidence size limits and confidential-evidence policy
 - Whether the first release includes schema migration commands

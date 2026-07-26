@@ -19,6 +19,12 @@
   "classification": "internal",
   "audience": ["employees", "contractors"],
   "acknowledgementRequired": true,
+  "controlIds": [
+    "control-policy-management",
+    "control-incident-exercise",
+    "control-backup-restoration",
+    "control-continuity-exercise"
+  ],
   "relatedDocumentIds": [],
   "evidenceIds": []
 }

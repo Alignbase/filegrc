@@ -23,6 +23,37 @@
     "policy-data-protection-handling",
     "policy-mobile-computing-communications"
   ],
+  "controlIds": [
+    "control-security-governance",
+    "control-policy-management",
+    "control-security-communication",
+    "control-workforce-expectations",
+    "control-security-training",
+    "control-performance-review",
+    "control-risk-assessment",
+    "control-monitoring-remediation",
+    "control-access-authorization",
+    "control-strong-authentication",
+    "control-access-review-offboarding",
+    "control-physical-workspace-security",
+    "control-data-classification-inventory",
+    "control-encryption-transmission",
+    "control-data-retention-disposal",
+    "control-inventory-configuration",
+    "control-endpoint-protection",
+    "control-network-security",
+    "control-change-management",
+    "control-vulnerability-management",
+    "control-penetration-testing",
+    "control-logging-monitoring",
+    "control-incident-response",
+    "control-incident-exercise",
+    "control-backup-restoration",
+    "control-continuity-exercise",
+    "control-vendor-due-diligence",
+    "control-vendor-monitoring",
+    "control-security-exceptions"
+  ],
   "relatedDocumentIds": [
     "document-business-continuity-disaster-recovery"
   ]

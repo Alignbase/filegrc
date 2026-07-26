@@ -5,5 +5,23 @@
   "type": "workspace",
   "title": "{{company_name}} SOC 2 Program",
   "organizationName": "{{company_name}}",
-  "timezone": "UTC"
+  "timezone": "UTC",
+  "description": "SOC 2 Security program based on the AICPA Trust Services Criteria.",
+  "riskMethodology": {
+    "method": "5x5 likelihood and impact",
+    "likelihoodScale": ["Rare", "Unlikely", "Possible", "Likely", "Almost certain"],
+    "impactScale": ["Negligible", "Minor", "Moderate", "Major", "Severe"],
+    "ratingBands": {
+      "low": "1-4",
+      "medium": "5-9",
+      "high": "10-16",
+      "critical": "17-25"
+    }
+  },
+  "classificationDefinitions": {
+    "Public": "Approved for public release.",
+    "Internal": "Intended for the workforce and approved partners.",
+    "Confidential": "Disclosure could harm the organization, a customer, or another person.",
+    "Restricted": "Disclosure or alteration could cause severe harm or trigger legal duties."
+  }
 }

@@ -18,5 +18,6 @@
   },
   "classification": "internal",
   "audience": ["contractors"],
+  "controlIds": ["control-security-training"],
   "relatedResourceIds": ["training-security-awareness"]
 }

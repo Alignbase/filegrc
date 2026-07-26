@@ -18,6 +18,13 @@
   },
   "audience": ["employees"],
   "acknowledgementRequired": true,
+  "controlIds": [
+    "control-security-governance",
+    "control-policy-management",
+    "control-security-communication",
+    "control-workforce-expectations",
+    "control-performance-review"
+  ],
   "relatedDocumentIds": [
     "document-employee-handbook-acknowledgement",
     "document-employee-policy-acknowledgement"
