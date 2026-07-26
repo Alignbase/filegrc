@@ -1,10 +1,9 @@
 import { deflateSync } from "node:zlib";
 
 const SIZE = 64;
-const GLYPHS = {
-  F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
-  G: ["01110", "10001", "10000", "10111", "10001", "10001", "01110"]
-};
+const PAPER = [248, 249, 255, 255];
+const FOLD = [181, 192, 255, 255];
+const CHECK = [0, 0, 112, 255];
 
 export const FAVICON_PNG = createFavicon();
 
@@ -23,8 +22,9 @@ function createFavicon() {
     }
   }
 
-  drawGlyph(pixels, GLYPHS.F, 5, 14, 5, [255, 255, 255, 255]);
-  drawGlyph(pixels, GLYPHS.G, 34, 14, 5, [181, 192, 255, 255]);
+  fillShape(pixels, insideDocument, PAPER);
+  fillShape(pixels, (x, y) => insideTriangle(x, y, [39, 8], [39, 20], [51, 20]), FOLD);
+  drawStroke(pixels, [[21, 34], [29, 42], [44, 27]], 3.2, CHECK);
 
   const rows = Buffer.alloc((SIZE * 4 + 1) * SIZE);
   for (let y = 0; y < SIZE; y += 1) {
@@ -52,18 +52,62 @@ function insideRoundedSquare(x, y, radius) {
   return Math.hypot(x - cornerX, y - cornerY) <= radius;
 }
 
-function drawGlyph(pixels, glyph, startX, startY, scale, color) {
-  glyph.forEach((row, rowIndex) => {
-    [...row].forEach((filled, columnIndex) => {
-      if (filled !== "1") return;
-      for (let y = 0; y < scale; y += 1) {
-        for (let x = 0; x < scale; x += 1) {
-          const offset = ((startY + rowIndex * scale + y) * SIZE + startX + columnIndex * scale + x) * 4;
-          pixels.set(color, offset);
-        }
-      }
-    });
-  });
+function insideDocument(x, y) {
+  if (!insideRoundedRectangle(x, y, 12, 8, 40, 48, 5)) return false;
+  return y >= 20 || x <= 39 + (y - 8);
+}
+
+function insideRoundedRectangle(x, y, left, top, width, height, radius) {
+  const right = left + width - 1;
+  const bottom = top + height - 1;
+  if (x < left || x > right || y < top || y > bottom) return false;
+  const cornerX = x < left + radius ? left + radius : x > right - radius ? right - radius : x;
+  const cornerY = y < top + radius ? top + radius : y > bottom - radius ? bottom - radius : y;
+  return Math.hypot(x - cornerX, y - cornerY) <= radius;
+}
+
+function insideTriangle(x, y, first, second, third) {
+  const a = triangleSign(x, y, first, second);
+  const b = triangleSign(x, y, second, third);
+  const c = triangleSign(x, y, third, first);
+  return (a <= 0 && b <= 0 && c <= 0) || (a >= 0 && b >= 0 && c >= 0);
+}
+
+function triangleSign(x, y, first, second) {
+  return (x - second[0]) * (first[1] - second[1]) - (first[0] - second[0]) * (y - second[1]);
+}
+
+function fillShape(pixels, contains, color) {
+  for (let y = 0; y < SIZE; y += 1) {
+    for (let x = 0; x < SIZE; x += 1) {
+      if (contains(x, y)) setPixel(pixels, x, y, color);
+    }
+  }
+}
+
+function drawStroke(pixels, points, radius, color) {
+  for (let y = 0; y < SIZE; y += 1) {
+    for (let x = 0; x < SIZE; x += 1) {
+      const onStroke = points.slice(1).some((point, index) => (
+        distanceToSegment(x, y, points[index], point) <= radius
+      ));
+      if (onStroke) setPixel(pixels, x, y, color);
+    }
+  }
+}
+
+function distanceToSegment(x, y, start, end) {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const lengthSquared = dx * dx + dy * dy;
+  const progress = lengthSquared
+    ? Math.max(0, Math.min(1, ((x - start[0]) * dx + (y - start[1]) * dy) / lengthSquared))
+    : 0;
+  return Math.hypot(x - (start[0] + progress * dx), y - (start[1] + progress * dy));
+}
+
+function setPixel(pixels, x, y, color) {
+  pixels.set(color, (y * SIZE + x) * 4);
 }
 
 function pngChunk(type, data) {
