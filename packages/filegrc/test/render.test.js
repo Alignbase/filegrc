@@ -391,7 +391,9 @@ test("provides model-driven Record Markdown without exposing its path", () => {
   assert.match(APP_SCRIPT, /Object\.values\(definition\.fields \|\| \{\}\)\.some\(\(field\) => field\.content\)/);
   assert.match(APP_SCRIPT, /data-record-content/);
   assert.match(APP_SCRIPT, /Add Record Markdown/);
-  assert.match(APP_SCRIPT, /contentPathFor\(updated\.type, updated\.id, recordContent\.field\)/);
+  assert.match(APP_SCRIPT, /markdownPathFor\(updated\.type, updated\.id, recordContent\.field, updated\)/);
+  assert.match(APP_SCRIPT, /state\.model\.markdownStorage === "companion"/);
+  assert.doesNotMatch(APP_SCRIPT, /data-field-group="' \+ esc\(markdown\.name\)/);
   assert.match(APP_SCRIPT, /entry\.content\[recordContent\.field\]/);
   assert.match(APP_STYLES, /\.record-content-details\{/);
 });

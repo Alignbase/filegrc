@@ -47,7 +47,8 @@ The project does not replace operational security systems. Organizations still n
     │   ├── bin/
     │   ├── model/
     │   │   ├── index.js
-    │   │   └── v1.json
+    │   │   ├── v1.json
+    │   │   └── v2.json
     │   ├── src/
     │   └── test/
     └── create-filegrc/
@@ -94,18 +95,20 @@ filegrc describe <resource-type>
 filegrc obligations
 filegrc trigger <event-type>
 filegrc evidence-packet
+filegrc migrate --to <model-version>
 ```
 
 `filegrc serve` provides the interactive local view and CRUD operations. `filegrc build` creates a read-only static view. `filegrc validate` is suitable for local use and CI.
 
-The package reads older supported data-model versions. It may offer an explicit migration command later, but reading, serving, or building must never mutate source data.
+The package reads older supported data-model versions. `filegrc migrate` previews or explicitly applies a supported migration; reading, serving, building, and dependency installation never mutate source data.
 
 ## Model registry
 
-The `filegrc` package is the only source of truth for the data model. The initial representation is a versioned JSON registry:
+The `filegrc` package is the only source of truth for the data model. Every supported contract has a complete versioned JSON registry:
 
 ```text
 packages/filegrc/model/v1.json
+packages/filegrc/model/v2.json
 ```
 
 The registry defines:
@@ -120,7 +123,7 @@ The registry defines:
 - Search, filter, list, and form metadata
 - Compatibility and deprecation metadata
 
-The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Record Markdown through `notesPath`. The model's `recordContent` settings decide which result-bearing resources show this body by default. A source form is evidence for a workflow, not a schema to copy field for field.
+The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Record Markdown in implicit companion files. The model's `recordContent` settings decide which result-bearing resources show this body by default. A source form is evidence for a workflow, not a schema to copy field for field.
 
 The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
 
@@ -128,7 +131,7 @@ The engine loads the registry directly. Validation, CRUD forms, relationship pic
 
 Generated repositories contain only their records and a `dataModelVersion` in `data/workspace.json`. They do not receive copied schema files.
 
-`docs/data-model.md` is generated from the registry. `npm run validate` fails when the generated document differs from model v1.
+`docs/data-model.md` is generated from the newest registry. `npm run validate` fails when the generated document differs from model v2.
 
 The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
 
@@ -227,7 +230,7 @@ data/
 └── audit-requests/
 ```
 
-Most records are one JSON file. Long-form content is stored under `data/content/` and referenced from its structured record with a path relative to `data/`. `contentPath` points to reusable governed content. `notesPath` points to variable analysis, procedures, results, or discussion and appears as Record Markdown in the renderer. The renderer generates that path from the stable record ID. Evidence that includes local files gets its own directory containing `evidence.json` and the files it describes.
+Most records are one JSON file. Long-form content is a Markdown companion beside that JSON file, and the model names each supported Markdown slot. The primary companion uses the JSON basename with `.md`; secondary companions add a semantic suffix such as `-agenda.md`. Records do not store Markdown paths. The renderer and CLI derive them from the stable record location. Evidence that includes local files gets its own directory containing `evidence.json`, an optional `evidence.md`, and the files it describes.
 
 Policies and other authored documents do not carry embedded change-control tables. Git is their change history. A human-facing policy version remains available when it has contractual or organizational meaning.
 
@@ -374,7 +377,7 @@ This status is available offline. Each engine release includes machine-readable 
 
 Checking npm for a newer engine is an explicit action because the workspace must remain useful without a network connection. The UI exposes a **Check for Updates** button and keeps its cached result under ignored `.filegrc/` state. It presents compatible updates as a quiet notice, security updates as recommended work, and releases that need migration as a review-required notice rather than a blocking modal.
 
-Headless users receive the same information and decisions through planned commands:
+Headless users can plan and apply model migrations now. Upgrade checks remain planned:
 
 ```text
 filegrc upgrade --check
@@ -396,9 +399,9 @@ The guided path is:
 6. Apply only after explicit confirmation, leaving the changes uncommitted.
 7. Validate again and direct the user to review and commit the migration separately.
 
-Migration recipes are ordered, deterministic, idempotent, and machine-readable. Longer upgrades run one model version at a time. A journal records apply progress so an interrupted migration can resume or restore the original files. The workspace version changes only after all target records have been written successfully.
+Migration recipes are ordered, deterministic, and machine-readable. Longer upgrades run one model version at a time. The current v1-to-v2 migration builds and validates a complete candidate, then swaps the data tree while retaining the original under ignored `.filegrc/` state. The workspace version changes only after all target records have been written successfully.
 
-Automatic migration may rename known fields, preserve stable IDs and content paths, and convert values when the mapping is unambiguous. It must stop before writing when a new required fact cannot be derived, an enum value has no safe mapping, or a resource would be removed. The plan asks for those decisions rather than inserting plausible compliance data. Removed or deprecated values remain preserved until the user resolves them.
+Automatic migration may rename known fields, preserve stable IDs and Markdown content, and convert values when the mapping is unambiguous. It must stop before writing when a new required fact cannot be derived, an enum value has no safe mapping, or a resource would be removed. The plan asks for those decisions rather than inserting plausible compliance data. Removed or deprecated values remain preserved until the user resolves them.
 
 The installed engine keeps readers, validators, and renderers for every model it claims to support. Removing one of those readers is a breaking package change and requires a released forward migration first. An unsupported workspace receives a recovery page and CLI diagnostic with the current model, supported versions, last compatible engine range, migration command, and Git rollback instructions. It must never fall back to a different model or partially render data under the wrong rules.
 
@@ -425,7 +428,6 @@ Next:
 - Add compatibility fixtures for every published model version
 - Add licensed criteria content and optional trust-category mappings
 - Add offline version reporting, opt-in update checks, and machine-readable upgrade status
-- Add staged migration planning and apply commands before the first non-additive model change
 
 ## Decisions still open
 

@@ -5,7 +5,6 @@
   "title": "Employee Training Acknowledgement",
   "status": "draft",
   "documentKind": "attestation-template",
-  "contentPath": "content/document-employee-training-acknowledgement.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "version": "1.0",

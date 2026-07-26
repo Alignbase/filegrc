@@ -4,7 +4,6 @@
   "type": "policy",
   "title": "Anti-Bribery and Corruption Policy",
   "status": "draft",
-  "contentPath": "content/policy-anti-bribery-corruption.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "policyKind": "corporate-conduct",

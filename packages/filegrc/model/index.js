@@ -9,10 +9,14 @@ export function availableModelVersions() {
     .readdirSync(modelDirectory)
     .map((name) => /^v(.+)\.json$/.exec(name)?.[1])
     .filter(Boolean)
-    .sort();
+    .sort((left, right) => Number(left) - Number(right) || left.localeCompare(right));
 }
 
-export function loadModel(version = "1") {
+export function latestModelVersion() {
+  return availableModelVersions().at(-1);
+}
+
+export function loadModel(version = latestModelVersion()) {
   const requested = String(version);
   const versions = availableModelVersions();
   if (!versions.includes(requested)) {

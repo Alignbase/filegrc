@@ -5,7 +5,6 @@
   "title": "Business Continuity and Disaster Recovery Plan",
   "status": "draft",
   "documentKind": "plan",
-  "contentPath": "content/document-business-continuity-disaster-recovery.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "version": "1.0",

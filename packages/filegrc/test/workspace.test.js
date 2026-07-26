@@ -261,6 +261,71 @@ test("creates and updates Markdown content with its resource", async (context) =
   assert.equal((await validateWorkspace(root)).ok, true);
 });
 
+test("stores v2 Markdown beside records without path fields", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-companion-markdown-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root, { dataModelVersion: "2" });
+  const policy = {
+    schemaVersion: 1,
+    id: "policy-companion",
+    type: "policy",
+    title: "Companion Policy",
+    status: "draft",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-owner"]
+  };
+  await createResource(root, policy, { content: { content: "# Companion Policy\n\nInitial." } });
+  const markdownPath = join(root, "data", "policies", "policy-companion.md");
+  assert.match(await readFile(markdownPath, "utf8"), /Initial/);
+  const entry = (await createAppState(root)).resources.find(({ record }) => record.id === policy.id);
+  assert.equal("contentPath" in entry.record, false);
+  assert.equal(entry.content.content.path, "policies/policy-companion.md");
+  assert.match(entry.content.content.source, /Initial/);
+
+  await updateResource(root, policy.type, policy.id, { ...policy, status: "active" }, {
+    content: { content: "# Companion Policy\n\nUpdated." },
+    expectedRevision: entry.revision,
+    expectedContentRevisions: { [entry.content.content.path]: entry.content.content.revision }
+  });
+  assert.match(await readFile(markdownPath, "utf8"), /Updated/);
+  assert.equal((await validateWorkspace(root)).ok, true);
+
+  const deletion = await deleteResource(root, policy.type, policy.id);
+  assert.deepEqual(deletion.deletedContent, ["policies/policy-companion.md"]);
+  await assert.rejects(readFile(markdownPath, "utf8"), /ENOENT/);
+});
+
+test("requires configured v2 Markdown and accepts Markdown as an evidence source", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-required-companion-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root, { dataModelVersion: "2" });
+  const policy = {
+    schemaVersion: 1,
+    id: "policy-missing-markdown",
+    type: "policy",
+    title: "Missing Markdown",
+    status: "draft",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-owner"]
+  };
+  await assert.rejects(createResource(root, policy), /Required Policy Markdown is missing/);
+
+  const evidence = {
+    schemaVersion: 1,
+    id: "evidence-companion",
+    type: "evidence",
+    title: "Markdown Evidence",
+    status: "collected",
+    evidenceKind: "narrative",
+    source: "Program owner",
+    collectedOn: "2026-07-25",
+    classification: "Internal"
+  };
+  await createResource(root, evidence, { content: { content: "# Evidence\n\nReview notes." } });
+  assert.equal((await validateWorkspace(root)).ok, true);
+  assert.match(await readFile(join(root, "data", "evidence", evidence.id, "evidence.md"), "utf8"), /Review notes/);
+});
+
 test("stores common Record Markdown for result-bearing resources", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-record-markdown-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));

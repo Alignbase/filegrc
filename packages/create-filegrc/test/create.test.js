@@ -28,6 +28,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(readme.includes("{{"), false);
   assert.match(readme, /initializes Git when needed/);
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
+  assert.equal(workspace.dataModelVersion, "2");
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
   assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);
@@ -36,6 +37,10 @@ test("creates a complete generic repository with one dependency", async (context
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
   assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
+  const informationSecurityPolicy = JSON.parse(await readFile(join(target, "data", "policies", "policy-information-security.json"), "utf8"));
+  assert.equal("contentPath" in informationSecurityPolicy, false);
+  await access(join(target, "data", "policies", "policy-information-security.md"));
+  await assert.rejects(access(join(target, "data", "content")), /ENOENT/);
   const framework = JSON.parse(await readFile(join(target, "data", "frameworks", "framework-aicpa-trust-services-criteria.json"), "utf8"));
   assert.equal(framework.version, "2017 with revised points of focus (2022)");
   const descriptionFramework = JSON.parse(await readFile(join(target, "data", "frameworks", "framework-aicpa-soc2-description-criteria.json"), "utf8"));

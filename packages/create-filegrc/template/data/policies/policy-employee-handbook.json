@@ -4,7 +4,6 @@
   "type": "policy",
   "title": "Employee Handbook",
   "status": "draft",
-  "contentPath": "content/policy-employee-handbook.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "policyKind": "workforce-conduct",

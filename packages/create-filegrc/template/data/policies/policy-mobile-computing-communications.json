@@ -4,7 +4,6 @@
   "type": "policy",
   "title": "Mobile Computing and Communications Policy",
   "status": "draft",
-  "contentPath": "content/policy-mobile-computing-communications.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "policyKind": "information-security",

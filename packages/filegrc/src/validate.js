@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
 import { resolveContentPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
+import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { isRfc3339Timestamp } from "./time.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
@@ -83,6 +84,7 @@ export async function validateWorkspace(input = process.cwd()) {
         }
       }
     }
+    await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
   }
 
   diagnostics.sort((a, b) => `${a.severity}:${a.path}:${a.code}`.localeCompare(`${b.severity}:${b.path}:${b.code}`));
@@ -218,9 +220,35 @@ function validateRecord(record, definition, model, path, diagnostics) {
     validateValue(name, value, field, model, path, diagnostics);
   }
 
+}
+
+async function validateMarkdown(record, definition, model, root, path, diagnostics) {
+  const present = new Set();
+  for (const item of markdownEntries(model, record)) {
+    try {
+      if ((await stat(resolveDataPath(root, item.path))).isFile()) present.add(item.name);
+      else throw new Error("The Markdown path is not a file.");
+    } catch (cause) {
+      if (model.markdownStorage === "companion" && (item.required || cause.code !== "ENOENT")) {
+        const message = item.required && cause.code === "ENOENT"
+          ? `Required ${item.label} Markdown is missing at data/${item.path}.`
+          : `${item.label} Markdown must be a regular file at data/${item.path}.`;
+        diagnostics.push(error("missing-markdown", path, message));
+      }
+    }
+  }
+
   for (const choices of definition.oneOf ?? []) {
-    if (!choices.some((name) => !isMissing(record[name]))) {
-      diagnostics.push(error("missing-choice", path, `At least one of ${choices.join(", ")} is required.`));
+    const satisfied = choices.some((name) => (
+      isMarkdownChoice(name)
+        ? present.has(name.slice("$markdown:".length))
+        : !isMissing(record[name])
+    ));
+    if (!satisfied) {
+      const labels = choices.map((name) => (
+        isMarkdownChoice(name) ? `${name.slice("$markdown:".length)} Markdown` : name
+      ));
+      diagnostics.push(error("missing-choice", path, `At least one of ${labels.join(", ")} is required.`));
     }
   }
 }

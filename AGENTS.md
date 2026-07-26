@@ -49,12 +49,12 @@ The generated repository is the product. Keep it understandable to an engineer w
 
 ## Data rules
 
-The authoritative, versioned model is `packages/filegrc/model/v1.json`. `docs/data-model.md` is generated from that registry.
+The authoritative model registries are `packages/filegrc/model/v*.json`. Model v2 is current; v1 remains bundled for compatibility. `docs/data-model.md` is generated from the newest registry.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
-- Store canonical long-form Markdown under `data/content/` and reference it from structured records with paths relative to `data/`.
+- Store canonical long-form Markdown beside its structured JSON record. FileGRC derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
 - Structure fields only when the engine needs them for validation, filtering, relationships, lifecycle rules, due-date calculations, or audit-period completeness.
-- Put variable procedures, questionnaires, interviews, per-item decisions, detailed results, and provider-specific analysis in Markdown through `notesPath`. The model's `recordContent` settings determine when the renderer shows this Record Markdown body by default; the renderer generates its path from the stable record ID.
+- Put variable procedures, questionnaires, interviews, per-item decisions, detailed results, and provider-specific analysis in Record Markdown. The model's `recordContent` settings determine when the renderer shows this companion body by default.
 - Do not reproduce a source form as a nested schema. Add a field only after a stable cross-workflow need is clear.
 - Store all internally authored long-form content in Markdown. Policies, plans, charters, procedures, minutes, training material, assertions, narratives, templates, and audit responses must not use PDF or DOCX as their canonical format.
 - Treat signed forms, third-party reports, screenshots, and immutable exports as evidence attachments. They may be PDF or image files because their fixed representation is part of the evidence.

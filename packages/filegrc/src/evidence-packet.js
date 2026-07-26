@@ -6,6 +6,7 @@ import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { planObligations } from "./obligations.js";
 import { isWithin, resolveDataPath, resolveWorkspacePath } from "./paths.js";
 import { parseCalendarDate } from "./recurrence.js";
+import { markdownEntries } from "./resource-markdown.js";
 import { validateWorkspace } from "./validate.js";
 
 export async function prepareEvidencePacket(input, options = {}) {
@@ -246,16 +247,17 @@ export async function writeEvidencePacket(input, packet, options = {}) {
       const entry = entriesById.get(item.id);
       if (!entry) continue;
       await writePacketFile(output, join("records", item.type, `${item.id}.json`), entry.source, files);
-      const definition = validation.loaded.model.resources[item.type];
-      const fields = { ...validation.loaded.model.commonFields, ...definition?.fields };
-      for (const [name, field] of Object.entries(fields)) {
-        if (!field.content || typeof entry.record[name] !== "string") continue;
-        await copyPacketFile(
-          resolveDataPath(validation.loaded.root, entry.record[name]),
-          output,
-          join("content", entry.record[name].replace(/^content\//, "")),
-          files
-        );
+      for (const markdown of markdownEntries(validation.loaded.model, entry.record)) {
+        try {
+          await copyPacketFile(
+            resolveDataPath(validation.loaded.root, markdown.path),
+            output,
+            join("content", markdown.path.replace(/^content\//, "")),
+            files
+          );
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
       }
     }
     for (const item of packet.evidence) {

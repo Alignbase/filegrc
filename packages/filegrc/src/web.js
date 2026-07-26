@@ -667,7 +667,11 @@ function renderDetail(main, type, id) {
   const recordContent = recordContentDefinition(type);
   const narrative = recordNarrative(entry.record, fields);
   const narrativeNames = new Set(narrative.map(([name]) => name));
-  const visible = Object.entries(entry.record).filter(([name]) => !["schemaVersion", "id", "type", "title", "notesPath", "contentPath"].includes(name) && !narrativeNames.has(name));
+  const visible = Object.entries(entry.record).filter(([name]) => (
+    !["schemaVersion", "id", "type", "title"].includes(name)
+    && !fields[name]?.content
+    && !narrativeNames.has(name)
+  ));
   const content = Object.entries(entry.content);
   const sourceMetadata = '<div><dt>Source file</dt><dd><code>' + esc(entry.relativePath) + '</code></dd></div><div><dt>Workspace revision</dt><dd>' + (state.git.available ? '<code>' + esc(state.git.shortCommit) + '</code>' : "Unavailable until the workspace is committed.") + '</dd></div>';
   const narrativeContent = narrative.length
@@ -703,7 +707,16 @@ function recordNarrative(record, fields) {
 function recordContentDefinition(type) {
   const config = state.model.recordContent;
   const definition = state.model.resources[type];
-  if (!config?.field || !definition || Object.values(definition.fields || {}).some((field) => field.content)) return null;
+  if (!definition) return null;
+  if (state.model.markdownStorage === "companion") {
+    if (!config?.slot || definition.markdown) return null;
+    return {
+      field: config.slot,
+      label: config.label,
+      mode: config.defaultResourceTypes.includes(type) ? "default" : "optional"
+    };
+  }
+  if (!config?.field || Object.values(definition.fields || {}).some((field) => field.content)) return null;
   return {
     ...config,
     mode: config.defaultResourceTypes.includes(type) ? "default" : "optional"
@@ -1282,13 +1295,14 @@ function openEditor(type, entry = null, options = {}) {
   const definition = state.model.resources[type];
   const fields = { ...state.model.commonFields, ...definition.fields };
   const record = structuredClone(entry?.record || seedRecord(type, definition));
+  const markdownDefinitions = dedicatedMarkdownDefinitions(type);
   if (!entry && options.seed) {
     const previousId = record.id;
     Object.assign(record, options.seed);
     record.id = createResourceId(type, record.title, state.resources.map(({ record: existing }) => existing.id));
-    for (const [name, field] of Object.entries(fields)) {
-      if (field.content && record[name] === contentPathFor(type, previousId, name)) {
-        record[name] = contentPathFor(type, record.id, name);
+    for (const markdown of markdownDefinitions) {
+      if (markdown.legacyField && record[markdown.legacyField] === contentPathFor(type, previousId, markdown.legacyField)) {
+        record[markdown.legacyField] = contentPathFor(type, record.id, markdown.legacyField);
       }
     }
   }
@@ -1296,34 +1310,35 @@ function openEditor(type, entry = null, options = {}) {
     ...Object.entries(state.model.commonFields).filter(([, field]) => field.required).map(([name]) => name),
     ...(definition.required || [])
   ]);
-  const oneOf = new Set((definition.oneOf || []).flat());
+  const oneOf = new Set((definition.oneOf || []).flat().filter((name) => !name.startsWith("$markdown:")));
   const names = [...new Set([
     "title",
     ...required,
     ...(definition.listFields || []),
     ...Object.entries(fields).filter(([, field]) => field.requiredWhen).map(([name]) => name),
-    ...Object.entries(fields).filter(([name, field]) => field.content && name !== "notesPath" && (record[name] || required.has(name) || oneOf.has(name))).map(([name]) => name),
     ...oneOf
-  ])].filter((name) => !["schemaVersion", "id", "type"].includes(name) && fields[name]);
+  ])].filter((name) => !["schemaVersion", "id", "type"].includes(name) && fields[name] && !fields[name].content);
   const dialog = document.createElement("dialog");
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
-  const contentNames = names.filter((name) => fields[name].content);
+  const activeMarkdown = markdownDefinitions.filter((markdown) => (
+    markdown.required || markdown.oneOf || !entry || entry.content?.[markdown.name]
+  ));
   const recordContent = recordContentDefinition(type);
   const recordContentItem = recordContent ? entry?.content?.[recordContent.field] : null;
   dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
-    contentNames.map((name) => {
-      const path = record[name];
-      const generated = !entry?.content?.[name];
-      const source = entry?.content?.[name]?.source ?? "# " + (record.title || "New " + definition.title) + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
-      return '<label class="content-editor-field" data-content-editor="' + esc(name) + '"><span>' + esc(fields[name].label || humanize(name)) + ' Markdown</span><textarea data-content-source="' + esc(name) + '" data-generated-content="' + generated + '" spellcheck="true">' + esc(source) + '</textarea></label>';
+    activeMarkdown.map((markdown) => {
+      const generated = !entry?.content?.[markdown.name];
+      const source = entry?.content?.[markdown.name]?.source ?? "# " + (record.title || "New " + definition.title) + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
+      const requiredMark = markdown.required ? '<span class="required-mark">Required</span>' : markdown.oneOf ? '<span class="required-mark">One Required</span>' : "";
+      return '<label class="content-editor-field" data-content-editor="' + esc(markdown.name) + '"><span>' + esc(markdown.label) + ' Markdown' + requiredMark + '</span><textarea data-markdown-slot="' + esc(markdown.name) + '" data-generated-content="' + generated + '" spellcheck="true" ' + (markdown.required ? "required" : "") + '>' + esc(source) + '</textarea></label>';
     }).join("") + renderRecordContentEditor(type, record, entry, options) +
     '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelectorAll("[data-editor-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
-  wireEditorRequirements(dialog, record, fields, definition.oneOf || []);
+  wireEditorRequirements(dialog, record, fields, definition.oneOf || [], markdownDefinitions);
   dialog.querySelector(".advanced-editor textarea").addEventListener("input", () => { dialog.dataset.jsonDirty = "true"; });
   if (!entry) {
     const titleInput = dialog.querySelector('[data-field-group="title"] input');
@@ -1332,11 +1347,9 @@ function openEditor(type, entry = null, options = {}) {
     titleInput?.addEventListener("input", () => {
       const nextTitle = titleInput.value;
       const nextId = createResourceId(type, nextTitle, state.resources.map(({ record }) => record.id));
-      for (const name of contentNames) {
-        const pathInput = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"] input');
-        if (pathInput?.value === contentPathFor(type, previousId, name)) {
-          pathInput.value = contentPathFor(type, nextId, name);
-          record[name] = pathInput.value;
+      for (const markdown of markdownDefinitions) {
+        if (markdown.legacyField && record[markdown.legacyField] === contentPathFor(type, previousId, markdown.legacyField)) {
+          record[markdown.legacyField] = contentPathFor(type, nextId, markdown.legacyField);
         }
       }
       const previousHeading = "# " + (previousTitle || "New " + definition.title);
@@ -1361,18 +1374,25 @@ function openEditor(type, entry = null, options = {}) {
         ? JSON.parse(dialog.querySelector(".advanced-editor textarea").value)
         : readGuidedRecord(dialog, record, fields);
       const content = {};
-      dialog.querySelectorAll("[data-content-source]").forEach((textarea) => {
-        const path = updated[textarea.dataset.contentSource];
-        if (path) content[path] = textarea.value;
+      dialog.querySelectorAll("[data-markdown-slot]").forEach((textarea) => {
+        const markdown = markdownDefinitions.find(({ name }) => name === textarea.dataset.markdownSlot);
+        const existing = entry?.content?.[markdown.name];
+        if (textarea.value.trim() || existing || markdown.required) {
+          const path = markdownPathFor(updated.type, updated.id, markdown.name, updated);
+          if (markdown.legacyField) updated[markdown.legacyField] = path;
+          content[path] = textarea.value;
+        } else if (markdown.legacyField) {
+          delete updated[markdown.legacyField];
+        }
       });
       const recordContentSource = dialog.querySelector("[data-record-content]");
       if (recordContent && recordContentSource) {
         const existing = entry?.content?.[recordContent.field];
         if (recordContentSource.value.trim() || existing) {
-          const path = updated[recordContent.field] || contentPathFor(updated.type, updated.id, recordContent.field);
-          updated[recordContent.field] = path;
+          const path = markdownPathFor(updated.type, updated.id, recordContent.field, updated);
+          if (state.model.markdownStorage !== "companion") updated[recordContent.field] = path;
           content[path] = recordContentSource.value;
-        } else {
+        } else if (state.model.markdownStorage !== "companion") {
           delete updated[recordContent.field];
         }
       }
@@ -1380,7 +1400,7 @@ function openEditor(type, entry = null, options = {}) {
         ? "/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id)
         : options.obligationCompletion ? "/api/obligation-completions" : "/api/resources";
       const contentRevisions = Object.fromEntries([
-        ...contentNames.map((name) => [entry?.content?.[name]?.path, entry?.content?.[name]?.revision]),
+        ...activeMarkdown.map(({ name }) => [entry?.content?.[name]?.path, entry?.content?.[name]?.revision]),
         [recordContentItem?.path, recordContentItem?.revision]
       ].filter(([path, revision]) => path && revision));
       const response = await localFetch(url, {
@@ -1439,6 +1459,49 @@ function seedRecord(type, definition) {
 function contentPathFor(type, id, name) {
   const suffix = name === "contentPath" ? "" : "-" + name.replace(/Path$/, "").replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase());
   return "content/" + id + suffix + ".md";
+}
+
+function dedicatedMarkdownDefinitions(type) {
+  const definition = state.model.resources[type];
+  if (state.model.markdownStorage === "companion") {
+    const choices = new Set((definition.oneOf || []).flat().filter((name) => name.startsWith("$markdown:")).map((name) => name.slice("$markdown:".length)));
+    return Object.entries(definition.markdown || {}).map(([name, markdown]) => ({
+      name,
+      label: markdown.label || humanize(name),
+      primary: Boolean(markdown.primary),
+      required: Boolean(markdown.required),
+      oneOf: choices.has(name),
+      legacyField: null
+    }));
+  }
+  const fields = { ...state.model.commonFields, ...definition.fields };
+  const required = new Set(definition.required || []);
+  const choices = new Set((definition.oneOf || []).flat());
+  return Object.entries(fields)
+    .filter(([name, field]) => field.content && name !== state.model.recordContent?.field)
+    .map(([name, field]) => ({
+      name,
+      label: field.label || humanize(name.replace(/Path$/, "")),
+      primary: name === "contentPath",
+      required: required.has(name) || Boolean(field.required),
+      oneOf: choices.has(name),
+      legacyField: name
+    }));
+}
+
+function markdownPathFor(type, id, name, record = {}) {
+  if (state.model.markdownStorage !== "companion") {
+    return record[name] || contentPathFor(type, id, name);
+  }
+  const definition = state.model.resources[type];
+  const markdown = definition.markdown?.[name];
+  const primary = markdown ? Boolean(markdown.primary) : !definition.markdown && name === state.model.recordContent.slot;
+  const recordPath = definition.singleton || definition.collection + "/" + (definition.recordPath || "{id}.json").replaceAll("{id}", id);
+  const slash = recordPath.lastIndexOf("/");
+  const directory = slash === -1 ? "" : recordPath.slice(0, slash + 1);
+  const filename = recordPath.slice(slash + 1).replace(/\.json$/, "");
+  const suffix = primary ? "" : "-" + name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  return directory + filename + suffix + ".md";
 }
 
 function renderRecordContentEditor(type, record, entry, options) {
@@ -1513,7 +1576,7 @@ function fieldWrap(name, kind, label, requiredMark, control, help, required) {
   return '<div class="form-field" data-field-group="' + esc(name) + '" data-kind="' + esc(kind) + '" data-required="' + (required ? "true" : "false") + '"><div class="field-label" id="' + esc(labelId) + '">' + esc(label) + requiredMark + '</div>' + labelledControl + (help ? '<small>' + esc(help) + '</small>' : "") + '</div>';
 }
 
-function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
+function wireEditorRequirements(dialog, base, fields, oneOfGroups, markdownDefinitions = []) {
   const refreshGroup = (group, required) => {
     group.dataset.required = required ? "true" : "false";
     const mark = group.querySelector(".required-mark");
@@ -1529,6 +1592,10 @@ function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
     if (control) control.required = required;
   };
   const currentValue = (name) => {
+    const markdownName = name.startsWith("$markdown:")
+      ? name.slice("$markdown:".length)
+      : markdownDefinitions.find(({ legacyField }) => legacyField === name)?.name;
+    if (markdownName) return dialog.querySelector('[data-markdown-slot="' + CSS.escape(markdownName) + '"]')?.value;
     const group = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"]');
     if (!group) return base[name];
     if (group.dataset.kind === "relation-array") {
@@ -1553,10 +1620,13 @@ function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
     }
     for (const names of oneOfGroups) {
       const choices = names.map((name) => {
+        const markdownName = name.startsWith("$markdown:")
+          ? name.slice("$markdown:".length)
+          : markdownDefinitions.find(({ legacyField }) => legacyField === name)?.name;
         const group = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"]');
         const value = currentValue(name);
         const present = Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && String(value).trim() !== "";
-        return { control: group?.querySelector("input,select,textarea"), present };
+        return { control: markdownName ? dialog.querySelector('[data-markdown-slot="' + CSS.escape(markdownName) + '"]') : group?.querySelector("input,select,textarea"), present };
       }).filter(({ control }) => control);
       choices.forEach(({ control }) => {
         control.required = false;
@@ -1565,15 +1635,15 @@ function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
       const choice = choices.find(({ present }) => present) || choices[0];
       if (choice) {
         choice.control.required = true;
-        choice.control.setCustomValidity(choice.present ? "" : "Provide at least one of: " + names.map(humanize).join(", ") + ".");
+        choice.control.setCustomValidity(choice.present ? "" : "Provide at least one of: " + names.map((name) => humanize(name.replace(/^\$markdown:/, "") + (name.startsWith("$markdown:") ? " Markdown" : ""))).join(", ") + ".");
       }
     }
   };
   for (const group of dialog.querySelectorAll("[data-field-group]")) {
     refreshGroup(group, group.dataset.required === "true");
   }
-  dialog.querySelector(".form-grid").addEventListener("input", refresh);
-  dialog.querySelector(".form-grid").addEventListener("change", refresh);
+  dialog.querySelector("form").addEventListener("input", refresh);
+  dialog.querySelector("form").addEventListener("change", refresh);
   refresh();
 }
 
@@ -1799,6 +1869,8 @@ function fieldLabel(type, name) {
   if (name === "title") return state.model.resources[type]?.titleLabel || state.model.commonFields.title.label;
   const recordContent = recordContentDefinition(type);
   if (recordContent && name === recordContent.field) return recordContent.label;
+  const markdown = dedicatedMarkdownDefinitions(type).find((item) => item.name === name);
+  if (markdown) return markdown.label;
   return fieldDefinition(type, name)?.label || humanize(name);
 }
 function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || properCase(value); }

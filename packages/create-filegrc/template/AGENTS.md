@@ -15,7 +15,7 @@ Using this repository does not establish compliance by itself. Records must matc
 - Let the local app generate IDs from each record’s name or title. When editing JSON directly, keep IDs globally unique, human-readable, and lowercase kebab-case.
 - Use ISO 8601 dates and RFC 3339 timestamps.
 - Store relationships as resource IDs.
-- Put policies, plans, charters, procedures, meeting minutes, training, assertions, narratives, templates, and audit responses in Markdown under `data/content/`.
+- Put policies, plans, charters, procedures, meeting minutes, training, assertions, narratives, templates, and audit responses in Markdown beside their JSON records. FileGRC derives the Markdown name, so records do not contain file paths.
 - Put signed forms, screenshots, third-party reports, and immutable exports behind evidence records. These files may be PDF, image, CSV, or another fixed format.
 - Never fetch an external evidence reference automatically.
 - Do not store secrets, credentials, session data, or personal data that may need to be erased from Git history.
@@ -44,7 +44,7 @@ npx filegrc search "access review"
 npm run serve
 ```
 
-Prefer existing fields. Put organization-specific values under `extensions` with a namespace owned by {{company_name}}. Add structure only when validation, filtering, relationships, due dates, or audit completeness need it. Variable procedures, interviews, observations, rationale, and detailed results belong in Record Markdown through `notesPath`; FileGRC generates the path from the stable record ID.
+Prefer existing fields. Put organization-specific values under `extensions` with a namespace owned by {{company_name}}. Add structure only when validation, filtering, relationships, due dates, or audit completeness need it. Variable procedures, interviews, observations, rationale, and detailed results belong in the record's Markdown companion.
 
 Never change a resource ID after it is committed. Create a replacement and link the records if identity truly changes.
 
@@ -119,7 +119,7 @@ The seed policy owner is {{policy_owner_name}} and the reporting address is {{se
 
 Policy and training attestations must identify the exact Git revision of the content that a person acknowledged. Store signatures as evidence attachments and link their evidence IDs from the attestation.
 
-Committee and risk meeting minutes are `meeting` resources with Markdown in `minutesPath`. Use `agendaPath` for the agenda and `notesPath` only for extra working notes. Record attendees, decisions, risks discussed, and action item IDs. Keep action tracking in `action-item` records.
+Committee and risk meeting minutes are `meeting` resources with a primary Markdown companion. An optional `-agenda.md` companion holds the agenda. Record attendees, decisions, risks discussed, and action item IDs. Keep action tracking in `action-item` records.
 
 ## Audit evidence
 

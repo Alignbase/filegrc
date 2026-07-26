@@ -2,13 +2,15 @@ export function generateModelDocumentation(model) {
   const lines = [
     "# GRC Data Model",
     "",
-    "<!-- Generated from packages/filegrc/model/v1.json. Do not edit by hand. -->",
+    `<!-- Generated from packages/filegrc/model/v${model.modelVersion}.json. Do not edit by hand. -->`,
     "",
     `Model version: \`${model.modelVersion}\``,
     "",
     model.description,
     "",
-    "Each structured resource is one UTF-8 JSON file. Long-form work is Markdown under `data/content/`. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields.",
+    model.markdownStorage === "companion"
+      ? "Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths."
+      : "Each structured resource is one UTF-8 JSON file. Long-form work is Markdown under `data/content/`. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields.",
     "",
     "## Common fields",
     "",
@@ -22,7 +24,9 @@ export function generateModelDocumentation(model) {
     "",
     "## Record Markdown",
     "",
-    `The renderer uses the common \`${model.recordContent.field}\` field as an optional long-form Record body when a resource has no dedicated Markdown field. The path is generated from the stable resource ID rather than entered by the user.`,
+    model.markdownStorage === "companion"
+      ? "Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record."
+      : `The renderer uses the common \`${model.recordContent.field}\` field as an optional long-form Record body when a resource has no dedicated Markdown field. The path is generated from the stable resource ID rather than entered by the user.`,
     "",
     `Record Markdown is shown by default for: ${model.recordContent.defaultResourceTypes.map((type) => `\`${type}\``).join(", ")}. Other resources without dedicated Markdown can add it when structured fields are not enough.`,
     "",
@@ -46,7 +50,20 @@ export function generateModelDocumentation(model) {
       lines.push(`Path: \`${resource.singleton ? `data/${resource.singleton}` : `data/${resource.collection}/${recordPath}`}\``, "");
       const contentMode = recordContentMode(model, type, resource);
       if (contentMode) {
-        lines.push(`Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} through \`${model.recordContent.field}\`.`, "");
+        lines.push(
+          model.markdownStorage === "companion"
+            ? `Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} as an implicit companion file.`
+            : `Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} through \`${model.recordContent.field}\`.`,
+          ""
+        );
+      }
+      if (resource.markdown) {
+        lines.push("Markdown companions:", "");
+        for (const [name, markdown] of Object.entries(resource.markdown)) {
+          const suffix = markdown.primary ? ".md" : `-${name}.md`;
+          lines.push(`- **${markdown.label}**: \`${suffix}\` beside the JSON record${markdown.required ? " (required)" : " (optional)"}.`);
+        }
+        lines.push("");
       }
       lines.push("| Field | Type | Required | Notes |", "| --- | --- | --- | --- |");
       const required = new Set(resource.required ?? []);
@@ -55,7 +72,7 @@ export function generateModelDocumentation(model) {
         lines.push(`| \`${name}\` | ${fieldType(field)} | ${requiredLabel} | ${escapeCell(fieldNotes(field))} |`);
       }
       for (const choices of resource.oneOf ?? []) {
-        lines.push("", `At least one of ${choices.map((name) => `\`${name}\``).join(", ")} is required.`);
+        lines.push("", `At least one of ${choices.map(choiceLabel).join(", ")} is required.`);
       }
       lines.push("");
     }
@@ -70,8 +87,15 @@ export function generateModelDocumentation(model) {
 }
 
 function recordContentMode(model, type, resource) {
-  if (!model.recordContent?.field || Object.values(resource.fields ?? {}).some((field) => field.content)) return null;
+  if (model.markdownStorage === "companion") {
+    if (!model.recordContent?.slot || resource.markdown) return null;
+  } else if (!model.recordContent?.field || Object.values(resource.fields ?? {}).some((field) => field.content)) return null;
   return model.recordContent.defaultResourceTypes.includes(type) ? "default" : "optional";
+}
+
+function choiceLabel(name) {
+  if (name.startsWith("$markdown:")) return `**${name.slice("$markdown:".length)} Markdown**`;
+  return `\`${name}\``;
 }
 
 function fieldType(field) {

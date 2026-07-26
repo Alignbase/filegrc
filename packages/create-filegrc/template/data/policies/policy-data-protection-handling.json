@@ -4,7 +4,6 @@
   "type": "policy",
   "title": "Data Protection and Handling Policy",
   "status": "draft",
-  "contentPath": "content/policy-data-protection-handling.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "policyKind": "information-security",

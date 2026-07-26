@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export async function makeWorkspace(root) {
+export async function makeWorkspace(root, options = {}) {
+  const dataModelVersion = String(options.dataModelVersion ?? "1");
   await mkdir(join(root, "data", "people"), { recursive: true });
   await writeJson(join(root, "data", "workspace.json"), {
     schemaVersion: 1,
-    dataModelVersion: "1",
+    dataModelVersion,
     id: "workspace",
     type: "workspace",
     title: "Test SOC 2 Program",

@@ -4,7 +4,6 @@
   "type": "training",
   "title": "Security Awareness and Incident Response Training",
   "status": "draft",
-  "contentPath": "content/training-security-awareness.md",
   "ownerIds": ["person-policy-owner"],
   "audience": ["employees", "contractors"],
   "assignmentTrigger": "onboarding",

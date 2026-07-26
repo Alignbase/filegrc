@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
-import { resolveContentPath } from "./paths.js";
+import { resolveContentPath, resolveDataPath } from "./paths.js";
+import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
 
@@ -16,17 +17,17 @@ export async function createAppState(input = process.cwd(), options = {}) {
 
   for (const entry of loaded.entries) {
     const record = structuredClone(entry.record);
-    const definition = loaded.model.resources[record.type];
     const content = {};
-    if (definition) {
-      const fields = { ...loaded.model.commonFields, ...definition.fields };
-      for (const [name, field] of Object.entries(fields)) {
-        if (!field.content || typeof record[name] !== "string") continue;
+    if (loaded.model.resources[record.type]) {
+      for (const item of markdownEntries(loaded.model, record)) {
         try {
-          const source = await readFile(resolveContentPath(loaded.root, record[name]), "utf8");
-          content[name] = { source, html: renderMarkdown(source), path: record[name], revision: contentRevision(source) };
+          const path = loaded.model.markdownStorage === "companion"
+            ? resolveDataPath(loaded.root, item.path)
+            : resolveContentPath(loaded.root, item.path);
+          const source = await readFile(path, "utf8");
+          content[item.name] = { source, html: renderMarkdown(source), path: item.path, revision: contentRevision(source) };
         } catch {
-          // Validation reports the missing file.
+          // Validation reports missing required Markdown.
         }
       }
     }

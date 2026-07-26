@@ -1,9 +1,10 @@
-export { availableModelVersions, getResourceDefinition, loadModel } from "../model/index.js";
+export { availableModelVersions, getResourceDefinition, latestModelVersion, loadModel } from "../model/index.js";
 export { buildWorkspace } from "./build.js";
 export { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
 export { createResource, createResourceAndLink, createResources, deleteResource, resourcePath, updateContent, updateResource } from "./files.js";
 export { commitWorkspace, getFileHistory, getGitSummary, getWorkspaceHistories } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
+export { applyModelMigration, planModelMigration } from "./migrate.js";
 export { renderMarkdown } from "./markdown.js";
 export { createObligationEvent, planObligations } from "./obligations.js";
 export {

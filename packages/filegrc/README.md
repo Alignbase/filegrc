@@ -1,6 +1,6 @@
 # FileGRC
 
-FileGRC is a zero-dependency Node.js engine for Git-native GRC workspaces. It validates plain-file records, renders a local web app, provides safe CRUD operations, and builds a read-only audit view.
+FileGRC is a zero-dependency Node.js engine for Git-native GRC workspaces. It validates structured JSON records and their Markdown companions, renders a local web app, provides safe CRUD operations, and builds a read-only audit view.
 
 Most users should create a complete workspace:
 
@@ -17,6 +17,8 @@ npx filegrc build
 npx filegrc describe risk
 npx filegrc search "access review"
 ```
+
+New workspaces use data model v2, which keeps long-form Markdown beside its JSON record without storing a path field. Existing v1 workspaces remain supported. Run `npx filegrc migrate --to 2` to preview their explicit migration.
 
 The package requires Node.js 20 or newer. It uses Git for authors, commit timestamps, messages, diffs, and revisions. It never creates commits automatically.
 

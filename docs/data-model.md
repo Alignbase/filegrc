@@ -1,12 +1,12 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v1.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v2.json. Do not edit by hand. -->
 
-Model version: `1`
+Model version: `2`
 
-Stable, query-worthy GRC metadata. Variable procedures, questionnaires, observations, rationale, and detailed results belong in Markdown through contentPath or notesPath.
+Stable, query-worthy GRC metadata. Long-form work is stored as implicit Markdown companion files beside each structured JSON record.
 
-Each structured resource is one UTF-8 JSON file. Long-form work is Markdown under `data/content/`. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields.
+Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.
 
 ## Common fields
 
@@ -19,12 +19,11 @@ Each structured resource is one UTF-8 JSON file. Long-form work is Markdown unde
 | `ownerIds` | array of id | No | Owners References: `person`, `team` |
 | `tags` | array of string | No | Tags |
 | `relatedResourceIds` | array of id | No | Related resources References: `*` |
-| `notesPath` | string (data-path) | No | Notes References long-form content under `data/`. |
 | `extensions` | object | No | Extensions |
 
 ## Record Markdown
 
-The renderer uses the common `notesPath` field as an optional long-form Record body when a resource has no dedicated Markdown field. The path is generated from the stable resource ID rather than entered by the user.
+Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record.
 
 Record Markdown is shown by default for: `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`. Other resources without dedicated Markdown can add it when structured fields are not enough.
 
@@ -44,7 +43,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/frameworks/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -66,7 +65,7 @@ Timing: Review applicability during audit planning and after material scope, ser
 
 Path: `data/requirements/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -90,7 +89,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/commitments/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -117,7 +116,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/complementary-controls/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -144,7 +143,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/controls/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -176,7 +175,7 @@ Default sources: `policy-information-security`
 
 Path: `data/control-tests/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -218,7 +217,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/teams/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -241,11 +240,14 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 
 Path: `data/documents/<id>.json`
 
+Markdown companions:
+
+- **Document**: `.md` beside the JSON record (required).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `active`, `superseded`, `retired` |
 | `documentKind` | string | Yes |  |
-| `contentPath` | string (data-path) | Yes | References long-form content under `data/`. |
 | `approverIds` | array of id | No | References: `person`, `team` |
 | `version` | string | No |  |
 | `effectiveOn` | date | No |  |
@@ -272,10 +274,13 @@ Default sources: `policy-information-security`
 
 Path: `data/policies/<id>.json`
 
+Markdown companions:
+
+- **Policy**: `.md` beside the JSON record (required).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `in-review`, `approved`, `active`, `superseded`, `retired` |
-| `contentPath` | string (data-path) | Yes | References long-form content under `data/`. |
 | `approverIds` | array of id | Yes | References: `person`, `team` |
 | `policyNumber` | string | No |  |
 | `policyKind` | string | No |  |
@@ -305,7 +310,7 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 
 Path: `data/policy-reviews/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -335,6 +340,10 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/attestations/<id>.json`
 
+Markdown companions:
+
+- **Statement**: `.md` beside the JSON record (optional).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `pending`, `completed`, `waived`, `overdue` |
@@ -345,7 +354,6 @@ Path: `data/attestations/<id>.json`
 | `dueOn` | date | No |  |
 | `completedOn` | date | No |  |
 | `attestationMethod` | enum | No | Values: `git-approval`, `signed-document`, `external-record` |
-| `statementPath` | string (data-path) | No | References long-form content under `data/`. |
 | `contentRevisions` | object | No |  |
 | `attestedCommit` | string | No |  |
 | `expiresOn` | date | No |  |
@@ -365,6 +373,11 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 
 Path: `data/meetings/<id>.json`
 
+Markdown companions:
+
+- **Agenda**: `-agenda.md` beside the JSON record (optional).
+- **Minutes**: `.md` beside the JSON record (optional).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `complete`, `canceled` |
@@ -375,8 +388,6 @@ Path: `data/meetings/<id>.json`
 | `endedAt` | timestamp | No |  |
 | `attendeeIds` | array of id | No | References: `person` |
 | `externalAttendees` | array of object | No |  |
-| `agendaPath` | string (data-path) | No | References long-form content under `data/`. |
-| `minutesPath` | string (data-path) | No | References long-form content under `data/`. |
 | `decisionSummary` | string | No |  |
 | `riskIds` | array of id | No | References: `risk` |
 | `findingIds` | array of id | No | References: `finding` |
@@ -397,10 +408,13 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/training/<id>.json`
 
+Markdown companions:
+
+- **Training**: `.md` beside the JSON record (required).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `active`, `retired` |
-| `contentPath` | string (data-path) | Yes | References long-form content under `data/`. |
 | `audience` | array of string | No |  |
 | `assignmentTrigger` | string | No |  |
 | `recurrence` | object | No |  |
@@ -422,7 +436,7 @@ Default sources: `policy-data-protection-handling`
 
 Path: `data/data-requests/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -456,7 +470,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/exceptions/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -486,7 +500,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/risks/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -521,7 +535,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/risk-assessments/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -563,7 +577,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/people/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -591,7 +605,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/service-accounts/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -616,7 +630,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/access-grants/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -651,7 +665,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/access-reviews/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -689,7 +703,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/systems/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -722,7 +736,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/assets/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -753,7 +767,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/vendors/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -785,7 +799,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/vendor-reviews/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -817,7 +831,7 @@ Default sources: `policy-information-security`
 
 Path: `data/vulnerabilities/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -853,7 +867,7 @@ Default sources: `policy-information-security`
 
 Path: `data/vulnerability-scans/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -886,7 +900,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/incidents/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -922,7 +936,7 @@ Default sources: `policy-information-security`
 
 Path: `data/penetration-tests/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -957,7 +971,7 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 
 Path: `data/exercises/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -989,7 +1003,7 @@ Default sources: `policy-information-security`, `document-business-continuity-di
 
 Path: `data/backup-tests/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1021,6 +1035,10 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/evidence/<id>/evidence.json`
 
+Markdown companions:
+
+- **Evidence**: `.md` beside the JSON record (optional).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `collected`, `verified`, `expired`, `withdrawn` |
@@ -1030,7 +1048,6 @@ Path: `data/evidence/<id>/evidence.json`
 | `classification` | string | Yes |  |
 | `filePaths` | array of data-path | No |  |
 | `externalReference` | object | No |  |
-| `contentPath` | string (data-path) | No | References long-form content under `data/`. |
 | `periodStart` | date | No |  |
 | `periodEnd` | date | No |  |
 | `systemIds` | array of id | No | References: `system` |
@@ -1044,7 +1061,7 @@ Path: `data/evidence/<id>/evidence.json`
 | `sourceCommit` | string | No |  |
 | `capture` | object | No |  |
 
-At least one of `filePaths`, `externalReference`, `contentPath` is required.
+At least one of `filePaths`, `externalReference`, **content Markdown** is required.
 
 ### Findings and Work
 
@@ -1059,6 +1076,10 @@ Timing: Use the recurrence and start date on each record. Create separate comple
 Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
 Path: `data/obligations/<id>.json`
+
+Markdown companions:
+
+- **Instructions**: `.md` beside the JSON record (optional).
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1075,7 +1096,6 @@ Path: `data/obligations/<id>.json`
 | `startsOn` | date | No |  |
 | `endsOn` | date | No |  |
 | `completionResourceIds` | array of id | No | References: `*` |
-| `instructionsPath` | string (data-path) | No | References long-form content under `data/`. |
 
 #### `obligation-event`
 
@@ -1087,7 +1107,7 @@ Timing: Create when the event occurs or is scheduled. Complete every generated a
 
 Path: `data/obligation-events/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1112,7 +1132,7 @@ Default sources: `policy-information-security`
 
 Path: `data/findings/<id>.json`
 
-Record Markdown: shown by default through `notesPath`.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1141,7 +1161,7 @@ Timing: Create when work is assigned, review until complete, record blockers, an
 
 Path: `data/action-items/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1177,7 +1197,7 @@ Default sources: `policy-information-security`
 
 Path: `data/audits/<id>.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1222,6 +1242,10 @@ Timing: Create on receipt, assign immediately, meet the auditor due date, bind e
 
 Path: `data/audit-requests/<id>.json`
 
+Markdown companions:
+
+- **Response**: `.md` beside the JSON record (optional).
+
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `in-progress`, `submitted`, `accepted`, `needs-follow-up`, `closed` |
@@ -1236,7 +1260,6 @@ Path: `data/audit-requests/<id>.json`
 | `controlIds` | array of id | No | References: `control` |
 | `periodStart` | date | No |  |
 | `periodEnd` | date | No |  |
-| `responsePath` | string (data-path) | No | References long-form content under `data/`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `auditorNotes` | string | No |  |
 | `actionItemIds` | array of id | No | References: `action-item` |
@@ -1255,7 +1278,7 @@ Default sources: `policy-information-security`, `policy-data-protection-handling
 
 Path: `data/workspace.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1277,7 +1300,7 @@ Timing: Change it when the team wants to rerun or suppress an optional renderer 
 
 Path: `data/renderer.json`
 
-Record Markdown: available when needed through `notesPath`.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |

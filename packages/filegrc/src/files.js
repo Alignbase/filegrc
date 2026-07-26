@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { resolveContentPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
+import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 
@@ -163,7 +164,16 @@ export async function updateContent(input, dataRelativePath, source, options = {
 
 async function updateContentUnlocked(input, dataRelativePath, source, options) {
   if (typeof source !== "string") throw new Error("Markdown content must be a string.");
-  const path = resolveContentPath(input, dataRelativePath);
+  const loaded = await loadWorkspace(input);
+  const allowed = loaded.entries.some(({ record }) => (
+    markdownEntries(loaded.model, record).some(({ path }) => path === dataRelativePath)
+  ));
+  if (!allowed) {
+    const error = new Error(`Markdown path "${dataRelativePath}" was not found.`);
+    error.code = "ENOENT";
+    throw error;
+  }
+  const path = resolveMarkdownPath(loaded, dataRelativePath);
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The Markdown file");
   await writeTextAtomic(path, source.endsWith("\n") ? source : `${source}\n`);
@@ -270,17 +280,17 @@ async function prepareContentWrites(loaded, record, content, options = {}) {
   if (Array.isArray(content) || typeof content !== "object") {
     throw new Error("Content updates must be keyed by data-relative Markdown path.");
   }
-  const definition = getResourceDefinition(loaded.model, record.type);
-  const fields = { ...loaded.model.commonFields, ...definition.fields };
-  const allowed = new Set(Object.entries(fields)
-    .filter(([, field]) => field.content)
-    .flatMap(([name]) => Array.isArray(record[name]) ? record[name] : [record[name]])
-    .filter(Boolean));
+  const allowed = new Map();
+  for (const item of markdownEntries(loaded.model, record)) {
+    allowed.set(item.name, item.path);
+    allowed.set(item.path, item.path);
+  }
   const writes = [];
-  for (const [dataRelativePath, source] of Object.entries(content)) {
-    if (!allowed.has(dataRelativePath)) throw new Error(`Content path "${dataRelativePath}" is not referenced by this record.`);
+  for (const [key, source] of Object.entries(content)) {
+    const dataRelativePath = allowed.get(key);
+    if (!dataRelativePath) throw new Error(`Markdown "${key}" does not belong to this record.`);
     if (typeof source !== "string") throw new Error(`Content for "${dataRelativePath}" must be a string.`);
-    const path = resolveContentPath(loaded.root, dataRelativePath);
+    const path = resolveMarkdownPath(loaded, dataRelativePath);
     let previous = null;
     try {
       previous = await readFile(path, "utf8");
@@ -305,21 +315,16 @@ function contentRevision(source) {
 }
 
 async function exclusiveContentFiles(loaded, record) {
-  const definition = getResourceDefinition(loaded.model, record.type);
-  const fields = { ...loaded.model.commonFields, ...definition.fields };
-  const candidates = Object.entries(fields)
-    .filter(([, field]) => field.content)
-    .flatMap(([name]) => Array.isArray(record[name]) ? record[name] : [record[name]])
-    .filter((value) => typeof value === "string");
+  const candidates = markdownEntries(loaded.model, record).map(({ path }) => path);
   const files = [];
   for (const dataRelativePath of new Set(candidates)) {
-    const shared = loaded.resources.some((other) => other.id !== record.id && Object.values(other).some((value) => (
-      value === dataRelativePath || (Array.isArray(value) && value.includes(dataRelativePath))
-    )));
+    const shared = loaded.model.markdownStorage !== "companion" && loaded.resources.some((other) => (
+      other.id !== record.id && markdownEntries(loaded.model, other).some(({ path }) => path === dataRelativePath)
+    ));
     if (shared) continue;
     let contentPath;
     try {
-      contentPath = resolveContentPath(loaded.root, dataRelativePath);
+      contentPath = resolveMarkdownPath(loaded, dataRelativePath);
     } catch {
       continue;
     }
@@ -334,4 +339,10 @@ async function exclusiveContentFiles(loaded, record) {
     files.push({ path: contentPath, dataRelativePath, source: contentSource, mode });
   }
   return files;
+}
+
+function resolveMarkdownPath(loaded, dataRelativePath) {
+  return loaded.model.markdownStorage === "companion"
+    ? resolveDataPath(loaded.root, dataRelativePath)
+    : resolveContentPath(loaded.root, dataRelativePath);
 }

@@ -1,6 +1,6 @@
 # FileGRC SOC 2 program
 
-This repository holds a SOC 2 GRC program managed with FileGRC. JSON files under `data/` hold structured records. Markdown files under `data/content/` hold policies, plans, training, minutes, and other long-form material. Git records the review trail.
+This repository holds a SOC 2 GRC program managed with FileGRC. JSON files under `data/` hold structured records. Markdown companions beside those records hold policies, plans, training, minutes, and other long-form material. Git records the review trail.
 
 ![SOC 2 program overview](docs/filegrc-home.png)
 

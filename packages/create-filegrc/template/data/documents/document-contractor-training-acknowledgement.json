@@ -5,7 +5,6 @@
   "title": "Contractor Training Acknowledgement",
   "status": "draft",
   "documentKind": "attestation-template",
-  "contentPath": "content/document-contractor-training-acknowledgement.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "version": "1.0",

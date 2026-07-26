@@ -4,7 +4,6 @@
   "type": "policy",
   "title": "Information Security Policy",
   "status": "draft",
-  "contentPath": "content/policy-information-security.md",
   "ownerIds": ["person-policy-owner"],
   "approverIds": ["person-policy-owner"],
   "policyKind": "information-security",

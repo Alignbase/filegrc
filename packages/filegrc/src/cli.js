@@ -1,10 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadModel } from "../model/index.js";
+import { latestModelVersion, loadModel } from "../model/index.js";
 import { buildWorkspace } from "./build.js";
 import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
 import { createResource, createResourceAndLink, deleteResource, updateResource } from "./files.js";
 import { generateModelDocumentation } from "./model-docs.js";
+import { applyModelMigration, planModelMigration } from "./migrate.js";
 import { createObligationEvent, planObligations } from "./obligations.js";
 import { relativeToWorkspace } from "./paths.js";
 import { searchResources } from "./search.js";
@@ -44,7 +45,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     return result;
   }
   if (command === "model") {
-    const model = loadModel(String(flags.version ?? "1"));
+    const model = loadModel(String(flags.version ?? latestModelVersion()));
     const source = generateModelDocumentation(model);
     const path = resolve(String(flags.docs ?? "docs/data-model.md"));
     if (flags["write-docs"]) {
@@ -140,6 +141,27 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     return result;
   }
+  if (command === "migrate") {
+    if (!flags.to || flags.to === true) throw new Error("Pass the target data model with --to <version>.");
+    const result = flags.apply
+      ? await applyModelMigration(root, flags.to)
+      : await planModelMigration(root, flags.to);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`Data model v${result.sourceVersion} to v${result.targetVersion}`);
+      console.log(`${result.summary.changedRecords} JSON records and ${result.summary.markdownFiles} Markdown files will change.`);
+      if (result.blockers.length) {
+        console.log(`${result.blockers.length} blockers:`);
+        for (const blocker of result.blockers) console.log(`- ${blocker.path}: ${blocker.message}`);
+      } else if (flags.apply) {
+        console.log(`Migration applied. Original data is backed up at ${result.backup}.`);
+        console.log("Review the Git diff, run filegrc validate, and commit the migration separately.");
+      } else {
+        console.log("Preview only. Commit the current workspace, then rerun with --apply.");
+      }
+    }
+    return result;
+  }
   if (command === "get") {
     const loaded = await loadWorkspace(root);
     const [type, id] = positionals;
@@ -232,12 +254,13 @@ Usage:
   filegrc serve [root] [--host 127.0.0.1] [--port 8787]
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
-  filegrc model [--version 1] [--json|--write-docs|--check-docs]
+  filegrc model [--version 2] [--json|--write-docs|--check-docs]
   filegrc describe <resource-type>
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
   filegrc evidence-packet --start YYYY-MM-DD --end YYYY-MM-DD [--audit audit-id] [--output .filegrc/path] [--preview] [--json]
+  filegrc migrate --to <version> [--apply] [--json]
   filegrc get <resource-type> <id>
   filegrc create <record.json|->
   filegrc complete <obligation-id> <completion-record.json|-> [--json]
