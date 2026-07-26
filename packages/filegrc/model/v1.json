@@ -420,7 +420,7 @@
         "applicabilityRationale": {"type": "string"},
         "controlIds": {"type": "array", "items": "id", "relation": ["control"]}
       },
-      "listFields": ["reference", "title", "applicability", "frameworkId"]
+      "listFields": ["description", "applicability", "frameworkId"]
     },
     "commitment": {
       "title": "Commitment",

@@ -380,6 +380,9 @@ test("uses the readiness path as the nested sidebar information architecture", (
   assert.match(APP_STYLES, /--nav-count-width:28px;--nav-control-width:14px/);
   assert.match(APP_STYLES, /\.nav-subgroup>\.nav-subheading,\.nav-subgroup>\.nav-items a\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--nav-count-width\) var\(--nav-control-width\)/);
   assert.match(APP_STYLES, /\.nav-count\{justify-self:end;text-align:right;font-variant-numeric:tabular-nums\}/);
+  assert.match(APP_STYLES, /\.chevron\{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none\}/);
+  assert.match(APP_STYLES, /\.chevron:before\{[^}]*transform:rotate\(-45deg\)/);
+  assert.match(APP_STYLES, /\.nav-group\.open>\.nav-heading>\.chevron:before,\.nav-group\.open>\.nav-subheading>\.chevron:before\{transform:rotate\(45deg\)\}/);
   assert.doesNotMatch(APP_SCRIPT, /<section class="nav-path"><p>Readiness path<\/p>/);
   assert.match(APP_SCRIPT, /function readinessStageForRoute\(route\)/);
   assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
@@ -467,7 +470,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Files are the program/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
-  assert.match(APP_SCRIPT, /Start a checklist when something changes/);
+  assert.match(APP_SCRIPT, /Complete a checklist when key events occur/);
   assert.match(APP_SCRIPT, /Plan the engagement and generate evidence/);
   assert.match(APP_SCRIPT, /filegrc obligations CLI command/);
   assert.match(APP_SCRIPT, /filegrc trigger/);
