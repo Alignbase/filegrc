@@ -38,29 +38,73 @@ const root = document.querySelector("#app");
 let state;
 const LIST_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 25;
-const NAV_GROUP_STORAGE_KEY = "filegrc.sidebar.groups.v2";
-const DEFAULT_OPEN_NAV_GROUPS = new Set();
-const NAV_GROUP_ORDER = ["program", "systems-vendors", "governance", "people-access", "risk", "security-operations", "resilience", "evidence", "work", "audits"];
-const NAV_GROUP_LABELS = {
-  program: "Criteria and Controls",
-  "systems-vendors": "Scope and Vendors",
-  governance: "Policies and Governance",
-  risk: "Risk Management",
-  work: "Issues and Work",
-  audits: "Audit"
-};
-const NAV_RESOURCE_ORDER = {
-  program: ["control", "requirement", "framework", "commitment", "complementary-control", "control-test"],
-  "systems-vendors": ["system", "vendor", "vendor-review", "asset"],
-  governance: ["policy", "document", "team", "meeting", "training", "attestation", "policy-review", "data-request"],
-  "people-access": ["person", "access-grant", "access-review", "service-account"],
-  risk: ["risk", "risk-assessment", "exception"],
-  "security-operations": ["vulnerability-scan", "vulnerability", "penetration-test", "incident"],
-  resilience: ["backup-test", "exercise"],
-  evidence: ["evidence"],
-  work: ["finding", "action-item", "obligation", "obligation-event"],
-  audits: ["audit", "audit-request"]
-};
+const NAV_GROUP_STORAGE_KEY = "filegrc.sidebar.groups.v3";
+const READINESS_STAGES = [
+  {
+    id: "scope",
+    number: "1",
+    title: "Scope",
+    description: "Systems and boundary",
+    sections: [
+      { id: "boundary", title: "Boundary", types: ["system", "asset"], defaultOpen: true },
+      { id: "dependencies", title: "Dependencies", types: ["vendor", "vendor-review"], defaultOpen: false }
+    ]
+  },
+  {
+    id: "criteria",
+    number: "2",
+    title: "Criteria",
+    description: "What the auditor evaluates",
+    sections: [
+      { id: "framework", title: "Framework", types: ["framework", "requirement"], defaultOpen: true },
+      { id: "service-description", title: "Service description", types: ["commitment", "complementary-control"], defaultOpen: false }
+    ]
+  },
+  {
+    id: "policies",
+    number: "3",
+    title: "Policies",
+    description: "Rules the company adopts",
+    sections: [
+      { id: "library", title: "Policy library", types: ["policy", "document"], defaultOpen: true }
+    ]
+  },
+  {
+    id: "controls",
+    number: "4",
+    title: "Controls",
+    description: "How the rules operate",
+    sections: [
+      { id: "catalog", title: "Control catalog", types: ["control"], defaultOpen: true },
+      { id: "testing", title: "Testing", types: ["control-test"], defaultOpen: false }
+    ]
+  },
+  {
+    id: "run",
+    number: "5",
+    title: "Run the program",
+    description: "Recurring and event work",
+    sections: [
+      { id: "queue", title: "Work queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", defaultOpen: true },
+      { id: "governance-risk", title: "Governance and risk", types: ["policy-review", "meeting", "risk-assessment", "risk", "exception"], defaultOpen: false },
+      { id: "access-training", title: "Access and training", types: ["access-grant", "access-review", "service-account", "training", "attestation"], defaultOpen: false },
+      { id: "security", title: "Security operations", types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], defaultOpen: false },
+      { id: "resilience", title: "Resilience", types: ["backup-test", "exercise"], defaultOpen: false },
+      { id: "evidence-issues", title: "Evidence and issues", types: ["evidence", "finding", "data-request"], defaultOpen: false }
+    ]
+  },
+  {
+    id: "audit",
+    number: "6",
+    title: "Audit",
+    description: "Firm, requests, and report",
+    sections: [
+      { id: "engagement", title: "Engagement", types: ["audit", "audit-request"], defaultOpen: true },
+      { id: "packet", title: "Evidence delivery", types: [], utility: "audit-packet", defaultOpen: true }
+    ]
+  }
+];
+const ORGANIZATION_RESOURCE_TYPES = ["person", "team"];
 const RECORD_TEXT_FIELDS = new Set(["description", "statement", "activity", "purpose", "scope", "objective", "applicabilityRationale", "summary", "rationale", "acceptanceRationale", "businessPurpose", "changeSummary", "decisionSummary", "decisionRationale", "recommendation", "remediationPlan", "auditorNotes", "notPerformedReason"]);
 const navigationGroupState = readNavigationGroupState();
 let onboardingDialog = null;
@@ -96,6 +140,7 @@ function render() {
   else if (route.name === "audit-packet") renderAuditPacket(main, route.params);
   else if (route.name === "list") renderList(main, route.type, route.params);
   else if (route.name === "detail") renderDetail(main, route.type, route.id);
+  else if (route.name === "organization") renderOrganization(main);
   else if (route.name === "repository") renderRepository(main);
   else renderNotFound(main);
   bindCommon();
@@ -114,59 +159,66 @@ function parseRoute() {
   if (parts.length === 1 && parts[0] === "audit-packet") return { name: "audit-packet", params: new URLSearchParams(query) };
   if (parts.length === 2 && parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
   if (parts.length === 3 && parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2] };
+  if (parts.length === 1 && parts[0] === "organization") return { name: "organization" };
   if (parts.length === 1 && parts[0] === "repository") return { name: "repository" };
   return { name: "missing" };
 }
 
 function buildNavigation(route) {
-  const grouped = new Map(navigationGroupIds().map((group) => [group, []]));
-  const currentGroup = state.model.resources[route.type]?.group;
-  Object.entries(state.model.resources).forEach(([type, definition]) => {
-    if (type !== "workspace" && grouped.has(definition.group)) grouped.get(definition.group).push([type, definition]);
-  });
-  const navGroups = [...grouped.entries()].map(([group, resources]) => {
-    const definition = state.model.groups.find((item) => item.id === group);
-    const open = navigationGroupState[group] ?? (currentGroup === group || DEFAULT_OPEN_NAV_GROUPS.has(group));
-    const order = NAV_RESOURCE_ORDER[group] || [];
-    resources.sort(([first], [second]) => {
-      const firstIndex = order.indexOf(first);
-      const secondIndex = order.indexOf(second);
-      return (firstIndex < 0 ? Number.MAX_SAFE_INTEGER : firstIndex) - (secondIndex < 0 ? Number.MAX_SAFE_INTEGER : secondIndex);
-    });
-    const utilities = group === "work"
-      ? '<a class="' + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation board</span><small>' + (state.obligations.counts.overdue + state.obligations.counts.due) + '</small></a>'
-      : group === "audits"
-        ? '<a class="audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence packet</span><small>Build</small></a>'
-        : "";
-    const recordCount = resources.reduce((total, [type]) => total + resourcesOfType(type).length, 0);
-    return '<section class="nav-group ' + (open ? "open" : "") + '" data-group="' + esc(group) + '"><button class="nav-heading" type="button" aria-expanded="' + open + '" aria-controls="nav-group-' + esc(group) + '"><span>' + esc(NAV_GROUP_LABELS[group] || definition.title) + '</span><small>' + recordCount + '</small><span class="chevron">›</span></button><div class="nav-items" id="nav-group-' + esc(group) + '">' + utilities + resources.map(([type, item]) => {
-      const count = resourcesOfType(type).length;
-      const current = (route.type === type);
-      return '<a class="' + (current ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(item.pluralTitle) + '</span><small>' + count + '</small></a>';
-    }).join("") + '</div></section>';
+  const currentStage = readinessStageForRoute(route);
+  const stages = READINESS_STAGES.map((stage) => {
+    const stageOpen = navigationGroupState[stage.id] ?? currentStage?.id === stage.id;
+    const sections = stage.sections.map((section) => {
+      const sectionKey = stage.id + ":" + section.id;
+      const sectionCurrent = (route.type && section.types.includes(route.type))
+        || (section.utility === "obligation-board" && route.name === "obligations")
+        || (section.utility === "audit-packet" && route.name === "audit-packet");
+      const sectionOpen = navigationGroupState[sectionKey] ?? (sectionCurrent || section.defaultOpen);
+      const resources = section.types
+        .map((type) => [type, state.model.resources[type]])
+        .filter(([, definition]) => definition);
+      const recordCount = resources.reduce((total, [type]) => total + resourcesOfType(type).length, 0);
+      return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading" type="button" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span>' + esc(section.title) + '</span>' + (recordCount ? '<small>' + recordCount + '</small>' : "") + '<span class="chevron">›</span></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + renderSidebarUtility(section.utility, route) + resources.map(([type, definition]) => {
+        const count = resourcesOfType(type).length;
+        return '<a class="' + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><small>' + count + '</small></a>';
+      }).join("") + '</div></section>';
+    }).join("");
+    return '<section class="nav-group nav-stage ' + (stageOpen ? "open" : "") + '" data-group="' + esc(stage.id) + '"><button class="nav-heading" type="button" aria-expanded="' + stageOpen + '" aria-controls="nav-group-' + esc(stage.id) + '"><span class="nav-stage-number">' + esc(stage.number) + '</span><span class="nav-stage-copy"><strong>' + esc(stage.title) + '</strong><small>' + esc(stage.description) + '</small></span><span class="chevron">›</span></button><div class="nav-items" id="nav-group-' + esc(stage.id) + '">' + sections + '</div></section>';
   }).join("");
-  const readinessLinks = [
-    ["1", "Scope", "Systems and boundary", "#/resources/system", route.type === "system"],
-    ["2", "Criteria", "What the auditor evaluates", "#/resources/requirement", route.type === "requirement" || route.type === "framework"],
-    ["3", "Policies", "Rules the company adopts", "#/resources/policy", route.type === "policy"],
-    ["4", "Controls", "How the rules operate", "#/resources/control", route.type === "control"],
-    ["5", "Run the program", "Recurring and event work", "#/obligations", route.name === "obligations"],
-    ["6", "Audit", "Firm, requests, and report", "#/resources/audit", route.type === "audit" || route.type === "audit-request" || route.name === "audit-packet"]
-  ];
-  const readiness = '<section class="nav-path"><p>Readiness path</p>' + readinessLinks.map(([number, title, detail, href, current]) => '<a class="' + (current ? "current" : "") + '" href="' + href + '"><b>' + number + '</b><span><strong>' + title + '</strong><small>' + detail + '</small></span></a>').join("") + '</section>';
-  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>FileGRC</strong><small>SOC 2 workspace</small></span></a><nav><a class="nav-home ' + (route.name === "home" ? "current" : "") + '" href="#/"><span>Overview</span></a>' + readiness + '<p class="nav-catalog-label">Record catalog</p>' + navGroups + '<a class="nav-home repository-link ' + (route.name === "repository" ? "current" : "") + '" href="#/repository"><span>Repository</span></a></nav><div class="side-foot"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span><span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</span></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
+  const organizationCurrent = route.name === "organization" || route.name === "repository" || ["workspace", "renderer-settings", ...ORGANIZATION_RESOURCE_TYPES].includes(route.type);
+  const organizationName = state.workspace.organizationName || "Organization";
+  const initial = organizationName.trim().charAt(0).toUpperCase() || "O";
+  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>FileGRC</strong><small>SOC 2 workspace</small></span></a><nav class="sidebar-nav"><a class="nav-home ' + (route.name === "home" ? "current" : "") + '" href="#/"><span>Overview</span></a>' + stages + '</nav><div class="sidebar-footer"><div class="side-validation"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span><span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</span></div><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
+}
+
+function readinessStageForRoute(route) {
+  return READINESS_STAGES.find((stage) => stage.sections.some((section) => section.types.includes(route.type)
+    || (section.utility === "obligation-board" && route.name === "obligations")
+    || (section.utility === "audit-packet" && route.name === "audit-packet")));
+}
+
+function renderSidebarUtility(utility, route) {
+  if (utility === "obligation-board") {
+    return '<a class="' + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation board</span><small>' + (state.obligations.counts.overdue + state.obligations.counts.due) + '</small></a>';
+  }
+  if (utility === "audit-packet") {
+    return '<a class="audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence packet</span><small>Build</small></a>';
+  }
+  return "";
 }
 
 function topbar(route) {
   const title = route.name === "home"
     ? "Program overview"
-    : route.name === "repository"
-      ? "Repository"
-      : route.name === "obligations"
-        ? "Obligation board"
-        : route.name === "audit-packet"
-          ? "Evidence packet"
-          : state.model.resources[route.type]?.pluralTitle || "FileGRC";
+    : route.name === "organization"
+      ? "Organization"
+      : route.name === "repository"
+        ? "Repository"
+        : route.name === "obligations"
+          ? "Obligation board"
+          : route.name === "audit-packet"
+            ? "Evidence packet"
+            : state.model.resources[route.type]?.pluralTitle || "FileGRC";
   return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(title) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="repo-chip" href="#/repository"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</a>';
 }
 
@@ -225,18 +277,18 @@ function auditEngagementPrompt(audit = null) {
 }
 
 function resourceDirectory() {
-  const groups = navigationGroupIds().map((group) => {
-    const resources = Object.entries(state.model.resources)
-      .filter(([, definition]) => definition.group === group)
-      .sort(([first], [second]) => {
-        const order = NAV_RESOURCE_ORDER[group] || [];
-        const firstIndex = order.indexOf(first);
-        const secondIndex = order.indexOf(second);
-        return (firstIndex < 0 ? Number.MAX_SAFE_INTEGER : firstIndex) - (secondIndex < 0 ? Number.MAX_SAFE_INTEGER : secondIndex);
-      });
+  const groups = [
+    ...READINESS_STAGES.map((stage) => ({
+      title: stage.number + " " + stage.title,
+      types: [...new Set(stage.sections.flatMap((section) => section.types))]
+    })),
+    { title: "Organization", types: ORGANIZATION_RESOURCE_TYPES }
+  ].map((group) => {
+    const resources = group.types
+      .map((type) => [type, state.model.resources[type]])
+      .filter(([, definition]) => definition);
     if (!resources.length) return "";
-    const definition = state.model.groups.find((item) => item.id === group);
-    return '<section><h4>' + esc(NAV_GROUP_LABELS[group] || definition.title) + '</h4>' + resources.map(([type, resource]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(resource.pluralTitle) + '</span><strong>' + resourcesOfType(type).length + '</strong></a>').join("") + '</section>';
+    return '<section><h4>' + esc(group.title) + '</h4>' + resources.map(([type, resource]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(resource.pluralTitle) + '</span><strong>' + resourcesOfType(type).length + '</strong></a>').join("") + '</section>';
   }).join("");
   return '<div class="resource-directory">' + groups + '</div>';
 }
@@ -572,23 +624,35 @@ function resourceConnections(entry) {
       if (values.includes(entry.record.id)) add(candidate, "Linked by " + state.model.resources[candidate.record.type].title + " · " + fieldLabel(candidate.record.type, name));
     });
   });
+  const typeOrder = navigationResourceTypes();
   const sorted = [...connections.values()].sort((first, second) => {
-    const groupOrder = navigationGroupIds();
-    const firstGroup = groupOrder.indexOf(state.model.resources[first.entry.record.type].group);
-    const secondGroup = groupOrder.indexOf(state.model.resources[second.entry.record.type].group);
-    return firstGroup - secondGroup || first.entry.record.title.localeCompare(second.entry.record.title);
+    const firstIndex = typeOrder.indexOf(first.entry.record.type);
+    const secondIndex = typeOrder.indexOf(second.entry.record.type);
+    const firstType = firstIndex < 0 ? Number.MAX_SAFE_INTEGER : firstIndex;
+    const secondType = secondIndex < 0 ? Number.MAX_SAFE_INTEGER : secondIndex;
+    return firstType - secondType || first.entry.record.title.localeCompare(second.entry.record.title);
   });
   if (!sorted.length) return "";
   const visible = sorted.slice(0, 14);
   return '<section class="panel connections-panel"><div class="panel-head"><h3>Connections</h3><span>' + sorted.length + '</span></div><div class="connections">' + visible.map(({ entry: connected, reasons }) => '<a href="#/resource/' + encodeURIComponent(connected.record.type) + '/' + encodeURIComponent(connected.record.id) + '"><strong>' + esc(connected.record.title) + '</strong><small>' + esc([...reasons].join(" · ")) + '</small></a>').join("") + '</div>' + (sorted.length > visible.length ? '<p class="connections-more">' + (sorted.length - visible.length) + ' more connections are available through the linked records.</p>' : "") + '</section>';
 }
 
-function navigationGroupIds() {
-  const configured = new Set(NAV_GROUP_ORDER);
-  const additional = state.model.groups
-    .map((group) => group.id)
-    .filter((group) => group !== "repository" && !configured.has(group));
-  return [...NAV_GROUP_ORDER, ...additional];
+function navigationResourceTypes() {
+  return [
+    ...READINESS_STAGES.flatMap((stage) => stage.sections.flatMap((section) => section.types)),
+    ...ORGANIZATION_RESOURCE_TYPES,
+    "workspace",
+    "renderer-settings"
+  ];
+}
+
+function renderOrganization(main) {
+  const workspace = resourcesOfType("workspace")[0];
+  const renderer = rendererSettingsEntry();
+  const people = resourcesOfType("person");
+  const teams = resourcesOfType("team");
+  const organizationName = state.workspace.organizationName || "Organization";
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Administration</p><h2>' + esc(organizationName) + '</h2><p>Manage the organization records that supply ownership, accountability, shared teams, and renderer behavior across the compliance program.</p></div>' + (workspace ? '<a class="button primary" href="#/resource/workspace/' + encodeURIComponent(workspace.record.id) + '">Organization profile</a>' : "") + '</div><div class="organization-grid"><section class="panel organization-profile"><div class="panel-head"><div><p class="kicker">Organization</p><h3>Program settings</h3></div></div><dl class="metadata"><div><dt>Name</dt><dd>' + esc(organizationName) + '</dd></div><div><dt>Timezone</dt><dd>' + esc(state.workspace.timezone) + '</dd></div><div><dt>Data model</dt><dd>Version ' + esc(state.workspace.dataModelVersion) + '</dd></div><div><dt>Repository</dt><dd>' + (state.git.available ? esc((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</dd></div></dl></section><section class="panel organization-directory"><div class="panel-head"><div><p class="kicker">Directory</p><h3>People and teams</h3></div></div><div class="organization-links"><a href="#/resources/person"><span><strong>People</strong><small>Owners, approvers, trainees, reviewers, and contacts</small></span><b>' + people.length + '</b></a><a href="#/resources/team"><span><strong>Teams</strong><small>Committees, response groups, and shared ownership</small></span><b>' + teams.length + '</b></a></div></section><section class="panel organization-tools"><div class="panel-head"><div><p class="kicker">Workspace</p><h3>Renderer and repository</h3></div></div><div class="organization-links">' + (renderer ? '<a href="#/resource/renderer-settings/' + encodeURIComponent(renderer.record.id) + '"><span><strong>Renderer settings</strong><small>Committed behavior, including onboarding</small></span><b>›</b></a>' : "") + '<a href="#/repository"><span><strong>Repository</strong><small>Validation, file changes, history, and commits</small></span><b>›</b></a></div></section></div></div>';
 }
 
 function renderRepository(main) {
@@ -792,7 +856,7 @@ function onboardingSteps() {
       ]
     },
     {
-      target: ['.readiness-flow a[href="#/resources/audit"]', '.nav-path a[href="#/resources/audit"]', ".audit-packet-link"],
+      target: ['.readiness-flow a[href="#/resources/audit"]', ".audit-packet-link"],
       kicker: "Audit evidence",
       title: "Generate the period packet",
       body: "Choose an audit period to collect every dated record, obligation occurrence, event workflow, linked evidence file, and relevant policy and control into one derived packet.",
@@ -1330,7 +1394,7 @@ function openContentEditor(entry, name) {
 }
 
 function bindCommon() {
-  root.querySelectorAll(".nav-heading").forEach((button) => button.addEventListener("click", () => {
+  root.querySelectorAll(".nav-heading, .nav-subheading").forEach((button) => button.addEventListener("click", () => {
     const group = button.closest(".nav-group");
     const open = group.classList.toggle("open");
     setNavigationGroupOpen(group.dataset.group, open);
@@ -1582,17 +1646,18 @@ export const APP_STYLES = String.raw`
 :root{--ink:#151827;--muted:#5d6475;--line:#dfe3ef;--paper:#f6f7fb;--panel:#fff;--accent:#0000a5;--accent-soft:#eef1ff;--accent-light:#8aa1ff;--focus:#0000e0;--amber:#8a5200;--red:#a13a31;--sidebar:linear-gradient(135deg,#000070 0%,#000035 60%);--primary-gradient:linear-gradient(135deg,#000070 0%,#000035 60%);--surface-soft:#f2f4fa;--surface-muted:#eceff7;--field:#fff;--field-readonly:#eef0f6;--code-bg:#10162b;--code-ink:#e8ebff;--shadow:0 8px 28px rgba(0,0,53,.08);color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none}
 *{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#eef1ff;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:block;width:39px;height:39px;border-radius:10px}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:15px}.brand small{font-size:11px;color:#c5cae2;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:13px;color:#d5d9ed}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#202066;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#b4bbdc;text-transform:uppercase;letter-spacing:.11em;font-size:10px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{font-size:18px;transform:rotate(0);transition:.15s}.nav-group.open .chevron{transform:rotate(90deg)}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:10px;color:#b8bed7}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#000024;border-top:1px solid #34345f;color:#cbd0e5;font-size:11px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#9aabff}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:17px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:9px;margin:0}.search{height:39px;max-width:480px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4fa;border:1px solid #dfe3ef;border-radius:8px;padding:0 10px;color:#5d6475}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:13px}.search kbd{background:#fff;border:1px solid #dfe3ef;border-radius:4px;padding:1px 5px;font-size:10px}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:11px;white-space:nowrap;text-decoration:none}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#f8f9ff;background:linear-gradient(120deg,#000070,#000035);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(138,161,255,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#cbd3ff}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:28px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#dde1f4;font-size:13px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#e6e8f7;border-left:1px solid #6874ab;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:25px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:10px;color:#697184}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:14px;margin:4px 0 0}.panel-head>a{font-size:11px;color:var(--accent);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:30px;font-weight:500;display:block}.progress-number span{font-size:10px;color:var(--muted)}.progress{height:9px;background:#eceff7;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#0000a5,var(--accent-light));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#5d6475}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #e8ebf3;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:10px;color:var(--accent);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:11px}.due-list small{font-size:9px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:10px}.resource-bars i{height:5px;background:#e8ebf3;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#6676dd;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f2f4fa;border-radius:6px;font-size:10px}.catalog a:hover{background:var(--accent-soft)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:31px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:13px;margin:0}.button{border:1px solid #d0d5e3;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:12px;font-weight:650}.button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:12px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:10px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:11px}.record-table th{background:#f2f4fa;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:9px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #e8ebf3;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:9px;color:#5d6475}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#6a7181;margin-top:3px}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#eceff7;padding:3px 7px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:11px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:10px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:9px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:29px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:23px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:15px;margin-top:1.7em}.markdown p,.markdown li{font-size:13px;line-height:1.65;color:#272c3b}.markdown code{background:#eef0f6;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#10162b;color:#e8ebff;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--accent-light);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:11px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #e8ebf3;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#5d6475}.metadata dd{margin:0;font-size:11px;min-width:0}.compact-json{white-space:pre-wrap;font-size:9px}.git-panel>code{font-size:9px;word-break:break-all}.git-panel p{font-size:10px;color:var(--muted)}.relation{color:var(--accent);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #e8ebf3}.history>div:first-child{border-top:0}.history code{font-size:9px;color:var(--accent)}.history strong,.history small{display:block}.history strong{font-size:10px}.history small{font-size:9px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#697184;text-align:center;font-size:11px;background:#f4f5fa;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:11px;overflow-wrap:anywhere}.diagnostics code{font-size:9px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(0,0,24,.28)}dialog::backdrop{background:rgba(0,0,24,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eceff7;width:32px;height:32px;border-radius:50%;font-size:22px;cursor:pointer}.editor form>p{font-size:11px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#10162b;color:#e8ebff;padding:15px;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:11px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#737a8b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .icon-button{position:relative;display:grid;place-items:center;padding:0;color:var(--ink);font-size:0}.icon-button:before,.icon-button:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.icon-button:after{transform:rotate(-45deg)}
-html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.brand{flex:0 0 auto;margin-bottom:18px}.sidebar-nav{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding-right:1px}.nav-home{margin-bottom:10px}.nav-stage>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr) 13px;gap:8px;align-items:center;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0}.nav-stage>.nav-heading:hover{background:rgba(255,255,255,.08);color:#fff}.nav-stage-number{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:8px}.nav-stage-copy,.nav-stage-copy strong,.nav-stage-copy small{display:block;min-width:0}.nav-stage-copy strong{font-size:10px;line-height:1.25}.nav-stage-copy small{margin-top:2px;color:#aeb6d8;font-size:8px;line-height:1.25;font-weight:500}.nav-stage>.nav-items{margin:2px 0 8px 17px;padding:1px 0 5px 12px;border-left:1px solid rgba(255,255,255,.14)}.nav-subgroup>.nav-subheading{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto 12px;gap:6px;align-items:center;border:0;background:none;padding:7px 7px 4px;color:#919bc4;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;cursor:pointer}.nav-subheading small{font-size:8px;letter-spacing:0}.nav-subheading .chevron{font-size:14px}.nav-subgroup>.nav-items{padding:1px 0 4px 3px}.nav-subgroup>.nav-items a{padding:6px 8px;font-size:11px}.nav-group.open>.nav-heading>.chevron,.nav-group.open>.nav-subheading>.chevron{transform:rotate(90deg)}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-items{display:none}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-subheading>.chevron{transform:rotate(0)}.sidebar-footer{flex:0 0 auto;margin:10px -18px -18px;padding:10px 18px 14px;background:#000024;border-top:1px solid rgba(255,255,255,.14)}.side-validation{display:flex;align-items:center;gap:7px;padding:0 7px 9px;color:#aeb6d8;font-size:9px}.organization-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 12px;gap:9px;align-items:center;padding:8px;border-radius:8px;color:#eef1ff;text-decoration:none}.organization-nav:hover,.organization-nav.current{background:rgba(255,255,255,.11)}.organization-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);font-size:11px;font-weight:800}.organization-nav strong,.organization-nav small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.organization-nav strong{font-size:10px}.organization-nav small{margin-top:2px;color:#aeb6d8;font-size:8px}.organization-arrow{color:#aeb6d8;font-size:16px}.organization-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.organization-links{display:grid}.organization-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.organization-links a:first-child{padding-top:0;border-top:0}.organization-links strong,.organization-links small{display:block}.organization-links strong{font-size:11px}.organization-links small{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.4}.organization-links b{color:var(--accent);font-size:11px}.organization-links a:hover strong{color:var(--accent)}
+.button{text-decoration:none}
 .nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:10px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
 .list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}
 .setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
-.nav-path{display:grid;gap:2px;margin:7px 0 17px;padding:12px 6px;border-top:1px solid rgba(255,255,255,.13);border-bottom:1px solid rgba(255,255,255,.13)}.nav-path>p,.nav-catalog-label{margin:0 7px 7px;color:#8f99c3;text-transform:uppercase;letter-spacing:.12em;font-size:8px;font-weight:780}.nav-path a{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:center;padding:6px;border-radius:7px;color:#d5d9ed;text-decoration:none}.nav-path a:hover,.nav-path a.current{background:rgba(255,255,255,.11);color:#fff}.nav-path b{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:8px}.nav-path strong,.nav-path small{display:block}.nav-path strong{font-size:10px}.nav-path small{margin-top:1px;color:#aeb6d8;font-size:8px;line-height:1.25}.nav-catalog-label{margin:0 10px 1px}.nav-heading>span:first-child{min-width:0;text-align:left;line-height:1.3}.nav-heading>small{margin-left:auto;color:#8f99c3;font-size:9px;letter-spacing:0}.nav-heading .chevron{margin-left:7px}
 .readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,.65fr) minmax(320px,1fr);gap:28px;align-items:end;margin-bottom:17px}.readiness-map-head h3{font-size:15px;margin:5px 0 0}.readiness-map-head>p{max-width:710px;color:var(--muted);font-size:11px;line-height:1.5;margin:0}.readiness-flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/3;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:8px;font-weight:800}.readiness-flow strong{font-size:10px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:8px;line-height:1.4;margin-top:3px}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:11px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:9px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:9px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:8px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:14px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:10px}.connections small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:8px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:10px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:11px}.external-source:hover strong{text-decoration:underline}
 .page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:-9px 0 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:10px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:8px;font-weight:700}
 .page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:auto}.onboarding-dialog::backdrop{background:transparent;backdrop-filter:none}.onboarding-shade{position:fixed;inset:0;z-index:60;pointer-events:none}.onboarding-shade span{position:absolute;background:rgba(0,0,24,.58)}.onboarding-progress{display:grid;grid-template-columns:repeat(var(--onboarding-step-count),1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:25px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:12px;line-height:1.6;margin:13px 25px 0}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:11px;line-height:1.5;padding-left:3px}.onboarding-actions{padding:12px 25px 23px}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:11px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:10px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:9px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:9px;line-height:1.5;margin:12px 25px 0}.onboarding-dialog>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px;scroll-margin-top:102px}
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}
-@media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.repo-chip{display:none}.resource-directory{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:20px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.search{max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
+@media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.organization-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.repo-chip{display:none}.resource-directory{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:20px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.search{max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
 @media(max-width:760px){.setup-banner,.page-guide{grid-template-columns:1fr}.page-guide{margin-top:-5px}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:8px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}.onboarding-actions{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line)}}
 @media(max-width:520px){.onboarding-form{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}

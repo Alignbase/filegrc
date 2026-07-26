@@ -281,15 +281,18 @@ test("keeps hostile workspace text inert in static HTML", () => {
 
 test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /html,body\{height:100%;overflow:hidden\}/);
-  assert.match(APP_STYLES, /\.sidebar\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain\}/);
+  assert.match(APP_STYLES, /\.sidebar\{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain\}/);
+  assert.match(APP_STYLES, /\.sidebar-nav\{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain/);
   assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
-  assert.match(APP_STYLES, /\.side-foot\{background:#000024;[^}]*z-index:1\}/);
+  assert.match(APP_STYLES, /\.sidebar-footer\{flex:0 0 auto;[^}]*background:#000024;/);
 });
 
 test("persists each sidebar group state between page renders", () => {
-  assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v2"/);
+  assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v3"/);
   assert.match(APP_SCRIPT, /window\.localStorage\.getItem\(NAV_GROUP_STORAGE_KEY\)/);
-  assert.match(APP_SCRIPT, /navigationGroupState\[group\] \?\? \(currentGroup === group \|\| DEFAULT_OPEN_NAV_GROUPS\.has\(group\)\)/);
+  assert.match(APP_SCRIPT, /navigationGroupState\[stage\.id\] \?\? currentStage\?\.id === stage\.id/);
+  assert.match(APP_SCRIPT, /navigationGroupState\[sectionKey\] \?\? \(sectionCurrent \|\| section\.defaultOpen\)/);
+  assert.match(APP_SCRIPT, /querySelectorAll\("\.nav-heading, \.nav-subheading"\)/);
   assert.match(APP_SCRIPT, /setNavigationGroupOpen\(group\.dataset\.group, open\)/);
   assert.match(APP_SCRIPT, /window\.localStorage\.setItem\(NAV_GROUP_STORAGE_KEY, JSON\.stringify\(navigationGroupState\)\)/);
 });
@@ -320,10 +323,18 @@ test("places record context left of Markdown on wide screens", () => {
   assert.match(APP_STYLES, /\.detail-grid\{grid-template-columns:1fr\}/);
 });
 
-test("explains the SOC 2 readiness path and connected records in place", () => {
-  assert.match(APP_SCRIPT, /const NAV_GROUP_ORDER = \["program", "systems-vendors", "governance"/);
-  assert.match(APP_SCRIPT, /function navigationGroupIds\(\)/);
-  assert.match(APP_SCRIPT, /<section class="nav-path"><p>Readiness path<\/p>/);
+test("uses the readiness path as the nested sidebar information architecture", () => {
+  assert.match(APP_SCRIPT, /const READINESS_STAGES = \[/);
+  assert.match(APP_SCRIPT, /title: "Scope",\s+description: "Systems and boundary"/);
+  assert.match(APP_SCRIPT, /title: "Run the program",\s+description: "Recurring and event work"/);
+  assert.match(APP_SCRIPT, /class="nav-group nav-stage /);
+  assert.match(APP_SCRIPT, /class="nav-group nav-subgroup /);
+  assert.doesNotMatch(APP_SCRIPT, /<section class="nav-path"><p>Readiness path<\/p>/);
+  assert.match(APP_SCRIPT, /function readinessStageForRoute\(route\)/);
+  assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
+  assert.match(APP_SCRIPT, /class="organization-nav /);
+  assert.match(APP_SCRIPT, /People and teams/);
+  assert.match(APP_SCRIPT, /Renderer and repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
   assert.match(APP_SCRIPT, /Scope", "Define the service, system boundary, people, data, and vendors/);
   assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
@@ -340,6 +351,7 @@ test("explains the SOC 2 readiness path and connected records in place", () => {
   assert.match(APP_STYLES, /\.record-prose\{max-width:790px\}/);
   assert.match(APP_STYLES, /\.connections\{display:grid\}/);
   assert.match(APP_STYLES, /\.external-source\{display:flex/);
+  assert.match(APP_STYLES, /\.organization-grid\{display:grid;grid-template-columns:repeat\(3/);
 });
 
 test("keeps IDs behind the guided editor and generates them from titles", () => {
