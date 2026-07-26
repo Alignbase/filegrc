@@ -491,7 +491,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
     ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due", "#/obligations", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"]
   ];
-  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence</p><h2>Build an evidence packet</h2><p>Select a period. The engine indexes every dated record, checks obligation and event coverage, includes linked evidence and active policy context, then writes an auditor-oriented HTML index, manifest, source records, Markdown, and fixed attachments.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section><section class="panel packet-builder"><form id="packet-form"><label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label><label><span>Audit <small>optional</small></span><select name="auditId"><option value="">All in-scope program records</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before auditor delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
+  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence</p><h2>Build an evidence packet</h2><p>Select a period. The engine indexes every dated record, checks obligation and event coverage, includes linked evidence and active policy context, then writes an auditor-oriented HTML index, manifest, source records, Markdown, and fixed attachments.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section><section class="panel packet-builder"><form id="packet-form"><label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label><label><span>Audit <small>optional</small></span><select name="auditId"><option value="">All In-Scope Program Records</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before auditor delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
   main.querySelector("#packet-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -610,7 +610,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   }).filter(({ values }) => values.length > 1);
   main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || (ORGANIZATION_RESOURCE_TYPES.includes(type) ? "Organization" : groupTitle(definition.group))) + '</p><h2>' + esc(definition.pluralTitle) + '</h2></div>' + (!state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "") + '</div>' + resourceGuide(type) +
     '<div class="list-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
-    filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(label.toLowerCase()) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span></div>' +
+    filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span></div>' +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
   const pagination = main.querySelector(".list-pagination");
@@ -1013,7 +1013,7 @@ function onboardingSetupForm() {
   const gitStatus = state.git.available
     ? '<div class="onboarding-git-status"><span class="status-dot good"></span><span><strong>Git repository detected</strong><small>Setup changes will appear in the workspace diff before you commit them.</small></span></div>'
     : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Saving still works. Run <code>git init</code> at the workspace root before your first compliance commit.</small></span></div>';
-  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(humanize(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(value) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No engagement planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Saving writes JSON files but does not commit them.</p>';
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No Engagement Planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness Assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Saving writes JSON files but does not commit them.</p>';
 }
 
 function captureOnboardingForm() {
@@ -1269,6 +1269,7 @@ function openEditor(type, entry = null, options = {}) {
     "title",
     ...required,
     ...(definition.listFields || []),
+    ...Object.entries(fields).filter(([, field]) => field.requiredWhen).map(([name]) => name),
     ...Object.entries(fields).filter(([name, field]) => field.content && name !== "notesPath" && (record[name] || required.has(name) || oneOf.has(name))).map(([name]) => name),
     ...oneOf
   ])].filter((name) => !["schemaVersion", "id", "type"].includes(name) && fields[name]);
@@ -1276,7 +1277,7 @@ function openEditor(type, entry = null, options = {}) {
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
   const contentNames = names.filter((name) => fields[name].content);
-  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || record.title || definition.title) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name), Boolean(entry))).join("") + '</div>' +
+  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || record.title || definition.title) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
     contentNames.map((name) => {
       const path = record[name];
       const generated = !entry?.content?.[name];
@@ -1287,6 +1288,7 @@ function openEditor(type, entry = null, options = {}) {
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
+  wireEditorRequirements(dialog, record, fields, definition.oneOf || []);
   dialog.querySelector(".advanced-editor textarea").addEventListener("input", () => { dialog.dataset.jsonDirty = "true"; });
   if (!entry) {
     const titleInput = dialog.querySelector('[data-field-group="title"] input');
@@ -1318,6 +1320,7 @@ function openEditor(type, entry = null, options = {}) {
   }
   dialog.querySelector("#save-record").addEventListener("click", async () => {
     try {
+      if (!dialog.querySelector("form").reportValidity()) return;
       const updated = dialog.dataset.jsonDirty === "true"
         ? JSON.parse(dialog.querySelector(".advanced-editor textarea").value)
         : readGuidedRecord(dialog, record, fields);
@@ -1388,9 +1391,11 @@ function contentPathFor(type, id, name) {
   return "content/" + id + suffix + ".md";
 }
 
-function editorField(type, name, field, value, required, editing) {
+function editorField(type, name, field, value, required, editing, oneOfRequired = false) {
   const label = fieldLabel(type, name);
-  const requiredMark = required ? '<span class="required-mark">Required</span>' : "";
+  const requiredMark = required || field.requiredWhen || oneOfRequired
+    ? '<span class="required-mark" ' + (required || oneOfRequired ? "" : "hidden") + '>' + (oneOfRequired ? "One Required" : "Required") + '</span>'
+    : "";
   const help = name === "title"
     ? (editing ? "Renaming this record will not change its stable ID." : "A stable ID and file name will be generated from this value.")
     : field.relation ? relationHelp(field)
@@ -1401,23 +1406,23 @@ function editorField(type, name, field, value, required, editing) {
     const candidates = relationCandidates(field);
     control = candidates.length
       ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(record.id) + '</small></span></label>').join("") + '</div>'
-      : '<div class="missing-options">No matching resources exist yet.</div>';
+      : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
     return fieldWrap(name, "relation-array", label, requiredMark, control, help, required);
   }
   if (field.relation) {
     const candidates = relationCandidates(field);
     control = candidates.length
-      ? '<select><option value="">Select a resource</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(record.id) + '</option>').join("") + '</select>'
-      : '<div class="missing-options">No matching resources exist yet.</div>';
+      ? '<select><option value="">Select a Resource</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(record.id) + '</option>').join("") + '</select>'
+      : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
     return fieldWrap(name, "relation", label, requiredMark, control, help, required);
   }
   if (field.type === "enum" || field.type === "rating" || field.type === "outcome") {
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
-    control = '<select><option value="">Select</option>' + values.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(item) + '</option>').join("") + '</select>';
+    control = '<select><option value="">Select</option>' + values.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
     return fieldWrap(name, "string", label, requiredMark, control, help, required);
   }
   if (field.type === "boolean") {
-    control = '<select><option value="">Not set</option><option value="true" ' + (value === true ? "selected" : "") + '>Yes</option><option value="false" ' + (value === false ? "selected" : "") + '>No</option></select>';
+    control = '<select><option value="">Not Set</option><option value="true" ' + (value === true ? "selected" : "") + '>Yes</option><option value="false" ' + (value === false ? "selected" : "") + '>No</option></select>';
     return fieldWrap(name, "boolean", label, requiredMark, control, help, required);
   }
   if (field.type === "object") {
@@ -1440,8 +1445,75 @@ function editorField(type, name, field, value, required, editing) {
 
 function fieldWrap(name, kind, label, requiredMark, control, help, required) {
   const labelId = "field-label-" + name;
-  const labelledControl = control.replace(/^<([a-z]+)/, '<$1 aria-labelledby="' + esc(labelId) + '"');
+  let labelledControl = control.replace(/^<([a-z]+)/, '<$1 aria-labelledby="' + esc(labelId) + '"');
+  if (required && /^(input|select|textarea)$/.test(labelledControl.match(/^<([a-z]+)/)?.[1] || "")) {
+    labelledControl = labelledControl.replace(/^<([a-z]+)/, "<$1 required");
+  }
   return '<div class="form-field" data-field-group="' + esc(name) + '" data-kind="' + esc(kind) + '" data-required="' + (required ? "true" : "false") + '"><div class="field-label" id="' + esc(labelId) + '">' + esc(label) + requiredMark + '</div>' + labelledControl + (help ? '<small>' + esc(help) + '</small>' : "") + '</div>';
+}
+
+function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
+  const refreshGroup = (group, required) => {
+    group.dataset.required = required ? "true" : "false";
+    const mark = group.querySelector(".required-mark");
+    if (mark) mark.hidden = !required;
+    const checkboxes = [...group.querySelectorAll('input[type="checkbox"]')];
+    if (checkboxes.length) {
+      const hasSelection = checkboxes.some((checkbox) => checkbox.checked);
+      const requiredIndex = hasSelection ? checkboxes.findIndex((checkbox) => checkbox.checked) : 0;
+      checkboxes.forEach((checkbox, index) => { checkbox.required = required && index === requiredIndex; });
+      return;
+    }
+    const control = group.querySelector("input,select,textarea");
+    if (control) control.required = required;
+  };
+  const currentValue = (name) => {
+    const group = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"]');
+    if (!group) return base[name];
+    if (group.dataset.kind === "relation-array") {
+      return [...group.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+    }
+    const control = group.querySelector("input,select,textarea");
+    if (!control) return base[name];
+    if (group.dataset.kind === "boolean") return control.value === "" ? undefined : control.value === "true";
+    if (group.dataset.kind === "integer" || group.dataset.kind === "number") return control.value === "" ? undefined : Number(control.value);
+    return control.value;
+  };
+  const refresh = () => {
+    for (const [name, field] of Object.entries(fields)) {
+      if (!field.requiredWhen) continue;
+      const group = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"]');
+      if (!group) continue;
+      const required = Object.entries(field.requiredWhen).every(([conditionName, expected]) => currentValue(conditionName) === expected);
+      refreshGroup(group, required);
+    }
+    for (const group of dialog.querySelectorAll('[data-kind="relation-array"][data-required="true"]')) {
+      refreshGroup(group, true);
+    }
+    for (const names of oneOfGroups) {
+      const choices = names.map((name) => {
+        const group = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"]');
+        const value = currentValue(name);
+        const present = Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && String(value).trim() !== "";
+        return { control: group?.querySelector("input,select,textarea"), present };
+      }).filter(({ control }) => control);
+      choices.forEach(({ control }) => {
+        control.required = false;
+        control.setCustomValidity("");
+      });
+      const choice = choices.find(({ present }) => present) || choices[0];
+      if (choice) {
+        choice.control.required = true;
+        choice.control.setCustomValidity(choice.present ? "" : "Provide at least one of: " + names.map(humanize).join(", ") + ".");
+      }
+    }
+  };
+  for (const group of dialog.querySelectorAll("[data-field-group]")) {
+    refreshGroup(group, group.dataset.required === "true");
+  }
+  dialog.querySelector(".form-grid").addEventListener("input", refresh);
+  dialog.querySelector(".form-grid").addEventListener("change", refresh);
+  refresh();
 }
 
 function readGuidedRecord(dialog, base, fields) {
@@ -1663,8 +1735,10 @@ function setNavigationGroupOpen(group, open) {
 function groupTitle(id) { return state.model.groups.find((group) => group.id === id)?.title || "Program"; }
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
 function fieldLabel(type, name) { return name === "title" ? state.model.resources[type]?.titleLabel || state.model.commonFields.title.label : fieldDefinition(type, name)?.label || humanize(name); }
-function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || value; }
+function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || properCase(value); }
 function humanize(value) { return String(value).replace(/[-_]+/g, " ").replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
+function properCase(value) { return humanize(value).replace(/\b[a-z]/g, (letter) => letter.toUpperCase()).replace(/\bSoc 2\b/g, "SOC 2"); }
+function conditionMatches(record, condition) { return Boolean(condition) && Object.entries(condition).every(([name, expected]) => record[name] === expected); }
 function formatValue(value, field, type) {
   if (value === undefined || value === null || value === "") return '<span class="muted">Not set</span>';
   const definition = fieldDefinition(type, field);

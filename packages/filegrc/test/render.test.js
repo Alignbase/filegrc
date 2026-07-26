@@ -415,6 +415,19 @@ test("keeps IDs behind the guided editor and generates them from titles", () => 
   assert.doesNotMatch(APP_SCRIPT, /\[\s*"id",\s*"title"/);
 });
 
+test("proper-cases dropdown labels and uses native required validation", () => {
+  assert.match(APP_SCRIPT, /function properCase\(value\)/);
+  assert.match(APP_SCRIPT, /esc\(properCase\(item\)\)/);
+  assert.match(APP_SCRIPT, /esc\(filterOptionLabel\(value\)\)/);
+  assert.match(APP_SCRIPT, /<option value="">Not Set<\/option>/);
+  assert.match(APP_SCRIPT, /labelledControl = labelledControl\.replace\([\s\S]*"<\$1 required"/);
+  assert.match(APP_SCRIPT, /wireEditorRequirements\(dialog, record, fields,/);
+  assert.match(APP_SCRIPT, /checkbox\.required = required && index === requiredIndex/);
+  assert.match(APP_SCRIPT, /choice\.control\.setCustomValidity\(choice\.present \? "" : "Provide at least one of:/);
+  assert.match(APP_SCRIPT, /querySelector\("form"\)\.reportValidity\(\)/);
+  assert.match(APP_SCRIPT, /field\.requiredWhen/);
+});
+
 test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_SCRIPT, /const LIST_PAGE_SIZE = 25/);
   assert.match(APP_SCRIPT, /const SEARCH_PAGE_SIZE = 25/);
