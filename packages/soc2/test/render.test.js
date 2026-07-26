@@ -221,6 +221,12 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /html,body\{height:100%;overflow:hidden\}/);
   assert.match(APP_STYLES, /\.sidebar\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain\}/);
   assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
+  assert.match(APP_STYLES, /\.side-foot\{background:#000024;[^}]*z-index:1\}/);
+});
+
+test("uses a black page canvas in dark mode", () => {
+  assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)\{\s*:root\{[^}]*--paper:#000;/);
+  assert.match(APP_STYLES, /\.topbar\{background:rgba\(0,0,0,.9\)\}/);
 });
 
 test("centers modal close icons without relying on font metrics", () => {
