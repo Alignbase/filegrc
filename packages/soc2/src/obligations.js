@@ -8,6 +8,7 @@ import {
   parseCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
+import { isRfc3339Timestamp } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 
 const COMPLETION_DATE_FIELDS = [
@@ -26,6 +27,7 @@ const COMPLETION_DATE_FIELDS = [
   "reportDate",
   "periodEnd"
 ];
+const MAX_PLANNED_ITEMS = 10_000;
 
 export function planObligations(resources, options = {}) {
   const asOf = requireDate(options.asOf ?? new Date().toISOString().slice(0, 10), "as-of date");
@@ -38,8 +40,18 @@ export function planObligations(resources, options = {}) {
   const records = resources.map((item) => item?.record ?? item).filter(Boolean);
   const byId = new Map(records.map((record) => [record.id, record]));
   const obligations = records.filter((record) => record.type === "obligation" && record.status === "active");
+  if (obligations.length > MAX_PLANNED_ITEMS) {
+    throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} active obligations.`);
+  }
   const calendarItems = [];
   const triggerGroups = new Map();
+  let scannedCalendarOccurrences = 0;
+  const scanCalendarWindow = (recurrence, window, index) => {
+    if (scannedCalendarOccurrences++ >= MAX_PLANNED_ITEMS) {
+      throw new Error(`The obligation query must be narrowed; it scans more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} calendar occurrences.`);
+    }
+    return calendarWindow(recurrence, window, index);
+  };
 
   for (const obligation of obligations) {
     if (obligation.recurrence?.mode === "event" && obligation.recurrence.eventType) {
@@ -74,9 +86,13 @@ export function planObligations(resources, options = {}) {
     if (!validCalendarRecurrence(recurrence)) continue;
     const from = requestedFrom || recurrence.anchorDate;
     let index = Math.max(0, calendarOccurrenceIndex(recurrence, from));
-    while (index > 0 && calendarWindow(recurrence, obligation.window, index).overdueOn > from) index -= 1;
-    for (; index < 100_000; index += 1) {
-      const window = calendarWindow(recurrence, obligation.window, index);
+    while (index > 0) {
+      const previousWindow = scanCalendarWindow(recurrence, obligation.window, index);
+      if (!previousWindow || previousWindow.overdueOn <= from) break;
+      index -= 1;
+    }
+    for (; ; index += 1) {
+      const window = scanCalendarWindow(recurrence, obligation.window, index);
       if (!window || window.dueWindowStart > through) break;
       if (obligation.endsOn && window.dueWindowStart > obligation.endsOn) break;
       if (window.overdueOn <= from) continue;
@@ -89,6 +105,9 @@ export function planObligations(resources, options = {}) {
         ));
       const status = occurrenceStatus(window, asOf, completions.length > 0);
       if (status === "complete" && !options.includeComplete) continue;
+      if (calendarItems.length >= MAX_PLANNED_ITEMS) {
+        throw new Error(`The obligation query must be narrowed with a later from date; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} calendar occurrences.`);
+      }
       calendarItems.push({
         key: `${obligation.id}:${window.dueWindowStart}`,
         kind: "calendar",
@@ -107,11 +126,29 @@ export function planObligations(resources, options = {}) {
     }
   }
 
-  const actionItems = records.filter((record) => record.type === "action-item");
-  const eventRuns = records
-    .filter((record) => record.type === "obligation-event")
-    .map((event) => planEventRun(event, actionItems, byId, asOf, now));
-  const eventItems = eventRuns.flatMap((run) => run.actions).filter((item) => item.status !== "complete" || options.includeComplete);
+  const events = records.filter((record) => record.type === "obligation-event");
+  if (events.length > MAX_PLANNED_ITEMS) {
+    throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} event runs.`);
+  }
+  const eventIds = new Set(events.map((event) => event.id));
+  const actionsBySource = new Map();
+  let eventActionCount = 0;
+  for (const record of records) {
+    if (record.type !== "action-item" || !eventIds.has(record.sourceResourceId)) continue;
+    if (++eventActionCount > MAX_PLANNED_ITEMS) {
+      throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} event actions.`);
+    }
+    if (!actionsBySource.has(record.sourceResourceId)) actionsBySource.set(record.sourceResourceId, []);
+    actionsBySource.get(record.sourceResourceId).push(record);
+  }
+  const eventRuns = events.map((event) => planEventRun(event, actionsBySource.get(event.id) || [], byId, asOf, now));
+  const eventItems = eventRuns
+    .filter((run) => run.status !== "canceled")
+    .flatMap((run) => run.actions)
+    .filter((item) => item.status !== "complete" || options.includeComplete);
+  if (calendarItems.length + eventItems.length > MAX_PLANNED_ITEMS) {
+    throw new Error(`The obligation query must be narrowed; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} planned items.`);
+  }
   const items = [...calendarItems, ...eventItems].sort(comparePlannedItems);
   const counts = { overdue: 0, due: 0, upcoming: 0, complete: 0 };
   for (const item of items) {
@@ -212,10 +249,12 @@ function calendarWindow(recurrence, configuredWindow, index) {
   const dueWindowEnd = Number.isInteger(configuredWindow?.endOffsetDays)
     ? addCalendarDays(occurrence, configuredWindow.endOffsetDays)
     : addCalendarDays(next, -1);
+  const overdueOn = dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null;
+  if (!dueWindowStart || !dueWindowEnd || !overdueOn) return null;
   return {
     dueWindowStart,
     dueWindowEnd,
-    overdueOn: addCalendarDays(dueWindowEnd, 1)
+    overdueOn
   };
 }
 
@@ -237,16 +276,19 @@ function eventWindow(obligation, occurredOn, occurredAt, timezone) {
   const hasEnd = Number.isInteger(obligation.window?.endOffsetDays);
   const dueWindowStart = addCalendarDays(occurredOn, startOffset);
   const dueWindowEnd = hasEnd ? addCalendarDays(occurredOn, obligation.window.endOffsetDays) : null;
+  const overdueOn = dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null;
+  if (!dueWindowStart || (hasEnd && (!dueWindowEnd || !overdueOn))) {
+    throw new Error("Event deadline dates must fall within the supported calendar range.");
+  }
   return {
     dueWindowStart,
     dueWindowEnd,
-    overdueOn: dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null
+    overdueOn
   };
 }
 
 function planEventRun(event, actionItems, byId, asOf, now) {
   const actions = actionItems
-    .filter((record) => record.sourceResourceId === event.id)
     .map((record) => {
       const obligation = byId.get(record.obligationId);
       const expectedCompletionTypes = obligation?.completionResourceTypes || [];
@@ -255,10 +297,9 @@ function planEventRun(event, actionItems, byId, asOf, now) {
         ...(record.evidenceIds || [])
       ])];
       const matchingCompletionIds = linkedCompletionIds.filter((id) => completionTypeMatches(byId.get(id), expectedCompletionTypes));
-      const completionSatisfied = record.status === "canceled"
-        || expectedCompletionTypes.length === 0
+      const completionSatisfied = expectedCompletionTypes.length === 0
         || matchingCompletionIds.length > 0;
-      const complete = ["done", "canceled"].includes(record.status) && completionSatisfied;
+      const complete = record.status === "done" && completionSatisfied;
       const window = {
         dueWindowStart: record.dueWindowStart || event.occurredOn,
         dueWindowEnd: record.dueWindowEnd || record.dueOn || null,
@@ -292,8 +333,10 @@ function planEventRun(event, actionItems, byId, asOf, now) {
         evidenceIds: record.evidenceIds || [],
         expectedCompletionTypes,
         matchingCompletionIds,
-        missingCompletion: ["done", "canceled"].includes(record.status) && !completionSatisfied,
+        missingCompletion: record.status === "done" && !completionSatisfied,
+        canceledAction: record.status === "canceled",
         recordedStatus: record.status,
+        completedOn: record.completedOn || null,
         status,
         ...window,
         ...relativeTiming(window, asOf),
@@ -374,7 +417,8 @@ function relativeTimestampTiming(window, now) {
 function comparePlannedItems(a, b) {
   const rank = { overdue: 0, due: 1, upcoming: 2, complete: 3 };
   return (rank[a.status] - rank[b.status])
-    || String(a.overdueOn || a.dueWindowEnd || a.dueWindowStart).localeCompare(String(b.overdueOn || b.dueWindowEnd || b.dueWindowStart))
+    || String(a.overdueAt || a.overdueOn || a.dueWindowEndAt || a.dueWindowEnd || a.dueWindowStartAt || a.dueWindowStart)
+      .localeCompare(String(b.overdueAt || b.overdueOn || b.dueWindowEndAt || b.dueWindowEnd || b.dueWindowStartAt || b.dueWindowStart))
     || a.title.localeCompare(b.title);
 }
 
@@ -392,14 +436,18 @@ function requireDate(value, label) {
 }
 
 function requireTimestamp(value, label) {
-  if (typeof value !== "string" || Number.isNaN(Date.parse(value)) || !/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+  if (!isRfc3339Timestamp(value)) {
     throw new Error(`A valid RFC 3339 ${label} is required.`);
   }
   return value;
 }
 
 function addHours(value, hours) {
-  return new Date(new Date(value).getTime() + hours * 3_600_000).toISOString();
+  const date = new Date(new Date(value).getTime() + hours * 3_600_000);
+  if (Number.isNaN(date.valueOf())) throw new Error("Event deadline timestamps must fall within the supported calendar range.");
+  const result = date.toISOString();
+  if (!isRfc3339Timestamp(result)) throw new Error("Event deadline timestamps must fall within the supported calendar range.");
+  return result;
 }
 
 function timestampCalendarDate(value, timezone) {

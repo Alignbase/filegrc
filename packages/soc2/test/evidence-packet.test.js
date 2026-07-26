@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import {
+  createObligationEvent,
   createResource,
   createResources,
   getGitSummary,
@@ -111,6 +112,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     generatedAt: "2026-04-01T12:00:00Z"
   });
   assert.equal(packet.revision.clean, true);
+  assert.match(packet.revision.dataDigest, /^sha256:[a-f0-9]{64}$/);
   assert.equal(packet.summary.obligationOccurrences, 1);
   assert.equal(packet.obligations[0].status, "complete");
   assert.equal(packet.evidence[0].id, "evidence-q1-risk-review");
@@ -130,6 +132,31 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.match(await readFile(join(written.output, "manifest.json"), "utf8"), /evidence-q1-risk-review/);
   await access(join(written.output, "records", "action-item", "action-item-q1-risk-review.json"));
   await access(join(written.output, "content", "policy-risk-governance.md"));
+  await assert.rejects(
+    writeEvidencePacket(root, packet, { output: ".soc2/test-packet" }),
+    /already exists/
+  );
+  await access(join(written.output, "index.html"));
+  const unsafePacket = structuredClone(packet);
+  unsafePacket.records[0].type = "../../../outside";
+  await assert.rejects(
+    writeEvidencePacket(root, unsafePacket, { output: ".soc2/unsafe-packet" }),
+    /stay inside the packet directory/
+  );
+  await assert.rejects(access(join(root, ".soc2", "unsafe-packet")), /ENOENT/);
+
+  const actionPath = join(root, "data", "action-items", "action-item-q1-risk-review.json");
+  const actionSource = await readFile(actionPath, "utf8");
+  try {
+    await writeFile(actionPath, actionSource.replace("Record Q1 risk review", "Changed after packet preparation"), "utf8");
+    await assert.rejects(
+      writeEvidencePacket(root, packet, { output: ".soc2/stale-packet" }),
+      /source changed/
+    );
+    await assert.rejects(access(join(root, ".soc2", "stale-packet")), /ENOENT/);
+  } finally {
+    await writeFile(actionPath, actionSource, "utf8");
+  }
 
   const cli = await execute(process.execPath, [
     fileURLToPath(new URL("../bin/soc2.js", import.meta.url)),
@@ -171,11 +198,112 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     const attachmentResponse = await fetch(`${running.url}${apiResult.packetUrl.replace(/index\.html$/, "attachments/index.html")}`);
     assert.equal(attachmentResponse.status, 200);
     assert.equal(attachmentResponse.headers.get("content-type"), "application/octet-stream");
+    await symlink(join(root, "data", "workspace.json"), join(generatedRoot, "attachments", "workspace-link.json"));
+    const symlinkResponse = await fetch(`${running.url}${apiResult.packetUrl.replace(/index\.html$/, "attachments/workspace-link.json")}`);
+    assert.equal(symlinkResponse.status, 400);
     const traversalResponse = await fetch(`${running.url}${apiResult.packetUrl.replace(/index\.html$/, "%2e%2e%2fmanifest.json")}`);
     assert.notEqual(traversalResponse.status, 200);
+    const customResponse = await fetch(`${running.url}/api/evidence-packet`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        start: "2026-01-01",
+        end: "2026-03-31",
+        output: ".soc2/custom-packet"
+      })
+    });
+    assert.equal(customResponse.status, 201);
+    assert.equal((await customResponse.json()).packetUrl, null);
   } finally {
     await new Promise((resolve) => running.server.close(resolve));
   }
+});
+
+test("limits event workflow coverage to runs that intersect the audit period", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-evidence-event-period-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "obligation-material-change-review",
+    type: "obligation",
+    title: "Review material change",
+    status: "active",
+    activityType: "change-review",
+    recurrence: { mode: "event", eventType: "material-change" },
+    window: { startOffsetDays: 0, endOffsetDays: 2 },
+    ownerIds: ["person-owner"]
+  });
+  const completedRun = await createObligationEvent(root, {
+    eventType: "material-change",
+    occurredOn: "2026-01-01",
+    title: "Completed during period"
+  });
+  await createObligationEvent(root, {
+    eventType: "material-change",
+    occurredOn: "2025-12-01",
+    title: "Outside period"
+  });
+  const evidencedRun = await createObligationEvent(root, {
+    eventType: "material-change",
+    occurredOn: "2025-12-15",
+    title: "Evidence during period"
+  });
+  const startedRun = await createObligationEvent(root, {
+    eventType: "material-change",
+    occurredOn: "2026-02-10",
+    title: "Started during period"
+  });
+  const canceledRun = await createObligationEvent(root, {
+    eventType: "material-change",
+    occurredOn: "2026-02-12",
+    title: "Canceled during period"
+  });
+  const canceledEvent = (await loadWorkspace(root)).resources.find(({ id }) => id === canceledRun.event.id);
+  await updateResource(root, "obligation-event", canceledEvent.id, {
+    ...canceledEvent,
+    status: "canceled"
+  });
+  const completedAction = (await loadWorkspace(root)).resources.find(({ id }) => id === completedRun.actions[0].id);
+  await updateResource(root, "action-item", completedAction.id, {
+    ...completedAction,
+    status: "done",
+    completedOn: "2026-02-02"
+  });
+  const canceledAction = (await loadWorkspace(root)).resources.find(({ id }) => id === startedRun.actions[0].id);
+  await updateResource(root, "action-item", canceledAction.id, {
+    ...canceledAction,
+    status: "canceled"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "evidence-material-change",
+    type: "evidence",
+    title: "Material change evidence",
+    status: "verified",
+    evidenceKind: "system-export",
+    source: "Change system",
+    collectedOn: "2026-02-05",
+    classification: "Internal",
+    externalReference: { system: "Change system", reference: "change-123" },
+    sourceResourceIds: [evidencedRun.actions[0].id]
+  });
+
+  const packet = await prepareEvidencePacket(root, {
+    start: "2026-02-01",
+    end: "2026-02-28"
+  });
+  assert.deepEqual(packet.eventRuns.map(({ title }) => title).sort(), [
+    "Canceled during period",
+    "Completed during period",
+    "Evidence during period",
+    "Started during period"
+  ]);
+  assert.equal(packet.records.some(({ title }) => title === "Outside period"), false);
+  assert.equal(packet.records.some(({ title }) => title === "Evidence during period"), true);
+  assert.equal(packet.datedRecords.some(({ id }) => id === completedAction.id), true);
+  assert.equal(packet.gaps.some(({ code }) => code === "canceled-event-action"), true);
+  assert.equal(packet.gaps.some(({ resourceId }) => resourceId === canceledRun.actions[0].id), false);
 });
 
 function git(cwd, args) {

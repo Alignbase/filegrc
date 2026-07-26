@@ -1,8 +1,10 @@
-import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { copyFile, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { planObligations } from "./obligations.js";
-import { resolveDataPath, resolveWorkspacePath } from "./paths.js";
+import { isWithin, resolveDataPath, resolveWorkspacePath } from "./paths.js";
 import { parseCalendarDate } from "./recurrence.js";
 import { validateWorkspace } from "./validate.js";
 
@@ -21,12 +23,29 @@ export async function prepareEvidencePacket(input, options = {}) {
   const datedRecords = loaded.entries
     .map((entry) => packetRecord(entry.record, loaded.model, start, end, loaded.workspace.timezone))
     .filter(Boolean);
+  const datedRecordIds = new Set(datedRecords.map(({ id }) => id));
+  const datedEvidenceSourceIds = new Set(
+    [...datedRecordIds].flatMap((id) => (
+      byId.get(id)?.type === "evidence" ? byId.get(id).sourceResourceIds || [] : []
+    ))
+  );
   const plan = planObligations(records, {
     asOf: end,
     from: start,
     through: end,
     includeComplete: true
   });
+  const obligations = plan.calendarItems.filter((item) => item.dueWindowStart <= end && item.overdueOn > start);
+  const eventRuns = plan.eventRuns.filter((run) => (
+    (run.occurredOn >= start && run.occurredOn <= end)
+    || datedEvidenceSourceIds.has(run.id)
+    || run.actions.some((action) => (
+      (action.completedOn && action.completedOn >= start && action.completedOn <= end)
+      || datedEvidenceSourceIds.has(action.actionItemId)
+      || [...action.completionResourceIds, ...action.evidenceIds].some((id) => datedRecordIds.has(id))
+      || (action.dueWindowStart <= end && (!action.overdueOn || action.overdueOn > start))
+    ))
+  ));
   const selectedIds = new Set(datedRecords.map((record) => record.id));
   if (audit) {
     selectedIds.add(audit.id);
@@ -47,17 +66,18 @@ export async function prepareEvidencePacket(input, options = {}) {
       selectedIds.add(request.id);
     }
   }
-  for (const item of plan.items) {
+  for (const item of obligations) {
     selectedIds.add(item.obligationId);
     addIds(selectedIds, item.completionResourceIds);
     addIds(selectedIds, item.evidenceIds);
-    if (item.eventId) selectedIds.add(item.eventId);
-    if (item.actionItemId) selectedIds.add(item.actionItemId);
   }
-  for (const run of plan.eventRuns) {
-    if (run.occurredOn >= start && run.occurredOn <= end) {
-      selectedIds.add(run.id);
-      addIds(selectedIds, run.actionItemIds);
+  for (const run of eventRuns) {
+    selectedIds.add(run.id);
+    addIds(selectedIds, run.actionItemIds);
+    for (const action of run.actions) {
+      selectedIds.add(action.obligationId);
+      addIds(selectedIds, action.completionResourceIds);
+      addIds(selectedIds, action.evidenceIds);
     }
   }
 
@@ -70,6 +90,8 @@ export async function prepareEvidencePacket(input, options = {}) {
   }
   for (const id of [...selectedIds]) addIds(evidenceIds, byId.get(id)?.evidenceIds);
   addIds(selectedIds, evidenceIds);
+  expandEvidenceWorkflowContext(selectedIds, byId);
+  for (const id of selectedIds) if (byId.get(id)?.type === "evidence") evidenceIds.add(id);
 
   const controlIds = new Set();
   for (const id of selectedIds) {
@@ -92,16 +114,11 @@ export async function prepareEvidencePacket(input, options = {}) {
   addIds(selectedIds, requirementIds);
 
   const evidence = [...evidenceIds].map((id) => evidenceSummary(byId.get(id))).filter(Boolean).sort(byTitle);
-  const obligations = plan.calendarItems.filter((item) => item.dueWindowStart <= end && item.overdueOn > start);
-  const eventRuns = plan.eventRuns.filter((run) => (
-    (run.occurredOn >= start && run.occurredOn <= end)
-    || run.actions.some((action) => action.dueWindowStart <= end && (!action.overdueOn || action.overdueOn > start))
-  ));
-  const gaps = packetGaps({ obligations, eventRuns, evidence, git: getGitSummary(loaded.root), end });
   const selectedPaths = [...selectedIds]
     .map((id) => entriesById.get(id))
     .filter(Boolean)
     .map((entry) => `data/${entry.relativePath}`);
+  const historyRevision = getGitSummary(loaded.root);
   const histories = getWorkspaceHistories(loaded.root, selectedPaths, 50);
   const packetRecords = [...selectedIds]
     .map((id) => byId.get(id))
@@ -120,7 +137,14 @@ export async function prepareEvidencePacket(input, options = {}) {
       };
     })
     .sort((a, b) => a.type.localeCompare(b.type) || a.title.localeCompare(b.title));
+  await assertLoadedEntriesCurrent(loaded);
+  const dataDigest = await dataTreeDigest(loaded.root);
+  await assertLoadedEntriesCurrent(loaded);
   const git = getGitSummary(loaded.root);
+  if (historyRevision.commit !== git.commit || historyRevision.branch !== git.branch) {
+    throw new Error("The Git revision changed while the evidence packet was being prepared. Try again.");
+  }
+  const gaps = packetGaps({ obligations, eventRuns, evidence, git, end });
   const generatedAt = options.generatedAt || new Date().toISOString();
   return {
     schemaVersion: 1,
@@ -136,7 +160,8 @@ export async function prepareEvidencePacket(input, options = {}) {
       commit: git.commit,
       shortCommit: git.shortCommit,
       branch: git.branch,
-      clean: git.clean
+      clean: git.clean,
+      dataDigest
     },
     summary: {
       datedRecords: datedRecords.length,
@@ -159,32 +184,61 @@ export async function prepareEvidencePacket(input, options = {}) {
   };
 }
 
+function expandEvidenceWorkflowContext(selectedIds, byId) {
+  const queue = [...selectedIds];
+  const enqueue = (ids = []) => {
+    for (const id of ids) {
+      if (!id || selectedIds.has(id)) continue;
+      selectedIds.add(id);
+      queue.push(id);
+    }
+  };
+  for (let index = 0; index < queue.length; index += 1) {
+    const record = byId.get(queue[index]);
+    if (record?.type === "evidence") enqueue(record.sourceResourceIds);
+    if (record?.type === "action-item") {
+      enqueue([
+        record.sourceResourceId,
+        record.obligationId,
+        ...(record.completionResourceIds || []),
+        ...(record.evidenceIds || [])
+      ]);
+    }
+    if (record?.type === "obligation-event") enqueue([...(record.obligationIds || []), ...(record.actionItemIds || [])]);
+  }
+}
+
 export async function writeEvidencePacket(input, packet, options = {}) {
   const baseName = `${packet.period.start}-to-${packet.period.end}-${packet.revision.shortCommit || "uncommitted"}`;
   let outputOption = options.output || `.soc2/evidence-packets/${baseName}`;
   requireDerivedOutputPath(outputOption);
   let output = resolveWorkspacePath(input, outputOption);
-  await mkdir(dirname(output), { recursive: true });
-  if (options.output) {
-    await mkdir(output);
-  } else {
-    let suffix = 2;
-    while (true) {
-      try {
-        await mkdir(output);
-        break;
-      } catch (error) {
-        if (error.code !== "EEXIST") throw error;
-        outputOption = `.soc2/evidence-packets/${baseName}-${suffix++}`;
-        output = resolveWorkspacePath(input, outputOption);
-      }
-    }
-  }
   const validation = await validateWorkspace(input);
+  if (!validation.ok) throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before writing evidence.`);
+  await assertPacketSourceState(packet, validation.loaded);
   const entriesById = new Map(validation.loaded.entries.map((entry) => [entry.record.id, entry]));
   const byId = new Map(validation.loaded.resources.map((record) => [record.id, record]));
   const files = [];
+  let outputCreated = false;
   try {
+    await mkdir(dirname(output), { recursive: true });
+    if (options.output) {
+      await mkdir(output);
+      outputCreated = true;
+    } else {
+      let suffix = 2;
+      while (true) {
+        try {
+          await mkdir(output);
+          outputCreated = true;
+          break;
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+          outputOption = `.soc2/evidence-packets/${baseName}-${suffix++}`;
+          output = resolveWorkspacePath(input, outputOption);
+        }
+      }
+    }
     await writePacketFile(output, "manifest.json", `${JSON.stringify(packet, null, 2)}\n`, files);
     await writePacketFile(output, "README.md", packetMarkdown(packet), files);
     await writePacketFile(output, "index.html", packetHtml(packet), files);
@@ -210,9 +264,10 @@ export async function writeEvidencePacket(input, packet, options = {}) {
         await copyPacketFile(resolveDataPath(validation.loaded.root, path), output, join("attachments", path), files);
       }
     }
+    await assertPacketSourceState(packet, validation.loaded);
     return { output, files };
   } catch (error) {
-    await rm(output, { recursive: true, force: true });
+    if (outputCreated) await rm(output, { recursive: true, force: true });
     error.message = `Evidence packet generation failed in ${outputOption}. ${error.message}`;
     throw error;
   }
@@ -227,6 +282,67 @@ function requireDerivedOutputPath(value) {
   ) {
     throw new Error("Evidence packet output must be a directory under .soc2/.");
   }
+}
+
+async function assertPacketSourceState(packet, loaded) {
+  await assertLoadedEntriesCurrent(loaded);
+  const dataDigest = await dataTreeDigest(loaded.root);
+  const git = getGitSummary(loaded.root);
+  if (
+    packet.revision?.dataDigest !== dataDigest
+    || packet.revision?.commit !== git.commit
+    || packet.revision?.branch !== git.branch
+  ) {
+    throw new Error("The workspace source changed after this packet was prepared. Prepare the packet again.");
+  }
+}
+
+async function assertLoadedEntriesCurrent(loaded) {
+  for (const entry of loaded.entries) {
+    const source = await readFile(resolveDataPath(loaded.root, entry.relativePath), "utf8");
+    if (source !== entry.source) {
+      throw new Error("The workspace source changed while the evidence packet was being prepared. Try again.");
+    }
+  }
+}
+
+async function dataTreeDigest(root) {
+  const hash = createHash("sha256");
+  updateDigestField(hash, "soc2-data-tree-v1");
+  const visit = async (directory, prefix = "") => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        updateDigestField(hash, "directory");
+        updateDigestField(hash, relativePath);
+        await visit(path, relativePath);
+      } else if (entry.isFile()) {
+        const fileHash = createHash("sha256");
+        for await (const chunk of createReadStream(path)) fileHash.update(chunk);
+        updateDigestField(hash, "file");
+        updateDigestField(hash, relativePath);
+        updateDigestField(hash, fileHash.digest("hex"));
+      } else if (entry.isSymbolicLink()) {
+        updateDigestField(hash, "symlink");
+        updateDigestField(hash, relativePath);
+        updateDigestField(hash, await readlink(path));
+      } else {
+        updateDigestField(hash, "other");
+        updateDigestField(hash, relativePath);
+      }
+    }
+  };
+  await visit(resolveDataPath(root, "."));
+  return `sha256:${hash.digest("hex")}`;
+}
+
+function updateDigestField(hash, value) {
+  const bytes = Buffer.from(String(value));
+  hash.update(`${bytes.length}:`);
+  hash.update(bytes);
 }
 
 function packetRecord(record, model, start, end, timezone) {
@@ -249,6 +365,7 @@ function packetRecord(record, model, start, end, timezone) {
     && record.periodStart <= end
     && record.periodEnd >= start;
   if (!dates.length && !overlaps) return null;
+  dates.sort((a, b) => (a.date || a.value).localeCompare(b.date || b.value) || a.field.localeCompare(b.field));
   return {
     id: record.id,
     type: record.type,
@@ -286,8 +403,16 @@ function packetGaps({ obligations, eventRuns, evidence, git, end }) {
     }
   }
   for (const run of eventRuns) {
+    if (run.status === "canceled") continue;
     for (const action of run.actions) {
-      if (action.missingCompletion) {
+      if (action.canceledAction) {
+        gaps.push(gap(
+          "error",
+          "canceled-event-action",
+          `${run.title}: ${action.title} was canceled. Complete the requirement or cancel the event with a documented reason.`,
+          action.actionItemId
+        ));
+      } else if (action.missingCompletion) {
         gaps.push(gap(
           "error",
           "missing-event-completion",
@@ -410,17 +535,32 @@ body{font:14px/1.5 system-ui,sans-serif;color:#161825;max-width:1120px;margin:au
 }
 
 async function writePacketFile(output, relativePath, source, files) {
-  const path = join(output, relativePath);
+  const path = resolvePacketOutputPath(output, relativePath);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, source, { encoding: "utf8", flag: "wx" });
   files.push(relativePath.split("\\").join("/"));
 }
 
 async function copyPacketFile(source, output, relativePath, files) {
-  const target = join(output, relativePath);
+  const target = resolvePacketOutputPath(output, relativePath);
   await mkdir(dirname(target), { recursive: true });
   await copyFile(source, target);
   files.push(relativePath.split("\\").join("/"));
+}
+
+function resolvePacketOutputPath(output, relativePath) {
+  if (
+    typeof relativePath !== "string"
+    || !relativePath
+    || isAbsolute(relativePath)
+    || relativePath.includes("\\")
+    || relativePath.includes("\0")
+  ) {
+    throw new Error("Evidence packet files must use safe relative paths.");
+  }
+  const target = resolve(output, relativePath);
+  if (!isWithin(output, target)) throw new Error("Evidence packet files must stay inside the packet directory.");
+  return target;
 }
 
 function gap(severity, code, message, resourceId) {

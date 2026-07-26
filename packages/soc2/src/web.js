@@ -163,7 +163,9 @@ function renderObligations(main) {
     return '<section class="obligation-column"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(status) + '</span><strong>' + items.length + '</strong></div><div class="obligation-cards">' + (items.length ? items.map(obligationCard).join("") : empty("Nothing " + status + ".")) + '</div></section>';
   }).join("");
   const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.eventType) + '</p><h3>' + esc(trigger.prompt) + '</h3><p>' + trigger.steps.length + ' policy actions will be created with their own owners and due windows.</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
-  const runs = plan.eventRuns.filter((run) => run.status !== "canceled").sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
+  const runs = plan.eventRuns
+    .filter((run) => run.status !== "canceled")
+    .sort((a, b) => String(b.occurredAt || b.occurredOn).localeCompare(String(a.occurredAt || a.occurredOn)));
   main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation board</h2><p>Recurring work uses a compliant completion range and an explicit overdue cutoff. Event reminders create a tracked checklist when a policy-triggering change occurs.</p></div><a class="button" href="#/resources/obligation">Edit templates</a></div>' +
     '<section class="metrics obligation-metrics">' +
       metric("Overdue", plan.counts.overdue, "Past the policy cutoff", plan.counts.overdue ? "bad" : "neutral") +
@@ -309,13 +311,14 @@ function windowText(item) {
 }
 
 function timingText(item) {
+  if (item.canceledAction) return "Action canceled; resolve or cancel the event";
   if (item.missingCompletion) return "Link required completion proof";
   if (item.status === "overdue" && Number.isInteger(item.hoursOverdue)) {
     return item.hoursOverdue === 0 ? "Overdue less than 1 hour" : item.hoursOverdue + " hour" + (item.hoursOverdue === 1 ? "" : "s") + " overdue";
   }
   if (item.status === "overdue") return item.daysOverdue === 0 ? "Overdue today" : item.daysOverdue + " day" + (item.daysOverdue === 1 ? "" : "s") + " overdue";
   if (item.status === "due" && Number.isInteger(item.hoursUntilOverdue)) {
-    return item.hoursUntilOverdue === 0 ? "Overdue at the cutoff" : item.hoursUntilOverdue + " hour" + (item.hoursUntilOverdue === 1 ? "" : "s") + " until overdue";
+    return item.hoursUntilOverdue === 0 ? "Cutoff now" : item.hoursUntilOverdue + " hour" + (item.hoursUntilOverdue === 1 ? "" : "s") + " until overdue";
   }
   if (item.status === "due") return item.overdueOn ? item.daysUntilOverdue + " day" + (item.daysUntilOverdue === 1 ? "" : "s") + " until overdue" : "Due now · no fixed cutoff";
   if (item.status === "upcoming" && Number.isInteger(item.hoursUntilStart)) {
@@ -1269,7 +1272,7 @@ function groupTitle(id) { return state.model.groups.find((group) => group.id ===
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
 function fieldLabel(type, name) { return name === "title" ? state.model.resources[type]?.titleLabel || state.model.commonFields.title.label : fieldDefinition(type, name)?.label || humanize(name); }
 function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || value; }
-function humanize(value) { return String(value).replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
+function humanize(value) { return String(value).replace(/[-_]+/g, " ").replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
 function formatValue(value, field, type) {
   if (value === undefined || value === null || value === "") return '<span class="muted">Not set</span>';
   const definition = fieldDefinition(type, field);

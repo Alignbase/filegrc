@@ -27,10 +27,17 @@ test("calculates upcoming calendar obligations without changing calendar dates",
     interval: 2,
     anchorDate: "2026-01-01"
   }, "2026-01-20"), "2026-01-29");
+  assert.equal(nextCalendarOccurrence({
+    mode: "calendar",
+    unit: "year",
+    interval: 1,
+    anchorDate: "0099-01-31"
+  }, "0100-01-01"), "0100-01-31");
 });
 
 test("rejects unsupported or malformed recurrence values", () => {
   assert.equal(nextCalendarOccurrence({ mode: "event" }, "2026-01-01"), null);
   assert.equal(nextCalendarOccurrence({ mode: "calendar", unit: "month", interval: 0, anchorDate: "2026-01-01" }, "2026-01-01"), null);
+  assert.equal(nextCalendarOccurrence({ mode: "calendar", unit: "month", interval: Number.MAX_SAFE_INTEGER + 1, anchorDate: "2026-01-01" }, "2026-01-01"), null);
   assert.equal(nextCalendarOccurrence({ mode: "calendar", unit: "month", interval: 1, anchorDate: "bad" }, "2026-01-01"), null);
 });

@@ -159,11 +159,12 @@ test("creates an event run and its policy checklist as one valid batch", async (
     "2026-08-01",
     "--subject",
     "person-owner",
-    "--title",
-    "Onboard support engineer",
+    "--title=Onboard=support engineer",
     "--json"
   ]);
-  assert.equal(JSON.parse(triggerCli.stdout).actions.length, 2);
+  const triggerResult = JSON.parse(triggerCli.stdout);
+  assert.equal(triggerResult.actions.length, 2);
+  assert.equal(triggerResult.event.title, "Onboard=support engineer");
   assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "obligation-event").length, 2);
 });
 
@@ -245,6 +246,29 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
     includeComplete: true
   });
   assert.equal(complete.eventItems[0].status, "complete");
+
+  const completedAction = (await loadWorkspace(root)).resources.find(({ id }) => id === action.id);
+  await updateResource(root, "action-item", action.id, { ...completedAction, status: "canceled" });
+  const canceled = planObligations((await loadWorkspace(root)).resources, {
+    asOf: "2026-07-02",
+    through: "2026-07-03",
+    now: "2026-07-02T20:31:00Z",
+    includeComplete: true
+  });
+  assert.equal(canceled.eventItems[0].status, "overdue");
+  assert.equal(canceled.eventItems[0].canceledAction, true);
+  assert.notEqual(canceled.eventRuns[0].status, "complete");
+
+  const event = (await loadWorkspace(root)).resources.find(({ id }) => id === created.event.id);
+  await updateResource(root, "obligation-event", event.id, { ...event, status: "canceled" });
+  const canceledEvent = planObligations((await loadWorkspace(root)).resources, {
+    asOf: "2026-07-02",
+    through: "2026-07-03",
+    now: "2026-07-02T20:31:00Z",
+    includeComplete: true
+  });
+  assert.equal(canceledEvent.eventRuns[0].status, "canceled");
+  assert.equal(canceledEvent.eventItems.length, 0);
 });
 
 test("rejects malformed obligation recurrence and due windows", async (context) => {
@@ -266,4 +290,78 @@ test("rejects malformed obligation recurrence and due windows", async (context) 
     /workspace invalid/
   );
   assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === "obligation-invalid-event"), false);
+  await assert.rejects(
+    createResource(root, {
+      schemaVersion: 1,
+      id: "obligation-ambiguous-window",
+      type: "obligation",
+      title: "Ambiguous window",
+      status: "active",
+      activityType: "test",
+      recurrence: { mode: "calendar", unit: "month", interval: 1, anchorDate: "2026-01-01" },
+      window: { startOffsetDays: 5 },
+      ownerIds: ["person-owner"]
+    }),
+    /workspace invalid/
+  );
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "obligation-calendar-boundary",
+    type: "obligation",
+    title: "Calendar boundary",
+    status: "active",
+    activityType: "test",
+    recurrence: { mode: "event", eventType: "calendar-boundary" },
+    window: { endOffsetDays: 0 },
+    ownerIds: ["person-owner"]
+  });
+  await assert.rejects(
+    createObligationEvent(root, {
+      eventType: "calendar-boundary",
+      occurredOn: "9999-12-31"
+    }),
+    /supported calendar range/
+  );
+});
+
+test("bounds unusually large obligation queries", () => {
+  assert.throws(() => planObligations([{
+    id: "obligation-ancient-daily-task",
+    type: "obligation",
+    title: "Ancient daily task",
+    status: "active",
+    activityType: "test",
+    recurrence: {
+      mode: "calendar",
+      unit: "day",
+      interval: 1,
+      anchorDate: "1000-01-01"
+    },
+    ownerIds: ["person-owner"]
+  }], {
+    asOf: "2026-07-25",
+    through: "2026-07-25"
+  }), /must be narrowed/);
+  assert.throws(() => planObligations([{
+    id: "obligation-long-window",
+    type: "obligation",
+    title: "Long-window daily task",
+    status: "active",
+    activityType: "test",
+    recurrence: {
+      mode: "calendar",
+      unit: "day",
+      interval: 1,
+      anchorDate: "1900-01-01"
+    },
+    window: {
+      startOffsetDays: 36_599,
+      endOffsetDays: 36_600
+    },
+    ownerIds: ["person-owner"]
+  }], {
+    asOf: "2026-07-25",
+    from: "2026-07-25",
+    through: "2026-07-25"
+  }), /must be narrowed/);
 });

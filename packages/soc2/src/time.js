@@ -46,3 +46,17 @@ export function currentCalendarDate(timeZone, now = new Date()) {
     return now.toISOString().slice(0, 10);
   }
 }
+
+export function isRfc3339Timestamp(value) {
+  const match = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value || "");
+  if (!match) return false;
+  const [year, month, day] = match[1].split("-").map(Number);
+  if (year < 1) return false;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(0, 0, 0, 0);
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    && !Number.isNaN(Date.parse(value));
+}

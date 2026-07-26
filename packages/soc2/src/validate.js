@@ -1,13 +1,15 @@
 import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
 import { resolveContentPath, resolveDataPath } from "./paths.js";
-import { validCalendarRecurrence } from "./recurrence.js";
+import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
+import { isRfc3339Timestamp } from "./time.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_OBLIGATION_OFFSET_DAYS = 36_600;
+const MAX_OBLIGATION_OFFSET_HOURS = MAX_OBLIGATION_OFFSET_DAYS * 24;
 
 export async function validateWorkspace(input = process.cwd()) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
@@ -105,7 +107,7 @@ function validateObligation(record, path, diagnostics) {
       diagnostics.push(error(
         "invalid-obligation-recurrence",
         path,
-        "Calendar recurrence requires a positive integer interval, day/month/year unit, and a valid anchorDate or startsOn date."
+        "Calendar recurrence requires a positive safe-integer interval, day/week/month/year unit, and a valid anchorDate or startsOn date."
       ));
     }
   } else if (recurrence.mode === "event") {
@@ -133,6 +135,16 @@ function validateObligation(record, path, diagnostics) {
       diagnostics.push(error("invalid-obligation-window", path, `window.${name} must be an integer.`));
     }
   }
+  for (const name of dayFields) {
+    if (Number.isInteger(window[name]) && Math.abs(window[name]) > MAX_OBLIGATION_OFFSET_DAYS) {
+      diagnostics.push(error("invalid-obligation-window", path, `window.${name} must stay within ${MAX_OBLIGATION_OFFSET_DAYS.toLocaleString("en-US")} days of the policy event.`));
+    }
+  }
+  for (const name of hourFields) {
+    if (Number.isInteger(window[name]) && Math.abs(window[name]) > MAX_OBLIGATION_OFFSET_HOURS) {
+      diagnostics.push(error("invalid-obligation-window", path, `window.${name} must stay within ${MAX_OBLIGATION_OFFSET_HOURS.toLocaleString("en-US")} hours of the policy event.`));
+    }
+  }
   if (dayFields.length && hourFields.length) {
     diagnostics.push(error("invalid-obligation-window", path, "An obligation window cannot mix day and hour offsets."));
   }
@@ -140,16 +152,26 @@ function validateObligation(record, path, diagnostics) {
     diagnostics.push(error("invalid-obligation-window", path, "Calendar obligations use day offsets; hour offsets are only valid for event obligations."));
   }
   if (
-    Number.isInteger(window.startOffsetDays)
-    && Number.isInteger(window.endOffsetDays)
-    && window.endOffsetDays < window.startOffsetDays
+    recurrence.mode === "calendar"
+    && Number.isInteger(window.startOffsetDays)
+    && window.startOffsetDays > 0
+    && window.endOffsetDays === undefined
+  ) {
+    diagnostics.push(error(
+      "invalid-obligation-window",
+      path,
+      "Calendar obligations with a positive window.startOffsetDays must set window.endOffsetDays."
+    ));
+  }
+  if (
+    Number.isInteger(window.endOffsetDays)
+    && window.endOffsetDays < (Number.isInteger(window.startOffsetDays) ? window.startOffsetDays : 0)
   ) {
     diagnostics.push(error("invalid-obligation-window", path, "window.endOffsetDays must be on or after window.startOffsetDays."));
   }
   if (
-    Number.isInteger(window.startOffsetHours)
-    && Number.isInteger(window.endOffsetHours)
-    && window.endOffsetHours < window.startOffsetHours
+    Number.isInteger(window.endOffsetHours)
+    && window.endOffsetHours < (Number.isInteger(window.startOffsetHours) ? window.startOffsetHours : 0)
   ) {
     diagnostics.push(error("invalid-obligation-window", path, "window.endOffsetHours must be on or after window.startOffsetHours."));
   }
@@ -256,7 +278,7 @@ function validateValue(name, value, field, model, path, diagnostics) {
   if (enumValues && !enumValues.includes(value)) fail(`must be one of ${enumValues.join(", ")}.`);
   if ((field.type === "id" || field.format === "id") && !ID_PATTERN.test(value)) fail("must use lowercase kebab-case.");
   if ((field.type === "date" || field.format === "date") && !isDate(value)) fail("must be an ISO 8601 date (YYYY-MM-DD).");
-  if (field.type === "timestamp" && (!TIMESTAMP_PATTERN.test(value) || Number.isNaN(Date.parse(value)))) {
+  if (field.type === "timestamp" && !isRfc3339Timestamp(value)) {
     fail("must be an RFC 3339 timestamp with a timezone.");
   }
   if (field.format === "email" && !EMAIL_PATTERN.test(value)) fail("must be an email address.");
@@ -274,9 +296,7 @@ function validateArrayItem(name, value, type, path, diagnostics) {
 }
 
 function isDate(value) {
-  if (!DATE_PATTERN.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().startsWith(value);
+  return DATE_PATTERN.test(value) && Boolean(parseCalendarDate(value));
 }
 
 function isTimezone(value) {

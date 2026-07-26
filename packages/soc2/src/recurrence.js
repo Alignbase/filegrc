@@ -11,7 +11,7 @@ export function validCalendarRecurrence(recurrence) {
   return Boolean(
     recurrence
     && recurrence.mode === "calendar"
-    && Number.isInteger(recurrence.interval)
+    && Number.isSafeInteger(recurrence.interval)
     && recurrence.interval > 0
     && ["day", "week", "month", "year"].includes(recurrence.unit)
     && parseCalendarDate(recurrence.anchorDate)
@@ -29,8 +29,8 @@ export function calendarOccurrence(recurrence, index) {
   const monthIndex = anchor.month - 1 + index * step;
   const year = anchor.year + Math.floor(monthIndex / 12);
   const month = ((monthIndex % 12) + 12) % 12;
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return formatCalendarDateUtc(new Date(Date.UTC(year, month, Math.min(anchor.day, lastDay))));
+  const lastDay = utcCalendarDate(year, month + 1, 0).getUTCDate();
+  return formatCalendarDateUtc(utcCalendarDate(year, month, Math.min(anchor.day, lastDay)));
 }
 
 export function calendarOccurrenceIndex(recurrence, date) {
@@ -64,15 +64,25 @@ export function calendarDayDifference(from, to) {
 export function parseCalendarDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return null;
   const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
+  if (year < 1) return null;
+  const date = utcCalendarDate(year, month - 1, day);
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
     ? { year, month, day, date }
     : null;
 }
 
+function utcCalendarDate(year, monthIndex, day) {
+  const date = new Date(0);
+  date.setUTCFullYear(year, monthIndex, day);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
 function formatCalendarDateUtc(date) {
+  const year = date.getUTCFullYear();
+  if (!Number.isInteger(year) || year < 1 || year > 9999) return null;
   return [
-    date.getUTCFullYear(),
+    String(year).padStart(4, "0"),
     String(date.getUTCMonth() + 1).padStart(2, "0"),
     String(date.getUTCDate()).padStart(2, "0")
   ].join("-");

@@ -1,6 +1,6 @@
 import { createServer as createHttpServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { extname, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
 import { FAVICON_PNG } from "./favicon.js";
@@ -55,10 +55,16 @@ export function createSoc2Server(input = process.cwd(), options = {}) {
         const packet = await prepareEvidencePacket(input, payload);
         const written = await writeEvidencePacket(input, packet, { output: payload.output });
         const output = relativeToWorkspace(input, written.output);
+        const outputSegments = output.split("/");
+        const packetUrl = outputSegments.length === 3
+          && outputSegments[0] === ".soc2"
+          && outputSegments[1] === "evidence-packets"
+          ? `/packet/${outputSegments.map(encodeURIComponent).join("/")}/index.html`
+          : null;
         return json(response, 201, {
           packet,
           output,
-          packetUrl: `/packet/${output.split("/").map(encodeURIComponent).join("/")}/index.html`,
+          packetUrl,
           files: written.files
         });
       }
@@ -118,6 +124,10 @@ export function createSoc2Server(input = process.cwd(), options = {}) {
         const path = resolveWorkspacePath(input, relativePath);
         const packetRoot = resolveWorkspacePath(input, ".soc2/evidence-packets");
         if (!isWithin(packetRoot, path)) return json(response, 400, { error: "A generated evidence-packet path is required." });
+        const [realPacketRoot, realPath] = await Promise.all([realpath(packetRoot), realpath(path)]);
+        if (realPacketRoot !== resolve(packetRoot) || !isWithin(realPacketRoot, realPath)) {
+          return json(response, 400, { error: "A generated evidence-packet path is required." });
+        }
         const isPacketIndex = segments.length === 4 && segments.at(-1) === "index.html";
         return text(response, 200, await readFile(path), packetContentType(path, isPacketIndex));
       }
@@ -248,7 +258,7 @@ function urlHost(host) {
 function statusFor(error) {
   if (error instanceof SyntaxError || error instanceof URIError) return 400;
   if (/exceeds 2 MB/i.test(error.message)) return 413;
-  if (/changed after you opened/i.test(error.message)) return 409;
+  if (/changed after you opened|source changed|revision changed/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
   if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves|valid .*date|not found|no active obligations|end date|through date|already exists|EEXIST/i.test(error.message)) return 400;

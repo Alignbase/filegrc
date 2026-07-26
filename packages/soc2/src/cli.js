@@ -178,7 +178,10 @@ function parseArgs(args) {
       positionals.push(value);
       continue;
     }
-    const [name, inline] = value.slice(2).split("=", 2);
+    const source = value.slice(2);
+    const separator = source.indexOf("=");
+    const name = separator === -1 ? source : source.slice(0, separator);
+    const inline = separator === -1 ? undefined : source.slice(separator + 1);
     if (inline !== undefined) flags[name] = inline;
     else if (args[index + 1] && !args[index + 1].startsWith("-")) flags[name] = args[++index];
     else flags[name] = true;
