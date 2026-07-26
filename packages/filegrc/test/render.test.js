@@ -547,6 +547,7 @@ test("explains purpose, policy basis, and timing in an interactive index popover
   assert.match(APP_SCRIPT, /<span>Timing<\/span>/);
   assert.match(listSource, /resourceGuide\(type\)/);
   assert.match(listSource, /id="resource-guide-trigger"/);
+  assert.match(listSource, /M7\.8 7\.5a2\.4 2\.4 0 1 1/);
   assert.match(listSource, /resourceGuideCleanup = setupResourceGuide\(main\)/);
   assert.doesNotMatch(detailSource, /resourceGuide\(type\)/);
   assert.match(APP_SCRIPT, /id="resource-guide"[^>]+hidden/);
