@@ -245,38 +245,12 @@ function topbar(route) {
 }
 
 function renderHome(main) {
-  const controls = resourcesOfType("control");
-  const evidence = resourcesOfType("evidence");
-  const setup = programSetup();
-  const today = currentDate();
-  const workTypes = new Set(["finding", "exception", "action-item", "audit-request"]);
-  const openWork = state.resources.filter(({ record }) => workTypes.has(record.type) && isOpenWork(record));
   const activeAudit = resourcesOfType("audit").find((item) => !["complete", "closed", "cancelled"].includes(item.record.status));
-  const scheduled = state.resources
-    .map((entry) => ({ entry, date: dueDate(entry.record) }))
-    .filter(({ entry, date }) => date && entry.record.type !== "obligation" && !entry.record.obligationId && !isClosedStatus(entry.record.status))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 6);
-  const governanceTypes = ["policy", "document", "meeting", "training", "attestation"];
-  const riskTypes = ["risk", "vendor-review", "access-review", "vulnerability", "incident"];
-  main.innerHTML = '<div class="page home-page"><section class="hero"><div><p class="kicker">Current program state</p><h2>' + esc(state.workspace.title) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div><div class="hero-meta"><span>Model v' + esc(state.workspace.dataModelVersion) + '</span><span>' + state.resources.length + ' records</span><span>' + (state.git.available ? (state.git.clean ? "Working tree clean" : state.git.changes.length + " uncommitted changes") : "Git unavailable") + '</span></div></section>' +
-    readinessOverview() +
-    setupBanner(setup) +
-    '<section class="metrics">' +
-      metric("Data health", state.validation.ok ? "Valid" : state.validation.counts.errors + " errors", state.validation.ok ? "Schema and links pass" : state.validation.counts.warnings + " warnings", state.validation.ok ? "good" : "bad") +
-      metric("Controls", controls.length, countStatus(controls, "implemented") + " implemented · " + countStatus(controls, "planned") + " planned", "neutral") +
-      metric("Evidence", evidence.length, countStatus(evidence, "verified") + " verified records", "neutral") +
-      metric("Obligations", state.obligations.counts.due + state.obligations.counts.overdue, state.obligations.counts.overdue + " overdue · " + state.obligations.counts.upcoming + " upcoming", state.obligations.counts.overdue ? "warn" : "neutral") +
-    '</section>' +
-    '<div class="dashboard-grid"><section class="panel span-2 audit-panel"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(activeAudit?.record.title || "Plan the engagement") + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Plan audit</a>') + '</div>' +
-      (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>' +
-    '<section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 4)) + '</section>' +
-    '<section class="panel span-2 event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did something change?</h3></div><a href="#/obligations">Start workflow</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
-    '<section class="panel schedule-panel"><div class="panel-head"><div><p class="kicker">Schedule</p><h3>Dates and deadlines</h3></div></div>' +
-      (scheduled.length ? '<div class="due-list">' + scheduled.map(({ entry, date }) => '<a href="#/resource/' + encodeURIComponent(entry.record.type) + '/' + encodeURIComponent(entry.record.id) + '"><time class="' + (date < today ? "overdue" : "") + '">' + (date < today ? "Overdue · " : "") + esc(formatCalendarDate(date)) + '</time><span><strong>' + esc(entry.record.title) + '</strong><small>' + esc(state.model.resources[entry.record.type].title) + '</small></span></a>').join("") + '</div>' : empty("No open work has a scheduled date.")) + '</section>' +
-    '<section class="panel"><div class="panel-head"><div><p class="kicker">Governance</p><h3>Program library</h3></div></div>' + resourceBars(governanceTypes) + '</section>' +
-    '<section class="panel"><div class="panel-head"><div><p class="kicker">Risk and operations</p><h3>Operating records</h3></div></div>' + resourceBars(riskTypes) + '</section>' +
-    '<section class="panel span-2"><div class="panel-head"><div><p class="kicker">Record catalog</p><h3>Everything the program can track</h3></div></div>' + resourceDirectory() + '</section></div></div>';
+  main.innerHTML = '<div class="page home-page">' + readinessOverview() +
+    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 4)) + '</section>' +
+    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did something change?</h3></div><a href="#/obligations">Start workflow</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
+    '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(activeAudit?.record.title || "Plan the engagement") + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Plan audit</a>') + '</div>' +
+      (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section></div></div>';
 }
 
 function readinessOverview() {
@@ -289,61 +263,14 @@ function readinessOverview() {
   const evidence = resourcesOfType("evidence");
   const activeAudit = resourcesOfType("audit").find(({ record }) => !["complete", "closed", "cancelled"].includes(record.status));
   const stages = [
-    ["Scope", "Define the service, system boundary, people, data, and vendors.", "#/resources/system", inScopeSystems.length + " in-scope " + pluralize("system", inScopeSystems.length), inScopeSystems.length ? "good" : "warn"],
+    ["Scope", "Define the service, system boundary, people, data, and vendors.", inScopeSystems.length ? "#/resources/system" : "#/resources/system?new=1", inScopeSystems.length + " in-scope " + pluralize("system", inScopeSystems.length), inScopeSystems.length ? "good" : "warn"],
     ["Criteria", "Record what the auditor will evaluate and whether it applies.", "#/resources/requirement", requirements.length + " applicable", requirements.length ? "neutral" : "warn"],
     ["Policies", "Set the rules and responsibilities the company adopts.", "#/resources/policy", approvedPolicies.length + " of " + policies.length + " approved", approvedPolicies.length === policies.length && policies.length ? "good" : "warn"],
     ["Controls", "Confirm the repeatable work that satisfies those rules and criteria.", "#/resources/control", confirmedControls.length + " of " + controls.length + " reviewed", confirmedControls.length === controls.length && controls.length ? "good" : "warn"],
     ["Run the program", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
-    ["Audit", "Track the firm, period, requests, evidence packet, findings, and report.", "#/resources/audit", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
+    ["Audit", "Track the firm, period, requests, evidence packet, findings, and report.", activeAudit ? "#/resources/audit" : "#/resources/audit?new=1", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
   ];
   return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the audit chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that those controls worked during the audit period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
-}
-
-function programSetup() {
-  const inScopeSystems = resourcesOfType("system").filter(({ record }) => record.inScope && record.status !== "retired");
-  const policies = resourcesOfType("policy").filter(({ record }) => !["superseded", "retired"].includes(record.status));
-  const draftPolicies = policies.filter(({ record }) => ["draft", "in-review"].includes(record.status));
-  const controls = resourcesOfType("control");
-  const plannedControls = controls.filter(({ record }) => record.status === "planned");
-  const foundationEntries = [...inScopeSystems, ...policies, ...controls];
-  const foundationDirty = state.git.changes?.some((change) => foundationEntries.some((entry) => change.includes(entry.relativePath)));
-  const foundationCommitted = state.git.available && !foundationDirty && inScopeSystems.some((entry) => entry.history?.length);
-  const foundationComplete = inScopeSystems.length > 0 && draftPolicies.length === 0 && plannedControls.length === 0 && foundationCommitted;
-  return {
-    foundationComplete,
-    items: [
-      {
-        done: inScopeSystems.length > 0,
-        title: "Define the system boundary",
-        detail: inScopeSystems.length ? inScopeSystems.length + " in-scope " + pluralize("system", inScopeSystems.length) : "Name the service, owner, data, and production boundary.",
-        href: inScopeSystems.length ? "#/resources/system" : "#/resources/system?new=1"
-      },
-      {
-        done: draftPolicies.length === 0 && policies.length > 0,
-        title: "Review the starter policies",
-        detail: draftPolicies.length ? draftPolicies.length + " still need approval or activation." : policies.length + " policies reviewed.",
-        href: "#/resources/policy"
-      },
-      {
-        done: plannedControls.length === 0 && controls.length > 0,
-        title: "Confirm control implementation",
-        detail: plannedControls.length ? plannedControls.length + " controls still have the starter planned status." : controls.length + " controls reviewed.",
-        href: "#/resources/control"
-      },
-      {
-        done: foundationCommitted,
-        title: state.git.available ? "Commit the reviewed baseline" : "Initialize the Git audit trail",
-        detail: !state.git.available ? "Run git init at the workspace root." : foundationCommitted ? "The in-scope system and program foundation are committed." : "Commit the system, policy, and control changes after review.",
-        href: "#/repository"
-      }
-    ]
-  };
-}
-
-function setupBanner(setup) {
-  if (setup.foundationComplete) return "";
-  const done = setup.items.filter((item) => item.done).length;
-  return '<section class="setup-banner program-setup"><div><p class="kicker">Baseline review · ' + done + ' of ' + setup.items.length + '</p><h3>Turn the starter into your program</h3><p>The files can be valid while the program is still unconfigured. Confirm the scope, policies, and controls against what the company actually does.</p></div><div class="setup-steps">' + setup.items.map((item) => '<a class="' + (item.done ? "done" : "") + '" href="' + item.href + '"><span>' + (item.done ? "✓" : "→") + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.detail) + '</small></span></a>').join("") + '</div></section>';
 }
 
 function auditEngagementPrompt(audit = null) {
@@ -351,23 +278,6 @@ function auditEngagementPrompt(audit = null) {
   if (hasAuditor) return "";
   const heading = audit ? "Auditor not recorded" : "Engage an auditor before the target date";
   return '<div class="audit-engagement"><div><strong>' + heading + '</strong><p>Shortlist independent CPA firms that perform SOC 2 examinations. Share the system boundary, Security scope, Type 1 or Type 2 goal, and target timing.</p></div><ul><li>Compare relevant service experience, schedule, fee, and evidence-request process.</li><li>Agree on scope and dates before the evidence period or as early as practical.</li><li>Store the selected firm and contact in the audit record.</li></ul>' + (!audit ? '<a class="button primary" href="#/resources/audit?new=1">Create audit record</a>' : "") + '</div>';
-}
-
-function resourceDirectory() {
-  const groups = [
-    ...READINESS_STAGES.map((stage) => ({
-      title: stage.number + " " + stage.title,
-      types: [...new Set(stage.sections.flatMap((section) => section.types))]
-    })),
-    { title: "Organization", types: ORGANIZATION_RESOURCE_TYPES }
-  ].map((group) => {
-    const resources = group.types
-      .map((type) => [type, state.model.resources[type]])
-      .filter(([, definition]) => definition);
-    if (!resources.length) return "";
-    return '<section><h4>' + esc(group.title) + '</h4>' + resources.map(([type, resource]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(resource.pluralTitle) + '</span><strong>' + resourcesOfType(type).length + '</strong></a>').join("") + '</section>';
-  }).join("");
-  return '<div class="resource-directory">' + groups + '</div>';
 }
 
 function renderObligations(main) {
@@ -981,7 +891,7 @@ function initialOnboardingDraft() {
 function onboardingSteps() {
   return [
     {
-      target: ".hero",
+      target: ".topbar",
       kicker: "Mental model",
       title: "Files are the program",
       body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. The renderer edits those files, and Git records their history.",
@@ -1687,12 +1597,6 @@ function auditProgress(audit) {
 function metric(label, value, note, tone) {
   return '<section class="metric"><div class="metric-label"><span class="status-dot ' + tone + '"></span>' + esc(label) + '</div><strong>' + esc(value) + '</strong><small>' + esc(note) + '</small></section>';
 }
-function resourceBars(types) {
-  const values = types.map((type) => [type, state.model.resources[type], resourcesOfType(type).length]).filter(([, definition]) => definition);
-  const max = Math.max(1, ...values.map(([, , count]) => count));
-  return '<div class="resource-bars">' + values.map(([type, definition, count]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><i><b style="width:' + (count ? Math.max(4, (count / max) * 100) : 0) + '%"></b></i><strong>' + count + '</strong></a>').join("") + '</div>';
-}
-function countStatus(entries, status) { return entries.filter(({ record }) => record.status === status).length; }
 function countOverdue(entries) { const today = currentDate(); return entries.filter(({ record }) => dueDate(record) && dueDate(record) < today).length; }
 function dueDate(record) {
   const explicit = record.dueOn || record.nextDueOn || record.reviewDueOn || record.expiresOn || record.acceptanceExpiresOn || record.scheduledOn;
@@ -1702,16 +1606,6 @@ function dueDate(record) {
     ? record.recurrence
     : { ...(record.recurrence || {}), anchorDate: record.startsOn };
   return nextCalendarOccurrence(recurrence, currentDate());
-}
-function isClosedStatus(status) { return ["complete", "completed", "closed", "canceled", "cancelled", "retired", "superseded", "passed", "failed", "verified", "withdrawn", "remediated", "false-positive"].includes(status); }
-function isOpenWork(record) {
-  const statuses = {
-    "action-item": ["open", "in-progress", "blocked"],
-    "audit-request": ["open", "in-progress", "submitted", "needs-follow-up"],
-    exception: ["requested"],
-    finding: ["open", "accepted", "remediating"]
-  };
-  return statuses[record.type]?.includes(record.status) || false;
 }
 function currentDate() {
   try {
@@ -1845,6 +1739,7 @@ export const APP_STYLES = String.raw`
 html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .brand{flex:0 0 auto;margin-bottom:18px}.sidebar-nav{--nav-count-width:28px;--nav-control-width:14px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding-right:1px}.nav-home{margin-bottom:10px}.nav-stage>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr) var(--nav-count-width) var(--nav-control-width);gap:6px;align-items:center;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0}.nav-stage>.nav-heading:hover{background:rgba(255,255,255,.08);color:#fff}.nav-stage-number{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:8px}.nav-stage-copy,.nav-stage-copy strong,.nav-stage-copy small{display:block;min-width:0}.nav-stage-copy strong{font-size:10px;line-height:1.25}.nav-stage-copy small{margin-top:2px;color:#aeb6d8;font-size:8px;line-height:1.25;font-weight:500}.nav-stage>.nav-items{margin:2px 0 8px 17px;padding:1px 0 5px 12px;border-left:1px solid rgba(255,255,255,.14)}.nav-subgroup>.nav-subheading,.nav-subgroup>.nav-items a{width:100%;display:grid;grid-template-columns:minmax(0,1fr) var(--nav-count-width) var(--nav-control-width);gap:6px;align-items:center;padding-right:6px}.nav-subgroup>.nav-subheading{border:0;background:none;padding-top:7px;padding-bottom:4px;padding-left:7px;color:#919bc4;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;cursor:pointer}.nav-count{justify-self:end;text-align:right;font-variant-numeric:tabular-nums}.nav-control,.nav-control-slot{justify-self:end;width:var(--nav-control-width);text-align:right}.nav-subheading .nav-count{font-size:8px;letter-spacing:0}.nav-subgroup>.nav-items{padding:1px 0 4px 3px}.nav-subgroup>.nav-items a{padding-top:6px;padding-bottom:6px;padding-left:8px;font-size:11px}.nav-group.open>.nav-heading>.chevron:before,.nav-group.open>.nav-subheading>.chevron:before{transform:rotate(45deg)}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-items{display:none}.sidebar-footer{flex:0 0 auto;margin:10px -18px -18px;padding:10px 18px 14px;background:#000024;border-top:1px solid rgba(255,255,255,.14)}.side-validation{display:flex;align-items:center;gap:7px;padding:0 7px 9px;color:#aeb6d8;font-size:9px}.organization-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 12px;gap:9px;align-items:center;padding:8px;border-radius:8px;color:#eef1ff;text-decoration:none}.organization-nav:hover,.organization-nav.current{background:rgba(255,255,255,.11)}.organization-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);font-size:11px;font-weight:800}.organization-nav strong,.organization-nav small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.organization-nav strong{font-size:10px}.organization-nav small{margin-top:2px;color:#aeb6d8;font-size:8px}.organization-arrow{color:#aeb6d8;font-size:16px}.organization-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.organization-links{display:grid}.organization-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.organization-links a:first-child{padding-top:0;border-top:0}.organization-links strong,.organization-links small{display:block}.organization-links strong{font-size:11px}.organization-links small{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.4}.organization-links b{color:var(--accent);font-size:11px}.organization-links a:hover strong{color:var(--accent)}
 .button{text-decoration:none}
+.overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}.overview-grid>.audit-panel{grid-column:1/-1}
 .nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:10px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
 .list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}
 .setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
@@ -1934,6 +1829,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:9px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:11px}.packet-note,.packet-output>p{font-size:10px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:10px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:10px}.packet-list small{font-size:8px;color:var(--muted);margin-top:2px}
 .packet-preflight{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.packet-preflight a{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);text-decoration:none}.packet-preflight .status-dot{margin-top:4px}.packet-preflight small,.packet-preflight strong{display:block}.packet-preflight small{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.07em}.packet-preflight strong{margin-top:3px;font-size:10px}
 @media(max-width:900px){.obligation-board,.event-trigger-grid{grid-template-columns:1fr}.event-run-list{grid-template-columns:1fr}.packet-builder form,.packet-preflight{grid-template-columns:1fr 1fr}.packet-builder .button{align-self:end}}
+@media(max-width:900px){.overview-grid{grid-template-columns:1fr}.overview-grid>.audit-panel{grid-column:auto}}
 @media(max-width:520px){.event-reminder-preview,.packet-builder form,.packet-preflight{grid-template-columns:1fr}.obligation-metrics,.packet-metrics{grid-template-columns:1fr}.obligation-card-head{display:block}.obligation-card-head strong{display:block;text-align:left;margin-top:3px}}
 
 @media(prefers-color-scheme:dark){

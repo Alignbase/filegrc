@@ -401,7 +401,6 @@ test("uses the readiness path as the nested sidebar information architecture", (
   assert.match(APP_SCRIPT, /function safeExternalUrl\(value\)/);
   assert.match(APP_SCRIPT, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
   assert.match(APP_STYLES, /\.readiness-flow\{display:grid;grid-template-columns:repeat\(6/);
-  assert.match(APP_STYLES, /\.resource-directory\{display:grid/);
   assert.match(APP_STYLES, /\.record-prose\{max-width:790px\}/);
   assert.match(APP_STYLES, /\.connections\{display:grid\}/);
   assert.match(APP_STYLES, /\.external-source\{display:flex/);
@@ -485,7 +484,6 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /id="commit-workspace"/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/commit"/);
   assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
-  assert.match(APP_SCRIPT, /class="panel schedule-panel"/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{background:transparent;backdrop-filter:none\}/);
   assert.match(APP_STYLES, /\.onboarding-shade\{position:fixed;inset:0;z-index:60;pointer-events:none\}/);
@@ -520,16 +518,26 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_STYLES, /\.packet-preflight\{display:grid/);
 });
 
-test("separates valid data from readiness and uses stage names on resource pages", () => {
-  assert.match(APP_SCRIPT, /metric\("Data health", state\.validation\.ok \? "Valid"/);
-  assert.match(APP_SCRIPT, /function programSetup\(\)/);
-  assert.match(APP_SCRIPT, /The files can be valid while the program is still unconfigured/);
+test("keeps the overview focused on readiness, current work, and the audit", () => {
+  assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
+  assert.match(APP_SCRIPT, /class="overview-grid"/);
+  assert.match(APP_SCRIPT, /class="panel obligation-panel"/);
+  assert.match(APP_SCRIPT, /class="panel event-reminder-panel"/);
+  assert.match(APP_SCRIPT, /class="panel audit-panel"/);
+  assert.doesNotMatch(APP_SCRIPT, /Baseline review/);
+  assert.doesNotMatch(APP_SCRIPT, /Everything the program can track/);
+  assert.doesNotMatch(APP_SCRIPT, /class="panel schedule-panel"/);
+  assert.doesNotMatch(APP_SCRIPT, /function programSetup\(\)/);
+  assert.match(APP_STYLES, /\.overview-grid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
+
+test("uses stage names on resource pages and direct setup actions in the program path", () => {
   assert.match(APP_SCRIPT, /readinessStageForType\(type\)\?\.title/);
   assert.match(APP_SCRIPT, /\["Run the program", "Complete recurring and event work/);
+  assert.match(APP_SCRIPT, /inScopeSystems\.length \? "#\/resources\/system" : "#\/resources\/system\?new=1"/);
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
   assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type\)\)/);
   assert.match(APP_STYLES, /\.readiness-state\{/);
-  assert.match(APP_STYLES, /\.setup-steps\{display:grid/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {
