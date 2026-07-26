@@ -28,6 +28,8 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
   assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);
+  const renderer = JSON.parse(await readFile(join(target, "data", "renderer.json"), "utf8"));
+  assert.equal(renderer.showOnboarding, true);
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
   assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
@@ -51,7 +53,7 @@ test("creates a complete generic repository with one dependency", async (context
   await access(join(target, ".gitignore"));
   await access(join(target, ".git"));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 107, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 108, errors: 0, warnings: 0 });
 });
 
 test("refuses a non-empty target by default", async (context) => {

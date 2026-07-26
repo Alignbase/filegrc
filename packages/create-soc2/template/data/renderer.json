@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "renderer-settings",
+  "type": "renderer-settings",
+  "title": "Renderer settings",
+  "showOnboarding": true
+}

@@ -5,6 +5,7 @@ import { writeJson } from "./helpers.js";
 
 const TITLES = {
   workspace: "Example Engineering SOC 2 Program",
+  "renderer-settings": "Renderer settings",
   person: "Jordan Lee",
   "service-account": "Deployment automation",
   team: "Risk and Security Committee",

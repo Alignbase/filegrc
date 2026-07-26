@@ -95,6 +95,25 @@
       },
       "listFields": ["title", "organizationName", "dataModelVersion"]
     },
+    "renderer-settings": {
+      "title": "Renderer settings",
+      "pluralTitle": "Renderer settings",
+      "group": "repository",
+      "singleton": "renderer.json",
+      "description": "Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow.",
+      "guidance": {
+        "policyBasis": "This record configures the local renderer. It is not a SOC 2 control, policy, audit record, or substitute for evidence.",
+        "cadence": "Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff."
+      },
+      "required": ["showOnboarding"],
+      "fields": {
+        "showOnboarding": {
+          "type": "boolean",
+          "label": "Show onboarding"
+        }
+      },
+      "listFields": ["title", "showOnboarding"]
+    },
     "person": {
       "title": "Person",
       "titleLabel": "Name",

@@ -1167,6 +1167,20 @@ Path: `data/workspace.json`
 | `riskMethodology` | object | No | Risk methodology |
 | `classificationDefinitions` | object | No | Classifications |
 
+#### `renderer-settings`
+
+Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow.
+
+Policy basis: This record configures the local renderer. It is not a SOC 2 control, policy, audit record, or substitute for evidence.
+
+Timing: Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff.
+
+Path: `data/renderer.json`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `showOnboarding` | boolean | Yes | Show onboarding |
+
 ## Compatibility
 
 The model version is independent from the package version. The engine reads supported older model registries without changing consumer data. A migration must be explicit and documented.

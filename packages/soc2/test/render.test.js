@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { buildWorkspace, renderMarkdown, serveWorkspace } from "../src/index.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "../src/web.js";
-import { makeWorkspace } from "./helpers.js";
+import { makeWorkspace, writeJson } from "./helpers.js";
 
 test("builds a self-contained read-only site", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "soc2-build-"));
@@ -207,6 +207,37 @@ test("serves state and browser assets", async (context) => {
   assert.equal((await fetch(`${wildcard.url}/api/state`)).status, 200);
 });
 
+test("persists onboarding preference in the renderer settings file", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "soc2-onboarding-setting-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await writeJson(join(root, "data", "renderer.json"), {
+    schemaVersion: 1,
+    id: "renderer-settings",
+    type: "renderer-settings",
+    title: "Renderer settings",
+    showOnboarding: true
+  });
+  const result = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => result.server.close(resolve)));
+  const state = await (await fetch(`${result.url}/api/state`)).json();
+  const entry = state.resources.find(({ record }) => record.type === "renderer-settings");
+  const response = await fetch(`${result.url}/api/resource/renderer-settings/renderer-settings`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      record: { ...entry.record, showOnboarding: false },
+      revision: entry.revision
+    })
+  });
+  assert.equal(response.status, 200);
+  const saved = JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8"));
+  assert.equal(saved.showOnboarding, false);
+  const deleteResponse = await fetch(`${result.url}/api/resource/renderer-settings/renderer-settings`, { method: "DELETE" });
+  assert.equal(deleteResponse.status, 400);
+  assert.match((await deleteResponse.json()).error, /Singleton records cannot be deleted/);
+});
+
 test("renders safe Markdown links without changing query parameters", () => {
   const html = renderMarkdown("[Review](https://example.test/review?a=1&b=2) <script>alert(1)</script>");
   assert.match(html, /href="https:\/\/example\.test\/review\?a=1&amp;b=2"/);
@@ -300,6 +331,23 @@ test("explains purpose, policy basis, and timing on every resource view", () => 
   assert.match(APP_SCRIPT, /renderDetail[\s\S]*resourceGuide\(type\)/);
   assert.match(APP_STYLES, /\.page-guide\{display:grid;grid-template-columns:/);
   assert.match(APP_STYLES, /\.setup-banner,\.page-guide\{grid-template-columns:1fr\}/);
+});
+
+test("runs optional onboarding from committed renderer settings", () => {
+  assert.doesNotThrow(() => new Function(APP_SCRIPT));
+  assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true/);
+  assert.match(APP_SCRIPT, /!state\.readOnly && rendererSettingsEntry/);
+  assert.match(APP_SCRIPT, /onboardingDialog\.showModal\(\)/);
+  assert.match(APP_SCRIPT, /onboardingDialog\.addEventListener\("cancel"/);
+  assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
+  assert.match(APP_SCRIPT, /type: "system"/);
+  assert.match(APP_SCRIPT, /type: "audit"/);
+  assert.match(APP_SCRIPT, /Agents can use the same files and commands without opening the renderer/);
+  assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
+  assert.match(APP_SCRIPT, /id="start-onboarding"/);
+  assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
+  assert.match(APP_STYLES, /\.onboarding-focus\{/);
+  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form\{grid-template-columns:1fr\}/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {

@@ -97,7 +97,7 @@ async function deleteResourceUnlocked(input, type, id, options) {
   const loaded = await loadWorkspace(input);
   const before = await validateWorkspace(loaded);
   const definition = getResourceDefinition(loaded.model, type);
-  if (definition.singleton) throw new Error("The workspace record cannot be deleted.");
+  if (definition.singleton) throw new Error("Singleton records cannot be deleted.");
   const path = resourcePath(loaded.root, loaded.model, { type, id });
   const mode = (await stat(path)).mode & 0o777;
   const source = await readFile(path, "utf8");

@@ -32,6 +32,10 @@ const SEARCH_PAGE_SIZE = 25;
 const NAV_GROUP_STORAGE_KEY = "soc2.sidebar.groups.v1";
 const DEFAULT_OPEN_NAV_GROUPS = new Set(["program", "governance", "risk", "audits"]);
 const navigationGroupState = readNavigationGroupState();
+let onboardingDialog = null;
+let onboardingStep = 0;
+let onboardingDraft = null;
+let onboardingBusy = false;
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could not load the workspace</h1><pre></pre></main>';
@@ -42,7 +46,11 @@ async function start() {
   const embedded = document.querySelector("#soc2-data");
   state = embedded ? JSON.parse(embedded.textContent) : await fetchJson("/api/state");
   window.addEventListener("hashchange", render);
+  window.addEventListener("resize", positionCurrentOnboarding);
   render();
+  if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true) {
+    queueMicrotask(requestOnboarding);
+  }
 }
 
 function render() {
@@ -125,7 +133,7 @@ function renderHome(main) {
       (scheduled.length ? '<div class="due-list">' + scheduled.map(({ entry, date }) => '<a href="#/resource/' + encodeURIComponent(entry.record.type) + '/' + encodeURIComponent(entry.record.id) + '"><time class="' + (date < today ? "overdue" : "") + '">' + (date < today ? "Overdue · " : "") + esc(formatCalendarDate(date)) + '</time><span><strong>' + esc(entry.record.title) + '</strong><small>' + esc(state.model.resources[entry.record.type].title) + '</small></span></a>').join("") + '</div>' : empty("No open work has a scheduled date.")) + '</section>' +
     '<section class="panel"><div class="panel-head"><div><p class="kicker">Governance</p><h3>Program library</h3></div></div>' + resourceBars(governanceTypes) + '</section>' +
     '<section class="panel"><div class="panel-head"><div><p class="kicker">Risk and operations</p><h3>Operating records</h3></div></div>' + resourceBars(riskTypes) + '</section>' +
-    '<section class="panel span-2"><div class="panel-head"><div><p class="kicker">Program map</p><h3>All resources</h3></div></div><div class="catalog">' + Object.entries(state.model.resources).filter(([type]) => type !== "workspace").map(([type, definition]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><strong>' + resourcesOfType(type).length + '</strong></a>').join("") + '</div></section></div></div>';
+    '<section class="panel span-2"><div class="panel-head"><div><p class="kicker">Program map</p><h3>All resources</h3></div></div><div class="catalog">' + Object.entries(state.model.resources).filter(([, definition]) => definition.group !== "repository").map(([type, definition]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><strong>' + resourcesOfType(type).length + '</strong></a>').join("") + '</div></section></div></div>';
 }
 
 function renderList(main, type, params = new URLSearchParams()) {
@@ -223,7 +231,11 @@ function renderDetail(main, type, id) {
 }
 
 function renderRepository(main) {
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository state</h2><p>Git supplies authors, timestamps, commit messages, revisions, and diffs for every tracked record.</p></div><a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Current revision</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(state.git.branch || "Unavailable") + '</dd></div><div><dt>Commit</dt><dd><code>' + esc(state.git.commit || "Unavailable") + '</code></dd></div><div><dt>Working tree</dt><dd>' + (state.git.clean === null ? "Unavailable" : state.git.clean ? "Clean" : "Has changes") + '</dd></div><div><dt>Generated</dt><dd>' + esc(formatLocalDateTime(state.generatedAt)) + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Uncommitted changes</h3></div>' + (state.git.changes?.length ? '<ul class="changes">' + state.git.changes.map((change) => '<li><code>' + esc(change) + '</code></li>').join("") + '</ul>' : empty(state.git.available ? "No uncommitted changes." : state.git.message)) + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + (state.validation.diagnostics.length ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(item.severity) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>' : empty("Every record and relationship validates against model v" + state.model.modelVersion + ".")) + '</section></div></div>';
+  const settings = rendererSettingsEntry();
+  const settingsLink = settings ? '<a class="button" href="#/resource/renderer-settings/' + encodeURIComponent(settings.record.id) + '">Renderer settings</a>' : "";
+  const onboardingButton = settings && !state.readOnly ? '<button class="button" type="button" id="start-onboarding">Run onboarding</button>' : "";
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository state</h2><p>Git supplies authors, timestamps, commit messages, revisions, and diffs for every tracked record.</p></div><div class="page-actions">' + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Current revision</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(state.git.branch || "Unavailable") + '</dd></div><div><dt>Commit</dt><dd><code>' + esc(state.git.commit || "Unavailable") + '</code></dd></div><div><dt>Working tree</dt><dd>' + (state.git.clean === null ? "Unavailable" : state.git.clean ? "Clean" : "Has changes") + '</dd></div><div><dt>Generated</dt><dd>' + esc(formatLocalDateTime(state.generatedAt)) + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Uncommitted changes</h3></div>' + (state.git.changes?.length ? '<ul class="changes">' + state.git.changes.map((change) => '<li><code>' + esc(change) + '</code></li>').join("") + '</ul>' : empty(state.git.available ? "No uncommitted changes." : state.git.message)) + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + (state.validation.diagnostics.length ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(item.severity) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>' : empty("Every record and relationship validates against model v" + state.model.modelVersion + ".")) + '</section></div></div>';
+  main.querySelector("#start-onboarding")?.addEventListener("click", requestOnboarding);
 }
 
 function resourceGuide(type) {
@@ -247,6 +259,323 @@ function resourceGuide(type) {
     }).join("") + '</div>'
     : "";
   return '<section class="page-guide" aria-label="How to use ' + esc(definition.pluralTitle) + '"><div><span>Use</span><p>' + esc(definition.description) + '</p></div><div><span>Policy basis</span><p>' + esc(guidance.policyBasis) + '</p>' + sourceLinks + '</div><div><span>Timing</span><p>' + esc(guidance.cadence) + '</p>' + obligationLinks + '</div></section>';
+}
+
+function rendererSettingsEntry() {
+  return state.resources.find(({ record }) => record.type === "renderer-settings");
+}
+
+function requestOnboarding() {
+  if (state.readOnly || onboardingDialog || !rendererSettingsEntry()) return;
+  if (parseRoute().name !== "home") {
+    history.replaceState(null, "", "#/");
+    render();
+  }
+  onboardingStep = 0;
+  onboardingDraft = initialOnboardingDraft();
+  onboardingBusy = false;
+  onboardingDialog = document.createElement("dialog");
+  onboardingDialog.className = "onboarding-dialog";
+  onboardingDialog.setAttribute("aria-labelledby", "onboarding-title");
+  document.body.append(onboardingDialog);
+  onboardingDialog.showModal();
+  onboardingDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    cancelOnboarding();
+  });
+  onboardingDialog.addEventListener("close", () => {
+    clearOnboardingFocus();
+    onboardingDialog.remove();
+    onboardingDialog = null;
+    onboardingDraft = null;
+    onboardingBusy = false;
+  });
+  renderOnboardingStep();
+}
+
+function initialOnboardingDraft() {
+  const systemEntry = resourcesOfType("system").find(({ record }) => record.inScope && record.status !== "retired");
+  const auditEntry = systemEntry
+    ? resourcesOfType("audit").find(({ record }) => ["planned", "in-progress", "fieldwork"].includes(record.status) && record.systemIds?.includes(systemEntry.record.id))
+    : null;
+  const owner = resourcesOfType("person").find(({ record }) => record.status === "active")?.record;
+  return {
+    systemId: systemEntry?.record.id || "",
+    auditId: auditEntry?.record.id || "",
+    serviceName: systemEntry?.record.title || "",
+    scope: systemEntry?.record.description || "",
+    ownerId: systemEntry?.record.ownerIds?.[0] || auditEntry?.record.ownerIds?.[0] || owner?.id || "",
+    criticality: systemEntry?.record.criticality || "high",
+    dataClassification: systemEntry?.record.dataClassification || "Confidential",
+    internetExposed: systemEntry?.record.internetExposed === false ? "false" : "true",
+    auditGoal: auditGoalFromKind(auditEntry?.record.auditKind)
+  };
+}
+
+function onboardingSteps() {
+  return [
+    {
+      target: ".hero",
+      kicker: "Source of truth",
+      title: "The dashboard is a view of Git",
+      body: "The overview derives status, deadlines, audit progress, and validation from files under data/. Edit the records, review the diff, then commit the change.",
+      points: [
+        "JSON holds structured records; Markdown holds long-form work.",
+        "The renderer writes files but never creates commits.",
+        "Git supplies authors, timestamps, commit messages, diffs, and revisions."
+      ]
+    },
+    {
+      target: ".catalog",
+      kicker: "Program map",
+      title: "Resources organize the SOC 2 program",
+      body: "Pages group policy, control, risk, access, system, evidence, and audit work. Each page states its purpose, policy basis, and required timing.",
+      points: [
+        "Lists support search, filters, and creation.",
+        "Records link current metadata, Markdown, evidence, and file history.",
+        "Planned controls are proposals until they match actual operation."
+      ]
+    },
+    {
+      target: ".topbar",
+      kicker: "Daily workflow",
+      title: "Search broadly; validate before committing",
+      body: "Search covers structured fields and authored Markdown. Repository status shows the revision, uncommitted files, and validation results behind the current view.",
+      points: [
+        "Use the local app for edits and the static build for read-only sharing.",
+        "Commit related records and evidence together.",
+        "Agents can use the same files and commands without opening the renderer."
+      ]
+    },
+    {
+      target: null,
+      kicker: "Initial scope",
+      title: "Describe the service you plan to audit",
+      body: "This creates or updates one in-scope system and, if selected, one planned audit. Add vendors, commitments, risks, and evidence after the system boundary is clear."
+    }
+  ];
+}
+
+function renderOnboardingStep() {
+  if (!onboardingDialog) return;
+  const steps = onboardingSteps();
+  const step = steps[onboardingStep];
+  clearOnboardingFocus();
+  const progress = steps.map((_, index) => '<span class="' + (index <= onboardingStep ? "active" : "") + '"></span>').join("");
+  const body = onboardingStep === steps.length - 1
+    ? onboardingSetupForm()
+    : '<p class="onboarding-body">' + esc(step.body) + '</p><ul class="onboarding-points">' + step.points.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>';
+  onboardingDialog.innerHTML = '<div class="onboarding-progress" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(step.title) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + '<button class="button primary" type="button" data-onboarding="next">' + (onboardingStep === steps.length - 1 ? "Save setup" : "Next") + '</button></div>';
+  onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", cancelOnboarding);
+  onboardingDialog.querySelector('[data-onboarding="back"]')?.addEventListener("click", () => {
+    captureOnboardingForm();
+    onboardingStep -= 1;
+    renderOnboardingStep();
+  });
+  onboardingDialog.querySelector('[data-onboarding="next"]').addEventListener("click", () => {
+    if (onboardingStep === steps.length - 1) saveOnboarding();
+    else {
+      onboardingStep += 1;
+      renderOnboardingStep();
+    }
+  });
+  const target = step.target ? root.querySelector(step.target) : null;
+  if (target) {
+    target.classList.add("onboarding-focus");
+    target.scrollIntoView({ block: "center" });
+  }
+  requestAnimationFrame(() => positionOnboardingDialog(target));
+  (onboardingStep === steps.length - 1
+    ? onboardingDialog.querySelector('input[name="serviceName"]')
+    : onboardingDialog.querySelector('[data-onboarding="next"]'))?.focus();
+}
+
+function onboardingSetupForm() {
+  const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
+  const classifications = Object.keys(state.workspace.classificationDefinitions || {});
+  if (onboardingDraft.dataClassification && !classifications.includes(onboardingDraft.dataClassification)) {
+    classifications.push(onboardingDraft.dataClassification);
+  }
+  const currentSystem = onboardingDraft.systemId ? state.resources.find(({ record }) => record.id === onboardingDraft.systemId)?.record : null;
+  const currentAudit = onboardingDraft.auditId ? state.resources.find(({ record }) => record.id === onboardingDraft.auditId)?.record : null;
+  const existing = [
+    currentSystem ? "Updates system " + currentSystem.title + "." : "Creates a new in-scope system.",
+    currentAudit ? "Updates planned audit " + currentAudit.title + " when an audit objective is selected." : ""
+  ].filter(Boolean).join(" ");
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p><form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(humanize(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(value) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No engagement planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Saving writes JSON files but does not commit them.</p>';
+}
+
+function captureOnboardingForm() {
+  const form = onboardingDialog?.querySelector("#onboarding-setup");
+  if (!form) return;
+  const data = new FormData(form);
+  for (const name of ["serviceName", "scope", "ownerId", "criticality", "dataClassification", "internetExposed", "auditGoal"]) {
+    onboardingDraft[name] = String(data.get(name) || "").trim();
+  }
+}
+
+async function saveOnboarding() {
+  if (onboardingBusy) return;
+  const form = onboardingDialog?.querySelector("#onboarding-setup");
+  if (!form?.reportValidity()) return;
+  captureOnboardingForm();
+  setOnboardingBusy(true, "Saving…");
+  try {
+    let systemEntry = onboardingDraft.systemId
+      ? state.resources.find(({ record }) => record.type === "system" && record.id === onboardingDraft.systemId)
+      : null;
+    const systemId = systemEntry?.record.id || createResourceId("system", onboardingDraft.serviceName, state.resources.map(({ record }) => record.id));
+    const system = {
+      ...(systemEntry?.record || {}),
+      schemaVersion: 1,
+      id: systemId,
+      type: "system",
+      title: onboardingDraft.serviceName,
+      status: systemEntry?.record.status || "active",
+      criticality: onboardingDraft.criticality,
+      ownerIds: [onboardingDraft.ownerId],
+      description: onboardingDraft.scope,
+      systemKind: systemEntry?.record.systemKind || "service",
+      dataClassification: onboardingDraft.dataClassification,
+      internetExposed: onboardingDraft.internetExposed === "true",
+      inScope: true
+    };
+    await writeOnboardingResource(system, systemEntry);
+    state = await fetchJson("/api/state");
+    onboardingDraft.systemId = systemId;
+    systemEntry = state.resources.find(({ record }) => record.id === systemId);
+
+    if (onboardingDraft.auditGoal !== "none") {
+      let auditEntry = onboardingDraft.auditId
+        ? state.resources.find(({ record }) => record.type === "audit" && record.id === onboardingDraft.auditId)
+        : null;
+      const kind = auditKindFromGoal(onboardingDraft.auditGoal);
+      const title = onboardingDraft.serviceName + " " + auditTitleFromGoal(onboardingDraft.auditGoal);
+      const auditId = auditEntry?.record.id || createResourceId("audit", title, state.resources.map(({ record }) => record.id));
+      const audit = {
+        ...(auditEntry?.record || {}),
+        schemaVersion: 1,
+        id: auditId,
+        type: "audit",
+        title: auditEntry?.record.title || title,
+        status: auditEntry?.record.status || "planned",
+        auditKind: kind,
+        frameworkIds: auditEntry?.record.frameworkIds || resourcesOfType("framework").filter(({ record }) => record.status === "active").map(({ record }) => record.id),
+        scope: onboardingDraft.scope,
+        ownerIds: [onboardingDraft.ownerId],
+        systemIds: [...new Set([...(auditEntry?.record.systemIds || []), systemId])],
+        contactIds: [...new Set([...(auditEntry?.record.contactIds || []), onboardingDraft.ownerId])]
+      };
+      await writeOnboardingResource(audit, auditEntry);
+      state = await fetchJson("/api/state");
+      onboardingDraft.auditId = auditId;
+    }
+
+    await persistOnboardingPreference(false);
+    closeOnboarding();
+    history.replaceState(null, "", "#/");
+    render();
+  } catch (error) {
+    setOnboardingBusy(false);
+    const errorNode = onboardingDialog?.querySelector(".dialog-error");
+    if (errorNode) errorNode.textContent = error.message;
+  }
+}
+
+async function cancelOnboarding() {
+  if (!onboardingDialog || onboardingBusy) return;
+  setOnboardingBusy(true, "Skipping…");
+  try {
+    await persistOnboardingPreference(false);
+    closeOnboarding();
+    render();
+  } catch (error) {
+    setOnboardingBusy(false);
+    const errorNode = onboardingDialog?.querySelector(".dialog-error");
+    if (errorNode) errorNode.textContent = error.message;
+  }
+}
+
+async function persistOnboardingPreference(showOnboarding) {
+  const entry = rendererSettingsEntry();
+  if (!entry) throw new Error("Renderer settings are unavailable.");
+  await writeOnboardingResource({ ...entry.record, showOnboarding }, entry);
+  state = await fetchJson("/api/state");
+}
+
+async function writeOnboardingResource(record, entry) {
+  const url = entry
+    ? "/api/resource/" + encodeURIComponent(record.type) + "/" + encodeURIComponent(record.id)
+    : "/api/resources";
+  const response = await fetch(url, {
+    method: entry ? "PUT" : "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ record, revision: entry?.revision })
+  });
+  if (!response.ok) throw new Error(await responseMessage(response));
+}
+
+function setOnboardingBusy(busy, label = "") {
+  if (!onboardingDialog) return;
+  onboardingBusy = busy;
+  onboardingDialog.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = busy; });
+  const next = onboardingDialog.querySelector('[data-onboarding="next"]');
+  if (next && label) next.textContent = label;
+  const skip = onboardingDialog.querySelector('[data-onboarding="skip"]');
+  if (skip && label && onboardingStep !== onboardingSteps().length - 1) skip.textContent = label;
+  if (!busy) renderOnboardingStep();
+}
+
+function positionOnboardingDialog(target) {
+  if (!onboardingDialog) return;
+  const viewportPadding = 16;
+  const gap = 18;
+  const width = onboardingDialog.offsetWidth;
+  const height = onboardingDialog.offsetHeight;
+  let left = Math.max(viewportPadding, (window.innerWidth - width) / 2);
+  let top = Math.max(viewportPadding, (window.innerHeight - height) / 2);
+  if (target) {
+    const rect = target.getBoundingClientRect();
+    const right = rect.right + gap;
+    const leftSide = rect.left - width - gap;
+    if (right + width <= window.innerWidth - viewportPadding) left = right;
+    else if (leftSide >= viewportPadding) left = leftSide;
+    top = Math.min(Math.max(viewportPadding, rect.top), Math.max(viewportPadding, window.innerHeight - height - viewportPadding));
+  }
+  onboardingDialog.style.left = Math.round(left) + "px";
+  onboardingDialog.style.top = Math.round(top) + "px";
+}
+
+function positionCurrentOnboarding() {
+  if (!onboardingDialog) return;
+  const targetSelector = onboardingSteps()[onboardingStep]?.target;
+  positionOnboardingDialog(targetSelector ? root.querySelector(targetSelector) : null);
+}
+
+function clearOnboardingFocus() {
+  root.querySelectorAll(".onboarding-focus").forEach((element) => element.classList.remove("onboarding-focus"));
+}
+
+function closeOnboarding() {
+  if (!onboardingDialog) return;
+  onboardingBusy = false;
+  clearOnboardingFocus();
+  onboardingDialog.close();
+}
+
+function auditGoalFromKind(kind) {
+  if (kind === "soc-2-type-1") return "type-1";
+  if (kind === "soc-2-type-2") return "type-2";
+  if (kind === "readiness") return "readiness";
+  return "none";
+}
+
+function auditKindFromGoal(goal) {
+  return goal === "type-1" ? "soc-2-type-1" : goal === "type-2" ? "soc-2-type-2" : "readiness";
+}
+
+function auditTitleFromGoal(goal) {
+  return goal === "type-1" ? "SOC 2 Type 1" : goal === "type-2" ? "SOC 2 Type 2" : "SOC 2 readiness assessment";
 }
 
 function openEditor(type, entry = null) {
@@ -698,9 +1027,11 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}
 .setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
 .page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:-9px 0 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:10px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:8px;font-weight:700}
+.page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:auto}.onboarding-dialog::backdrop{background:rgba(0,0,24,.52);backdrop-filter:blur(1px)}.onboarding-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:25px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:12px;line-height:1.6;margin:13px 25px 0}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:11px;line-height:1.5;padding-left:3px}.onboarding-actions{padding:12px 25px 23px}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:11px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:10px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:9px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:9px;line-height:1.5;margin:12px 25px 0}.onboarding-dialog>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px}
 @media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.repo-chip{display:none}}
 @media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:20px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.search{max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.record-table{min-width:720px}}
 @media(max-width:760px){.setup-banner,.page-guide{grid-template-columns:1fr}.page-guide{margin-top:-5px}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:8px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}}
+@media(max-width:520px){.onboarding-form{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}}
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:20px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 
 body,button,input,select,textarea,dialog{color:var(--ink)}

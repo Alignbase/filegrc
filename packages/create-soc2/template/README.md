@@ -17,6 +17,8 @@ You need Node.js 20 or newer and Git. The setup command asks for the company nam
 
 Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. It never commits changes for you.
 
+The first local run offers optional onboarding for the initial service boundary and audit objective. Completing or skipping it updates `data/renderer.json`. You can restart it from Repository or bypass the UI and edit the same files directly.
+
 The local server has no authentication and binds to loopback by default. Do not expose its write API to an untrusted network.
 
 Run `npm run build` to create a read-only site under `.soc2/site/`. Commit the source records first, then pin evidence to the Git revision shown in the app when you provide rendered pages to an auditor.

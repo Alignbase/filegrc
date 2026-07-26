@@ -2,7 +2,7 @@
 
 ## Status
 
-The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, the local web app, static builds, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
+The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, the local web app, static builds, onboarding, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
 
 The next product pass will add licensed framework content, control mappings, evidence-capture workflows, audit completeness reports, and compatibility fixtures from released templates.
 
@@ -150,7 +150,7 @@ The generator reads `packages/create-soc2/template-parameters.json` and asks for
 
 It generates the initial effective date from the current date. These four values replace tokens such as `{{company_name}}` in the template. Creation fails if the template contains an undeclared token or if any token remains after rendering.
 
-This is the smallest useful initial prompt set. The company name identifies the program and appears in policy text. The policy owner gives the seed records an accountable person. The security email gives people one report and escalation route. Timezone defaults to UTC, and users can edit it later. Jurisdiction, industry, risk scoring, retention periods, and control owners do not need create-time prompts.
+This is the smallest useful initial prompt set. The company name identifies the program and appears in policy text. The policy owner gives the seed records an accountable person. The security email gives people one report and escalation route. Timezone defaults to UTC, and users can edit it later. Jurisdiction, industry, risk scoring, retention periods, control owners, system scope, and audit plans do not need create-time prompts.
 
 ## Starter SOC 2 baseline
 
@@ -166,7 +166,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - A default 5x5 likelihood-and-impact risk method
 - Public, Internal, Confidential, and Restricted classification definitions
 
-The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Onboarding will collect that scope and let users add optional Availability, Processing Integrity, Confidentiality, or Privacy criteria.
+The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and may create one planned readiness, Type 1, or Type 2 engagement. It does not add optional trust categories or claim that the initial scope is complete.
 
 Every starter control is `planned`. A user must confirm the owner, system scope, actual operation, and evidence before marking it implemented. A policy statement alone does not prove that a control operates.
 
@@ -179,6 +179,7 @@ Signed forms, third-party reports, screenshots, and immutable exports are eviden
 ```text
 data/
 ├── workspace.json
+├── renderer.json
 ├── content/
 ├── people/
 ├── service-accounts/
@@ -291,6 +292,10 @@ Primary pages group the resource catalog into:
 Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. This keeps onboarding guidance beside the work instead of maintaining a separate tour.
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
+
+New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer uses it to offer a short modal workflow that explains the Git source of truth, resource map, search, validation, and commit boundary. Its setup step collects only compliance-domain scope: the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a system and optional planned audit, then sets `showOnboarding` to `false`. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them.
+
+Onboarding never runs in a read-only build. It can be restarted from Repository, or bypassed entirely by editing the same data files through an agent or other tooling. Repositories created before the renderer settings record remain valid and do not start onboarding automatically.
 
 The static build is read-only. Search and filtering run in the browser against a generated index. CRUD is available only from the local server.
 

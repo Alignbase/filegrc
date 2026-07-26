@@ -180,7 +180,7 @@ function statusFor(error) {
   if (/changed after you opened/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
-  if (/invalid|required|unsafe|match|workspace|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
+  if (/invalid|required|unsafe|match|workspace|singleton|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
   return 500;
 }
 
