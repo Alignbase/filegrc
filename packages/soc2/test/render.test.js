@@ -223,6 +223,11 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
 });
 
+test("centers modal close icons without relying on font metrics", () => {
+  assert.match(APP_STYLES, /\.icon-button\{position:relative;display:grid;place-items:center;padding:0;/);
+  assert.match(APP_STYLES, /\.icon-button:before,\.icon-button:after\{content:"";position:absolute;width:13px;height:2px;/);
+});
+
 test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_SCRIPT, /const LIST_PAGE_SIZE = 25/);
   assert.match(APP_SCRIPT, /const SEARCH_PAGE_SIZE = 25/);
