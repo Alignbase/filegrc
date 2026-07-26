@@ -466,7 +466,7 @@ test("proper-cases dropdown labels and uses native required validation", () => {
 
 test("title-cases multi-word navigation and interface headings", () => {
   assert.match(APP_SCRIPT, /function titleCase\(value\)/);
-  assert.match(APP_SCRIPT, /title: "Service Description"/);
+  assert.match(APP_SCRIPT, /title: "Supplements"/);
   assert.match(APP_SCRIPT, /title: "Work Queue"/);
   assert.match(APP_SCRIPT, /title: "Evidence Delivery"/);
   assert.match(APP_SCRIPT, /esc\(titleCase\(definition\.pluralTitle\)\)/);

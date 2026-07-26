@@ -57,7 +57,7 @@ const READINESS_STAGES = [
     description: "What the auditor evaluates",
     sections: [
       { id: "framework", title: "Framework", types: ["framework", "requirement"], nested: true, defaultOpen: true },
-      { id: "service-description", title: "Service Description", types: ["commitment", "complementary-control"], nested: true, defaultOpen: false }
+      { id: "service-description", title: "Supplements", types: ["commitment", "complementary-control"], nested: true, defaultOpen: false }
     ]
   },
   {
