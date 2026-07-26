@@ -401,7 +401,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /title: "Scope",\s+description: "Systems and boundary"/);
   assert.match(APP_SCRIPT, /title: "Operate Controls",\s+description: "Recurring and event work"/);
   assert.match(APP_SCRIPT, /title: "Boundary", types: \["system", "asset"\], nested: true/);
-  assert.match(APP_SCRIPT, /title: "Governance and risk", types: \[[^\]]+\], nested: true/);
+  assert.match(APP_SCRIPT, /title: "Governance and Risk", types: \[[^\]]+\], nested: true/);
   assert.match(APP_SCRIPT, /if \(!section\.nested\) return links/);
   assert.match(APP_SCRIPT, /!section\.nested \? "nav-direct " : ""/);
   assert.match(APP_SCRIPT, /class="nav-group nav-stage /);
@@ -423,8 +423,8 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /function readinessStageForRoute\(route\)/);
   assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
   assert.match(APP_SCRIPT, /class="organization-nav /);
-  assert.match(APP_SCRIPT, /People and teams/);
-  assert.match(APP_SCRIPT, /Renderer and repository/);
+  assert.match(APP_SCRIPT, /People and Teams/);
+  assert.match(APP_SCRIPT, /Renderer and Repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
   assert.match(APP_SCRIPT, /Scope", "Define the service, system boundary, people, data, and vendors/);
   assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
@@ -462,6 +462,21 @@ test("proper-cases dropdown labels and uses native required validation", () => {
   assert.match(APP_SCRIPT, /choice\.control\.setCustomValidity\(choice\.present \? "" : "Provide at least one of:/);
   assert.match(APP_SCRIPT, /querySelector\("form"\)\.reportValidity\(\)/);
   assert.match(APP_SCRIPT, /field\.requiredWhen/);
+});
+
+test("title-cases multi-word navigation and interface headings", () => {
+  assert.match(APP_SCRIPT, /function titleCase\(value\)/);
+  assert.match(APP_SCRIPT, /title: "Service Description"/);
+  assert.match(APP_SCRIPT, /title: "Work Queue"/);
+  assert.match(APP_SCRIPT, /title: "Evidence Delivery"/);
+  assert.match(APP_SCRIPT, /esc\(titleCase\(definition\.pluralTitle\)\)/);
+  assert.match(APP_SCRIPT, /<span>Obligation Board<\/span>/);
+  assert.match(APP_SCRIPT, /<span>Evidence Packet<\/span>/);
+  assert.match(APP_SCRIPT, /<h1>' \+ esc\(titleCase\(title\)\)/);
+  assert.match(APP_SCRIPT, /<h3>Follow the Audit Chain<\/h3>/);
+  assert.match(APP_SCRIPT, /<h2>Build an Evidence Packet<\/h2>/);
+  assert.match(APP_SCRIPT, /<h2>Repository State<\/h2>/);
+  assert.match(APP_SCRIPT, /esc\(titleCase\(step\.title\)\)/);
 });
 
 test("lets record editors close without validating required fields", () => {

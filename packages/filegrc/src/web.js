@@ -57,7 +57,7 @@ const READINESS_STAGES = [
     description: "What the auditor evaluates",
     sections: [
       { id: "framework", title: "Framework", types: ["framework", "requirement"], nested: true, defaultOpen: true },
-      { id: "service-description", title: "Service description", types: ["commitment", "complementary-control"], nested: true, defaultOpen: false }
+      { id: "service-description", title: "Service Description", types: ["commitment", "complementary-control"], nested: true, defaultOpen: false }
     ]
   },
   {
@@ -66,7 +66,7 @@ const READINESS_STAGES = [
     title: "Policies",
     description: "Rules the company adopts",
     sections: [
-      { id: "library", title: "Policy library", types: ["policy", "document"], defaultOpen: true }
+      { id: "library", title: "Policy Library", types: ["policy", "document"], defaultOpen: true }
     ]
   },
   {
@@ -75,7 +75,7 @@ const READINESS_STAGES = [
     title: "Controls",
     description: "How the rules operate",
     sections: [
-      { id: "catalog", title: "Control catalog", types: ["control"], defaultOpen: true },
+      { id: "catalog", title: "Control Catalog", types: ["control"], defaultOpen: true },
       { id: "testing", title: "Testing", types: ["control-test"], defaultOpen: false }
     ]
   },
@@ -85,12 +85,12 @@ const READINESS_STAGES = [
     title: "Operate Controls",
     description: "Recurring and event work",
     sections: [
-      { id: "queue", title: "Work queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", nested: true, defaultOpen: true },
-      { id: "governance-risk", title: "Governance and risk", types: ["policy-review", "meeting", "risk-assessment", "risk", "exception"], nested: true, defaultOpen: false },
-      { id: "access-training", title: "Access and training", types: ["access-grant", "access-review", "service-account", "training", "attestation"], nested: true, defaultOpen: false },
-      { id: "security", title: "Security operations", types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], nested: true, defaultOpen: false },
+      { id: "queue", title: "Work Queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", nested: true, defaultOpen: true },
+      { id: "governance-risk", title: "Governance and Risk", types: ["policy-review", "meeting", "risk-assessment", "risk", "exception"], nested: true, defaultOpen: false },
+      { id: "access-training", title: "Access and Training", types: ["access-grant", "access-review", "service-account", "training", "attestation"], nested: true, defaultOpen: false },
+      { id: "security", title: "Security Operations", types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], nested: true, defaultOpen: false },
       { id: "resilience", title: "Resilience", types: ["backup-test", "exercise"], nested: true, defaultOpen: false },
-      { id: "evidence-issues", title: "Evidence and issues", types: ["evidence", "finding", "data-request"], nested: true, defaultOpen: false }
+      { id: "evidence-issues", title: "Evidence and Issues", types: ["evidence", "finding", "data-request"], nested: true, defaultOpen: false }
     ]
   },
   {
@@ -100,7 +100,7 @@ const READINESS_STAGES = [
     description: "Firm, requests, and report",
     sections: [
       { id: "engagement", title: "Engagement", types: ["audit", "audit-request"], defaultOpen: true },
-      { id: "packet", title: "Evidence delivery", types: [], utility: "audit-packet", defaultOpen: true }
+      { id: "packet", title: "Evidence Delivery", types: [], utility: "audit-packet", defaultOpen: true }
     ]
   }
 ];
@@ -124,6 +124,7 @@ const OBLIGATION_COMPLETION_TYPES = {
   "vulnerability-scan": "vulnerability-scan"
 };
 const RECORD_TEXT_FIELDS = new Set(["description", "statement", "activity", "purpose", "scope", "objective", "applicabilityRationale", "summary", "rationale", "acceptanceRationale", "businessPurpose", "changeSummary", "decisionSummary", "decisionRationale", "recommendation", "remediationPlan", "auditorNotes", "notPerformedReason"]);
+const TITLE_CASE_MINOR_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "per", "the", "to", "via", "vs"]);
 const navigationGroupState = readNavigationGroupState();
 let onboardingDialog = null;
 let onboardingShade = null;
@@ -132,7 +133,7 @@ let onboardingDraft = null;
 let onboardingBusy = false;
 
 start().catch((error) => {
-  root.innerHTML = '<main class="fatal"><h1>Could not load the workspace</h1><pre></pre></main>';
+  root.innerHTML = '<main class="fatal"><h1>Could Not Load the Workspace</h1><pre></pre></main>';
   root.querySelector("pre").textContent = error.stack || error.message;
 });
 
@@ -196,7 +197,7 @@ function buildNavigation(route) {
         .map((type) => [type, state.model.resources[type]])
         .filter(([, definition]) => definition);
       const links = renderSidebarUtility(section.utility, route, !section.nested) + resources.map(([type, definition]) => {
-        return '<a class="' + (!section.nested ? "nav-direct " : "") + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+        return '<a class="' + (!section.nested ? "nav-direct " : "") + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
       }).join("");
       if (!section.nested) return links;
       return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading" type="button" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span>' + esc(section.title) + '</span><span class="chevron nav-control">›</span></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + links + '</div></section>';
@@ -222,35 +223,35 @@ function readinessStageForType(type) {
 function renderSidebarUtility(utility, route, direct = false) {
   const directClass = direct ? "nav-direct " : "";
   if (utility === "obligation-board") {
-    return '<a class="' + directClass + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation board</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+    return '<a class="' + directClass + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation Board</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
   if (utility === "audit-packet") {
-    return '<a class="' + directClass + 'audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence packet</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+    return '<a class="' + directClass + 'audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence Packet</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
   return "";
 }
 
 function topbar(route) {
   const title = route.name === "home"
-    ? "Program overview"
+    ? "Program Overview"
     : route.name === "organization"
       ? "Organization"
       : route.name === "repository"
         ? "Repository"
         : route.name === "obligations"
-          ? "Obligation board"
+          ? "Obligation Board"
           : route.name === "audit-packet"
-            ? "Evidence packet"
+            ? "Evidence Packet"
             : state.model.resources[route.type]?.pluralTitle || "FileGRC";
-  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(title) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><div class="topbar-status"><a class="validation-chip" href="#/repository"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</a></div>';
+  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><div class="topbar-status"><a class="validation-chip" href="#/repository"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</a></div>';
 }
 
 function renderHome(main) {
   const activeAudit = resourcesOfType("audit").find((item) => !["complete", "closed", "cancelled"].includes(item.record.status));
-  main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(state.workspace.title) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + readinessOverview() +
-    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 3)) + '</section>' +
-    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did something change?</h3></div><a href="#/obligations">Start workflow</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
-    '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(activeAudit?.record.title || "Plan the engagement") + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Plan audit</a>') + '</div>' +
+  main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + readinessOverview() +
+    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due Windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 3)) + '</section>' +
+    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/obligations">Start workflow</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
+    '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(titleCase(activeAudit?.record.title || "Plan the Engagement")) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Plan audit</a>') + '</div>' +
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section></div></div>';
 }
 
@@ -271,13 +272,13 @@ function readinessOverview() {
     ["Operate Controls", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
     ["Audit", "Track the firm, period, requests, evidence packet, findings, and report.", activeAudit ? "#/resources/audit" : "#/resources/audit?new=1", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
   ];
-  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the audit chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that those controls worked during the audit period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
+  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the Audit Chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that those controls worked during the audit period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
 }
 
 function auditEngagementPrompt(audit = null) {
   const hasAuditor = audit?.auditorVendorId || (audit?.auditor && Object.keys(audit.auditor).length);
   if (hasAuditor) return "";
-  const heading = audit ? "Auditor not recorded" : "Engage an auditor before the target date";
+  const heading = audit ? "Auditor Not Recorded" : "Engage an Auditor Before the Target Date";
   return '<div class="audit-engagement"><div><strong>' + heading + '</strong><p>Shortlist independent CPA firms that perform SOC 2 examinations. Share the system boundary, Security scope, Type 1 or Type 2 goal, and target timing.</p></div><ul><li>Compare relevant service experience, schedule, fee, and evidence-request process.</li><li>Agree on scope and dates before the evidence period or as early as practical.</li><li>Store the selected firm and contact in the audit record.</li></ul>' + (!audit ? '<a class="button primary" href="#/resources/audit?new=1">Create audit record</a>' : "") + '</div>';
 }
 
@@ -292,14 +293,14 @@ function renderObligations(main) {
       : "";
     return '<section class="obligation-column" data-obligation-column="' + status + '"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(status) + '</span><strong>' + items.length + '</strong></div><div class="obligation-cards">' + (items.length ? cards : empty("Nothing " + status + ".")) + '</div>' + more + '</section>';
   }).join("");
-  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.eventType) + '</p><h3>' + esc(trigger.prompt) + '</h3><p>' + trigger.steps.length + ' policy actions will be created with their own owners and due windows.</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
+  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.eventType) + '</p><h3>' + esc(titleCase(trigger.prompt)) + '</h3><p>' + trigger.steps.length + ' policy actions will be created with their own owners and due windows.</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
   const runs = plan.eventRuns
     .filter((run) => run.status !== "canceled")
     .sort((a, b) => String(b.occurredAt || b.occurredOn).localeCompare(String(a.occurredAt || a.occurredOn)));
-  main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation board</h2><p>Recurring work uses a compliant completion range and an explicit overdue cutoff. Event reminders create a tracked checklist when a policy-triggering change occurs.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit templates</a></div></div>' +
+  main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation Board</h2><p>Recurring work uses a compliant completion range and an explicit overdue cutoff. Event reminders create a tracked checklist when a policy-triggering change occurs.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit templates</a></div></div>' +
     '<div class="obligation-board">' + sections + '</div>' +
-    '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Ongoing reminders</p><h2>Start a policy event</h2><p>Use these when the underlying event happens. The generated checklist remains a normal set of Git-tracked records.</p></div></div><div class="event-trigger-grid">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
-    '<section class="workflow-section"><div class="section-head"><div><p class="kicker">Event execution</p><h2>Active and recent workflows</h2><p>Link the requested completion records and evidence on each action item before marking it done.</p></div></div><div class="event-run-list">' + (runs.length ? runs.map(eventRunCard).join("") : empty("No policy events have been started.")) + '</div></section></div>';
+    '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Ongoing reminders</p><h2>Start a Policy Event</h2><p>Use these when the underlying event happens. The generated checklist remains a normal set of Git-tracked records.</p></div></div><div class="event-trigger-grid">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
+    '<section class="workflow-section"><div class="section-head"><div><p class="kicker">Event execution</p><h2>Active and Recent Workflows</h2><p>Link the requested completion records and evidence on each action item before marking it done.</p></div></div><div class="event-run-list">' + (runs.length ? runs.map(eventRunCard).join("") : empty("No policy events have been started.")) + '</div></section></div>';
   main.querySelectorAll("[data-start-event]").forEach((button) => button.addEventListener("click", () => {
     const trigger = plan.triggers.find((item) => item.eventType === button.dataset.startEvent);
     if (trigger) openObligationEventDialog(trigger);
@@ -328,7 +329,7 @@ function obligationCard(item, collapsed = false) {
       ? '<a class="obligation-action blocked" href="' + completion.href + '">' + esc(completion.blocked) + '</a>'
       : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
     : "";
-  return '<article class="obligation-card status-' + esc(item.status) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(item.kind === "event" ? "Event action" : item.activityType || "Recurring") + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(item.title) + '</a></h3><p>' + esc(windowText(item)) + '</p><div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
+  return '<article class="obligation-card status-' + esc(item.status) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(item.kind === "event" ? "Event action" : item.activityType || "Recurring") + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p><div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
 }
 
 function obligationCompletionPlan(item) {
@@ -435,7 +436,7 @@ function openObligationEventDialog(trigger) {
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog event-dialog";
   dialog.setAttribute("aria-labelledby", "event-dialog-title");
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Policy event</p><h2 id="event-dialog-title">' + esc(trigger.prompt) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>This creates one event record and ' + trigger.steps.length + ' linked action items. Review and commit them like any other compliance change.</p>' + eventField +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Policy event</p><h2 id="event-dialog-title">' + esc(titleCase(trigger.prompt)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>This creates one event record and ' + trigger.steps.length + ' linked action items. Review and commit them like any other compliance change.</p>' + eventField +
     (subjects.length ? '<label><span>Subject</span><select name="subject"><option value="">Select</option>' + subjects.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' : "") +
     '<label><span>Workflow name <small>optional</small></span><input name="title" maxlength="200" placeholder="' + esc(trigger.prompt.replace(/\?$/, "")) + '"></label><div class="event-dialog-steps">' + trigger.steps.map((step) => '<div><strong>' + esc(step.title) + '</strong><small>' + esc(eventStepSummary(step)) + '</small></div>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Create checklist</button></div></form>';
   document.body.append(dialog);
@@ -487,7 +488,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
     ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due", "#/obligations", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"]
   ];
-  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence</p><h2>Build an evidence packet</h2><p>Select a period. The engine indexes every dated record, checks obligation and event coverage, includes linked evidence and active policy context, then writes an auditor-oriented HTML index, manifest, source records, Markdown, and fixed attachments.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section><section class="panel packet-builder"><form id="packet-form"><label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label><label><span>Audit <small>optional</small></span><select name="auditId"><option value="">All In-Scope Program Records</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before auditor delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
+  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence</p><h2>Build an Evidence Packet</h2><p>Select a period. The engine indexes every dated record, checks obligation and event coverage, includes linked evidence and active policy context, then writes an auditor-oriented HTML index, manifest, source records, Markdown, and fixed attachments.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section><section class="panel packet-builder"><form id="packet-form"><label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label><label><span>Audit <small>optional</small></span><select name="auditId"><option value="">All In-Scope Program Records</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before auditor delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
   main.querySelector("#packet-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -526,7 +527,7 @@ function renderPacketResults(container, result) {
     metric("Evidence", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
     metric("Review items", packet.summary.gaps, packet.revision.clean ? "Bound to " + packet.revision.shortCommit : "Workspace has uncommitted changes", packet.summary.gaps ? "warn" : "good") +
     '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">Generated packet</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. Review every gap before sending it to an auditor.</p></section>' +
-    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage gaps and warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(gap.severity) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(item.status) + ' · ' + esc(item.evidenceKind) + '</small></a>').join("") + '</div>' : empty("No evidence records matched.")) + '</section></div>';
+    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(gap.severity) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included Evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(item.status) + ' · ' + esc(item.evidenceKind) + '</small></a>').join("") + '</div>' : empty("No evidence records matched.")) + '</section></div>';
 }
 
 function obligationPreview(items) {
@@ -597,7 +598,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const values = [...new Set(observed)].sort();
     return { name, label: field.label || humanize(name), values };
   }).filter(({ values }) => values.length > 1);
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || (ORGANIZATION_RESOURCE_TYPES.includes(type) ? "Organization" : groupTitle(definition.group))) + '</p><h2>' + esc(definition.pluralTitle) + '</h2></div>' + (!state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "") + '</div>' + resourceGuide(type) +
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || (ORGANIZATION_RESOURCE_TYPES.includes(type) ? "Organization" : groupTitle(definition.group))) + '</p><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2></div>' + (!state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "") + '</div>' + resourceGuide(type) +
     '<div class="list-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span></div>' +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
@@ -670,15 +671,15 @@ function renderDetail(main, type, id) {
   const content = Object.entries(entry.content);
   const sourceMetadata = '<div><dt>Source file</dt><dd><code>' + esc(entry.relativePath) + '</code></dd></div><div><dt>Workspace revision</dt><dd>' + (state.git.available ? '<code>' + esc(state.git.shortCommit) + '</code>' : "Unavailable until the workspace is committed.") + '</dd></div>';
   const narrativeContent = narrative.length
-    ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(fields[name]?.label || humanize(name)) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
+    ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(titleCase(fields[name]?.label || humanize(name))) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
     : "";
   const markdownContent = content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fieldLabel(type, name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("");
   const addRecordContent = recordContent && !entry.content[recordContent.field] && !state.readOnly
     ? '<div class="record-content-action"><button class="button" type="button" id="add-record-content">Add Record Markdown</button></div>'
     : "";
-  main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(definition.pluralTitle) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(definition.title) + '</span><h2>' + esc(entry.record.title) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Evidence packet</a>' : "") + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div>' + resourceGuide(type) + '<div class="detail-grid"><section class="panel detail-main">' +
+  main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(titleCase(definition.title)) + '</span><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Evidence packet</a>' : "") + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div>' + resourceGuide(type) + '<div class="detail-grid"><section class="panel detail-main">' +
     (narrativeContent || markdownContent ? narrativeContent + markdownContent + addRecordContent : '<div class="panel-head"><h3>Record</h3></div>' + empty("Add Record Markdown when this record needs context beyond its structured fields.") + addRecordContent) +
-    '</section><aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File history</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
+    '</section><aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("#add-record-content")?.addEventListener("click", () => openEditor(type, entry, { addRecordContent: true }));
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
@@ -761,7 +762,7 @@ function renderOrganization(main) {
   const people = resourcesOfType("person");
   const teams = resourcesOfType("team");
   const organizationName = state.workspace.organizationName || "Organization";
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Administration</p><h2>' + esc(organizationName) + '</h2><p>Manage the organization records that supply ownership, accountability, shared teams, and renderer behavior across the compliance program.</p></div>' + (workspace ? '<a class="button primary" href="#/resource/workspace/' + encodeURIComponent(workspace.record.id) + '">Organization profile</a>' : "") + '</div><div class="organization-grid"><section class="panel organization-profile"><div class="panel-head"><div><p class="kicker">Organization</p><h3>Program settings</h3></div></div><dl class="metadata"><div><dt>Name</dt><dd>' + esc(organizationName) + '</dd></div><div><dt>Timezone</dt><dd>' + esc(state.workspace.timezone) + '</dd></div><div><dt>Data model</dt><dd>Version ' + esc(state.workspace.dataModelVersion) + '</dd></div><div><dt>Repository</dt><dd>' + (state.git.available ? esc((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</dd></div></dl></section><section class="panel organization-directory"><div class="panel-head"><div><p class="kicker">Directory</p><h3>People and teams</h3></div></div><div class="organization-links"><a href="#/resources/person"><span><strong>People</strong><small>Owners, approvers, trainees, reviewers, and contacts</small></span><b>' + people.length + '</b></a><a href="#/resources/team"><span><strong>Teams</strong><small>Committees, response groups, and shared ownership</small></span><b>' + teams.length + '</b></a></div></section><section class="panel organization-tools"><div class="panel-head"><div><p class="kicker">Workspace</p><h3>Renderer and repository</h3></div></div><div class="organization-links">' + (renderer ? '<a href="#/resource/renderer-settings/' + encodeURIComponent(renderer.record.id) + '"><span><strong>Renderer settings</strong><small>Committed behavior, including onboarding</small></span><b>›</b></a>' : "") + '<a href="#/repository"><span><strong>Repository</strong><small>Validation, file changes, history, and commits</small></span><b>›</b></a></div></section></div></div>';
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Administration</p><h2>' + esc(titleCase(organizationName)) + '</h2><p>Manage the organization records that supply ownership, accountability, shared teams, and renderer behavior across the compliance program.</p></div>' + (workspace ? '<a class="button primary" href="#/resource/workspace/' + encodeURIComponent(workspace.record.id) + '">Organization profile</a>' : "") + '</div><div class="organization-grid"><section class="panel organization-profile"><div class="panel-head"><div><p class="kicker">Organization</p><h3>Program Settings</h3></div></div><dl class="metadata"><div><dt>Name</dt><dd>' + esc(organizationName) + '</dd></div><div><dt>Timezone</dt><dd>' + esc(state.workspace.timezone) + '</dd></div><div><dt>Data model</dt><dd>Version ' + esc(state.workspace.dataModelVersion) + '</dd></div><div><dt>Repository</dt><dd>' + (state.git.available ? esc((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</dd></div></dl></section><section class="panel organization-directory"><div class="panel-head"><div><p class="kicker">Directory</p><h3>People and Teams</h3></div></div><div class="organization-links"><a href="#/resources/person"><span><strong>People</strong><small>Owners, approvers, trainees, reviewers, and contacts</small></span><b>' + people.length + '</b></a><a href="#/resources/team"><span><strong>Teams</strong><small>Committees, response groups, and shared ownership</small></span><b>' + teams.length + '</b></a></div></section><section class="panel organization-tools"><div class="panel-head"><div><p class="kicker">Workspace</p><h3>Renderer and Repository</h3></div></div><div class="organization-links">' + (renderer ? '<a href="#/resource/renderer-settings/' + encodeURIComponent(renderer.record.id) + '"><span><strong>Renderer Settings</strong><small>Committed behavior, including onboarding</small></span><b>›</b></a>' : "") + '<a href="#/repository"><span><strong>Repository</strong><small>Validation, file changes, history, and commits</small></span><b>›</b></a></div></section></div></div>';
 }
 
 function renderRepository(main) {
@@ -771,7 +772,7 @@ function renderRepository(main) {
   const commitButton = !state.readOnly && state.git.available && !state.git.clean
     ? '<button class="button primary" type="button" id="commit-workspace" ' + (state.validation.ok ? "" : 'disabled title="Fix validation errors before committing"') + '>Commit changes</button>'
     : "";
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository state</h2><p>Review the workspace diff, then commit it here or with Git. Git supplies authors, timestamps, messages, revisions, and file history.</p></div><div class="page-actions">' + commitButton + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Current revision</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(state.git.branch || "Unavailable") + '</dd></div><div><dt>Commit</dt><dd><code>' + esc(state.git.commit || "Unavailable") + '</code></dd></div><div><dt>Working tree</dt><dd>' + (state.git.clean === null ? "Unavailable" : state.git.clean ? "Clean" : "Has changes") + '</dd></div><div><dt>Generated</dt><dd>' + esc(formatLocalDateTime(state.generatedAt)) + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Uncommitted changes</h3></div>' + (state.git.changes?.length ? '<ul class="changes">' + state.git.changes.map((change) => '<li><code>' + esc(change) + '</code></li>').join("") + '</ul>' : empty(state.git.available ? "No uncommitted changes." : state.git.message)) + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + (state.validation.diagnostics.length ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(item.severity) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>' : empty("Every record and relationship validates against model v" + state.model.modelVersion + ".")) + '</section></div></div>';
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository State</h2><p>Review the workspace diff, then commit it here or with Git. Git supplies authors, timestamps, messages, revisions, and file history.</p></div><div class="page-actions">' + commitButton + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Current Revision</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(state.git.branch || "Unavailable") + '</dd></div><div><dt>Commit</dt><dd><code>' + esc(state.git.commit || "Unavailable") + '</code></dd></div><div><dt>Working tree</dt><dd>' + (state.git.clean === null ? "Unavailable" : state.git.clean ? "Clean" : "Has changes") + '</dd></div><div><dt>Generated</dt><dd>' + esc(formatLocalDateTime(state.generatedAt)) + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Uncommitted Changes</h3></div>' + (state.git.changes?.length ? '<ul class="changes">' + state.git.changes.map((change) => '<li><code>' + esc(change) + '</code></li>').join("") + '</ul>' : empty(state.git.available ? "No uncommitted changes." : state.git.message)) + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + (state.validation.diagnostics.length ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(item.severity) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>' : empty("Every record and relationship validates against model v" + state.model.modelVersion + ".")) + '</section></div></div>';
   main.querySelector("#commit-workspace")?.addEventListener("click", openCommitDialog);
   main.querySelector("#start-onboarding")?.addEventListener("click", requestOnboarding);
 }
@@ -780,7 +781,7 @@ function openCommitDialog() {
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog";
   dialog.setAttribute("aria-labelledby", "commit-dialog-title");
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Git audit trail</p><h2 id="commit-dialog-title">Commit workspace changes</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>Commit every change under this FileGRC workspace. Use a message that explains why the compliance records changed.</p><label><span>Commit message</span><input name="message" required maxlength="200" placeholder="Record quarterly access review"></label><div class="commit-files">' + state.git.changes.map((change) => '<code>' + esc(change) + '</code>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-commit="cancel">Cancel</button><button type="submit" class="button primary">Commit changes</button></div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Git audit trail</p><h2 id="commit-dialog-title">Commit Workspace Changes</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>Commit every change under this FileGRC workspace. Use a message that explains why the compliance records changed.</p><label><span>Commit message</span><input name="message" required maxlength="200" placeholder="Record quarterly access review"></label><div class="commit-files">' + state.git.changes.map((change) => '<code>' + esc(change) + '</code>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-commit="cancel">Cancel</button><button type="submit" class="button primary">Commit changes</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
@@ -998,7 +999,7 @@ function renderOnboardingStep() {
   const body = onboardingStep === steps.length - 1
     ? onboardingSetupForm()
     : description + explanation + afterSections;
-  onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(step.title) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + '<button class="button primary" type="button" data-onboarding="next">' + (onboardingStep === steps.length - 1 ? "Save setup" : "Next") + '</button></div>';
+  onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(titleCase(step.title)) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + '<button class="button primary" type="button" data-onboarding="next">' + (onboardingStep === steps.length - 1 ? "Save setup" : "Next") + '</button></div>';
   onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", cancelOnboarding);
   onboardingDialog.querySelector('[data-onboarding="back"]')?.addEventListener("click", () => {
     captureOnboardingForm();
@@ -1310,7 +1311,7 @@ function openEditor(type, entry = null, options = {}) {
   const contentNames = names.filter((name) => fields[name].content);
   const recordContent = recordContentDefinition(type);
   const recordContentItem = recordContent ? entry?.content?.[recordContent.field] : null;
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || record.title || definition.title) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name))).join("") + '</div>' +
     contentNames.map((name) => {
       const path = record[name];
       const generated = !entry?.content?.[name];
@@ -1613,7 +1614,7 @@ function openContentEditor(entry, name) {
   const dialog = document.createElement("dialog");
   dialog.className = "editor content-dialog";
   dialog.setAttribute("aria-labelledby", "content-editor-title");
-  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">Edit Markdown</p><h2 id="content-editor-title">' + esc(entry.record.title) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p><code>' + esc(item.path) + '</code></p><textarea class="markdown-source" spellcheck="true" aria-label="Markdown content">' + esc(item.source) + '</textarea><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-content">Save Markdown</button></div></form>';
+  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">Edit Markdown</p><h2 id="content-editor-title">' + esc(titleCase(entry.record.title)) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p><code>' + esc(item.path) + '</code></p><textarea class="markdown-source" spellcheck="true" aria-label="Markdown content">' + esc(item.source) + '</textarea><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-content">Save Markdown</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
@@ -1803,6 +1804,15 @@ function fieldLabel(type, name) {
 function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || properCase(value); }
 function humanize(value) { return String(value).replace(/[-_]+/g, " ").replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
 function properCase(value) { return humanize(value).replace(/\b[a-z]/g, (letter) => letter.toUpperCase()).replace(/\bSoc 2\b/g, "SOC 2"); }
+function titleCase(value) {
+  const words = String(value).split(/\s+/);
+  return words.map((word, index) => {
+    const bare = word.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    if ((/[A-Z]/.test(bare) && !/[a-z]/.test(bare)) || /^[A-Z]{2,}[a-z]?$/.test(bare) || /[a-z][A-Z]/.test(bare)) return word;
+    if (index > 0 && index < words.length - 1 && TITLE_CASE_MINOR_WORDS.has(bare.toLowerCase())) return word.toLowerCase();
+    return word.toLowerCase().replace(/(^|[-/])([a-z])/g, (_, boundary, letter) => boundary + letter.toUpperCase());
+  }).join(" ");
+}
 function conditionMatches(record, condition) { return Boolean(condition) && Object.entries(condition).every(([name, expected]) => record[name] === expected); }
 function formatValue(value, field, type) {
   if (value === undefined || value === null || value === "") return '<span class="muted">Not set</span>';
@@ -1850,7 +1860,7 @@ function showError(message) {
   const dialog = document.createElement("dialog");
   dialog.className = "alert-dialog";
   dialog.setAttribute("aria-labelledby", "alert-dialog-title");
-  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Could not complete the action</p><h2 id="alert-dialog-title">Review the record</h2></div><button class="icon-button" aria-label="Close">×</button></div><p>' + esc(message) + '</p><div class="dialog-actions"><button class="button primary">Close</button></div>';
+  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Could not complete the action</p><h2 id="alert-dialog-title">Review the Record</h2></div><button class="icon-button" aria-label="Close">×</button></div><p>' + esc(message) + '</p><div class="dialog-actions"><button class="button primary">Close</button></div>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => dialog.close()));
