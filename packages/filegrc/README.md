@@ -18,7 +18,7 @@ npx filegrc describe risk
 npx filegrc search "access review"
 ```
 
-New workspaces use data model v2, which keeps long-form Markdown beside its JSON record without storing a path field. Existing v1 workspaces remain supported. Run `npx filegrc migrate --to 2` to preview their explicit migration.
+Long-form Markdown lives beside its JSON record. FileGRC derives the Markdown path, so records do not store it.
 
 The package requires Node.js 20 or newer. It uses Git for authors, commit timestamps, messages, diffs, and revisions. It never creates commits automatically.
 

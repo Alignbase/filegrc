@@ -28,7 +28,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(readme.includes("{{"), false);
   assert.match(readme, /initializes Git when needed/);
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "2");
+  assert.equal(workspace.dataModelVersion, "1");
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
   assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);

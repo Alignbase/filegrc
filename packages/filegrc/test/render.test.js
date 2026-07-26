@@ -133,7 +133,7 @@ test("serves state and browser assets", async (context) => {
   const deleteResponse = await fetch(`${result.url}/api/resource/person/person-api-reviewer`, { method: "DELETE" });
   assert.equal(deleteResponse.status, 200);
 
-  const contentPath = "content/policy-api.md";
+  const contentPath = "policies/policy-api.md";
   const policyResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -144,11 +144,10 @@ test("serves state and browser assets", async (context) => {
         type: "policy",
         title: "API Policy",
         status: "draft",
-        contentPath,
         ownerIds: ["person-owner"],
         approverIds: ["person-owner"]
       },
-      content: { [contentPath]: "# API Policy\n\nInitial." }
+      content: { content: "# API Policy\n\nInitial." }
     })
   });
   assert.equal(policyResponse.status, 201);
@@ -162,7 +161,7 @@ test("serves state and browser assets", async (context) => {
   const missingContentResponse = await fetch(`${result.url}/api/content`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path: "content/missing.md", source: "# Missing" })
+    body: JSON.stringify({ path: "policies/missing.md", source: "# Missing" })
   });
   assert.equal(missingContentResponse.status, 404);
   const missingContentError = (await missingContentResponse.json()).error;
@@ -296,16 +295,15 @@ test("records and links obligation work through the writable API", async (contex
         evidenceKind: "review",
         source: "Internal review",
         collectedOn: "2026-01-20",
-        classification: "Internal",
-        contentPath: "content/evidence-review.md"
+        classification: "Internal"
       },
-      content: { "content/evidence-review.md": "# Quarterly review evidence" }
+      content: { content: "# Quarterly review evidence" }
     })
   });
   assert.equal(response.status, 201);
   const saved = JSON.parse(await readFile(join(root, "data", "obligations", "obligation-review.json"), "utf8"));
   assert.deepEqual(saved.completionResourceIds, ["evidence-review"]);
-  assert.equal(await readFile(join(root, "data", "content", "evidence-review.md"), "utf8"), "# Quarterly review evidence\n");
+  assert.equal(await readFile(join(root, "data", "evidence", "evidence-review", "evidence.md"), "utf8"), "# Quarterly review evidence\n");
 });
 
 test("renders safe Markdown links without changing query parameters", () => {
@@ -388,13 +386,12 @@ test("places source attributes first in record metadata", () => {
 
 test("provides model-driven Record Markdown without exposing its path", () => {
   assert.match(APP_SCRIPT, /function recordContentDefinition\(type\)/);
-  assert.match(APP_SCRIPT, /Object\.values\(definition\.fields \|\| \{\}\)\.some\(\(field\) => field\.content\)/);
+  assert.match(APP_SCRIPT, /!definition \|\| !config\?\.slot \|\| definition\.markdown/);
   assert.match(APP_SCRIPT, /data-record-content/);
   assert.match(APP_SCRIPT, /Add Record Markdown/);
-  assert.match(APP_SCRIPT, /markdownPathFor\(updated\.type, updated\.id, recordContent\.field, updated\)/);
-  assert.match(APP_SCRIPT, /state\.model\.markdownStorage === "companion"/);
+  assert.match(APP_SCRIPT, /markdownPathFor\(updated\.type, updated\.id, recordContent\.slot\)/);
   assert.doesNotMatch(APP_SCRIPT, /data-field-group="' \+ esc\(markdown\.name\)/);
-  assert.match(APP_SCRIPT, /entry\.content\[recordContent\.field\]/);
+  assert.match(APP_SCRIPT, /entry\.content\[recordContent\.slot\]/);
   assert.match(APP_STYLES, /\.record-content-details\{/);
 });
 

@@ -31,13 +31,12 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     type: "policy",
     title: "Risk governance policy",
     status: "active",
-    contentPath: "content/policy-risk-governance.md",
     ownerIds: ["person-owner"],
     approverIds: ["person-owner"],
     effectiveOn: "2026-01-01"
   }, {
     content: {
-      "content/policy-risk-governance.md": "# Risk governance policy\n\nMeet quarterly and retain evidence."
+      content: "# Risk governance policy\n\nMeet quarterly and retain evidence."
     }
   });
   await createResource(root, {
@@ -57,8 +56,8 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     policyIds: ["policy-risk-governance"],
     startsOn: "2026-01-01"
   });
-  await mkdir(join(root, "data", "content"), { recursive: true });
-  await writeFile(join(root, "data", "content", "evidence-q1-risk-review.md"), "# Q1 risk review\n\nCompleted and reviewed.\n", "utf8");
+  await mkdir(join(root, "data", "evidence", "evidence-q1-risk-review"), { recursive: true });
+  await writeFile(join(root, "data", "evidence", "evidence-q1-risk-review", "evidence.md"), "# Q1 risk review\n\nCompleted and reviewed.\n", "utf8");
   await createResources(root, [
     {
       schemaVersion: 1,
@@ -82,7 +81,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       source: "Risk review action",
       collectedOn: "2026-03-20",
       classification: "Internal",
-      contentPath: "content/evidence-q1-risk-review.md",
       sourceResourceIds: ["action-item-q1-risk-review"]
     }
   ]);
@@ -131,7 +129,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.match(packetIndex, /Create Q1 compliance records/);
   assert.match(await readFile(join(written.output, "manifest.json"), "utf8"), /evidence-q1-risk-review/);
   await access(join(written.output, "records", "action-item", "action-item-q1-risk-review.json"));
-  await access(join(written.output, "content", "policy-risk-governance.md"));
+  await access(join(written.output, "content", "policies", "policy-risk-governance.md"));
   await assert.rejects(
     writeEvidencePacket(root, packet, { output: ".filegrc/test-packet" }),
     /already exists/

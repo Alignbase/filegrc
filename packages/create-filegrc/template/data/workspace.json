@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "dataModelVersion": "2",
+  "dataModelVersion": "1",
   "id": "workspace",
   "type": "workspace",
   "title": "{{company_name}} SOC 2 Program",

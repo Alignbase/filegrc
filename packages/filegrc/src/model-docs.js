@@ -8,9 +8,7 @@ export function generateModelDocumentation(model) {
     "",
     model.description,
     "",
-    model.markdownStorage === "companion"
-      ? "Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths."
-      : "Each structured resource is one UTF-8 JSON file. Long-form work is Markdown under `data/content/`. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields.",
+    "Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.",
     "",
     "## Common fields",
     "",
@@ -24,9 +22,7 @@ export function generateModelDocumentation(model) {
     "",
     "## Record Markdown",
     "",
-    model.markdownStorage === "companion"
-      ? "Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record."
-      : `The renderer uses the common \`${model.recordContent.field}\` field as an optional long-form Record body when a resource has no dedicated Markdown field. The path is generated from the stable resource ID rather than entered by the user.`,
+    "Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record.",
     "",
     `Record Markdown is shown by default for: ${model.recordContent.defaultResourceTypes.map((type) => `\`${type}\``).join(", ")}. Other resources without dedicated Markdown can add it when structured fields are not enough.`,
     "",
@@ -50,12 +46,7 @@ export function generateModelDocumentation(model) {
       lines.push(`Path: \`${resource.singleton ? `data/${resource.singleton}` : `data/${resource.collection}/${recordPath}`}\``, "");
       const contentMode = recordContentMode(model, type, resource);
       if (contentMode) {
-        lines.push(
-          model.markdownStorage === "companion"
-            ? `Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} as an implicit companion file.`
-            : `Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} through \`${model.recordContent.field}\`.`,
-          ""
-        );
+        lines.push(`Record Markdown: ${contentMode === "default" ? "shown by default" : "available when needed"} as an implicit companion file.`, "");
       }
       if (resource.markdown) {
         lines.push("Markdown companions:", "");
@@ -77,19 +68,11 @@ export function generateModelDocumentation(model) {
       lines.push("");
     }
   }
-  lines.push(
-    "## Compatibility",
-    "",
-    "The model version is independent from the package version. The engine reads supported older model registries without changing consumer data. A migration must be explicit and documented.",
-    ""
-  );
   return lines.join("\n");
 }
 
 function recordContentMode(model, type, resource) {
-  if (model.markdownStorage === "companion") {
-    if (!model.recordContent?.slot || resource.markdown) return null;
-  } else if (!model.recordContent?.field || Object.values(resource.fields ?? {}).some((field) => field.content)) return null;
+  if (!model.recordContent?.slot || resource.markdown) return null;
   return model.recordContent.defaultResourceTypes.includes(type) ? "default" : "optional";
 }
 
@@ -108,8 +91,7 @@ function fieldNotes(field) {
     field.label,
     field.values ? `Values: ${field.values.map((item) => `\`${item}\``).join(", ")}` : "",
     field.relation ? `References: ${field.relation.map((item) => `\`${item}\``).join(", ")}` : "",
-    field.requiredWhen ? `Required when ${Object.entries(field.requiredWhen).map(([key, value]) => `\`${key}\` is \`${value}\``).join(" and ")}` : "",
-    field.content ? "References long-form content under `data/`." : ""
+    field.requiredWhen ? `Required when ${Object.entries(field.requiredWhen).map(([key, value]) => `\`${key}\` is \`${value}\``).join(" and ")}` : ""
   ].filter(Boolean).join(" ");
 }
 

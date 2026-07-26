@@ -77,10 +77,9 @@ test("CRUD writes formatted JSON and never leaves an invalid workspace", async (
     type: "policy",
     title: "Owner reference",
     status: "draft",
-    contentPath: "content/policy-owner-reference.md",
     ownerIds: ["person-owner"],
     approverIds: ["person-owner"]
-  }, { content: { "content/policy-owner-reference.md": "# Owner reference" } });
+  }, { content: { content: "# Owner reference" } });
   await assert.rejects(deleteResource(root, "person", "person-owner"), /leave the workspace invalid/i);
   assert.equal((await stat(ownerPath)).mode & 0o777, 0o640);
 });
@@ -109,85 +108,72 @@ test("creates a completion record and links it in one validated mutation", async
     evidenceKind: "review",
     source: "Internal review",
     collectedOn: "2026-01-20",
-    classification: "Internal",
-    contentPath: "content/evidence-quarterly-review.md"
+    classification: "Internal"
   };
   const result = await createResourceAndLink(root, evidence, {
     type: "obligation",
     id: obligation.id,
     field: "completionResourceIds"
-  }, { content: { [evidence.contentPath]: "# Quarterly review evidence" } });
+  }, { content: { content: "# Quarterly review evidence" } });
   assert.equal(result.created.id, evidence.id);
   assert.deepEqual(result.linked.completionResourceIds, [evidence.id]);
   const loaded = await loadWorkspace(root);
   assert.deepEqual(loaded.resources.find(({ id }) => id === obligation.id).completionResourceIds, [evidence.id]);
-  assert.equal(await readFile(join(root, "data", evidence.contentPath), "utf8"), "# Quarterly review evidence\n");
+  const evidencePath = join(root, "data", "evidence", evidence.id, "evidence.md");
+  assert.equal(await readFile(evidencePath, "utf8"), "# Quarterly review evidence\n");
 
   const staleEvidence = {
     ...evidence,
     id: "evidence-stale-review",
-    title: "Stale review evidence",
-    contentPath: "content/evidence-stale-review.md"
+    title: "Stale review evidence"
   };
   await assert.rejects(createResourceAndLink(root, staleEvidence, {
     type: "obligation",
     id: obligation.id,
     field: "completionResourceIds",
     expectedRevision: "stale"
-  }, { content: { [staleEvidence.contentPath]: "# Stale review" } }), /changed after you opened/i);
+  }, { content: { content: "# Stale review" } }), /changed after you opened/i);
   await assert.rejects(access(join(root, "data", "evidence", staleEvidence.id, "evidence.json")), /ENOENT/);
-  await assert.rejects(access(join(root, "data", staleEvidence.contentPath)), /ENOENT/);
+  await assert.rejects(access(join(root, "data", "evidence", staleEvidence.id, "evidence.md")), /ENOENT/);
 });
 
-test("rejects traversal through content paths and rolls back the record", async (context) => {
+test("rejects traversal through attachment paths and rolls back the record", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-traversal-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
-  await assert.rejects(createResource(root, {
+  const evidence = {
     schemaVersion: 1,
-    id: "document-unsafe",
-    type: "document",
-    title: "Unsafe",
-    status: "draft",
-    documentKind: "procedure",
-    contentPath: "../outside.md",
-    ownerIds: ["person-owner"]
-  }), /leave the workspace invalid/i);
-  assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === "document-unsafe"), false);
-  const policy = {
-    schemaVersion: 1,
-    id: "policy-unsafe",
-    type: "policy",
-    title: "Unsafe policy",
-    status: "draft",
-    contentPath: "content/../escaped.md",
-    ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    id: "evidence-unsafe",
+    type: "evidence",
+    title: "Unsafe evidence",
+    status: "collected",
+    evidenceKind: "attachment",
+    source: "Manual capture",
+    collectedOn: "2026-07-25",
+    classification: "Internal",
+    filePaths: ["../outside.md"]
   };
-  await assert.rejects(
-    createResource(root, policy, { content: { [policy.contentPath]: "# Escaped" } }),
-    /under data\/content/i
-  );
-  await assert.rejects(readFile(join(root, "data", "escaped.md"), "utf8"), /ENOENT/);
+  await assert.rejects(createResource(root, evidence), /leave the workspace invalid/i);
+  assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === evidence.id), false);
 });
 
-test("rejects content symlinks that resolve outside data", async (context) => {
+test("rejects companion Markdown symlinks that resolve outside data", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-symlink-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   const outside = join(root, "outside.md");
   await writeFile(outside, "# Outside", "utf8");
-  await symlink(outside, join(root, "data", "outside-link.md"));
+  await mkdir(join(root, "data", "policies"), { recursive: true });
+  await symlink(outside, join(root, "data", "policies", "policy-outside-link.md"));
   await assert.rejects(createResource(root, {
     schemaVersion: 1,
-    id: "document-outside-link",
-    type: "document",
+    id: "policy-outside-link",
+    type: "policy",
     title: "Outside link",
     status: "draft",
-    documentKind: "procedure",
-    contentPath: "outside-link.md",
-    ownerIds: ["person-owner"]
-  }), /unavailable data path/i);
+    ownerIds: ["person-owner"],
+    approverIds: ["person-owner"]
+  }), /Required Policy Markdown is missing|regular file/i);
 });
 
 test("rejects a data directory that resolves outside the workspace", async (context) => {
@@ -203,21 +189,20 @@ test("rejects a data directory that resolves outside the workspace", async (cont
   await assert.rejects(loadWorkspace(root), /data directory resolves outside the workspace/);
 });
 
-test("content and attachment paths must resolve to files", async (context) => {
+test("companion Markdown paths must resolve to files", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-data-path-file-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
-  await mkdir(join(root, "data", "content", "directory.md"), { recursive: true });
+  await mkdir(join(root, "data", "policies", "policy-directory.md"), { recursive: true });
   await assert.rejects(createResource(root, {
     schemaVersion: 1,
     id: "policy-directory",
     type: "policy",
     title: "Directory policy",
     status: "draft",
-    contentPath: "content/directory.md",
     ownerIds: ["person-owner"],
     approverIds: ["person-owner"]
-  }), /unavailable data path/i);
+  }), /regular file/i);
 });
 
 test("validates a realistic workspace containing every resource type", async (context) => {
@@ -239,32 +224,32 @@ test("creates and updates Markdown content with its resource", async (context) =
     type: "policy",
     title: "Access Control Policy",
     status: "draft",
-    contentPath: "content/policy-access-control.md",
     ownerIds: ["person-owner"],
     approverIds: ["person-owner"]
   };
   await assert.rejects(createResource(root, { ...policy, id: "policy-invalid-content" }, { content: "" }), /keyed by data-relative/);
-  await createResource(root, policy, { content: { [policy.contentPath]: "# Access Control Policy\n\nDraft content." } });
-  assert.match(await readFile(join(root, "data", policy.contentPath), "utf8"), /Draft content/);
-  await updateContent(root, policy.contentPath, "# Access Control Policy\n\nUpdated content.");
-  assert.match(await readFile(join(root, "data", policy.contentPath), "utf8"), /Updated content/);
-  const contentRevision = (await createAppState(root)).resources.find(({ record }) => record.id === policy.id).content.contentPath.revision;
-  await writeFile(join(root, "data", policy.contentPath), "# Access Control Policy\n\nExternal edit.\n", "utf8");
+  await createResource(root, policy, { content: { content: "# Access Control Policy\n\nDraft content." } });
+  const policyContentPath = "policies/policy-access-control.md";
+  assert.match(await readFile(join(root, "data", policyContentPath), "utf8"), /Draft content/);
+  await updateContent(root, policyContentPath, "# Access Control Policy\n\nUpdated content.");
+  assert.match(await readFile(join(root, "data", policyContentPath), "utf8"), /Updated content/);
+  const contentRevision = (await createAppState(root)).resources.find(({ record }) => record.id === policy.id).content.content.revision;
+  await writeFile(join(root, "data", policyContentPath), "# Access Control Policy\n\nExternal edit.\n", "utf8");
   await assert.rejects(
-    updateContent(root, policy.contentPath, "# Access Control Policy\n\nStale edit.", { expectedRevision: contentRevision }),
+    updateContent(root, policyContentPath, "# Access Control Policy\n\nStale edit.", { expectedRevision: contentRevision }),
     /changed after you opened/i
   );
-  assert.match(await readFile(join(root, "data", policy.contentPath), "utf8"), /External edit/);
+  assert.match(await readFile(join(root, "data", policyContentPath), "utf8"), /External edit/);
   const deletion = await deleteResource(root, "policy", policy.id);
-  assert.deepEqual(deletion.deletedContent, [policy.contentPath]);
-  await assert.rejects(readFile(join(root, "data", policy.contentPath), "utf8"), /ENOENT/);
+  assert.deepEqual(deletion.deletedContent, [policyContentPath]);
+  await assert.rejects(readFile(join(root, "data", policyContentPath), "utf8"), /ENOENT/);
   assert.equal((await validateWorkspace(root)).ok, true);
 });
 
-test("stores v2 Markdown beside records without path fields", async (context) => {
+test("stores Markdown beside records without path fields", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-companion-markdown-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-  await makeWorkspace(root, { dataModelVersion: "2" });
+  await makeWorkspace(root);
   const policy = {
     schemaVersion: 1,
     id: "policy-companion",
@@ -295,10 +280,10 @@ test("stores v2 Markdown beside records without path fields", async (context) =>
   await assert.rejects(readFile(markdownPath, "utf8"), /ENOENT/);
 });
 
-test("requires configured v2 Markdown and accepts Markdown as an evidence source", async (context) => {
+test("requires configured Markdown and accepts Markdown as an evidence source", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-required-companion-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-  await makeWorkspace(root, { dataModelVersion: "2" });
+  await makeWorkspace(root);
   const policy = {
     schemaVersion: 1,
     id: "policy-missing-markdown",
@@ -330,7 +315,6 @@ test("stores common Record Markdown for result-bearing resources", async (contex
   const root = await mkdtemp(join(tmpdir(), "filegrc-record-markdown-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
-  const notesPath = "content/finding-review-delay-notes.md";
   const finding = {
     schemaVersion: 1,
     id: "finding-review-delay",
@@ -340,57 +324,25 @@ test("stores common Record Markdown for result-bearing resources", async (contex
     severity: "medium",
     sourceResourceId: "person-owner",
     description: "The scheduled review completed after its cutoff.",
-    ownerIds: ["person-owner"],
-    notesPath
+    ownerIds: ["person-owner"]
   };
 
   await createResource(root, finding, {
     content: {
-      [notesPath]: "# Review completed late\n\nDocument the observation, cause, response, and verification."
+      record: "# Review completed late\n\nDocument the observation, cause, response, and verification."
     }
   });
 
   const entry = (await createAppState(root)).resources.find(({ record }) => record.id === finding.id);
-  assert.match(entry.content.notesPath.source, /observation, cause, response/);
+  const notesPath = "findings/finding-review-delay.md";
+  assert.match(entry.content.record.source, /observation, cause, response/);
   assert.match(await readFile(join(root, "data", notesPath), "utf8"), /verification/);
   await updateResource(root, finding.type, finding.id, { ...finding, description: "The review and follow-up are complete." }, {
-    content: { [notesPath]: "# Review completed late\n\nFollow-up verified." },
+    content: { record: "# Review completed late\n\nFollow-up verified." },
     expectedRevision: entry.revision,
-    expectedContentRevisions: { [notesPath]: entry.content.notesPath.revision }
+    expectedContentRevisions: { [notesPath]: entry.content.record.revision }
   });
   assert.match(await readFile(join(root, "data", notesPath), "utf8"), /Follow-up verified/);
-});
-
-test("keeps Markdown still referenced by another resource", async (context) => {
-  const root = await mkdtemp(join(tmpdir(), "filegrc-shared-content-"));
-  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-  await makeWorkspace(root);
-  const contentPath = "content/shared-governance.md";
-  const policy = {
-    schemaVersion: 1,
-    id: "policy-shared",
-    type: "policy",
-    title: "Shared Policy",
-    status: "draft",
-    contentPath,
-    ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
-  };
-  await createResource(root, policy, { content: { [contentPath]: "# Shared governance content" } });
-  await createResource(root, {
-    schemaVersion: 1,
-    id: "document-shared",
-    type: "document",
-    title: "Shared Document",
-    status: "draft",
-    documentKind: "procedure",
-    contentPath,
-    ownerIds: ["person-owner"]
-  });
-  const deletion = await deleteResource(root, "policy", policy.id);
-  assert.deepEqual(deletion.deletedContent, []);
-  assert.match(await readFile(join(root, "data", contentPath), "utf8"), /Shared governance/);
-  assert.equal((await validateWorkspace(root)).ok, true);
 });
 
 test("rejects empty required relationships and rolls back bundled content", async (context) => {
@@ -403,15 +355,14 @@ test("rejects empty required relationships and rolls back bundled content", asyn
     type: "policy",
     title: "Policy without owner",
     status: "draft",
-    contentPath: "content/policy-no-owner.md",
     ownerIds: [],
     approverIds: []
   };
   await assert.rejects(
-    createResource(root, policy, { content: { [policy.contentPath]: "# Policy" } }),
+    createResource(root, policy, { content: { content: "# Policy" } }),
     /required field/i
   );
-  await assert.rejects(readFile(join(root, "data", policy.contentPath), "utf8"), /ENOENT/);
+  await assert.rejects(readFile(join(root, "data", "policies", "policy-no-owner.md"), "utf8"), /ENOENT/);
 });
 
 test("does not count an empty array as a one-of value", async (context) => {

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadModel } from "../model/index.js";
+import { markdownEntries } from "../src/resource-markdown.js";
 import { writeJson } from "./helpers.js";
 
 const TITLES = {
@@ -117,7 +118,7 @@ export async function makeComprehensiveWorkspace(root) {
     }
 
     addUsefulOptionalFields(record, fields, ids, model, type);
-    await writeRecord(root, definition, record);
+    await writeRecord(root, definition, record, model);
     records.push(record);
   }
   return { model, records };
@@ -129,7 +130,7 @@ function sampleValue(name, field, ids, model, type) {
     const id = ids[targetType] ?? ids.person;
     return field.type === "array" ? [id] : id;
   }
-  if (field.content || field.format === "data-path") return `content/${type}-example.md`;
+  if (field.format === "data-path") return `${definitionDirectory(type)}/${type}-example.md`;
   if (field.type === "array") {
     if (field.items === "data-path") return [`evidence/${ids.evidence}/access-review.txt`];
     if (field.items === "object") return [{ name: "External participant", role: "Advisor" }];
@@ -183,15 +184,16 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
   set("actionItemIds", [ids["action-item"]]);
   set("riskIds", [ids.risk]);
   set("attendeeIds", [ids.person]);
-  set("notesPath", `content/${type}-example-notes.md`);
 }
 
-async function writeRecord(root, definition, record) {
-  if (record.contentPath) await writeMarkdown(root, record.contentPath, record.title);
-  if (record.notesPath) await writeMarkdown(root, record.notesPath, `${record.title} notes`);
-  if (record.minutesPath) await writeMarkdown(root, record.minutesPath, `${record.title} minutes`);
-  if (record.agendaPath) await writeMarkdown(root, record.agendaPath, `${record.title} agenda`);
-  if (record.responsePath) await writeMarkdown(root, record.responsePath, `${record.title} response`);
+async function writeRecord(root, definition, record, model) {
+  const entries = markdownEntries(model, record);
+  const shouldWriteRecord = model.recordContent.defaultResourceTypes.includes(record.type);
+  for (const entry of entries) {
+    if (definition.markdown || shouldWriteRecord) {
+      await writeMarkdown(root, entry.path, `${record.title} ${entry.label.toLowerCase()}`);
+    }
+  }
   if (record.type === "evidence" && record.filePaths) {
     for (const relativePath of record.filePaths) {
       const path = join(root, "data", relativePath);
@@ -221,6 +223,10 @@ function dateFor(name) {
 
 function sampleText(name) {
   return humanize(name);
+}
+
+function definitionDirectory(type) {
+  return type === "evidence" ? `evidence/${type}-example` : "attachments";
 }
 
 function humanize(value) {

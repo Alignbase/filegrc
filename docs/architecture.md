@@ -4,7 +4,7 @@
 
 The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, policy obligations, event checklists, evidence packets, the local web app, static builds, onboarding, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
 
-Later passes can add licensed framework content, deeper control mappings, guided evidence capture, and compatibility fixtures from released templates.
+Later passes can add licensed framework content, deeper control mappings, and guided evidence capture.
 
 ## Product
 
@@ -47,8 +47,7 @@ The project does not replace operational security systems. Organizations still n
     │   ├── bin/
     │   ├── model/
     │   │   ├── index.js
-    │   │   ├── v1.json
-    │   │   └── v2.json
+    │   │   └── v1.json
     │   ├── src/
     │   └── test/
     └── create-filegrc/
@@ -95,20 +94,16 @@ filegrc describe <resource-type>
 filegrc obligations
 filegrc trigger <event-type>
 filegrc evidence-packet
-filegrc migrate --to <model-version>
 ```
 
 `filegrc serve` provides the interactive local view and CRUD operations. `filegrc build` creates a read-only static view. `filegrc validate` is suitable for local use and CI.
 
-The package reads older supported data-model versions. `filegrc migrate` previews or explicitly applies a supported migration; reading, serving, building, and dependency installation never mutate source data.
-
 ## Model registry
 
-The `filegrc` package is the only source of truth for the data model. Every supported contract has a complete versioned JSON registry:
+The `filegrc` package is the only source of truth for the data model:
 
 ```text
 packages/filegrc/model/v1.json
-packages/filegrc/model/v2.json
 ```
 
 The registry defines:
@@ -121,17 +116,16 @@ The registry defines:
 - Lifecycle states
 - File and content rules
 - Search, filter, list, and form metadata
-- Compatibility and deprecation metadata
 
 The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Record Markdown in implicit companion files. The model's `recordContent` settings decide which result-bearing resources show this body by default. A source form is evidence for a workflow, not a schema to copy field for field.
 
 The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
 
-`packages/filegrc/model/index.js` selects a model version and exposes a stable Node.js API. The package includes every supported historical model version so a current engine can read older repositories.
+`packages/filegrc/model/index.js` loads the registry and exposes a stable Node.js API.
 
 Generated repositories contain only their records and a `dataModelVersion` in `data/workspace.json`. They do not receive copied schema files.
 
-`docs/data-model.md` is generated from the newest registry. `npm run validate` fails when the generated document differs from model v2.
+`docs/data-model.md` is generated from v1. `npm run validate` fails when the generated document differs from the registry.
 
 The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
 
@@ -240,7 +234,7 @@ Generated or cached data never belongs in these directories.
 
 An active `obligation` is a reusable policy rule. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
 
-Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. Starting one event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. FileGRC applies a 30-day deadline when an older or custom event obligation omits one, so every generated action can become overdue.
+Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. Starting one event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. FileGRC applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
 
 `planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. Calendar completion uses one validated mutation to create the dated operating record and append it to the obligation's `completionResourceIds`; the obligation board, API, and `filegrc complete` use that same transaction. The planner does not write derived occurrence records for calendar schedules.
 
@@ -348,64 +342,11 @@ Audit pages also show:
 - Never render raw secrets into generated output.
 - Make evidence classification visible before export.
 
-## Compatibility
+## Pre-release contract
 
-The workspace declares a data-model version. Each resource also carries a schema version so a partial migration can be diagnosed safely.
+FileGRC has one data model, v1, and both packages stay at `0.1.0` during normal development. Before the first npm publication, schema and template changes update that single contract directly. There is no migration command or historical reader yet because no consumer release exists.
 
-Compatibility rules:
-
-- Additive optional fields are preferred.
-- Unknown top-level fields produce warnings and are preserved by CRUD.
-- Organization-specific data belongs in `extensions`.
-- Missing required fields, duplicate IDs, invalid enums, and broken references are errors.
-- Changed field meanings or renamed required fields need an explicit migration.
-- Compatibility fixtures represent every supported historical model.
-
-## Upgrade experience
-
-Package upgrades and data migrations are separate. Installing a newer `filegrc` updates the engine, renderer, and bundled model registry. It never edits `data/`. A workspace stays on its declared model version until a user or agent explicitly migrates it.
-
-The Repository page should show:
-
-- Installed `filegrc` version
-- Declared dependency range and resolved lockfile version
-- Current workspace data-model version
-- Newest data-model version bundled with the installed engine
-- Whether the installed engine supports the current workspace
-
-This status is available offline. Each engine release includes machine-readable compatibility and migration metadata. The update fields needed before installation are also published as npm package metadata, so an update check does not download or run an unknown release.
-
-Checking npm for a newer engine is an explicit action because the workspace must remain useful without a network connection. The UI exposes a **Check for Updates** button and keeps its cached result under ignored `.filegrc/` state. It presents compatible updates as a quiet notice, security updates as recommended work, and releases that need migration as a review-required notice rather than a blocking modal.
-
-Headless users can plan and apply model migrations now. Upgrade checks remain planned:
-
-```text
-filegrc upgrade --check
-filegrc upgrade --check --json
-filegrc migrate --to <model-version>
-filegrc migrate --to <model-version> --json
-filegrc migrate --to <model-version> --apply
-```
-
-`upgrade --check` may query the package registry because the user invoked it explicitly. `migrate` defaults to a read-only plan. The plan names the source and target model, changed files and fields, required user decisions, compatibility risks, and rollback steps. `--apply` is the only migration form that may change source data.
-
-The guided path is:
-
-1. Require valid, committed FileGRC source files and identify the current commit as the rollback point. Unrelated repository changes outside the workspace do not block migration.
-2. Update the package and lockfile without changing the workspace model.
-3. Validate the existing data with the new engine.
-4. Stage a complete migration candidate under `.filegrc/migrations/`.
-5. Validate the candidate against the target model and present its diff.
-6. Apply only after explicit confirmation, leaving the changes uncommitted.
-7. Validate again and direct the user to review and commit the migration separately.
-
-Migration recipes are ordered, deterministic, and machine-readable. Longer upgrades run one model version at a time. The current v1-to-v2 migration builds and validates a complete candidate, then swaps the data tree while retaining the original under ignored `.filegrc/` state. The workspace version changes only after all target records have been written successfully.
-
-Automatic migration may rename known fields, preserve stable IDs and Markdown content, and convert values when the mapping is unambiguous. It must stop before writing when a new required fact cannot be derived, an enum value has no safe mapping, or a resource would be removed. The plan asks for those decisions rather than inserting plausible compliance data. Removed or deprecated values remain preserved until the user resolves them.
-
-The installed engine keeps readers, validators, and renderers for every model it claims to support. Removing one of those readers is a breaking package change and requires a released forward migration first. An unsupported workspace receives a recovery page and CLI diagnostic with the current model, supported versions, last compatible engine range, migration command, and Git rollback instructions. It must never fall back to a different model or partially render data under the wrong rules.
-
-Generator templates and user data have a different lifecycle. Updating `filegrc` does not replace the generated README, `AGENTS.md`, policies, training, or starter records. New repositories receive the latest template. Existing repositories may receive a versioned starter-content advisory or three-way proposal, but applying it is explicit and preserves local edits.
+After the first publication, reassess versioning from the contract that actually shipped. Do not add speculative compatibility code now.
 
 ## Delivery state
 
@@ -425,9 +366,7 @@ Implemented:
 Next:
 
 - Add evidence capture metadata and audit completeness reports
-- Add compatibility fixtures for every published model version
 - Add licensed criteria content and optional trust-category mappings
-- Add offline version reporting, opt-in update checks, and machine-readable upgrade status
 
 ## Decisions still open
 

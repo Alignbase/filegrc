@@ -19,24 +19,16 @@ test("v1 model exposes the complete resource registry", () => {
   }
   assert.equal(model.resources.person.titleLabel, "Name");
   assert.equal(model.resources.policy.titleLabel, undefined);
-  assert.equal(model.recordContent.field, "notesPath");
+  assert.equal(model.recordContent.slot, "record");
   assert.equal(model.recordContent.label, "Record");
   assert.equal(model.recordContent.defaultResourceTypes.length, 15);
   for (const type of model.recordContent.defaultResourceTypes) {
     const resource = model.resources[type];
     assert.ok(resource, `${type} Record Markdown type exists`);
-    assert.equal(Object.values(resource.fields ?? {}).some((field) => field.content), false, `${type} does not duplicate dedicated Markdown`);
+    assert.equal(Object.keys(resource.fields ?? {}).some((name) => name.endsWith("Path")), false, `${type} does not store a Markdown path`);
   }
-});
-
-test("v2 model uses implicit companion Markdown without path fields", () => {
-  const model = loadModel("2");
-  assert.equal(model.modelVersion, "2");
-  assert.equal(model.markdownStorage, "companion");
-  assert.equal(model.recordContent.slot, "record");
   assert.equal(model.commonFields.notesPath, undefined);
   for (const resource of Object.values(model.resources)) {
-    assert.equal(Object.values(resource.fields ?? {}).some((field) => field.content), false);
     assert.equal((resource.required ?? []).some((name) => name.endsWith("Path")), false);
   }
   assert.deepEqual(model.resources.policy.markdown, {
@@ -52,5 +44,5 @@ test("model versions cannot escape the packaged model registry", () => {
 
 test("generated model documentation matches the repository file", async () => {
   const actual = await readFile(new URL("../../../docs/data-model.md", import.meta.url), "utf8");
-  assert.equal(actual, generateModelDocumentation(loadModel("2")));
+  assert.equal(actual, generateModelDocumentation(loadModel("1")));
 });

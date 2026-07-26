@@ -55,19 +55,6 @@ export function resolveWorkspacePath(root, workspacePath) {
   return target;
 }
 
-export function resolveContentPath(root, dataRelativePath) {
-  const segments = typeof dataRelativePath === "string" ? dataRelativePath.split("/") : [];
-  if (
-    segments.length < 2
-    || segments[0] !== "content"
-    || segments.some((segment) => !segment || segment === "." || segment === "..")
-    || !segments.at(-1).endsWith(".md")
-  ) {
-    throw new Error("Long-form content must be a Markdown file under data/content/.");
-  }
-  return resolveDataPath(root, dataRelativePath);
-}
-
 export function relativeToWorkspace(root, path) {
   return relative(resolveWorkspaceRoot(root), path).split(sep).join("/");
 }

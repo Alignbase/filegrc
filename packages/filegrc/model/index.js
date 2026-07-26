@@ -1,31 +1,9 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
-const modelDirectory = path.dirname(fileURLToPath(import.meta.url));
-
-export function availableModelVersions() {
-  return fs
-    .readdirSync(modelDirectory)
-    .map((name) => /^v(.+)\.json$/.exec(name)?.[1])
-    .filter(Boolean)
-    .sort((left, right) => Number(left) - Number(right) || left.localeCompare(right));
-}
-
-export function latestModelVersion() {
-  return availableModelVersions().at(-1);
-}
-
-export function loadModel(version = latestModelVersion()) {
+export function loadModel(version = "1") {
   const requested = String(version);
-  const versions = availableModelVersions();
-  if (!versions.includes(requested)) {
-    throw new Error(
-      `Unsupported data model version "${requested}". Available versions: ${versions.join(", ")}`,
-    );
-  }
-  const file = path.join(modelDirectory, `v${requested}.json`);
-  return JSON.parse(fs.readFileSync(file, "utf8"));
+  if (requested !== "1") throw new Error(`Unsupported data model version "${requested}". Available version: 1`);
+  return JSON.parse(readFileSync(new URL("./v1.json", import.meta.url), "utf8"));
 }
 
 export function getResourceDefinition(model, type) {

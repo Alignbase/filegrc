@@ -98,7 +98,7 @@ npx filegrc trigger person-started --occurred-on 2026-07-25 --subject person-new
 npx filegrc trigger person-ended --occurred-at 2026-07-25T16:30:00-05:00 --subject person-departing-worker --json
 ```
 
-The command creates one `obligation-event` and its complete action checklist in a single validated write. Hour-based deadlines require an RFC 3339 event timestamp so an immediate or 24-hour cutoff is exact. Day-based deadlines use the event’s calendar date. Link the requested completion resources and evidence to each action item, then mark the actions done and the event complete. Every generated action has a cutoff. FileGRC applies a 30-day deadline when an older or custom event obligation omits one.
+The command creates one `obligation-event` and its complete action checklist in a single validated write. Hour-based deadlines require an RFC 3339 event timestamp so an immediate or 24-hour cutoff is exact. Day-based deadlines use the event’s calendar date. Link the requested completion resources and evidence to each action item, then mark the actions done and the event complete. Every generated action has a cutoff. FileGRC applies a 30-day deadline when a custom event obligation omits one.
 
 ## Period evidence packets
 

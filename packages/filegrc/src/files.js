@@ -3,7 +3,7 @@ import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises"
 import { dirname, join } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
-import { resolveContentPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
+import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
@@ -173,7 +173,7 @@ async function updateContentUnlocked(input, dataRelativePath, source, options) {
     error.code = "ENOENT";
     throw error;
   }
-  const path = resolveMarkdownPath(loaded, dataRelativePath);
+  const path = resolveDataPath(loaded.root, dataRelativePath);
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The Markdown file");
   await writeTextAtomic(path, source.endsWith("\n") ? source : `${source}\n`);
@@ -290,7 +290,7 @@ async function prepareContentWrites(loaded, record, content, options = {}) {
     const dataRelativePath = allowed.get(key);
     if (!dataRelativePath) throw new Error(`Markdown "${key}" does not belong to this record.`);
     if (typeof source !== "string") throw new Error(`Content for "${dataRelativePath}" must be a string.`);
-    const path = resolveMarkdownPath(loaded, dataRelativePath);
+    const path = resolveDataPath(loaded.root, dataRelativePath);
     let previous = null;
     try {
       previous = await readFile(path, "utf8");
@@ -318,13 +318,9 @@ async function exclusiveContentFiles(loaded, record) {
   const candidates = markdownEntries(loaded.model, record).map(({ path }) => path);
   const files = [];
   for (const dataRelativePath of new Set(candidates)) {
-    const shared = loaded.model.markdownStorage !== "companion" && loaded.resources.some((other) => (
-      other.id !== record.id && markdownEntries(loaded.model, other).some(({ path }) => path === dataRelativePath)
-    ));
-    if (shared) continue;
     let contentPath;
     try {
-      contentPath = resolveMarkdownPath(loaded, dataRelativePath);
+      contentPath = resolveDataPath(loaded.root, dataRelativePath);
     } catch {
       continue;
     }
@@ -339,10 +335,4 @@ async function exclusiveContentFiles(loaded, record) {
     files.push({ path: contentPath, dataRelativePath, source: contentSource, mode });
   }
   return files;
-}
-
-function resolveMarkdownPath(loaded, dataRelativePath) {
-  return loaded.model.markdownStorage === "companion"
-    ? resolveDataPath(loaded.root, dataRelativePath)
-    : resolveContentPath(loaded.root, dataRelativePath);
 }

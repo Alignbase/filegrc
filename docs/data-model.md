@@ -1,8 +1,8 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v2.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v1.json. Do not edit by hand. -->
 
-Model version: `2`
+Model version: `1`
 
 Stable, query-worthy GRC metadata. Long-form work is stored as implicit Markdown companion files beside each structured JSON record.
 
@@ -1305,7 +1305,3 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `showOnboarding` | boolean | Yes | Show onboarding |
-
-## Compatibility
-
-The model version is independent from the package version. The engine reads supported older model registries without changing consumer data. A migration must be explicit and documented.

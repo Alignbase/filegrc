@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
-import { resolveContentPath, resolveDataPath } from "./paths.js";
+import { resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { isRfc3339Timestamp } from "./time.js";
@@ -49,12 +49,12 @@ export async function validateWorkspace(input = process.cwd()) {
     for (const [fieldName, field] of Object.entries(fields)) {
       const value = record[fieldName];
       if (value === undefined || value === null) continue;
-      if (field.content || field.format === "data-path" || field.items === "data-path") {
+      if (field.format === "data-path" || field.items === "data-path") {
         const values = Array.isArray(value) ? value : [value];
         for (const item of values) {
           if (typeof item !== "string") continue;
           try {
-            const path = field.content ? resolveContentPath(loaded.root, item) : resolveDataPath(loaded.root, item);
+            const path = resolveDataPath(loaded.root, item);
             if (!(await stat(path)).isFile()) throw new Error("The data path is not a file.");
           } catch {
             diagnostics.push(error(
@@ -229,7 +229,7 @@ async function validateMarkdown(record, definition, model, root, path, diagnosti
       if ((await stat(resolveDataPath(root, item.path))).isFile()) present.add(item.name);
       else throw new Error("The Markdown path is not a file.");
     } catch (cause) {
-      if (model.markdownStorage === "companion" && (item.required || cause.code !== "ENOENT")) {
+      if (item.required || cause.code !== "ENOENT") {
         const message = item.required && cause.code === "ENOENT"
           ? `Required ${item.label} Markdown is missing at data/${item.path}.`
           : `${item.label} Markdown must be a regular file at data/${item.path}.`;

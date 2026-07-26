@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
-import { resolveContentPath, resolveDataPath } from "./paths.js";
+import { resolveDataPath } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -21,9 +21,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
     if (loaded.model.resources[record.type]) {
       for (const item of markdownEntries(loaded.model, record)) {
         try {
-          const path = loaded.model.markdownStorage === "companion"
-            ? resolveDataPath(loaded.root, item.path)
-            : resolveContentPath(loaded.root, item.path);
+          const path = resolveDataPath(loaded.root, item.path);
           const source = await readFile(path, "utf8");
           content[item.name] = { source, html: renderMarkdown(source), path: item.path, revision: contentRevision(source) };
         } catch {

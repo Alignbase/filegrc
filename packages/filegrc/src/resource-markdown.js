@@ -10,45 +10,24 @@ export function resourceDataPath(model, record) {
 
 export function markdownSlots(model, type) {
   const definition = getResourceDefinition(model, type);
-  if (model.markdownStorage === "companion") {
-    const dedicated = Object.entries(definition.markdown ?? {}).map(([name, slot]) => ({
-      name,
-      label: slot.label ?? humanize(name),
-      primary: Boolean(slot.primary),
-      required: Boolean(slot.required),
-      legacyField: null
-    }));
-    if (dedicated.length) return dedicated;
-    return [{
-      name: model.recordContent.slot,
-      label: model.recordContent.label,
-      primary: true,
-      required: false,
-      legacyField: null
-    }];
-  }
-
-  const fields = { ...model.commonFields, ...definition.fields };
-  const required = new Set(definition.required ?? []);
-  return Object.entries(fields)
-    .filter(([, field]) => field.content)
-    .map(([name, field]) => ({
-      name,
-      label: field.label ?? (name === model.recordContent?.field ? model.recordContent.label : humanize(name.replace(/Path$/, ""))),
-      primary: name === "contentPath",
-      required: required.has(name) || Boolean(field.required),
-      legacyField: name
-    }));
+  const dedicated = Object.entries(definition.markdown ?? {}).map(([name, slot]) => ({
+    name,
+    label: slot.label ?? humanize(name),
+    primary: Boolean(slot.primary),
+    required: Boolean(slot.required)
+  }));
+  if (dedicated.length) return dedicated;
+  return [{
+    name: model.recordContent.slot,
+    label: model.recordContent.label,
+    primary: true,
+    required: false
+  }];
 }
 
 export function markdownDataPath(model, record, slotName) {
   const slot = markdownSlots(model, record.type).find(({ name }) => name === slotName);
   if (!slot) throw new Error(`Unknown Markdown slot "${slotName}" for ${record.type}.`);
-  if (model.markdownStorage !== "companion") {
-    const path = record[slot.legacyField];
-    return typeof path === "string" && path ? path : null;
-  }
-
   const recordPath = resourceDataPath(model, record);
   const extension = extname(recordPath);
   const stem = basename(recordPath, extension);
