@@ -91,6 +91,7 @@
     },
     "person": {
       "title": "Person",
+      "titleLabel": "Name",
       "pluralTitle": "People",
       "group": "people-access",
       "collection": "people",
@@ -111,6 +112,7 @@
     },
     "service-account": {
       "title": "Service account",
+      "titleLabel": "Name",
       "pluralTitle": "Service accounts",
       "group": "people-access",
       "collection": "service-accounts",
@@ -130,6 +132,7 @@
     },
     "team": {
       "title": "Team",
+      "titleLabel": "Name",
       "pluralTitle": "Teams",
       "group": "governance",
       "collection": "teams",
@@ -147,6 +150,7 @@
     },
     "system": {
       "title": "System",
+      "titleLabel": "Name",
       "pluralTitle": "Systems",
       "group": "systems-vendors",
       "collection": "systems",
@@ -172,6 +176,7 @@
     },
     "asset": {
       "title": "Asset",
+      "titleLabel": "Name",
       "pluralTitle": "Assets",
       "group": "systems-vendors",
       "collection": "assets",
@@ -277,6 +282,7 @@
     },
     "framework": {
       "title": "Framework",
+      "titleLabel": "Name",
       "pluralTitle": "Frameworks",
       "group": "program",
       "collection": "frameworks",
@@ -587,6 +593,7 @@
     },
     "training": {
       "title": "Training",
+      "titleLabel": "Name",
       "pluralTitle": "Training",
       "group": "governance",
       "collection": "training",
@@ -669,6 +676,7 @@
     },
     "vendor": {
       "title": "Vendor",
+      "titleLabel": "Name",
       "pluralTitle": "Vendors",
       "group": "systems-vendors",
       "collection": "vendors",

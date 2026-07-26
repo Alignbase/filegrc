@@ -1,3 +1,4 @@
+import { createResourceId } from "./id.js";
 import { formatCalendarDate, formatLocalDateTime } from "./time.js";
 
 export function renderIndex(state = null) {
@@ -140,7 +141,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(groupTitle(definition.group)) + '</p><h2>' + esc(definition.pluralTitle) + '</h2><p>' + esc(definition.description) + '</p></div>' + (!state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "") + '</div>' +
     '<div class="list-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(label.toLowerCase()) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span></div>' +
-    '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>Title</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
+    '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
   const pagination = main.querySelector(".list-pagination");
   const pageStatus = pagination.querySelector(".page-status");
@@ -155,7 +156,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="Title"><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a><small>' + esc(entry.record.id) + '</small></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + formatValue(entry.record[name], name, type) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + formatValue(entry.record[name], name, type) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -204,7 +205,7 @@ function renderDetail(main, type, id) {
   const fields = { ...state.model.commonFields, ...definition.fields };
   const visible = Object.entries(entry.record).filter(([name]) => !["schemaVersion", "id", "type", "title", "notesPath", "contentPath"].includes(name));
   const content = Object.entries(entry.content);
-  main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(definition.pluralTitle) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(definition.title) + '</span><h2>' + esc(entry.record.title) + '</h2><code>' + esc(entry.record.id) + '</code></div><div class="actions">' + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid"><section class="panel detail-main">' +
+  main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(definition.pluralTitle) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(definition.title) + '</span><h2>' + esc(entry.record.title) + '</h2></div><div class="actions">' + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid"><section class="panel detail-main">' +
     (content.length ? content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fields[name]?.label || humanize(name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("") : '<div class="panel-head"><h3>Record</h3></div>' + empty("This record has no long-form Markdown.")) +
     '</section><aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section><section class="panel git-panel"><div class="panel-head"><h3>Source</h3></div><code>' + esc(entry.relativePath) + '</code><p>' + (state.git.available ? 'Workspace revision <strong>' + esc(state.git.shortCommit) + '</strong>' : "Commit this workspace to add file history.") + '</p></section><section class="panel"><div class="panel-head"><h3>File history</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
@@ -232,13 +233,12 @@ function openEditor(type, entry = null) {
   ]);
   const oneOf = new Set((definition.oneOf || []).flat());
   const names = [...new Set([
-    "id",
     "title",
     ...required,
     ...(definition.listFields || []),
     ...Object.entries(fields).filter(([name, field]) => field.content && name !== "notesPath" && (record[name] || required.has(name) || oneOf.has(name))).map(([name]) => name),
     ...oneOf
-  ])].filter((name) => !["schemaVersion", "type"].includes(name) && fields[name]);
+  ])].filter((name) => !["schemaVersion", "id", "type"].includes(name) && fields[name]);
   const dialog = document.createElement("dialog");
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
@@ -246,8 +246,9 @@ function openEditor(type, entry = null) {
   dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(entry?.record.title || definition.title) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p>Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name), Boolean(entry))).join("") + '</div>' +
     contentNames.map((name) => {
       const path = record[name];
-      const source = entry?.content?.[name]?.source ?? "# " + record.title + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
-      return '<label class="content-editor-field" data-content-editor="' + esc(name) + '"><span>' + esc(fields[name].label || humanize(name)) + ' Markdown</span><textarea data-content-source="' + esc(name) + '" spellcheck="true">' + esc(source) + '</textarea></label>';
+      const generated = !entry?.content?.[name];
+      const source = entry?.content?.[name]?.source ?? "# " + (record.title || "New " + definition.title) + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
+      return '<label class="content-editor-field" data-content-editor="' + esc(name) + '"><span>' + esc(fields[name].label || humanize(name)) + ' Markdown</span><textarea data-content-source="' + esc(name) + '" data-generated-content="' + generated + '" spellcheck="true">' + esc(source) + '</textarea></label>';
     }).join("") +
     '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-record">Save file</button></div></form>';
   document.body.append(dialog);
@@ -255,16 +256,31 @@ function openEditor(type, entry = null) {
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector(".advanced-editor textarea").addEventListener("input", () => { dialog.dataset.jsonDirty = "true"; });
   if (!entry) {
-    const idInput = dialog.querySelector('[data-field-group="id"] input');
+    const titleInput = dialog.querySelector('[data-field-group="title"] input');
     let previousId = record.id;
-    idInput?.addEventListener("input", () => {
+    let previousTitle = record.title;
+    titleInput?.addEventListener("input", () => {
+      const nextTitle = titleInput.value;
+      const nextId = createResourceId(type, nextTitle, state.resources.map(({ record }) => record.id));
       for (const name of contentNames) {
         const pathInput = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"] input');
         if (pathInput?.value === contentPathFor(type, previousId, name)) {
-          pathInput.value = contentPathFor(type, idInput.value, name);
+          pathInput.value = contentPathFor(type, nextId, name);
+          record[name] = pathInput.value;
         }
       }
-      previousId = idInput.value;
+      const previousHeading = "# " + (previousTitle || "New " + definition.title);
+      const nextHeading = "# " + (nextTitle || "New " + definition.title);
+      dialog.querySelectorAll('[data-generated-content="true"]').forEach((textarea) => {
+        if (textarea.value.startsWith(previousHeading + "\n")) {
+          textarea.value = nextHeading + textarea.value.slice(previousHeading.length);
+        }
+      });
+      record.id = nextId;
+      record.title = nextTitle;
+      dialog.querySelector(".advanced-editor textarea").value = JSON.stringify(record, null, 2);
+      previousId = nextId;
+      previousTitle = nextTitle;
     });
   }
   dialog.querySelector("#save-record").addEventListener("click", async () => {
@@ -292,7 +308,7 @@ function openEditor(type, entry = null) {
 }
 
 function seedRecord(type, definition) {
-  const record = { schemaVersion: 1, id: type + "-new", type, title: "New " + definition.title };
+  const record = { schemaVersion: 1, id: createResourceId(type, "new", state.resources.map(({ record }) => record.id)), type, title: "" };
   const fields = { ...state.model.commonFields, ...definition.fields };
   for (const name of definition.required || []) {
     const field = fields[name];
@@ -301,7 +317,7 @@ function seedRecord(type, definition) {
       const candidates = relationCandidates(field);
       record[name] = field.type === "array" ? (candidates.length === 1 ? [candidates[0].record.id] : []) : (candidates.length === 1 ? candidates[0].record.id : "");
     }
-    else if (field.content) record[name] = "content/" + type + "-new.md";
+    else if (field.content) record[name] = contentPathFor(type, record.id, name);
     else if (field.type === "array") record[name] = [];
     else if (field.type === "object") record[name] = {};
     else if (field.type === "boolean") record[name] = false;
@@ -312,7 +328,7 @@ function seedRecord(type, definition) {
   for (const choices of definition.oneOf || []) {
     if (choices.some((name) => record[name] !== undefined)) continue;
     const name = choices.find((candidate) => fields[candidate]?.content) || choices[0];
-    record[name] = fields[name]?.content ? "content/" + type + "-new.md" : fields[name]?.type === "array" ? [] : "";
+    record[name] = fields[name]?.content ? contentPathFor(type, record.id, name) : fields[name]?.type === "array" ? [] : "";
   }
   for (const [name, field] of Object.entries(fields)) {
     if (field.content && name !== "notesPath" && record[name] === undefined) {
@@ -328,9 +344,13 @@ function contentPathFor(type, id, name) {
 }
 
 function editorField(type, name, field, value, required, editing) {
-  const label = field.label || humanize(name);
+  const label = fieldLabel(type, name);
   const requiredMark = required ? '<span class="required-mark">Required</span>' : "";
-  const help = field.relation ? relationHelp(field) : field.content ? (editing ? "Keep this content path stable after creation." : "Path under data/content/ ending in .md") : "";
+  const help = name === "title"
+    ? (editing ? "Renaming this record will not change its stable ID." : "A stable ID and file name will be generated from this value.")
+    : field.relation ? relationHelp(field)
+    : field.content ? (editing ? "Keep this content path stable after creation." : "Path under data/content/ ending in .md")
+    : "";
   let control;
   if (field.relation && field.type === "array") {
     const candidates = relationCandidates(field);
@@ -367,9 +387,10 @@ function editorField(type, name, field, value, required, editing) {
     control = '<textarea>' + esc(value ?? "") + '</textarea>';
   } else {
     const inputType = field.type === "date" ? "date" : field.type === "number" || field.type === "integer" ? "number" : field.format === "email" ? "email" : "text";
-    control = '<input type="' + inputType + '" value="' + esc(value ?? "") + '" ' + (editing && (name === "id" || field.content) ? "readonly" : "") + '>';
+    const placeholder = name === "title" && !editing ? ' placeholder="Enter ' + esc(label.toLowerCase()) + '"' : "";
+    control = '<input type="' + inputType + '" value="' + esc(value ?? "") + '"' + placeholder + " " + (editing && field.content ? "readonly" : "") + '>';
   }
-  return fieldWrap(name, field.type, label, requiredMark, control, help || (editing && name === "id" ? "IDs cannot change after creation." : ""), required);
+  return fieldWrap(name, field.type, label, requiredMark, control, help, required);
 }
 
 function fieldWrap(name, kind, label, requiredMark, control, help, required) {
@@ -498,7 +519,7 @@ function globalSearch(query) {
     const totalPages = Math.max(1, Math.ceil(matches.length / SEARCH_PAGE_SIZE));
     const start = (pageNumber - 1) * SEARCH_PAGE_SIZE;
     const visible = matches.slice(start, start + SEARCH_PAGE_SIZE);
-    results.innerHTML = visible.length ? visible.map(({ record }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(state.model.resources[record.type].title) + ' · ' + esc(record.id) + '</small></a>').join("") : empty("No matching records.");
+    results.innerHTML = visible.length ? visible.map(({ record }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(state.model.resources[record.type].title) + '</small></a>').join("") : empty("No matching records.");
     results.querySelectorAll("a").forEach((link) => link.onclick = () => dialog.close());
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
@@ -575,7 +596,7 @@ function entrySearchText(entry) {
 }
 function groupTitle(id) { return state.model.groups.find((group) => group.id === id)?.title || "Program"; }
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
-function fieldLabel(type, name) { return fieldDefinition(type, name)?.label || humanize(name); }
+function fieldLabel(type, name) { return name === "title" ? state.model.resources[type]?.titleLabel || state.model.commonFields.title.label : fieldDefinition(type, name)?.label || humanize(name); }
 function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || value; }
 function humanize(value) { return String(value).replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
 function formatValue(value, field, type) {
@@ -595,6 +616,7 @@ function formatReference(value) {
   const reference = state.resources.find(({ record }) => record.id === value);
   return reference ? '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + '">' + esc(reference.record.title) + '</a>' : '<span class="tag">' + esc(value) + '</span>';
 }
+${createResourceId.toString()}
 ${formatCalendarDate.toString()}
 ${formatLocalDateTime.toString()}
 function empty(message) { return '<div class="empty">' + esc(message) + '</div>'; }
@@ -627,7 +649,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
 @media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.repo-chip{display:none}}
 @media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:20px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.search{max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.record-table{min-width:720px}}
-@media(max-width:760px){.setup-banner{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:8px;font-weight:700}.record-table td[data-label="Title"]{display:block;padding:8px 0 10px}.record-table td[data-label="Title"]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}}
+@media(max-width:760px){.setup-banner{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:8px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}}
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:20px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 
 body,button,input,select,textarea,dialog{color:var(--ink)}

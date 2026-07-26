@@ -30,6 +30,8 @@ Each structured resource is one UTF-8 JSON file. Long-form work is Markdown unde
 
 A compliance framework and version.
 
+The UI labels the common `title` field as **Name**.
+
 Path: `data/frameworks/<id>.json`
 
 | Field | Type | Required | Notes |
@@ -155,6 +157,8 @@ Path: `data/control-tests/<id>.json`
 #### `team`
 
 A committee, response team, or accountable group.
+
+The UI labels the common `title` field as **Name**.
 
 Path: `data/teams/<id>.json`
 
@@ -293,6 +297,8 @@ Path: `data/meetings/<id>.json`
 
 Reusable training content and assignment rules.
 
+The UI labels the common `title` field as **Name**.
+
 Path: `data/training/<id>.json`
 
 | Field | Type | Required | Notes |
@@ -419,6 +425,8 @@ Path: `data/risk-assessments/<id>.json`
 
 A workforce member or internal participant, with minimal personal data.
 
+The UI labels the common `title` field as **Name**.
+
 Path: `data/people/<id>.json`
 
 | Field | Type | Required | Notes |
@@ -436,6 +444,8 @@ Path: `data/people/<id>.json`
 #### `service-account`
 
 A non-human identity used by automation or an application.
+
+The UI labels the common `title` field as **Name**.
 
 Path: `data/service-accounts/<id>.json`
 
@@ -509,6 +519,8 @@ Path: `data/access-reviews/<id>.json`
 
 A logical application, service, infrastructure, or business-system boundary.
 
+The UI labels the common `title` field as **Name**.
+
 Path: `data/systems/<id>.json`
 
 | Field | Type | Required | Notes |
@@ -532,6 +544,8 @@ Path: `data/systems/<id>.json`
 
 An individually managed physical or logical item.
 
+The UI labels the common `title` field as **Name**.
+
 Path: `data/assets/<id>.json`
 
 | Field | Type | Required | Notes |
@@ -552,6 +566,8 @@ Path: `data/assets/<id>.json`
 #### `vendor`
 
 A third party that provides a product or service.
+
+The UI labels the common `title` field as **Name**.
 
 Path: `data/vendors/<id>.json`
 

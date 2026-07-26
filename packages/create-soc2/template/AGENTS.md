@@ -12,7 +12,7 @@ Using this repository does not establish compliance by itself. Records must matc
 - Treat `data/` as the source of truth. Do not hand-edit `.soc2/` output.
 - Use UTF-8 JSON for structured records and Markdown for long-form work.
 - Keep one resource in each JSON file.
-- Keep IDs stable, globally unique, human-readable, and lowercase kebab-case.
+- Let the local app generate IDs from each record’s name or title. When editing JSON directly, keep IDs globally unique, human-readable, and lowercase kebab-case.
 - Use ISO 8601 dates and RFC 3339 timestamps.
 - Store relationships as resource IDs.
 - Put policies, plans, charters, procedures, meeting minutes, training, assertions, narratives, templates, and audit responses in Markdown under `data/content/`.
@@ -48,7 +48,7 @@ Prefer existing fields. Put organization-specific values under `extensions` with
 
 Never change a resource ID after it is committed. Create a replacement and link the records if identity truly changes.
 
-The local app presents the core model fields and relationship pickers. Use its advanced JSON section for optional fields and extensions. It rejects a save if the source file changed after the editor opened, so reload and reapply the change instead of overwriting newer work.
+The local app keeps IDs out of the guided form, generates them during creation, and leaves them unchanged when a record is renamed. It presents the core model fields and relationship pickers. Use its advanced JSON section for optional fields and extensions. It rejects a save if the source file changed after the editor opened, so reload and reapply the change instead of overwriting newer work.
 
 ## Content and approvals
 

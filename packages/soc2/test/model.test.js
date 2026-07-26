@@ -10,6 +10,8 @@ test("v1 model exposes the complete resource registry", () => {
   for (const type of ["workspace", "control", "meeting", "risk", "attestation", "evidence", "audit"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }
+  assert.equal(model.resources.person.titleLabel, "Name");
+  assert.equal(model.resources.policy.titleLabel, undefined);
 });
 
 test("model versions cannot escape the packaged model registry", () => {

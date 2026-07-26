@@ -26,6 +26,7 @@ export function generateModelDocumentation(model) {
     lines.push(`### ${group.title}`, "");
     for (const [type, resource] of resources) {
       lines.push(`#### \`${type}\``, "", resource.description, "");
+      if (resource.titleLabel) lines.push(`The UI labels the common \`title\` field as **${resource.titleLabel}**.`, "");
       const recordPath = (resource.recordPath ?? "{id}.json").replaceAll("{id}", "<id>");
       lines.push(`Path: \`${resource.singleton ? `data/${resource.singleton}` : `data/${resource.collection}/${recordPath}`}\``, "");
       lines.push("| Field | Type | Required | Notes |", "| --- | --- | --- | --- |");

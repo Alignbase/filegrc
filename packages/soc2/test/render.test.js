@@ -236,6 +236,14 @@ test("uses the shared blue gradient and follows the browser color scheme", () =>
   assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)/);
 });
 
+test("keeps IDs behind the guided editor and generates them from titles", () => {
+  assert.match(APP_SCRIPT, /function createResourceId/);
+  assert.match(APP_SCRIPT, /createResourceId\(type, nextTitle/);
+  assert.match(APP_SCRIPT, /titleLabel \|\| state\.model\.commonFields\.title\.label/);
+  assert.match(APP_SCRIPT, /A stable ID and file name will be generated from this value/);
+  assert.doesNotMatch(APP_SCRIPT, /\[\s*"id",\s*"title"/);
+});
+
 test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_SCRIPT, /const LIST_PAGE_SIZE = 25/);
   assert.match(APP_SCRIPT, /const SEARCH_PAGE_SIZE = 25/);
