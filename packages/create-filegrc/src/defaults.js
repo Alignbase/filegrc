@@ -660,7 +660,7 @@ const obligations = [
     activityType: "asset-recovery",
     recurrence: event("person-ended"),
     triggerPrompt: "Employee or contractor departing?",
-    window: eventWindow(),
+    window: eventWindow(7),
     completionResourceTypes: ["asset", "evidence"],
     ownerIds: [OWNER_ID],
     controlIds: ["control-access-review-offboarding", "control-inventory-configuration"],
@@ -684,7 +684,7 @@ const obligations = [
     activityType: "access-change",
     recurrence: event("person-role-changed"),
     triggerPrompt: "Worker role changed?",
-    window: eventWindow(),
+    window: eventWindow(3),
     completionResourceTypes: ["access-grant", "evidence"],
     ownerIds: [OWNER_ID],
     controlIds: ["control-access-authorization", "control-access-review-offboarding"],
@@ -720,7 +720,7 @@ const obligations = [
     activityType: "risk-assessment",
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system or service change?",
-    window: eventWindow(),
+    window: eventWindow(30),
     completionResourceTypes: ["risk-assessment", "risk", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-risk-assessment"],
@@ -732,7 +732,7 @@ const obligations = [
     activityType: "vulnerability-scan",
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system or service change?",
-    window: eventWindow(),
+    window: eventWindow(30),
     completionResourceTypes: ["vulnerability-scan", "evidence"],
     ownerIds: [OWNER_ID],
     controlIds: ["control-vulnerability-management"],
@@ -744,7 +744,7 @@ const obligations = [
     activityType: "change-review",
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system or service change?",
-    window: eventWindow(),
+    window: eventWindow(30),
     completionResourceTypes: ["meeting", "policy", "control", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-policy-management", "control-security-communication"],
@@ -768,7 +768,7 @@ const obligations = [
     activityType: "remediation",
     recurrence: event("material-incident"),
     triggerPrompt: "Material security incident?",
-    window: eventWindow(),
+    window: eventWindow(7),
     completionResourceTypes: ["action-item", "finding"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-monitoring-remediation"],
@@ -913,10 +913,10 @@ function event(eventType) {
   return { mode: "event", eventType };
 }
 
-function eventWindow(endOffsetDays) {
+function eventWindow(endOffsetDays = 30) {
   return {
     startOffsetDays: 0,
-    ...(Number.isInteger(endOffsetDays) ? { endOffsetDays } : {})
+    endOffsetDays
   };
 }
 

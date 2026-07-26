@@ -506,12 +506,14 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /onboarding-after-sections/);
   assert.match(APP_SCRIPT, /class="onboarding-sections"/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
+  assert.match(APP_SCRIPT, /Inventories and dated records of reviews/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
   assert.match(APP_SCRIPT, /Complete a checklist when key events occur/);
   assert.match(APP_SCRIPT, /Plan the engagement and generate evidence/);
-  assert.match(APP_SCRIPT, /filegrc obligations CLI command/);
-  assert.match(APP_SCRIPT, /filegrc trigger/);
-  assert.match(APP_SCRIPT, /filegrc evidence-packet/);
+  assert.match(APP_SCRIPT, /This renderer edits those files/);
+  assert.match(APP_SCRIPT, /The UI and FileGRC CLI use the same calculation/);
+  assert.match(APP_SCRIPT, /Every action has a policy-based cutoff or a reasonable default deadline/);
+  assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
   assert.match(APP_SCRIPT, /Git repository detected/);
   assert.match(APP_SCRIPT, /Git setup needed/);

@@ -422,8 +422,6 @@ function packetGaps({ obligations, eventRuns, evidence, git, end }) {
       } else if (action.dueWindowEnd && action.dueWindowEnd <= end && action.status !== "complete") {
         const cutoff = action.dueWindowEndAt || action.dueWindowEnd;
         gaps.push(gap("error", "incomplete-event-action", `${run.title}: ${action.title} was not completed by ${cutoff}.`, action.actionItemId));
-      } else if (!action.dueWindowEnd && action.status !== "complete") {
-        gaps.push(gap("warning", "open-event-action", `${run.title}: ${action.title} remains open with no fixed policy cutoff.`, action.actionItemId));
       }
     }
   }
@@ -517,7 +515,7 @@ function packetHtml(packet) {
     ? `<ul>${packet.evidence.map((item) => `<li><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.evidenceKind)}</small>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("")}</li>`).join("")}</ul>`
     : "<p>No evidence records were selected.</p>";
   const eventRuns = packet.eventRuns.length
-    ? packet.eventRuns.map((run) => `<article><h3><a href="records/obligation-event/${encodeURIComponent(run.id)}.json">${escapeHtml(run.title)}</a></h3><p>${escapeHtml(run.occurredAt || run.occurredOn)} · ${escapeHtml(run.status)} · ${run.completeCount} of ${run.actions.length} complete</p><table><thead><tr><th>Required action</th><th>Policy cutoff</th><th>Status</th></tr></thead><tbody>${run.actions.map((action) => `<tr><td><a href="records/action-item/${encodeURIComponent(action.actionItemId)}.json">${escapeHtml(action.title)}</a></td><td>${escapeHtml(action.dueWindowEndAt || action.dueWindowEnd || "No fixed cutoff")}</td><td>${escapeHtml(action.status)}</td></tr>`).join("")}</tbody></table></article>`).join("")
+    ? packet.eventRuns.map((run) => `<article><h3><a href="records/obligation-event/${encodeURIComponent(run.id)}.json">${escapeHtml(run.title)}</a></h3><p>${escapeHtml(run.occurredAt || run.occurredOn)} · ${escapeHtml(run.status)} · ${run.completeCount} of ${run.actions.length} complete</p><table><thead><tr><th>Required action</th><th>Policy cutoff</th><th>Status</th></tr></thead><tbody>${run.actions.map((action) => `<tr><td><a href="records/action-item/${encodeURIComponent(action.actionItemId)}.json">${escapeHtml(action.title)}</a></td><td>${escapeHtml(action.dueWindowEndAt || action.dueWindowEnd)}</td><td>${escapeHtml(action.status)}</td></tr>`).join("")}</tbody></table></article>`).join("")
     : "<p>No event workflows intersect this period.</p>";
   const recordsById = new Map(packet.records.map((record) => [record.id, record]));
   const datedRecords = packet.datedRecords.length

@@ -90,10 +90,12 @@ export async function runCli(argv = process.argv.slice(2)) {
     else {
       console.log(`${result.counts.overdue} overdue, ${result.counts.due} due, ${result.counts.upcoming} upcoming`);
       for (const item of result.items) {
+        const deadline = item.dueWindowEndAt || item.dueWindowEnd;
+        if (!deadline) throw new Error(`Planned work "${item.title}" is missing a deadline.`);
         console.log([
           item.status.toUpperCase(),
           item.dueWindowStartAt || item.dueWindowStart,
-          item.dueWindowEndAt || item.dueWindowEnd || "no fixed cutoff",
+          deadline,
           item.title,
           item.actionItemId || item.obligationId
         ].join("\t"));
@@ -224,7 +226,7 @@ async function printVersion() {
 }
 
 function printHelp() {
-  console.log(`filegrc - Git-native GRC workspace
+  console.log(`FileGRC - Git-native GRC workspace
 
 Usage:
   filegrc serve [root] [--host 127.0.0.1] [--port 8787]

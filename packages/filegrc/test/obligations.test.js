@@ -116,6 +116,18 @@ test("creates an event run and its policy checklist as one valid batch", async (
     completionResourceTypes: ["attestation", "evidence"],
     ownerIds: ["person-owner"]
   });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "obligation-new-worker-review",
+    type: "obligation",
+    title: "Review onboarding completion",
+    status: "active",
+    activityType: "onboarding-review",
+    recurrence: { mode: "event", eventType: "person-started" },
+    triggerPrompt: "New worker?",
+    completionResourceTypes: ["evidence"],
+    ownerIds: ["person-owner"]
+  });
 
   const created = await createObligationEvent(root, {
     eventType: "person-started",
@@ -123,9 +135,12 @@ test("creates an event run and its policy checklist as one valid batch", async (
     subjectResourceIds: ["person-owner"],
     title: "Onboard platform engineer"
   });
-  assert.equal(created.actions.length, 2);
+  assert.equal(created.actions.length, 3);
   assert.equal(created.actions[0].sourceResourceId, created.event.id);
   assert.deepEqual(created.event.actionItemIds, created.actions.map(({ id }) => id));
+  const defaultDeadlineAction = created.actions.find(({ title }) => title === "Review onboarding completion");
+  assert.equal(defaultDeadlineAction.dueWindowEnd, "2026-07-31");
+  assert.equal(defaultDeadlineAction.overdueOn, "2026-08-01");
   assert.equal((await validateWorkspace(root)).ok, true);
 
   const loaded = await loadWorkspace(root);
@@ -133,8 +148,9 @@ test("creates an event run and its policy checklist as one valid batch", async (
     asOf: "2026-07-02",
     through: "2026-08-01"
   });
-  assert.equal(plan.triggers[0].steps.length, 2);
-  assert.equal(plan.eventRuns[0].actions.length, 2);
+  assert.equal(plan.triggers[0].steps.length, 3);
+  assert.equal(plan.triggers[0].steps.find(({ title }) => title === "Review onboarding completion").window.endOffsetDays, 30);
+  assert.equal(plan.eventRuns[0].actions.length, 3);
   assert.equal(plan.eventRuns[0].actions.find(({ title }) => title === "Register issued device").daysUntilOverdue, 2);
 
   const obligationsCli = await execute(process.execPath, [
@@ -148,7 +164,7 @@ test("creates an event run and its policy checklist as one valid batch", async (
     "2026-08-01",
     "--json"
   ]);
-  assert.equal(JSON.parse(obligationsCli.stdout).eventRuns[0].actions.length, 2);
+  assert.equal(JSON.parse(obligationsCli.stdout).eventRuns[0].actions.length, 3);
   const triggerCli = await execute(process.execPath, [
     fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
     "trigger",
@@ -163,7 +179,7 @@ test("creates an event run and its policy checklist as one valid batch", async (
     "--json"
   ]);
   const triggerResult = JSON.parse(triggerCli.stdout);
-  assert.equal(triggerResult.actions.length, 2);
+  assert.equal(triggerResult.actions.length, 3);
   assert.equal(triggerResult.event.title, "Onboard=support engineer");
   assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "obligation-event").length, 2);
 });

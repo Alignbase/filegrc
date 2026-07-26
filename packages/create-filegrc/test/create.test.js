@@ -60,7 +60,14 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(controlFiles.length, 29);
   assert.equal(obligationFiles.length, 33);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
+  const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
+  assert.equal(
+    obligations
+      .filter((obligation) => obligation.recurrence.mode === "event")
+      .every((obligation) => Number.isInteger(obligation.window?.endOffsetDays) || Number.isInteger(obligation.window?.endOffsetHours)),
+    true
+  );
   const coveredRequirements = new Set(controls.flatMap((control) => control.requirementIds));
   const commonCriteriaFiles = requirementFiles.filter((file) => file.startsWith("requirement-soc2-cc"));
   assert.equal(commonCriteriaFiles.length, 33);

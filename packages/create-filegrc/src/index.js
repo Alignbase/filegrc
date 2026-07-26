@@ -205,7 +205,7 @@ async function run(command, args, cwd) {
 function cleanVersion(value) {
   const version = String(value ?? "").trim().replace(/^v/, "");
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
-    throw new Error(`Could not resolve a valid filegrc version from "${value}".`);
+    throw new Error(`Could not resolve a valid FileGRC version from "${value}".`);
   }
   return version;
 }

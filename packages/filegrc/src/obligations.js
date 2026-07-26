@@ -28,6 +28,7 @@ const COMPLETION_DATE_FIELDS = [
   "periodEnd"
 ];
 const MAX_PLANNED_ITEMS = 10_000;
+const DEFAULT_EVENT_DEADLINE_DAYS = 30;
 
 export function planObligations(resources, options = {}) {
   const asOf = requireDate(options.asOf ?? new Date().toISOString().slice(0, 10), "as-of date");
@@ -73,7 +74,7 @@ export function planObligations(resources, options = {}) {
         policyIds: obligation.policyIds || [],
         controlIds: obligation.controlIds || [],
         completionResourceTypes: obligation.completionResourceTypes || [],
-        window: obligation.window || {}
+        window: normalizedEventWindow(obligation.window)
       });
       triggerGroups.set(eventType, group);
       continue;
@@ -192,7 +193,7 @@ export async function createObligationEvent(input, options) {
     && record.recurrence.eventType === eventType
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
-  if (templates.some((record) => Number.isInteger(record.window?.endOffsetHours)) && !occurredAt) {
+  if (templates.some((record) => Number.isInteger(normalizedEventWindow(record.window).endOffsetHours)) && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
   }
   const subjectResourceIds = [...new Set((options.subjectResourceIds || []).map(String).filter(Boolean))];
@@ -259,10 +260,11 @@ function calendarWindow(recurrence, configuredWindow, index) {
 }
 
 function eventWindow(obligation, occurredOn, occurredAt, timezone) {
-  if (Number.isInteger(obligation.window?.endOffsetHours) && occurredAt) {
-    const startOffset = Number.isInteger(obligation.window?.startOffsetHours) ? obligation.window.startOffsetHours : 0;
+  const configuredWindow = normalizedEventWindow(obligation.window);
+  if (Number.isInteger(configuredWindow.endOffsetHours) && occurredAt) {
+    const startOffset = Number.isInteger(configuredWindow.startOffsetHours) ? configuredWindow.startOffsetHours : 0;
     const dueWindowStartAt = addHours(occurredAt, startOffset);
-    const dueWindowEndAt = addHours(occurredAt, obligation.window.endOffsetHours);
+    const dueWindowEndAt = addHours(occurredAt, configuredWindow.endOffsetHours);
     return {
       dueWindowStart: timestampCalendarDate(dueWindowStartAt, timezone),
       dueWindowEnd: timestampCalendarDate(dueWindowEndAt, timezone),
@@ -272,12 +274,11 @@ function eventWindow(obligation, occurredOn, occurredAt, timezone) {
       overdueAt: dueWindowEndAt
     };
   }
-  const startOffset = Number.isInteger(obligation.window?.startOffsetDays) ? obligation.window.startOffsetDays : 0;
-  const hasEnd = Number.isInteger(obligation.window?.endOffsetDays);
+  const startOffset = Number.isInteger(configuredWindow.startOffsetDays) ? configuredWindow.startOffsetDays : 0;
   const dueWindowStart = addCalendarDays(occurredOn, startOffset);
-  const dueWindowEnd = hasEnd ? addCalendarDays(occurredOn, obligation.window.endOffsetDays) : null;
+  const dueWindowEnd = addCalendarDays(occurredOn, configuredWindow.endOffsetDays);
   const overdueOn = dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null;
-  if (!dueWindowStart || (hasEnd && (!dueWindowEnd || !overdueOn))) {
+  if (!dueWindowStart || !dueWindowEnd || !overdueOn) {
     throw new Error("Event deadline dates must fall within the supported calendar range.");
   }
   return {
@@ -300,13 +301,27 @@ function planEventRun(event, actionItems, byId, asOf, now) {
       const completionSatisfied = expectedCompletionTypes.length === 0
         || matchingCompletionIds.length > 0;
       const complete = record.status === "done" && completionSatisfied;
+      const configuredWindow = normalizedEventWindow(obligation?.window);
+      const fallbackEndOffsetDays = Number.isInteger(configuredWindow.endOffsetDays)
+        ? configuredWindow.endOffsetDays
+        : Math.ceil(configuredWindow.endOffsetHours / 24);
+      const dueWindowStart = record.dueWindowStart || event.occurredOn;
+      const dueWindowEnd = record.dueWindowEnd || record.dueOn || addCalendarDays(event.occurredOn, fallbackEndOffsetDays);
+      const dueWindowStartAt = record.dueWindowStartAt
+        || (event.occurredAt && Number.isInteger(configuredWindow.startOffsetHours)
+          ? addHours(event.occurredAt, configuredWindow.startOffsetHours)
+          : null);
+      const dueWindowEndAt = record.dueWindowEndAt
+        || (event.occurredAt && Number.isInteger(configuredWindow.endOffsetHours)
+          ? addHours(event.occurredAt, configuredWindow.endOffsetHours)
+          : null);
       const window = {
-        dueWindowStart: record.dueWindowStart || event.occurredOn,
-        dueWindowEnd: record.dueWindowEnd || record.dueOn || null,
-        overdueOn: record.overdueOn || (record.dueOn ? addCalendarDays(record.dueOn, 1) : null),
-        dueWindowStartAt: record.dueWindowStartAt || null,
-        dueWindowEndAt: record.dueWindowEndAt || null,
-        overdueAt: record.overdueAt || null
+        dueWindowStart,
+        dueWindowEnd,
+        overdueOn: record.overdueOn || (dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null),
+        dueWindowStartAt,
+        dueWindowEndAt,
+        overdueAt: record.overdueAt || dueWindowEndAt
       };
       const status = complete
         ? "complete"
@@ -370,6 +385,24 @@ function planEventRun(event, actionItems, byId, asOf, now) {
 function completionFallsInWindow(record, window) {
   const date = completionDate(record);
   return Boolean(date && date >= window.dueWindowStart && date <= window.dueWindowEnd);
+}
+
+function normalizedEventWindow(configuredWindow) {
+  const window = configuredWindow && !Array.isArray(configuredWindow) && typeof configuredWindow === "object"
+    ? configuredWindow
+    : {};
+  if (Number.isInteger(window.endOffsetDays) || Number.isInteger(window.endOffsetHours)) return window;
+  if (Number.isInteger(window.startOffsetHours)) {
+    return {
+      ...window,
+      endOffsetHours: window.startOffsetHours + (DEFAULT_EVENT_DEADLINE_DAYS * 24)
+    };
+  }
+  return {
+    ...window,
+    startOffsetDays: Number.isInteger(window.startOffsetDays) ? window.startOffsetDays : 0,
+    endOffsetDays: DEFAULT_EVENT_DEADLINE_DAYS
+  };
 }
 
 function completionTypeMatches(record, expectedTypes = []) {

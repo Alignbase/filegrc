@@ -547,7 +547,7 @@ function windowText(item) {
   }
   return item.dueWindowEnd
     ? formatCalendarDate(item.dueWindowStart) + " through " + formatCalendarDate(item.dueWindowEnd) + ". Overdue " + formatCalendarDate(item.overdueOn) + "."
-    : "Due from " + formatCalendarDate(item.dueWindowStart) + "; policy sets no fixed overdue cutoff.";
+    : "Deadline unavailable; review the source obligation.";
 }
 
 function timingText(item) {
@@ -560,7 +560,7 @@ function timingText(item) {
   if (item.status === "due" && Number.isInteger(item.hoursUntilOverdue)) {
     return item.hoursUntilOverdue === 0 ? "Cutoff now" : item.hoursUntilOverdue + " hour" + (item.hoursUntilOverdue === 1 ? "" : "s") + " until overdue";
   }
-  if (item.status === "due") return item.overdueOn ? item.daysUntilOverdue + " day" + (item.daysUntilOverdue === 1 ? "" : "s") + " until overdue" : "Due now · no fixed cutoff";
+  if (item.status === "due") return item.overdueOn ? item.daysUntilOverdue + " day" + (item.daysUntilOverdue === 1 ? "" : "s") + " until overdue" : "Due now";
   if (item.status === "upcoming" && Number.isInteger(item.hoursUntilStart)) {
     return "Opens in " + item.hoursUntilStart + " hour" + (item.hoursUntilStart === 1 ? "" : "s");
   }
@@ -575,7 +575,7 @@ function relativeEventWindow(window) {
   if (Number.isInteger(window?.endOffsetDays)) {
     return window.endOffsetDays === 0 ? "Due on the event date" : "Due within " + window.endOffsetDays + " days";
   }
-  return "Due when triggered; no fixed policy cutoff";
+  return "Due within 30 days";
 }
 
 function eventStepSummary(step) {
@@ -592,7 +592,7 @@ function dueCountdownSummary(items) {
   const due = items
     .filter((item) => item.status === "due" && (item.overdueAt || item.overdueOn))
     .sort((a, b) => String(a.overdueAt || a.overdueOn).localeCompare(String(b.overdueAt || b.overdueOn)))[0];
-  return due ? timingText(due) : "No fixed cutoff pending";
+  return due ? timingText(due) : "No due work";
 }
 
 function renderList(main, type, params = new URLSearchParams()) {
@@ -914,7 +914,7 @@ function onboardingSteps() {
       target: ".repo-chip",
       kicker: "Mental model",
       title: "Files are the program",
-      body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. The renderer edits those files, and Git records their history.",
+      body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. This renderer edits those files, and Git records their history.",
       points: [
         "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
         "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
@@ -929,7 +929,7 @@ function onboardingSteps() {
       body: "The program runs in one direction: define the system scope, map the criteria, adopt policies, operate controls, retain dated proof, and give the auditor a coherent record of the period.",
       points: [
         "Criteria are external expectations. Policies are company rules. Controls state the repeatable work that meets both.",
-        "Inventories, reviews, assessments, meetings, tests, and incidents record the controls operating.",
+        "Inventories and dated records of reviews, assessments, meetings, tests, and incidents show that controls are operating.",
         "Evidence proves an occurrence; Git proves the history of every artifact."
       ]
     },
@@ -941,7 +941,7 @@ function onboardingSteps() {
       points: [
         "Quarterly means any date in that cycle is valid unless the policy sets a narrower window.",
         "Link a dated completion record and its evidence to satisfy one occurrence.",
-        "The UI and filegrc obligations CLI command use the same calculation."
+        "The UI and FileGRC CLI use the same calculation."
       ]
     },
     {
@@ -952,8 +952,8 @@ function onboardingSteps() {
       points: [
         "The checklist stays open until every action is done and has the requested completion record or evidence.",
         "Hour-based rules keep the event time and exact cutoff; day-based rules keep the policy date range.",
-        "A policy with no fixed deadline stays due without inventing an overdue date.",
-        "Agents start the identical workflow with filegrc trigger."
+        "Every action has a policy-based cutoff or a reasonable default deadline for the event.",
+        "Agents start the identical workflow with the FileGRC CLI."
       ]
     },
     {
@@ -966,7 +966,7 @@ function onboardingSteps() {
         "Audit tracks the firm, dates, requests, findings, and report.",
         "The packet includes dated records, obligation coverage, Markdown, and fixed attachments.",
         "Coverage gaps identify missing completions, open event actions, unverified evidence, and uncommitted state.",
-        "Agents generate the same result with filegrc evidence-packet."
+        "Agents generate the same result with the FileGRC CLI."
       ]
     },
     {
