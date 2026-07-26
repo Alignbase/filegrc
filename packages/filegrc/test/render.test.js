@@ -313,6 +313,13 @@ test("uses the shared blue gradient and follows the browser color scheme", () =>
   assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)/);
 });
 
+test("places record context left of Markdown on wide screens", () => {
+  assert.match(APP_STYLES, /@media\(min-width:761px\)\{\.detail-grid\{grid-template-columns:minmax\(270px,1fr\) minmax\(0,2fr\)\}/);
+  assert.match(APP_STYLES, /\.detail-grid aside\{grid-column:1;grid-row:1\}/);
+  assert.match(APP_STYLES, /\.detail-main\{grid-column:2;grid-row:1\}/);
+  assert.match(APP_STYLES, /\.detail-grid\{grid-template-columns:1fr\}/);
+});
+
 test("keeps IDs behind the guided editor and generates them from titles", () => {
   assert.match(APP_SCRIPT, /function createResourceId/);
   assert.match(APP_SCRIPT, /createResourceId\(type, nextTitle/);
