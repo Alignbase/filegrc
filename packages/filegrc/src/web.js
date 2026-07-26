@@ -131,6 +131,7 @@ let onboardingShade = null;
 let onboardingStep = 0;
 let onboardingDraft = null;
 let onboardingBusy = false;
+let resourceGuideCleanup = null;
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could Not Load the Workspace</h1><pre></pre></main>';
@@ -150,6 +151,8 @@ async function start() {
 }
 
 function render() {
+  resourceGuideCleanup?.();
+  resourceGuideCleanup = null;
   const route = parseRoute();
   const nav = buildNavigation(route);
   root.innerHTML = '<div class="shell">' + nav + '<div class="workspace"><header class="topbar">' + topbar(route) + '</header><main id="main"></main></div></div>';
@@ -599,11 +602,13 @@ function renderList(main, type, params = new URLSearchParams()) {
     return { name, label: field.label || humanize(name), values };
   }).filter(({ values }) => values.length > 1);
   const createButton = !state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "";
+  const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M10 9v5M10 6.25v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + createButton + '</div>';
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || (ORGANIZATION_RESOURCE_TYPES.includes(type) ? "Organization" : groupTitle(definition.group))) + '</p><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2></div>' + listTools + '</div>' + resourceGuide(type) +
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || (ORGANIZATION_RESOURCE_TYPES.includes(type) ? "Organization" : groupTitle(definition.group))) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
+  resourceGuideCleanup = setupResourceGuide(main);
   const pagination = main.querySelector(".list-pagination");
   const pageStatus = pagination.querySelector(".page-status");
   const previous = pagination.querySelector('[data-page="previous"]');
@@ -839,7 +844,83 @@ function resourceGuide(type) {
       return '<a href="#/resource/obligation/' + encodeURIComponent(record.id) + '">' + esc(record.title) + (cadence ? ' · ' + esc(cadence) : "") + '</a>';
     }).join("") + '</div>'
     : "";
-  return '<section class="page-guide" aria-label="How to use ' + esc(definition.pluralTitle) + '"><div><span>Use</span><p>' + esc(definition.description) + '</p></div><div><span>Policy basis</span><p>' + esc(guidance.policyBasis) + '</p>' + sourceLinks + '</div><div><span>Timing</span><p>' + esc(guidance.cadence) + '</p>' + obligationLinks + '</div></section>';
+  return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use ' + esc(definition.pluralTitle) + '" hidden><div><span>Use</span><p>' + esc(definition.description) + '</p></div><div><span>Policy basis</span><p>' + esc(guidance.policyBasis) + '</p>' + sourceLinks + '</div><div><span>Timing</span><p>' + esc(guidance.cadence) + '</p>' + obligationLinks + '</div></section>';
+}
+
+function setupResourceGuide(main) {
+  const trigger = main.querySelector("#resource-guide-trigger");
+  const guide = main.querySelector("#resource-guide");
+  if (!trigger || !guide) return () => {};
+  const listeners = new AbortController();
+  const options = { signal: listeners.signal };
+  let pinned = false;
+  let hideTimer = null;
+  const cancelHide = () => {
+    if (hideTimer !== null) window.clearTimeout(hideTimer);
+    hideTimer = null;
+  };
+  const position = () => {
+    const pageElement = main.querySelector(".page");
+    const page = pageElement?.getBoundingClientRect();
+    const header = trigger.closest(".page-intro")?.getBoundingClientRect();
+    if (!pageElement || !page || !header) return;
+    const pageStyle = getComputedStyle(pageElement);
+    const paddingLeft = Number.parseFloat(pageStyle.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(pageStyle.paddingRight) || 0;
+    const left = Math.max(15, page.left + paddingLeft);
+    const contentWidth = page.width - paddingLeft - paddingRight;
+    const top = Math.max(10, Math.min(header.bottom + 10, window.innerHeight - 90));
+    guide.style.left = left + "px";
+    guide.style.top = top + "px";
+    guide.style.width = Math.max(240, Math.min(contentWidth, window.innerWidth - left - 15)) + "px";
+    guide.style.maxHeight = Math.max(120, window.innerHeight - top - 15) + "px";
+  };
+  const show = () => {
+    cancelHide();
+    guide.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    position();
+  };
+  const hide = (force = false) => {
+    cancelHide();
+    if (pinned && !force) return;
+    guide.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  const scheduleHide = () => {
+    cancelHide();
+    hideTimer = window.setTimeout(() => hide(), 160);
+  };
+  trigger.addEventListener("mouseenter", show, options);
+  trigger.addEventListener("mouseleave", scheduleHide, options);
+  trigger.addEventListener("focus", show, options);
+  trigger.addEventListener("blur", scheduleHide, options);
+  trigger.addEventListener("click", (event) => {
+    event.preventDefault();
+    pinned = !pinned;
+    if (pinned) show();
+    else hide(true);
+  }, options);
+  guide.addEventListener("mouseenter", cancelHide, options);
+  guide.addEventListener("mouseleave", scheduleHide, options);
+  guide.addEventListener("focusin", cancelHide, options);
+  guide.addEventListener("focusout", scheduleHide, options);
+  document.addEventListener("pointerdown", (event) => {
+    if (guide.hidden || trigger.contains(event.target) || guide.contains(event.target)) return;
+    pinned = false;
+    hide(true);
+  }, options);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || guide.hidden) return;
+    pinned = false;
+    hide(true);
+    trigger.focus({ preventScroll: true });
+  }, options);
+  window.addEventListener("resize", position, options);
+  return () => {
+    cancelHide();
+    listeners.abort();
+  };
 }
 
 function rendererSettingsEntry() {
@@ -1910,7 +1991,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .record-content-action{display:flex;justify-content:flex-start;margin-top:20px}.record-content-details{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.record-content-details summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.record-content-details>p{color:var(--muted);font-size:10px}.record-content-editor>span small{color:var(--muted);font-size:9px;font-weight:500}
 .program-setup{grid-template-columns:minmax(250px,.75fr) minmax(440px,1.4fr)}.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.setup-steps a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);text-decoration:none}.setup-steps a:hover{border-color:var(--accent-light)}.setup-steps a>span:first-child{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:10px}.setup-steps a.done>span:first-child{background:#dcefe4;color:#125733}.setup-steps strong,.setup-steps small{display:block}.setup-steps strong{font-size:10px}.setup-steps small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4;font-weight:500}
 .readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,.65fr) minmax(320px,1fr);gap:28px;align-items:end;margin-bottom:17px}.readiness-map-head h3{font-size:15px;margin:5px 0 0}.readiness-map-head>p{max-width:710px;color:var(--muted);font-size:11px;line-height:1.5;margin:0}.readiness-flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/4;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:8px;font-weight:800}.readiness-flow strong{font-size:10px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:8px;line-height:1.4;margin-top:3px}.readiness-state{grid-column:2;justify-self:start;margin-top:8px;padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:7px;line-height:1.2}.readiness-state.good{background:#dcefe4;color:#125733}.readiness-state.warn{background:#f6e8c9;color:#79500f}.readiness-state.bad{background:#f7dfdc;color:#873027}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:11px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:9px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:9px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:8px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:14px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:10px}.connections small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:8px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:10px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:11px}.external-source:hover strong{text-decoration:underline}
-.page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:0 0 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:10px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:8px;font-weight:700}
+.page-title-line{display:flex;align-items:center;gap:8px}.guide-trigger{display:grid;place-items:center;width:24px;height:24px;flex:0 0 auto;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--muted);cursor:pointer}.guide-trigger svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}.guide-trigger:hover{border-color:var(--accent-light);color:var(--accent)}.guide-trigger:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.resource-guide-popover{position:fixed;z-index:40;overflow:auto;box-shadow:0 18px 50px rgba(0,0,24,.24)}.resource-guide-popover[hidden]{display:none}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:10px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:8px;font-weight:700}
 .page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:auto}.onboarding-dialog::backdrop{background:transparent;backdrop-filter:none}.onboarding-shade{position:fixed;inset:0;z-index:60;pointer-events:none}.onboarding-shade span{position:absolute;background:rgba(0,0,24,.58)}.onboarding-progress{display:grid;grid-template-columns:repeat(var(--onboarding-step-count),1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:25px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:12px;line-height:1.6;margin:13px 25px 0}.onboarding-body+.onboarding-body{margin-top:8px}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:11px;line-height:1.5;padding-left:3px}.onboarding-sections{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 25px 4px}.onboarding-sections section{padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.onboarding-sections strong{font-size:11px}.onboarding-sections p{margin:6px 0 0;color:var(--muted);font-size:10px;line-height:1.5}.onboarding-actions{padding:12px 25px 23px}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:11px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:10px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:9px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:9px;line-height:1.5;margin:12px 25px 0}.onboarding-dialog>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px;scroll-margin-top:102px}
 .page-intro,.detail-head{margin-bottom:25px}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}

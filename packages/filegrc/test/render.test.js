@@ -393,7 +393,7 @@ test("aligns list and record page headers", () => {
   assert.match(APP_SCRIPT, /class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"/);
   assert.doesNotMatch(APP_SCRIPT, /class="type-pill"/);
   assert.match(APP_STYLES, /\.page-intro,\.detail-head\{margin-bottom:25px\}/);
-  assert.match(APP_STYLES, /\.page-guide\{[^}]*margin:0 0 16px/);
+  assert.match(APP_STYLES, /\.page-guide\{[^}]*margin:0;/);
   assert.doesNotMatch(APP_STYLES, /\.page-guide\{margin-top:-/);
   assert.match(APP_STYLES, /\.detail-head h2\{margin:7px 0\}/);
   assert.match(APP_STYLES, /\.detail-head \.header-breadcrumbs\{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center\}/);
@@ -534,7 +534,7 @@ test("ships local timestamp formatting while preserving calendar dates", () => {
   assert.doesNotMatch(APP_SCRIPT, /function shortDate/);
 });
 
-test("explains purpose, policy basis, and timing on resource indexes only", () => {
+test("explains purpose, policy basis, and timing in an interactive index popover", () => {
   const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
   const detailSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderDetail"), APP_SCRIPT.indexOf("function recordNarrative"));
   assert.match(APP_SCRIPT, /function resourceGuide\(type\)/);
@@ -546,8 +546,17 @@ test("explains purpose, policy basis, and timing on resource indexes only", () =
   assert.match(APP_SCRIPT, /<span>Policy basis<\/span>/);
   assert.match(APP_SCRIPT, /<span>Timing<\/span>/);
   assert.match(listSource, /resourceGuide\(type\)/);
+  assert.match(listSource, /id="resource-guide-trigger"/);
+  assert.match(listSource, /resourceGuideCleanup = setupResourceGuide\(main\)/);
   assert.doesNotMatch(detailSource, /resourceGuide\(type\)/);
+  assert.match(APP_SCRIPT, /id="resource-guide"[^>]+hidden/);
+  assert.match(APP_SCRIPT, /trigger\.addEventListener\("mouseenter", show/);
+  assert.match(APP_SCRIPT, /trigger\.addEventListener\("click"/);
+  assert.match(APP_SCRIPT, /document\.addEventListener\("pointerdown"/);
+  assert.match(APP_SCRIPT, /event\.key !== "Escape"/);
   assert.match(APP_STYLES, /\.page-guide\{display:grid;grid-template-columns:/);
+  assert.match(APP_STYLES, /\.resource-guide-popover\{position:fixed;z-index:40;overflow:auto/);
+  assert.match(APP_STYLES, /\.resource-guide-popover\[hidden\]\{display:none\}/);
   assert.match(APP_STYLES, /\.setup-banner,\.page-guide\{grid-template-columns:1fr\}/);
 });
 
