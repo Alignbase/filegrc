@@ -520,6 +520,8 @@ test("renders shared obligation and evidence-packet workflows", () => {
 
 test("keeps the overview focused on readiness, current work, and the audit", () => {
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
+  assert.match(APP_SCRIPT, /class="hero overview-hero"/);
+  assert.match(APP_SCRIPT, /slice\(0, 3\)/);
   assert.match(APP_SCRIPT, /class="overview-grid"/);
   assert.match(APP_SCRIPT, /class="panel obligation-panel"/);
   assert.match(APP_SCRIPT, /class="panel event-reminder-panel"/);
@@ -528,6 +530,7 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.doesNotMatch(APP_SCRIPT, /Everything the program can track/);
   assert.doesNotMatch(APP_SCRIPT, /class="panel schedule-panel"/);
   assert.doesNotMatch(APP_SCRIPT, /function programSetup\(\)/);
+  assert.match(APP_STYLES, /\.overview-hero\{min-height:72px;padding:10px 20px;align-items:center\}/);
   assert.match(APP_STYLES, /\.overview-grid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
 
