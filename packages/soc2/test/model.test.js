@@ -6,8 +6,8 @@ import { generateModelDocumentation, loadModel } from "../src/index.js";
 test("v1 model exposes the complete resource registry", () => {
   const model = loadModel("1");
   assert.equal(model.modelVersion, "1");
-  assert.equal(Object.keys(model.resources).length, 39);
-  for (const type of ["workspace", "renderer-settings", "control", "meeting", "risk", "attestation", "evidence", "audit"]) {
+  assert.equal(Object.keys(model.resources).length, 40);
+  for (const type of ["workspace", "renderer-settings", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }
   for (const [type, resource] of Object.entries(model.resources)) {

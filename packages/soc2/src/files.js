@@ -11,6 +11,45 @@ export async function createResource(input, record, options = {}) {
   return serializeWorkspaceMutation(input, (root) => createResourceUnlocked(root, record, options));
 }
 
+export async function createResources(input, records) {
+  return serializeWorkspaceMutation(input, (root) => createResourcesUnlocked(root, records));
+}
+
+async function createResourcesUnlocked(input, records) {
+  if (!Array.isArray(records) || records.length === 0) throw new Error("At least one resource is required.");
+  const loaded = await loadWorkspace(input);
+  const before = await validateWorkspace(loaded);
+  const ids = new Set();
+  const writes = [];
+  for (const record of records) {
+    if (!record || Array.isArray(record) || typeof record !== "object") throw new Error("Every resource must be a JSON object.");
+    if (ids.has(record.id)) throw new Error(`Resource "${record.id}" appears more than once in the batch.`);
+    ids.add(record.id);
+    const path = resourcePath(loaded.root, loaded.model, record);
+    try {
+      await stat(path);
+      throw new Error(`Resource "${record.id}" already exists.`);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    writes.push({ path, record });
+  }
+  const written = [];
+  try {
+    for (const item of writes) {
+      await writeAtomic(item.path, item.record, { exclusive: true });
+      written.push(item);
+    }
+    const result = await validateWorkspace(loaded.root);
+    const introduced = newErrors(result, before);
+    if (introduced.length) throw new Error(formatWriteFailure(introduced, "resource batch"));
+  } catch (error) {
+    for (const item of written.reverse()) await rm(item.path, { force: true });
+    throw error;
+  }
+  return records;
+}
+
 async function createResourceUnlocked(input, record, options) {
   const loaded = await loadWorkspace(input);
   const before = await validateWorkspace(loaded);

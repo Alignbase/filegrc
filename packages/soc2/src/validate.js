@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
 import { resolveContentPath, resolveDataPath } from "./paths.js";
+import { validCalendarRecurrence } from "./recurrence.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -39,6 +40,7 @@ export async function validateWorkspace(input = process.cwd()) {
 
     validateLocation(record, definition, entry.relativePath, diagnostics);
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
+    if (record.type === "obligation") validateObligation(record, displayPath, diagnostics);
 
     const fields = { ...loaded.model.commonFields, ...definition.fields };
     for (const [fieldName, field] of Object.entries(fields)) {
@@ -92,6 +94,65 @@ export async function validateWorkspace(input = process.cwd()) {
     },
     loaded
   };
+}
+
+function validateObligation(record, path, diagnostics) {
+  const recurrence = record.recurrence;
+  if (!recurrence || Array.isArray(recurrence) || typeof recurrence !== "object") return;
+  if (recurrence.mode === "calendar") {
+    const normalized = { ...recurrence, anchorDate: recurrence.anchorDate || record.startsOn };
+    if (!validCalendarRecurrence(normalized)) {
+      diagnostics.push(error(
+        "invalid-obligation-recurrence",
+        path,
+        "Calendar recurrence requires a positive integer interval, day/month/year unit, and a valid anchorDate or startsOn date."
+      ));
+    }
+  } else if (recurrence.mode === "event") {
+    if (typeof recurrence.eventType !== "string" || !ID_PATTERN.test(recurrence.eventType)) {
+      diagnostics.push(error(
+        "invalid-obligation-recurrence",
+        path,
+        "Event recurrence requires a lowercase kebab-case eventType."
+      ));
+    }
+  } else {
+    diagnostics.push(error(
+      "invalid-obligation-recurrence",
+      path,
+      'Obligation recurrence mode must be "calendar" or "event".'
+    ));
+  }
+
+  const window = record.window;
+  if (!window || Array.isArray(window) || typeof window !== "object") return;
+  const dayFields = ["startOffsetDays", "endOffsetDays"].filter((name) => window[name] !== undefined);
+  const hourFields = ["startOffsetHours", "endOffsetHours"].filter((name) => window[name] !== undefined);
+  for (const name of [...dayFields, ...hourFields]) {
+    if (!Number.isInteger(window[name])) {
+      diagnostics.push(error("invalid-obligation-window", path, `window.${name} must be an integer.`));
+    }
+  }
+  if (dayFields.length && hourFields.length) {
+    diagnostics.push(error("invalid-obligation-window", path, "An obligation window cannot mix day and hour offsets."));
+  }
+  if (recurrence.mode === "calendar" && hourFields.length) {
+    diagnostics.push(error("invalid-obligation-window", path, "Calendar obligations use day offsets; hour offsets are only valid for event obligations."));
+  }
+  if (
+    Number.isInteger(window.startOffsetDays)
+    && Number.isInteger(window.endOffsetDays)
+    && window.endOffsetDays < window.startOffsetDays
+  ) {
+    diagnostics.push(error("invalid-obligation-window", path, "window.endOffsetDays must be on or after window.startOffsetDays."));
+  }
+  if (
+    Number.isInteger(window.startOffsetHours)
+    && Number.isInteger(window.endOffsetHours)
+    && window.endOffsetHours < window.startOffsetHours
+  ) {
+    diagnostics.push(error("invalid-obligation-window", path, "window.endOffsetHours must be on or after window.startOffsetHours."));
+  }
 }
 
 function validateLocation(record, definition, relativePath, diagnostics) {

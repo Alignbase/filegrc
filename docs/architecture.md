@@ -2,9 +2,9 @@
 
 ## Status
 
-The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, the local web app, static builds, onboarding, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
+The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, policy obligations, event checklists, evidence packets, the local web app, static builds, onboarding, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
 
-The next product pass will add licensed framework content, control mappings, evidence-capture workflows, audit completeness reports, and compatibility fixtures from released templates.
+Later passes can add licensed framework content, deeper control mappings, guided evidence capture, and compatibility fixtures from released templates.
 
 ## Product
 
@@ -79,6 +79,8 @@ The template README is the source for the monorepo root README. If its screensho
 - Safe file creation, editing, and deletion
 - Local HTTP serving
 - Static audit-overview generation
+- Recurring and event-driven obligation planning
+- Audit-period evidence packet generation
 - HTML, CSS, and browser JavaScript assets
 
 Commands:
@@ -89,6 +91,9 @@ soc2 build
 soc2 validate
 soc2 model
 soc2 describe <resource-type>
+soc2 obligations
+soc2 trigger <event-type>
+soc2 evidence-packet
 ```
 
 `soc2 serve` provides the interactive local view and CRUD operations. `soc2 build` creates a read-only static view. `soc2 validate` is suitable for local use and CI.
@@ -163,6 +168,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - A planned control catalog mapped to the Common Criteria and starter policies
 - A security and risk oversight team with a quarterly meeting cadence
 - Recurring obligations derived from the fixed review, scan, test, training, and meeting cadences in the starter policies
+- Event obligations for workforce changes, vendor access, material system changes, and incidents
 - A default 5x5 likelihood-and-impact risk method
 - Public, Internal, Confidential, and Restricted classification definitions
 
@@ -189,6 +195,7 @@ data/
 ├── documents/
 ├── evidence/
 ├── obligations/
+├── obligation-events/
 ├── frameworks/
 ├── requirements/
 ├── commitments/
@@ -226,6 +233,14 @@ Policies and other authored documents do not carry embedded change-control table
 
 Generated or cached data never belongs in these directories.
 
+## Policy obligations
+
+An active `obligation` is a reusable policy rule. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
+
+Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. Starting one event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. A rule without a fixed cutoff remains due and is never labeled overdue.
+
+`planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `soc2 obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `soc2 trigger`. The planner does not write derived occurrence records for calendar schedules.
+
 ## Git metadata
 
 The engine derives the following for each record:
@@ -257,6 +272,12 @@ An evidence snapshot records:
 - The screenshot or fixed export
 
 The engine can prepare deterministic evidence views and metadata without a browser dependency. A user or approved capture tool may create the screenshot. The evidence record and image are committed together.
+
+For a period review, the evidence-packet engine indexes every model-defined date and timestamp in the selected range, plus records whose explicit period overlaps it. It then adds recurring obligation coverage, event checklists, linked evidence, active policies, mapped controls and requirements, and selected audit scope. It reports missing completions, incomplete event actions, unverified or revision-unbound evidence, and a dirty Git worktree.
+
+Packet output is derived under `.soc2/evidence-packets/`. It contains an auditor-oriented HTML index, a machine-readable manifest with per-record Git history, raw JSON source records, governed Markdown, and fixed local attachments. External references are listed but never fetched. The packet records the source revision and whether the worktree was clean, so uncommitted output is clearly marked as not ready to send.
+
+`prepareEvidencePacket` and `writeEvidencePacket` are shared by the audit page, HTTP API, and `soc2 evidence-packet`. UI and headless callers therefore select the same records and receive the same coverage gaps.
 
 People who do not have repository access may acknowledge policies, training, or tasks with a signed PDF or image. The corresponding attestation records the signer, signing date, acknowledgement statement, exact content revisions, and evidence file. Repository collaborators may use a reviewed Git commit as an attestation when the workflow permits it.
 

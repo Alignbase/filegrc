@@ -15,9 +15,19 @@ npm run serve
 
 You need Node.js 20 or newer and Git. The setup command asks for the company name, your name as the initial policy owner, and a security contact email.
 
-Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. Review changes on Repository, then create a validated commit there or use the Git CLI.
+Open the local URL printed by `npm run serve`. The web app provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. Its obligation board shows recurring policy work as upcoming, due, or overdue, including the full allowed completion range and overdue cutoff. Event reminders create complete checklists for changes such as hiring, departures, vendors, system changes, and incidents.
 
-The first local run explains the file and Git workflow, recurring obligations, and bulk evidence preparation before offering optional setup for the initial service boundary and audit objective. Completing or skipping onboarding updates `data/renderer.json`. You can restart it from Repository or bypass the UI and edit the same files directly.
+The audit page builds a period evidence packet containing dated operating records, obligation coverage, event workflows, linked evidence, policies, controls, raw records, Markdown, and fixed attachments. It also reports missing completion and evidence coverage. Review changes on Repository, then create a validated commit there or use the Git CLI.
+
+The same workflows are available headlessly:
+
+```sh
+npx soc2 obligations --json
+npx soc2 trigger person-started --occurred-on 2026-07-25 --subject person-id
+npx soc2 evidence-packet --start 2026-01-01 --end 2026-03-31
+```
+
+The first local run explains the file and Git workflow, policy deadlines, event checklists, and bulk evidence preparation before offering optional setup for the initial service boundary and audit objective. Completing or skipping onboarding updates `data/renderer.json`. You can restart it from Repository or bypass the UI and edit the same files directly.
 
 The local server has no authentication and binds to loopback by default. Do not expose its write API to an untrusted network.
 

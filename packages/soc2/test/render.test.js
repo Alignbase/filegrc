@@ -344,9 +344,12 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /type: "audit"/);
   assert.match(APP_SCRIPT, /Compliance artifacts are files/);
   assert.match(APP_SCRIPT, /Commit the change; Git records the rest/);
-  assert.match(APP_SCRIPT, /Work the recurring queue/);
-  assert.match(APP_SCRIPT, /Create evidence in batches/);
-  assert.match(APP_SCRIPT, /Have an agent prepare a batch, review it, then commit the batch together/);
+  assert.match(APP_SCRIPT, /Work the policy queue/);
+  assert.match(APP_SCRIPT, /Start a checklist when something changes/);
+  assert.match(APP_SCRIPT, /Generate the period packet/);
+  assert.match(APP_SCRIPT, /soc2 obligations CLI command/);
+  assert.match(APP_SCRIPT, /soc2 trigger/);
+  assert.match(APP_SCRIPT, /soc2 evidence-packet/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
   assert.match(APP_SCRIPT, /id="start-onboarding"/);
   assert.match(APP_SCRIPT, /id="commit-workspace"/);
@@ -355,9 +358,24 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /class="panel schedule-panel"/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
   assert.match(APP_STYLES, /\.onboarding-focus\{/);
-  assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(5,1fr\)/);
+  assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(6,1fr\)/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form\{grid-template-columns:1fr\}/);
+});
+
+test("renders shared obligation and evidence-packet workflows", () => {
+  assert.match(APP_SCRIPT, /function renderObligations\(main\)/);
+  assert.match(APP_SCRIPT, /state\.obligations\.counts\.overdue/);
+  assert.match(APP_SCRIPT, /daysUntilOverdue/);
+  assert.match(APP_SCRIPT, /dueWindowStart/);
+  assert.match(APP_SCRIPT, /dueWindowEnd/);
+  assert.match(APP_SCRIPT, /overdueOn/);
+  assert.match(APP_SCRIPT, /fetch\("\/api\/obligation-events"/);
+  assert.match(APP_SCRIPT, /function renderAuditPacket\(main/);
+  assert.match(APP_SCRIPT, /fetch\("\/api\/evidence-packet"/);
+  assert.match(APP_SCRIPT, /every dated record/i);
+  assert.match(APP_STYLES, /\.obligation-board\{display:grid/);
+  assert.match(APP_STYLES, /\.packet-builder form\{display:grid/);
 });
 
 test("builds a recovery view when workspace configuration is malformed", async (context) => {

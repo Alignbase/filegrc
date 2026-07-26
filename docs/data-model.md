@@ -1007,6 +1007,9 @@ Path: `data/obligations/<id>.json`
 | `status` | enum | Yes | Values: `active`, `paused`, `retired` |
 | `activityType` | string | Yes |  |
 | `recurrence` | object | Yes |  |
+| `triggerPrompt` | string | No |  |
+| `window` | object | No |  |
+| `completionResourceTypes` | array of string | No |  |
 | `scopeResourceIds` | array of id | No | References: `*` |
 | `templateResourceId` | id | No | References: `*` |
 | `controlIds` | array of id | No | References: `control` |
@@ -1015,6 +1018,27 @@ Path: `data/obligations/<id>.json`
 | `endsOn` | date | No |  |
 | `completionResourceIds` | array of id | No | References: `*` |
 | `instructionsPath` | string (data-path) | No | References long-form content under `data/`. |
+
+#### `obligation-event`
+
+One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state.
+
+Policy basis: Event runs make onboarding, offboarding, material changes, incidents, and similar policy triggers explicit and auditable.
+
+Timing: Create when the event occurs or is scheduled. Complete every generated action within its policy window, then close the event.
+
+Path: `data/obligation-events/<id>.json`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `open`, `complete`, `canceled` |
+| `eventType` | string | Yes |  |
+| `occurredOn` | date | Yes |  |
+| `occurredAt` | timestamp | No |  |
+| `subjectResourceIds` | array of id | No | References: `*` |
+| `obligationIds` | array of id | Yes | References: `obligation` |
+| `actionItemIds` | array of id | No | References: `action-item` |
+| `completedOn` | date | No |  |
 
 #### `finding`
 
@@ -1062,9 +1086,17 @@ Path: `data/action-items/<id>.json`
 | `sourceResourceId` | id | Yes | References: `*` |
 | `description` | string | No |  |
 | `priority` | rating | No |  |
+| `obligationId` | id | No | References: `obligation` |
+| `dueWindowStart` | date | No |  |
+| `dueWindowEnd` | date | No |  |
+| `overdueOn` | date | No |  |
+| `dueWindowStartAt` | timestamp | No |  |
+| `dueWindowEndAt` | timestamp | No |  |
+| `overdueAt` | timestamp | No |  |
 | `dueOn` | date | No |  |
 | `completedOn` | date | No |  |
 | `evidenceIds` | array of id | No | References: `evidence` |
+| `completionResourceIds` | array of id | No | References: `*` |
 | `blockingResourceIds` | array of id | No | References: `*` |
 
 ### Audits

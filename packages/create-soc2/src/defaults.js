@@ -556,6 +556,188 @@ const obligations = [
     scopeResourceIds: ["document-business-continuity-disaster-recovery"],
     controlIds: ["control-continuity-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-worker-start-agreements",
+    title: "Collect workforce agreements and policy acknowledgements",
+    activityType: "workforce-acknowledgement",
+    recurrence: event("person-started"),
+    triggerPrompt: "New employee or contractor?",
+    window: eventWindow(0),
+    completionResourceTypes: ["attestation", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-workforce-expectations"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-employee-handbook"]
+  },
+  {
+    id: "obligation-worker-start-access",
+    title: "Approve and record initial access",
+    activityType: "access-provisioning",
+    recurrence: event("person-started"),
+    triggerPrompt: "New employee or contractor?",
+    window: eventWindow(0),
+    completionResourceTypes: ["access-grant", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-access-authorization"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-worker-start-assets",
+    title: "Register issued devices in the asset inventory",
+    activityType: "asset-registration",
+    recurrence: event("person-started"),
+    triggerPrompt: "New employee or contractor?",
+    window: eventWindow(0),
+    completionResourceTypes: ["asset"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-inventory-configuration"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-worker-start-training",
+    title: "Complete security training and retain acknowledgement evidence",
+    activityType: "training",
+    recurrence: event("person-started"),
+    triggerPrompt: "New employee or contractor?",
+    window: eventWindow(30),
+    completionResourceTypes: ["attestation", "evidence"],
+    ownerIds: [OWNER_ID],
+    scopeResourceIds: ["training-security-awareness"],
+    templateResourceId: "training-security-awareness",
+    controlIds: ["control-security-training"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-worker-end-access",
+    title: "Revoke departing-worker access",
+    activityType: "access-removal",
+    recurrence: event("person-ended"),
+    triggerPrompt: "Employee or contractor departing?",
+    window: eventWindowHours(24),
+    completionResourceTypes: ["access-grant", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-access-review-offboarding"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-worker-end-assets",
+    title: "Recover company property and disable active credentials",
+    activityType: "asset-recovery",
+    recurrence: event("person-ended"),
+    triggerPrompt: "Employee or contractor departing?",
+    window: eventWindow(),
+    completionResourceTypes: ["asset", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-access-review-offboarding", "control-inventory-configuration"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-high-risk-departure-access",
+    title: "Revoke access at or before departure notice",
+    activityType: "access-removal",
+    recurrence: event("high-risk-person-ended"),
+    triggerPrompt: "Involuntary or high-risk departure?",
+    window: eventWindowHours(0),
+    completionResourceTypes: ["access-grant", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-access-review-offboarding"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-worker-role-change-access",
+    title: "Reassess and update access for the new role",
+    activityType: "access-change",
+    recurrence: event("person-role-changed"),
+    triggerPrompt: "Worker role changed?",
+    window: eventWindow(),
+    completionResourceTypes: ["access-grant", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-access-authorization", "control-access-review-offboarding"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-vendor-access-review",
+    title: "Complete vendor security and privacy review before access",
+    activityType: "vendor-review",
+    recurrence: event("vendor-access-planned"),
+    triggerPrompt: "New vendor access or data use?",
+    window: eventWindow(0),
+    completionResourceTypes: ["vendor-review", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-vendor-due-diligence"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-vendor-access-contract",
+    title: "Record required vendor contract safeguards and data use",
+    activityType: "vendor-contract",
+    recurrence: event("vendor-access-planned"),
+    triggerPrompt: "New vendor access or data use?",
+    window: eventWindow(0),
+    completionResourceTypes: ["document", "vendor"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-vendor-due-diligence"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-system-change-risk",
+    title: "Assess security and data-protection risk from the change",
+    activityType: "risk-assessment",
+    recurrence: event("system-material-change"),
+    triggerPrompt: "Material system or service change?",
+    window: eventWindow(),
+    completionResourceTypes: ["risk-assessment", "risk", "evidence"],
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-risk-assessment"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-system-change-scan",
+    title: "Run a vulnerability scan when practical",
+    activityType: "vulnerability-scan",
+    recurrence: event("system-material-change"),
+    triggerPrompt: "Material system or service change?",
+    window: eventWindow(),
+    completionResourceTypes: ["vulnerability-scan", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-vulnerability-management"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-system-change-governance",
+    title: "Review policy, control, and communication impacts",
+    activityType: "change-review",
+    recurrence: event("system-material-change"),
+    triggerPrompt: "Material system or service change?",
+    window: eventWindow(),
+    completionResourceTypes: ["meeting", "policy", "control", "evidence"],
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-policy-management", "control-security-communication"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-material-incident-retrospective",
+    title: "Complete the material-incident retrospective",
+    activityType: "incident-retrospective",
+    recurrence: event("material-incident"),
+    triggerPrompt: "Material security incident?",
+    window: eventWindow(7),
+    completionResourceTypes: ["incident", "document", "evidence"],
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-incident-response"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-material-incident-actions",
+    title: "Assign and track corrective actions",
+    activityType: "remediation",
+    recurrence: event("material-incident"),
+    triggerPrompt: "Material security incident?",
+    window: eventWindow(),
+    completionResourceTypes: ["action-item", "finding"],
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-monitoring-remediation"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   }
 ];
 
@@ -646,9 +828,14 @@ export function baselineRecordFiles(effectiveDate) {
     title: obligation.title,
     status: "active",
     activityType: obligation.activityType,
-    recurrence: { ...obligation.recurrence, anchorDate: effectiveDate },
+    recurrence: obligation.recurrence.mode === "calendar"
+      ? { ...obligation.recurrence, anchorDate: effectiveDate }
+      : obligation.recurrence,
     ownerIds: obligation.ownerIds,
     startsOn: effectiveDate,
+    ...(obligation.triggerPrompt ? { triggerPrompt: obligation.triggerPrompt } : {}),
+    ...(obligation.window ? { window: obligation.window } : {}),
+    ...(obligation.completionResourceTypes ? { completionResourceTypes: obligation.completionResourceTypes } : {}),
     ...(obligation.scopeResourceIds ? { scopeResourceIds: obligation.scopeResourceIds } : {}),
     ...(obligation.templateResourceId ? { templateResourceId: obligation.templateResourceId } : {}),
     controlIds: obligation.controlIds,
@@ -680,6 +867,24 @@ function calendar(unit, interval, anchorDate) {
     unit,
     interval,
     ...(anchorDate ? { anchorDate } : {})
+  };
+}
+
+function event(eventType) {
+  return { mode: "event", eventType };
+}
+
+function eventWindow(endOffsetDays) {
+  return {
+    startOffsetDays: 0,
+    ...(Number.isInteger(endOffsetDays) ? { endOffsetDays } : {})
+  };
+}
+
+function eventWindowHours(endOffsetHours) {
+  return {
+    startOffsetHours: 0,
+    endOffsetHours
   };
 }
 

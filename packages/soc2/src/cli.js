@@ -2,10 +2,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadModel } from "../model/index.js";
 import { buildWorkspace } from "./build.js";
+import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
 import { createResource, deleteResource, updateResource } from "./files.js";
 import { generateModelDocumentation } from "./model-docs.js";
+import { createObligationEvent, planObligations } from "./obligations.js";
+import { relativeToWorkspace } from "./paths.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
+import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -72,6 +76,67 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags.json) console.log(JSON.stringify(results, null, 2));
     else for (const resource of results) console.log(`${resource.id}\t${resource.type}\t${resource.title}`);
     return;
+  }
+  if (command === "obligations") {
+    const loaded = await loadWorkspace(root);
+    const result = planObligations(loaded.resources, {
+      asOf: flags["as-of"] ?? currentCalendarDate(loaded.workspace.timezone),
+      from: flags.from,
+      through: flags.through,
+      now: flags.now,
+      includeComplete: Boolean(flags.complete)
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.counts.overdue} overdue, ${result.counts.due} due, ${result.counts.upcoming} upcoming`);
+      for (const item of result.items) {
+        console.log([
+          item.status.toUpperCase(),
+          item.dueWindowStartAt || item.dueWindowStart,
+          item.dueWindowEndAt || item.dueWindowEnd || "no fixed cutoff",
+          item.title,
+          item.actionItemId || item.obligationId
+        ].join("\t"));
+      }
+      if (result.triggers.length) {
+        console.log("\nEvent reminders:");
+        for (const trigger of result.triggers) console.log(`${trigger.eventType}\t${trigger.prompt}\t${trigger.steps.length} actions`);
+      }
+    }
+    return result;
+  }
+  if (command === "trigger") {
+    const result = await createObligationEvent(root, {
+      eventType: positionals[0],
+      occurredOn: flags["occurred-on"],
+      occurredAt: flags["occurred-at"],
+      subjectResourceIds: String(flags.subject || "").split(",").map((value) => value.trim()).filter(Boolean),
+      title: flags.title
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Created ${result.event.id} with ${result.actions.length} action items.`);
+    return result;
+  }
+  if (command === "evidence-packet") {
+    const packet = await prepareEvidencePacket(root, {
+      start: flags.start,
+      end: flags.end,
+      auditId: flags.audit
+    });
+    let output = null;
+    let files = [];
+    if (!flags.preview) {
+      const written = await writeEvidencePacket(root, packet, { output: flags.output });
+      output = relativeToWorkspace(root, written.output);
+      files = written.files;
+    }
+    const result = { packet, output, files };
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${packet.summary.datedRecords} dated records, ${packet.summary.obligationOccurrences} obligation occurrences, ${packet.summary.evidence} evidence records, ${packet.summary.gaps} gaps`);
+      console.log(flags.preview ? "Preview only; no files written." : `Wrote evidence packet to ${output}`);
+    }
+    return result;
   }
   if (command === "get") {
     const loaded = await loadWorkspace(root);
@@ -153,6 +218,9 @@ Usage:
   soc2 model [--version 1] [--json|--write-docs|--check-docs]
   soc2 describe <resource-type>
   soc2 search <query> [--type resource-type] [--json]
+  soc2 obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
+  soc2 trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
+  soc2 evidence-packet --start YYYY-MM-DD --end YYYY-MM-DD [--audit audit-id] [--output .soc2/path] [--preview] [--json]
   soc2 get <resource-type> <id>
   soc2 create <record.json|->
   soc2 update <resource-type> <id> <record.json|->

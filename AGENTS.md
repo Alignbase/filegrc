@@ -21,6 +21,7 @@ The generated repository is the product. Keep it understandable to an engineer w
 - Never fetch external references automatically. A user may open or import one explicitly.
 - Keep the model generic. Organization-specific fields belong in namespaced extensions.
 - Prefer explicit, inspectable behavior over automation that changes audit records without review.
+- UI, HTTP, and CLI workflows must call the same domain functions so headless agents receive the same calculations, validation, and output as browser users.
 
 ## Package constraints
 
@@ -67,6 +68,9 @@ The authoritative, versioned model is `packages/soc2/model/v1.json`. `docs/data-
 - Do not commit secrets, credentials, session material, regulated personal data, or confidential reports unless the repository's access and retention rules explicitly permit them.
 - Keep personal data out of immutable Git history when a later deletion request may require erasure. Use an opaque case ID and a reference to an approved system instead.
 - Preserve closed and retired audit records when they explain historical control operation. Use deletion for mistakes and uncommitted drafts.
+- Model recurring policy work as reusable obligations with an explicit allowed completion range and first overdue cutoff. Keep a policy rule with no cutoff due until completion instead of inventing a date.
+- Model policy-triggering changes as one event record plus normal linked action items. Create the full checklist atomically and preserve exact timestamps when a policy uses hour-based deadlines.
+- Build audit packets from model-defined dates, timestamps, period overlaps, obligation coverage, event checklists, policy and control context, and linked evidence. Keep packet output under `.soc2/` and bind auditor-ready output to a clean Git revision.
 - Every schema change needs compatibility fixtures and a documented migration path.
 - Define fields, types, enums, relationships, conditional requirements, and default UI metadata once in the model registry. Validators, CRUD forms, filters, search indexing, CLI help, and generated model documentation must consume that registry.
 - Do not hand-copy model definitions into validators, templates, generated repositories, or documentation.

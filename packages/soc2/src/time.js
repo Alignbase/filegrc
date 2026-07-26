@@ -31,3 +31,18 @@ export function formatLocalDateTime(value, locale, timeZone) {
   if (timeZone) options.timeZone = timeZone;
   return new Intl.DateTimeFormat(locale, options).format(date);
 }
+
+export function currentCalendarDate(timeZone, now = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}

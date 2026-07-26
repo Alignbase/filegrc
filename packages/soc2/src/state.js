@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
+import { planObligations } from "./obligations.js";
 import { resolveContentPath } from "./paths.js";
+import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
 
 export async function createAppState(input = process.cwd(), options = {}) {
@@ -48,8 +50,10 @@ export async function createAppState(input = process.cwd(), options = {}) {
     organizationName: "Workspace configuration unavailable",
     timezone: "UTC"
   };
+  const asOf = options.asOf ?? currentCalendarDate(workspace.timezone);
+  const generatedAt = new Date().toISOString();
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     readOnly: Boolean(options.readOnly),
     workspace,
     model: loaded.model,
@@ -59,6 +63,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
       counts: validation.counts,
       diagnostics: validation.diagnostics
     },
+    obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt }),
     git
   };
 }

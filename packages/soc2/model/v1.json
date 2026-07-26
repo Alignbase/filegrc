@@ -340,6 +340,9 @@
         "status": {"type": "enum", "values": ["active", "paused", "retired"], "filter": true},
         "activityType": {"type": "string", "filter": true},
         "recurrence": {"type": "object"},
+        "triggerPrompt": {"type": "string", "search": true},
+        "window": {"type": "object"},
+        "completionResourceTypes": {"type": "array", "items": "string"},
         "scopeResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
         "templateResourceId": {"type": "id", "relation": ["*"]},
         "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
@@ -350,6 +353,29 @@
         "instructionsPath": {"type": "string", "format": "data-path", "content": true}
       },
       "listFields": ["title", "status", "activityType", "startsOn"]
+    },
+    "obligation-event": {
+      "title": "Obligation event",
+      "pluralTitle": "Obligation events",
+      "group": "work",
+      "collection": "obligation-events",
+      "description": "One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state.",
+      "guidance": {
+        "policyBasis": "Event runs make onboarding, offboarding, material changes, incidents, and similar policy triggers explicit and auditable.",
+        "cadence": "Create when the event occurs or is scheduled. Complete every generated action within its policy window, then close the event."
+      },
+      "required": ["status", "eventType", "occurredOn", "obligationIds", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["open", "complete", "canceled"], "filter": true},
+        "eventType": {"type": "string", "filter": true, "search": true},
+        "occurredOn": {"type": "date"},
+        "occurredAt": {"type": "timestamp"},
+        "subjectResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "obligationIds": {"type": "array", "items": "id", "relation": ["obligation"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "completedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "eventType", "occurredOn", "ownerIds"]
     },
     "framework": {
       "title": "Framework",
@@ -593,9 +619,17 @@
         "sourceResourceId": {"type": "id", "relation": ["*"]},
         "description": {"type": "string", "search": true},
         "priority": {"type": "rating", "filter": true},
+        "obligationId": {"type": "id", "relation": ["obligation"]},
+        "dueWindowStart": {"type": "date"},
+        "dueWindowEnd": {"type": "date"},
+        "overdueOn": {"type": "date"},
+        "dueWindowStartAt": {"type": "timestamp"},
+        "dueWindowEndAt": {"type": "timestamp"},
+        "overdueAt": {"type": "timestamp"},
         "dueOn": {"type": "date"},
         "completedOn": {"type": "date"},
         "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "completionResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
         "blockingResourceIds": {"type": "array", "items": "id", "relation": ["*"]}
       },
       "listFields": ["title", "status", "priority", "dueOn", "assigneeIds"]

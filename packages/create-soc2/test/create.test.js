@@ -42,7 +42,7 @@ test("creates a complete generic repository with one dependency", async (context
   const obligationFiles = await readdir(join(target, "data", "obligations"));
   assert.equal(requirementFiles.length, 42);
   assert.equal(controlFiles.length, 29);
-  assert.equal(obligationFiles.length, 18);
+  assert.equal(obligationFiles.length, 33);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
   const coveredRequirements = new Set(controls.flatMap((control) => control.requirementIds));
@@ -53,7 +53,7 @@ test("creates a complete generic repository with one dependency", async (context
   await access(join(target, ".gitignore"));
   await access(join(target, ".git"));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 108, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 123, errors: 0, warnings: 0 });
 });
 
 test("refuses a non-empty target by default", async (context) => {

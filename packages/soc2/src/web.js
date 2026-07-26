@@ -60,6 +60,8 @@ function render() {
   root.innerHTML = '<div class="shell">' + nav + '<div class="workspace"><header class="topbar">' + topbar(route) + '</header><main id="main"></main></div></div>';
   const main = root.querySelector("main");
   if (route.name === "home") renderHome(main);
+  else if (route.name === "obligations") renderObligations(main);
+  else if (route.name === "audit-packet") renderAuditPacket(main, route.params);
   else if (route.name === "list") renderList(main, route.type, route.params);
   else if (route.name === "detail") renderDetail(main, route.type, route.id);
   else if (route.name === "repository") renderRepository(main);
@@ -76,6 +78,8 @@ function parseRoute() {
     return { name: "missing" };
   }
   if (!parts.length) return { name: "home" };
+  if (parts.length === 1 && parts[0] === "obligations") return { name: "obligations" };
+  if (parts.length === 1 && parts[0] === "audit-packet") return { name: "audit-packet", params: new URLSearchParams(query) };
   if (parts.length === 2 && parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
   if (parts.length === 3 && parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2] };
   if (parts.length === 1 && parts[0] === "repository") return { name: "repository" };
@@ -91,7 +95,12 @@ function buildNavigation(route) {
   const navGroups = [...grouped.entries()].map(([group, resources]) => {
     const definition = state.model.groups.find((item) => item.id === group);
     const open = navigationGroupState[group] ?? (currentGroup === group || DEFAULT_OPEN_NAV_GROUPS.has(group));
-    return '<section class="nav-group ' + (open ? "open" : "") + '" data-group="' + esc(group) + '"><button class="nav-heading" type="button" aria-expanded="' + open + '" aria-controls="nav-group-' + esc(group) + '"><span>' + esc(definition.title) + '</span><span class="chevron">›</span></button><div class="nav-items" id="nav-group-' + esc(group) + '">' + resources.map(([type, item]) => {
+    const utilities = group === "work"
+      ? '<a class="' + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation board</span><small>' + (state.obligations.counts.overdue + state.obligations.counts.due) + '</small></a>'
+      : group === "audits"
+        ? '<a class="audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Evidence packet</span><small>Build</small></a>'
+        : "";
+    return '<section class="nav-group ' + (open ? "open" : "") + '" data-group="' + esc(group) + '"><button class="nav-heading" type="button" aria-expanded="' + open + '" aria-controls="nav-group-' + esc(group) + '"><span>' + esc(definition.title) + '</span><span class="chevron">›</span></button><div class="nav-items" id="nav-group-' + esc(group) + '">' + utilities + resources.map(([type, item]) => {
       const count = resourcesOfType(type).length;
       const current = (route.type === type);
       return '<a class="' + (current ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(item.pluralTitle) + '</span><small>' + count + '</small></a>';
@@ -101,7 +110,15 @@ function buildNavigation(route) {
 }
 
 function topbar(route) {
-  const title = route.name === "home" ? "Program overview" : route.name === "repository" ? "Repository" : state.model.resources[route.type]?.pluralTitle || "SOC 2";
+  const title = route.name === "home"
+    ? "Program overview"
+    : route.name === "repository"
+      ? "Repository"
+      : route.name === "obligations"
+        ? "Obligation board"
+        : route.name === "audit-packet"
+          ? "Evidence packet"
+          : state.model.resources[route.type]?.pluralTitle || "SOC 2";
   return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(title) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="repo-chip" href="#/repository"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</a>';
 }
 
@@ -114,7 +131,7 @@ function renderHome(main) {
   const activeAudit = resourcesOfType("audit").find((item) => !["complete", "closed", "cancelled"].includes(item.record.status));
   const scheduled = state.resources
     .map((entry) => ({ entry, date: dueDate(entry.record) }))
-    .filter(({ entry, date }) => date && !isClosedStatus(entry.record.status))
+    .filter(({ entry, date }) => date && entry.record.type !== "obligation" && !entry.record.obligationId && !isClosedStatus(entry.record.status))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 6);
   const policyDrafts = resourcesOfType("policy").filter(({ record }) => record.status === "draft");
@@ -126,15 +143,213 @@ function renderHome(main) {
       metric("Validation", state.validation.ok ? "Passing" : state.validation.counts.errors + " errors", state.validation.ok ? "All records and links check out" : state.validation.counts.warnings + " warnings", state.validation.ok ? "good" : "bad") +
       metric("Controls", controls.length, countStatus(controls, "implemented") + " implemented", "neutral") +
       metric("Evidence", evidence.length, countStatus(evidence, "verified") + " verified", "neutral") +
-      metric("Open work", openWork.length, countOverdue(openWork) + " past due", countOverdue(openWork) ? "warn" : "neutral") +
+      metric("Obligations", state.obligations.counts.due + state.obligations.counts.overdue, state.obligations.counts.overdue + " overdue · " + state.obligations.counts.upcoming + " upcoming", state.obligations.counts.overdue ? "warn" : "neutral") +
     '</section>' +
     '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(activeAudit?.record.title || "No active audit") + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">View audits</a>') + '</div>' +
       (activeAudit ? auditProgress(activeAudit.record) : empty("Add an audit record to track its scope, period, requests, and evidence.")) + '</section>' +
+    '<section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 4)) + '</section>' +
+    '<section class="panel span-2 event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did something change?</h3></div><a href="#/obligations">Start workflow</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
     '<section class="panel schedule-panel"><div class="panel-head"><div><p class="kicker">Schedule</p><h3>Dates and deadlines</h3></div></div>' +
       (scheduled.length ? '<div class="due-list">' + scheduled.map(({ entry, date }) => '<a href="#/resource/' + encodeURIComponent(entry.record.type) + '/' + encodeURIComponent(entry.record.id) + '"><time class="' + (date < today ? "overdue" : "") + '">' + (date < today ? "Overdue · " : "") + esc(formatCalendarDate(date)) + '</time><span><strong>' + esc(entry.record.title) + '</strong><small>' + esc(state.model.resources[entry.record.type].title) + '</small></span></a>').join("") + '</div>' : empty("No open work has a scheduled date.")) + '</section>' +
     '<section class="panel"><div class="panel-head"><div><p class="kicker">Governance</p><h3>Program library</h3></div></div>' + resourceBars(governanceTypes) + '</section>' +
     '<section class="panel"><div class="panel-head"><div><p class="kicker">Risk and operations</p><h3>Operating records</h3></div></div>' + resourceBars(riskTypes) + '</section>' +
     '<section class="panel span-2"><div class="panel-head"><div><p class="kicker">Program map</p><h3>All resources</h3></div></div><div class="catalog">' + Object.entries(state.model.resources).filter(([, definition]) => definition.group !== "repository").map(([type, definition]) => '<a href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(definition.pluralTitle) + '</span><strong>' + resourcesOfType(type).length + '</strong></a>').join("") + '</div></section></div></div>';
+}
+
+function renderObligations(main) {
+  const plan = state.obligations;
+  const sections = ["overdue", "due", "upcoming"].map((status) => {
+    const items = plan.items.filter((item) => item.status === status);
+    return '<section class="obligation-column"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(status) + '</span><strong>' + items.length + '</strong></div><div class="obligation-cards">' + (items.length ? items.map(obligationCard).join("") : empty("Nothing " + status + ".")) + '</div></section>';
+  }).join("");
+  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.eventType) + '</p><h3>' + esc(trigger.prompt) + '</h3><p>' + trigger.steps.length + ' policy actions will be created with their own owners and due windows.</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
+  const runs = plan.eventRuns.filter((run) => run.status !== "canceled").sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
+  main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation board</h2><p>Recurring work uses a compliant completion range and an explicit overdue cutoff. Event reminders create a tracked checklist when a policy-triggering change occurs.</p></div><a class="button" href="#/resources/obligation">Edit templates</a></div>' +
+    '<section class="metrics obligation-metrics">' +
+      metric("Overdue", plan.counts.overdue, "Past the policy cutoff", plan.counts.overdue ? "bad" : "neutral") +
+      metric("Due", plan.counts.due, dueCountdownSummary(plan.items), plan.counts.due ? "warn" : "neutral") +
+      metric("Upcoming", plan.counts.upcoming, "Not open yet", "neutral") +
+      metric("Event runs", runs.length, runs.filter((run) => run.status === "complete").length + " complete", "neutral") +
+    '</section><div class="obligation-board">' + sections + '</div>' +
+    '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Ongoing reminders</p><h2>Start a policy event</h2><p>Use these when the underlying event happens. The generated checklist remains a normal set of Git-tracked records.</p></div></div><div class="event-trigger-grid">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
+    '<section class="workflow-section"><div class="section-head"><div><p class="kicker">Event execution</p><h2>Active and recent workflows</h2><p>Link the requested completion records and evidence on each action item before marking it done.</p></div></div><div class="event-run-list">' + (runs.length ? runs.map(eventRunCard).join("") : empty("No policy events have been started.")) + '</div></section></div>';
+  main.querySelectorAll("[data-start-event]").forEach((button) => button.addEventListener("click", () => {
+    const trigger = plan.triggers.find((item) => item.eventType === button.dataset.startEvent);
+    if (trigger) openObligationEventDialog(trigger);
+  }));
+}
+
+function obligationCard(item) {
+  const type = item.actionItemId ? "action-item" : "obligation";
+  const id = item.actionItemId || item.obligationId;
+  return '<article class="obligation-card status-' + esc(item.status) + '"><div class="obligation-card-head"><span>' + esc(item.kind === "event" ? "Event action" : item.activityType || "Recurring") + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(item.title) + '</a></h3><p>' + esc(windowText(item)) + '</p><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div></article>';
+}
+
+function eventRunCard(run) {
+  const percentage = run.actions.length ? Math.round((run.completeCount / run.actions.length) * 100) : 0;
+  const occurred = run.occurredAt ? formatLocalDateTime(run.occurredAt) : formatCalendarDate(run.occurredOn);
+  return '<article class="event-run"><div class="event-run-head"><div><span class="badge status-' + esc(run.status) + '">' + esc(run.status) + '</span><h3><a href="#/resource/obligation-event/' + encodeURIComponent(run.id) + '">' + esc(run.title) + '</a></h3><small>' + esc(occurred) + ' · ' + run.completeCount + ' of ' + run.actions.length + ' complete</small></div><strong>' + percentage + '%</strong></div><div class="progress"><span style="width:' + percentage + '%"></span></div><div class="event-actions">' + run.actions.map((action) => '<a href="#/resource/action-item/' + encodeURIComponent(action.actionItemId) + '"><span class="status-dot ' + (action.status === "complete" ? "good" : action.status === "overdue" ? "bad" : "warn") + '"></span><span><strong>' + esc(action.title) + '</strong><small>' + esc(action.status === "complete" ? "Complete" : windowText(action) + " · " + timingText(action)) + '</small></span></a>').join("") + '</div></article>';
+}
+
+function openObligationEventDialog(trigger) {
+  const subjectType = trigger.eventType.startsWith("person") || trigger.eventType.includes("person-") ? "person"
+    : trigger.eventType.startsWith("vendor") ? "vendor"
+      : trigger.eventType.startsWith("system") ? "system"
+        : trigger.eventType.includes("incident") ? "incident"
+          : null;
+  const subjects = subjectType ? resourcesOfType(subjectType) : [];
+  const needsTimestamp = trigger.steps.some((step) => Number.isInteger(step.window?.endOffsetHours));
+  const eventField = needsTimestamp
+    ? '<label><span>Event time <small>your local time</small></span><input name="occurredAt" type="datetime-local" required value="' + esc(currentLocalDateTime()) + '"></label>'
+    : '<label><span>Event date</span><input name="occurredOn" type="date" required value="' + esc(currentDate()) + '"></label>';
+  const dialog = document.createElement("dialog");
+  dialog.className = "commit-dialog event-dialog";
+  dialog.setAttribute("aria-labelledby", "event-dialog-title");
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Policy event</p><h2 id="event-dialog-title">' + esc(trigger.prompt) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>This creates one event record and ' + trigger.steps.length + ' linked action items. Review and commit them like any other compliance change.</p>' + eventField +
+    (subjects.length ? '<label><span>Subject</span><select name="subject"><option value="">Select</option>' + subjects.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' : "") +
+    '<label><span>Workflow name <small>optional</small></span><input name="title" maxlength="200" placeholder="' + esc(trigger.prompt.replace(/\?$/, "")) + '"></label><div class="event-dialog-steps">' + trigger.steps.map((step) => '<div><strong>' + esc(step.title) + '</strong><small>' + esc(eventStepSummary(step)) + '</small></div>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Create checklist</button></div></form>';
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
+  dialog.querySelector('[data-event="cancel"]').addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = true; });
+    try {
+      const response = await fetch("/api/obligation-events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          eventType: trigger.eventType,
+          occurredOn: form.elements.occurredOn?.value || undefined,
+          occurredAt: form.elements.occurredAt?.value ? new Date(form.elements.occurredAt.value).toISOString() : undefined,
+          subjectResourceIds: form.elements.subject?.value ? [form.elements.subject.value] : [],
+          title: form.elements.title.value
+        })
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      state = await fetchJson("/api/state");
+      dialog.close();
+      render();
+    } catch (error) {
+      form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = false; });
+      form.querySelector(".dialog-error").textContent = error.message;
+    }
+  });
+  dialog.querySelector('input[name="occurredOn"], input[name="occurredAt"]').focus();
+}
+
+function renderAuditPacket(main, params = new URLSearchParams()) {
+  const audits = resourcesOfType("audit");
+  const requestedAudit = params.get("auditId");
+  const selected = audits.find(({ record }) => record.id === requestedAudit)?.record || audits.find(({ record }) => record.status !== "complete")?.record || null;
+  const today = currentDate();
+  const start = selected?.periodStart || selected?.typeOneAsOf || today.slice(0, 4) + "-01-01";
+  const end = selected?.periodEnd || selected?.typeOneAsOf || today;
+  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence</p><h2>Build an evidence packet</h2><p>Select a period. The engine indexes every dated record, checks obligation and event coverage, includes linked evidence and active policy context, then writes an auditor-oriented HTML index, manifest, source records, Markdown, and fixed attachments.</p></div></div><section class="panel packet-builder"><form id="packet-form"><label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label><label><span>Audit <small>optional</small></span><select name="auditId"><option value="">All in-scope program records</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>Generate packet</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : "Generated packets are derived output under .soc2/ and are bound to the current Git revision. Commit first for audit-ready output.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
+  main.querySelector("#packet-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const button = form.querySelector('button[type="submit"]');
+    const error = main.querySelector(".dialog-error");
+    button.disabled = true;
+    button.textContent = "Generating…";
+    error.textContent = "";
+    try {
+      const response = await fetch("/api/evidence-packet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          start: form.elements.start.value,
+          end: form.elements.end.value,
+          auditId: form.elements.auditId.value || undefined
+        })
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      renderPacketResults(main.querySelector("#packet-results"), await response.json());
+    } catch (caught) {
+      error.textContent = caught.message;
+    } finally {
+      button.disabled = state.readOnly;
+      button.textContent = "Generate packet";
+    }
+  });
+}
+
+function renderPacketResults(container, result) {
+  const packet = result.packet;
+  container.innerHTML = '<section class="metrics packet-metrics">' +
+    metric("Dated records", packet.summary.datedRecords, packet.summary.records + " total source records", "neutral") +
+    metric("Obligations", packet.summary.obligationOccurrences, packet.summary.eventRuns + " event workflows", "neutral") +
+    metric("Evidence", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
+    metric("Review items", packet.summary.gaps, packet.revision.clean ? "Bound to " + packet.revision.shortCommit : "Workspace has uncommitted changes", packet.summary.gaps ? "warn" : "good") +
+    '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">Generated packet</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. Review every gap before sending it to an auditor.</p></section>' +
+    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage gaps and warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(gap.severity) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(item.status) + ' · ' + esc(item.evidenceKind) + '</small></a>').join("") + '</div>' : empty("No evidence records matched.")) + '</section></div>';
+}
+
+function obligationPreview(items) {
+  return items.length ? '<div class="obligation-preview">' + items.map((item) => '<a href="#/obligations"><span class="status-dot ' + (item.status === "overdue" ? "bad" : item.status === "due" ? "warn" : "neutral") + '"></span><span><strong>' + esc(item.title) + '</strong><small>' + esc(timingText(item)) + '</small></span></a>').join("") + '</div>' : empty("No open obligations.");
+}
+
+function eventReminderPreview(triggers) {
+  return triggers.length ? '<div class="event-reminder-preview">' + triggers.map((trigger) => '<a href="#/obligations"><strong>' + esc(trigger.prompt) + '</strong><small>' + trigger.steps.length + ' required actions</small></a>').join("") + '</div>' : empty("No event reminders configured.");
+}
+
+function windowText(item) {
+  if (item.dueWindowEndAt) {
+    return formatLocalDateTime(item.dueWindowStartAt) + " through " + formatLocalDateTime(item.dueWindowEndAt) + ". Overdue after that cutoff.";
+  }
+  return item.dueWindowEnd
+    ? formatCalendarDate(item.dueWindowStart) + " through " + formatCalendarDate(item.dueWindowEnd) + ". Overdue " + formatCalendarDate(item.overdueOn) + "."
+    : "Due from " + formatCalendarDate(item.dueWindowStart) + "; policy sets no fixed overdue cutoff.";
+}
+
+function timingText(item) {
+  if (item.missingCompletion) return "Link required completion proof";
+  if (item.status === "overdue" && Number.isInteger(item.hoursOverdue)) {
+    return item.hoursOverdue === 0 ? "Overdue less than 1 hour" : item.hoursOverdue + " hour" + (item.hoursOverdue === 1 ? "" : "s") + " overdue";
+  }
+  if (item.status === "overdue") return item.daysOverdue === 0 ? "Overdue today" : item.daysOverdue + " day" + (item.daysOverdue === 1 ? "" : "s") + " overdue";
+  if (item.status === "due" && Number.isInteger(item.hoursUntilOverdue)) {
+    return item.hoursUntilOverdue === 0 ? "Overdue at the cutoff" : item.hoursUntilOverdue + " hour" + (item.hoursUntilOverdue === 1 ? "" : "s") + " until overdue";
+  }
+  if (item.status === "due") return item.overdueOn ? item.daysUntilOverdue + " day" + (item.daysUntilOverdue === 1 ? "" : "s") + " until overdue" : "Due now · no fixed cutoff";
+  if (item.status === "upcoming" && Number.isInteger(item.hoursUntilStart)) {
+    return "Opens in " + item.hoursUntilStart + " hour" + (item.hoursUntilStart === 1 ? "" : "s");
+  }
+  if (item.status === "upcoming") return "Opens in " + item.daysUntilStart + " day" + (item.daysUntilStart === 1 ? "" : "s");
+  return "Complete";
+}
+
+function relativeEventWindow(window) {
+  if (Number.isInteger(window?.endOffsetHours)) {
+    return window.endOffsetHours === 0 ? "Due at the event time" : "Due within " + window.endOffsetHours + " hours";
+  }
+  if (Number.isInteger(window?.endOffsetDays)) {
+    return window.endOffsetDays === 0 ? "Due on the event date" : "Due within " + window.endOffsetDays + " days";
+  }
+  return "Due when triggered; no fixed policy cutoff";
+}
+
+function eventStepSummary(step) {
+  const owners = (step.ownerIds || []).map((id) => state.resources.find(({ record }) => record.id === id)?.record.title || id);
+  const proof = (step.completionResourceTypes || []).map(humanize);
+  return [
+    relativeEventWindow(step.window),
+    owners.length ? "Owner: " + owners.join(", ") : "",
+    proof.length ? "Proof: " + proof.join(" or ") : ""
+  ].filter(Boolean).join(" · ");
+}
+
+function dueCountdownSummary(items) {
+  const due = items
+    .filter((item) => item.status === "due" && (item.overdueAt || item.overdueOn))
+    .sort((a, b) => String(a.overdueAt || a.overdueOn).localeCompare(String(b.overdueAt || b.overdueOn)))[0];
+  return due ? timingText(due) : "No fixed cutoff pending";
 }
 
 function renderList(main, type, params = new URLSearchParams()) {
@@ -217,7 +432,7 @@ function renderDetail(main, type, id) {
   const fields = { ...state.model.commonFields, ...definition.fields };
   const visible = Object.entries(entry.record).filter(([name]) => !["schemaVersion", "id", "type", "title", "notesPath", "contentPath"].includes(name));
   const content = Object.entries(entry.content);
-  main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(definition.pluralTitle) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(definition.title) + '</span><h2>' + esc(entry.record.title) + '</h2></div><div class="actions">' + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div>' + resourceGuide(type) + '<div class="detail-grid"><section class="panel detail-main">' +
+  main.innerHTML = '<div class="page"><div class="breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(definition.pluralTitle) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><div class="detail-head"><div><span class="type-pill">' + esc(definition.title) + '</span><h2>' + esc(entry.record.title) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Evidence packet</a>' : "") + (!state.readOnly ? '<button class="button" id="edit-resource">Edit record</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div>' + resourceGuide(type) + '<div class="detail-grid"><section class="panel detail-main">' +
     (content.length ? content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fields[name]?.label || humanize(name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("") : '<div class="panel-head"><h3>Record</h3></div>' + empty("This record has no long-form Markdown.")) +
     '</section><aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section><section class="panel git-panel"><div class="panel-head"><h3>Source</h3></div><code>' + esc(entry.relativePath) + '</code><p>' + (state.git.available ? 'Workspace revision <strong>' + esc(state.git.shortCommit) + '</strong>' : "Commit this workspace to add file history.") + '</p></section><section class="panel"><div class="panel-head"><h3>File history</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
@@ -378,25 +593,37 @@ function onboardingSteps() {
       ]
     },
     {
-      target: ".schedule-panel",
+      target: ".obligation-panel",
       kicker: "Obligations",
-      title: "Work the recurring queue",
-      body: "Policies seed obligations for meetings, reviews, training, scans, tests, and exercises. The dashboard calculates the next occurrence so the team can work from one queue.",
+      title: "Work the policy queue",
+      body: "Recurring policy work appears as upcoming, due, or overdue. Each item shows the full allowed completion range, the first overdue date, and a live countdown to that cutoff.",
       points: [
-        "The obligation stores the rule and owner.",
-        "Each occurrence gets its own completion record and evidence.",
-        "Do not overwrite the recurring rule to record completed work."
+        "Quarterly means any date in that cycle is valid unless the policy sets a narrower window.",
+        "Link a dated completion record and its evidence to satisfy one occurrence.",
+        "The UI and soc2 obligations CLI command use the same calculation."
       ]
     },
     {
-      target: '.catalog a[href="#/resources/evidence"]',
-      kicker: "Audit evidence",
-      title: "Create evidence in batches",
-      body: "Evidence records bind screenshots, signed forms, reports, and exports to source records, audit periods, and Git revisions. Have an agent prepare a batch, review it, then commit the batch together.",
+      target: ".event-reminder-panel",
+      kicker: "Triggered work",
+      title: "Start a checklist when something changes",
+      body: "Use an event reminder for a new worker, departure, vendor, material system change, or incident. One action item is created for every policy requirement, with its own owner, evidence, due range, and cutoff.",
       points: [
-        "Rendered resource pages provide stable audit views.",
-        "Fixed files stay behind evidence records with classification and provenance.",
-        "Plain files make bulk evidence preparation mechanical and reviewable."
+        "The checklist stays open until every action is done and has the requested completion record or evidence.",
+        "Hour-based rules keep the event time and exact cutoff; day-based rules keep the policy date range.",
+        "A policy with no fixed deadline stays due without inventing an overdue date.",
+        "Agents start the identical workflow with soc2 trigger."
+      ]
+    },
+    {
+      target: ".audit-packet-link",
+      kicker: "Audit evidence",
+      title: "Generate the period packet",
+      body: "Choose an audit period to collect every dated record, obligation occurrence, event workflow, linked evidence file, and relevant policy and control into one derived packet.",
+      points: [
+        "The packet includes an auditor index, manifest, raw records, Markdown, and fixed attachments.",
+        "Coverage gaps identify missing completions, open event actions, unverified evidence, and uncommitted state.",
+        "Agents generate the same result with soc2 evidence-packet."
       ]
     },
     {
@@ -994,6 +1221,11 @@ function currentDate() {
     return new Date().toISOString().slice(0, 10);
   }
 }
+function currentLocalDateTime() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
 function formatCadence(value) {
   if (!value || typeof value !== "object") return "";
   if (value.mode === "calendar" && Number.isInteger(value.interval) && value.interval > 0 && value.unit) {
@@ -1159,7 +1391,14 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .commit-dialog input{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}
 .commit-files{display:grid;gap:5px;max-height:160px;overflow:auto;margin-top:14px;padding:10px;background:var(--surface-soft);border-radius:7px}
 .commit-files code{font-size:9px;overflow-wrap:anywhere}
-.onboarding-progress{grid-template-columns:repeat(5,1fr)}
+.onboarding-progress{grid-template-columns:repeat(6,1fr)}
+.badge.status-overdue{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
+.obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:10px}.obligation-preview small,.event-reminder-preview small{font-size:9px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
+.obligation-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 22px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:8px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:12px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:9px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 24px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:11px;color:var(--muted);margin:0;max-width:720px}.event-trigger-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.event-trigger-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-trigger-card h3{font-size:13px;margin:6px 0}.event-trigger-card p:not(.kicker){font-size:10px;color:var(--muted);line-height:1.5;margin:0}.event-trigger-card ol{padding-left:20px;margin:15px 0;display:grid;gap:8px}.event-trigger-card li span,.event-trigger-card li small{display:block}.event-trigger-card li span{font-size:10px}.event-trigger-card li small{font-size:8px;color:var(--muted);margin-top:2px}.event-trigger-card>.button{margin-top:auto;align-self:flex-start}.event-run-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event-run{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-run-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.event-run-head h3{font-size:13px;margin:7px 0 3px}.event-run-head h3 a{text-decoration:none}.event-run-head small{font-size:9px;color:var(--muted)}.event-run-head>strong{font:500 22px Georgia,serif}.event-run>.progress{margin:13px 0}.event-actions{display:grid}.event-actions a{display:flex;gap:9px;text-decoration:none;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}.event-actions strong,.event-actions small{display:block}.event-actions strong{font-size:10px}.event-actions small{font-size:8px;color:var(--muted);margin-top:2px}
+.event-dialog label{display:block;margin-top:13px}.event-dialog label>span{display:block;font-size:10px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:10px}.event-dialog-steps small{font-size:8px;color:var(--muted);margin-top:2px}
+.packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:9px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:11px}.packet-note,.packet-output>p{font-size:10px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:10px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:10px}.packet-list small{font-size:8px;color:var(--muted);margin-top:2px}
+@media(max-width:900px){.obligation-board,.event-trigger-grid{grid-template-columns:1fr}.event-run-list{grid-template-columns:1fr}.packet-builder form{grid-template-columns:1fr 1fr}.packet-builder .button{align-self:end}}
+@media(max-width:520px){.event-reminder-preview,.packet-builder form{grid-template-columns:1fr}.obligation-metrics,.packet-metrics{grid-template-columns:1fr}.obligation-card-head{display:block}.obligation-card-head strong{display:block;text-align:left;margin-top:3px}}
 
 @media(prefers-color-scheme:dark){
   :root{--ink:#f4f5ff;--muted:#b8bfd3;--line:#343d5c;--paper:#000;--panel:#141a2e;--accent:#aab7ff;--accent-soft:#252e52;--accent-light:#9aabff;--focus:#bdc7ff;--amber:#ffd08a;--red:#ffaaa0;--surface-soft:#1b2238;--surface-muted:#252d48;--field:#11172a;--field-readonly:#1c2338;--shadow:0 12px 34px rgba(0,0,0,.3)}
@@ -1170,6 +1409,9 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
   .badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#173b2b;color:#a8edc4}
   .badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#4a252a;color:#ffb5ad}
   .badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#483714;color:#ffd991}
+  .badge.status-overdue{background:#4a252a;color:#ffb5ad}
+  .badge.status-due{background:#483714;color:#ffd991}
+  .badge.status-complete{background:#173b2b;color:#a8edc4}
   .missing-options{border-color:#77612f;background:#382f19;color:#ffdc92}
   .status-dot.neutral{background:#9aabff}
 }

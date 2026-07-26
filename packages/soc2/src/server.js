@@ -1,8 +1,13 @@
 import { createServer as createHttpServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
+import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
 import { FAVICON_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
 import { commitWorkspace, getFileHistory } from "./git.js";
+import { createObligationEvent, planObligations } from "./obligations.js";
+import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { createAppState } from "./state.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
@@ -24,6 +29,38 @@ export function createSoc2Server(input = process.cwd(), options = {}) {
         const path = url.searchParams.get("path");
         if (!path || path.includes("..") || !path.startsWith("data/")) return json(response, 400, { error: "A safe data path is required." });
         return json(response, 200, getFileHistory(input, path));
+      }
+      if (request.method === "GET" && url.pathname === "/api/obligations") {
+        const loaded = await loadWorkspace(input);
+        return json(response, 200, planObligations(loaded.resources, {
+          asOf: url.searchParams.get("asOf") || undefined,
+          from: url.searchParams.get("from") || undefined,
+          through: url.searchParams.get("through") || undefined,
+          now: url.searchParams.get("now") || undefined,
+          includeComplete: url.searchParams.get("includeComplete") === "true"
+        }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/obligation-events") {
+        return json(response, 201, await createObligationEvent(input, await readJson(request)));
+      }
+      if (request.method === "GET" && url.pathname === "/api/evidence-packet") {
+        return json(response, 200, await prepareEvidencePacket(input, {
+          start: url.searchParams.get("start"),
+          end: url.searchParams.get("end"),
+          auditId: url.searchParams.get("auditId") || undefined
+        }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/evidence-packet") {
+        const payload = await readJson(request);
+        const packet = await prepareEvidencePacket(input, payload);
+        const written = await writeEvidencePacket(input, packet, { output: payload.output });
+        const output = relativeToWorkspace(input, written.output);
+        return json(response, 201, {
+          packet,
+          output,
+          packetUrl: `/packet/${output.split("/").map(encodeURIComponent).join("/")}/index.html`,
+          files: written.files
+        });
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
         const payload = await readJson(request);
@@ -68,6 +105,22 @@ export function createSoc2Server(input = process.cwd(), options = {}) {
       if (request.method === "GET" && url.pathname === "/favicon.png") return text(response, 200, FAVICON_PNG, "image/png");
       if (request.method === "GET" && url.pathname === "/soc2-app.js") return text(response, 200, APP_SCRIPT, "text/javascript; charset=utf-8");
       if (request.method === "GET" && url.pathname === "/soc2.css") return text(response, 200, APP_STYLES, "text/css; charset=utf-8");
+      if (request.method === "GET" && url.pathname.startsWith("/packet/")) {
+        const segments = url.pathname.slice("/packet/".length).split("/").map(decodeURIComponent);
+        if (
+          segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0"))
+          || segments[0] !== ".soc2"
+          || segments[1] !== "evidence-packets"
+        ) {
+          return json(response, 400, { error: "A generated evidence-packet path is required." });
+        }
+        const relativePath = segments.join("/");
+        const path = resolveWorkspacePath(input, relativePath);
+        const packetRoot = resolveWorkspacePath(input, ".soc2/evidence-packets");
+        if (!isWithin(packetRoot, path)) return json(response, 400, { error: "A generated evidence-packet path is required." });
+        const isPacketIndex = segments.length === 4 && segments.at(-1) === "index.html";
+        return text(response, 200, await readFile(path), packetContentType(path, isPacketIndex));
+      }
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return text(response, 200, renderIndex(), "text/html; charset=utf-8");
       json(response, 404, { error: "Not found." });
     } catch (error) {
@@ -134,6 +187,20 @@ function text(response, status, value, contentType) {
   response.end(value);
 }
 
+function packetContentType(path, isPacketIndex = false) {
+  if (isPacketIndex) return "text/html; charset=utf-8";
+  return {
+    ".json": "application/json; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".csv": "text/csv; charset=utf-8"
+  }[extname(path).toLowerCase()] || "application/octet-stream";
+}
+
 function safeSegment(value) {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
@@ -184,7 +251,7 @@ function statusFor(error) {
   if (/changed after you opened/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
-  if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves/i.test(error.message)) return 400;
+  if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves|valid .*date|not found|no active obligations|end date|through date|already exists|EEXIST/i.test(error.message)) return 400;
   return 500;
 }
 

@@ -54,7 +54,7 @@ The local app keeps IDs out of the guided form, generates them during creation, 
 
 `data/renderer.json` stores committed renderer preferences. New workspaces set `showOnboarding` to `true`. Completing or skipping onboarding sets it to `false`; the app does not commit that change.
 
-Onboarding explains the file and Git workflow, recurring obligations, and batch evidence preparation, then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a `system` record and may create a planned `audit` record. Treat both as drafts to review against actual scope.
+Onboarding explains the file and Git workflow, recurring obligations, event checklists, and bulk evidence preparation, then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a `system` record and may create a planned `audit` record. Treat both as drafts to review against actual scope.
 
 The renderer is optional. Agents may set `showOnboarding` to `false` and maintain all records headlessly. Restart onboarding from Repository when useful. Read-only builds never run it.
 
@@ -73,6 +73,39 @@ The generated workspace starts with the SOC 2 Security category:
 Treat every planned control as a proposal until its owner, scope, operation, and evidence match actual practice. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
 
 The recurring obligations mirror the fixed cadences in the starter policies. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.
+
+## Policy work queue
+
+Run the same obligation planner used by the web app:
+
+```sh
+npx soc2 obligations --json
+npx soc2 obligations --from 2026-01-01 --through 2026-12-31 --complete --json
+```
+
+A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Link each dated completion through the obligation’s `completionResourceIds`. Keep prior links because the planner matches each record to its own period.
+
+Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Start a workflow in the obligation board or run:
+
+```sh
+npx soc2 trigger person-started --occurred-on 2026-07-25 --subject person-new-worker --json
+npx soc2 trigger person-ended --occurred-at 2026-07-25T16:30:00-05:00 --subject person-departing-worker --json
+```
+
+The command creates one `obligation-event` and its complete action checklist in a single validated write. Hour-based deadlines require an RFC 3339 event timestamp so an immediate or 24-hour cutoff is exact. Day-based deadlines use the event’s calendar date. Link the requested completion resources and evidence to each action item, then mark the actions done and the event complete. A missing policy cutoff means the action stays due until completed; do not invent an overdue date.
+
+## Period evidence packets
+
+Preview coverage before writing output:
+
+```sh
+npx soc2 evidence-packet --start 2026-01-01 --end 2026-03-31 --preview --json
+npx soc2 evidence-packet --start 2026-01-01 --end 2026-03-31 --audit audit-2026-type-2
+```
+
+The packet includes every resource with a model-defined date or timestamp in the period, records whose explicit period overlaps it, recurring obligation occurrences, event workflows, linked evidence, active policies, mapped controls, and selected audit scope. Output under `.soc2/evidence-packets/` is derived and must not be hand-edited or committed.
+
+Treat a packet as ready to send only when its review list is clear and its manifest names a clean Git revision. The generator copies raw records, Markdown, and local fixed attachments. It lists external evidence references without fetching them. Run the UI and CLI against the same committed revision when comparing results.
 
 ## Content and approvals
 
