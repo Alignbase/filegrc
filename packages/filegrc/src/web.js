@@ -896,18 +896,19 @@ function onboardingSteps() {
       title: "SOC 2 is an audit away",
       body: [
         "SOC 2 is just an auditor's report that you have adopted a set of policies meeting certain criteria.",
-        "This includes information security criteria, but it can optionally include availability, processing integrity, confidentiality, and privacy criteria."
+        "This includes information security criteria, but it can optionally include availability, processing integrity, confidentiality, and privacy criteria. Generally, customers requesting a SOC 2 report just need the information security criteria."
       ],
       sections: [
         {
           title: "Type 1",
-          body: "An auditor evaluates whether your policies and controls are suitably designed and in place at a specific point in time. It is a snapshot rather than a test of ongoing operation."
+          body: "An auditor evaluates whether your policies and controls are suitably designed and in place at a specific point in time. It is a snapshot rather than a test of ongoing operation. Type 1 is not required for Type 2, but Type 1 can be helpful as a short-term solution for urgent customer requests."
         },
         {
           title: "Type 2",
           body: "An auditor evaluates whether your controls operated consistently throughout a review period, most commonly six months. You provide dated evidence showing that the policies were followed across that period."
         }
-      ]
+      ],
+      afterSections: "Just about all of the evidence needed for these audits will come from your software's production infrastructure + monitoring, or the business operations tracked in FileGRC."
     },
     {
       target: ".repo-chip",
@@ -988,9 +989,10 @@ function renderOnboardingStep() {
     : step.points ? '<ul class="onboarding-points">' + step.points.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>'
       : "";
   const description = (Array.isArray(step.body) ? step.body : [step.body]).map((paragraph) => '<p class="onboarding-body">' + esc(paragraph) + '</p>').join("");
+  const afterSections = step.afterSections ? '<p class="onboarding-body onboarding-after-sections">' + esc(step.afterSections) + '</p>' : "";
   const body = onboardingStep === steps.length - 1
     ? onboardingSetupForm()
-    : description + explanation;
+    : description + explanation + afterSections;
   onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(step.title) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + '<button class="button primary" type="button" data-onboarding="next">' + (onboardingStep === steps.length - 1 ? "Save setup" : "Next") + '</button></div>';
   onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", cancelOnboarding);
   onboardingDialog.querySelector('[data-onboarding="back"]')?.addEventListener("click", () => {

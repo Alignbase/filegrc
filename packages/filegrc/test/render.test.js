@@ -497,9 +497,13 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /body: \[[\s\S]*policies meeting certain criteria\.",[\s\S]*"This includes information security criteria/);
   assert.match(APP_SCRIPT, /Array\.isArray\(step\.body\)[\s\S]*<p class="onboarding-body">/);
   assert.match(APP_SCRIPT, /optionally include availability, processing integrity, confidentiality, and privacy criteria/);
+  assert.match(APP_SCRIPT, /customers requesting a SOC 2 report just need the information security criteria/);
   assert.match(APP_SCRIPT, /title: "Type 1"/);
+  assert.match(APP_SCRIPT, /Type 1 is not required for Type 2/);
   assert.match(APP_SCRIPT, /title: "Type 2"/);
   assert.match(APP_SCRIPT, /most commonly six months/);
+  assert.match(APP_SCRIPT, /production infrastructure \+ monitoring/);
+  assert.match(APP_SCRIPT, /onboarding-after-sections/);
   assert.match(APP_SCRIPT, /class="onboarding-sections"/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
