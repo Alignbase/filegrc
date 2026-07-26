@@ -17,6 +17,9 @@ test("builds a self-contained read-only site", async (context) => {
   assert.match(html, /id="soc2-data"/);
   assert.match(html, /"readOnly":true/);
   assert.equal(Object.hasOwn(state.git, "root"), false);
+  assert.match(html, /<link rel="icon" type="image\/png" href="\.\/favicon\.png">/);
+  const favicon = await readFile(join(output, "favicon.png"));
+  assert.deepEqual([...favicon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   await access(join(output, "soc2-app.js"));
   await access(join(output, "soc2.css"));
 });
@@ -84,6 +87,10 @@ test("serves state and browser assets", async (context) => {
   assert.equal(appResponse.headers.get("referrer-policy"), "no-referrer");
   assert.match(appResponse.headers.get("content-security-policy"), /frame-ancestors 'none'/);
   assert.match(await appResponse.text(), /function renderHome/);
+  const faviconResponse = await fetch(`${result.url}/favicon.png`);
+  assert.equal(faviconResponse.status, 200);
+  assert.equal(faviconResponse.headers.get("content-type"), "image/png");
+  assert.deepEqual([...new Uint8Array(await faviconResponse.arrayBuffer()).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 
   const person = {
     schemaVersion: 1,

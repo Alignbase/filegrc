@@ -12,6 +12,7 @@ export function renderIndex(state = null) {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>SOC 2 workspace</title>
+  <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="./soc2.css">
 </head>
 <body>

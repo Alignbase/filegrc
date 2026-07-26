@@ -1,5 +1,6 @@
 import { createServer as createHttpServer } from "node:http";
 import { getResourceDefinition } from "../model/index.js";
+import { FAVICON_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
 import { getFileHistory } from "./git.js";
 import { createAppState } from "./state.js";
@@ -60,6 +61,7 @@ export function createSoc2Server(input = process.cwd(), options = {}) {
           return json(response, 200, { deleted: true, type, id, deletedContent: result.deletedContent });
         }
       }
+      if (request.method === "GET" && url.pathname === "/favicon.png") return text(response, 200, FAVICON_PNG, "image/png");
       if (request.method === "GET" && url.pathname === "/soc2-app.js") return text(response, 200, APP_SCRIPT, "text/javascript; charset=utf-8");
       if (request.method === "GET" && url.pathname === "/soc2.css") return text(response, 200, APP_STYLES, "text/css; charset=utf-8");
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return text(response, 200, renderIndex(), "text/html; charset=utf-8");
