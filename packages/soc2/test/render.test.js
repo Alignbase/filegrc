@@ -224,6 +224,14 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /\.side-foot\{background:#000024;[^}]*z-index:1\}/);
 });
 
+test("persists each sidebar group state between page renders", () => {
+  assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "soc2\.sidebar\.groups\.v1"/);
+  assert.match(APP_SCRIPT, /window\.localStorage\.getItem\(NAV_GROUP_STORAGE_KEY\)/);
+  assert.match(APP_SCRIPT, /navigationGroupState\[group\] \?\? \(currentGroup === group \|\| DEFAULT_OPEN_NAV_GROUPS\.has\(group\)\)/);
+  assert.match(APP_SCRIPT, /setNavigationGroupOpen\(group\.dataset\.group, open\)/);
+  assert.match(APP_SCRIPT, /window\.localStorage\.setItem\(NAV_GROUP_STORAGE_KEY, JSON\.stringify\(navigationGroupState\)\)/);
+});
+
 test("uses a black page canvas in dark mode", () => {
   assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)\{\s*:root\{[^}]*--paper:#000;/);
   assert.match(APP_STYLES, /\.topbar\{background:rgba\(0,0,0,.9\)\}/);

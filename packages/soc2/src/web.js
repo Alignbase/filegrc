@@ -26,9 +26,11 @@ export function renderIndex(state = null) {
 export const APP_SCRIPT = String.raw`
 const root = document.querySelector("#app");
 let state;
-let activeGroup = null;
 const LIST_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 25;
+const NAV_GROUP_STORAGE_KEY = "soc2.sidebar.groups.v1";
+const DEFAULT_OPEN_NAV_GROUPS = new Set(["program", "governance", "risk", "audits"]);
+const navigationGroupState = readNavigationGroupState();
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could not load the workspace</h1><pre></pre></main>';
@@ -78,7 +80,7 @@ function buildNavigation(route) {
   });
   const navGroups = [...grouped.entries()].map(([group, resources]) => {
     const definition = state.model.groups.find((item) => item.id === group);
-    const open = currentGroup === group || (activeGroup === null ? ["program", "governance", "risk", "audits"].includes(group) : activeGroup === group);
+    const open = navigationGroupState[group] ?? (currentGroup === group || DEFAULT_OPEN_NAV_GROUPS.has(group));
     return '<section class="nav-group ' + (open ? "open" : "") + '" data-group="' + esc(group) + '"><button class="nav-heading" type="button" aria-expanded="' + open + '" aria-controls="nav-group-' + esc(group) + '"><span>' + esc(definition.title) + '</span><span class="chevron">›</span></button><div class="nav-items" id="nav-group-' + esc(group) + '">' + resources.map(([type, item]) => {
       const count = resourcesOfType(type).length;
       const current = (route.type === type);
@@ -456,9 +458,9 @@ function openContentEditor(entry, name) {
 function bindCommon() {
   root.querySelectorAll(".nav-heading").forEach((button) => button.addEventListener("click", () => {
     const group = button.closest(".nav-group");
-    group.classList.toggle("open");
-    activeGroup = group.classList.contains("open") ? group.dataset.group : "";
-    button.setAttribute("aria-expanded", String(group.classList.contains("open")));
+    const open = group.classList.toggle("open");
+    setNavigationGroupOpen(group.dataset.group, open);
+    button.setAttribute("aria-expanded", String(open));
   }));
   const navButton = root.querySelector(".mobile-nav");
   const sidebar = root.querySelector(".sidebar");
@@ -593,6 +595,23 @@ function searchText(record) {
 }
 function entrySearchText(entry) {
   return (searchText(entry.record) + " " + Object.values(entry.content || {}).map((item) => item.source || "").join(" ")).toLowerCase();
+}
+function readNavigationGroupState() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(NAV_GROUP_STORAGE_KEY) || "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter(([, open]) => typeof open === "boolean"));
+  } catch {
+    return {};
+  }
+}
+function setNavigationGroupOpen(group, open) {
+  navigationGroupState[group] = open;
+  try {
+    window.localStorage.setItem(NAV_GROUP_STORAGE_KEY, JSON.stringify(navigationGroupState));
+  } catch {
+    // Browser storage may be unavailable; the current page still keeps the state.
+  }
 }
 function groupTitle(id) { return state.model.groups.find((group) => group.id === id)?.title || "Program"; }
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
