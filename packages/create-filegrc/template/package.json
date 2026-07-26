@@ -1,0 +1,15 @@
+{
+  "name": "{{project_name}}",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FileGRC workspace for a SOC 2 program",
+  "type": "module",
+  "scripts": {
+    "serve": "filegrc serve",
+    "build": "filegrc build",
+    "validate": "filegrc validate"
+  },
+  "dependencies": {
+    "filegrc": "{{filegrc_version_range}}"
+  }
+}

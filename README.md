@@ -1,1 +1,1 @@
-packages/create-soc2/template/README.md
+packages/create-filegrc/template/README.md

@@ -1,11 +1,11 @@
-# SOC 2 Repository Instructions
+# FileGRC Repository Instructions
 
 ## Purpose
 
-This monorepo builds a Git-native GRC system for SOC 2 work. It has two Node.js packages:
+This monorepo builds FileGRC, a Git-native GRC system for SOC 2 work. It has two Node.js packages:
 
-- `soc2`: a zero-dependency engine that validates, searches, edits, and renders GRC data.
-- `create-soc2`: a scaffolder that creates a standalone SOC 2 repository.
+- `filegrc`: the zero-dependency FileGRC engine, which validates, searches, edits, and renders GRC data.
+- `create-filegrc`: the FileGRC scaffolder, which creates a standalone SOC 2 repository.
 
 The generated repository is the product. Keep it understandable to an engineer who opens it without prior context.
 
@@ -25,7 +25,7 @@ The generated repository is the product. Keep it understandable to an engineer w
 
 ## Package constraints
 
-### `soc2`
+### `filegrc`
 
 - Use Node.js built-in modules only.
 - Do not add runtime, development, test, build, or rendering dependencies.
@@ -35,21 +35,21 @@ The generated repository is the product. Keep it understandable to an engineer w
 - CRUD operations may write files but must not create commits unless the user explicitly requests it.
 - Writes must be atomic and must reject paths outside the workspace.
 
-### `create-soc2`
+### `create-filegrc`
 
-- Follow the `npx create-*` convention and support `npx create-soc2@latest`.
-- Generate a private Node.js project whose only package dependency is `soc2`.
-- Resolve the current `soc2` release when generating, write a normal semver range, and create a lockfile. Do not write the literal dependency specifier `latest`.
+- Follow the `npx create-*` convention and support `npx create-filegrc@latest`.
+- Generate a private Node.js project whose only package dependency is `filegrc`.
+- Resolve the current `filegrc` release when generating, write a normal semver range, and create a lockfile. Do not write the literal dependency specifier `latest`.
 - Do not overwrite a non-empty target without explicit user approval.
 - Initialize Git when the target is not already inside a Git worktree.
 - Keep the template usable without private services or organization-specific values.
-- Define create-time prompts once in `packages/create-soc2/template-parameters.json`.
+- Define create-time prompts once in `packages/create-filegrc/template-parameters.json`.
 - Keep create-time prompts limited to values needed throughout the initial repository. Prefer documented defaults and later edits for optional configuration.
 - Replace every template token during creation and fail if a token is unknown or remains unresolved.
 
 ## Data rules
 
-The authoritative, versioned model is `packages/soc2/model/v1.json`. `docs/data-model.md` is generated from that registry.
+The authoritative, versioned model is `packages/filegrc/model/v1.json`. `docs/data-model.md` is generated from that registry.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown under `data/content/` and reference it from structured records with paths relative to `data/`.
@@ -70,13 +70,13 @@ The authoritative, versioned model is `packages/soc2/model/v1.json`. `docs/data-
 - Preserve closed and retired audit records when they explain historical control operation. Use deletion for mistakes and uncommitted drafts.
 - Model recurring policy work as reusable obligations with an explicit allowed completion range and first overdue cutoff. Keep a policy rule with no cutoff due until completion instead of inventing a date.
 - Model policy-triggering changes as one event record plus normal linked action items. Create the full checklist atomically and preserve exact timestamps when a policy uses hour-based deadlines.
-- Build audit packets from model-defined dates, timestamps, period overlaps, obligation coverage, event checklists, policy and control context, and linked evidence. Keep packet output under `.soc2/` and bind auditor-ready output to a clean Git revision.
+- Build audit packets from model-defined dates, timestamps, period overlaps, obligation coverage, event checklists, policy and control context, and linked evidence. Keep packet output under `.filegrc/` and bind auditor-ready output to a clean Git revision.
 - Every schema change needs compatibility fixtures and a documented migration path.
 - Define fields, types, enums, relationships, conditional requirements, and default UI metadata once in the model registry. Validators, CRUD forms, filters, search indexing, CLI help, and generated model documentation must consume that registry.
 - Do not hand-copy model definitions into validators, templates, generated repositories, or documentation.
 - Generate `docs/data-model.md` from the registry. Do not edit generated model documentation by hand.
 - Generated repositories declare `dataModelVersion` but do not contain a copy of the model.
-- Updated `soc2` releases must continue reading supported older data-model versions.
+- Updated `filegrc` releases must continue reading supported older data-model versions.
 - Never migrate consumer data silently.
 
 ## Private reference material
@@ -92,7 +92,7 @@ Private exports may be inspected to understand generic workflows, but they are n
 
 - `docs/architecture.md` is the persistent product and implementation plan.
 - `docs/data-model.md` is the generated human-readable reference for resource types, shared primitives, and relationship rules.
-- The root `README.md` is a symlink to `packages/create-soc2/template/README.md`.
+- The root `README.md` is a symlink to `packages/create-filegrc/template/README.md`.
 - The generated README is short, external-facing, and written directly to engineers.
 - The generated `AGENTS.md` explains how agents and engineers maintain a generated repository.
 - The README screenshot must come from generic seed data and contain no private or production information.
@@ -104,21 +104,21 @@ Private exports may be inspected to understand generic workflows, but they are n
 - Favor additive schema changes.
 - Treat renamed fields, changed meanings, and stricter required fields as migrations.
 - Test the engine against fixtures from every supported data-model version.
-- Publish `soc2` before publishing a `create-soc2` release that depends on it.
+- Publish `filegrc` before publishing a `create-filegrc` release that depends on it.
 - A generated repository must remain usable if it does not update immediately.
 
 ## Validation
 
 After substantive changes, run `npm run validate`.
 
-Run `pnpm dev` from the monorepo root for local UI development. It creates an ignored workspace under `.soc2/dev-workspace` on first run, serves it with the current local engine, and restarts when imported source files change. Set `SOC2_DEV_PORT` to override port `8787`. Delete `.soc2/dev-workspace` when you need fresh starter data.
+Run `pnpm dev` from the monorepo root for local UI development. It creates an ignored workspace under `.filegrc/dev-workspace` on first run, serves it with the current local engine, and restarts when imported source files change. Set `FILEGRC_DEV_PORT` to override port `8787`. Delete `.filegrc/dev-workspace` when you need fresh starter data.
 
 Before completing a change:
 
 1. Validate JSON and internal resource references.
 2. Run unit and end-to-end tests relevant to the change.
 3. Generate a fresh consumer repository when template behavior changed.
-4. Run `soc2 validate` against supported fixtures.
+4. Run `filegrc validate` against supported fixtures.
 5. Scan changed files for private source material and secrets.
 
 ## Writing

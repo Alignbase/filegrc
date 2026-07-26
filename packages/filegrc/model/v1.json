@@ -1,0 +1,1309 @@
+{
+  "modelVersion": "1",
+  "title": "FileGRC data model",
+  "description": "Stable, query-worthy GRC metadata. Variable procedures, questionnaires, observations, rationale, and detailed results belong in Markdown through contentPath or notesPath.",
+  "commonFields": {
+    "schemaVersion": {
+      "type": "integer",
+      "required": true,
+      "const": 1,
+      "label": "Schema version"
+    },
+    "id": {
+      "type": "string",
+      "format": "id",
+      "required": true,
+      "label": "ID"
+    },
+    "type": {
+      "type": "string",
+      "required": true,
+      "label": "Type"
+    },
+    "title": {
+      "type": "string",
+      "required": true,
+      "label": "Title",
+      "search": true
+    },
+    "ownerIds": {
+      "type": "array",
+      "items": "id",
+      "relation": ["person", "team"],
+      "label": "Owners",
+      "filter": true
+    },
+    "tags": {
+      "type": "array",
+      "items": "string",
+      "label": "Tags",
+      "filter": true,
+      "search": true
+    },
+    "relatedResourceIds": {
+      "type": "array",
+      "items": "id",
+      "relation": ["*"],
+      "label": "Related resources"
+    },
+    "notesPath": {
+      "type": "string",
+      "format": "data-path",
+      "content": true,
+      "label": "Notes"
+    },
+    "extensions": {
+      "type": "object",
+      "label": "Extensions"
+    }
+  },
+  "groups": [
+    {"id": "program", "title": "Program"},
+    {"id": "governance", "title": "Governance"},
+    {"id": "risk", "title": "Risk"},
+    {"id": "people-access", "title": "People and Access"},
+    {"id": "systems-vendors", "title": "Systems and Vendors"},
+    {"id": "security-operations", "title": "Security Operations"},
+    {"id": "resilience", "title": "Resilience"},
+    {"id": "evidence", "title": "Evidence"},
+    {"id": "work", "title": "Findings and Work"},
+    {"id": "audits", "title": "Audits"},
+    {"id": "repository", "title": "Repository"}
+  ],
+  "resources": {
+    "workspace": {
+      "title": "Workspace",
+      "pluralTitle": "Workspace",
+      "group": "repository",
+      "singleton": "workspace.json",
+      "description": "Program-wide settings used by validation and rendering, including the organization, time zone, risk method, and classification scheme.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies depend on these settings. Change the method or classifications with the related policies and controls.",
+        "cadence": "Review during the annual policy and risk reviews and after a material scope or methodology change.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["policy-review", "risk-assessment"]
+      },
+      "required": ["dataModelVersion", "organizationName", "timezone"],
+      "fields": {
+        "dataModelVersion": {"type": "string", "label": "Data model version"},
+        "organizationName": {"type": "string", "label": "Organization", "search": true},
+        "timezone": {"type": "string", "format": "timezone", "label": "Timezone"},
+        "description": {"type": "string", "label": "Description", "search": true},
+        "repositoryUrl": {"type": "string", "label": "Repository URL"},
+        "riskMethodology": {"type": "object", "label": "Risk methodology"},
+        "classificationDefinitions": {"type": "object", "label": "Classifications"}
+      },
+      "listFields": ["title", "organizationName", "dataModelVersion"]
+    },
+    "renderer-settings": {
+      "title": "Renderer settings",
+      "pluralTitle": "Renderer settings",
+      "group": "repository",
+      "singleton": "renderer.json",
+      "description": "Committed settings that control optional renderer behavior without changing the underlying compliance records or Git workflow.",
+      "guidance": {
+        "policyBasis": "This record configures the local renderer. It is not a SOC 2 control, policy, audit record, or substitute for evidence.",
+        "cadence": "Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff."
+      },
+      "required": ["showOnboarding"],
+      "fields": {
+        "showOnboarding": {
+          "type": "boolean",
+          "label": "Show onboarding"
+        }
+      },
+      "listFields": ["title", "showOnboarding"]
+    },
+    "person": {
+      "title": "Person",
+      "titleLabel": "Name",
+      "pluralTitle": "People",
+      "group": "people-access",
+      "collection": "people",
+      "description": "Minimal workforce records used for ownership, approval, training, access, attendance, and accountability without turning Git into an HR system.",
+      "guidance": {
+        "policyBasis": "The information security policy and employee handbook require named responsibility, onboarding, training, role changes, performance review, and offboarding.",
+        "cadence": "Create before assigning work or access, update after role changes, and mark inactive at departure. Training is due within 30 days of starting and annually.",
+        "sourceResourceIds": ["policy-information-security", "policy-employee-handbook"],
+        "obligationActivityTypes": ["training", "performance-review"]
+      },
+      "required": ["status"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "inactive", "external"], "filter": true},
+        "email": {"type": "string", "format": "email", "search": true},
+        "role": {"type": "string", "search": true},
+        "department": {"type": "string", "filter": true},
+        "managerId": {"type": "id", "relation": ["person"]},
+        "startDate": {"type": "date"},
+        "endDate": {"type": "date"},
+        "employmentType": {"type": "string", "filter": true},
+        "teamIds": {"type": "array", "items": "id", "relation": ["team"]}
+      },
+      "listFields": ["title", "status", "role", "department"]
+    },
+    "service-account": {
+      "title": "Service account",
+      "titleLabel": "Name",
+      "pluralTitle": "Service accounts",
+      "group": "people-access",
+      "collection": "service-accounts",
+      "description": "Non-human identities used by automation or applications, with purpose, ownership, system scope, authentication, privilege, and expiry.",
+      "guidance": {
+        "policyBasis": "The information security policy requires important identities to be inventoried, owned, protected, reviewed, and removed when unneeded.",
+        "cadence": "Create before use. Review privileged and production access quarterly and other important access annually; retire or expire unused accounts.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["access-review", "inventory-review"]
+      },
+      "required": ["status", "purpose", "ownerIds", "systemIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "disabled", "retired"], "filter": true},
+        "purpose": {"type": "string", "search": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "accountIdentifier": {"type": "string", "search": true},
+        "authenticationMethod": {"type": "string"},
+        "privileged": {"type": "boolean", "filter": true},
+        "expiresOn": {"type": "date"},
+        "lastReviewedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "purpose", "privileged"]
+    },
+    "team": {
+      "title": "Team",
+      "titleLabel": "Name",
+      "pluralTitle": "Teams",
+      "group": "governance",
+      "collection": "teams",
+      "description": "Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records.",
+      "guidance": {
+        "policyBasis": "The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.",
+        "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["meeting"]
+      },
+      "required": ["status", "purpose", "memberIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "inactive"], "filter": true},
+        "purpose": {"type": "string", "search": true},
+        "memberIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "chairIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "charterDocumentId": {"type": "id", "relation": ["document"]},
+        "meetingCadence": {"type": "object"}
+      },
+      "listFields": ["title", "status", "purpose"]
+    },
+    "system": {
+      "title": "System",
+      "titleLabel": "Name",
+      "pluralTitle": "Systems",
+      "group": "systems-vendors",
+      "collection": "systems",
+      "description": "Applications, services, infrastructure, and business-system boundaries used to define audit scope, ownership, data, vendors, and recovery objectives.",
+      "guidance": {
+        "policyBasis": "The information security, data handling, and continuity policies require inventories of important systems with owners, criticality, classification, scope, and recovery needs.",
+        "cadence": "Review at least annually and after material architecture, data, vendor, service, or recovery changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["inventory-review"]
+      },
+      "required": ["status", "criticality", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "active", "deprecated", "retired"], "filter": true},
+        "criticality": {"type": "enum", "values": ["low", "medium", "high", "critical"], "filter": true},
+        "description": {"type": "string", "search": true},
+        "systemKind": {"type": "string", "filter": true},
+        "environment": {"type": "string", "filter": true},
+        "vendorId": {"type": "id", "relation": ["vendor"]},
+        "dataClassification": {"type": "string", "filter": true},
+        "dataTypes": {"type": "array", "items": "string", "search": true},
+        "internetExposed": {"type": "boolean", "filter": true},
+        "inScope": {"type": "boolean", "filter": true},
+        "parentSystemId": {"type": "id", "relation": ["system"]},
+        "commitmentIds": {"type": "array", "items": "id", "relation": ["commitment"]},
+        "subserviceVendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "continuityObjectives": {"type": "object"}
+      },
+      "listFields": ["title", "status", "criticality", "environment", "inScope"]
+    },
+    "asset": {
+      "title": "Asset",
+      "titleLabel": "Name",
+      "pluralTitle": "Assets",
+      "group": "systems-vendors",
+      "collection": "assets",
+      "description": "Individually managed devices, media, software, records, or other physical and logical items with an owner, custodian, criticality, and lifecycle.",
+      "guidance": {
+        "policyBasis": "The information security, mobile computing, and data handling policies require important assets to be inventoried, protected according to classification, and securely returned or disposed.",
+        "cadence": "Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.",
+        "sourceResourceIds": ["policy-information-security", "policy-mobile-computing-communications", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["inventory-review"]
+      },
+      "required": ["status", "assetKind", "criticality", "ownerIds", "custodianIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "lost", "retired", "disposed"], "filter": true},
+        "assetKind": {"type": "string", "filter": true},
+        "criticality": {"type": "enum", "values": ["low", "medium", "high", "critical"], "filter": true},
+        "custodianIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "businessPurpose": {"type": "string", "search": true},
+        "serialOrAssetTag": {"type": "string", "search": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "location": {"type": "string", "filter": true},
+        "dataClassification": {"type": "string", "filter": true},
+        "exceptionIds": {"type": "array", "items": "id", "relation": ["exception"]},
+        "acquiredOn": {"type": "date"},
+        "retiredOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "assetKind", "criticality", "location"]
+    },
+    "document": {
+      "title": "Document",
+      "pluralTitle": "Documents",
+      "group": "governance",
+      "collection": "documents",
+      "description": "Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git.",
+      "guidance": {
+        "policyBasis": "Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.",
+        "cadence": "Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["policy-review", "continuity-review"]
+      },
+      "required": ["status", "documentKind", "contentPath", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["draft", "active", "superseded", "retired"], "filter": true},
+        "documentKind": {"type": "string", "filter": true},
+        "contentPath": {"type": "string", "format": "data-path", "content": true},
+        "approverIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "version": {"type": "string"},
+        "effectiveOn": {"type": "date"},
+        "approvedOn": {"type": "date"},
+        "reviewCadence": {"type": "object"},
+        "supersedesId": {"type": "id", "relation": ["document"]},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "classification": {"type": "string", "filter": true},
+        "relatedDocumentIds": {"type": "array", "items": "id", "relation": ["document"]},
+        "audience": {"type": "array", "items": "string", "filter": true},
+        "acknowledgementRequired": {"type": "boolean", "filter": true},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]}
+      },
+      "listFields": ["title", "status", "documentKind", "version", "effectiveOn"]
+    },
+    "evidence": {
+      "title": "Evidence",
+      "pluralTitle": "Evidence",
+      "group": "evidence",
+      "collection": "evidence",
+      "recordPath": "{id}/evidence.json",
+      "description": "Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions.",
+      "guidance": {
+        "policyBasis": "The information security policy requires retained audit evidence. Acknowledgement and training workflows require signatures or repository revisions tied to the exact content reviewed.",
+        "cadence": "Collect when a control or activity operates, verify before audit use, cover the stated period, and expire or retain according to classification and record rules.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
+      "required": ["status", "evidenceKind", "source", "collectedOn", "classification"],
+      "oneOf": [["filePaths", "externalReference", "contentPath"]],
+      "fields": {
+        "status": {"type": "enum", "values": ["collected", "verified", "expired", "withdrawn"], "filter": true},
+        "evidenceKind": {"type": "string", "filter": true},
+        "source": {"type": "string", "search": true},
+        "collectedOn": {"type": "date"},
+        "classification": {"type": "string", "filter": true},
+        "filePaths": {"type": "array", "items": "data-path"},
+        "externalReference": {"type": "object"},
+        "contentPath": {"type": "string", "format": "data-path", "content": true},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "auditIds": {"type": "array", "items": "id", "relation": ["audit"]},
+        "collectorIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "verifierIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "verifiedOn": {"type": "date"},
+        "expiresOn": {"type": "date"},
+        "sourceResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "sourceCommit": {"type": "string"},
+        "capture": {"type": "object"}
+      },
+      "listFields": ["title", "status", "evidenceKind", "collectedOn", "classification"]
+    },
+    "obligation": {
+      "title": "Obligation",
+      "pluralTitle": "Obligations",
+      "group": "work",
+      "collection": "obligations",
+      "description": "Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises.",
+      "guidance": {
+        "policyBasis": "Obligations turn policy language into an owned schedule and link each task to its policies, controls, scope, and completion records.",
+        "cadence": "Use the recurrence and start date on each record. Create separate completion records for every period instead of overwriting the obligation.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling", "document-business-continuity-disaster-recovery"]
+      },
+      "required": ["status", "activityType", "recurrence", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "paused", "retired"], "filter": true},
+        "activityType": {"type": "string", "filter": true},
+        "recurrence": {"type": "object"},
+        "triggerPrompt": {"type": "string", "search": true},
+        "window": {"type": "object"},
+        "completionResourceTypes": {"type": "array", "items": "string"},
+        "scopeResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "templateResourceId": {"type": "id", "relation": ["*"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "policyIds": {"type": "array", "items": "id", "relation": ["policy"]},
+        "startsOn": {"type": "date"},
+        "endsOn": {"type": "date"},
+        "completionResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "instructionsPath": {"type": "string", "format": "data-path", "content": true}
+      },
+      "listFields": ["title", "status", "activityType", "startsOn"]
+    },
+    "obligation-event": {
+      "title": "Obligation event",
+      "pluralTitle": "Obligation events",
+      "group": "work",
+      "collection": "obligation-events",
+      "description": "One occurrence of a policy-triggering event, with its subject, applicable obligation templates, generated action checklist, owners, and completion state.",
+      "guidance": {
+        "policyBasis": "Event runs make onboarding, offboarding, material changes, incidents, and similar policy triggers explicit and auditable.",
+        "cadence": "Create when the event occurs or is scheduled. Complete every generated action within its policy window, then close the event."
+      },
+      "required": ["status", "eventType", "occurredOn", "obligationIds", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["open", "complete", "canceled"], "filter": true},
+        "eventType": {"type": "string", "filter": true, "search": true},
+        "occurredOn": {"type": "date"},
+        "occurredAt": {"type": "timestamp"},
+        "subjectResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "obligationIds": {"type": "array", "items": "id", "relation": ["obligation"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "completedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "eventType", "occurredOn", "ownerIds"]
+    },
+    "framework": {
+      "title": "Framework",
+      "titleLabel": "Name",
+      "pluralTitle": "Frameworks",
+      "group": "program",
+      "collection": "frameworks",
+      "description": "External criteria sets and versions used to define program and audit scope.",
+      "guidance": {
+        "policyBasis": "Frameworks come from the selected audit criteria, not an internal policy. The starter includes SOC 2 Security and system-description references without licensed criteria text.",
+        "cadence": "Add or retire a version only through a deliberate scope decision. Reconfirm the selected version when planning each audit."
+      },
+      "required": ["status", "version"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "retired"], "filter": true},
+        "version": {"type": "string"},
+        "publisher": {"type": "string"},
+        "description": {"type": "string", "search": true},
+        "sourceReference": {"type": "object"},
+        "effectiveOn": {"type": "date"},
+        "retiredOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "version", "publisher"]
+    },
+    "requirement": {
+      "title": "Requirement",
+      "pluralTitle": "Requirements",
+      "group": "program",
+      "collection": "requirements",
+      "description": "Individual criterion references used to document applicability and map controls, commitments, audits, and findings.",
+      "guidance": {
+        "policyBasis": "Requirements come from the selected framework. Controls explain how policy and actual operation address each applicable criterion.",
+        "cadence": "Review applicability during audit planning and after material scope, service, system, or framework changes."
+      },
+      "required": ["frameworkId", "reference", "applicability"],
+      "fields": {
+        "frameworkId": {"type": "id", "relation": ["framework"]},
+        "reference": {"type": "string", "search": true},
+        "applicability": {"type": "enum", "values": ["applicable", "not-applicable", "undetermined"], "filter": true},
+        "description": {"type": "string", "search": true},
+        "parentRequirementId": {"type": "id", "relation": ["requirement"]},
+        "applicabilityRationale": {"type": "string"},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]}
+      },
+      "listFields": ["reference", "title", "applicability", "frameworkId"]
+    },
+    "commitment": {
+      "title": "Commitment",
+      "pluralTitle": "Commitments",
+      "group": "program",
+      "collection": "commitments",
+      "description": "Customer-facing commitments, internal system requirements, and business objectives that controls and the system description must support.",
+      "guidance": {
+        "policyBasis": "Policies define baseline safeguards; contracts, service descriptions, and approved business decisions supply the specific commitment.",
+        "cadence": "Create before relying on a promise, review during audit scoping, and supersede it when the service or agreement changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
+      "required": ["status", "commitmentKind", "statement", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "superseded", "retired"], "filter": true},
+        "commitmentKind": {"type": "enum", "values": ["service", "system-requirement", "business-objective"], "filter": true},
+        "statement": {"type": "string", "search": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "sourceDocumentIds": {"type": "array", "items": "id", "relation": ["document"]},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "customerFacing": {"type": "boolean", "filter": true},
+        "effectiveOn": {"type": "date"},
+        "supersedesId": {"type": "id", "relation": ["commitment"]}
+      },
+      "listFields": ["title", "status", "commitmentKind", "customerFacing"]
+    },
+    "complementary-control": {
+      "title": "Complementary control",
+      "pluralTitle": "Complementary controls",
+      "group": "program",
+      "collection": "complementary-controls",
+      "description": "Controls expected from customers or subservice organizations and needed for the service organization's controls and commitments to work as described.",
+      "guidance": {
+        "policyBasis": "The system description and vendor model define these dependencies. Internal policies still require owners to identify, communicate, and monitor them.",
+        "cadence": "Review for every audit and after material customer-responsibility, vendor, contract, integration, or service changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
+      "required": ["status", "responsibleParty", "statement", "systemIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["active", "superseded", "retired"], "filter": true},
+        "responsibleParty": {"type": "enum", "values": ["user-entity", "subservice-organization"], "filter": true},
+        "statement": {"type": "string", "search": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "vendorId": {"type": "id", "relation": ["vendor"]},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "commitmentIds": {"type": "array", "items": "id", "relation": ["commitment"]},
+        "relatedControlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "sourceDocumentIds": {"type": "array", "items": "id", "relation": ["document"]},
+        "effectiveOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "responsibleParty"]
+    },
+    "control": {
+      "title": "Control",
+      "pluralTitle": "Controls",
+      "group": "program",
+      "collection": "controls",
+      "description": "Testable operating statements that translate policies and requirements into owned activities, system scope, frequency, and expected evidence.",
+      "guidance": {
+        "policyBasis": "Controls implement the linked policies and map that operation to applicable criteria. A policy statement alone does not prove implementation.",
+        "cadence": "Operate at the frequency on each control. Review ownership, scope, design, and evidence during annual risk and policy reviews and after material changes.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["risk-assessment", "policy-review"]
+      },
+      "required": ["status", "statement", "ownerIds", "requirementIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "implemented", "partially-implemented", "not-applicable", "retired"], "filter": true},
+        "statement": {"type": "string", "search": true},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "code": {"type": "string", "search": true},
+        "activity": {"type": "string", "search": true},
+        "controlType": {"type": "enum", "values": ["preventive", "detective", "corrective"], "filter": true},
+        "operationMode": {"type": "enum", "values": ["manual", "automated", "hybrid"], "filter": true},
+        "frequency": {"type": "string", "filter": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "commitmentIds": {"type": "array", "items": "id", "relation": ["commitment"]},
+        "complementaryControlIds": {"type": "array", "items": "id", "relation": ["complementary-control"]},
+        "policyIds": {"type": "array", "items": "id", "relation": ["policy"]},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "effectiveOn": {"type": "date"},
+        "retiredOn": {"type": "date"}
+      },
+      "listFields": ["code", "title", "status", "controlType", "operationMode", "frequency"]
+    },
+    "control-test": {
+      "title": "Control test",
+      "pluralTitle": "Control tests",
+      "group": "program",
+      "collection": "control-tests",
+      "description": "Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period.",
+      "guidance": {
+        "policyBasis": "The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.",
+        "cadence": "Plan from control frequency, risk, and audit scope. Record the exact period or as-of date and complete review before relying on the result.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
+      "required": ["status", "controlId", "testKinds", "performedBy"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "not-performed", "canceled"], "filter": true},
+        "controlId": {"type": "id", "relation": ["control"]},
+        "testKinds": {"type": "array", "items": "string", "filter": true},
+        "performedBy": {"type": "enum", "values": ["management", "internal-audit", "service-auditor"], "filter": true},
+        "asOfDate": {"type": "date"},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "outcome": {"type": "outcome", "requiredWhen": {"status": "complete"}, "filter": true},
+        "auditId": {"type": "id", "relation": ["audit"]},
+        "testerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "externalTester": {"type": "object"},
+        "populationCount": {"type": "integer"},
+        "sampleSize": {"type": "integer"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "exceptionCount": {"type": "integer"},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "reviewedOn": {"type": "date"},
+        "completedOn": {"type": "date"},
+        "sourceCommit": {"type": "string"},
+        "notPerformedReason": {"type": "string", "requiredWhen": {"status": "not-performed"}}
+      },
+      "listFields": ["title", "status", "controlId", "performedBy", "outcome", "completedOn"]
+    },
+    "finding": {
+      "title": "Finding",
+      "pluralTitle": "Findings",
+      "group": "work",
+      "collection": "findings",
+      "description": "Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification.",
+      "guidance": {
+        "policyBasis": "The information security policy requires issues from monitoring, audits, incidents, scans, and reviews to be tracked through corrective action.",
+        "cadence": "Create when identified, assign a risk-based due date, review while open, and close only after remediation is verified.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
+      "required": ["status", "severity", "sourceResourceId", "description", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["open", "accepted", "remediating", "resolved", "closed"], "filter": true},
+        "severity": {"type": "rating", "filter": true},
+        "sourceResourceId": {"type": "id", "relation": ["*"]},
+        "description": {"type": "string", "search": true},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "identifiedOn": {"type": "date"},
+        "dueOn": {"type": "date"},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "resolvedOn": {"type": "date"},
+        "verifiedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "verifiedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "severity", "identifiedOn", "dueOn"]
+    },
+    "exception": {
+      "title": "Exception",
+      "pluralTitle": "Exceptions",
+      "group": "risk",
+      "collection": "exceptions",
+      "description": "Approved, time-bound departures from a policy or control, with scope, rationale, risk, compensating controls, owner, approval, and expiry.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require a business reason, risk assessment, compensating controls, suitable approval, and an expiration or review date.",
+        "cadence": "Approve before the departure begins, review through its stated cadence or expiry, and close or renew it through a new risk decision.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
+      "required": ["status", "scopeResourceIds", "requestorIds", "ownerIds", "rationale"],
+      "fields": {
+        "status": {"type": "enum", "values": ["requested", "approved", "expired", "revoked", "closed"], "filter": true},
+        "scopeResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "requestorIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "rationale": {"type": "string", "search": true},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "requestedOn": {"type": "date"},
+        "approvedByIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "approvedOn": {"type": "date"},
+        "expiresOn": {"type": "date"},
+        "reviewCadence": {"type": "object"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "closedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "expiresOn"]
+    },
+    "action-item": {
+      "title": "Action item",
+      "pluralTitle": "Action items",
+      "group": "work",
+      "collection": "action-items",
+      "description": "Owned follow-up work from findings, risks, incidents, meetings, reviews, tests, exceptions, audits, and other GRC activity.",
+      "guidance": {
+        "policyBasis": "Starter policies require material issues and review decisions to produce named owners, due dates, evidence, and tracked corrective work.",
+        "cadence": "Create when work is assigned, review until complete, record blockers, and link completion evidence before closing."
+      },
+      "required": ["status", "assigneeIds", "sourceResourceId"],
+      "fields": {
+        "status": {"type": "enum", "values": ["open", "in-progress", "blocked", "done", "canceled"], "filter": true},
+        "assigneeIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "sourceResourceId": {"type": "id", "relation": ["*"]},
+        "description": {"type": "string", "search": true},
+        "priority": {"type": "rating", "filter": true},
+        "obligationId": {"type": "id", "relation": ["obligation"]},
+        "dueWindowStart": {"type": "date"},
+        "dueWindowEnd": {"type": "date"},
+        "overdueOn": {"type": "date"},
+        "dueWindowStartAt": {"type": "timestamp"},
+        "dueWindowEndAt": {"type": "timestamp"},
+        "overdueAt": {"type": "timestamp"},
+        "dueOn": {"type": "date"},
+        "completedOn": {"type": "date"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "completionResourceIds": {"type": "array", "items": "id", "relation": ["*"]},
+        "blockingResourceIds": {"type": "array", "items": "id", "relation": ["*"]}
+      },
+      "listFields": ["title", "status", "priority", "dueOn", "assigneeIds"]
+    },
+    "policy": {
+      "title": "Policy",
+      "pluralTitle": "Policies",
+      "group": "governance",
+      "collection": "policies",
+      "description": "Approved rules and responsibilities with Markdown content, owners, approvers, audience, acknowledgement rules, related controls, and Git history.",
+      "guidance": {
+        "policyBasis": "Policies set the program's required behavior. Control, obligation, training, document, and attestation records make those requirements operational and auditable.",
+        "cadence": "Review at least annually and after material changes. Record approval and require a new acknowledgement when a material update affects the audience.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["policy-review"]
+      },
+      "required": ["status", "contentPath", "ownerIds", "approverIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["draft", "in-review", "approved", "active", "superseded", "retired"], "filter": true},
+        "contentPath": {"type": "string", "format": "data-path", "content": true},
+        "approverIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "policyNumber": {"type": "string", "search": true},
+        "policyKind": {"type": "string", "filter": true},
+        "version": {"type": "string"},
+        "effectiveOn": {"type": "date"},
+        "approvedOn": {"type": "date"},
+        "reviewCadence": {"type": "object"},
+        "nextReviewConstraint": {"type": "object"},
+        "supersedesId": {"type": "id", "relation": ["policy"]},
+        "parentPolicyId": {"type": "id", "relation": ["policy"]},
+        "relatedPolicyIds": {"type": "array", "items": "id", "relation": ["policy"]},
+        "relatedDocumentIds": {"type": "array", "items": "id", "relation": ["document"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "audience": {"type": "array", "items": "string", "filter": true},
+        "acknowledgementRequired": {"type": "boolean", "filter": true}
+      },
+      "listFields": ["title", "status", "policyKind", "version", "effectiveOn"]
+    },
+    "policy-review": {
+      "title": "Policy review",
+      "pluralTitle": "Policy reviews",
+      "group": "governance",
+      "collection": "policy-reviews",
+      "description": "Evidence that named reviewers checked governed policies or documents, recorded the result, approved changes, and assigned follow-up work.",
+      "guidance": {
+        "policyBasis": "Each starter policy and the continuity plan requires review at least annually and after specified material changes.",
+        "cadence": "Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["policy-review"]
+      },
+      "required": ["status", "scopeResourceIds", "reviewerIds", "reviewedOn"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
+        "scopeResourceIds": {"type": "array", "items": "id", "relation": ["policy", "document"]},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "reviewedOn": {"type": "date"},
+        "outcome": {"type": "outcome", "requiredWhen": {"status": "complete"}, "filter": true},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "changesRequired": {"type": "boolean"},
+        "changeSummary": {"type": "string"},
+        "approverIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["title", "status", "reviewedOn", "outcome", "changesRequired"]
+    },
+    "attestation": {
+      "title": "Attestation",
+      "pluralTitle": "Attestations",
+      "group": "governance",
+      "collection": "attestations",
+      "description": "Per-person proof of policy acknowledgement, training completion, certification, or assigned work, tied to exact content revisions and signed evidence when needed.",
+      "guidance": {
+        "policyBasis": "The information security, data handling, workforce, and training materials require workers to review assigned content and acknowledge applicable responsibilities.",
+        "cadence": "Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling", "policy-employee-handbook"],
+        "obligationActivityTypes": ["training"]
+      },
+      "required": ["status", "subjectResourceIds", "personId", "attestationKind"],
+      "fields": {
+        "status": {"type": "enum", "values": ["pending", "completed", "waived", "overdue"], "filter": true},
+        "subjectResourceIds": {"type": "array", "items": "id", "relation": ["policy", "document", "training", "action-item"]},
+        "personId": {"type": "id", "relation": ["person"]},
+        "attestationKind": {"type": "string", "filter": true},
+        "assignedOn": {"type": "date"},
+        "dueOn": {"type": "date"},
+        "completedOn": {"type": "date"},
+        "attestationMethod": {"type": "enum", "values": ["git-approval", "signed-document", "external-record"], "filter": true},
+        "statementPath": {"type": "string", "format": "data-path", "content": true},
+        "contentRevisions": {"type": "object"},
+        "attestedCommit": {"type": "string"},
+        "expiresOn": {"type": "date"},
+        "waivedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "waiverReason": {"type": "string"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]}
+      },
+      "listFields": ["title", "status", "personId", "attestationKind", "dueOn", "completedOn"]
+    },
+    "meeting": {
+      "title": "Meeting",
+      "pluralTitle": "Meetings",
+      "group": "governance",
+      "collection": "meetings",
+      "description": "Governance meeting records with schedule, chair, attendees, agenda, minutes, decisions, risks, findings, evidence, and assigned actions.",
+      "guidance": {
+        "policyBasis": "The information security policy requires formal security and risk oversight minutes. The continuity plan requires oversight review of exercises and unresolved risks.",
+        "cadence": "Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["meeting"]
+      },
+      "required": ["status", "teamId", "scheduledOn", "chairIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "complete", "canceled"], "filter": true},
+        "teamId": {"type": "id", "relation": ["team"]},
+        "scheduledOn": {"type": "date"},
+        "chairIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "startedAt": {"type": "timestamp"},
+        "endedAt": {"type": "timestamp"},
+        "attendeeIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "externalAttendees": {"type": "array", "items": "object"},
+        "agendaPath": {"type": "string", "format": "data-path", "content": true},
+        "minutesPath": {"type": "string", "format": "data-path", "content": true},
+        "decisionSummary": {"type": "string", "search": true},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]}
+      },
+      "listFields": ["title", "status", "teamId", "scheduledOn"]
+    },
+    "training": {
+      "title": "Training",
+      "titleLabel": "Name",
+      "pluralTitle": "Training",
+      "group": "governance",
+      "collection": "training",
+      "description": "Reusable Markdown training with audience, assignment trigger, recurrence, completion window, linked policies and controls, and passing criteria.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require security training, acknowledgements, and added role-based training where responsibilities or data warrant it.",
+        "cadence": "Assign security training at onboarding, complete it within 30 days, repeat at least annually, and reassign after relevant material changes or incidents.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["training"]
+      },
+      "required": ["status", "contentPath", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["draft", "active", "retired"], "filter": true},
+        "contentPath": {"type": "string", "format": "data-path", "content": true},
+        "audience": {"type": "array", "items": "string", "filter": true},
+        "assignmentTrigger": {"type": "string", "filter": true},
+        "recurrence": {"type": "object"},
+        "completionWindowDays": {"type": "integer"},
+        "policyIds": {"type": "array", "items": "id", "relation": ["policy"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "passingCriteria": {"type": "string"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]}
+      },
+      "listFields": ["title", "status", "audience", "assignmentTrigger", "completionWindowDays"]
+    },
+    "risk": {
+      "title": "Risk",
+      "pluralTitle": "Risks",
+      "group": "risk",
+      "collection": "risks",
+      "description": "Identified threats and business impacts with ownership, inherent and residual ratings, response, acceptance, affected scope, controls, and follow-up work.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require risk identification, treatment, ownership, approval, target dates, and time-bound acceptance.",
+        "cadence": "Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["risk-assessment"]
+      },
+      "required": ["status", "description", "ownerIds", "categories", "response", "inherentRating"],
+      "fields": {
+        "status": {"type": "enum", "values": ["draft", "open", "monitoring", "accepted", "closed", "archived"], "filter": true},
+        "description": {"type": "string", "search": true},
+        "categories": {"type": "array", "items": "string", "filter": true},
+        "response": {"type": "enum", "values": ["avoid", "mitigate", "transfer", "accept", "monitor"], "filter": true},
+        "inherentRating": {"type": "object"},
+        "residualRating": {"type": "object"},
+        "acceptanceRationale": {"type": "string"},
+        "acceptedByIds": {"type": "array", "items": "id", "relation": ["person", "team"]},
+        "acceptedOn": {"type": "date"},
+        "acceptanceExpiresOn": {"type": "date"},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "vendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "commitmentIds": {"type": "array", "items": "id", "relation": ["commitment"]},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "reviewCadence": {"type": "object"}
+      },
+      "listFields": ["title", "status", "response", "inherentRating", "residualRating"]
+    },
+    "risk-assessment": {
+      "title": "Risk assessment",
+      "pluralTitle": "Risk assessments",
+      "group": "risk",
+      "collection": "risk-assessments",
+      "description": "Point-in-time assessment records for a defined scope, methodology, participants, systems, vendors, risks, conclusions, evidence, and approval.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require assessment of threats, assets, obligations, controls, likelihood, impact, treatment, and material changes.",
+        "cadence": "Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["risk-assessment"]
+      },
+      "required": ["status", "assessmentDate", "assessmentKind", "scope", "assessorIds", "reviewerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
+        "assessmentDate": {"type": "date"},
+        "assessmentKind": {"type": "enum", "values": ["enterprise-risk", "system-risk", "privacy-impact", "vendor-risk", "business-impact"], "filter": true},
+        "scope": {"type": "string", "search": true},
+        "assessorIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "methodology": {"type": "string"},
+        "trigger": {"type": "string"},
+        "attendeeIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "vendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "commitmentIds": {"type": "array", "items": "id", "relation": ["commitment"]},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "newRiskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "changedRiskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "summary": {"type": "string", "search": true},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "approvedOn": {"type": "date"},
+        "sourceCommit": {"type": "string"}
+      },
+      "listFields": ["title", "status", "assessmentKind", "assessmentDate"]
+    },
+    "vendor": {
+      "title": "Vendor",
+      "titleLabel": "Name",
+      "pluralTitle": "Vendors",
+      "group": "systems-vendors",
+      "collection": "vendors",
+      "description": "Third parties that provide products or services, with ownership, service, criticality, data, systems, contracts, subprocessors, continuity, and review cadence.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require vendor inventory, risk-based review before access, suitable contract terms, and monitoring of important providers.",
+        "cadence": "Create before access or reliance. Review Critical and High-risk vendors at least annually and after material service changes or incidents.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["inventory-review", "vendor-review"]
+      },
+      "required": ["status", "category", "criticality", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["evaluating", "active", "deprecated", "terminated"], "filter": true},
+        "category": {"type": "string", "filter": true},
+        "criticality": {"type": "enum", "values": ["low", "medium", "high", "critical"], "filter": true},
+        "description": {"type": "string", "search": true},
+        "service": {"type": "string", "search": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "dataClassification": {"type": "string", "filter": true},
+        "dataTypes": {"type": "array", "items": "string", "search": true},
+        "subprocessor": {"type": "boolean", "filter": true},
+        "standardAgreement": {"type": "boolean"},
+        "agreementDocumentId": {"type": "id", "relation": ["document"]},
+        "backupVendorId": {"type": "id", "relation": ["vendor"]},
+        "startDate": {"type": "date"},
+        "endDate": {"type": "date"},
+        "reviewCadence": {"type": "object"}
+      },
+      "listFields": ["title", "status", "category", "criticality", "subprocessor"]
+    },
+    "vendor-review": {
+      "title": "Vendor review",
+      "pluralTitle": "Vendor reviews",
+      "group": "systems-vendors",
+      "collection": "vendor-reviews",
+      "description": "Pre-access due diligence and periodic vendor reviews covering service, data, access, assurance, recovery, incidents, contracts, risks, evidence, and follow-up.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require review before a vendor handles sensitive data and periodic review of Critical and High-risk providers.",
+        "cadence": "Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["vendor-review"]
+      },
+      "required": ["status", "vendorIds", "reviewerIds", "reviewedOn"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "approved", "conditional", "rejected", "complete"], "filter": true},
+        "vendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "reviewedOn": {"type": "date"},
+        "outcome": {"type": "outcome", "filter": true},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "scope": {"type": "string"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "nextReviewConstraint": {"type": "object"}
+      },
+      "listFields": ["title", "status", "vendorIds", "reviewedOn", "outcome"]
+    },
+    "access-grant": {
+      "title": "Access grant",
+      "pluralTitle": "Access grants",
+      "group": "people-access",
+      "collection": "access-grants",
+      "description": "One person's or service account's access to one system, including business role, privilege, request, approval, provisioning, expiry, removal, ticket, and evidence.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require unique identity, business need, least privilege, approval, authorized provisioning, and prompt removal.",
+        "cadence": "Record every grant and material change. Remove access at or before notice for involuntary or high-risk departures and within 24 hours for other departures.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
+      "required": ["status", "subjectKind", "subjectId", "systemId", "accessLevel", "privileged"],
+      "fields": {
+        "status": {"type": "enum", "values": ["requested", "approved", "active", "revoked", "expired"], "filter": true},
+        "subjectKind": {"type": "enum", "values": ["person", "service-account"], "filter": true},
+        "subjectId": {"type": "id", "relation": ["person", "service-account"]},
+        "systemId": {"type": "id", "relation": ["system"]},
+        "accessLevel": {"type": "string", "filter": true},
+        "privileged": {"type": "boolean", "filter": true},
+        "role": {"type": "string"},
+        "requestedOn": {"type": "date"},
+        "approvedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "approvedOn": {"type": "date"},
+        "provisionedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "provisionedOn": {"type": "date"},
+        "expiresOn": {"type": "date"},
+        "deprovisionedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "deprovisionedOn": {"type": "date"},
+        "deprovisionReason": {"type": "string"},
+        "ticketReference": {"type": "string"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]}
+      },
+      "listFields": ["title", "status", "subjectId", "systemId", "accessLevel", "privileged"]
+    },
+    "access-review": {
+      "title": "Access review",
+      "pluralTitle": "Access reviews",
+      "group": "people-access",
+      "collection": "access-reviews",
+      "description": "Point-in-time review of a defined access population, with systems, reviewers, period, grant decisions, exceptions, approval, evidence, and source revision.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require owners to confirm least privilege and remove dormant, expired, excessive, or unneeded access.",
+        "cadence": "Review privileged and production access at least quarterly and other important-system access at least annually.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"],
+        "obligationActivityTypes": ["access-review"]
+      },
+      "required": ["status", "reviewDate", "reviewerIds", "systemIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
+        "reviewDate": {"type": "date"},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "scope": {"type": "string"},
+        "outcome": {"type": "outcome", "requiredWhen": {"status": "complete"}, "filter": true},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "grantDecisions": {"type": "array", "items": "object"},
+        "populationCount": {"type": "integer"},
+        "exceptionCount": {"type": "integer"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]},
+        "approvedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "approvedOn": {"type": "date"},
+        "sourceCommit": {"type": "string"}
+      },
+      "listFields": ["title", "status", "reviewDate", "outcome", "exceptionCount"]
+    },
+    "vulnerability": {
+      "title": "Vulnerability",
+      "pluralTitle": "Vulnerabilities",
+      "group": "security-operations",
+      "collection": "vulnerabilities",
+      "description": "Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification.",
+      "guidance": {
+        "policyBasis": "The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.",
+        "cadence": "Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
+      "required": ["status", "severity", "description", "systemIds", "ownerIds", "discoveredOn"],
+      "fields": {
+        "status": {"type": "enum", "values": ["open", "in-progress", "risk-accepted", "remediated", "closed", "false-positive"], "filter": true},
+        "severity": {"type": "enum", "values": ["informational", "low", "medium", "high", "critical", "unknown"], "filter": true},
+        "description": {"type": "string", "search": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "discoveredOn": {"type": "date"},
+        "source": {"type": "string", "filter": true},
+        "externalIdentifier": {"type": "string", "search": true},
+        "cveIds": {"type": "array", "items": "string", "search": true},
+        "cvss": {"type": "number"},
+        "exploitability": {"type": "string"},
+        "dueOn": {"type": "date"},
+        "riskId": {"type": "id", "relation": ["risk"]},
+        "acceptedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "acceptanceExpiresOn": {"type": "date"},
+        "remediatedOn": {"type": "date"},
+        "verifiedByIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "verifiedOn": {"type": "date"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["title", "status", "severity", "systemIds", "discoveredOn", "dueOn"]
+    },
+    "vulnerability-scan": {
+      "title": "Vulnerability scan",
+      "pluralTitle": "Vulnerability scans",
+      "group": "security-operations",
+      "collection": "vulnerability-scans",
+      "description": "Scan activities with kind, tools, scope, systems, operator, timestamps, severity counts, resulting vulnerabilities, evidence, failure reason, and review.",
+      "guidance": {
+        "policyBasis": "The information security policy requires monitoring for vulnerabilities and scanning internet-facing and production systems.",
+        "cadence": "Scan at least quarterly and after material changes when practical. Review failures and create vulnerability or finding records for confirmed results.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["vulnerability-scan"]
+      },
+      "required": ["status", "scanKind", "scope", "operatorIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "running", "complete", "failed"], "filter": true},
+        "scanKind": {"type": "string", "filter": true},
+        "scope": {"type": "string", "search": true},
+        "operatorIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "tools": {"type": "array", "items": "string"},
+        "scheduledOn": {"type": "date"},
+        "startedAt": {"type": "timestamp"},
+        "completedAt": {"type": "timestamp"},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "resultSummary": {"type": "string", "search": true},
+        "findingCountBySeverity": {"type": "object"},
+        "vulnerabilityIds": {"type": "array", "items": "id", "relation": ["vulnerability"]},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "failureReason": {"type": "string"},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "reviewedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "scanKind", "scheduledOn", "completedAt"]
+    },
+    "incident": {
+      "title": "Incident",
+      "pluralTitle": "Incidents",
+      "group": "security-operations",
+      "collection": "incidents",
+      "description": "Suspected and confirmed security or privacy events with severity, chronology, scope, ownership, evidence, affected systems and vendors, findings, and corrective work.",
+      "guidance": {
+        "policyBasis": "The information security and data handling policies require immediate reporting, investigation, containment, recovery, evidence preservation, and notification review.",
+        "cadence": "Create on report or detection, update material events as they progress, and complete a retrospective within one week after a material incident.",
+        "sourceResourceIds": ["policy-information-security", "policy-data-protection-handling"]
+      },
+      "required": ["status", "severity", "ownerIds", "detectedAt", "description"],
+      "fields": {
+        "status": {"type": "enum", "values": ["suspected", "declared", "contained", "eradicated", "recovered", "closed"], "filter": true},
+        "severity": {"type": "rating", "filter": true},
+        "detectedAt": {"type": "timestamp"},
+        "description": {"type": "string", "search": true},
+        "occurredAt": {"type": "timestamp"},
+        "declaredAt": {"type": "timestamp"},
+        "containedAt": {"type": "timestamp"},
+        "recoveredAt": {"type": "timestamp"},
+        "closedAt": {"type": "timestamp"},
+        "reportedBy": {"type": "object"},
+        "detectionSource": {"type": "string"},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "vendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "dataClassification": {"type": "string"},
+        "riskIds": {"type": "array", "items": "id", "relation": ["risk"]},
+        "vulnerabilityIds": {"type": "array", "items": "id", "relation": ["vulnerability"]},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["title", "status", "severity", "detectedAt", "closedAt"]
+    },
+    "exercise": {
+      "title": "Exercise",
+      "pluralTitle": "Exercises",
+      "group": "resilience",
+      "collection": "exercises",
+      "description": "Continuity, recovery, incident, privacy, and other simulations with scenario, objective, participants, scope, result, evidence, findings, and actions.",
+      "guidance": {
+        "policyBasis": "The information security policy requires annual incident testing. The continuity plan requires annual exercises and review after material change or disruption.",
+        "cadence": "Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["exercise"]
+      },
+      "required": ["status", "exerciseKind", "scheduledOn", "facilitatorIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
+        "exerciseKind": {"type": "string", "filter": true},
+        "scheduledOn": {"type": "date"},
+        "facilitatorIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "scenario": {"type": "string"},
+        "objective": {"type": "string"},
+        "outcome": {"type": "outcome", "requiredWhen": {"status": "complete"}, "filter": true},
+        "participantIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "teamIds": {"type": "array", "items": "id", "relation": ["team"]},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "startedAt": {"type": "timestamp"},
+        "completedAt": {"type": "timestamp"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["title", "status", "exerciseKind", "scheduledOn", "outcome"]
+    },
+    "backup-test": {
+      "title": "Backup test",
+      "pluralTitle": "Backup tests",
+      "group": "resilience",
+      "collection": "backup-tests",
+      "description": "Restore and recovery tests with systems, operators, date, timing, recovery results, reviewer, evidence, findings, and follow-up work.",
+      "guidance": {
+        "policyBasis": "The information security policy and continuity plan require protected backups, failure monitoring, and proof that data can be restored and used.",
+        "cadence": "Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.",
+        "sourceResourceIds": ["policy-information-security", "document-business-continuity-disaster-recovery"],
+        "obligationActivityTypes": ["backup-test"]
+      },
+      "required": ["status", "systemIds", "testDate", "operatorIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "running", "passed", "failed"], "filter": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "testDate": {"type": "date"},
+        "operatorIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "outcome": {"type": "outcome", "filter": true},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "startedAt": {"type": "timestamp"},
+        "completedAt": {"type": "timestamp"},
+        "recoveryTimeMinutes": {"type": "integer"},
+        "recoveryPointMinutes": {"type": "integer"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["title", "status", "testDate", "outcome", "recoveryTimeMinutes"]
+    },
+    "penetration-test": {
+      "title": "Penetration test",
+      "pluralTitle": "Penetration tests",
+      "group": "security-operations",
+      "collection": "penetration-tests",
+      "description": "Internal or external penetration tests with scope, period, provider, method, result, affected systems, evidence, vulnerabilities, findings, and review.",
+      "guidance": {
+        "policyBasis": "The information security policy requires an independent test of the in-scope service's external attack surface and tracked resolution of results.",
+        "cadence": "Perform at least annually and reconsider scope after material attack-surface or architecture changes.",
+        "sourceResourceIds": ["policy-information-security"],
+        "obligationActivityTypes": ["penetration-test"]
+      },
+      "required": ["status", "testKind", "scope", "periodStart", "periodEnd", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "complete", "canceled"], "filter": true},
+        "testKind": {"type": "string", "filter": true},
+        "scope": {"type": "string", "search": true},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "provider": {"type": "string"},
+        "outcome": {"type": "outcome", "requiredWhen": {"status": "complete"}, "filter": true},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "rulesOfEngagementDocumentId": {"type": "id", "relation": ["document"]},
+        "methodology": {"type": "string"},
+        "resultSummary": {"type": "string", "search": true},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "vulnerabilityIds": {"type": "array", "items": "id", "relation": ["vulnerability"]},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "reviewerIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "reviewedOn": {"type": "date"}
+      },
+      "listFields": ["title", "status", "testKind", "periodStart", "periodEnd", "outcome"]
+    },
+    "data-request": {
+      "title": "Data request",
+      "pluralTitle": "Data requests",
+      "group": "governance",
+      "collection": "data-requests",
+      "description": "Privacy, contractual, or other requests concerning data, tracked by opaque reference with scope, jurisdiction, due date, decision, evidence, and completion.",
+      "guidance": {
+        "policyBasis": "The data handling policy requires requests to reach the responsible owner and keeps erasable personal data out of immutable Git history.",
+        "cadence": "Create on receipt, set the deadline from applicable law or contract, verify identity outside this repository when needed, and record completion.",
+        "sourceResourceIds": ["policy-data-protection-handling"]
+      },
+      "required": ["status", "requestKind", "receivedOn", "ownerIds", "requesterReference"],
+      "fields": {
+        "status": {"type": "enum", "values": ["received", "verifying", "in-progress", "completed", "denied", "canceled"], "filter": true},
+        "requestKind": {"type": "string", "filter": true},
+        "receivedOn": {"type": "date"},
+        "requesterReference": {"type": "string", "search": true},
+        "jurisdiction": {"type": "string", "filter": true},
+        "dueOn": {"type": "date"},
+        "verifiedOn": {"type": "date"},
+        "scope": {"type": "string"},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "vendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "decision": {"type": "string"},
+        "decisionRationale": {"type": "string"},
+        "completedOn": {"type": "date"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["title", "status", "requestKind", "receivedOn", "dueOn"]
+    },
+    "audit": {
+      "title": "Audit",
+      "pluralTitle": "Audits",
+      "group": "audits",
+      "collection": "audits",
+      "description": "Audit and readiness engagements with criteria, scope, type or period, systems, controls, tests, auditor, system description, assertion, evidence, findings, and opinion.",
+      "guidance": {
+        "policyBasis": "The information security policy requires applicable obligations, controls, and evidence to support audit work. The selected frameworks define the actual criteria.",
+        "cadence": "Create one record per engagement. Set an as-of date for Type 1 or a start and end period for Type 2, then keep requests and tests within that scope.",
+        "sourceResourceIds": ["policy-information-security"]
+      },
+      "required": ["status", "auditKind", "frameworkIds", "scope", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["planned", "in-progress", "fieldwork", "complete"], "filter": true},
+        "auditKind": {"type": "string", "filter": true},
+        "frameworkIds": {"type": "array", "items": "id", "relation": ["framework"]},
+        "scope": {"type": "string", "search": true},
+        "auditor": {"type": "object"},
+        "auditorVendorId": {"type": "id", "relation": ["vendor"]},
+        "typeOneAsOf": {"type": "date"},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "fieldworkStart": {"type": "date"},
+        "fieldworkEnd": {"type": "date"},
+        "reportDate": {"type": "date"},
+        "systemIds": {"type": "array", "items": "id", "relation": ["system"]},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "contactIds": {"type": "array", "items": "id", "relation": ["person"]},
+        "assessmentCoverage": {"type": "object"},
+        "systemDescriptionDocumentId": {"type": "id", "relation": ["document"]},
+        "managementAssertionDocumentId": {"type": "id", "relation": ["document"]},
+        "complementaryControlIds": {"type": "array", "items": "id", "relation": ["complementary-control"]},
+        "subserviceVendorIds": {"type": "array", "items": "id", "relation": ["vendor"]},
+        "subserviceMethod": {"type": "enum", "values": ["carve-out", "inclusive", "not-applicable"]},
+        "controlTestIds": {"type": "array", "items": "id", "relation": ["control-test"]},
+        "opinion": {"type": "enum", "values": ["unmodified", "qualified", "adverse", "disclaimer", "not-issued"], "filter": true},
+        "opinionDate": {"type": "date"},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "findingIds": {"type": "array", "items": "id", "relation": ["finding"]},
+        "reportEvidenceId": {"type": "id", "relation": ["evidence"]},
+        "managementResponseDocumentId": {"type": "id", "relation": ["document"]},
+        "supplementalDocumentIds": {"type": "array", "items": "id", "relation": ["document"]}
+      },
+      "listFields": ["title", "status", "auditKind", "periodStart", "periodEnd", "opinion"]
+    },
+    "audit-request": {
+      "title": "Audit request",
+      "pluralTitle": "Audit requests",
+      "group": "audits",
+      "collection": "audit-requests",
+      "description": "One auditor request or prepared-by-client item with engagement, reference, description, owner, due date, response, criteria, controls, evidence, and follow-up.",
+      "guidance": {
+        "policyBasis": "Audit requests turn the engagement scope into owned deliverables and preserve the exact evidence and response supplied to the auditor.",
+        "cadence": "Create on receipt, assign immediately, meet the auditor due date, bind evidence to the requested period and Git revision, and close only after acceptance."
+      },
+      "required": ["status", "auditId", "requestReference", "description", "ownerIds"],
+      "fields": {
+        "status": {"type": "enum", "values": ["open", "in-progress", "submitted", "accepted", "needs-follow-up", "closed"], "filter": true},
+        "auditId": {"type": "id", "relation": ["audit"]},
+        "requestReference": {"type": "string", "search": true},
+        "description": {"type": "string", "search": true},
+        "requestedOn": {"type": "date"},
+        "dueOn": {"type": "date"},
+        "submittedOn": {"type": "date"},
+        "closedOn": {"type": "date"},
+        "requirementIds": {"type": "array", "items": "id", "relation": ["requirement"]},
+        "controlIds": {"type": "array", "items": "id", "relation": ["control"]},
+        "periodStart": {"type": "date"},
+        "periodEnd": {"type": "date"},
+        "responsePath": {"type": "string", "format": "data-path", "content": true},
+        "evidenceIds": {"type": "array", "items": "id", "relation": ["evidence"]},
+        "auditorNotes": {"type": "string"},
+        "actionItemIds": {"type": "array", "items": "id", "relation": ["action-item"]}
+      },
+      "listFields": ["requestReference", "title", "status", "dueOn", "submittedOn"]
+    }
+  },
+  "primitives": {
+    "rating": ["low", "medium", "high", "critical"],
+    "outcome": ["passed", "passed-with-exceptions", "failed", "not-applicable", "inconclusive"]
+  }
+}

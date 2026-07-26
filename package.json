@@ -1,15 +1,15 @@
 {
-  "name": "soc2-monorepo",
+  "name": "filegrc-monorepo",
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "packages/soc2",
-    "packages/create-soc2"
+    "packages/filegrc",
+    "packages/create-filegrc"
   ],
   "scripts": {
     "dev": "node --watch scripts/dev.mjs",
     "test": "npm test --workspaces --if-present",
-    "validate": "npm test --workspaces --if-present && node packages/soc2/bin/soc2.js model --check-docs"
+    "validate": "npm test --workspaces --if-present && node packages/filegrc/bin/filegrc.js model --check-docs"
   },
   "engines": {
     "node": ">=20"

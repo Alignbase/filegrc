@@ -1,4 +1,4 @@
-# Architecture and Delivery Plan
+# FileGRC Architecture and Delivery Plan
 
 ## Status
 
@@ -8,13 +8,13 @@ Later passes can add licensed framework content, deeper control mappings, guided
 
 ## Product
 
-This project is a Git-native GRC workspace for SOC 2 programs. Engineers and agents maintain plain files, while a small Node.js engine renders an audit overview and provides validation, search, filtering, and CRUD utilities.
+FileGRC is a Git-native GRC workspace for SOC 2 programs. Engineers and agents maintain plain files, while a small Node.js engine renders an audit overview and provides validation, search, filtering, and CRUD utilities.
 
 The system has three layers:
 
 1. Files under `data/` hold canonical GRC records.
 2. Git records who changed those files, when they changed, why they changed, and exactly what changed.
-3. The `soc2` package validates and renders the current files together with their Git history.
+3. The `filegrc` package validates and renders the current files together with their Git history.
 
 There is no application database. A fresh clone contains the complete current record set and its available audit trail.
 
@@ -36,13 +36,13 @@ The project does not replace operational security systems. Organizations still n
 ```text
 /
 ├── AGENTS.md
-├── README.md -> packages/create-soc2/template/README.md
+├── README.md -> packages/create-filegrc/template/README.md
 ├── docs/
 │   ├── architecture.md
 │   └── data-model.md
 ├── package.json
 └── packages/
-    ├── soc2/
+    ├── filegrc/
     │   ├── package.json
     │   ├── bin/
     │   ├── model/
@@ -50,7 +50,7 @@ The project does not replace operational security systems. Organizations still n
     │   │   └── v1.json
     │   ├── src/
     │   └── test/
-    └── create-soc2/
+    └── create-filegrc/
         ├── package.json
         ├── src/
         ├── test/
@@ -60,16 +60,16 @@ The project does not replace operational security systems. Organizations still n
             ├── AGENTS.md
             ├── package.json
             ├── data/
-            └── docs/soc2-home.png
+            └── docs/filegrc-home.png
 ```
 
 The template README is the source for the monorepo root README. If its screenshot uses a relative path, the monorepo will expose a matching root path without copying the image.
 
 ## Package responsibilities
 
-### `soc2`
+### `filegrc`
 
-`soc2` is a zero-dependency Node.js package with no build step. It owns:
+`filegrc` is a zero-dependency Node.js package with no build step. It owns:
 
 - The authoritative, versioned GRC data model
 - Data discovery and parsing
@@ -86,26 +86,26 @@ The template README is the source for the monorepo root README. If its screensho
 Commands:
 
 ```text
-soc2 serve
-soc2 build
-soc2 validate
-soc2 model
-soc2 describe <resource-type>
-soc2 obligations
-soc2 trigger <event-type>
-soc2 evidence-packet
+filegrc serve
+filegrc build
+filegrc validate
+filegrc model
+filegrc describe <resource-type>
+filegrc obligations
+filegrc trigger <event-type>
+filegrc evidence-packet
 ```
 
-`soc2 serve` provides the interactive local view and CRUD operations. `soc2 build` creates a read-only static view. `soc2 validate` is suitable for local use and CI.
+`filegrc serve` provides the interactive local view and CRUD operations. `filegrc build` creates a read-only static view. `filegrc validate` is suitable for local use and CI.
 
 The package reads older supported data-model versions. It may offer an explicit migration command later, but reading, serving, or building must never mutate source data.
 
 ## Model registry
 
-The `soc2` package is the only source of truth for the data model. The initial representation is a versioned JSON registry:
+The `filegrc` package is the only source of truth for the data model. The initial representation is a versioned JSON registry:
 
 ```text
-packages/soc2/model/v1.json
+packages/filegrc/model/v1.json
 ```
 
 The registry defines:
@@ -124,7 +124,7 @@ The registry structures only values needed for validation, filters, relationship
 
 The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
 
-`packages/soc2/model/index.js` selects a model version and exposes a stable Node.js API. The package includes every supported historical model version so a current engine can read older repositories.
+`packages/filegrc/model/index.js` selects a model version and exposes a stable Node.js API. The package includes every supported historical model version so a current engine can read older repositories.
 
 Generated repositories contain only their records and a `dataModelVersion` in `data/workspace.json`. They do not receive copied schema files.
 
@@ -132,12 +132,12 @@ Generated repositories contain only their records and a `dataModelVersion` in `d
 
 The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
 
-### `create-soc2`
+### `create-filegrc`
 
-`create-soc2` creates a standalone repository with:
+`create-filegrc` creates a standalone repository with:
 
 - A private `package.json`
-- One dependency, `soc2`
+- One dependency, `filegrc`
 - A lockfile
 - Scripts for serving, building, and validation
 - Generic seed records
@@ -145,9 +145,9 @@ The registry may expose a JSON Schema projection for editors and outside tools, 
 - Detailed consumer instructions in `AGENTS.md`
 - A `data/` directory using the current data-model version
 
-The generator resolves the current `soc2` release and records a normal semver range. This keeps initial output current while the lockfile makes installs repeatable.
+The generator resolves the current `filegrc` release and records a normal semver range. This keeps initial output current while the lockfile makes installs repeatable.
 
-The generator reads `packages/create-soc2/template-parameters.json` and asks for three values:
+The generator reads `packages/create-filegrc/template-parameters.json` and asks for three values:
 
 - Company name
 - Policy owner name, shown to the user as "Your name"
@@ -159,7 +159,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 
 ## Starter SOC 2 baseline
 
-`create-soc2` generates a Security-category baseline before organization-specific onboarding:
+`create-filegrc` generates a Security-category baseline before organization-specific onboarding:
 
 - The AICPA 2017 Trust Services Criteria with revised points of focus (2022)
 - All 33 Common Criteria reference IDs from CC1.1 through CC9.2
@@ -239,7 +239,7 @@ An active `obligation` is a reusable policy rule. Calendar obligations define a 
 
 Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. Starting one event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. A rule without a fixed cutoff remains due and is never labeled overdue.
 
-`planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `soc2 obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `soc2 trigger`. The planner does not write derived occurrence records for calendar schedules.
+`planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. The planner does not write derived occurrence records for calendar schedules.
 
 ## Git metadata
 
@@ -275,9 +275,9 @@ The engine can prepare deterministic evidence views and metadata without a brows
 
 For a period review, the evidence-packet engine indexes every model-defined date and timestamp in the selected range, plus records whose explicit period overlaps it. It then adds recurring obligation coverage, event checklists, linked evidence, active policies, mapped controls and requirements, and selected audit scope. It reports missing completions, incomplete event actions, unverified or revision-unbound evidence, and a dirty Git worktree.
 
-Packet output is derived under `.soc2/evidence-packets/`. It contains an auditor-oriented HTML index, a machine-readable manifest with per-record Git history, raw JSON source records, governed Markdown, and fixed local attachments. External references are listed but never fetched. The packet records the source revision and whether the worktree was clean, so uncommitted output is clearly marked as not ready to send.
+Packet output is derived under `.filegrc/evidence-packets/`. It contains an auditor-oriented HTML index, a machine-readable manifest with per-record Git history, raw JSON source records, governed Markdown, and fixed local attachments. External references are listed but never fetched. The packet records the source revision and whether the worktree was clean, so uncommitted output is clearly marked as not ready to send.
 
-`prepareEvidencePacket` and `writeEvidencePacket` are shared by the audit page, HTTP API, and `soc2 evidence-packet`. UI and headless callers therefore select the same records and receive the same coverage gaps.
+`prepareEvidencePacket` and `writeEvidencePacket` are shared by the audit page, HTTP API, and `filegrc evidence-packet`. UI and headless callers therefore select the same records and receive the same coverage gaps.
 
 People who do not have repository access may acknowledge policies, training, or tasks with a signed PDF or image. The corresponding attestation records the signer, signing date, acknowledgement statement, exact content revisions, and evidence file. Repository collaborators may use a reviewed Git commit as an attestation when the workflow permits it.
 

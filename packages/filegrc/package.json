@@ -1,0 +1,25 @@
+{
+  "name": "filegrc",
+  "version": "0.1.0",
+  "description": "Zero-dependency Git-native GRC engine",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "filegrc": "./bin/filegrc.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./model": "./model/index.js"
+  },
+  "files": [
+    "bin",
+    "model",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

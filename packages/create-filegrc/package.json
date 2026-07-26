@@ -1,0 +1,22 @@
+{
+  "name": "create-filegrc",
+  "version": "0.1.0",
+  "description": "Create a FileGRC workspace for a SOC 2 program",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "create-filegrc": "./bin/create-filegrc.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "template",
+    "template-parameters.json"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

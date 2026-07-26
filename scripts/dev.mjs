@@ -1,29 +1,29 @@
 import { access, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSoc2 } from "../packages/create-soc2/src/index.js";
-import { serveWorkspace } from "../packages/soc2/src/index.js";
+import { createFileGRC } from "../packages/create-filegrc/src/index.js";
+import { serveWorkspace } from "../packages/filegrc/src/index.js";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const workspaceRoot = join(repositoryRoot, ".soc2", "dev-workspace");
+const workspaceRoot = join(repositoryRoot, ".filegrc", "dev-workspace");
 const workspaceConfig = join(workspaceRoot, "data", "workspace.json");
-const enginePackage = JSON.parse(await readFile(join(repositoryRoot, "packages", "soc2", "package.json"), "utf8"));
-const port = parsePort(process.env.SOC2_DEV_PORT);
+const enginePackage = JSON.parse(await readFile(join(repositoryRoot, "packages", "filegrc", "package.json"), "utf8"));
+const port = parsePort(process.env.FILEGRC_DEV_PORT);
 
 if (!await exists(workspaceConfig)) {
-  await createSoc2({
+  await createFileGRC({
     target: workspaceRoot,
     yes: true,
     install: false,
-    soc2Version: enginePackage.version
+    filegrcVersion: enginePackage.version
   });
   console.log(`Created development workspace at ${workspaceRoot}`);
 }
 
 const { url } = await serveWorkspace(workspaceRoot, { port });
-console.log(`SOC 2 development app: ${url}`);
+console.log(`FileGRC development app: ${url}`);
 console.log(`Data: ${join(workspaceRoot, "data")}`);
-console.log("Delete .soc2/dev-workspace to reset the starter data.");
+console.log("Delete .filegrc/dev-workspace to reset the starter data.");
 
 async function exists(path) {
   try {
@@ -39,7 +39,7 @@ function parsePort(value) {
   if (value === undefined) return 8787;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
-    throw new Error("SOC2_DEV_PORT must be an integer from 0 through 65535.");
+    throw new Error("FILEGRC_DEV_PORT must be an integer from 0 through 65535.");
   }
   return parsed;
 }

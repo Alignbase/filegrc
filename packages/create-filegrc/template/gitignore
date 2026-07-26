@@ -1,6 +1,4 @@
 node_modules/
-.DS_Store
 .filegrc/
-coverage/
+.DS_Store
 *.log
-*.tgz

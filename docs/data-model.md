@@ -1,6 +1,6 @@
 # GRC Data Model
 
-<!-- Generated from packages/soc2/model/v1.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v1.json. Do not edit by hand. -->
 
 Model version: `1`
 
