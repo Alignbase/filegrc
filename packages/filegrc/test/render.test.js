@@ -333,6 +333,16 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /\.sidebar-footer\{flex:0 0 auto;[^}]*background:#000024;/);
 });
 
+test("keeps repository and validation status in separate topbar controls", () => {
+  assert.match(APP_SCRIPT, /class="topbar-status"/);
+  assert.match(APP_SCRIPT, /class="validation-chip"/);
+  assert.match(APP_SCRIPT, /class="repo-chip"/);
+  assert.match(APP_SCRIPT, /Data valid/);
+  assert.doesNotMatch(APP_SCRIPT, /class="side-validation"/);
+  assert.match(APP_STYLES, /\.topbar-status\{display:flex;align-items:center;gap:8px\}/);
+  assert.match(APP_STYLES, /\.repo-chip,\.validation-chip\{display:flex/);
+});
+
 test("persists each sidebar group state between page renders", () => {
   assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v3"/);
   assert.match(APP_SCRIPT, /window\.localStorage\.getItem\(NAV_GROUP_STORAGE_KEY\)/);
@@ -482,6 +492,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Files are the program/);
   assert.match(APP_SCRIPT, /SOC 2 is an audit away/);
   assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*SOC 2 is an audit away[\s\S]*Files are the program/);
+  assert.match(APP_SCRIPT, /target: "\.repo-chip",[\s\S]*title: "Files are the program"/);
   assert.match(APP_SCRIPT, /SOC 2 is just an auditor's report that you have adopted a set of policies/);
   assert.match(APP_SCRIPT, /body: \[[\s\S]*policies meeting certain criteria\.",[\s\S]*"This includes information security criteria/);
   assert.match(APP_SCRIPT, /Array\.isArray\(step\.body\)[\s\S]*<p class="onboarding-body">/);
