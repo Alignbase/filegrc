@@ -482,7 +482,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Files are the program/);
   assert.match(APP_SCRIPT, /SOC 2 is an audit away/);
   assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*SOC 2 is an audit away[\s\S]*Files are the program/);
-  assert.match(APP_SCRIPT, /SOC 2 is just an auditor's attestation that you have adopted a set of policies/);
+  assert.match(APP_SCRIPT, /SOC 2 is just an auditor's report that you have adopted a set of policies/);
   assert.match(APP_SCRIPT, /availability, processing integrity, confidentiality, and privacy criteria/);
   assert.match(APP_SCRIPT, /title: "Type 1"/);
   assert.match(APP_SCRIPT, /title: "Type 2"/);
