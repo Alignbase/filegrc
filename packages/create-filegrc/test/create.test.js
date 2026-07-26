@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -23,7 +24,9 @@ test("creates a complete generic repository with one dependency", async (context
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
   assert.deepEqual(packageJson.dependencies, { filegrc: "^1.2.3" });
   assert.equal(packageJson.private, true);
-  assert.equal((await readFile(join(target, "README.md"), "utf8")).includes("{{"), false);
+  const readme = await readFile(join(target, "README.md"), "utf8");
+  assert.equal(readme.includes("{{"), false);
+  assert.match(readme, /initializes Git when needed/);
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
@@ -52,6 +55,8 @@ test("creates a complete generic repository with one dependency", async (context
   await access(join(target, "package-lock.json"));
   await access(join(target, ".gitignore"));
   await access(join(target, ".git"));
+  const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
+  assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
   assert.deepEqual(validation.counts, { resources: 123, errors: 0, warnings: 0 });
 });

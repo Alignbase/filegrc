@@ -13,7 +13,7 @@ npm run validate
 npm run serve
 ```
 
-You need Node.js 20 or newer and Git. The setup command asks for the company name, your name as the initial policy owner, and a security contact email.
+You need Node.js 20 or newer and Git. The setup command initializes Git when needed, then asks for the company name, your name as the initial policy owner, and a security contact email.
 
 Open the local URL printed by `npm run serve`. FileGRC provides the program overview, resource pages, Markdown and record editing, search, filters, validation results, and Git history. Its obligation board shows recurring policy work as upcoming, due, or overdue, including the full allowed completion range and overdue cutoff. Event reminders create complete checklists for changes such as hiring, departures, vendors, system changes, and incidents.
 

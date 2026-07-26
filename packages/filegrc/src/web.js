@@ -229,7 +229,7 @@ function openObligationEventDialog(trigger) {
     if (!form.reportValidity()) return;
     form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = true; });
     try {
-      const response = await fetch("/api/obligation-events", {
+      const response = await localFetch("/api/obligation-events", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -270,7 +270,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     button.textContent = "Generating…";
     error.textContent = "";
     try {
-      const response = await fetch("/api/evidence-packet", {
+      const response = await localFetch("/api/evidence-packet", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -450,10 +450,14 @@ function renderDetail(main, type, id) {
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
   main.querySelector("#delete-resource")?.addEventListener("click", async () => {
     if (!confirm('Delete "' + entry.record.title + '"? Use deletion only for mistakes and uncommitted drafts. Unshared Markdown authored for this record will also be deleted.')) return;
-    const response = await fetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
-    if (!response.ok) return showError(await responseMessage(response));
-    state = await fetchJson("/api/state");
-    location.hash = "#/resources/" + encodeURIComponent(type);
+    try {
+      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
+      if (!response.ok) return showError(await responseMessage(response));
+      state = await fetchJson("/api/state");
+      location.hash = "#/resources/" + encodeURIComponent(type);
+    } catch (error) {
+      showError(error.message);
+    }
   });
 }
 
@@ -487,7 +491,7 @@ function openCommitDialog() {
     form.querySelectorAll("button,input").forEach((control) => { control.disabled = true; });
     button.textContent = "Committing…";
     try {
-      const response = await fetch("/api/commit", {
+      const response = await localFetch("/api/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: form.elements.message.value })
@@ -596,7 +600,9 @@ function onboardingSteps() {
       target: ".repo-chip",
       kicker: "Audit trail",
       title: "Commit the change; Git records the rest",
-      body: "Review the workspace diff, then use Commit changes on Repository or the Git CLI. A focused commit records who changed which artifacts, when, why, and exactly what changed.",
+      body: state.git.available
+        ? "Review the workspace diff, then use Commit changes on Repository or the Git CLI. A focused commit records who changed which artifacts, when, why, and exactly what changed."
+        : "Git is not initialized for this workspace. FileGRC can save artifacts, but run git init at the workspace root before relying on its audit trail.",
       points: [
         "The renderer validates records before its commit button runs.",
         "File history and rendered pages stay bound to Git revisions.",
@@ -692,7 +698,10 @@ function onboardingSetupForm() {
     currentSystem ? "Updates system " + currentSystem.title + "." : "Creates a new in-scope system.",
     currentAudit ? "Updates planned audit " + currentAudit.title + " when an audit objective is selected." : ""
   ].filter(Boolean).join(" ");
-  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p><form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(humanize(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(value) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No engagement planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Saving writes JSON files but does not commit them.</p>';
+  const gitStatus = state.git.available
+    ? '<div class="onboarding-git-status"><span class="status-dot good"></span><span><strong>Git repository detected</strong><small>Setup changes will appear in the workspace diff before you commit them.</small></span></div>'
+    : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Saving still works. Run <code>git init</code> at the workspace root before your first compliance commit.</small></span></div>';
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(humanize(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(value) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No engagement planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Saving writes JSON files but does not commit them.</p>';
 }
 
 function captureOnboardingForm() {
@@ -797,7 +806,7 @@ async function writeOnboardingResource(record, entry) {
   const url = entry
     ? "/api/resource/" + encodeURIComponent(record.type) + "/" + encodeURIComponent(record.id)
     : "/api/resources";
-  const response = await fetch(url, {
+  const response = await localFetch(url, {
     method: entry ? "PUT" : "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ record, revision: entry?.revision })
@@ -940,7 +949,7 @@ function openEditor(type, entry = null) {
       });
       const url = entry ? "/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id) : "/api/resources";
       const contentRevisions = Object.fromEntries(contentNames.map((name) => [entry?.content?.[name]?.path, entry?.content?.[name]?.revision]).filter(([path, revision]) => path && revision));
-      const response = await fetch(url, { method: entry ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ record: updated, content, revision: entry?.revision, contentRevisions }) });
+      const response = await localFetch(url, { method: entry ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ record: updated, content, revision: entry?.revision, contentRevisions }) });
       if (!response.ok) throw new Error(await responseMessage(response));
       state = await fetchJson("/api/state");
       dialog.close();
@@ -1087,7 +1096,7 @@ function openContentEditor(entry, name) {
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector("#save-content").addEventListener("click", async () => {
     try {
-      const response = await fetch("/api/content", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: item.path, source: dialog.querySelector(".markdown-source").value, revision: item.revision }) });
+      const response = await localFetch("/api/content", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: item.path, source: dialog.querySelector(".markdown-source").value, revision: item.revision }) });
       if (!response.ok) throw new Error(await responseMessage(response));
       state = await fetchJson("/api/state");
       dialog.close();
@@ -1324,7 +1333,14 @@ async function responseMessage(response) {
   const source = await response.text();
   try { return JSON.parse(source).error || source; } catch { return source; }
 }
-async function fetchJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(await responseMessage(response)); return response.json(); }
+async function localFetch(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch {
+    throw new Error("The FileGRC server is unavailable. Restart npm run serve, or pnpm dev in the monorepo, and try again.");
+  }
+}
+async function fetchJson(url, options) { const response = await localFetch(url, options); if (!response.ok) throw new Error(await responseMessage(response)); return response.json(); }
 function esc(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
 `;
 
@@ -1409,6 +1425,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .commit-files{display:grid;gap:5px;max-height:160px;overflow:auto;margin-top:14px;padding:10px;background:var(--surface-soft);border-radius:7px}
 .commit-files code{font-size:9px;overflow-wrap:anywhere}
 .onboarding-progress{grid-template-columns:repeat(6,1fr)}
+.onboarding-git-status{display:flex;align-items:flex-start;gap:9px;margin:14px 25px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.onboarding-git-status .status-dot{margin-top:4px}.onboarding-git-status strong,.onboarding-git-status small{display:block}.onboarding-git-status strong{font-size:10px}.onboarding-git-status small{color:var(--muted);font-size:9px;line-height:1.45;margin-top:3px}.onboarding-git-status code{font-size:9px}
 .badge.status-overdue{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
 .obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:10px}.obligation-preview small,.event-reminder-preview small{font-size:9px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
 .obligation-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 22px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:8px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:12px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:9px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 24px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:11px;color:var(--muted);margin:0;max-width:720px}.event-trigger-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.event-trigger-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-trigger-card h3{font-size:13px;margin:6px 0}.event-trigger-card p:not(.kicker){font-size:10px;color:var(--muted);line-height:1.5;margin:0}.event-trigger-card ol{padding-left:20px;margin:15px 0;display:grid;gap:8px}.event-trigger-card li span,.event-trigger-card li small{display:block}.event-trigger-card li span{font-size:10px}.event-trigger-card li small{font-size:8px;color:var(--muted);margin-top:2px}.event-trigger-card>.button{margin-top:auto;align-self:flex-start}.event-run-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event-run{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-run-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.event-run-head h3{font-size:13px;margin:7px 0 3px}.event-run-head h3 a{text-decoration:none}.event-run-head small{font-size:9px;color:var(--muted)}.event-run-head>strong{font:500 22px Georgia,serif}.event-run>.progress{margin:13px 0}.event-actions{display:grid}.event-actions a{display:flex;gap:9px;text-decoration:none;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}.event-actions strong,.event-actions small{display:block}.event-actions strong{font-size:10px}.event-actions small{font-size:8px;color:var(--muted);margin-top:2px}

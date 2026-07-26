@@ -207,7 +207,7 @@ test("serves state and browser assets", async (context) => {
   assert.equal((await fetch(`${wildcard.url}/api/state`)).status, 200);
 });
 
-test("persists onboarding preference in the renderer settings file", async (context) => {
+test("persists onboarding resources without requiring Git", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-onboarding-setting-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
@@ -221,6 +221,28 @@ test("persists onboarding preference in the renderer settings file", async (cont
   const result = await serveWorkspace(root, { port: 0 });
   context.after(() => new Promise((resolve) => result.server.close(resolve)));
   const state = await (await fetch(`${result.url}/api/state`)).json();
+  assert.equal(state.git.available, false);
+  const systemResponse = await fetch(`${result.url}/api/resources`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      record: {
+        schemaVersion: 1,
+        id: "system-onboarding-service",
+        type: "system",
+        title: "Onboarding Service",
+        status: "active",
+        criticality: "high",
+        ownerIds: ["person-owner"],
+        description: "Production service boundary.",
+        systemKind: "service",
+        dataClassification: "Confidential",
+        internetExposed: true,
+        inScope: true
+      }
+    })
+  });
+  assert.equal(systemResponse.status, 201);
   const entry = state.resources.find(({ record }) => record.type === "renderer-settings");
   const response = await fetch(`${result.url}/api/resource/renderer-settings/renderer-settings`, {
     method: "PUT",
@@ -231,6 +253,8 @@ test("persists onboarding preference in the renderer settings file", async (cont
     })
   });
   assert.equal(response.status, 200);
+  const system = JSON.parse(await readFile(join(root, "data", "systems", "system-onboarding-service.json"), "utf8"));
+  assert.equal(system.inScope, true);
   const saved = JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8"));
   assert.equal(saved.showOnboarding, false);
   const deleteResponse = await fetch(`${result.url}/api/resource/renderer-settings/renderer-settings`, { method: "DELETE" });
@@ -354,14 +378,20 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /filegrc trigger/);
   assert.match(APP_SCRIPT, /filegrc evidence-packet/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
+  assert.match(APP_SCRIPT, /Git repository detected/);
+  assert.match(APP_SCRIPT, /Git setup needed/);
+  assert.match(APP_SCRIPT, /Saving still works/);
+  assert.match(APP_SCRIPT, /The FileGRC server is unavailable/);
+  assert.match(APP_SCRIPT, /async function localFetch/);
   assert.match(APP_SCRIPT, /id="start-onboarding"/);
   assert.match(APP_SCRIPT, /id="commit-workspace"/);
-  assert.match(APP_SCRIPT, /fetch\("\/api\/commit"/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/commit"/);
   assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
   assert.match(APP_SCRIPT, /class="panel schedule-panel"/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
   assert.match(APP_STYLES, /\.onboarding-focus\{/);
   assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(6,1fr\)/);
+  assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form\{grid-template-columns:1fr\}/);
 });
@@ -373,9 +403,9 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /dueWindowStart/);
   assert.match(APP_SCRIPT, /dueWindowEnd/);
   assert.match(APP_SCRIPT, /overdueOn/);
-  assert.match(APP_SCRIPT, /fetch\("\/api\/obligation-events"/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/obligation-events"/);
   assert.match(APP_SCRIPT, /function renderAuditPacket\(main/);
-  assert.match(APP_SCRIPT, /fetch\("\/api\/evidence-packet"/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-packet"/);
   assert.match(APP_SCRIPT, /every dated record/i);
   assert.match(APP_STYLES, /\.obligation-board\{display:grid/);
   assert.match(APP_STYLES, /\.packet-builder form\{display:grid/);
