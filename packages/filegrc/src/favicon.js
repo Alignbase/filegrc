@@ -15,10 +15,8 @@ function createFavicon() {
     }
   }
 
-  outlineShape(pixels, insideDocument, 2.2, WHITE);
-  drawStroke(pixels, [[39, 9], [39, 20], [50, 20]], 1.8, WHITE);
-  drawStroke(pixels, [[25, 35], [25, 31], [27, 27], [32, 25], [37, 27], [39, 31], [39, 35]], 2, WHITE);
-  outlineShape(pixels, (x, y) => insideRoundedRectangle(x, y, 21, 34, 23, 17, 3), 1.8, WHITE);
+  outlineShape(pixels, insideDocument, 3.2, WHITE);
+  drawStroke(pixels, [[39, 9], [39, 20], [50, 20]], 2.6, WHITE);
 
   const rows = Buffer.alloc((SIZE * 4 + 1) * SIZE);
   for (let y = 0; y < SIZE; y += 1) {
