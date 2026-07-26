@@ -895,8 +895,8 @@ function onboardingSteps() {
       kicker: "SOC 2 basics",
       title: "SOC 2 is an audit away",
       body: [
-        "SOC 2 is just an auditor's report that you have adopted a set of policies fitting certain criteria.",
-        "At a minimum, this includes information security criteria, but it can optionally include additional availability, processing integrity, confidentiality, and privacy criteria."
+        "SOC 2 is just an auditor's report that you have adopted a set of policies meeting certain criteria.",
+        "This includes information security criteria, but it can optionally include availability, processing integrity, confidentiality, and privacy criteria."
       ],
       sections: [
         {
