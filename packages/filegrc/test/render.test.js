@@ -384,6 +384,11 @@ test("places source attributes first in record metadata", () => {
   assert.doesNotMatch(APP_SCRIPT, /<h3>Source<\/h3>/);
 });
 
+test("uses a concise record edit action", () => {
+  assert.match(APP_SCRIPT, /id="edit-resource">Edit<\/button>/);
+  assert.doesNotMatch(APP_SCRIPT, /id="edit-resource">Edit record<\/button>/);
+});
+
 test("provides model-driven Record Markdown without exposing its path", () => {
   assert.match(APP_SCRIPT, /function recordContentDefinition\(type\)/);
   assert.match(APP_SCRIPT, /!definition \|\| !config\?\.slot \|\| definition\.markdown/);
