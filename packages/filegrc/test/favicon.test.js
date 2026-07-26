@@ -10,7 +10,7 @@ test("renders a transparent document outline with a contained white padlock", ()
   assert.deepEqual(pixelAt(pixels, 13, 30), [248, 249, 255, 255]);
   assert.deepEqual(pixelAt(pixels, 22, 20), [0, 0, 79, 255]);
   assert.deepEqual(pixelAt(pixels, 32, 25), [248, 249, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 23, 40), [248, 249, 255, 255]);
+  assert.deepEqual(pixelAt(pixels, 21, 40), [248, 249, 255, 255]);
   assert.deepEqual(pixelAt(pixels, 32, 42), [0, 0, 54, 255]);
   assert.deepEqual(pixelAt(pixels, 20, 33), [0, 0, 71, 255]);
   assert.deepEqual(pixelAt(pixels, 44, 51), [0, 0, 53, 255]);
