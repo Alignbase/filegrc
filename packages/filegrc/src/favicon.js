@@ -1,9 +1,7 @@
 import { deflateSync } from "node:zlib";
 
 const SIZE = 64;
-const PAPER = [248, 249, 255, 255];
-const FOLD = [181, 192, 255, 255];
-const CHECK = [0, 0, 112, 255];
+const WHITE = [248, 249, 255, 255];
 
 export const FAVICON_PNG = createFavicon();
 
@@ -22,9 +20,9 @@ function createFavicon() {
     }
   }
 
-  fillShape(pixels, insideDocument, PAPER);
-  fillShape(pixels, (x, y) => insideTriangle(x, y, [39, 8], [39, 20], [51, 20]), FOLD);
-  drawStroke(pixels, [[21, 34], [29, 42], [44, 27]], 3.2, CHECK);
+  outlineShape(pixels, insideDocument, 2.2, WHITE);
+  drawStroke(pixels, [[39, 9], [39, 20], [50, 20]], 1.8, WHITE);
+  drawStroke(pixels, [[21, 34], [29, 42], [44, 27]], 3.2, WHITE);
 
   const rows = Buffer.alloc((SIZE * 4 + 1) * SIZE);
   for (let y = 0; y < SIZE; y += 1) {
@@ -66,21 +64,21 @@ function insideRoundedRectangle(x, y, left, top, width, height, radius) {
   return Math.hypot(x - cornerX, y - cornerY) <= radius;
 }
 
-function insideTriangle(x, y, first, second, third) {
-  const a = triangleSign(x, y, first, second);
-  const b = triangleSign(x, y, second, third);
-  const c = triangleSign(x, y, third, first);
-  return (a <= 0 && b <= 0 && c <= 0) || (a >= 0 && b >= 0 && c >= 0);
-}
-
-function triangleSign(x, y, first, second) {
-  return (x - second[0]) * (first[1] - second[1]) - (first[0] - second[0]) * (y - second[1]);
-}
-
-function fillShape(pixels, contains, color) {
+function outlineShape(pixels, contains, width, color) {
+  const radius = Math.ceil(width);
   for (let y = 0; y < SIZE; y += 1) {
     for (let x = 0; x < SIZE; x += 1) {
-      if (contains(x, y)) setPixel(pixels, x, y, color);
+      if (!contains(x, y)) continue;
+      let boundary = false;
+      for (let offsetY = -radius; offsetY <= radius && !boundary; offsetY += 1) {
+        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+          if (Math.hypot(offsetX, offsetY) <= width && !contains(x + offsetX, y + offsetY)) {
+            boundary = true;
+            break;
+          }
+        }
+      }
+      if (boundary) setPixel(pixels, x, y, color);
     }
   }
 }

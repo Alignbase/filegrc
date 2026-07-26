@@ -3,13 +3,13 @@ import { inflateSync } from "node:zlib";
 import test from "node:test";
 import { FAVICON_PNG } from "../src/favicon.js";
 
-test("renders a document-and-check mark without letterforms", () => {
+test("renders a transparent document outline with a white check", () => {
   const pixels = decodePixels(FAVICON_PNG);
 
   assert.deepEqual(pixelAt(pixels, 0, 0), [0, 0, 0, 0]);
-  assert.deepEqual(pixelAt(pixels, 22, 20), [248, 249, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 44, 18), [181, 192, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 29, 42), [0, 0, 112, 255]);
+  assert.deepEqual(pixelAt(pixels, 13, 30), [248, 249, 255, 255]);
+  assert.deepEqual(pixelAt(pixels, 22, 20), [0, 0, 79, 255]);
+  assert.deepEqual(pixelAt(pixels, 29, 42), [248, 249, 255, 255]);
 });
 
 function decodePixels(png) {
