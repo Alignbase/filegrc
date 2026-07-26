@@ -11,18 +11,19 @@ function createFavicon() {
   for (let y = 0; y < SIZE; y += 1) {
     for (let x = 0; x < SIZE; x += 1) {
       if (!insideRoundedSquare(x, y, 11)) continue;
-      const offset = (y * SIZE + x) * 4;
-      const progress = Math.min(1, (x + y) / ((SIZE - 1) * 1.2));
-      pixels[offset] = 0;
-      pixels[offset + 1] = 0;
-      pixels[offset + 2] = Math.round(112 + (53 - 112) * progress);
-      pixels[offset + 3] = 255;
+      setPixel(pixels, x, y, backgroundColor(x, y));
     }
   }
 
   outlineShape(pixels, insideDocument, 2.2, WHITE);
   drawStroke(pixels, [[39, 9], [39, 20], [50, 20]], 1.8, WHITE);
-  drawStroke(pixels, [[21, 34], [29, 42], [44, 27]], 3.2, WHITE);
+  drawStroke(pixels, [[25, 35], [25, 31], [27, 27], [32, 25], [37, 27], [39, 31], [39, 35]], 2, WHITE);
+  fillShape(pixels, (x, y) => insideRoundedRectangle(x, y, 21, 34, 23, 17, 3), () => WHITE);
+  fillShape(
+    pixels,
+    (x, y) => Math.hypot(x - 32, y - 40) <= 2 || (x >= 31 && x <= 33 && y >= 40 && y <= 46),
+    backgroundColor
+  );
 
   const rows = Buffer.alloc((SIZE * 4 + 1) * SIZE);
   for (let y = 0; y < SIZE; y += 1) {
@@ -81,6 +82,19 @@ function outlineShape(pixels, contains, width, color) {
       if (boundary) setPixel(pixels, x, y, color);
     }
   }
+}
+
+function fillShape(pixels, contains, colorAt) {
+  for (let y = 0; y < SIZE; y += 1) {
+    for (let x = 0; x < SIZE; x += 1) {
+      if (contains(x, y)) setPixel(pixels, x, y, colorAt(x, y));
+    }
+  }
+}
+
+function backgroundColor(x, y) {
+  const progress = Math.min(1, (x + y) / ((SIZE - 1) * 1.2));
+  return [0, 0, Math.round(112 + (53 - 112) * progress), 255];
 }
 
 function drawStroke(pixels, points, radius, color) {
