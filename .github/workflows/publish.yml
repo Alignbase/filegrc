@@ -31,7 +31,7 @@ jobs:
           package-manager-cache: false
 
       - name: Update npm
-        run: npm install --global npm@11.6.2
+        run: npm install --global npm@11.16.0
 
       - name: Install dependencies
         run: npm ci
@@ -46,9 +46,48 @@ jobs:
           npm pack --dry-run --workspace filegrc
           npm pack --dry-run --workspace create-filegrc
 
+      - name: Verify npm trusted publishing
+        run: |
+          node --input-type=module <<'NODE'
+          const audience = "npm:registry.npmjs.org";
+          const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+          const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+          if (!requestUrl || !requestToken) {
+            throw new Error("GitHub did not provide an OIDC token request endpoint.");
+          }
+
+          const separator = requestUrl.includes("?") ? "&" : "?";
+          const identityResponse = await fetch(
+            `${requestUrl}${separator}audience=${encodeURIComponent(audience)}`,
+            { headers: { Authorization: `bearer ${requestToken}` } }
+          );
+          if (!identityResponse.ok) {
+            throw new Error(`GitHub OIDC request failed (${identityResponse.status}).`);
+          }
+          const { value: identityToken } = await identityResponse.json();
+          if (!identityToken) throw new Error("GitHub OIDC response did not include an identity token.");
+
+          for (const packageName of ["filegrc", "create-filegrc"]) {
+            const exchangeResponse = await fetch(
+              `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${encodeURIComponent(packageName)}`,
+              {
+                method: "POST",
+                headers: { Authorization: `Bearer ${identityToken}` }
+              }
+            );
+            if (!exchangeResponse.ok) {
+              const detail = await exchangeResponse.text();
+              throw new Error(`npm OIDC exchange failed for ${packageName} (${exchangeResponse.status}): ${detail}`);
+            }
+            const exchange = await exchangeResponse.json();
+            if (exchange.token_type !== "oidc" || !exchange.token || !exchange.expires) {
+              throw new Error(`npm returned an invalid OIDC exchange for ${packageName}.`);
+            }
+            console.log(`${packageName}: npm trusted publishing verified until ${exchange.expires}.`);
+          }
+          NODE
+
       - name: Publish packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 
