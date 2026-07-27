@@ -1,11 +1,37 @@
 export { getResourceDefinition, loadModel } from "../model/index.js";
+export { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
+export { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 export { buildWorkspace } from "./build.js";
-export { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
-export { createResource, createResourceAndLink, createResources, deleteResource, resourcePath, updateContent, updateResource } from "./files.js";
-export { commitWorkspace, getFileHistory, getGitSummary, getWorkspaceHistories } from "./git.js";
+export { generateEvidencePacket, prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
+export {
+  addEvidenceAttachment,
+  createResource,
+  createResourceAndLink,
+  createResources,
+  deleteResource,
+  removeEvidenceAttachment,
+  resourcePath,
+  updateContent,
+  updateResource
+} from "./files.js";
+export {
+  commitAndPushWorkspace,
+  commitWorkspace,
+  getFileHistory,
+  getGitSummary,
+  getWorkspaceHistories,
+  pullWorkspace,
+  pushWorkspace
+} from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";
-export { createObligationEvent, planObligations } from "./obligations.js";
+export {
+  completeObligationAction,
+  completeObligationEvent,
+  completeObligationOccurrence,
+  createObligationEvent,
+  planObligations
+} from "./obligations.js";
 export {
   addCalendarDays,
   calendarDayDifference,

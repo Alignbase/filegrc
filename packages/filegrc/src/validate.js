@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
-import { resolveDataPath } from "./paths.js";
+import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { isRfc3339Timestamp } from "./time.js";
@@ -43,7 +43,9 @@ export async function validateWorkspace(input = process.cwd()) {
 
     validateLocation(record, definition, entry.relativePath, diagnostics);
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
+    validateDateRanges(record, displayPath, diagnostics);
     if (record.type === "obligation") validateObligation(record, displayPath, diagnostics);
+    if (record.type === "evidence") validateEvidencePaths(record, displayPath, diagnostics);
 
     const fields = { ...loaded.model.commonFields, ...definition.fields };
     for (const [fieldName, field] of Object.entries(fields)) {
@@ -84,6 +86,8 @@ export async function validateWorkspace(input = process.cwd()) {
         }
       }
     }
+    validateIndependentApproval(record, byId, displayPath, diagnostics);
+    validateCompletedObligationEvent(record, byId, displayPath, diagnostics);
     await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
   }
 
@@ -98,6 +102,111 @@ export async function validateWorkspace(input = process.cwd()) {
     },
     loaded
   };
+}
+
+function validateDateRanges(record, path, diagnostics) {
+  for (const [startField, endField] of [
+    ["startDate", "endDate"],
+    ["periodStart", "periodEnd"],
+    ["dueWindowStart", "dueWindowEnd"]
+  ]) {
+    const start = record[startField];
+    const end = record[endField];
+    if (parseCalendarDate(start) && parseCalendarDate(end) && end < start) {
+      diagnostics.push(error(
+        "invalid-date-range",
+        path,
+        `${endField} cannot be before ${startField}.`
+      ));
+    }
+  }
+}
+
+function validateCompletedObligationEvent(record, byId, path, diagnostics) {
+  if (record.type !== "obligation-event" || record.status !== "complete") return;
+  if (record.completedOn && record.occurredOn && record.completedOn < record.occurredOn) {
+    diagnostics.push(error(
+      "incomplete-obligation-event",
+      path,
+      "completedOn cannot be before occurredOn."
+    ));
+  }
+  const actionIds = record.actionItemIds || [];
+  if (actionIds.length === 0) {
+    diagnostics.push(error("incomplete-obligation-event", path, "A complete obligation event must have action items."));
+    return;
+  }
+  for (const actionId of actionIds) {
+    const action = byId.get(actionId);
+    if (!action || action.type !== "action-item") continue;
+    if (action.status !== "done") {
+      diagnostics.push(error(
+        "incomplete-obligation-event",
+        path,
+        `Action item "${actionId}" must be done before the event is complete.`
+      ));
+      continue;
+    }
+    const obligation = byId.get(action.obligationId);
+    const expectedTypes = obligation?.type === "obligation" ? obligation.completionResourceTypes || [] : [];
+    if (!expectedTypes.length) continue;
+    const linked = [...new Set([...(action.completionResourceIds || []), ...(action.evidenceIds || [])])]
+      .map((id) => byId.get(id))
+      .filter(Boolean);
+    if (!linked.some((item) => expectedTypes.includes(item.type))) {
+      diagnostics.push(error(
+        "incomplete-obligation-event",
+        path,
+        `Action item "${actionId}" needs a linked completion of type ${expectedTypes.join(" or ")}.`
+      ));
+    }
+  }
+}
+
+function validateEvidencePaths(record, path, diagnostics) {
+  const expectedPrefix = `evidence/${record.id}/`;
+  for (const filePath of record.filePaths || []) {
+    if (
+      typeof filePath === "string"
+      && (!isCanonicalDataPath(filePath) || !filePath.startsWith(expectedPrefix))
+    ) {
+      diagnostics.push(error(
+        "misplaced-evidence-attachment",
+        path,
+        `filePaths attachments must stay under data/${expectedPrefix}.`
+      ));
+    }
+  }
+}
+
+function validateIndependentApproval(record, byId, path, diagnostics) {
+  if (!["policy", "document"].includes(record.type) || !(record.approverIds || []).length) return;
+  const owners = expandPeople(record.ownerIds || [], byId);
+  const approvers = expandPeople(record.approverIds || [], byId);
+  const overlap = [...owners].filter((id) => approvers.has(id));
+  if (overlap.length) {
+    diagnostics.push(error(
+      "overlapping-approval-participants",
+      path,
+      `Approvers must be separate from owners, including through team membership: ${overlap.join(", ")}.`
+    ));
+  }
+}
+
+function expandPeople(ids, byId, seen = new Set()) {
+  const people = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const record = byId.get(id);
+    if (record?.type === "person") people.add(id);
+    if (record?.type === "team") {
+      for (const personId of expandPeople([...(record.memberIds || []), ...(record.chairIds || [])], byId, seen)) {
+        people.add(personId);
+      }
+    }
+  }
+  return people;
 }
 
 function validateObligation(record, path, diagnostics) {
@@ -201,6 +310,18 @@ function validateRecord(record, definition, model, path, diagnostics) {
   ]);
   for (const [name, field] of Object.entries(fields)) {
     if (field.requiredWhen && conditionMatches(record, field.requiredWhen)) required.add(name);
+    if (field.disjointFrom) {
+      const values = normalizedValues(record[name]);
+      const otherValues = new Set(normalizedValues(record[field.disjointFrom]));
+      const overlap = values.filter((value) => otherValues.has(value));
+      if (overlap.length) {
+        diagnostics.push(error(
+          "overlapping-fields",
+          path,
+          `${name} must not contain the same IDs as ${field.disjointFrom}: ${overlap.join(", ")}.`
+        ));
+      }
+    }
   }
   for (const name of required) {
     if (isMissing(record[name])) {
@@ -220,6 +341,11 @@ function validateRecord(record, definition, model, path, diagnostics) {
     validateValue(name, value, field, model, path, diagnostics);
   }
 
+}
+
+function normalizedValues(value) {
+  if (Array.isArray(value)) return value.filter((item) => typeof item === "string");
+  return typeof value === "string" ? [value] : [];
 }
 
 async function validateMarkdown(record, definition, model, root, path, diagnostics) {
@@ -277,10 +403,18 @@ function validateValue(name, value, field, model, path, diagnostics) {
       }
       break;
     case "integer":
-      if (!Number.isInteger(value)) fail("must be an integer.");
+      if (!Number.isInteger(value)) {
+        fail("must be an integer.");
+        return;
+      }
+      validateNumericRange(value, field, fail);
       return;
     case "number":
-      if (typeof value !== "number" || !Number.isFinite(value)) fail("must be a finite number.");
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        fail("must be a finite number.");
+        return;
+      }
+      validateNumericRange(value, field, fail);
       return;
     case "boolean":
       if (typeof value !== "boolean") fail("must be a boolean.");
@@ -311,6 +445,15 @@ function validateValue(name, value, field, model, path, diagnostics) {
   }
   if (field.format === "email" && !EMAIL_PATTERN.test(value)) fail("must be an email address.");
   if (field.format === "timezone" && !isTimezone(value)) fail("must be an IANA time zone.");
+}
+
+function validateNumericRange(value, field, fail) {
+  if (field.minimum !== undefined && value < field.minimum) {
+    fail(`must be at least ${field.minimum}.`);
+  }
+  if (field.maximum !== undefined && value > field.maximum) {
+    fail(`must be at most ${field.maximum}.`);
+  }
 }
 
 function validateArrayItem(name, value, type, path, diagnostics) {

@@ -82,4 +82,6 @@ Violations may result in removal of authority, termination of a contract or empl
 
 ## Training and review
 
-People in higher-risk roles receive training appropriate to their responsibilities. This policy is reviewed at least annually and after a material legal, geographic, or business change.
+People in higher-risk roles complete assigned anti-bribery training within 30 days of starting those duties or changing into a covered role. Covered roles include work involving sales, procurement, payments, gifts or hospitality, government interaction, higher-risk locations, or third parties acting for {{company_name}}. The onboarding or role-change checklist records the training assignment or why it does not apply.
+
+This policy is reviewed at least annually and after a material legal, geographic, or business change.

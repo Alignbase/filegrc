@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "person-independent-approver",
+  "type": "person",
+  "title": "Independent Approver",
+  "status": "external",
+  "role": "External Security and Risk Oversight Reviewer",
+  "employmentType": "external-reviewer",
+  "teamIds": ["team-security-risk-oversight"]
+}

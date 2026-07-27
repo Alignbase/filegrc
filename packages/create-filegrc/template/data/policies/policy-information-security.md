@@ -26,7 +26,9 @@ The policy owner:
 - Coordinates incidents, exercises, reviews, and audit work.
 - Approves security exceptions or obtains the required approval.
 
-The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions.
+An external independent reviewer chairs the security and risk oversight group. This person must be separate from the policy owner and must not operate the controls under review. The reviewer approves policies and governed plans, challenges management's assessment of control operation, and records independent decisions.
+
+The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions. A one-person company must appoint a qualified external person to fill the independent reviewer role before it approves the program.
 
 System and process owners classify their systems and data, approve access, maintain safeguards, respond to findings, and keep recovery information current.
 
@@ -50,7 +52,7 @@ Company data and software must be removed from retired devices through an approv
 
 Where lawful and appropriate to the role, {{company_name}} may perform background checks before granting sensitive access. Workers must agree to applicable confidentiality, acceptable-use, and intellectual-property terms.
 
-Workers complete security training within 30 days of starting and at least annually. Role-based training is required for people with privileged access or security, engineering, finance, privacy, or people-operations duties.
+Workers complete security training within 30 days of starting and at least annually. People with privileged access or security, engineering, finance, privacy, or people-operations duties complete applicable role-based training within 30 days of starting those duties or changing roles. The onboarding or role-change checklist records the assigned training or why a module does not apply.
 
 Managers notify access administrators promptly of role changes and departures. Access for an involuntary or high-risk departure must be removed at or before notification. All other departing-worker access must be removed within 24 hours after employment or services end. Company property and active credentials must be recovered or disabled.
 
@@ -162,7 +164,7 @@ Important systems must record security-relevant activity needed to investigate m
 
 Logs must use synchronized time, restrict alteration and access, and avoid unnecessary secrets or personal data. Security logs for important systems are retained for at least 12 months unless a longer contractual or legal period applies.
 
-Owners review or alert on events based on risk. Alerts must have an assigned response path and periodic test.
+Owners review or alert on events based on risk. Alerts must have an assigned response path. The annual incident response exercise tests at least one representative alert from generation through acknowledgement, escalation, and fallback. A material change to an alert or response path receives an appropriate test within 30 days, or the owner records why no test applies.
 
 Owners review important log output and access to logs at least quarterly. They also monitor process health, network use, processor load, memory use, disk capacity, and other indicators needed to detect service degradation. Important systems have documented alert thresholds and response ownership.
 
@@ -181,7 +183,7 @@ The Incident Response Plan defines severity, materiality, declaration, roles, es
 
 The incident lead assigns a severity based on actual or likely harm. High-severity incidents receive immediate leadership and technical escalation, frequent status updates, and review of external notification duties. Lower-severity events still receive an owner, documented resolution, and escalation if impact grows.
 
-{{company_name}} tests its incident process at least annually. Material incidents receive a retrospective within one week and tracked corrective actions.
+{{company_name}} tests its incident process and a representative alert path at least annually. Material incidents receive a retrospective within one week and tracked corrective actions.
 
 ## Business continuity, backup, and recovery
 
@@ -203,7 +205,7 @@ Contracts with vendors that handle Confidential or Restricted data should addres
 - Data return and deletion
 - Audit or assurance rights when warranted
 
-Critical and high-risk vendors are reviewed at least annually and after a material service change or incident.
+Critical and high-risk vendors are reviewed at least annually. A material service change, data-use change, or vendor incident triggers a reassessment within 30 days. The owner updates the vendor, risk, contract, data-use, and follow-up records affected by the reassessment.
 
 ## Physical security
 
@@ -228,4 +230,4 @@ Violations may result in access removal, corrective action, contract remedies, o
 
 ## Review
 
-The policy owner reviews this policy at least annually and after a material change to systems, services, risks, or obligations. The security and risk oversight group reviews material changes and records its decision in meeting minutes. Git history records approvals and changes.
+The policy owner reviews this policy at least annually and after a material change to systems, services, risks, or obligations. The external independent reviewer, who must be separate from the policy owner, approves this policy and other governed policies and plans. The security and risk oversight group reviews material changes and records its decision in meeting minutes. Git history records approvals and changes.

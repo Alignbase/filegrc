@@ -6,6 +6,35 @@ This repository is {{company_name}}’s FileGRC workspace for its SOC 2 program.
 
 Using this repository does not establish compliance by itself. Records must match actual practice and evidence must prove that controls operated during the audit period.
 
+## Agent quick start
+
+Do not guess a resource type, field name, enum value, relationship, or file path. Start every unfamiliar task with the installed model:
+
+```sh
+npx filegrc guide --json
+npx filegrc guide risk-assessment --json
+npx filegrc list person --json
+```
+
+The first command lists every supported action and record type. The type guide gives the purpose, policy basis, timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
+
+For a new record, generate a mutation envelope:
+
+```sh
+npx filegrc scaffold risk-assessment --title "2026 Annual Risk Assessment" > /tmp/risk-assessment.json
+```
+
+The scaffold contains `{ "record": ..., "content": ... }`, which is the same payload shape used by the renderer. Null values and empty required arrays are deliberate prompts. Replace all of them with facts before creation:
+
+```sh
+npx filegrc create /tmp/risk-assessment.json
+npx filegrc validate --json
+git diff --check
+git diff
+```
+
+Read `data/AGENTS.md` before changing records. More specific instructions inside high-risk collections apply in addition to that file.
+
 ## Working rules
 
 - Read `README.md` and run `npm run validate` before broad changes.
@@ -27,7 +56,9 @@ Git supplies file authors, commit timestamps, messages, diffs, and revisions. Do
 
 Domain events still need explicit dates. Keep values such as `occurredOn`, `approvedOn`, `reviewedOn`, `completedOn`, and audit-period dates in their records.
 
-Make focused commits with messages that explain the reason for the change. The engine never creates commits automatically. Review the workspace diff, then use Commit changes on Repository or the Git CLI. The renderer validates the workspace and requires an explicit message before it creates a commit.
+Make focused commits with messages that explain the reason for the change. The engine never creates commits automatically. Review the workspace diff, then use the commit action on Repository or the Git CLI. The renderer validates the workspace and requires an explicit message before it creates a commit.
+
+Pull before starting work when other people or agents may have changed the repository. Without a remote, the browser's Repository page creates a local commit and hides synchronization actions. With a remote, it pulls with rebase, refuses to pull over uncommitted files, and pushes immediately after it creates a commit. Agents and terminal users own Git synchronization and should run `git pull --rebase`, `git commit`, and `git push` directly. Do not create merge commits for routine synchronization.
 
 Do not rewrite or remove committed records that explain prior audit periods. Close or retire them. Delete only mistakes and uncommitted drafts.
 
@@ -39,6 +70,12 @@ Run these commands when working with records:
 
 ```sh
 npm run validate
+npx filegrc guide --json
+npx filegrc guide risk
+npx filegrc list risk --json
+npx filegrc get risk-example
+npx filegrc get risk-example --mutation
+npx filegrc references risk-example --json
 npx filegrc describe risk
 npx filegrc search "access review"
 npm run serve
@@ -49,6 +86,8 @@ Prefer existing fields. Put organization-specific values under `extensions` with
 Never change a resource ID after it is committed. Create a replacement and link the records if identity truly changes.
 
 The local app keeps IDs out of the guided form, generates them during creation, and leaves them unchanged when a record is renamed. It presents the core model fields and relationship pickers. Use its advanced JSON section for optional fields and extensions. It rejects a save if the source file changed after the editor opened, so reload and reapply the change instead of overwriting newer work.
+
+Headless agents get the same protection by exporting an edit payload with `filegrc get RESOURCE_ID --mutation` and passing that file to `filegrc update`.
 
 ## Renderer settings and onboarding
 
@@ -66,7 +105,7 @@ The generated workspace starts with the SOC 2 Security category:
 - The 33 Common Criteria reference IDs from CC1.1 through CC9.2, without the licensed criteria text
 - The nine Description Criteria reference IDs from DC1 through DC9, without the licensed criteria text
 - Planned controls mapped to those references and the included policies
-- A security and risk oversight team chaired by the initial policy owner
+- A security and risk oversight team chaired by an external independent reviewer
 - Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
@@ -100,22 +139,63 @@ npx filegrc trigger person-ended --occurred-at 2026-07-25T16:30:00-05:00 --subje
 
 The command creates one `obligation-event` and its complete action checklist in a single validated write. Hour-based deadlines require an RFC 3339 event timestamp so an immediate or 24-hour cutoff is exact. Day-based deadlines use the event’s calendar date. Link the requested completion resources and evidence to each action item, then mark the actions done and the event complete. Every generated action has a cutoff. FileGRC applies a 30-day deadline when a custom event obligation omits one.
 
-## Period evidence packets
+Complete an event action and link its new proof in one validated write:
+
+```sh
+npx filegrc complete-action action-item-id completion-record.json --completed-on 2026-07-25
+npx filegrc complete-event obligation-event-id --completed-on 2026-07-25
+```
+
+FileGRC rejects a completion resource whose type does not match the obligation. It will close the event only after every action has its requested proof.
+
+## Headless Markdown
+
+Create and update JSON plus Markdown in one mutation envelope when practical. You can also inspect or replace a companion directly:
+
+```sh
+npx filegrc content risk-assessment risk-assessment-2026 --json
+npx filegrc content risk-assessment risk-assessment-2026 --write updated-assessment.md
+```
+
+Run `filegrc guide <type>` to get slot names. Policies use `content`, meetings use `agenda` and `minutes`, and implicit long-form work uses `record`. FileGRC derives the path and rejects content that does not belong to the record.
+
+## Audit preparation and evidence packets
+
+After setting a Type 1 as-of date or Type 2 period, initialize the engagement-specific management work:
+
+```sh
+npx filegrc prepare-audit audit-2026-type-2
+npx filegrc audit-readiness audit-2026-type-2
+npx filegrc audit-readiness audit-2026-type-2 --require-ready --json
+```
+
+Preparation creates a separate system description, management assertion, and management representation document for the engagement from the local starter templates. Type 2 preparation also creates a period completeness statement and one `audit-population` record for each standard population. It is safe to run again and does not approve documents, mark controls implemented, or create evidence. Do not reuse one completed management document across engagements.
+
+Near the end of fieldwork, link a verified fixed-format copy of the signed management representation letter to its engagement-specific document. Date it on or after the Type 1 date or Type 2 period end. A representation that is still marked for later blocks packet delivery.
+
+Catalog each authoritative source under Systems and assign its `evidenceSourceKinds`. Name the people who can access its reports and keep extraction instructions in the system's Record Markdown. For each Type 2 population, select one source system and export the exact audit period. Split a population when different systems or queries produce its items. Link a verified `population-export` evidence record that names the same source system and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope control cannot be marked not applicable.
+
+Every evidence record names its collector. Verified evidence also names its verifier and verification date. Use `sourceSystemId` for system exports, `sourceResourceIds` for FileGRC records, and `sourceCommit` to bind the evidence to repository state.
 
 Preview coverage before writing output:
 
 ```sh
-npx filegrc evidence-packet --start 2026-01-01 --end 2026-03-31 --preview --json
-npx filegrc evidence-packet --start 2026-01-01 --end 2026-03-31 --audit audit-2026-type-2
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --json
+npx filegrc evidence-packet --audit audit-2026-type-2
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --require-ready
 ```
 
-The packet includes every resource with a model-defined date or timestamp in the period, records whose explicit period overlaps it, recurring obligation occurrences, event workflows, linked evidence, active policies, mapped controls, and selected audit scope. Output under `.filegrc/evidence-packets/` is derived and must not be hand-edited or committed.
+The packet includes records explicitly related to the selected engagement, its systems, controls, criteria, policies, evidence, and dependencies. It does not include unrelated dated records from the workspace. A Type 2 packet adds period operating records, recurring obligation occurrences, event workflows, and management population reconciliations. Output includes a control matrix, source-system index, external-evidence delivery index, population index, evidence index, committed historical source versions, and SHA-256 checksums. Output under `.filegrc/evidence-packets/` is derived and must not be hand-edited or committed.
 
-Treat a packet as ready to send only when its review list is clear and its manifest names a clean Git revision. The generator copies raw records, Markdown, and local fixed attachments. It lists external evidence references without fetching them. Run the UI and CLI against the same committed revision when comparing results.
+Treat a packet as ready for management delivery only when its status is `delivery-ready`, its review list is clear, and its manifest names a clean Git revision. This means FileGRC's management checks passed. It does not mean the engagement team found the evidence sufficient or appropriate. The generator copies raw records, Markdown, and local fixed attachments. It never fetches external references. Reconcile `external-evidence-index.csv` to the auditor portal or other approved delivery system before telling the engagement team that submission is complete.
+
+Link a control test to its `audit-population` record when sampling applies. Link item-level sample evidence separately. Management owns population completeness and accuracy. The auditor owns sample selection, independent testing, exception evaluation, and the report opinion. The auditor or publisher also supplies the authoritative criteria and examination guidance. FileGRC stores references and orientation text, not licensed criteria.
 
 ## Content and approvals
 
 The seed policy owner is {{policy_owner_name}} and the reporting address is {{security_contact_email}}. Replace ownership or contacts when responsibilities change.
+
+The starter requires an external independent reviewer for SOC 2 oversight. This person must be separate from the policy owner and must not operate the controls they review. They chair Security and Risk Oversight and approve policies and governed documents. A one-person company must appoint a qualified person outside the company before approving the program. Do not use the audit firm for management or approval work without first confirming the firm's independence requirements.
 
 Policy and training attestations must identify the exact Git revision of the content that a person acknowledged. Store signatures as evidence attachments and link their evidence IDs from the attestation.
 

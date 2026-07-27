@@ -93,13 +93,15 @@ Owners review critical vendors at least annually and when the service or data us
 
 ## Retention and disposal
 
-Keep data only as long as required for its business purpose and applicable legal, contractual, tax, audit, or security needs. Data owners document retention rules for important record classes.
+Keep data only as long as required for its business purpose and applicable legal, contractual, tax, audit, or security needs. Data owners document retention rules for important record classes in the Data Retention Schedule.
 
 When retention ends, delete or anonymize the data through an approved process. Approved methods include cryptographic erase or secure wiping for reusable media and physical destruction, pulverization, or shredding for media that will not be reused. Choose a method suited to the medium and data classification.
 
 Disposal must cover active systems, local copies, and vendor-held data where practical. Backup copies may expire through the normal protected backup cycle if they cannot be selectively deleted.
 
 Legal holds and active investigations suspend normal deletion for the affected data.
+
+The policy owner reviews the Data Retention Schedule at least annually and within 30 days after a material change to systems, data use, vendors, contracts, or applicable duties. The schedule's approver must be separate from its owner.
 
 ## Personal data requests
 
@@ -115,7 +117,7 @@ Report suspected loss, unauthorized access, unintended disclosure, or improper d
 
 Workers receive data-handling training when they join and at least annually. Additional training may be required for people who handle Restricted data.
 
-People who develop or materially change applications receive secure-development training during onboarding and when applicable threats, standards, or responsibilities materially change. Training covers common application risks, access control, input handling, secrets, logging, dependencies, and secure review.
+People who develop or materially change applications complete secure-development training within 30 days of starting those duties or changing into a covered role. Training covers common application risks, access control, input handling, secrets, logging, dependencies, and secure review.
 
 Violations may result in access removal, corrective action, contract remedies, or other action allowed by law and agreement.
 

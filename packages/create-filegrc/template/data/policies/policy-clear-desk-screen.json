@@ -5,7 +5,7 @@
   "title": "Clear Desk and Clear Screen Policy",
   "status": "draft",
   "ownerIds": ["person-policy-owner"],
-  "approverIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
   "policyKind": "information-security",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",

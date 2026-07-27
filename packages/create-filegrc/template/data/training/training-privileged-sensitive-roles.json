@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "training-privileged-sensitive-roles",
+  "type": "training",
+  "title": "Privileged and Sensitive Role Training",
+  "status": "draft",
+  "ownerIds": ["person-policy-owner"],
+  "audience": ["privileged-administrators", "security", "finance", "privacy", "people-operations"],
+  "assignmentTrigger": "covered-role-start-or-change",
+  "completionWindowDays": 30,
+  "policyIds": [
+    "policy-data-protection-handling",
+    "policy-information-security"
+  ],
+  "controlIds": [
+    "control-security-training",
+    "control-access-authorization",
+    "control-strong-authentication",
+    "control-incident-response"
+  ]
+}

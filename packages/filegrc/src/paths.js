@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 
 export function resolveWorkspaceRoot(input = process.cwd()) {
   let current = resolve(input);
@@ -27,7 +27,7 @@ export function resolveDataPath(root, dataRelativePath) {
   if (typeof dataRelativePath !== "string" || !dataRelativePath) {
     throw new Error("A non-empty data-relative path is required");
   }
-  if (isAbsolute(dataRelativePath) || dataRelativePath.includes("\0") || dataRelativePath.includes("\\")) {
+  if (!isCanonicalDataPath(dataRelativePath)) {
     throw new Error(`Unsafe data path: ${dataRelativePath}`);
   }
   const dataRoot = join(resolveWorkspaceRoot(root), "data");
@@ -38,7 +38,17 @@ export function resolveDataPath(root, dataRelativePath) {
   if (!isWithin(realDataRoot, realExistingPath(existing, dataRelativePath))) {
     throw new Error(`Path resolves outside data/: ${dataRelativePath}`);
   }
+  assertNoSymlinkComponents(dataRoot, target, dataRelativePath);
   return target;
+}
+
+export function isCanonicalDataPath(value) {
+  return typeof value === "string"
+    && Boolean(value)
+    && !isAbsolute(value)
+    && !value.includes("\0")
+    && !value.includes("\\")
+    && posix.normalize(value) === value;
 }
 
 export function resolveWorkspacePath(root, workspacePath) {
@@ -52,6 +62,7 @@ export function resolveWorkspacePath(root, workspacePath) {
   if (!isWithin(workspaceRoot, realExistingPath(existing, workspacePath))) {
     throw new Error(`Path resolves outside the workspace: ${workspacePath}`);
   }
+  assertNoSymlinkComponents(workspaceRoot, target, workspacePath);
   return target;
 }
 
@@ -69,11 +80,32 @@ function isDirectory(path) {
 
 function canonicalWorkspaceRoot(path) {
   const root = realpathSync(path);
-  const dataRoot = realpathSync(join(root, "data"));
+  const dataPath = join(root, "data");
+  const dataRoot = realpathSync(dataPath);
   if (!isWithin(root, dataRoot)) {
     throw new Error("The data directory resolves outside the workspace.");
   }
+  if (lstatSync(dataPath).isSymbolicLink()) {
+    throw new Error("The data directory must be a real directory, not a symbolic link.");
+  }
   return root;
+}
+
+function assertNoSymlinkComponents(parent, target, displayPath) {
+  const path = relative(parent, target);
+  if (!path) return;
+  let current = parent;
+  for (const segment of path.split(sep)) {
+    current = join(current, segment);
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error(`Path contains a symbolic link: ${displayPath}`);
+      }
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+  }
 }
 
 function nearestExistingPath(path) {

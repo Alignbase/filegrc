@@ -107,6 +107,9 @@ async function resolvePromptValues(parameters, options) {
 
 async function assertWritableTarget(target, force) {
   try {
+    if ((await lstat(target)).isSymbolicLink()) {
+      throw new Error(`Target directory must not be a symbolic link: ${target}.`);
+    }
     const items = await readdir(target);
     if (items.length && !force) {
       throw new Error(`Target directory is not empty: ${target}. Pass --force to add files without overwriting existing paths.`);
@@ -117,13 +120,9 @@ async function assertWritableTarget(target, force) {
 }
 
 async function assertNoTemplateCollisions(target) {
-  const template = join(packageRoot, "template");
   const collisions = [];
-  const templatePaths = (await collectFiles(template)).map((source) => {
-    const templatePath = relative(template, source);
-    return templatePath === "gitignore" ? ".gitignore" : templatePath;
-  });
-  for (const destinationPath of [...templatePaths, ...baselineRecordPaths()]) {
+  for (const destinationPath of [...await templateDestinationPaths(), ...baselineRecordPaths()]) {
+    await assertNoSymlinkComponents(target, destinationPath);
     try {
       await lstat(join(target, destinationPath));
       collisions.push(destinationPath);
@@ -136,12 +135,27 @@ async function assertNoTemplateCollisions(target) {
   }
 }
 
+async function assertNoSymlinkComponents(target, relativePath) {
+  let current = target;
+  for (const segment of relativePath.split(/[\\/]/).filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error(`Target contains a symbolic link at ${relative(target, current)}.`);
+      }
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+  }
+}
+
 async function renderTemplate(target, parameterConfig, values) {
   const declared = new Set([
     ...parameterConfig.parameters.map(({ key }) => key),
     ...parameterConfig.generated.map(({ key }) => key)
   ]);
-  const files = await collectFiles(target);
+  const files = (await templateDestinationPaths()).map((path) => join(target, path));
   for (const path of files) {
     if (!textExtensions.has(extname(path)) && basename(path) !== ".gitignore") continue;
     let source = await readFile(path, "utf8");
@@ -155,6 +169,14 @@ async function renderTemplate(target, parameterConfig, values) {
     if (unresolved) throw new Error(`Unresolved template token "{{${unresolved[1]}}}" in ${path}`);
     await writeFile(path, source, "utf8");
   }
+}
+
+async function templateDestinationPaths() {
+  const template = join(packageRoot, "template");
+  return (await collectFiles(template)).map((source) => {
+    const templatePath = relative(template, source);
+    return templatePath === "gitignore" ? ".gitignore" : templatePath;
+  });
 }
 
 async function collectFiles(directory) {

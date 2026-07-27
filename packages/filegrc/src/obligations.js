@@ -1,5 +1,5 @@
 import { createResourceId } from "./id.js";
-import { createResources } from "./files.js";
+import { createResourceAndLink, createResources, updateResource } from "./files.js";
 import {
   addCalendarDays,
   calendarDayDifference,
@@ -73,6 +73,8 @@ export function planObligations(resources, options = {}) {
         ownerIds: obligation.ownerIds || [],
         policyIds: obligation.policyIds || [],
         controlIds: obligation.controlIds || [],
+        scopeResourceIds: obligation.scopeResourceIds || [],
+        templateResourceId: obligation.templateResourceId || null,
         completionResourceTypes: obligation.completionResourceTypes || [],
         window: normalizedEventWindow(obligation.window)
       });
@@ -241,6 +243,96 @@ export async function createObligationEvent(input, options) {
   return { event, actions };
 }
 
+export async function completeObligationOccurrence(input, options) {
+  const loaded = await loadWorkspace(input);
+  const obligation = loaded.resources.find((record) => (
+    record.type === "obligation" && record.id === options?.obligationId
+  ));
+  if (!obligation) throw new Error(`Obligation "${options?.obligationId ?? ""}" was not found.`);
+  assertExpectedCompletionType(obligation, options?.record);
+  return createResourceAndLink(loaded.root, options.record, {
+    type: "obligation",
+    id: obligation.id,
+    field: "completionResourceIds",
+    expectedRevision: options.expectedRevision
+  }, { content: options.content });
+}
+
+export async function completeObligationAction(input, options) {
+  const loaded = await loadWorkspace(input);
+  const action = loaded.resources.find((record) => (
+    record.type === "action-item" && record.id === options?.actionItemId
+  ));
+  if (!action) throw new Error(`Action item "${options?.actionItemId ?? ""}" was not found.`);
+  if (!action.obligationId) throw new Error(`Action item "${action.id}" is not linked to an obligation.`);
+  const obligation = loaded.resources.find((record) => (
+    record.type === "obligation" && record.id === action.obligationId
+  ));
+  if (!obligation) throw new Error(`Obligation "${action.obligationId}" was not found.`);
+  assertExpectedCompletionType(obligation, options?.record);
+  const completedOn = requireDate(options?.completedOn, "completion date");
+  const event = loaded.resources.find((record) => record.type === "obligation-event" && record.id === action.sourceResourceId);
+  if (event?.occurredOn && completedOn < event.occurredOn) {
+    throw new Error("The action completion date cannot be before its policy event date.");
+  }
+  return createResourceAndLink(loaded.root, options.record, {
+    type: "action-item",
+    id: action.id,
+    field: "completionResourceIds",
+    expectedRevision: options.expectedRevision,
+    patch: {
+      status: "done",
+      completedOn
+    }
+  }, { content: options.content });
+}
+
+export async function completeObligationEvent(input, options) {
+  const loaded = await loadWorkspace(input);
+  const event = loaded.resources.find((record) => (
+    record.type === "obligation-event" && record.id === options?.eventId
+  ));
+  if (!event) throw new Error(`Obligation event "${options?.eventId ?? ""}" was not found.`);
+  const completedOn = requireDate(options?.completedOn, "completion date");
+  if (completedOn < event.occurredOn) {
+    throw new Error("The event completion date cannot be before its occurrence date.");
+  }
+  const plan = planObligations(loaded.resources, {
+    asOf: completedOn,
+    through: completedOn,
+    includeComplete: true
+  });
+  const run = plan.eventRuns.find((item) => item.id === event.id);
+  if (!run || run.actions.length === 0) {
+    throw new Error(`Obligation event "${event.id}" has no action checklist.`);
+  }
+  const incomplete = run.actions.filter((action) => action.status !== "complete");
+  if (incomplete.length) {
+    throw new Error(
+      `Obligation event "${event.id}" still has incomplete actions: ${incomplete.map((action) => action.actionItemId).join(", ")}.`
+    );
+  }
+  return updateResource(loaded.root, "obligation-event", event.id, {
+    ...event,
+    status: "complete",
+    completedOn
+  }, {
+    expectedRevision: options.expectedRevision
+  });
+}
+
+function assertExpectedCompletionType(obligation, record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error("A completion resource record is required.");
+  }
+  const expected = obligation.completionResourceTypes ?? [];
+  if (expected.length && !expected.includes(record.type)) {
+    throw new Error(
+      `Obligation "${obligation.id}" expects a completion resource of type ${expected.join(" or ")}, not "${record.type ?? ""}".`
+    );
+  }
+}
+
 function calendarWindow(recurrence, configuredWindow, index) {
   const occurrence = calendarOccurrence(recurrence, index);
   const next = calendarOccurrence(recurrence, index + 1);
@@ -344,6 +436,8 @@ function planEventRun(event, actionItems, byId, asOf, now) {
         ownerIds: record.assigneeIds || [],
         policyIds: obligation?.policyIds || [],
         controlIds: obligation?.controlIds || [],
+        scopeResourceIds: obligation?.scopeResourceIds || [],
+        templateResourceId: obligation?.templateResourceId || null,
         completionResourceIds: record.completionResourceIds || [],
         evidenceIds: record.evidenceIds || [],
         expectedCompletionTypes,
@@ -457,10 +551,11 @@ function comparePlannedItems(a, b) {
 
 function eventActionDescription(obligation, eventType) {
   const policy = obligation.policyIds?.length ? ` Policy sources: ${obligation.policyIds.join(", ")}.` : "";
+  const scope = obligation.scopeResourceIds?.length ? ` Review scoped resources: ${obligation.scopeResourceIds.join(", ")}.` : "";
   const completion = obligation.completionResourceTypes?.length
     ? ` Link completion records of type ${obligation.completionResourceTypes.join(", ")} and any evidence before marking this done.`
     : " Link the completion record and evidence before marking this done.";
-  return `Triggered by ${eventType}.${policy}${completion}`;
+  return `Triggered by ${eventType}.${policy}${scope}${completion}`;
 }
 
 function requireDate(value, label) {

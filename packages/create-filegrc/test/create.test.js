@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -37,13 +37,29 @@ test("creates a complete generic repository with one dependency", async (context
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
   assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
+  const independentApprover = JSON.parse(await readFile(join(target, "data", "people", "person-independent-approver.json"), "utf8"));
+  assert.equal(independentApprover.status, "external");
+  assert.notEqual(independentApprover.id, owner.id);
+  const oversightTeam = JSON.parse(await readFile(join(target, "data", "teams", "team-security-risk-oversight.json"), "utf8"));
+  assert.deepEqual(oversightTeam.memberIds, [owner.id, independentApprover.id]);
+  assert.deepEqual(oversightTeam.chairIds, [independentApprover.id]);
+  for (const collection of ["policies", "documents"]) {
+    const files = (await readdir(join(target, "data", collection))).filter((file) => file.endsWith(".json"));
+    for (const file of files) {
+      const record = JSON.parse(await readFile(join(target, "data", collection, file), "utf8"));
+      if (!record.approverIds?.length) continue;
+      assert.equal(record.ownerIds.some((id) => record.approverIds.includes(id)), false, `${record.id} has the same owner and approver`);
+    }
+  }
   const informationSecurityPolicy = JSON.parse(await readFile(join(target, "data", "policies", "policy-information-security.json"), "utf8"));
   assert.equal("contentPath" in informationSecurityPolicy, false);
   await access(join(target, "data", "policies", "policy-information-security.md"));
   assert.deepEqual(informationSecurityPolicy.relatedDocumentIds, [
     "document-business-continuity-disaster-recovery",
-    "document-incident-response-plan"
+    "document-incident-response-plan",
+    "document-data-retention-schedule"
   ]);
+  assert.deepEqual(informationSecurityPolicy.approverIds, [independentApprover.id]);
   const informationSecurityContent = await readFile(join(target, "data", "policies", "policy-information-security.md"), "utf8");
   assert.match(informationSecurityContent, /The remediation clock starts when Example "Engineering" confirms the finding/);
   assert.match(informationSecurityContent, /\| Low \| 90 days \|/);
@@ -56,6 +72,17 @@ test("creates a complete generic repository with one dependency", async (context
   const incidentResponseContent = await readFile(join(target, "data", "documents", "document-incident-response-plan.md"), "utf8");
   assert.match(incidentResponseContent, /A \*\*material incident\*\* is an incident that/);
   assert.match(incidentResponseContent, /The triggering law, contract, policy, or commitment/);
+  assert.match(incidentResponseContent, /representative security alert from generation through receipt, acknowledgement, escalation, and a fallback route/);
+  const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
+  assert.deepEqual(retentionSchedule.approverIds, [independentApprover.id]);
+  const retentionScheduleContent = await readFile(join(target, "data", "documents", "document-data-retention-schedule.md"), "utf8");
+  assert.match(retentionScheduleContent, /Security logs for important systems[\s\S]*At least 12 months/);
+  assert.match(retentionScheduleContent, /Important production backups[\s\S]*At least 30 days/);
+  const trainingFiles = (await readdir(join(target, "data", "training"))).filter((file) => file.endsWith(".json"));
+  assert.equal(trainingFiles.length, 4);
+  assert.ok(trainingFiles.includes("training-secure-development.json"));
+  assert.ok(trainingFiles.includes("training-privileged-sensitive-roles.json"));
+  assert.ok(trainingFiles.includes("training-anti-bribery-high-risk-roles.json"));
   const employeeHandbook = await readFile(join(target, "data", "policies", "policy-employee-handbook.md"), "utf8");
   assert.match(employeeHandbook, /optional handbook template/);
   assert.match(employeeHandbook, /designated people contact/);
@@ -69,9 +96,9 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(framework.version, "2017 with revised points of focus (2022)");
   const descriptionFramework = JSON.parse(await readFile(join(target, "data", "frameworks", "framework-aicpa-soc2-description-criteria.json"), "utf8"));
   assert.equal(descriptionFramework.version, "2018 with revised implementation guidance (2022)");
-  const requirementFiles = await readdir(join(target, "data", "requirements"));
-  const controlFiles = await readdir(join(target, "data", "controls"));
-  const obligationFiles = await readdir(join(target, "data", "obligations"));
+  const requirementFiles = (await readdir(join(target, "data", "requirements"))).filter((file) => file.endsWith(".json"));
+  const controlFiles = (await readdir(join(target, "data", "controls"))).filter((file) => file.endsWith(".json"));
+  const obligationFiles = (await readdir(join(target, "data", "obligations"))).filter((file) => file.endsWith(".json"));
   assert.equal(requirementFiles.length, 42);
   const requirementRecords = await Promise.all(requirementFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "requirements", file), "utf8"))));
   assert.ok(requirementRecords.every((record) => typeof record.description === "string" && record.description.length > 20));
@@ -87,7 +114,11 @@ test("creates a complete generic repository with one dependency", async (context
   const changeDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc9.json"), "utf8"));
   assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
   assert.equal(controlFiles.length, 29);
-  assert.equal(obligationFiles.length, 33);
+  assert.equal(obligationFiles.length, 41);
+  const programRepository = JSON.parse(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.json"), "utf8"));
+  assert.deepEqual(programRepository.evidenceSourceKinds, ["training-acknowledgement", "exception-finding"]);
+  assert.equal(programRepository.inScope, false);
+  assert.match(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.md"), "utf8"), /system of record for FileGRC governance records/);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
@@ -97,17 +128,58 @@ test("creates a complete generic repository with one dependency", async (context
       .every((obligation) => Number.isInteger(obligation.window?.endOffsetDays) || Number.isInteger(obligation.window?.endOffsetHours)),
     true
   );
+  const obligationsById = new Map(obligations.map((obligation) => [obligation.id, obligation]));
+  const eventObligationCounts = obligations
+    .filter((obligation) => obligation.recurrence.mode === "event")
+    .reduce((counts, obligation) => {
+      counts[obligation.recurrence.eventType] = (counts[obligation.recurrence.eventType] || 0) + 1;
+      return counts;
+    }, {});
+  assert.equal(eventObligationCounts["person-started"], 5);
+  assert.equal(eventObligationCounts["person-role-changed"], 2);
+  assert.equal(eventObligationCounts["personal-device-access-planned"], 2);
+  assert.equal(eventObligationCounts["vendor-reassessment-needed"], 2);
+  assert.equal(eventObligationCounts["system-material-change"], 5);
+  assert.deepEqual(obligationsById.get("obligation-worker-start-role-training").scopeResourceIds, [
+    "training-secure-development",
+    "training-privileged-sensitive-roles",
+    "training-anti-bribery-high-risk-roles"
+  ]);
+  assert.equal(obligationsById.get("obligation-worker-role-change-training").window.endOffsetDays, 30);
+  assert.equal(obligationsById.get("obligation-personal-device-approval").window.endOffsetDays, 0);
+  assert.equal(obligationsById.get("obligation-personal-device-registration").window.endOffsetDays, 0);
+  assert.equal(obligationsById.get("obligation-vendor-material-change-review").window.endOffsetDays, 30);
+  assert.equal(obligationsById.get("obligation-vendor-material-change-records").window.endOffsetDays, 30);
+  assert.deepEqual(obligationsById.get("obligation-system-change-retention").scopeResourceIds, ["document-data-retention-schedule"]);
+  assert.ok(obligationsById.get("obligation-system-change-alert-path").completionResourceTypes.includes("control-test"));
+  assert.deepEqual(obligationsById.get("obligation-annual-incident-exercise").controlIds, [
+    "control-incident-exercise",
+    "control-logging-monitoring"
+  ]);
   const coveredRequirements = new Set(controls.flatMap((control) => control.requirementIds));
   const commonCriteriaFiles = requirementFiles.filter((file) => file.startsWith("requirement-soc2-cc"));
   assert.equal(commonCriteriaFiles.length, 33);
   assert.equal(commonCriteriaFiles.every((file) => coveredRequirements.has(file.replace(/\.json$/, ""))), true);
   await access(join(target, "package-lock.json"));
+  await access(join(target, "data", "AGENTS.md"));
+  await access(join(target, "data", "risk-assessments", "AGENTS.md"));
+  await access(join(target, "data", "evidence", "AGENTS.md"));
+  await access(join(target, "data", "obligations", "AGENTS.md"));
+  await access(join(target, "data", "obligation-events", "AGENTS.md"));
+  await access(join(target, "data", "action-items", "AGENTS.md"));
+  await access(join(target, "data", "audits", "AGENTS.md"));
+  await access(join(target, "data", "audit-populations", "AGENTS.md"));
+  await access(join(target, "data", "policies", "AGENTS.md"));
+  await access(join(target, "data", "documents", "document-soc2-system-description.md"));
+  await access(join(target, "data", "documents", "document-soc2-management-assertion.md"));
+  await access(join(target, "data", "documents", "document-soc2-period-completeness.md"));
+  await access(join(target, "data", "documents", "document-soc2-management-representation.md"));
   await access(join(target, ".gitignore"));
   await access(join(target, ".git"));
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 124, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
 });
 
 test("refuses a non-empty target by default", async (context) => {
@@ -125,7 +197,7 @@ test("refuses a non-empty target by default", async (context) => {
 test("adds a workspace to a non-empty target with force without overwriting files", async (context) => {
   const target = await mkdtemp(join(tmpdir(), "create-filegrc-force-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
-  await writeFile(join(target, "keep.txt"), "keep", "utf8");
+  await writeFile(join(target, "keep.txt"), "keep {{company_name}}", "utf8");
   await createFileGRC({
     target,
     yes: true,
@@ -133,7 +205,7 @@ test("adds a workspace to a non-empty target with force without overwriting file
     filegrcVersion: "1.2.3",
     install: false
   });
-  assert.equal(await readFile(join(target, "keep.txt"), "utf8"), "keep");
+  assert.equal(await readFile(join(target, "keep.txt"), "utf8"), "keep {{company_name}}");
   await access(join(target, "README.md"));
 });
 
@@ -168,6 +240,25 @@ test("rejects force mode when a generated baseline record would be overwritten",
   }), /control-security-governance\.json/);
   assert.equal(await readFile(controlPath, "utf8"), "keep me");
   await assert.rejects(access(join(target, "data", "workspace.json")), /ENOENT/);
+});
+
+test("rejects force mode when a target path traverses a symbolic link", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-symlink-"));
+  const target = join(parent, "target");
+  const outside = join(parent, "outside");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  await mkdir(target);
+  await mkdir(outside);
+  await symlink(outside, join(target, "data"));
+  await assert.rejects(createFileGRC({
+    target,
+    yes: true,
+    force: true,
+    filegrcVersion: "1.2.3",
+    install: false
+  }), /symbolic link/);
+  assert.deepEqual(await readdir(outside), []);
+  await assert.rejects(access(join(target, "README.md")), /ENOENT/);
 });
 
 test("rejects multiline identity values before writing the target", async (context) => {

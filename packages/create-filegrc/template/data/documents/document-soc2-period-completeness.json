@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "document-soc2-period-completeness",
+  "type": "document",
+  "title": "SOC 2 Period Completeness Statement",
+  "status": "draft",
+  "documentKind": "soc2-period-completeness",
+  "template": true,
+  "ownerIds": [
+    "person-policy-owner"
+  ],
+  "approverIds": [
+    "person-independent-approver"
+  ],
+  "version": "0.1",
+  "classification": "Confidential"
+}

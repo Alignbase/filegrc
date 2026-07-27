@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { assessAuditPreparation } from "./audit-preparation.js";
 import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
@@ -51,6 +52,16 @@ export async function createAppState(input = process.cwd(), options = {}) {
   };
   const asOf = options.asOf ?? currentCalendarDate(workspace.timezone);
   const generatedAt = new Date().toISOString();
+  const audits = loaded.resources.filter((record) => record.type === "audit");
+  const auditPreparations = Object.fromEntries(await Promise.all(
+    (audits.length ? audits : [null]).map(async (audit) => {
+      const preparation = await assessAuditPreparation(loaded, {
+        auditId: audit?.id,
+        generatedAt
+      });
+      return [audit?.id || "none", preparation];
+    })
+  ));
   return {
     generatedAt,
     readOnly: Boolean(options.readOnly),
@@ -63,6 +74,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
       diagnostics: validation.diagnostics
     },
     obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt }),
+    auditPreparations,
     git
   };
 }

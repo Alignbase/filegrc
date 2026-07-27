@@ -1,0 +1,906 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { createResource, createResources, deleteResource, updateResource } from "./files.js";
+import { createResourceId } from "./id.js";
+import { resolveDataPath } from "./paths.js";
+import { markdownEntries } from "./resource-markdown.js";
+import { loadWorkspace } from "./workspace.js";
+
+export async function assessAuditPreparation(input, options = {}) {
+  const loaded = input?.resources && input?.model && input?.entries
+    ? input
+    : await loadWorkspace(input);
+  const records = loaded.resources;
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const audits = records.filter((record) => record.type === "audit");
+  const audit = options.auditId
+    ? audits.find((record) => record.id === options.auditId)
+    : options.selectDefault === false
+      ? null
+      : audits.find((record) => !["complete", "closed", "canceled"].includes(record.status)) || audits[0];
+  if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
+
+  const stages = [];
+  stages.push(scopeStage(audit, records, byId));
+  stages.push(programStage(audit, records, byId));
+  stages.push(await documentsStage(loaded, audit, byId));
+  stages.push(evidenceStage(audit, records, byId, loaded.model));
+  stages.push(populationsStage(audit, records, byId, loaded.model));
+  stages.push(auditorStage(loaded.model));
+
+  for (const stage of stages) {
+    stage.counts = countStatuses(stage.items);
+    stage.status = stage.counts.action ? "action" : stage.counts.later ? "later" : "complete";
+  }
+  const items = stages.flatMap((stage) => stage.items);
+  const counts = countStatuses(items);
+  const managedItems = items.filter((item) => !["external", "info", "later"].includes(item.status));
+  const completedManagedItems = managedItems.filter((item) => item.status === "complete");
+  return {
+    schemaVersion: 1,
+    generatedAt: options.generatedAt || new Date().toISOString(),
+    audit: audit ? auditSummary(audit) : null,
+    status: counts.action ? "needs-work" : audit ? "management-ready" : "not-started",
+    progress: {
+      complete: completedManagedItems.length,
+      total: managedItems.length,
+      percent: managedItems.length ? Math.round((completedManagedItems.length / managedItems.length) * 100) : 0
+    },
+    counts,
+    canInitialize: Boolean(audit
+      && ["soc-2-type-1", "soc-2-type-2"].includes(audit.auditKind)
+      && (audit.auditKind === "soc-2-type-1"
+        ? audit.typeOneAsOf
+        : audit.periodStart && audit.periodEnd)
+      && initializationNeeded(audit, records, loaded.model)),
+    stages
+  };
+}
+
+export async function prepareAuditWorkspace(input, options = {}) {
+  const loaded = await loadWorkspace(input);
+  const audit = loaded.resources.find((record) => record.type === "audit" && record.id === options.auditId);
+  if (!audit) throw new Error(`Audit "${options.auditId || ""}" was not found.`);
+  if (!["soc-2-type-1", "soc-2-type-2"].includes(audit.auditKind)) {
+    throw new Error("Audit preparation requires a SOC 2 Type 1 or Type 2 engagement.");
+  }
+  if (audit.auditKind === "soc-2-type-2" && (!audit.periodStart || !audit.periodEnd)) {
+    throw new Error("Set the Type 2 audit period before initializing audit preparation.");
+  }
+  if (audit.auditKind === "soc-2-type-1" && !audit.typeOneAsOf) {
+    throw new Error("Set the Type 1 as-of date before initializing audit preparation.");
+  }
+
+  const model = loaded.model.auditReadiness || {};
+  const auditEntry = loaded.entries.find((entry) => entry.record.id === audit.id);
+  const auditRevision = createHash("sha256").update(auditEntry.source).digest("hex");
+  const documents = loaded.resources.filter((record) => record.type === "document");
+  const nextAudit = { ...audit };
+  const linkedDocuments = [];
+  const createdDocuments = [];
+  const existingIds = loaded.resources.map((record) => record.id);
+  try {
+    for (const definition of applicableManagementDocuments(audit, model)) {
+      const linked = nextAudit[definition.field]
+        ? documents.find((record) => record.id === nextAudit[definition.field])
+        : null;
+      if (linked && linked.template !== true) continue;
+      const template = linked
+        || documents.find((record) => record.documentKind === definition.kind && record.template === true)
+        || documents.find((record) => record.documentKind === definition.kind);
+      if (!template) continue;
+      const source = await primaryMarkdown(loaded, template);
+      if (!source) throw new Error(`The ${definition.title} template has no Markdown content.`);
+      const id = createResourceId("document", `${audit.id} ${definition.kind}`, existingIds);
+      existingIds.push(id);
+      const document = engagementDocument(template, definition, audit, id);
+      const content = materializeManagementMarkdown(source, audit, loaded.resources);
+      await createResource(loaded.root, document, { content: { content } });
+      documents.push(document);
+      createdDocuments.push(document);
+      nextAudit[definition.field] = id;
+      linkedDocuments.push(id);
+    }
+  } catch (error) {
+    for (const document of createdDocuments.reverse()) {
+      await deleteResource(loaded.root, document.type, document.id).catch(() => {});
+    }
+    throw error;
+  }
+
+  const existingKinds = new Set(loaded.resources
+    .filter((record) => record.type === "audit-population" && record.auditId === audit.id)
+    .map((record) => record.populationKind));
+  const selectedControls = (audit.controlIds || [])
+    .map((id) => loaded.resources.find((record) => record.id === id))
+    .filter(Boolean);
+  const sourceSystems = loaded.resources.filter((record) => record.type === "system");
+  const populations = (audit.auditKind === "soc-2-type-2" ? model.populationTemplates || [] : [])
+    .filter((template) => !existingKinds.has(template.kind))
+    .map((template) => {
+      const id = createResourceId(
+        "audit-population",
+        `${template.kind} ${audit.id}`,
+        existingIds
+      );
+      existingIds.push(id);
+      const controlIds = selectedControls
+        .filter((control) => (template.controlCodes || []).includes(control.code))
+        .map((control) => control.id);
+      const matchingSources = sourceSystems.filter((system) => (
+        (system.evidenceSourceKinds || []).includes(template.sourceKind)
+      ));
+      return {
+        schemaVersion: 1,
+        id,
+        type: "audit-population",
+        title: template.title,
+        status: "planned",
+        auditId: audit.id,
+        populationKind: template.kind,
+        periodStart: audit.periodStart,
+        periodEnd: audit.periodEnd,
+        ownerIds: [...audit.ownerIds],
+        ...(controlIds.length ? { controlIds } : {}),
+        ...(matchingSources.length === 1 ? { sourceSystemId: matchingSources[0].id } : {}),
+        reconciliationSummary: `Authoritative source to confirm: ${template.sourcePrompt}. ${template.timing || ""}`.trim()
+      };
+    });
+
+  try {
+    if (populations.length) await createResources(loaded.root, populations);
+    if (JSON.stringify(nextAudit) !== JSON.stringify(audit)) {
+      await updateResource(loaded.root, "audit", audit.id, nextAudit, { expectedRevision: auditRevision });
+    }
+  } catch (error) {
+    for (const population of populations.reverse()) {
+      await deleteResource(loaded.root, population.type, population.id).catch(() => {});
+    }
+    for (const document of createdDocuments.reverse()) {
+      await deleteResource(loaded.root, document.type, document.id).catch(() => {});
+    }
+    throw error;
+  }
+  return {
+    auditId: audit.id,
+    linkedDocumentIds: linkedDocuments,
+    createdDocumentIds: createdDocuments.map((record) => record.id),
+    createdPopulationIds: populations.map((record) => record.id)
+  };
+}
+
+function scopeStage(audit, records, byId) {
+  const items = [];
+  items.push(item(
+    "engagement",
+    audit ? "complete" : "action",
+    "Create the engagement",
+    audit
+      ? `${audit.title} is the audit record used for scope, dates, the CPA firm, requests, and the final report.`
+      : "Create a SOC 2 Type 2 audit record before collecting period evidence.",
+    audit || { type: "audit" }
+  ));
+  if (!audit) {
+    return stage("scope", "Scope and Engagement", "Define the report, service boundary, criteria, dependencies, and CPA firm.", items);
+  }
+
+  const periodComplete = audit.auditKind === "soc-2-type-2"
+    ? audit.periodStart && audit.periodEnd
+    : audit.auditKind === "soc-2-type-1"
+      ? audit.typeOneAsOf
+      : false;
+  items.push(item(
+    "period",
+    periodComplete ? "complete" : "action",
+    "Set the report type and date",
+    periodComplete
+      ? audit.auditKind === "soc-2-type-2"
+        ? `Type 2 period: ${audit.periodStart} through ${audit.periodEnd}.`
+        : `Type 1 as-of date: ${audit.typeOneAsOf}.`
+      : audit.auditKind === "soc-2-type-1"
+        ? "Set the Type 1 as-of date."
+        : audit.auditKind === "soc-2-type-2"
+          ? "Set the exact Type 2 start and end dates."
+          : "Change this readiness record to a Type 1 or Type 2 engagement before planning the report.",
+    audit
+  ));
+
+  const systems = (audit.systemIds || []).map((id) => byId.get(id)).filter(Boolean);
+  const completeSystems = systems.filter((system) => (
+    system.status === "active"
+    && system.inScope === true
+    && system.description
+    && system.dataClassification
+    && (system.ownerIds || []).length
+  ));
+  items.push(item(
+    "systems",
+    systems.length && completeSystems.length === systems.length ? "complete" : "action",
+    "Define the service boundary",
+    systems.length
+      ? `${completeSystems.length} of ${systems.length} selected systems are active, explicitly in scope, owned, classified, and described.`
+      : "Select every in-scope service and supporting system, then describe its owner, environment, data, vendors, and boundary.",
+    systems[0] || { type: "system" }
+  ));
+
+  const engagementStart = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodStart;
+  const commitments = records.filter((record) => record.type === "commitment"
+    && record.status === "active"
+    && systems.some((system) => (
+      (system.commitmentIds || []).includes(record.id) || (record.systemIds || []).includes(system.id)
+    )));
+  const completeCommitments = commitments.filter((commitment) => (
+    commitment.statement
+    && (commitment.ownerIds || []).length
+    && commitment.effectiveOn
+    && (!engagementStart || commitment.effectiveOn <= engagementStart)
+    && (commitment.requirementIds || []).length
+    && (commitment.controlIds || []).length
+  ));
+  const systemsWithoutCommitments = systems.filter((system) => !completeCommitments.some((commitment) => (
+    (system.commitmentIds || []).includes(commitment.id) || (commitment.systemIds || []).includes(system.id)
+  )));
+  items.push(item(
+    "commitments",
+    systems.length && !systemsWithoutCommitments.length ? "complete" : "action",
+    "Record commitments and system requirements",
+    systems.length
+      ? `${completeCommitments.length} complete active commitments cover ${systems.length - systemsWithoutCommitments.length} of ${systems.length} in-scope systems.`
+      : "Record customer commitments and internal system requirements after defining the service boundary.",
+    commitments[0] || { type: "commitment" }
+  ));
+
+  const frameworkRequirementIds = records
+    .filter((record) => record.type === "requirement" && (audit.frameworkIds || []).includes(record.frameworkId))
+    .map((record) => record.id);
+  const unresolvedRequirements = frameworkRequirementIds
+    .map((id) => byId.get(id))
+    .filter((requirement) => (
+      requirement.applicability === "undetermined"
+      || (requirement.applicability === "not-applicable" && !requirement.applicabilityRationale)
+    ));
+  const applicableRequirementIds = frameworkRequirementIds.filter((id) => byId.get(id)?.applicability === "applicable");
+  const missingApplicableRequirements = applicableRequirementIds.filter((id) => !(audit.requirementIds || []).includes(id));
+  const selectedRequirements = (audit.requirementIds || []).map((id) => byId.get(id)).filter(Boolean);
+  const unexpectedRequirements = selectedRequirements.filter((requirement) => (
+    !(audit.frameworkIds || []).includes(requirement.frameworkId)
+    || requirement.applicability !== "applicable"
+  ));
+  const descriptionCriteriaSelected = selectedRequirements.some((requirement) => (
+    (requirement.tags || []).includes("description-criteria")
+    || /^DC\d+/i.test(requirement.reference || "")
+  ));
+  const criteriaComplete = (audit.frameworkIds || []).length
+    && (audit.requirementIds || []).length
+    && (audit.controlIds || []).length
+    && !unresolvedRequirements.length
+    && !missingApplicableRequirements.length
+    && !unexpectedRequirements.length
+    && descriptionCriteriaSelected;
+  items.push(item(
+    "criteria",
+    criteriaComplete ? "complete" : "action",
+    "Confirm criteria and controls in scope",
+    criteriaComplete
+      ? `${audit.requirementIds.length} applicable criteria and ${audit.controlIds.length} controls are selected, with applicability resolved for the selected frameworks.`
+      : unresolvedRequirements.length
+        ? `Resolve applicability and record a rationale for ${unresolvedRequirements.length} selected-framework criteria.`
+        : missingApplicableRequirements.length
+          ? `Add ${missingApplicableRequirements.length} applicable selected-framework criteria to the engagement.`
+          : unexpectedRequirements.length
+            ? `Remove ${unexpectedRequirements.length} criteria that are not applicable members of the selected frameworks.`
+            : !descriptionCriteriaSelected
+              ? "Select the applicable SOC 2 description criteria as well as the Trust Services Criteria."
+          : "Select the Security criteria, any optional Trust Services Categories, and the controls included in this report.",
+    audit
+  ));
+
+  const expectedSubserviceVendorIds = new Set(systems.flatMap((system) => system.subserviceVendorIds || []));
+  const missingSubserviceVendorIds = [...expectedSubserviceVendorIds].filter((id) => !(audit.subserviceVendorIds || []).includes(id));
+  const inclusiveSystemIds = records
+    .filter((record) => record.type === "system" && (audit.subserviceVendorIds || []).includes(record.vendorId))
+    .map((record) => record.id);
+  const inclusiveControlCount = (audit.controlIds || [])
+    .map((id) => byId.get(id))
+    .filter((control) => (control?.systemIds || []).some((id) => inclusiveSystemIds.includes(id)))
+    .length;
+  const subserviceComplete = Boolean(audit.subserviceMethod)
+    && !((audit.subserviceVendorIds || []).length && audit.subserviceMethod === "not-applicable")
+    && !missingSubserviceVendorIds.length
+    && !(audit.subserviceMethod === "inclusive" && (!inclusiveSystemIds.length || !inclusiveControlCount));
+  items.push(item(
+    "subservices",
+    subserviceComplete ? "complete" : "action",
+    "Decide how subservice organizations are presented",
+    subserviceComplete
+      ? `${displayValue(audit.subserviceMethod)} method selected for ${(audit.subserviceVendorIds || []).length} subservice organizations${audit.subserviceMethod === "inclusive" ? `, with ${inclusiveControlCount} included controls` : ""}.`
+      : missingSubserviceVendorIds.length
+        ? `Add ${missingSubserviceVendorIds.length} subservice organizations already identified by the in-scope systems.`
+        : audit.subserviceMethod === "inclusive"
+        ? "For the inclusive method, catalog the subservice systems and include the subservice controls the auditor will examine."
+      : "Identify relevant infrastructure and service providers, then agree on carve-out, inclusive, or not-applicable treatment.",
+    audit
+  ));
+
+  const relevantComplementaryControls = records.filter((record) => (
+    record.type === "complementary-control"
+    && record.status === "active"
+    && (record.systemIds || []).some((id) => (audit.systemIds || []).includes(id))
+  ));
+  const selectedComplementaryControls = (audit.complementaryControlIds || []).map((id) => byId.get(id)).filter(Boolean);
+  const complementaryComplete = audit.complementaryControlsConclusion === "not-applicable"
+    ? !relevantComplementaryControls.length
+    : audit.complementaryControlsConclusion === "identified"
+      && selectedComplementaryControls.length
+      && selectedComplementaryControls.every((control) => (
+        control.status === "active"
+        && (control.systemIds || []).some((id) => (audit.systemIds || []).includes(id))
+      ));
+  items.push(item(
+    "complementary-controls",
+    complementaryComplete ? "complete" : "action",
+    "Resolve customer and subservice dependencies",
+    complementaryComplete
+      ? audit.complementaryControlsConclusion === "identified"
+        ? `${audit.complementaryControlIds.length} complementary controls are selected.`
+        : "Management recorded that no complementary controls are needed for the described service."
+      : audit.complementaryControlsConclusion === "not-applicable" && relevantComplementaryControls.length
+        ? `${relevantComplementaryControls.length} active complementary controls apply to the in-scope systems, which conflicts with the not-applicable conclusion.`
+      : "State whether customers or subservice organizations must operate complementary controls. If they do, record and select each one.",
+    audit
+  ));
+
+  const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
+  const auditorNamed = Boolean(auditor || hasMeaningfulValue(audit.auditor));
+  items.push(item(
+    "auditor",
+    auditorNamed ? "complete" : "action",
+    "Engage an independent CPA firm",
+    auditorNamed
+      ? `${auditor?.title || "An independent CPA firm"} is recorded for the engagement.`
+      : "Select a CPA firm and agree on scope, timing, subservice treatment, and evidence expectations early.",
+    audit
+  ));
+  return stage("scope", "Scope and Engagement", "Define the report, service boundary, criteria, dependencies, and CPA firm.", items);
+}
+
+function programStage(audit, records, byId) {
+  const selectedControls = audit?.controlIds?.length
+    ? audit.controlIds.map((id) => byId.get(id)).filter(Boolean)
+    : records.filter((record) => record.type === "control" && record.status !== "retired");
+  const policyIds = new Set(selectedControls.flatMap((control) => control.policyIds || []));
+  const policies = (policyIds.size
+    ? [...policyIds].map((id) => byId.get(id)).filter(Boolean)
+    : records.filter((record) => record.type === "policy" && !["superseded", "retired"].includes(record.status)));
+  const approvedPolicies = policies.filter((policy) => (
+    ["approved", "active"].includes(policy.status)
+    && policy.approvedOn
+    && policy.effectiveOn
+    && (policy.ownerIds || []).length
+    && (policy.approverIds || []).length
+    && partiesIndependent(policy.ownerIds, policy.approverIds, byId)
+  ));
+  const implementedControls = selectedControls.filter((control) => (
+    control.status === "implemented"
+    && control.effectiveOn
+    && control.activity
+    && control.operationMode
+    && control.frequency
+    && (control.ownerIds || []).length
+    && (control.requirementIds || []).length
+    && (control.policyIds || []).length
+    && (!audit?.systemIds?.length || (control.systemIds || []).some((id) => audit.systemIds.includes(id)))
+  ));
+  const assessment = records.find((record) => (
+    record.type === "risk-assessment"
+    && record.status === "complete"
+    && record.methodology
+    && record.approvedOn
+    && partiesIndependent(record.assessorIds, record.reviewerIds, byId)
+    && (!audit?.periodEnd || (record.assessmentDate <= audit.periodEnd && record.assessmentDate >= shiftYear(audit.periodEnd, -1)))
+    && (!audit?.systemIds?.length || !(record.systemIds || []).length || record.systemIds.some((id) => audit.systemIds.includes(id)))
+  ));
+  return stage("program", "Adopt and Implement", "Approve the rules, confirm the controls match actual operation, and assess risk.", [
+    item(
+      "policies",
+      policies.length && approvedPolicies.length === policies.length ? "complete" : "action",
+      "Approve the applicable policies",
+      policies.length
+        ? `${approvedPolicies.length} of ${policies.length} applicable policies have an owner, separate approver, approval date, and effective date.`
+        : "Link the controls to the policies management will adopt.",
+      approvedPolicies[0] || policies[0] || { type: "policy" }
+    ),
+    item(
+      "controls",
+      selectedControls.length && implementedControls.length === selectedControls.length ? "complete" : "action",
+      "Confirm every control is implemented",
+      selectedControls.length
+        ? `${implementedControls.length} of ${selectedControls.length} selected controls are implemented, effective, owned, mapped, scoped, and define their activity, mode, and frequency.`
+        : "Select the controls for the engagement, then confirm each statement matches current practice.",
+      implementedControls[0] || selectedControls[0] || { type: "control" }
+    ),
+    item(
+      "risk-assessment",
+      assessment ? "complete" : "action",
+      "Complete the in-scope risk assessment",
+      assessment
+        ? `${assessment.title} is the most recent completed, approved, and independently reviewed assessment found for the service.`
+        : "Complete an in-scope risk assessment during the year ending with the report date or period, using the approved method and a reviewer separate from the assessor.",
+      assessment || { type: "risk-assessment" }
+    )
+  ]);
+}
+
+async function documentsStage(loaded, audit, byId) {
+  const definitions = applicableManagementDocuments(audit, loaded.model.auditReadiness || {});
+  const items = [];
+  for (const definition of definitions) {
+    const document = audit?.[definition.field] ? byId.get(audit[definition.field]) : null;
+    const source = document ? await primaryMarkdown(loaded, document) : "";
+    const contentIssues = managementDocumentContentIssues(source, definition, audit);
+    const engagementEnd = audit?.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit?.periodEnd;
+    if (document?.approvedOn && engagementEnd && document.approvedOn < engagementEnd) {
+      contentIssues.push(`Approve the final document on or after the engagement ${audit.auditKind === "soc-2-type-1" ? "date" : "period end"}.`);
+    }
+    if (definition.kind === "soc2-period-completeness" && document?.approvedOn && audit) {
+      const latestReconciliation = loaded.resources
+        .filter((record) => record.type === "audit-population" && record.auditId === audit.id)
+        .map((record) => record.reconciledOn)
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+      if (latestReconciliation && document.approvedOn < latestReconciliation) {
+        contentIssues.push("Approve the period completeness statement after the last population reconciliation.");
+      }
+    }
+    if (definition.kind === "soc2-management-representation" && document) {
+      const signedEvidence = (document.evidenceIds || [])
+        .map((id) => byId.get(id))
+        .find((record) => (
+          record?.type === "evidence"
+          && record.status === "verified"
+          && (record.filePaths || []).length
+        ));
+      if (!signedEvidence) contentIssues.push("Link a verified fixed-format copy of the signed representation letter as evidence.");
+      else if (!signedEvidence.collectedOn || (engagementEnd && signedEvidence.collectedOn < engagementEnd)) {
+        contentIssues.push(`The signed representation must be dated on or after the engagement ${audit.auditKind === "soc-2-type-1" ? "date" : "period end"}.`);
+      }
+    }
+    const complete = Boolean(
+      document
+      && document.type === "document"
+      && document.template !== true
+      && document.status === "active"
+      && document.approvedOn
+      && document.effectiveOn
+      && (document.ownerIds || []).length
+      && (document.approverIds || []).length
+      && partiesIndependent(document.ownerIds, document.approverIds, byId)
+      && source
+      && !contentIssues.length
+    );
+    const representationLater = definition.kind === "soc2-management-representation"
+      && audit
+      && !["fieldwork", "complete"].includes(audit.status);
+    items.push(item(
+      definition.kind,
+      complete ? "complete" : representationLater ? "later" : "action",
+      definition.title,
+      complete
+        ? "Linked Markdown is complete, active, approved, and effective."
+        : document
+          ? `${definition.timing} ${contentIssues[0] || "Complete and approve the engagement-specific document."}`
+          : `Link the starter ${definition.title.toLowerCase()} to this audit. ${definition.timing}`,
+      document || { type: "document" }
+    ));
+  }
+  return stage("documents", "Management Documents", "Prepare management's description, assertions, completeness work, and closing representations.", items);
+}
+
+function evidenceStage(audit, records, byId, model) {
+  const controls = (audit?.controlIds || []).map((id) => byId.get(id)).filter(Boolean);
+  const evidence = records.filter((record) => record.type === "evidence");
+  const periodEvidence = evidence.filter((record) => (
+    record.status === "verified"
+    && (record.evidenceKind !== "rendered-record" || record.sourceCommit)
+    && evidenceRelevantToAuditDate(record, audit)
+  ));
+  const controlsWithEvidence = controls.filter((control) => periodEvidence.some((record) => (
+    controlIdsForRecord(record, byId).has(control.id)
+  )));
+  const items = [
+    item(
+      "control-evidence",
+      controls.length && controlsWithEvidence.length === controls.length ? "complete" : "action",
+      "Collect operating evidence from authoritative systems",
+      controls.length
+        ? `${controlsWithEvidence.length} of ${controls.length} selected controls have verified evidence for the period.`
+        : "Select the engagement controls before checking their operating evidence.",
+      periodEvidence[0] || { type: "evidence" }
+    )
+  ];
+  const systems = records.filter((record) => record.type === "system" && record.status === "active");
+  for (const source of model.auditReadiness?.externalEvidence || []) {
+    const relevantControls = controls.filter((control) => (source.controlCodes || []).includes(control.code));
+    if (!relevantControls.length) {
+      items.push(item(
+        `source-${source.id}`,
+        "info",
+        source.title,
+        `No mapped controls from this source category are selected. ${source.timing}`
+      ));
+      continue;
+    }
+    const sourceSystems = systems.filter((system) => (
+      (system.evidenceSourceKinds || []).some((kind) => (source.sourceKinds || []).includes(kind))
+    ));
+    const coveredControls = relevantControls.filter((control) => periodEvidence.some((record) => (
+      sourceSystems.some((system) => system.id === record.sourceSystemId)
+      && controlIdsForRecord(record, byId).has(control.id)
+    )));
+    const status = sourceSystems.length && coveredControls.length === relevantControls.length ? "complete" : "action";
+    const message = !sourceSystems.length
+      ? `${source.description} Add the authoritative systems to Systems and assign these evidence source roles: ${(source.sourceKinds || []).map(displayValue).join(", ")}. ${source.timing}`
+      : coveredControls.length !== relevantControls.length
+        ? `${sourceSystems.map((system) => system.title).join(", ")} ${sourceSystems.length === 1 ? "is" : "are"} cataloged, but verified source evidence covers ${coveredControls.length} of ${relevantControls.length} mapped controls. ${source.timing}`
+        : `${sourceSystems.map((system) => system.title).join(", ")} provide verified source evidence for ${relevantControls.length} mapped controls. ${source.timing}`;
+    items.push(item(
+      `source-${source.id}`,
+      status,
+      source.title,
+      message,
+      periodEvidence.find((record) => sourceSystems.some((system) => system.id === record.sourceSystemId))
+        || sourceSystems[0]
+        || { type: "system" }
+    ));
+  }
+  return stage("evidence", "Operating Evidence Sources", "Catalog each authoritative system, record when to extract its evidence, and bind verified exports to the controls. FileGRC packages the proof but does not replace those systems.", items);
+}
+
+function populationsStage(audit, records, byId, model) {
+  if (audit && audit.auditKind !== "soc-2-type-2") {
+    return stage(
+      "populations",
+      "Population Completeness",
+      "Complete period populations apply to Type 2 operating-effectiveness testing.",
+      [item("type-2-only", "info", "No Type 2 population plan required", "A Type 1 report evaluates design and implementation as of one date. The auditor may still request specific inventories or evidence.")]
+    );
+  }
+  const populations = audit
+    ? records.filter((record) => record.type === "audit-population" && record.auditId === audit.id)
+    : [];
+  const templates = model.auditReadiness?.populationTemplates || [];
+  const items = templates.map((template) => {
+    const population = populations.find((record) => record.populationKind === template.kind);
+    const result = populationResult(population, audit, byId);
+    return item(
+      `population-${template.kind}`,
+      result.status,
+      template.title,
+      result.message || `Use ${template.sourcePrompt} as the starting point, then record the exact authoritative source.`,
+      population || { type: "audit-population" }
+    );
+  });
+  return stage(
+    "populations",
+    "Population Completeness",
+    "Management reconciles complete populations for the exact period. A zero count still needs a source export and recorded query.",
+    items
+  );
+}
+
+function auditorStage(model) {
+  return stage("auditor", "Auditor-Owned Work", "FileGRC prepares the record set but does not make the CPA firm's independent judgments.", [
+    item("firm-eligibility", "external", "Firm eligibility and independence", "Confirm directly with the engagement partner that the firm and signing practitioner meet applicable licensing, peer-review, ethics, and independence requirements. Keep the signed engagement terms with the audit record if management needs a copy."),
+    item("sampling", "external", "Sample selection and independent testing", "The auditor chooses samples, performs tests, evaluates exceptions, and decides whether more work is needed."),
+    item("report", "external", "Report and opinion", "Management reviews and signs its representations. The auditor issues the final report and opinion."),
+    item("criteria", "external", "Authoritative criteria and examination guidance", "FileGRC stores reference IDs and orientation text. Use the publisher's current official criteria and the engagement team's examination guidance for scope, evaluation, and reporting.")
+  ]);
+}
+
+function populationResult(population, audit, byId) {
+  if (!population) return { status: "action", message: "Initialize this population for the engagement." };
+  if (population.periodStart !== audit?.periodStart || population.periodEnd !== audit?.periodEnd) {
+    return { status: "action", message: "The population period does not match the exact audit period." };
+  }
+  if (population.status === "not-applicable") {
+    if ((population.controlIds || []).length) {
+      return { status: "action", message: "This population is linked to in-scope controls, so it cannot be marked not applicable. Reconcile it or remove the incorrect control links." };
+    }
+    return population.notApplicableReason
+      ? { status: "complete", message: `Not applicable: ${population.notApplicableReason}` }
+      : { status: "action", message: "Document why this population does not apply." };
+  }
+  if (population.status !== "reconciled") {
+    return { status: "action", message: `${displayValue(population.status)}. Export and reconcile the complete population, even when its count is zero.` };
+  }
+  const evidence = byId.get(population.sourceEvidenceId);
+  const requiredEvidence = [
+    "generatedAt",
+    "timezone",
+    "queryDescription",
+    "populationCount",
+    "completenessValidation",
+    "accuracyValidation"
+  ];
+  const evidenceComplete = evidence
+    && evidence.type === "evidence"
+    && evidence.evidenceKind === "population-export"
+    && evidence.status === "verified"
+    && population.sourceSystemId
+    && evidence.sourceSystemId === population.sourceSystemId
+    && evidence.periodStart === audit.periodStart
+    && evidence.periodEnd === audit.periodEnd
+    && requiredEvidence.every((field) => evidence[field] !== undefined && evidence[field] !== null && evidence[field] !== "");
+  const reconciliationComplete = (population.reconciledByIds || []).length
+    && population.reconciledOn
+    && ["complete", "complete-with-exceptions"].includes(population.conclusion)
+    && (population.conclusion !== "complete-with-exceptions" || population.reconciliationSummary);
+  const generatedOn = timestampDate(evidence?.generatedAt, evidence?.timezone);
+  const sequenceComplete = Number.isInteger(evidence?.populationCount)
+    && evidence.populationCount >= 0
+    && generatedOn > audit.periodEnd
+    && population.reconciledOn >= generatedOn;
+  if (!evidenceComplete || !reconciliationComplete || !sequenceComplete) {
+    return { status: "action", message: "Finish the reconciliation and link a verified population export with its exact query, timezone, count, completeness check, and accuracy check." };
+  }
+  return {
+    status: "complete",
+    message: `${evidence.populationCount} items reconciled from ${evidence.source || "the authoritative source"}${population.conclusion === "complete-with-exceptions" ? " with documented exceptions" : ""}.`
+  };
+}
+
+function timestampDate(value, timezone) {
+  if (!value || !timezone) return null;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(instant);
+    const fields = Object.fromEntries(parts.map(({ type, value: item }) => [type, item]));
+    return `${fields.year}-${fields.month}-${fields.day}`;
+  } catch {
+    return null;
+  }
+}
+
+async function primaryMarkdown(loaded, record) {
+  const definition = loaded.model.resources[record.type];
+  const item = markdownEntries(loaded.model, record).find((entry) => (
+    definition.markdown?.[entry.name]?.primary || entry.name === loaded.model.recordContent?.slot
+  ));
+  if (!item) return "";
+  try {
+    return await readFile(resolveDataPath(loaded.root, item.path), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function initializationNeeded(audit, records, model) {
+  const readiness = model.auditReadiness || {};
+  const needsDocumentLink = applicableManagementDocuments(audit, readiness)
+    .some((definition) => {
+      const linked = records.find((record) => record.id === audit[definition.field]);
+      return (!linked || linked.template === true) && records.some((record) => (
+        record.type === "document" && record.documentKind === definition.kind
+      ));
+    });
+  const populationKinds = new Set(records
+    .filter((record) => record.type === "audit-population" && record.auditId === audit.id)
+    .map((record) => record.populationKind));
+  const needsPopulation = audit.auditKind === "soc-2-type-2" && (readiness.populationTemplates || [])
+    .some((template) => !populationKinds.has(template.kind));
+  return needsDocumentLink || needsPopulation;
+}
+
+function applicableManagementDocuments(audit, readiness) {
+  return (readiness.managementDocuments || []).filter((definition) => (
+    !audit || !definition.engagementKinds?.length || definition.engagementKinds.includes(audit.auditKind)
+  ));
+}
+
+function evidenceOverlaps(record, start, end) {
+  return (record.periodStart && record.periodEnd && record.periodStart <= end && record.periodEnd >= start)
+    || (record.collectedOn && record.collectedOn >= start && record.collectedOn <= end);
+}
+
+function evidenceRelevantToAuditDate(record, audit) {
+  if (!audit) return false;
+  if (audit.auditKind === "soc-2-type-1") {
+    const date = audit.typeOneAsOf;
+    return Boolean(date) && (
+      (record.periodStart && record.periodEnd && record.periodStart <= date && record.periodEnd >= date)
+      || record.collectedOn === date
+    );
+  }
+  return Boolean(audit.periodStart && audit.periodEnd)
+    && evidenceOverlaps(record, audit.periodStart, audit.periodEnd);
+}
+
+function controlIdsForRecord(record, byId, seen = new Set()) {
+  const ids = new Set();
+  if (!record || seen.has(record.id)) return ids;
+  seen.add(record.id);
+  if (record.type === "control") ids.add(record.id);
+  for (const id of record.controlIds || []) ids.add(id);
+  if (record.controlId) ids.add(record.controlId);
+  if (record.obligationId) {
+    for (const id of byId.get(record.obligationId)?.controlIds || []) ids.add(id);
+  }
+  for (const sourceId of record.sourceResourceIds || []) {
+    for (const id of controlIdsForRecord(byId.get(sourceId), byId, seen)) ids.add(id);
+  }
+  if (record.sourceResourceId) {
+    for (const id of controlIdsForRecord(byId.get(record.sourceResourceId), byId, seen)) ids.add(id);
+  }
+  return ids;
+}
+
+function hasMeaningfulValue(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).some((item) => (
+    typeof item === "string" ? item.trim() : item && typeof item === "object" ? hasMeaningfulValue(item) : false
+  ));
+}
+
+function containsOpenPlaceholder(source) {
+  return /\[[^\]\n]{2,}\](?!\()/u.test(source);
+}
+
+function managementDocumentContentIssues(source, definition, audit) {
+  if (!source) return ["Add the required Markdown content."];
+  if (containsOpenPlaceholder(source)) return ["Replace every bracketed preparation placeholder before approval."];
+  const words = source.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
+  if (definition.minimumWords && words.length < definition.minimumWords) {
+    return [`Add substantive content; this document has ${words.length} words and the preparation check expects at least ${definition.minimumWords}.`];
+  }
+  const missingHeadings = (definition.requiredHeadings || []).filter((heading) => (
+    !new RegExp(`^#{1,6}\\s+.*\\b${escapeRegExp(heading)}\\b`, "imu").test(source)
+  ));
+  if (missingHeadings.length) return [`Add the missing description sections: ${missingHeadings.join(", ")}.`];
+  if (definition.dateBinding === "engagement" && audit) {
+    const dates = audit.auditKind === "soc-2-type-1"
+      ? [audit.typeOneAsOf]
+      : [audit.periodStart, audit.periodEnd];
+    if (dates.some((date) => date && !source.includes(date))) {
+      return ["Name the exact engagement date or period in the document."];
+    }
+  }
+  return [];
+}
+
+function engagementDocument(template, definition, audit, id) {
+  const {
+    approvedOn,
+    effectiveOn,
+    evidenceIds,
+    id: ignoredId,
+    status: ignoredStatus,
+    supersedesId,
+    template: ignoredTemplate,
+    title: ignoredTitle,
+    ...shared
+  } = template;
+  return {
+    ...shared,
+    id,
+    title: `${audit.title}: ${definition.title}`,
+    status: "draft",
+    ownerIds: [...audit.ownerIds],
+    ...(audit.systemIds?.length ? { systemIds: [...audit.systemIds] } : {}),
+    version: "0.1"
+  };
+}
+
+function materializeManagementMarkdown(source, audit, records) {
+  const keep = audit.auditKind === "soc-2-type-1" ? "type-1" : "type-2";
+  const discard = keep === "type-1" ? "type-2" : "type-1";
+  const withoutDiscarded = source.replace(
+    new RegExp(`<!-- ${discard}:start -->[\\s\\S]*?<!-- ${discard}:end -->\\s*`, "g"),
+    ""
+  );
+  const systems = (audit.systemIds || [])
+    .map((id) => records.find((record) => record.id === id)?.title)
+    .filter(Boolean)
+    .join(", ");
+  const categoryTags = new Set(["security", "availability", "processing-integrity", "confidentiality", "privacy"]);
+  const categories = [...new Set((audit.requirementIds || [])
+    .flatMap((id) => records.find((record) => record.id === id)?.tags || [])
+    .filter((tag) => categoryTags.has(tag))
+    .map(displayValue))]
+    .join(", ");
+  const period = audit.auditKind === "soc-2-type-1"
+    ? audit.typeOneAsOf || "[as-of date]"
+    : audit.periodStart && audit.periodEnd
+      ? `${audit.periodStart} through ${audit.periodEnd}`
+      : "[start date] through [end date]";
+  return withoutDiscarded
+    .replaceAll(`<!-- ${keep}:start -->`, "")
+    .replaceAll(`<!-- ${keep}:end -->`, "")
+    .replaceAll("[as-of date]", audit.typeOneAsOf || "[as-of date]")
+    .replaceAll("[start date]", audit.periodStart || "[start date]")
+    .replaceAll("[end date]", audit.periodEnd || "[end date]")
+    .replaceAll("[engagement date or period]", period)
+    .replaceAll("[engagement scope]", audit.scope || "[engagement scope]")
+    .replaceAll("[in-scope systems]", systems || "[in-scope systems]")
+    .replaceAll("[selected categories]", categories || "[selected categories]")
+    .replaceAll(
+      "[Carve-out, inclusive, or not applicable]",
+      audit.subserviceMethod ? displayValue(audit.subserviceMethod) : "[Carve-out, inclusive, or not applicable]"
+    );
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function partiesIndependent(ownerIds, approverIds, byId) {
+  const owners = partyPeople(ownerIds, byId);
+  const approvers = partyPeople(approverIds, byId);
+  return owners.size > 0
+    && approvers.size > 0
+    && ![...owners].some((id) => approvers.has(id));
+}
+
+function partyPeople(ids = [], byId, seen = new Set()) {
+  const people = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const record = byId.get(id);
+    if (record?.type === "person") people.add(id);
+    if (record?.type === "team") {
+      for (const personId of partyPeople([...(record.memberIds || []), ...(record.chairIds || [])], byId, seen)) {
+        people.add(personId);
+      }
+    }
+  }
+  return people;
+}
+
+function auditSummary(audit) {
+  return {
+    id: audit.id,
+    title: audit.title,
+    status: audit.status,
+    kind: audit.auditKind,
+    periodStart: audit.periodStart || null,
+    periodEnd: audit.periodEnd || null
+  };
+}
+
+function stage(id, title, description, items) {
+  return { id, title, description, items };
+}
+
+function item(id, status, title, message, resource = {}) {
+  return {
+    id,
+    status,
+    title,
+    message,
+    ...(resource.type ? { resourceType: resource.type } : {}),
+    ...(resource.id ? { resourceId: resource.id } : {})
+  };
+}
+
+function countStatuses(items) {
+  const counts = { complete: 0, action: 0, later: 0, external: 0, info: 0 };
+  for (const item of items) counts[item.status] = (counts[item.status] || 0) + 1;
+  return counts;
+}
+
+function displayValue(value) {
+  return String(value || "not started").replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function shiftYear(value, offset) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCFullYear(date.getUTCFullYear() + offset);
+  return date.toISOString().slice(0, 10);
+}

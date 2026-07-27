@@ -6,7 +6,7 @@
   "status": "draft",
   "documentKind": "plan",
   "ownerIds": ["person-policy-owner"],
-  "approverIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
   "reviewCadence": {

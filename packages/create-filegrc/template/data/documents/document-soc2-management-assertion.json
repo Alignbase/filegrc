@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "document-soc2-management-assertion",
+  "type": "document",
+  "title": "SOC 2 Management Assertion",
+  "status": "draft",
+  "documentKind": "soc2-management-assertion",
+  "template": true,
+  "ownerIds": [
+    "person-policy-owner"
+  ],
+  "approverIds": [
+    "person-independent-approver"
+  ],
+  "version": "0.1",
+  "classification": "Confidential"
+}

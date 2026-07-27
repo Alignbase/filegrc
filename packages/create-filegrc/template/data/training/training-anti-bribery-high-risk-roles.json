@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "training-anti-bribery-high-risk-roles",
+  "type": "training",
+  "title": "Anti-Bribery Training for Higher-Risk Roles",
+  "status": "draft",
+  "ownerIds": ["person-policy-owner"],
+  "audience": ["sales", "finance", "procurement", "government-interaction", "third-party-agents"],
+  "assignmentTrigger": "covered-role-start-or-change",
+  "completionWindowDays": 30,
+  "policyIds": ["policy-anti-bribery-corruption"],
+  "controlIds": [
+    "control-security-governance",
+    "control-workforce-expectations",
+    "control-security-training"
+  ]
+}

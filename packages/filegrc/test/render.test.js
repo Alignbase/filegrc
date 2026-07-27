@@ -54,6 +54,19 @@ test("static builds reject output files that are external symlinks", async (cont
   assert.equal(await readFile(outsideIndex, "utf8"), "keep");
 });
 
+test("static builds reject output symlinks that target workspace source files", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-build-internal-link-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, ".filegrc", "site"), { recursive: true });
+  const workspacePath = join(root, "data", "workspace.json");
+  const original = await readFile(workspacePath, "utf8");
+  await symlink(workspacePath, join(root, ".filegrc", "site", "index.html"));
+
+  await assert.rejects(buildWorkspace(root), /symbolic link/);
+  assert.equal(await readFile(workspacePath, "utf8"), original);
+});
+
 test("static builds reject broken output symlinks before creating their external targets", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-build-broken-link-"));
   const outside = await mkdtemp(join(tmpdir(), "filegrc-build-broken-outside-"));
@@ -80,7 +93,7 @@ test("serves state and browser assets", async (context) => {
   assert.equal(stateResponse.status, 200);
   const state = await stateResponse.json();
   assert.equal(state.validation.ok, true);
-  assert.equal(state.resources.length, 2);
+  assert.equal(state.resources.length, 3);
   const appResponse = await fetch(`${result.url}/filegrc-app.js`);
   assert.equal(appResponse.status, 200);
   assert.equal(appResponse.headers.get("x-frame-options"), "DENY");
@@ -145,7 +158,7 @@ test("serves state and browser assets", async (context) => {
         title: "API Policy",
         status: "draft",
         ownerIds: ["person-owner"],
-        approverIds: ["person-owner"]
+        approverIds: ["person-approver"]
       },
       content: { content: "# API Policy\n\nInitial." }
     })
@@ -295,7 +308,8 @@ test("records and links obligation work through the writable API", async (contex
         evidenceKind: "review",
         source: "Internal review",
         collectedOn: "2026-01-20",
-        classification: "Internal"
+        classification: "Internal",
+        collectorIds: ["person-owner"]
       },
       content: { content: "# Quarterly review evidence" }
     })
@@ -492,6 +506,7 @@ test("proper-cases dropdown labels and uses native required validation", () => {
   assert.match(APP_SCRIPT, /checkbox\.required = required && index === requiredIndex/);
   assert.match(APP_SCRIPT, /choice\.control\.setCustomValidity\(choice\.present \? "" : "Provide at least one of:/);
   assert.match(APP_SCRIPT, /querySelector\("form"\)\.reportValidity\(\)/);
+  assert.match(APP_SCRIPT, /querySelector\("form"\)\.noValidate = true/);
   assert.match(APP_SCRIPT, /field\.requiredWhen/);
 });
 
@@ -502,10 +517,10 @@ test("title-cases multi-word navigation and interface headings", () => {
   assert.match(APP_SCRIPT, /title: "Evidence Delivery"/);
   assert.match(APP_SCRIPT, /esc\(titleCase\(definition\.pluralTitle\)\)/);
   assert.match(APP_SCRIPT, /<span>Obligation Board<\/span>/);
-  assert.match(APP_SCRIPT, /<span>Evidence Packet<\/span>/);
+  assert.match(APP_SCRIPT, /<span>Audit Readiness<\/span>/);
   assert.match(APP_SCRIPT, /<h1>' \+ esc\(titleCase\(title\)\)/);
   assert.match(APP_SCRIPT, /<h3>Follow the Audit Chain<\/h3>/);
-  assert.match(APP_SCRIPT, /<h2>Build an Evidence Packet<\/h2>/);
+  assert.match(APP_SCRIPT, /<h2>Prepare the Audit<\/h2>/);
   assert.match(APP_SCRIPT, /<h2>Repository State<\/h2>/);
   assert.match(APP_SCRIPT, /esc\(titleCase\(step\.title\)\)/);
 });
@@ -603,11 +618,20 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Complete a checklist when key events occur/);
   assert.match(APP_SCRIPT, /Plan the engagement and generate evidence/);
   assert.match(APP_SCRIPT, /This renderer edits those files/);
+  assert.match(APP_SCRIPT, /Repository pulls with rebase/);
+  assert.match(APP_SCRIPT, /terminal users run git pull --rebase, git commit, and git push directly/);
   assert.match(APP_SCRIPT, /The UI and FileGRC CLI use the same calculation/);
   assert.match(APP_SCRIPT, /Every action has a policy-based cutoff or a reasonable default deadline/);
   assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
+  assert.match(APP_SCRIPT, /name="independentApproverName" required/);
+  assert.match(APP_SCRIPT, /name="independentApproverEmail" type="email" required/);
+  assert.match(APP_SCRIPT, /The independent approver must be a different person from the policy owner/);
+  assert.match(APP_SCRIPT, /id: "person-independent-approver"/);
+  assert.match(APP_SCRIPT, /status: "external"/);
+  assert.match(APP_SCRIPT, /The reviewer must be separate from the policy owner and control operators/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
-  assert.match(APP_SCRIPT, /Git repository detected/);
+  assert.match(APP_SCRIPT, /Git repository and remote detected/);
+  assert.match(APP_SCRIPT, /Git remote needed/);
   assert.match(APP_SCRIPT, /Git setup needed/);
   assert.match(APP_SCRIPT, /Saving still works/);
   assert.match(APP_SCRIPT, /The FileGRC server is unavailable/);
@@ -615,6 +639,16 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /id="start-onboarding"/);
   assert.match(APP_SCRIPT, /id="commit-workspace"/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/commit"/);
+  assert.match(APP_SCRIPT, /Commit and Push Workspace Changes/);
+  assert.match(APP_SCRIPT, /result\.pushed/);
+  assert.match(APP_SCRIPT, /result\.pushSkipped/);
+  assert.match(APP_SCRIPT, /Commit locally/);
+  assert.match(APP_SCRIPT, />Pull with rebase<\/button>/);
+  assert.match(APP_SCRIPT, />Push<\/button>/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/git\/" \+ action/);
+  assert.match(APP_SCRIPT, /state\.git\.upstream/);
+  assert.match(APP_SCRIPT, /class="repository-sync-status"/);
+  assert.match(APP_SCRIPT, /Pushed " \+ result\.shortCommit/);
   assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{background:transparent;backdrop-filter:none\}/);
@@ -630,7 +664,7 @@ test("runs optional onboarding from committed renderer settings", () => {
 });
 
 test("renders shared obligation and evidence-packet workflows", () => {
-  assert.match(APP_SCRIPT, /function renderObligations\(main\)/);
+  assert.match(APP_SCRIPT, /function renderObligations\(main, params = new URLSearchParams\(\)\)/);
   assert.match(APP_SCRIPT, /const sections = \["upcoming", "due", "overdue"\]\.map/);
   assert.doesNotMatch(APP_SCRIPT, /class="metrics obligation-metrics"/);
   assert.match(APP_SCRIPT, /state\.obligations\.counts\.overdue/);
@@ -643,9 +677,17 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function obligationCompletionSeed\(type, item, obligation\)/);
   assert.match(APP_SCRIPT, /data-record-obligation/);
   assert.match(APP_SCRIPT, /data-expand-obligations/);
+  assert.match(APP_SCRIPT, /#\/obligations\?section=events/);
+  assert.match(APP_SCRIPT, /#\/obligations\?event=/);
+  assert.match(APP_SCRIPT, /params\.get\("event"\)/);
   assert.match(APP_SCRIPT, /function renderAuditPacket\(main/);
+  assert.match(APP_SCRIPT, /function renderAuditPreparation\(preparation\)/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/audit-preparation"/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-packet"/);
-  assert.match(APP_SCRIPT, /every dated record/i);
+  assert.match(APP_SCRIPT, /let latestPacketResult = null/);
+  assert.match(APP_SCRIPT, /root\.querySelector\("#packet-results"\)/);
+  assert.match(APP_SCRIPT, /control matrix/i);
+  assert.match(APP_SCRIPT, /required for delivery/i);
   assert.match(APP_SCRIPT, /class="packet-preflight"/);
   assert.match(APP_SCRIPT, /Generate draft/);
   assert.match(APP_STYLES, /\.obligation-board\{display:grid/);
@@ -661,6 +703,7 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.match(APP_SCRIPT, /class="panel obligation-panel"/);
   assert.match(APP_SCRIPT, /class="panel event-reminder-panel"/);
   assert.match(APP_SCRIPT, /class="panel audit-panel"/);
+  assert.match(APP_SCRIPT, /No audit requests yet/);
   assert.doesNotMatch(APP_SCRIPT, /Baseline review/);
   assert.doesNotMatch(APP_SCRIPT, /Everything the program can track/);
   assert.doesNotMatch(APP_SCRIPT, /class="panel schedule-panel"/);

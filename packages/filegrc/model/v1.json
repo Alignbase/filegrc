@@ -5,7 +5,39 @@
   "recordContent": {
     "slot": "record",
     "label": "Record",
-    "defaultResourceTypes": ["control-test","finding","exception","policy-review","risk","risk-assessment","vendor-review","access-review","vulnerability","vulnerability-scan","incident","exercise","backup-test","penetration-test","data-request"]
+    "defaultResourceTypes": ["system","control-test","finding","exception","policy-review","risk","risk-assessment","vendor-review","access-review","vulnerability","vulnerability-scan","incident","exercise","backup-test","penetration-test","data-request","audit-population"]
+  },
+  "auditReadiness": {
+    "managementDocuments": [
+      {"field":"systemDescriptionDocumentId","kind":"soc2-system-description","title":"System Description","engagementKinds":["soc-2-type-1","soc-2-type-2"],"timing":"Complete before the auditor finalizes the description of the system.","minimumWords":250,"requiredHeadings":["DC1","DC2","DC3","DC4","DC5","DC6","DC7","DC8","DC9"],"dateBinding":"engagement"},
+      {"field":"managementAssertionDocumentId","kind":"soc2-management-assertion","title":"Management Assertion","engagementKinds":["soc-2-type-1","soc-2-type-2"],"timing":"Agree on final wording with the auditor and approve it for the reporting date or period.","minimumWords":75,"dateBinding":"engagement"},
+      {"field":"periodCompletenessDocumentId","kind":"soc2-period-completeness","title":"Period Completeness Statement","engagementKinds":["soc-2-type-2"],"timing":"Complete after reconciling every audit population, including populations with zero items.","minimumWords":100,"dateBinding":"engagement"},
+      {"field":"managementRepresentationDocumentId","kind":"soc2-management-representation","title":"Management Representation Letter","engagementKinds":["soc-2-type-1","soc-2-type-2"],"timing":"Reconcile and sign the auditor-provided letter near the end of fieldwork.","minimumWords":100,"dateBinding":"engagement"}
+    ],
+    "populationTemplates": [
+      {"kind":"workforce-changes","title":"Workforce Starts, Role Changes, and Departures","sourcePrompt":"HR or workforce system","sourceKind":"workforce","timing":"Export after the period closes and before the auditor selects samples.","controlCodes":["HR-01","HR-02","HR-03","IAM-03"]},
+      {"kind":"access-changes","title":"Access Grants, Changes, Reviews, and Removals","sourcePrompt":"Identity provider and application access sources","sourceKind":"identity-access","timing":"Export after the period closes and before access samples are selected. Split this population when different systems require different queries.","controlCodes":["IAM-01","IAM-02","IAM-03"]},
+      {"kind":"production-changes","title":"Production and Infrastructure Changes","sourcePrompt":"Source control, deployment, and infrastructure change sources","sourceKind":"production-change","timing":"Export after the period closes and before change samples are selected. Split software and infrastructure populations when their source reports differ.","controlCodes":["CHG-01"]},
+      {"kind":"security-incidents","title":"Security Events and Incidents","sourcePrompt":"Incident and security monitoring sources","sourceKind":"security-monitoring","timing":"Export after the period closes, including a source report that proves a zero count when management identified no incidents.","controlCodes":["LOG-01","IR-01","IR-02"]},
+      {"kind":"vulnerability-activity","title":"Vulnerabilities and Security Scans","sourcePrompt":"Vulnerability, dependency, and scanning tools","sourceKind":"vulnerability-management","timing":"Export after the period closes and preserve scan coverage, findings, remediation, and exceptions.","controlCodes":["VUL-01","PEN-01"]},
+      {"kind":"vendor-changes","title":"Vendors and Vendor Changes","sourcePrompt":"Vendor inventory, contract, and purchasing sources","sourceKind":"vendor-management","timing":"Export after the period closes and reconcile additions, removals, material changes, and required reviews.","controlCodes":["VEN-01","VEN-02"]},
+      {"kind":"managed-assets","title":"Devices and Other Important Assets","sourcePrompt":"Device management and asset inventory sources","sourceKind":"endpoint-asset","timing":"Export after the period closes and reconcile assigned, active, lost, returned, and retired assets.","controlCodes":["OPS-01","OPS-02","DATA-01"]},
+      {"kind":"training-acknowledgements","title":"Training and Policy Acknowledgements","sourcePrompt":"Training, signature, and workforce sources","sourceKind":"training-acknowledgement","timing":"Export after the period closes and reconcile assignments, completions, acknowledgements, exceptions, and overdue work to the workforce population.","controlCodes":["GOV-03","HR-01","HR-02"]},
+      {"kind":"backup-recovery","title":"Backup Failures and Restoration Tests","sourcePrompt":"Backup, recovery, and monitoring sources","sourceKind":"backup-recovery","timing":"Export after the period closes and include scheduled jobs, failures, restorations, exercises, and follow-up work.","controlCodes":["BCP-01","BCP-02"]},
+      {"kind":"exceptions-findings","title":"Security Exceptions and Control Findings","sourcePrompt":"Exception, finding, ticketing, and risk sources","sourceKind":"exception-finding","timing":"Export after the period closes and reconcile open, closed, accepted, overdue, and remediated items.","controlCodes":["MON-01","EXC-01"]}
+    ],
+    "externalEvidence": [
+      {"id":"workforce","title":"Workforce","sourceKinds":["workforce"],"controlCodes":["HR-01","HR-03","IAM-03"],"description":"Catalog the HR or workforce system that is authoritative for starts, role changes, and departures. Bring the complete workforce-change population and source reports used to reconcile access and responsibilities.","timing":"Identify the source during scoping. Preserve event records as changes occur and export the complete Type 2 population after the period closes."},
+      {"id":"training-acknowledgement","title":"Training and Acknowledgements","sourceKinds":["training-acknowledgement"],"controlCodes":["GOV-03","HR-01","HR-02"],"description":"Catalog training, signature, and acknowledgement systems. Bring assignments, content revisions, completion records, signatures, exceptions, and overdue follow-up.","timing":"Identify sources before assignments begin. Preserve signatures and completion proof as work occurs, then reconcile the complete Type 2 population to the workforce population after close."},
+      {"id":"identity-access","title":"Identity and Access","sourceKinds":["identity-access"],"controlCodes":["IAM-01","IAM-02","IAM-03"],"description":"Catalog the identity provider and each important application that enforces access. Bring identity, role, privileged-access, authentication-setting, review, and removal exports.","timing":"Identify sources during scoping. Capture configuration near the Type 1 date or at the start and end of a Type 2 period; export complete change and review populations after the Type 2 period closes."},
+      {"id":"production-change","title":"Production and Change","sourceKinds":["production-change"],"controlCodes":["CHG-01"],"description":"Catalog source control, deployment, and infrastructure-change systems. Bring protection settings, reviews, test and approval records, deployments, emergency changes, and rollback evidence.","timing":"Identify sources before the audit period. Preserve per-change evidence as changes occur and export the complete period population after a Type 2 period closes."},
+      {"id":"security-monitoring","title":"Monitoring and Incidents","sourceKinds":["security-monitoring"],"controlCodes":["LOG-01","IR-01","IR-02"],"description":"Catalog logging, alerting, incident, and case-management systems. Bring configuration, coverage, alert delivery tests, alerts, investigations, incidents, recovery work, and zero-event proof.","timing":"Capture configuration and coverage at the Type 1 date or across the Type 2 period. Preserve cases as they occur and export complete alert and incident populations after close."},
+      {"id":"vulnerability-management","title":"Vulnerability Management","sourceKinds":["vulnerability-management"],"controlCodes":["VUL-01","PEN-01"],"description":"Catalog vulnerability, dependency, scanning, penetration-test, and remediation systems. Bring scope and configuration, scan results, findings, tickets, exceptions, retests, and independent reports.","timing":"Confirm coverage before the audit period. Preserve scan and remediation evidence when generated and export the complete Type 2 population after close."},
+      {"id":"endpoint-asset","title":"Endpoints and Assets","sourceKinds":["endpoint-asset"],"controlCodes":["PHY-01","OPS-01","OPS-02","DATA-01"],"description":"Catalog device-management, endpoint-compliance, and asset-inventory systems. Bring the complete device population, assignments, security configuration, compliance status, exceptions, loss, return, and disposal records.","timing":"Identify sources before devices receive access. Capture configuration near the Type 1 date or across the Type 2 period and export the complete Type 2 population after close."},
+      {"id":"backup-recovery","title":"Backup and Recovery","sourceKinds":["backup-recovery"],"controlCodes":["BCP-01","BCP-02"],"description":"Catalog backup, recovery, and continuity systems. Bring configuration, scheduled-job history, failures, restoration results, exercises, and follow-up work.","timing":"Capture configuration at the Type 1 date or across the Type 2 period. Preserve restoration and exercise results when performed and export complete job and failure history after period close."},
+      {"id":"vendor-management","title":"Vendors","sourceKinds":["vendor-management"],"controlCodes":["VEN-01","VEN-02"],"description":"Catalog procurement, contract, and vendor-risk systems. Bring the vendor population, contracts, reviews, assurance reports, bridge coverage, incidents, and follow-up.","timing":"Identify relevant subservice organizations during scoping. Obtain current assurance reports before fieldwork and bridge coverage through the report period when a report ends earlier."},
+      {"id":"exception-finding","title":"Exceptions and Findings","sourceKinds":["exception-finding"],"controlCodes":["MON-01","EXC-01"],"description":"Catalog the repository or ticket system authoritative for control exceptions, findings, risk acceptance, remediation, verification, and overdue work.","timing":"Record items as they arise. Reconcile open and closed records to their source throughout fieldwork and export the complete Type 2 population after the period closes."}
+    ]
   },
   "commonFields": {
     "schemaVersion": {"type":"integer","required":true,"const":1,"label":"Schema version"},
@@ -132,8 +164,8 @@
       "collection": "teams",
       "description": "Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records. A separate team register is not required for SOC 2; named people can hold these responsibilities directly.",
       "guidance": {
-        "policyBasis": "The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.",
-        "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes.",
+        "policyBasis": "The information security policy establishes a security and risk oversight group chaired by an external reviewer who is separate from the policy owner and control operators. The continuity plan assigns response and recovery roles.",
+        "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve the independent chair.",
         "sourceResourceIds": ["policy-information-security","document-business-continuity-disaster-recovery"],
         "obligationActivityTypes": ["meeting"]
       },
@@ -154,10 +186,10 @@
       "pluralTitle": "Systems",
       "group": "systems-vendors",
       "collection": "systems",
-      "description": "Applications, services, infrastructure, and business-system boundaries used to define audit scope, ownership, data, vendors, and recovery objectives.",
+      "description": "Applications, services, infrastructure, business systems, and evidence sources used to define audit scope, ownership, data, vendors, recovery objectives, and authoritative reports.",
       "guidance": {
         "policyBasis": "The information security, data handling, and continuity policies require inventories of important systems with owners, criticality, classification, scope, and recovery needs.",
-        "cadence": "Review at least annually and after material architecture, data, vendor, service, or recovery changes.",
+        "cadence": "Review at least annually and after material architecture, data, vendor, service, recovery, or evidence-source changes. Confirm report access and extraction instructions before each audit period closes.",
         "sourceResourceIds": ["policy-information-security","policy-data-protection-handling","document-business-continuity-disaster-recovery"],
         "obligationActivityTypes": ["inventory-review"]
       },
@@ -176,6 +208,8 @@
         "parentSystemId": {"type":"id","relation":["system"]},
         "commitmentIds": {"type":"array","items":"id","relation":["commitment"]},
         "subserviceVendorIds": {"type":"array","items":"id","relation":["vendor"]},
+        "evidenceSourceKinds": {"type":"array","items":"string","label":"Evidence source roles","filter":true,"search":true},
+        "evidenceOwnerIds": {"type":"array","items":"id","relation":["person","team"],"label":"Evidence access owners"},
         "continuityObjectives": {"type":"object"}
       },
       "listFields": ["title","status","criticality","environment","inScope"]
@@ -218,7 +252,7 @@
       "description": "Governed charters, plans, procedures, standards, agreements, reports, and templates whose Markdown and approvals belong in Git. A general document catalog is not required for SOC 2; use it for governed material that is not a policy or another record type.",
       "guidance": {
         "policyBasis": "Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.",
-        "cadence": "Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use.",
+        "cadence": "Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use, with an approver who is separate from the owner.",
         "sourceResourceIds": ["policy-information-security","document-business-continuity-disaster-recovery"],
         "obligationActivityTypes": ["policy-review","continuity-review"]
       },
@@ -226,10 +260,11 @@
       "fields": {
         "status": {"type":"enum","values":["draft","active","superseded","retired"],"filter":true},
         "documentKind": {"type":"string","filter":true},
-        "approverIds": {"type":"array","items":"id","relation":["person","team"]},
+        "template": {"type":"boolean","filter":true},
+        "approverIds": {"type":"array","items":"id","relation":["person","team"],"disjointFrom":"ownerIds"},
         "version": {"type":"string"},
-        "effectiveOn": {"type":"date"},
-        "approvedOn": {"type":"date"},
+        "effectiveOn": {"type":"date","requiredWhen":{"status":"active"}},
+        "approvedOn": {"type":"date","requiredWhen":{"status":"active"}},
         "reviewCadence": {"type":"object"},
         "supersedesId": {"type":"id","relation":["document"]},
         "systemIds": {"type":"array","items":"id","relation":["system"]},
@@ -251,13 +286,13 @@
       "group": "evidence",
       "collection": "evidence",
       "recordPath": "{id}/evidence.json",
-      "description": "Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions.",
+      "description": "Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions. Population exports also record their exact report parameters, timezone, count, and completeness and accuracy checks.",
       "guidance": {
         "policyBasis": "The information security policy requires retained audit evidence. Acknowledgement and training workflows require signatures or repository revisions tied to the exact content reviewed.",
         "cadence": "Collect when a control or activity operates, verify before audit use, cover the stated period, and expire or retain according to classification and record rules.",
         "sourceResourceIds": ["policy-information-security","policy-data-protection-handling"]
       },
-      "required": ["status","evidenceKind","source","collectedOn","classification"],
+      "required": ["status","evidenceKind","source","collectedOn","classification","collectorIds"],
       "oneOf": [
         ["filePaths","externalReference","$markdown:content"]
       ],
@@ -269,14 +304,21 @@
         "classification": {"type":"string","filter":true},
         "filePaths": {"type":"array","items":"data-path"},
         "externalReference": {"type":"object"},
-        "periodStart": {"type":"date"},
-        "periodEnd": {"type":"date"},
+        "periodStart": {"type":"date","requiredWhen":{"evidenceKind":"population-export"}},
+        "periodEnd": {"type":"date","requiredWhen":{"evidenceKind":"population-export"}},
+        "generatedAt": {"type":"timestamp","label":"Generated at","requiredWhen":{"evidenceKind":"population-export"}},
+        "timezone": {"type":"string","format":"timezone","label":"Report timezone","requiredWhen":{"evidenceKind":"population-export"}},
+        "queryDescription": {"type":"string","label":"Query or report parameters","search":true,"requiredWhen":{"evidenceKind":"population-export"}},
+        "populationCount": {"type":"integer","minimum":0,"label":"Population count","requiredWhen":{"evidenceKind":"population-export"}},
+        "completenessValidation": {"type":"string","label":"Completeness validation","search":true,"requiredWhen":{"evidenceKind":"population-export"}},
+        "accuracyValidation": {"type":"string","label":"Accuracy validation","search":true,"requiredWhen":{"evidenceKind":"population-export"}},
+        "sourceSystemId": {"type":"id","relation":["system"],"label":"Source system","requiredWhen":{"evidenceKind":"population-export"}},
         "systemIds": {"type":"array","items":"id","relation":["system"]},
         "controlIds": {"type":"array","items":"id","relation":["control"]},
         "auditIds": {"type":"array","items":"id","relation":["audit"]},
         "collectorIds": {"type":"array","items":"id","relation":["person"]},
-        "verifierIds": {"type":"array","items":"id","relation":["person"]},
-        "verifiedOn": {"type":"date"},
+        "verifierIds": {"type":"array","items":"id","relation":["person"],"requiredWhen":{"status":"verified"}},
+        "verifiedOn": {"type":"date","requiredWhen":{"status":"verified"}},
         "expiresOn": {"type":"date"},
         "sourceResourceIds": {"type":"array","items":"id","relation":["*"]},
         "sourceCommit": {"type":"string"},
@@ -338,7 +380,7 @@
         "subjectResourceIds": {"type":"array","items":"id","relation":["*"]},
         "obligationIds": {"type":"array","items":"id","relation":["obligation"]},
         "actionItemIds": {"type":"array","items":"id","relation":["action-item"]},
-        "completedOn": {"type":"date"}
+        "completedOn": {"type":"date","requiredWhen":{"status":"complete"}}
       },
       "listFields": ["title","status","eventType","occurredOn","ownerIds"]
     },
@@ -408,7 +450,7 @@
         "requirementIds": {"type":"array","items":"id","relation":["requirement"]},
         "controlIds": {"type":"array","items":"id","relation":["control"]},
         "customerFacing": {"type":"boolean","filter":true},
-        "effectiveOn": {"type":"date"},
+        "effectiveOn": {"type":"date","requiredWhen":{"status":"active"}},
         "supersedesId": {"type":"id","relation":["commitment"]}
       },
       "listFields": ["title","status","commitmentKind","customerFacing"]
@@ -451,7 +493,7 @@
         "sourceResourceIds": ["policy-information-security","policy-data-protection-handling"],
         "obligationActivityTypes": ["risk-assessment","policy-review"]
       },
-      "required": ["status","statement","ownerIds","requirementIds"],
+      "required": ["status","statement","ownerIds","requirementIds","activity","operationMode","frequency"],
       "fields": {
         "status": {"type":"enum","values":["planned","implemented","partially-implemented","not-applicable","retired"],"filter":true},
         "statement": {"type":"string","search":true},
@@ -466,7 +508,7 @@
         "complementaryControlIds": {"type":"array","items":"id","relation":["complementary-control"]},
         "policyIds": {"type":"array","items":"id","relation":["policy"]},
         "riskIds": {"type":"array","items":"id","relation":["risk"]},
-        "effectiveOn": {"type":"date"},
+        "effectiveOn": {"type":"date","requiredWhen":{"status":"implemented"}},
         "retiredOn": {"type":"date"}
       },
       "listFields": ["code","title","status","controlType","operationMode","frequency"]
@@ -479,7 +521,7 @@
       "description": "Management, internal-audit, or service-auditor tests of one control's design or operation for an as-of date or period. Management-run control-test records are not required for SOC 2; the auditor performs independent testing, while these records support readiness and internal assurance.",
       "guidance": {
         "policyBasis": "The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.",
-        "cadence": "Plan from control frequency, risk, and audit scope. Record the exact period or as-of date and complete review before relying on the result.",
+        "cadence": "Plan from control frequency, risk, and audit scope. Record the exact period or as-of date, link the complete population and sampled items when sampling applies, and complete review before relying on the result.",
         "sourceResourceIds": ["policy-information-security"]
       },
       "required": ["status","controlId","testKinds","performedBy"],
@@ -499,10 +541,11 @@
         "auditId": {"type":"id","relation":["audit"]},
         "testerIds": {"type":"array","items":"id","relation":["person"]},
         "externalTester": {"type":"object"},
-        "populationCount": {"type":"integer"},
-        "sampleSize": {"type":"integer"},
+        "sampleSize": {"type":"integer","minimum":0},
+        "populationId": {"type":"id","relation":["audit-population"]},
+        "sampleEvidenceIds": {"type":"array","items":"id","relation":["evidence"]},
         "evidenceIds": {"type":"array","items":"id","relation":["evidence"]},
-        "exceptionCount": {"type":"integer"},
+        "exceptionCount": {"type":"integer","minimum":0},
         "findingIds": {"type":"array","items":"id","relation":["finding"]},
         "reviewerIds": {"type":"array","items":"id","relation":["person"]},
         "reviewedOn": {"type":"date"},
@@ -614,19 +657,19 @@
       "description": "Approved rules and responsibilities with Markdown content, owners, approvers, audience, acknowledgement rules, related controls, and Git history.",
       "guidance": {
         "policyBasis": "Policies set the program's required behavior. Control, obligation, training, document, and attestation records make those requirements operational and auditable.",
-        "cadence": "Review at least annually and after material changes. Record approval and require a new acknowledgement when a material update affects the audience.",
+        "cadence": "Review at least annually and after material changes. The approver must be separate from the owner. Record approval and require a new acknowledgement when a material update affects the audience.",
         "sourceResourceIds": ["policy-information-security"],
         "obligationActivityTypes": ["policy-review"]
       },
       "required": ["status","ownerIds","approverIds"],
       "fields": {
         "status": {"type":"enum","values":["draft","in-review","approved","active","superseded","retired"],"filter":true},
-        "approverIds": {"type":"array","items":"id","relation":["person","team"]},
+        "approverIds": {"type":"array","items":"id","relation":["person","team"],"disjointFrom":"ownerIds"},
         "policyNumber": {"type":"string","search":true},
         "policyKind": {"type":"string","filter":true},
         "version": {"type":"string"},
-        "effectiveOn": {"type":"date"},
-        "approvedOn": {"type":"date"},
+        "effectiveOn": {"type":"date","requiredWhen":{"status":"active"}},
+        "approvedOn": {"type":"date","requiredWhen":{"status":"active"}},
         "reviewCadence": {"type":"object"},
         "nextReviewConstraint": {"type":"object"},
         "supersedesId": {"type":"id","relation":["policy"]},
@@ -829,8 +872,8 @@
         "assessmentKind": {"type":"enum","values":["enterprise-risk","system-risk","privacy-impact","vendor-risk","business-impact"],"filter":true},
         "scope": {"type":"string","search":true},
         "assessorIds": {"type":"array","items":"id","relation":["person"]},
-        "reviewerIds": {"type":"array","items":"id","relation":["person"]},
-        "methodology": {"type":"string"},
+        "reviewerIds": {"type":"array","items":"id","relation":["person"],"disjointFrom":"assessorIds"},
+        "methodology": {"type":"string","requiredWhen":{"status":"complete"}},
         "trigger": {"type":"string"},
         "attendeeIds": {"type":"array","items":"id","relation":["person"]},
         "systemIds": {"type":"array","items":"id","relation":["system"]},
@@ -843,7 +886,7 @@
         "evidenceIds": {"type":"array","items":"id","relation":["evidence"]},
         "findingIds": {"type":"array","items":"id","relation":["finding"]},
         "actionItemIds": {"type":"array","items":"id","relation":["action-item"]},
-        "approvedOn": {"type":"date"},
+        "approvedOn": {"type":"date","requiredWhen":{"status":"complete"}},
         "sourceCommit": {"type":"string"}
       },
       "listFields": ["title","status","assessmentKind","assessmentDate"]
@@ -972,8 +1015,8 @@
         "periodStart": {"type":"date"},
         "periodEnd": {"type":"date"},
         "grantDecisions": {"type":"array","items":"object"},
-        "populationCount": {"type":"integer"},
-        "exceptionCount": {"type":"integer"},
+        "populationCount": {"type":"integer","minimum":0},
+        "exceptionCount": {"type":"integer","minimum":0},
         "evidenceIds": {"type":"array","items":"id","relation":["evidence"]},
         "findingIds": {"type":"array","items":"id","relation":["finding"]},
         "actionItemIds": {"type":"array","items":"id","relation":["action-item"]},
@@ -988,7 +1031,7 @@
       "pluralTitle": "Vulnerabilities",
       "group": "security-operations",
       "collection": "vulnerabilities",
-      "description": "Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification. A separate FileGRC vulnerability register is not required for SOC 2 when a scanner or ticket system remains the source of truth and retains auditor-ready evidence.",
+      "description": "Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification. A separate FileGRC vulnerability register is not required for SOC 2 when a scanner or ticket system remains the source of truth and retains usable audit evidence.",
       "guidance": {
         "policyBasis": "The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.",
         "cadence": "Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.",
@@ -1234,7 +1277,7 @@
       "required": ["status","auditKind","frameworkIds","scope","ownerIds"],
       "fields": {
         "status": {"type":"enum","values":["planned","in-progress","fieldwork","complete"],"filter":true},
-        "auditKind": {"type":"string","filter":true},
+        "auditKind": {"type":"enum","values":["readiness","soc-2-type-1","soc-2-type-2"],"filter":true},
         "frameworkIds": {"type":"array","items":"id","relation":["framework"]},
         "scope": {"type":"string","search":true},
         "auditor": {"type":"object"},
@@ -1252,7 +1295,10 @@
         "assessmentCoverage": {"type":"object"},
         "systemDescriptionDocumentId": {"type":"id","relation":["document"]},
         "managementAssertionDocumentId": {"type":"id","relation":["document"]},
+        "periodCompletenessDocumentId": {"type":"id","relation":["document"]},
+        "managementRepresentationDocumentId": {"type":"id","relation":["document"]},
         "complementaryControlIds": {"type":"array","items":"id","relation":["complementary-control"]},
+        "complementaryControlsConclusion": {"type":"enum","values":["identified","not-applicable"],"label":"Complementary controls conclusion"},
         "subserviceVendorIds": {"type":"array","items":"id","relation":["vendor"]},
         "subserviceMethod": {"type":"enum","values":["carve-out","inclusive","not-applicable"]},
         "controlTestIds": {"type":"array","items":"id","relation":["control-test"]},
@@ -1265,6 +1311,34 @@
         "supplementalDocumentIds": {"type":"array","items":"id","relation":["document"]}
       },
       "listFields": ["title","status","auditKind","periodStart","periodEnd","opinion"]
+    },
+    "audit-population": {
+      "title": "Audit population",
+      "pluralTitle": "Audit populations",
+      "group": "audits",
+      "collection": "audit-populations",
+      "description": "One complete population of events or items for a Type 2 period. Management records the authoritative source, exact query, count, reconciliation, and fixed export, including when the count is zero.",
+      "guidance": {
+        "policyBasis": "Management must supply complete and accurate populations so the auditor can select samples and test controls. The linked population-export evidence remains the fixed source artifact.",
+        "cadence": "Plan at the start of the engagement, export for the exact audit period, reconcile before fieldwork, and retain proof for zero-event populations."
+      },
+      "required": ["status","auditId","populationKind","periodStart","periodEnd","ownerIds"],
+      "fields": {
+        "status": {"type":"enum","values":["planned","reconciled","incomplete","not-applicable"],"filter":true},
+        "auditId": {"type":"id","relation":["audit"]},
+        "populationKind": {"type":"string","filter":true,"search":true},
+        "periodStart": {"type":"date"},
+        "periodEnd": {"type":"date"},
+        "controlIds": {"type":"array","items":"id","relation":["control"]},
+        "sourceSystemId": {"type":"id","relation":["system"],"label":"Authoritative source system","requiredWhen":{"status":"reconciled"}},
+        "sourceEvidenceId": {"type":"id","relation":["evidence"],"requiredWhen":{"status":"reconciled"}},
+        "reconciledByIds": {"type":"array","items":"id","relation":["person"],"requiredWhen":{"status":"reconciled"}},
+        "reconciledOn": {"type":"date","requiredWhen":{"status":"reconciled"}},
+        "conclusion": {"type":"enum","values":["complete","complete-with-exceptions","incomplete"],"requiredWhen":{"status":"reconciled"},"filter":true},
+        "reconciliationSummary": {"type":"string","search":true},
+        "notApplicableReason": {"type":"string","requiredWhen":{"status":"not-applicable"},"search":true}
+      },
+      "listFields": ["title","status","populationKind","periodStart","periodEnd","conclusion"]
     },
     "audit-request": {
       "title": "Audit request",

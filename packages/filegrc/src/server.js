@@ -2,11 +2,12 @@ import { createServer as createHttpServer } from "node:http";
 import { readFile, realpath } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
-import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
+import { prepareAuditWorkspace } from "./audit-preparation.js";
+import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import { FAVICON_PNG } from "./favicon.js";
-import { createResource, createResourceAndLink, deleteResource, updateContent, updateResource } from "./files.js";
-import { commitWorkspace, getFileHistory } from "./git.js";
-import { createObligationEvent, planObligations } from "./obligations.js";
+import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
+import { commitAndPushWorkspace, getFileHistory, pullWorkspace, pushWorkspace } from "./git.js";
+import { completeObligationOccurrence, createObligationEvent, planObligations } from "./obligations.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { createAppState } from "./state.js";
 import { loadWorkspace } from "./workspace.js";
@@ -46,12 +47,12 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       if (request.method === "POST" && url.pathname === "/api/obligation-completions") {
         const payload = await readJson(request);
         if (!safeSegment(payload.obligationId)) return json(response, 400, { error: "A safe obligation ID is required." });
-        const result = await createResourceAndLink(input, payload.record, {
-          type: "obligation",
-          id: payload.obligationId,
-          field: "completionResourceIds",
+        const result = await completeObligationOccurrence(input, {
+          obligationId: payload.obligationId,
+          record: payload.record,
+          content: payload.content,
           expectedRevision: payload.revision
-        }, { content: payload.content });
+        });
         return json(response, 201, result);
       }
       if (request.method === "GET" && url.pathname === "/api/evidence-packet") {
@@ -63,9 +64,8 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/evidence-packet") {
         const payload = await readJson(request);
-        const packet = await prepareEvidencePacket(input, payload);
-        const written = await writeEvidencePacket(input, packet, { output: payload.output });
-        const output = relativeToWorkspace(input, written.output);
+        const { packet, output: writtenOutput, files } = await generateEvidencePacket(input, payload);
+        const output = relativeToWorkspace(input, writtenOutput);
         const outputSegments = output.split("/");
         const packetUrl = outputSegments.length === 3
           && outputSegments[0] === ".filegrc"
@@ -76,8 +76,11 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
           packet,
           output,
           packetUrl,
-          files: written.files
+          files
         });
+      }
+      if (request.method === "POST" && url.pathname === "/api/audit-preparation") {
+        return json(response, 201, await prepareAuditWorkspace(input, await readJson(request)));
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
         const payload = await readJson(request);
@@ -87,7 +90,13 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/commit") {
         const payload = await readJson(request);
-        return json(response, 201, await commitWorkspace(input, payload.message));
+        return json(response, 201, await commitAndPushWorkspace(input, payload.message));
+      }
+      if (request.method === "POST" && url.pathname === "/api/git/pull") {
+        return json(response, 200, await pullWorkspace(input));
+      }
+      if (request.method === "POST" && url.pathname === "/api/git/push") {
+        return json(response, 200, await pushWorkspace(input));
       }
       if (request.method === "PUT" && url.pathname === "/api/content") {
         const payload = await readJson(request);
@@ -125,7 +134,14 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       if (request.method === "GET" && url.pathname.startsWith("/packet/")) {
         const segments = url.pathname.slice("/packet/".length).split("/").map(decodeURIComponent);
         if (
-          segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0"))
+          segments.some((segment) => (
+            !segment
+            || segment === "."
+            || segment === ".."
+            || segment.includes("/")
+            || segment.includes("\\")
+            || segment.includes("\0")
+          ))
           || segments[0] !== ".filegrc"
           || segments[1] !== "evidence-packets"
         ) {
@@ -271,6 +287,7 @@ function statusFor(error) {
   if (/exceeds 2 MB/i.test(error.message)) return 413;
   if (/changed after you opened|source changed|revision changed/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
+  if (/Git could not (?:pull|push)|upstream branch|multiple remotes|no Git remote|check out a branch|before trying to (?:pull|push)/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
   if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves|valid .*date|not found|no active obligations|end date|through date|already exists|EEXIST/i.test(error.message)) return 400;
   return 500;

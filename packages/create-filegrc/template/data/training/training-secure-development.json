@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "training-secure-development",
+  "type": "training",
+  "title": "Secure Development Training",
+  "status": "draft",
+  "ownerIds": ["person-policy-owner"],
+  "audience": ["engineering", "security", "software-development", "infrastructure"],
+  "assignmentTrigger": "covered-role-start-or-change",
+  "completionWindowDays": 30,
+  "policyIds": [
+    "policy-data-protection-handling",
+    "policy-information-security"
+  ],
+  "controlIds": [
+    "control-security-training",
+    "control-change-management",
+    "control-vulnerability-management"
+  ]
+}

@@ -55,11 +55,11 @@ Passwords and recovery codes must not be stored in unsecured notes, messages, or
 
 ## Personal devices
 
-Use of a personal device requires written approval. The user must permit the security controls needed to protect company information and must separate company data from personal data where the platform supports it.
+Use of a personal device requires written approval before company access begins. The device must be registered in the asset inventory, and the owner must verify the required encryption, screen lock, supported software, security updates, malware protection where available, and remote removal conditions before use. The user must permit the security controls needed to protect company information and must separate company data from personal data where the platform supports it.
 
 {{company_name}} may remove company accounts and data from an approved personal device when access ends, a device is lost, or a security event requires it.
 
-The policy owner periodically reviews authorized mobile devices, personal-device approvals, and remote-access methods. Unused or unsupported connections must be removed.
+The policy owner reviews authorized mobile devices, personal-device approvals, and remote-access methods at least annually. Unused or unsupported connections must be removed.
 
 ## Loss, theft, or compromise
 

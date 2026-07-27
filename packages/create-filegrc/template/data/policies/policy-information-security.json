@@ -5,7 +5,7 @@
   "title": "Information Security Policy",
   "status": "draft",
   "ownerIds": ["person-policy-owner"],
-  "approverIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
   "policyKind": "information-security",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
@@ -55,6 +55,7 @@
   ],
   "relatedDocumentIds": [
     "document-business-continuity-disaster-recovery",
-    "document-incident-response-plan"
+    "document-incident-response-plan",
+    "document-data-retention-schedule"
   ]
 }

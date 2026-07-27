@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { commitWorkspace, getGitSummary, getWorkspaceHistories, serveWorkspace } from "../src/index.js";
+import { getGitSummary, getWorkspaceHistories, serveWorkspace } from "../src/index.js";
+import { commitAndPushWorkspace, commitWorkspace, hasGitRevision, pullWorkspace, pushWorkspace } from "../src/git.js";
 import { makeWorkspace } from "./helpers.js";
 
 const execute = promisify(execFile);
@@ -21,6 +22,9 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   await git(parent, ["config", "user.email", "test@example.test"]);
   await git(parent, ["add", "."]);
   await git(parent, ["commit", "-m", "Initialize nested workspace"]);
+  assert.equal(hasGitRevision(root, getGitSummary(root).commit), true);
+  assert.equal(hasGitRevision(root, "0000000000000000000000000000000000000000"), false);
+  assert.equal(hasGitRevision(root, "not-a-commit"), false);
 
   await writeFile(join(parent, "outside.txt"), "changed outside\n", "utf8");
   assert.equal(getGitSummary(root).clean, true);
@@ -77,7 +81,17 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
       body: JSON.stringify({ message: "Refine program owner role" })
     });
     assert.equal(response.status, 201);
-    assert.equal((await response.json()).subject, "Refine program owner role");
+    const commitResult = await response.json();
+    assert.equal(commitResult.subject, "Refine program owner role");
+    assert.equal(commitResult.pushed, false);
+    assert.equal(commitResult.pushSkipped, true);
+    assert.equal(commitResult.pushError, undefined);
+    const pullResponse = await fetch(`${running.url}/api/git/pull`, { method: "POST" });
+    assert.equal(pullResponse.status, 409);
+    assert.match((await pullResponse.json()).error, /upstream branch/);
+    const pushResponse = await fetch(`${running.url}/api/git/push`, { method: "POST" });
+    assert.equal(pushResponse.status, 409);
+    assert.match((await pushResponse.json()).error, /no Git remote/);
   } finally {
     await new Promise((resolve) => running.server.close(resolve));
   }
@@ -85,6 +99,76 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   assert.equal(getGitSummary(root).clean, true);
   assert.equal((await git(parent, ["status", "--porcelain=v1", "--", "outside.txt"])).stdout.trim(), "M outside.txt");
   assert.equal(getWorkspaceHistories(root, ["data/people/person-owner.json"]).get("data/people/person-owner.json").length, 3);
+});
+
+test("pushes branches and pulls remote changes with rebase", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-git-sync-"));
+  const root = join(parent, "workspace");
+  const remote = join(parent, "remote.git");
+  const peer = join(parent, "peer");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+
+  await makeWorkspace(root);
+  await git(root, ["init"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initialize workspace"]);
+  await git(parent, ["init", "--bare", remote]);
+  await git(root, ["remote", "add", "origin", remote]);
+
+  const firstPush = await pushWorkspace(root);
+  assert.equal(firstPush.upstream, `origin/${firstPush.branch}`);
+  assert.deepEqual(getGitSummary(root).remotes, ["origin"]);
+
+  await git(parent, ["clone", remote, peer]);
+  await git(peer, ["config", "user.name", "Peer User"]);
+  await git(peer, ["config", "user.email", "peer@example.test"]);
+
+  await writeFile(join(root, "browser-note.txt"), "browser commit\n", "utf8");
+  const browserCommit = await commitAndPushWorkspace(root, "Commit through browser workflow");
+  assert.equal(browserCommit.pushed, true);
+  assert.equal(browserCommit.pushSkipped, false);
+  assert.equal(browserCommit.upstream, firstPush.upstream);
+  await git(peer, ["pull", "--rebase"]);
+  assert.equal(await readFile(join(peer, "browser-note.txt"), "utf8"), "browser commit\n");
+
+  await writeFile(join(peer, "remote-note.txt"), "remote one\n", "utf8");
+  await git(peer, ["add", "."]);
+  await git(peer, ["commit", "-m", "Add remote note"]);
+  await git(peer, ["push"]);
+
+  const firstPull = await pullWorkspace(root);
+  assert.equal(firstPull.updated, true);
+  assert.equal(await readFile(join(root, "remote-note.txt"), "utf8"), "remote one\n");
+
+  await writeFile(join(root, "local-note.txt"), "local\n", "utf8");
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Add local note"]);
+  await writeFile(join(peer, "remote-note-two.txt"), "remote two\n", "utf8");
+  await git(peer, ["add", "."]);
+  await git(peer, ["commit", "-m", "Add second remote note"]);
+  await git(peer, ["push"]);
+
+  await pullWorkspace(root);
+  const parents = (await git(root, ["show", "-s", "--format=%P", "HEAD"])).stdout.trim().split(/\s+/);
+  assert.equal(parents.length, 1);
+  await pushWorkspace(root);
+
+  await git(peer, ["pull", "--rebase"]);
+  await writeFile(join(root, "conflict.txt"), "local version\n", "utf8");
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Add local conflict version"]);
+  await writeFile(join(peer, "conflict.txt"), "remote version\n", "utf8");
+  await git(peer, ["add", "."]);
+  await git(peer, ["commit", "-m", "Add remote conflict version"]);
+  await git(peer, ["push"]);
+  await assert.rejects(pullWorkspace(root), /Git could not pull with rebase/);
+  assert.equal((await git(root, ["status", "--porcelain=v1"])).stdout.trim(), "");
+
+  await writeFile(join(root, "dirty-note.txt"), "dirty\n", "utf8");
+  await assert.rejects(pullWorkspace(root), /Commit or discard workspace changes/);
+  await assert.rejects(pushWorkspace(root), /Commit or discard workspace changes/);
 });
 
 function git(cwd, args) {

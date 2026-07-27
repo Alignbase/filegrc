@@ -88,6 +88,7 @@ const STATUS_OVERRIDES = {
 export async function makeComprehensiveWorkspace(root) {
   const model = loadModel("1");
   const ids = Object.fromEntries(Object.keys(model.resources).map((type) => [type, type === "workspace" ? "workspace" : `${type}-example`]));
+  ids.independentApprover = "person-independent-approver-example";
   await mkdir(join(root, "data", "content"), { recursive: true });
   const records = [];
 
@@ -121,11 +122,22 @@ export async function makeComprehensiveWorkspace(root) {
     await writeRecord(root, definition, record, model);
     records.push(record);
   }
+  const independentApprover = {
+    schemaVersion: 1,
+    id: ids.independentApprover,
+    type: "person",
+    title: "Independent Approver",
+    status: "external",
+    email: "approver@example.test"
+  };
+  await writeRecord(root, model.resources.person, independentApprover, model);
+  records.push(independentApprover);
   return { model, records };
 }
 
 function sampleValue(name, field, ids, model, type) {
   if (field.relation) {
+    if (name === "approverIds" || name === "reviewerIds") return [ids.independentApprover];
     const targetType = field.relation.find((candidate) => candidate !== "*") ?? "person";
     const id = ids[targetType] ?? ids.person;
     return field.type === "array" ? [id] : id;

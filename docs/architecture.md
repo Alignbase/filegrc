@@ -60,10 +60,12 @@ The project does not replace operational security systems. Organizations still n
             ├── AGENTS.md
             ├── package.json
             ├── data/
-            └── docs/filegrc-home.png
+            └── docs/
+                ├── filegrc-home.png
+                └── filegrc-audit.png
 ```
 
-The template README is the source for the monorepo root README. If its screenshot uses a relative path, the monorepo will expose a matching root path without copying the image.
+The template README is the source for the monorepo root README. Root `docs/` symlinks expose its screenshots without copying them.
 
 ## Package responsibilities
 
@@ -77,6 +79,9 @@ The template README is the source for the monorepo root README. If its screensho
 - Git history queries
 - Search and filtering
 - Safe file creation, editing, and deletion
+- Model-driven agent guides and record scaffolds
+- Revision-safe JSON and Markdown mutation exports
+- Evidence attachment and removal utilities
 - Local HTTP serving
 - Static audit-overview generation
 - Recurring and event-driven obligation planning
@@ -86,17 +91,26 @@ The template README is the source for the monorepo root README. If its screensho
 Commands:
 
 ```text
-filegrc serve
-filegrc build
-filegrc validate
-filegrc model
-filegrc describe <resource-type>
-filegrc obligations
-filegrc trigger <event-type>
-filegrc evidence-packet
+Discovery:    help, version, model, types, describe, guide
+Read:         list, get, search, references, content
+Write:        scaffold, create, update, content, attach, detach, delete
+Policy work:  obligations, complete, trigger, complete-action, complete-event
+Audit work:   prepare-audit, audit-readiness, evidence-packet
+Rendering:    serve, build
+Verification: validate
 ```
 
 `filegrc serve` provides the interactive local view and CRUD operations. `filegrc build` creates a read-only static view. `filegrc validate` is suitable for local use and CI.
+
+### Headless agent contract
+
+A generated workspace must be operable by an agent that knows Git and JSON but has no FileGRC context. The root `AGENTS.md` explains the program and Git behavior. `data/AGENTS.md` defines the universal record workflow. Collection-level instruction files add compact rules for areas where a wrong action could weaken an audit, lose evidence, or expose data.
+
+`filegrc guide --json` is the compact action and type index. A type-specific guide combines the model definition with current relationship candidates, policy basis, cadence, storage location, and Markdown slots. `filegrc scaffold` produces an incomplete `{ record, content }` mutation with a generated ID and explicit missing values. Scaffolds remain in a non-final lifecycle state and must not contain fabricated compliance facts.
+
+`filegrc get <id> --mutation` exports the complete record, existing Markdown, and their revisions. `filegrc update` consumes that shape and rejects a stale JSON or Markdown revision. Create and update therefore use the same payload and domain functions as the HTTP and browser paths.
+
+Every model resource must have automated guide and scaffold coverage. Multi-record commands must validate their domain rules and write through one serialized mutation. This includes obligation completion, policy event creation and closure, audit preparation, and evidence attachment management.
 
 ## Model registry
 
@@ -163,13 +177,16 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - The AICPA 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
 - All nine Description Criteria reference IDs from DC1 through DC9
 - A planned control catalog mapped to the Common Criteria and starter policies
-- A security and risk oversight team with a quarterly meeting cadence
+- A security and risk oversight team chaired by an external reviewer who is separate from the policy owner and control operators
 - Recurring obligations derived from the fixed review, scan, test, training, and meeting cadences in the starter policies
-- Event obligations for workforce changes, vendor access, material system changes, and incidents
+- Event obligations for workforce starts, role changes, departures, personal devices, vendor access and reassessment, material system or data-use changes, and incidents
+- General and role-based training, including conditional secure-development, privileged-role, and anti-bribery modules
+- A governed data retention schedule plus annual and material-change review work
+- Annual incident-response and end-to-end alert-path testing
 - A default 5x5 likelihood-and-impact risk method
 - Public, Internal, Confidential, and Restricted classification definitions
 
-The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and may create one planned readiness, Type 1, or Type 2 engagement. It does not add optional trust categories or claim that the initial scope is complete.
+The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary, may create one planned readiness, Type 1, or Type 2 engagement, and assigns the named external independent approver to the stable seed record. It does not add optional trust categories or claim that the initial scope is complete.
 
 Every starter control is `planned`. A user must confirm the owner, system scope, actual operation, and evidence before marking it implemented. A policy statement alone does not prove that a control operates.
 
@@ -183,7 +200,7 @@ Signed forms, third-party reports, screenshots, and immutable exports are eviden
 data/
 ├── workspace.json
 ├── renderer.json
-├── content/
+├── AGENTS.md
 ├── people/
 ├── service-accounts/
 ├── teams/
@@ -221,6 +238,7 @@ data/
 ├── penetration-tests/
 ├── data-requests/
 ├── audits/
+├── audit-populations/
 └── audit-requests/
 ```
 
@@ -253,7 +271,7 @@ These are presentation fields, not data fields. Operational dates remain explici
 
 The engine follows file renames when possible. A resource ID remains the durable identity if a path changes.
 
-CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The Repository page shows the workspace diff and offers an explicit Commit changes action after validation. It scopes the commit to the workspace and uses the configured Git identity. The Git CLI remains available for every workflow.
+CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The Repository page shows the workspace diff and creates a validated local commit when no remote exists. Once a remote is configured, it also pulls with rebase and pushes immediately after a browser commit. A failed push leaves the local commit intact and reports the failure. Agents and terminal users own synchronization and use native Git commands.
 
 ## Audit evidence
 
@@ -270,11 +288,15 @@ An evidence snapshot records:
 
 The engine can prepare deterministic evidence views and metadata without a browser dependency. A user or approved capture tool may create the screenshot. The evidence record and image are committed together.
 
-For a period review, the evidence-packet engine indexes every model-defined date and timestamp in the selected range, plus records whose explicit period overlaps it. It then adds recurring obligation coverage, event checklists, linked evidence, active policies, mapped controls and requirements, and selected audit scope. It reports missing completions, incomplete event actions, unverified or revision-unbound evidence, and a dirty Git worktree.
+The evidence-packet engine supports a Type 1 as-of date and a Type 2 period. It selects records explicitly related to the engagement, its scope, systems, controls, criteria, policies, dependencies, and evidence, so an unrelated dated record is not disclosed just because it falls in the date range. Type 2 adds recurring obligation coverage, event checklists, complete populations, and samples. Delivery-ready checks cover management's work and packet integrity. They do not claim that the engagement team found the evidence sufficient or appropriate.
 
-Packet output is derived under `.filegrc/evidence-packets/`. It contains an auditor-oriented HTML index, a machine-readable manifest with per-record Git history, raw JSON source records, governed Markdown, and fixed local attachments. External references are listed but never fetched. The packet records the source revision and whether the worktree was clean, so uncommitted output is clearly marked as not ready to send.
+Packet output is derived under `.filegrc/evidence-packets/`. It contains an auditor-oriented HTML index, a machine-readable manifest, a control matrix, source-system index, external-evidence delivery index, evidence index, Type 2 population index, raw JSON source records, governed Markdown, fixed local attachments, committed historical versions, and per-file SHA-256 checksums. External references are listed but never fetched and keep the packet in review-required state. The packet records the source revision and whether the worktree was clean, so incomplete or uncommitted output is visibly marked as a draft.
 
-`prepareEvidencePacket` and `writeEvidencePacket` are shared by the audit page, HTTP API, and `filegrc evidence-packet`. UI and headless callers therefore select the same records and receive the same coverage gaps.
+The model registry owns the four management-document definitions, ten standard population kinds, and authoritative source-system guidance used by every interface. `prepareAuditWorkspace` creates engagement-specific documents from the local starter templates. For Type 2, it also creates missing population records, maps starter controls by code, and selects a source system when exactly one cataloged system has the required evidence role. It does not approve or complete the resulting records. `assessAuditPreparation` provides the same scoped checklist to the renderer, CLI, static build, and packet readiness checks.
+
+Each `audit-population` records management’s reconciliation state for one complete population. The population and its linked `population-export` evidence must name the same cataloged source system. The evidence records the exact query or report parameters, timezone, generation timestamp, record count, and completeness and accuracy validation. Split populations when source systems or queries differ. A zero-event population still needs a fixed source export and query. A population linked to an in-scope control cannot be dismissed as not applicable.
+
+`assessAuditPreparation`, `prepareEvidencePacket`, `generateEvidencePacket`, and `writeEvidencePacket` are shared by the audit page, HTTP API, CLI, and static state. UI and headless callers therefore receive the same management checklist, selected records, and coverage gaps. Packet generation waits for in-flight workspace writes and blocks new ones until its source snapshot is copied and checked.
 
 People who do not have repository access may acknowledge policies, training, or tasks with a signed PDF or image. The corresponding attestation records the signer, signing date, acknowledgement statement, exact content revisions, and evidence file. Repository collaborators may use a reviewed Git commit as an attestation when the workflow permits it.
 
@@ -282,30 +304,18 @@ Training material is canonical Markdown. A reusable `training` record defines it
 
 ## Rendering
 
-The homepage provides an audit-oriented program overview:
+The homepage stays focused on three questions: where the organization is in the six-stage audit chain, what policy work needs attention, and whether an audit engagement is active. Validation and Git status remain visible in the top bar.
 
-- Data validation state
-- Control and evidence counts
-- Open findings, exceptions, actions, and audit requests
-- Active audit request progress
-- Open dates and deadlines
-- Governance and risk resource counts
-- The complete resource catalog
-- Current Git revision and uncommitted-change count
+The sidebar follows that same six-stage sequence:
 
-Primary pages group the resource catalog into:
+- Scope: systems, assets, people, accounts, teams, and vendors
+- Criteria: frameworks, requirements, service commitments, and supplements
+- Policies: policies and governed documents
+- Controls: controls and their mappings
+- Operate Controls: obligations, evidence, governance and risk, access, security operations, resilience, training, findings, and exceptions
+- Audit: preparation, engagements, requests, populations, tests, and reports
 
-- Program: frameworks, requirements, commitments, complementary controls, controls, and control tests
-- Governance: policies, documents, teams, meetings, training, attestations, and data requests
-- Risk: risks, assessments, exceptions, and related committee meetings
-- People and Access: people, service accounts, grants, and access reviews
-- Systems and Vendors: systems, assets, vendors, and vendor reviews
-- Security Operations: vulnerabilities, scans, incidents, and penetration tests
-- Resilience: continuity assessments, exercises, recovery objectives, and backup tests
-- Evidence: screenshots, signed acknowledgements, reports, exports, and their provenance
-- Findings and Work: findings, actions, obligations, and due dates
-- Audits: engagements, requests, control testing, exceptions, responses, and reports
-- Repository: Git history, uncommitted changes, validation, and workspace settings
+Resource types are nested only when the extra grouping adds meaning. Organization settings remain anchored at the bottom.
 
 For active obligations, the dashboard derives the next calendar occurrence from the recurrence rule and anchor date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence.
 
@@ -313,7 +323,7 @@ Each resource type gets a responsive list page with search and filters, plus a d
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
-New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer uses it to offer a short modal workflow covering the operating model: artifacts are files, Git is the audit trail, recurring obligations form the work queue, and evidence can be prepared in reviewed batches. Its setup step collects only compliance-domain scope: the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a system and optional planned audit, then sets `showOnboarding` to `false`. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them from Repository or the Git CLI.
+New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer uses it to offer a short modal workflow covering the operating model: artifacts are files, Git is the audit trail, recurring obligations form the work queue, and evidence can be prepared in reviewed batches. Its setup step collects only compliance-domain scope: the initial service boundary, owner, business criticality, highest data classification, internet exposure, external independent approver, and optional audit objective. It creates or updates the approver, a system, and an optional planned audit, then sets `showOnboarding` to `false`. The approver cannot match the policy owner. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them from Repository or the Git CLI.
 
 Onboarding never runs in a read-only build. It can be restarted from Repository, or bypassed entirely by editing the same data files through an agent or other tooling. Repositories created before the renderer settings record remain valid and do not start onboarding automatically.
 
@@ -360,13 +370,14 @@ Implemented:
 - Overview, list, detail, repository, search, and filter views
 - Guided live JSON and Markdown CRUD, safe related-content deletion, stale-write detection, and a read-only static build
 - Prompt-driven repository creation, dependency resolution, lockfile creation, and Git initialization
-- Full resource fixtures, unit and end-to-end tests using Node.js built-ins, and browser screenshot coverage for every current page
+- Full resource fixtures and unit and end-to-end tests using Node.js built-ins
+- Browser journey checks and reviewed desktop, mobile, light, and dark screenshots for the main user flows
 - SOC 2 Security Common Criteria and Description Criteria references, planned controls, oversight ownership, recurring obligations, risk defaults, and classification defaults in newly generated workspaces
 
 Next:
 
-- Add evidence capture metadata and audit completeness reports
 - Add licensed criteria content and optional trust-category mappings
+- Add optional signing of the checksum manifest with an organization-controlled key
 
 ## Decisions still open
 

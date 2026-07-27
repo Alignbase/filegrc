@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "document-soc2-system-description",
+  "type": "document",
+  "title": "SOC 2 System Description",
+  "status": "draft",
+  "documentKind": "soc2-system-description",
+  "template": true,
+  "ownerIds": [
+    "person-policy-owner"
+  ],
+  "approverIds": [
+    "person-independent-approver"
+  ],
+  "version": "0.1",
+  "classification": "Internal"
+}

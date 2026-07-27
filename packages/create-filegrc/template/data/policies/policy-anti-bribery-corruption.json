@@ -5,7 +5,7 @@
   "title": "Anti-Bribery and Corruption Policy",
   "status": "draft",
   "ownerIds": ["person-policy-owner"],
-  "approverIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
   "policyKind": "corporate-conduct",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",

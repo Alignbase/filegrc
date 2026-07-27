@@ -20,6 +20,14 @@ export async function makeWorkspace(root) {
     status: "active",
     email: "security@example.com"
   });
+  await writeJson(join(root, "data", "people", "person-approver.json"), {
+    schemaVersion: 1,
+    id: "person-approver",
+    type: "person",
+    title: "Independent Approver",
+    status: "external",
+    email: "approver@example.com"
+  });
 }
 
 export async function writeJson(path, value) {

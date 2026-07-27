@@ -1,15 +1,197 @@
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
-import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
+import { isCanonicalDataPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 
 export async function createResource(input, record, options = {}) {
   return serializeWorkspaceMutation(input, (root) => createResourceUnlocked(root, record, options));
+}
+
+export async function addEvidenceAttachment(input, evidenceId, sourcePath, options = {}) {
+  return serializeWorkspaceMutation(input, (root) => addEvidenceAttachmentUnlocked(root, evidenceId, sourcePath, options));
+}
+
+export async function removeEvidenceAttachment(input, evidenceId, attachment, options = {}) {
+  return serializeWorkspaceMutation(input, (root) => removeEvidenceAttachmentUnlocked(root, evidenceId, attachment, options));
+}
+
+async function addEvidenceAttachmentUnlocked(input, evidenceId, sourcePath, options) {
+  const loaded = await loadWorkspace(input);
+  const entry = loaded.entries.find(({ record }) => record.type === "evidence" && record.id === evidenceId);
+  if (!entry) throw new Error(`Evidence "${evidenceId}" was not found.`);
+  const source = resolve(String(sourcePath || ""));
+  let sourceStat;
+  try {
+    sourceStat = await lstat(source);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error(`Attachment source "${sourcePath}" was not found.`);
+    throw error;
+  }
+  if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) {
+    throw new Error("An attachment source must be a regular file, not a directory or symlink.");
+  }
+  const fileName = String(options.name || basename(source)).trim();
+  if (
+    !fileName
+    || fileName === "."
+    || fileName === ".."
+    || fileName.startsWith(".")
+    || fileName.includes("/")
+    || fileName.includes("\\")
+    || fileName.includes("\0")
+    || /[\u0000-\u001f\u007f]/.test(fileName)
+    || Buffer.byteLength(fileName, "utf8") > 200
+  ) {
+    throw new Error("An attachment name must be a non-hidden file name of 200 bytes or fewer without control characters or path separators.");
+  }
+  const dataRelativePath = join("evidence", evidenceId, fileName).replaceAll("\\", "/");
+  const destination = resolveDataPath(loaded.root, dataRelativePath);
+  if (source === destination) throw new Error("The attachment source is already at its evidence destination.");
+  await mkdir(dirname(destination), { recursive: true });
+  const temp = join(dirname(destination), `.${randomUUID()}.attachment`);
+  let destinationCreated = false;
+  try {
+    await copyRegularFileExclusive(source, temp, sourceStat);
+    await link(temp, destination);
+    destinationCreated = true;
+    await rm(temp, { force: true });
+    const filePaths = [...new Set([...(entry.record.filePaths || []), dataRelativePath])];
+    const updated = await updateResourceUnlocked(loaded.root, "evidence", evidenceId, {
+      ...entry.record,
+      filePaths
+    }, {
+      expectedRevision: options.expectedRevision
+    });
+    return { record: updated.record, path: destination, dataRelativePath };
+  } catch (error) {
+    await rm(temp, { force: true }).catch(() => {});
+    if (destinationCreated) await rm(destination, { force: true }).catch(() => {});
+    if (error.code === "EEXIST") throw new Error(`Attachment destination data/${dataRelativePath} already exists.`);
+    throw error;
+  }
+}
+
+async function removeEvidenceAttachmentUnlocked(input, evidenceId, attachment, options) {
+  const loaded = await loadWorkspace(input);
+  const entry = loaded.entries.find(({ record }) => record.type === "evidence" && record.id === evidenceId);
+  if (!entry) throw new Error(`Evidence "${evidenceId}" was not found.`);
+  const requested = String(attachment || "").trim();
+  const matches = (entry.record.filePaths || []).filter((path) => (
+    path === requested || basename(path) === requested
+  ));
+  if (matches.length === 0) throw new Error(`Attachment "${requested}" is not linked from evidence "${evidenceId}".`);
+  if (matches.length > 1) throw new Error(`Attachment name "${requested}" is ambiguous; pass its full data-relative path.`);
+  const dataRelativePath = matches[0];
+  const expectedPrefix = `evidence/${evidenceId}/`;
+  if (!isCanonicalDataPath(dataRelativePath) || !dataRelativePath.startsWith(expectedPrefix)) {
+    throw new Error(`Attachment "${dataRelativePath}" is outside evidence/${evidenceId}/ and must be handled manually.`);
+  }
+  const shared = loaded.resources.some((record) => (
+    record.id !== evidenceId
+    && Array.isArray(record.filePaths)
+    && record.filePaths.includes(dataRelativePath)
+  ));
+  if (shared) throw new Error(`Attachment "${dataRelativePath}" is referenced by another record.`);
+  const path = resolveDataPath(loaded.root, dataRelativePath);
+  const fileStat = await lstat(path);
+  if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
+    throw new Error("An evidence attachment must be a regular file, not a directory or symlink.");
+  }
+  const parked = join(dirname(path), `.${randomUUID()}.detached`);
+  let moved = false;
+  try {
+    await rename(path, parked);
+    moved = true;
+    const filePaths = entry.record.filePaths.filter((item) => item !== dataRelativePath);
+    const nextRecord = { ...entry.record };
+    if (filePaths.length) nextRecord.filePaths = filePaths;
+    else delete nextRecord.filePaths;
+    const updated = await updateResourceUnlocked(loaded.root, "evidence", evidenceId, nextRecord, {
+      expectedRevision: options.expectedRevision
+    });
+    try {
+      await rm(parked);
+      moved = false;
+    } catch (cleanupError) {
+      await rename(parked, path);
+      moved = false;
+      await updateResourceUnlocked(loaded.root, "evidence", evidenceId, entry.record, {});
+      throw cleanupError;
+    }
+    return { record: updated.record, dataRelativePath };
+  } catch (error) {
+    if (moved) await rename(parked, path).catch(() => {});
+    throw error;
+  }
+}
+
+async function copyRegularFileExclusive(source, destination, originalStat) {
+  let sourceHandle;
+  let destinationHandle;
+  try {
+    sourceHandle = await open(source, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const [openedStat, currentStat] = await Promise.all([sourceHandle.stat(), lstat(source)]);
+    if (
+      !openedStat.isFile()
+      || currentStat.isSymbolicLink()
+      || !sameFile(originalStat, openedStat)
+      || !sameFile(currentStat, openedStat)
+    ) {
+      throw new Error("The attachment source changed while it was being opened.");
+    }
+    destinationHandle = await open(
+      destination,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+      openedStat.mode & 0o666
+    );
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let position = 0;
+    while (true) {
+      const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.length, position);
+      if (!bytesRead) break;
+      let written = 0;
+      while (written < bytesRead) {
+        const result = await destinationHandle.write(
+          buffer,
+          written,
+          bytesRead - written,
+          position + written
+        );
+        if (!result.bytesWritten) throw new Error("The attachment copy stopped before the source file was complete.");
+        written += result.bytesWritten;
+      }
+      position += bytesRead;
+    }
+    const finalStat = await sourceHandle.stat();
+    if (
+      position !== openedStat.size
+      || finalStat.size !== openedStat.size
+      || finalStat.mtimeMs !== openedStat.mtimeMs
+      || finalStat.ctimeMs !== openedStat.ctimeMs
+    ) {
+      throw new Error("The attachment source changed while it was being copied.");
+    }
+    await destinationHandle.sync();
+  } catch (error) {
+    if (error.code === "ELOOP") {
+      throw new Error("An attachment source must be a regular file, not a directory or symlink.");
+    }
+    throw error;
+  } finally {
+    await Promise.allSettled([
+      destinationHandle?.close(),
+      sourceHandle?.close()
+    ]);
+  }
+}
+
+function sameFile(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
 }
 
 export async function createResources(input, records) {
@@ -45,8 +227,18 @@ async function createResourceAndLinkUnlocked(input, record, linkTarget, options)
 
   const created = await createResourceUnlocked(input, record, { content: options.content });
   try {
+    const patch = linkTarget.patch && !Array.isArray(linkTarget.patch) && typeof linkTarget.patch === "object"
+      ? linkTarget.patch
+      : {};
+    if (
+      (patch.id !== undefined && patch.id !== linkTarget.id)
+      || (patch.type !== undefined && patch.type !== linkTarget.type)
+    ) {
+      throw new Error("A linked resource patch cannot change the target type or ID.");
+    }
     const linkedRecord = {
       ...targetEntry.record,
+      ...patch,
       [linkTarget.field]: [...linkedIds, record.id]
     };
     const linked = await updateResourceUnlocked(input, linkTarget.type, linkTarget.id, linkedRecord, {
@@ -194,6 +386,9 @@ async function deleteResourceUnlocked(input, type, id, options) {
   const source = await readFile(path, "utf8");
   assertRevision(source, options.expectedRevision, "The record");
   const record = JSON.parse(source);
+  if (record.type === "evidence" && (record.filePaths || []).length) {
+    throw new Error(`Evidence "${id}" still has local attachments. Detach them explicitly before deleting the record.`);
+  }
   const contentFiles = await exclusiveContentFiles(loaded, record);
   try {
     await rm(path);
@@ -219,7 +414,7 @@ export function resourcePath(input, model, record) {
     throw new Error("Resource IDs must use lowercase kebab-case.");
   }
   const recordFile = (definition.recordPath ?? "{id}.json").replaceAll("{id}", record.id);
-  return resolveDataPath(root, join(definition.collection, recordFile));
+  return resolveDataPath(root, join(definition.collection, recordFile).replaceAll("\\", "/"));
 }
 
 async function writeAtomic(path, value, options = {}) {

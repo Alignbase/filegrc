@@ -13,7 +13,7 @@ test("loads, validates, and searches resources", async (context) => {
   await makeWorkspace(root);
   const validation = await validateWorkspace(root);
   assert.equal(validation.ok, true);
-  assert.equal(validation.counts.resources, 2);
+  assert.equal(validation.counts.resources, 3);
   const loaded = await loadWorkspace(root);
   assert.deepEqual(searchResources(loaded.resources, loaded.model, { query: "program owner" }).map(({ id }) => id), ["person-owner"]);
   assert.deepEqual(
@@ -47,6 +47,60 @@ test("rejects an invalid workspace timezone", async (context) => {
   assert.equal(validation.diagnostics.some(({ message }) => message.includes("IANA time zone")), true);
 });
 
+test("rejects reversed date ranges", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-date-range-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const ownerPath = join(root, "data", "people", "person-owner.json");
+  const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+  await writeFile(ownerPath, `${JSON.stringify({
+    ...owner,
+    startDate: "2026-07-26",
+    endDate: "2026-07-25"
+  }, null, 2)}\n`, "utf8");
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "invalid-date-range"));
+});
+
+test("rejects negative model counts", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-count-range-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "system-report-source",
+    type: "system",
+    title: "Report source",
+    status: "active",
+    criticality: "high",
+    ownerIds: ["person-owner"]
+  });
+  await assert.rejects(createResource(root, {
+    schemaVersion: 1,
+    id: "evidence-negative-population",
+    type: "evidence",
+    title: "Negative population",
+    status: "collected",
+    evidenceKind: "population-export",
+    source: "Report source",
+    collectedOn: "2026-07-26",
+    classification: "Internal",
+    periodStart: "2026-01-01",
+    periodEnd: "2026-06-30",
+    generatedAt: "2026-07-01T09:00:00-05:00",
+    timezone: "America/Chicago",
+    queryDescription: "All records in the audit period.",
+    populationCount: -1,
+    completenessValidation: "Reconciled to the source.",
+    accuracyValidation: "Checked report fields.",
+    sourceSystemId: "system-report-source",
+    collectorIds: ["person-owner"]
+  }, {
+    content: { content: "# Negative population" }
+  }), /populationCount: must be at least 0/);
+});
+
 test("CRUD writes formatted JSON and never leaves an invalid workspace", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-crud-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -78,7 +132,7 @@ test("CRUD writes formatted JSON and never leaves an invalid workspace", async (
     title: "Owner reference",
     status: "draft",
     ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    approverIds: ["person-approver"]
   }, { content: { content: "# Owner reference" } });
   await assert.rejects(deleteResource(root, "person", "person-owner"), /leave the workspace invalid/i);
   assert.equal((await stat(ownerPath)).mode & 0o777, 0o640);
@@ -108,7 +162,8 @@ test("creates a completion record and links it in one validated mutation", async
     evidenceKind: "review",
     source: "Internal review",
     collectedOn: "2026-01-20",
-    classification: "Internal"
+    classification: "Internal",
+    collectorIds: ["person-owner"]
   };
   const result = await createResourceAndLink(root, evidence, {
     type: "obligation",
@@ -151,10 +206,55 @@ test("rejects traversal through attachment paths and rolls back the record", asy
     source: "Manual capture",
     collectedOn: "2026-07-25",
     classification: "Internal",
+    collectorIds: ["person-owner"],
     filePaths: ["../outside.md"]
   };
   await assert.rejects(createResource(root, evidence), /leave the workspace invalid/i);
   assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === evidence.id), false);
+});
+
+test("keeps evidence attachments inside their owning evidence directory", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-evidence-location-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, "data", "attachments"), { recursive: true });
+  await writeFile(join(root, "data", "attachments", "report.txt"), "Report\n", "utf8");
+  await assert.rejects(createResource(root, {
+    schemaVersion: 1,
+    id: "evidence-misplaced",
+    type: "evidence",
+    title: "Misplaced evidence",
+    status: "collected",
+    evidenceKind: "attachment",
+    source: "Manual capture",
+    collectedOn: "2026-07-25",
+    classification: "Internal",
+    collectorIds: ["person-owner"],
+    filePaths: ["attachments/report.txt"]
+  }), /workspace invalid/);
+  assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === "evidence-misplaced"), false);
+});
+
+test("rejects noncanonical evidence paths that traverse out of their owning directory", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-evidence-normalized-location-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, "data", "evidence", "evidence-other"), { recursive: true });
+  await writeFile(join(root, "data", "evidence", "evidence-other", "report.txt"), "Report\n", "utf8");
+  await assert.rejects(createResource(root, {
+    schemaVersion: 1,
+    id: "evidence-path-traversal",
+    type: "evidence",
+    title: "Noncanonical evidence path",
+    status: "collected",
+    evidenceKind: "attachment",
+    source: "Manual capture",
+    collectedOn: "2026-07-25",
+    classification: "Internal",
+    collectorIds: ["person-owner"],
+    filePaths: ["evidence/evidence-path-traversal/../evidence-other/report.txt"]
+  }), /workspace invalid/);
+  assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === "evidence-path-traversal"), false);
 });
 
 test("rejects companion Markdown symlinks that resolve outside data", async (context) => {
@@ -172,7 +272,7 @@ test("rejects companion Markdown symlinks that resolve outside data", async (con
     title: "Outside link",
     status: "draft",
     ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    approverIds: ["person-approver"]
   }), /Required Policy Markdown is missing|regular file/i);
 });
 
@@ -201,7 +301,7 @@ test("companion Markdown paths must resolve to files", async (context) => {
     title: "Directory policy",
     status: "draft",
     ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    approverIds: ["person-approver"]
   }), /regular file/i);
 });
 
@@ -210,7 +310,7 @@ test("validates a realistic workspace containing every resource type", async (co
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   const { model } = await makeComprehensiveWorkspace(root);
   const validation = await validateWorkspace(root);
-  assert.equal(validation.counts.resources, Object.keys(model.resources).length);
+  assert.equal(validation.counts.resources, Object.keys(model.resources).length + 1);
   assert.deepEqual(validation.diagnostics, []);
 });
 
@@ -225,7 +325,7 @@ test("creates and updates Markdown content with its resource", async (context) =
     title: "Access Control Policy",
     status: "draft",
     ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    approverIds: ["person-approver"]
   };
   await assert.rejects(createResource(root, { ...policy, id: "policy-invalid-content" }, { content: "" }), /keyed by data-relative/);
   await createResource(root, policy, { content: { content: "# Access Control Policy\n\nDraft content." } });
@@ -257,7 +357,7 @@ test("stores Markdown beside records without path fields", async (context) => {
     title: "Companion Policy",
     status: "draft",
     ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    approverIds: ["person-approver"]
   };
   await createResource(root, policy, { content: { content: "# Companion Policy\n\nInitial." } });
   const markdownPath = join(root, "data", "policies", "policy-companion.md");
@@ -267,7 +367,12 @@ test("stores Markdown beside records without path fields", async (context) => {
   assert.equal(entry.content.content.path, "policies/policy-companion.md");
   assert.match(entry.content.content.source, /Initial/);
 
-  await updateResource(root, policy.type, policy.id, { ...policy, status: "active" }, {
+  await updateResource(root, policy.type, policy.id, {
+    ...policy,
+    status: "active",
+    approvedOn: "2026-01-01",
+    effectiveOn: "2026-01-01"
+  }, {
     content: { content: "# Companion Policy\n\nUpdated." },
     expectedRevision: entry.revision,
     expectedContentRevisions: { [entry.content.content.path]: entry.content.content.revision }
@@ -291,7 +396,7 @@ test("requires configured Markdown and accepts Markdown as an evidence source", 
     title: "Missing Markdown",
     status: "draft",
     ownerIds: ["person-owner"],
-    approverIds: ["person-owner"]
+    approverIds: ["person-approver"]
   };
   await assert.rejects(createResource(root, policy), /Required Policy Markdown is missing/);
 
@@ -304,7 +409,8 @@ test("requires configured Markdown and accepts Markdown as an evidence source", 
     evidenceKind: "narrative",
     source: "Program owner",
     collectedOn: "2026-07-25",
-    classification: "Internal"
+    classification: "Internal",
+    collectorIds: ["person-owner"]
   };
   await createResource(root, evidence, { content: { content: "# Evidence\n\nReview notes." } });
   assert.equal((await validateWorkspace(root)).ok, true);
@@ -365,6 +471,45 @@ test("rejects empty required relationships and rolls back bundled content", asyn
   await assert.rejects(readFile(join(root, "data", "policies", "policy-no-owner.md"), "utf8"), /ENOENT/);
 });
 
+test("requires policy and document approvers to be separate from owners", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-independent-approver-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await assert.rejects(createResource(root, {
+    schemaVersion: 1,
+    id: "policy-overlapping-approver",
+    type: "policy",
+    title: "Overlapping approver",
+    status: "draft",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-owner"]
+  }, {
+    content: { content: "# Overlapping approver" }
+  }), /approverIds must not contain the same IDs as ownerIds/);
+  await assert.rejects(readFile(join(root, "data", "policies", "policy-overlapping-approver.md"), "utf8"), /ENOENT/);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "team-owner-reviewers",
+    type: "team",
+    title: "Owner reviewers",
+    status: "active",
+    purpose: "Review governed documents.",
+    memberIds: ["person-owner"]
+  });
+  await assert.rejects(createResource(root, {
+    schemaVersion: 1,
+    id: "document-team-overlap",
+    type: "document",
+    title: "Team overlap",
+    status: "draft",
+    documentKind: "test",
+    ownerIds: ["person-owner"],
+    approverIds: ["team-owner-reviewers"]
+  }, {
+    content: { content: "# Team overlap" }
+  }), /including through team membership/);
+});
+
 test("does not count an empty array as a one-of value", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-empty-choice-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -379,6 +524,7 @@ test("does not count an empty array as a one-of value", async (context) => {
     source: "Manual capture",
     collectedOn: "2026-07-25",
     classification: "internal",
+    collectorIds: ["person-owner"],
     filePaths: []
   }), /at least one of/i);
 });
@@ -428,9 +574,10 @@ test("treats JSON files inside evidence directories as attachments", async (cont
     source: "Source system",
     collectedOn: "2026-07-25",
     classification: "internal",
+    collectorIds: ["person-owner"],
     filePaths: ["evidence/evidence-json-export/export.json"]
   });
   const validation = await validateWorkspace(root);
   assert.equal(validation.ok, true);
-  assert.equal(validation.counts.resources, 3);
+  assert.equal(validation.counts.resources, 4);
 });

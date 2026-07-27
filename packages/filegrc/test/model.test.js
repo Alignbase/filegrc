@@ -6,8 +6,8 @@ import { generateModelDocumentation, loadModel } from "../src/index.js";
 test("v1 model exposes the complete resource registry", () => {
   const model = loadModel("1");
   assert.equal(model.modelVersion, "1");
-  assert.equal(Object.keys(model.resources).length, 40);
-  for (const type of ["workspace", "renderer-settings", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit"]) {
+  assert.equal(Object.keys(model.resources).length, 41);
+  for (const type of ["workspace", "renderer-settings", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit", "audit-population"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }
   for (const [type, resource] of Object.entries(model.resources)) {
@@ -21,7 +21,21 @@ test("v1 model exposes the complete resource registry", () => {
   assert.equal(model.resources.policy.titleLabel, undefined);
   assert.equal(model.recordContent.slot, "record");
   assert.equal(model.recordContent.label, "Record");
-  assert.equal(model.recordContent.defaultResourceTypes.length, 15);
+  assert.equal(model.recordContent.defaultResourceTypes.length, 17);
+  assert.equal(model.auditReadiness.managementDocuments.length, 4);
+  assert.equal(model.auditReadiness.populationTemplates.length, 10);
+  assert.equal(new Set(model.auditReadiness.populationTemplates.map(({ kind }) => kind)).size, 10);
+  assert.equal(new Set(model.auditReadiness.managementDocuments.map(({ field }) => field)).size, 4);
+  for (const document of model.auditReadiness.managementDocuments) {
+    assert.equal(model.resources.audit.fields[document.field].relation.includes("document"), true);
+    assert.ok(document.engagementKinds.every((kind) => model.resources.audit.fields.auditKind.values.includes(kind)));
+    assert.ok(document.minimumWords >= 75);
+  }
+  assert.ok(model.auditReadiness.populationTemplates.every((item) => item.sourceKind && item.timing && item.controlCodes.length));
+  assert.ok(model.auditReadiness.externalEvidence.every((item) => item.id && item.sourceKinds.length && item.timing));
+  assert.deepEqual(model.resources.evidence.fields.verifierIds.requiredWhen, { status: "verified" });
+  assert.deepEqual(model.resources.evidence.fields.sourceSystemId.requiredWhen, { evidenceKind: "population-export" });
+  assert.deepEqual(model.resources["obligation-event"].fields.completedOn.requiredWhen, { status: "complete" });
   for (const type of model.recordContent.defaultResourceTypes) {
     const resource = model.resources[type];
     assert.ok(resource, `${type} Record Markdown type exists`);

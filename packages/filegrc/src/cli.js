@@ -1,17 +1,44 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadModel } from "../model/index.js";
+import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
+import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { buildWorkspace } from "./build.js";
-import { prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
-import { createResource, createResourceAndLink, deleteResource, updateResource } from "./files.js";
+import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
+import {
+  addEvidenceAttachment,
+  createResource,
+  deleteResource,
+  removeEvidenceAttachment,
+  updateResource
+} from "./files.js";
 import { generateModelDocumentation } from "./model-docs.js";
-import { createObligationEvent, planObligations } from "./obligations.js";
-import { relativeToWorkspace } from "./paths.js";
+import {
+  completeObligationAction,
+  completeObligationEvent,
+  completeObligationOccurrence,
+  createObligationEvent,
+  planObligations
+} from "./obligations.js";
+import { relativeToWorkspace, resolveDataPath } from "./paths.js";
+import { markdownEntries } from "./resource-markdown.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
+import { createAppState } from "./state.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
+
+const BOOLEAN_FLAGS = new Set([
+  "check-docs",
+  "complete",
+  "json",
+  "mutation",
+  "preview",
+  "require-ready",
+  "write-docs",
+  "yes"
+]);
 
 export async function runCli(argv = process.argv.slice(2)) {
   const [command = "help", ...args] = argv;
@@ -69,13 +96,52 @@ export async function runCli(argv = process.argv.slice(2)) {
     console.log(JSON.stringify({ type, ...definition, commonFields: loaded.model.commonFields }, null, 2));
     return;
   }
+  if (command === "types") {
+    const loaded = await loadWorkspace(root);
+    const types = listResourceTypes(loaded.model);
+    if (flags.json) console.log(JSON.stringify(types, null, 2));
+    else for (const item of types) console.log(`${item.type}\t${item.title}\t${item.purpose}`);
+    return types;
+  }
+  if (command === "guide") {
+    const loaded = await loadWorkspace(root);
+    const type = positionals[0];
+    if (!type) {
+      const result = agentOverview(loaded.model);
+      if (flags.json) console.log(JSON.stringify(result, null, 2));
+      else printAgentOverview(result);
+      return result;
+    }
+    const result = buildAgentGuide(loaded, type, { id: flags.id });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else printAgentGuide(result);
+    return result;
+  }
+  if (command === "scaffold") {
+    const loaded = await loadWorkspace(root);
+    const type = positionals[0];
+    const result = scaffoldResourceMutation(loaded, type, flags.title, { id: flags.id });
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
+  if (command === "list") {
+    const loaded = await loadWorkspace(root);
+    const type = positionals[0];
+    if (type && !loaded.model.resources[type]) throw new Error(`Unknown resource type "${type}".`);
+    const records = loaded.resources
+      .filter((record) => !type || record.type === type)
+      .sort((left, right) => `${left.type}:${left.title}:${left.id}`.localeCompare(`${right.type}:${right.title}:${right.id}`));
+    if (flags.json) console.log(JSON.stringify(records, null, 2));
+    else for (const record of records) console.log(`${record.id}\t${record.type}\t${record.status ?? ""}\t${record.title}`);
+    return records;
+  }
   if (command === "search") {
     const loaded = await loadWorkspace(root);
     const query = positionals.join(" ");
     const results = searchResources(loaded.resources, loaded.model, { query, type: flags.type });
     if (flags.json) console.log(JSON.stringify(results, null, 2));
     else for (const resource of results) console.log(`${resource.id}\t${resource.type}\t${resource.title}`);
-    return;
+    return results;
   }
   if (command === "obligations") {
     const loaded = await loadWorkspace(root);
@@ -107,6 +173,30 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     return result;
   }
+  if (command === "audit-readiness") {
+    const loaded = await loadWorkspace(root);
+    const result = await assessAuditPreparation(loaded, { auditId: positionals[0] || flags.audit });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} management items complete`);
+      for (const stage of result.stages) {
+        console.log(`\n${stage.title}`);
+        for (const item of stage.items) {
+          console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
+        }
+      }
+    }
+    if (flags["require-ready"] && result.status !== "management-ready") process.exitCode = 2;
+    return result;
+  }
+  if (command === "prepare-audit") {
+    const auditId = positionals[0] || flags.audit;
+    if (!auditId) throw new Error("An audit ID is required.");
+    const result = await prepareAuditWorkspace(root, { auditId });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Prepared ${result.auditId}: linked ${result.linkedDocumentIds.length} management documents and created ${result.createdPopulationIds.length} population records.`);
+    return result;
+  }
   if (command === "trigger") {
     const result = await createObligationEvent(root, {
       eventType: positionals[0],
@@ -120,63 +210,202 @@ export async function runCli(argv = process.argv.slice(2)) {
     return result;
   }
   if (command === "evidence-packet") {
-    const packet = await prepareEvidencePacket(root, {
+    const options = {
       start: flags.start,
       end: flags.end,
-      auditId: flags.audit
-    });
+      auditId: flags.audit,
+      output: flags.output
+    };
+    const generated = flags.preview
+      ? { packet: await prepareEvidencePacket(root, options), output: null, files: [] }
+      : await generateEvidencePacket(root, options);
+    const packet = generated.packet;
     let output = null;
-    let files = [];
+    let files = generated.files;
     if (!flags.preview) {
-      const written = await writeEvidencePacket(root, packet, { output: flags.output });
-      output = relativeToWorkspace(root, written.output);
-      files = written.files;
+      output = relativeToWorkspace(root, generated.output);
     }
     const result = { packet, output, files };
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
-      console.log(`${packet.summary.datedRecords} dated records, ${packet.summary.obligationOccurrences} obligation occurrences, ${packet.summary.evidence} evidence records, ${packet.summary.gaps} gaps`);
+      console.log(`${packet.readiness.status.toUpperCase()}: ${packet.summary.datedRecords} dated records, ${packet.summary.obligationOccurrences} obligation occurrences, ${packet.summary.evidence} evidence records, ${packet.summary.errors} errors, ${packet.summary.warnings} warnings`);
       console.log(flags.preview ? "Preview only; no files written." : `Wrote evidence packet to ${output}`);
     }
+    if (flags["require-ready"] && packet.readiness.status !== "delivery-ready") process.exitCode = 2;
     return result;
   }
   if (command === "get") {
     const loaded = await loadWorkspace(root);
-    const [type, id] = positionals;
-    const record = loaded.resources.find((item) => item.type === type && item.id === id);
-    if (!record) throw new Error(`Resource "${type}/${id}" was not found.`);
+    const [first, second] = positionals;
+    const type = second ? first : null;
+    const id = second ?? first;
+    if (!id) throw new Error("A resource ID is required.");
+    const record = loaded.resources.find((item) => item.id === id && (!type || item.type === type));
+    if (!record) throw new Error(`Resource "${type ? `${type}/` : ""}${id}" was not found.`);
+    if (flags.mutation) {
+      const state = await createAppState(root);
+      const entry = state.resources.find((item) => item.record.id === record.id);
+      const contentEntries = Object.entries(entry.content ?? {}).filter(([, content]) => content.source !== null);
+      const mutation = {
+        record,
+        ...(contentEntries.length ? {
+          content: Object.fromEntries(contentEntries.map(([name, content]) => [name, content.source])),
+          contentRevisions: Object.fromEntries(contentEntries.map(([, content]) => [content.path, content.revision]))
+        } : {}),
+        revision: entry.revision
+      };
+      console.log(JSON.stringify(mutation, null, 2));
+      return mutation;
+    }
     console.log(JSON.stringify(record, null, 2));
-    return;
+    return record;
+  }
+  if (command === "references") {
+    const loaded = await loadWorkspace(root);
+    const result = findResourceReferences(loaded, positionals[0]);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.resource.type}/${result.resource.id} has ${result.references.length} inbound reference${result.references.length === 1 ? "" : "s"}.`);
+      for (const reference of result.references) {
+        console.log(`${reference.type}/${reference.id}\t${reference.field}\t${reference.title}`);
+      }
+    }
+    return result;
   }
   if (command === "create") {
-    const record = await readRecord(positionals[0]);
-    const result = await createResource(root, record);
-    console.log(`Created ${result.record.type}/${result.record.id}`);
-    return;
+    const mutation = await readMutation(positionals[0]);
+    const result = await createResource(root, mutation.record, { content: mutation.content });
+    if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
+    else console.log(`Created ${result.record.type}/${result.record.id}`);
+    return result;
   }
   if (command === "complete") {
     const [obligationId, file] = positionals;
-    const record = await readRecord(file);
-    const result = await createResourceAndLink(root, record, {
-      type: "obligation",
-      id: obligationId,
-      field: "completionResourceIds"
+    const mutation = await readMutation(file);
+    const result = await completeObligationOccurrence(root, {
+      obligationId,
+      record: mutation.record,
+      content: mutation.content,
+      expectedRevision: flags["expected-revision"]
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.type}/${result.created.id} and linked it to obligation/${obligationId}`);
     return result;
   }
+  if (command === "complete-action") {
+    const [actionItemId, file] = positionals;
+    const mutation = await readMutation(file);
+    const result = await completeObligationAction(root, {
+      actionItemId,
+      completedOn: flags["completed-on"],
+      record: mutation.record,
+      content: mutation.content,
+      expectedRevision: flags["expected-revision"]
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Created ${result.created.type}/${result.created.id}, linked it to action-item/${actionItemId}, and marked the action done.`);
+    return result;
+  }
+  if (command === "complete-event") {
+    const eventId = positionals[0];
+    if (!eventId) throw new Error("An obligation event ID is required.");
+    const result = await completeObligationEvent(root, {
+      eventId,
+      completedOn: flags["completed-on"],
+      expectedRevision: flags["expected-revision"]
+    });
+    if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
+    else console.log(`Marked obligation-event/${eventId} complete.`);
+    return result;
+  }
   if (command === "update") {
     const [type, id, file] = positionals;
-    const record = await readRecord(file);
-    const result = await updateResource(root, type, id, record);
-    console.log(`Updated ${result.record.type}/${result.record.id}`);
-    return;
+    const mutation = await readMutation(file);
+    const result = await updateResource(root, type, id, mutation.record, {
+      content: mutation.content,
+      expectedRevision: mutation.revision,
+      expectedContentRevisions: mutation.contentRevisions
+    });
+    if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
+    else console.log(`Updated ${result.record.type}/${result.record.id}`);
+    return result;
+  }
+  if (command === "content") {
+    const [type, id, requestedSlot] = positionals;
+    if (!type || !id) throw new Error("A resource type and ID are required.");
+    const loaded = await loadWorkspace(root);
+    const record = loaded.resources.find((item) => item.type === type && item.id === id);
+    if (!record) throw new Error(`Resource "${type}/${id}" was not found.`);
+    const entries = markdownEntries(loaded.model, record);
+    const slot = requestedSlot
+      ? entries.find((item) => item.name === requestedSlot)
+      : entries.find((item) => item.primary) ?? entries[0];
+    if (!slot) throw new Error(`Markdown slot "${requestedSlot ?? ""}" was not found for ${type}/${id}.`);
+    if (flags.write !== undefined) {
+      const source = await readTextInput(flags.write);
+      const state = await createAppState(root);
+      const stateEntry = state.resources.find((item) => item.record.type === type && item.record.id === id);
+      const existingContentRevision = stateEntry.content?.[slot.name]?.revision;
+      await updateResource(root, type, id, record, {
+        content: { [slot.name]: source },
+        expectedRevision: stateEntry.revision,
+        expectedContentRevisions: existingContentRevision
+          ? { [slot.path]: flags["expected-revision"] ?? existingContentRevision }
+          : undefined
+      });
+      const result = { type, id, slot: slot.name, path: `data/${slot.path}`, written: true };
+      if (flags.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Updated ${result.path}`);
+      return result;
+    }
+    let source = null;
+    try {
+      source = await readFile(resolveDataPath(root, slot.path), "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const result = { type, id, slot: slot.name, path: `data/${slot.path}`, exists: source !== null, source };
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (source !== null) process.stdout.write(source);
+    else console.log(`No Markdown exists at ${result.path}.`);
+    return result;
+  }
+  if (command === "attach") {
+    const [evidenceId, sourcePath] = positionals;
+    if (!evidenceId || !sourcePath) throw new Error("An evidence ID and source file are required.");
+    const result = await addEvidenceAttachment(root, evidenceId, sourcePath, {
+      name: flags.name,
+      expectedRevision: flags["expected-revision"]
+    });
+    const output = {
+      evidenceId,
+      path: `data/${result.dataRelativePath}`,
+      filePaths: result.record.filePaths
+    };
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else console.log(`Attached ${output.path} to evidence/${evidenceId}`);
+    return output;
+  }
+  if (command === "detach") {
+    const [evidenceId, attachment] = positionals;
+    if (!evidenceId || !attachment) throw new Error("An evidence ID and attachment name are required.");
+    if (!flags.yes) throw new Error("Pass --yes to confirm attachment removal.");
+    const result = await removeEvidenceAttachment(root, evidenceId, attachment, {
+      expectedRevision: flags["expected-revision"]
+    });
+    const output = {
+      evidenceId,
+      removed: `data/${result.dataRelativePath}`,
+      filePaths: result.record.filePaths ?? []
+    };
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else console.log(`Detached and removed ${output.removed} from evidence/${evidenceId}`);
+    return output;
   }
   if (command === "delete") {
     const [type, id] = positionals;
     if (!flags.yes) throw new Error("Pass --yes to confirm deletion. Preserve historical records unless this is a mistake or uncommitted draft.");
-    await deleteResource(root, type, id);
+    await deleteResource(root, type, id, { expectedRevision: flags["expected-revision"] });
     console.log(`Deleted ${type}/${id}`);
     return;
   }
@@ -197,16 +426,49 @@ function parseArgs(args) {
     const name = separator === -1 ? source : source.slice(0, separator);
     const inline = separator === -1 ? undefined : source.slice(separator + 1);
     if (inline !== undefined) flags[name] = inline;
-    else if (args[index + 1] && !args[index + 1].startsWith("-")) flags[name] = args[++index];
+    else if (BOOLEAN_FLAGS.has(name)) flags[name] = true;
+    else if (args[index + 1] && !args[index + 1].startsWith("--")) flags[name] = args[++index];
     else flags[name] = true;
   }
   return { positionals, flags };
 }
 
-async function readRecord(path) {
+async function readMutation(path) {
   if (!path) throw new Error("A JSON file path or - is required.");
   const source = path === "-" ? await readStdin() : await readFile(resolve(path), "utf8");
-  return JSON.parse(source);
+  const parsed = JSON.parse(source);
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("A resource record or { record, content } mutation object is required.");
+  }
+  if (!Object.hasOwn(parsed, "record")) {
+    return { record: parsed, content: undefined, revision: undefined, contentRevisions: undefined };
+  }
+  if (!parsed.record || Array.isArray(parsed.record) || typeof parsed.record !== "object") {
+    throw new Error("Mutation record must be a JSON object.");
+  }
+  if (parsed.content !== undefined && (Array.isArray(parsed.content) || typeof parsed.content !== "object" || parsed.content === null)) {
+    throw new Error("Mutation content must be an object keyed by Markdown slot.");
+  }
+  if (parsed.revision !== undefined && typeof parsed.revision !== "string") {
+    throw new Error("Mutation revision must be a string.");
+  }
+  if (
+    parsed.contentRevisions !== undefined
+    && (Array.isArray(parsed.contentRevisions) || typeof parsed.contentRevisions !== "object" || parsed.contentRevisions === null)
+  ) {
+    throw new Error("Mutation contentRevisions must be an object keyed by data-relative Markdown path.");
+  }
+  return {
+    record: parsed.record,
+    content: parsed.content,
+    revision: parsed.revision,
+    contentRevisions: parsed.contentRevisions
+  };
+}
+
+async function readTextInput(path) {
+  if (path === true || !path) throw new Error("Pass --write <markdown-file|->.");
+  return path === "-" ? readStdin() : readFile(resolve(String(path)), "utf8");
 }
 
 async function readStdin() {
@@ -234,15 +496,128 @@ Usage:
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
   filegrc describe <resource-type>
+  filegrc types [--json]
+  filegrc guide [resource-type] [--id resource-id] [--json]
+  filegrc scaffold <resource-type> --title text [--id resource-id]
+  filegrc list [resource-type] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
+  filegrc audit-readiness [audit-id] [--require-ready] [--json]
+  filegrc prepare-audit <audit-id> [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
-  filegrc evidence-packet --start YYYY-MM-DD --end YYYY-MM-DD [--audit audit-id] [--output .filegrc/path] [--preview] [--json]
-  filegrc get <resource-type> <id>
-  filegrc create <record.json|->
-  filegrc complete <obligation-id> <completion-record.json|-> [--json]
-  filegrc update <resource-type> <id> <record.json|->
-  filegrc delete <resource-type> <id> --yes
+  filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
+  filegrc get [resource-type] <id> [--mutation]
+  filegrc references <id> [--json]
+  filegrc create <record-or-mutation.json|-> [--json]
+  filegrc complete <obligation-id> <completion-record.json|-> [--expected-revision hash] [--json]
+  filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
+  filegrc complete-event <obligation-event-id> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
+  filegrc update <resource-type> <id> <record-or-mutation.json|-> [--json]
+  filegrc content <resource-type> <id> [slot] [--write markdown-file|-] [--expected-revision hash] [--json]
+  filegrc attach <evidence-id> <source-file> [--name file-name] [--expected-revision hash] [--json]
+  filegrc detach <evidence-id> <attachment-name> --yes [--expected-revision hash] [--json]
+  filegrc delete <resource-type> <id> --yes [--expected-revision hash]
 
 All commands accept --root <workspace>. Writes never create Git commits.`);
+}
+
+function agentOverview(model) {
+  return {
+    rule: "Treat data/ as the source of truth. Run guide before creating an unfamiliar type, validate after every write, review the Git diff, then commit a focused change.",
+    actions: {
+      help: "filegrc help",
+      version: "filegrc version",
+      serve: "filegrc serve [root]",
+      build: "filegrc build [root]",
+      validate: "filegrc validate [root] --json",
+      model: "filegrc model --json",
+      describe: "filegrc describe <resource-type>",
+      types: "filegrc types --json",
+      guide: "filegrc guide [resource-type] --json",
+      scaffold: "filegrc scaffold <resource-type> --title <name>",
+      list: "filegrc list [resource-type] --json",
+      search: "filegrc search <query> --json",
+      obligations: "filegrc obligations --json",
+      auditReadiness: "filegrc audit-readiness <audit-id> --json",
+      prepareAudit: "filegrc prepare-audit <audit-id>",
+      trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
+      evidencePacket: "filegrc evidence-packet --audit <audit-id> --preview --json",
+      get: "filegrc get <resource-id> [--mutation]",
+      references: "filegrc references <resource-id> --json",
+      create: "filegrc create <record-or-mutation.json>",
+      complete: "filegrc complete <obligation-id> <completion-mutation.json>",
+      completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
+      completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",
+      update: "filegrc update <resource-type> <id> <record-or-mutation.json>",
+      content: "filegrc content <resource-type> <id> [slot] [--write <markdown-file|->]",
+      attach: "filegrc attach <evidence-id> <source-file> [--name <file-name>]",
+      detach: "filegrc detach <evidence-id> <attachment-name> --yes",
+      delete: "filegrc delete <resource-type> <id> --yes",
+      commit: "git diff --check && git diff && git add <reviewed-paths> && git commit -m <reason>"
+    },
+    resourceTypes: listResourceTypes(model).map(({ type, title, group }) => ({ type, title, group }))
+  };
+}
+
+function printAgentOverview(result) {
+  console.log(result.rule);
+  console.log("\nActions:");
+  for (const [name, command] of Object.entries(result.actions)) console.log(`${name}\t${command}`);
+  console.log("\nResource types:");
+  for (const item of result.resourceTypes) console.log(`${item.type}\t${item.title}\t${item.group ?? ""}`);
+}
+
+function printAgentGuide(result) {
+  console.log(`${result.title} (${result.type})`);
+  console.log(`Purpose: ${result.purpose}`);
+  console.log(`Policy basis: ${result.policyBasis}`);
+  console.log(`Timing: ${result.cadence}`);
+  console.log(`JSON: ${result.location}`);
+  console.log("\nRequired fields:");
+  for (const field of result.requiredAtCreation) console.log(formatGuideField(field));
+  if (result.conditionalRequirements.length) {
+    console.log("\nConditional fields:");
+    for (const field of result.conditionalRequirements) console.log(formatGuideField(field));
+  }
+  if (result.optionalFields.length) {
+    console.log("\nOptional fields:");
+    for (const field of result.optionalFields) console.log(formatGuideField(field));
+  }
+  if (result.markdown.length) {
+    console.log("\nMarkdown:");
+    for (const slot of result.markdown) {
+      console.log(`${slot.name}\t${slot.required ? "required" : slot.recommended ? "recommended" : "optional"}\t${slot.path}`);
+    }
+  }
+  const relationshipFields = [
+    ...result.requiredAtCreation,
+    ...result.conditionalRequirements,
+    ...result.optionalFields
+  ].filter(({ relation }) => relation);
+  if (relationshipFields.length) {
+    console.log("\nRelationship candidates:");
+    for (const field of relationshipFields) {
+      const hasCandidates = field.relation.candidates.length > 0;
+      const suffix = field.relation.truncated && hasCandidates
+        ? `, … (${field.relation.candidateCount} total; use filegrc list)`
+        : "";
+      const candidates = hasCandidates
+        ? field.relation.candidates.join(", ") + suffix
+        : field.relation.candidateCount
+          ? `use filegrc list (${field.relation.candidateCount} possible)`
+          : "none";
+      console.log(`${field.name}\t${field.relation.types.join("|")}\t${candidates}`);
+    }
+  }
+  console.log("\nWorkflow:");
+  result.workflow.forEach((step, index) => console.log(`${index + 1}. ${step}`));
+}
+
+function formatGuideField(field) {
+  const details = [
+    field.values?.length ? `one of ${field.values.join("|")}` : field.type,
+    field.requiredWhen ? `required when ${JSON.stringify(field.requiredWhen)}` : null,
+    field.disjointFrom ? `must not overlap ${field.disjointFrom}` : null
+  ].filter(Boolean).join("; ");
+  return `${field.name}\t${details}`;
 }

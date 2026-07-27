@@ -4,9 +4,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 const FRAMEWORK_ID = "framework-aicpa-trust-services-criteria";
 const DESCRIPTION_FRAMEWORK_ID = "framework-aicpa-soc2-description-criteria";
 const OWNER_ID = "person-policy-owner";
+const INDEPENDENT_APPROVER_ID = "person-independent-approver";
 const OVERSIGHT_TEAM_ID = "team-security-risk-oversight";
 const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
 const DATA_POLICY_ID = "policy-data-protection-handling";
+const RETENTION_SCHEDULE_ID = "document-data-retention-schedule";
+const ROLE_TRAINING_IDS = [
+  "training-secure-development",
+  "training-privileged-sensitive-roles",
+  "training-anti-bribery-high-risk-roles"
+];
 
 const commonCriteria = [
   ["CC1.1", "Integrity and ethical values", "Set, communicate, and enforce standards for integrity and ethical conduct."],
@@ -61,9 +68,9 @@ const controls = [
     id: "control-security-governance",
     code: "GOV-01",
     title: "Security governance",
-    statement: "Management assigns security responsibilities, and the security and risk oversight group reviews the program, risks, incidents, findings, and overdue work at least quarterly.",
+    statement: "Management assigns security responsibilities, and a reviewer who is separate from the policy owner and control operators independently reviews the program, risks, incidents, findings, policy approvals, and overdue work at least quarterly.",
     requirements: ["CC1.1", "CC1.2", "CC1.3", "CC1.5"],
-    activity: "Assign responsibility and record quarterly oversight decisions and actions.",
+    activity: "Assign an external independent reviewer and record quarterly oversight decisions, approvals, and actions.",
     controlType: "preventive",
     operationMode: "manual",
     frequency: "Quarterly",
@@ -73,7 +80,7 @@ const controls = [
     id: "control-policy-management",
     code: "GOV-02",
     title: "Policy management",
-    statement: "The policy owner reviews governed policies and plans at least annually and after material changes, obtains approval, and retains the approved revisions in Git.",
+    statement: "The policy owner reviews governed policies and plans at least annually and after material changes, obtains approval from a separate independent approver, and retains the approved revisions in Git.",
     requirements: ["CC5.1", "CC5.2", "CC5.3"],
     activity: "Review, approve, communicate, and version policies and plans.",
     controlType: "preventive",
@@ -115,13 +122,13 @@ const controls = [
     id: "control-security-training",
     code: "HR-02",
     title: "Security training and acknowledgement",
-    statement: "Employees and contractors complete security training within 30 days of starting, at least annually, and after assigned material changes, with completion tied to the content revision reviewed.",
+    statement: "Employees and contractors complete general security training within 30 days of starting and at least annually. Workers complete applicable role-based training within 30 days of starting a covered role or changing roles, with completion tied to the content revision reviewed.",
     requirements: ["CC1.4", "CC2.2"],
-    activity: "Assign training, collect completion attestations, and follow up on overdue assignments.",
+    activity: "Assign general and role-based training, document non-applicability where needed, collect completion attestations, and follow up on overdue assignments.",
     controlType: "preventive",
     operationMode: "manual",
     frequency: "Onboarding and annually",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
   },
   {
     id: "control-performance-review",
@@ -235,7 +242,7 @@ const controls = [
     id: "control-data-retention-disposal",
     code: "DATA-03",
     title: "Data retention and disposal",
-    statement: "Owners define retention for important record classes and delete, anonymize, or securely destroy data and media when retention ends.",
+    statement: "Owners maintain an approved retention schedule for important record classes, review it at least annually and after material data-use changes, and delete, anonymize, or securely destroy data and media when retention ends.",
     requirements: ["CC6.5"],
     activity: "Apply approved retention and disposal methods to active, local, backup, and vendor-held copies.",
     controlType: "preventive",
@@ -247,7 +254,7 @@ const controls = [
     id: "control-inventory-configuration",
     code: "OPS-01",
     title: "System inventory and secure configuration",
-    statement: "The organization maintains inventories of important systems, assets, service accounts, vendors, and data stores, with owners, lifecycle state, and secure configuration expectations.",
+    statement: "The organization maintains inventories of important systems, company and approved personal devices, service accounts, vendors, and data stores, with owners, lifecycle state, and secure configuration expectations.",
     requirements: ["CC6.1", "CC7.1"],
     activity: "Maintain inventories, baselines, ownership, classification, and approved deviations.",
     controlType: "preventive",
@@ -319,7 +326,7 @@ const controls = [
     id: "control-logging-monitoring",
     code: "LOG-01",
     title: "Logging and monitoring",
-    statement: "Important systems record security and operational events, protect and retain security logs for at least 12 months, and provide risk-based alerting and quarterly review.",
+    statement: "Important systems record security and operational events, protect and retain security logs for at least 12 months, and provide risk-based alerting, quarterly review, annual end-to-end alert-path testing, and testing after material alerting changes.",
     requirements: ["CC7.2", "CC7.3"],
     activity: "Collect, protect, alert on, test, and review important log output and access.",
     controlType: "detective",
@@ -343,9 +350,9 @@ const controls = [
     id: "control-incident-exercise",
     code: "IR-02",
     title: "Incident response exercise",
-    statement: "The organization tests its incident process at least annually and records participants, scenario, results, findings, and follow-up work.",
+    statement: "The organization tests its incident process and a representative alert path from generation through acknowledgement, escalation, and fallback at least annually, then records participants, scenario, results, findings, and follow-up work.",
     requirements: ["CC7.4", "CC7.5"],
-    activity: "Plan, conduct, review, and document an incident response exercise.",
+    activity: "Plan, conduct, review, and document an incident response and alert-path exercise.",
     controlType: "detective",
     operationMode: "manual",
     frequency: "Annually",
@@ -391,7 +398,7 @@ const controls = [
     id: "control-vendor-monitoring",
     code: "VEN-02",
     title: "Vendor monitoring",
-    statement: "Owners review critical and high-risk vendors at least annually and after material service changes or incidents, then track risks, findings, and follow-up work.",
+    statement: "Owners review critical and high-risk vendors at least annually and reassess affected vendors within 30 days after a material service change or incident, then track risks, findings, and follow-up work.",
     requirements: ["CC4.1", "CC9.2"],
     activity: "Review vendor performance, assurance, recovery, access, incidents, and contract obligations.",
     controlType: "detective",
@@ -437,7 +444,8 @@ const obligations = [
       INFORMATION_SECURITY_POLICY_ID,
       "policy-mobile-computing-communications",
       "document-business-continuity-disaster-recovery",
-      "document-incident-response-plan"
+      "document-incident-response-plan",
+      RETENTION_SCHEDULE_ID
     ],
     controlIds: ["control-policy-management"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -491,7 +499,7 @@ const obligations = [
   },
   {
     id: "obligation-annual-inventory-review",
-    title: "Annual system, asset, vendor, and data inventory review",
+    title: "Annual system, company and personal device, vendor, and data inventory review",
     activityType: "inventory-review",
     recurrence: calendar("year", 1),
     ownerIds: [OWNER_ID],
@@ -545,11 +553,13 @@ const obligations = [
   },
   {
     id: "obligation-annual-incident-exercise",
-    title: "Annual incident response exercise",
+    title: "Annual incident response and alert-path exercise",
     activityType: "exercise",
     recurrence: calendar("year", 1),
     ownerIds: [OWNER_ID],
-    controlIds: ["control-incident-exercise"],
+    scopeResourceIds: ["document-incident-response-plan"],
+    templateResourceId: "document-incident-response-plan",
+    controlIds: ["control-incident-exercise", "control-logging-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -642,6 +652,19 @@ const obligations = [
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
+    id: "obligation-worker-start-role-training",
+    title: "Complete or document non-applicability of role-based training",
+    activityType: "role-training",
+    recurrence: event("person-started"),
+    triggerPrompt: "New employee or contractor?",
+    window: eventWindow(30),
+    completionResourceTypes: ["attestation", "evidence"],
+    ownerIds: [OWNER_ID],
+    scopeResourceIds: ROLE_TRAINING_IDS,
+    controlIds: ["control-security-training"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
+  },
+  {
     id: "obligation-worker-end-access",
     title: "Revoke departing-worker access",
     activityType: "access-removal",
@@ -690,6 +713,43 @@ const obligations = [
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
+    id: "obligation-worker-role-change-training",
+    title: "Complete or document non-applicability of training for the new role",
+    activityType: "role-training",
+    recurrence: event("person-role-changed"),
+    triggerPrompt: "Worker role changed?",
+    window: eventWindow(30),
+    completionResourceTypes: ["attestation", "evidence"],
+    ownerIds: [OWNER_ID],
+    scopeResourceIds: ROLE_TRAINING_IDS,
+    controlIds: ["control-security-training"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
+  },
+  {
+    id: "obligation-personal-device-approval",
+    title: "Approve personal-device access and security conditions before use",
+    activityType: "personal-device-approval",
+    recurrence: event("personal-device-access-planned"),
+    triggerPrompt: "Personal device needs company access?",
+    window: eventWindow(0),
+    completionResourceTypes: ["evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-access-authorization", "control-endpoint-protection"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+  },
+  {
+    id: "obligation-personal-device-registration",
+    title: "Register and verify the approved personal device before use",
+    activityType: "asset-registration",
+    recurrence: event("personal-device-access-planned"),
+    triggerPrompt: "Personal device needs company access?",
+    window: eventWindow(0),
+    completionResourceTypes: ["asset", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-inventory-configuration", "control-endpoint-protection"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+  },
+  {
     id: "obligation-vendor-access-review",
     title: "Complete vendor security and privacy review before access",
     activityType: "vendor-review",
@@ -714,11 +774,35 @@ const obligations = [
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
+    id: "obligation-vendor-material-change-review",
+    title: "Reassess vendor security and privacy after a material change or incident",
+    activityType: "vendor-review",
+    recurrence: event("vendor-reassessment-needed"),
+    triggerPrompt: "Vendor changed materially or had an incident?",
+    window: eventWindow(30),
+    completionResourceTypes: ["vendor-review", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-vendor-monitoring"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-vendor-material-change-records",
+    title: "Update vendor, risk, contract, data-use, and follow-up records",
+    activityType: "vendor-remediation",
+    recurrence: event("vendor-reassessment-needed"),
+    triggerPrompt: "Vendor changed materially or had an incident?",
+    window: eventWindow(30),
+    completionResourceTypes: ["vendor", "risk", "document", "action-item", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-vendor-monitoring", "control-data-classification-inventory"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
     id: "obligation-system-change-risk",
     title: "Assess security and data-protection risk from the change",
     activityType: "risk-assessment",
     recurrence: event("system-material-change"),
-    triggerPrompt: "Material system or service change?",
+    triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
     completionResourceTypes: ["risk-assessment", "risk", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
@@ -730,7 +814,7 @@ const obligations = [
     title: "Run a vulnerability scan when practical",
     activityType: "vulnerability-scan",
     recurrence: event("system-material-change"),
-    triggerPrompt: "Material system or service change?",
+    triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
     completionResourceTypes: ["vulnerability-scan", "evidence"],
     ownerIds: [OWNER_ID],
@@ -742,12 +826,38 @@ const obligations = [
     title: "Review policy, control, and communication impacts",
     activityType: "change-review",
     recurrence: event("system-material-change"),
-    triggerPrompt: "Material system or service change?",
+    triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
     completionResourceTypes: ["meeting", "policy", "control", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-policy-management", "control-security-communication"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-system-change-retention",
+    title: "Review data lifecycle and update the retention schedule",
+    activityType: "retention-review",
+    recurrence: event("system-material-change"),
+    triggerPrompt: "Material system, service, or data-use change?",
+    window: eventWindow(30),
+    completionResourceTypes: ["document", "evidence"],
+    ownerIds: [OWNER_ID],
+    scopeResourceIds: [RETENTION_SCHEDULE_ID],
+    templateResourceId: RETENTION_SCHEDULE_ID,
+    controlIds: ["control-data-retention-disposal", "control-data-classification-inventory"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-system-change-alert-path",
+    title: "Test affected security alert and response paths or document non-applicability",
+    activityType: "alert-path-test",
+    recurrence: event("system-material-change"),
+    triggerPrompt: "Material system, service, or data-use change?",
+    window: eventWindow(30),
+    completionResourceTypes: ["control-test", "exercise", "evidence"],
+    ownerIds: [OWNER_ID],
+    controlIds: ["control-logging-monitoring", "control-incident-exercise"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-material-incident-retrospective",
@@ -854,10 +964,27 @@ export function baselineRecordFiles(effectiveDate) {
     type: "team",
     title: "Security and Risk Oversight",
     status: "active",
-    purpose: "Review the security program, risk register, incidents, findings, vendor and access reviews, policy changes, exercises, and overdue work.",
-    memberIds: [OWNER_ID],
-    chairIds: [OWNER_ID],
+    purpose: "Provide independent oversight of the security program, risk register, incidents, findings, vendor and access reviews, policy changes, exercises, and overdue work. The chair must be separate from the policy owner and people who operate the controls under review.",
+    memberIds: [OWNER_ID, INDEPENDENT_APPROVER_ID],
+    chairIds: [INDEPENDENT_APPROVER_ID],
     meetingCadence: calendar("month", 3, effectiveDate)
+  };
+  const programRepository = {
+    schemaVersion: 1,
+    id: "system-filegrc-program-repository",
+    type: "system",
+    title: "FileGRC Program Repository",
+    status: "active",
+    criticality: "high",
+    ownerIds: [OWNER_ID],
+    description: "The Git repository that is authoritative for FileGRC governance records, approvals, exceptions, findings, acknowledgements, evidence indexes, and their revision history.",
+    systemKind: "governance-system-of-record",
+    environment: "Git repository",
+    dataClassification: "Confidential",
+    internetExposed: false,
+    inScope: false,
+    evidenceSourceKinds: ["training-acknowledgement", "exception-finding"],
+    evidenceOwnerIds: [OWNER_ID]
   };
   const obligationRecords = obligations.map((obligation) => ({
     schemaVersion: 1,
@@ -886,6 +1013,7 @@ export function baselineRecordFiles(effectiveDate) {
     ...commonRequirements.map((record) => recordFile("requirements", record)),
     ...descriptionRequirements.map((record) => recordFile("requirements", record)),
     ...controlRecords.map((record) => recordFile("controls", record)),
+    recordFile("systems", programRepository),
     recordFile("teams", team),
     ...obligationRecords.map((record) => recordFile("obligations", record))
   ];

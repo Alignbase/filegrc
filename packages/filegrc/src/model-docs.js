@@ -26,6 +26,22 @@ export function generateModelDocumentation(model) {
     "",
     `Record Markdown is shown by default for: ${model.recordContent.defaultResourceTypes.map((type) => `\`${type}\``).join(", ")}. Other resources without dedicated Markdown can add it when structured fields are not enough.`,
     "",
+    "## Audit preparation defaults",
+    "",
+    "The engine and renderer use these model-owned defaults to prepare Type 1 and Type 2 engagements. Preparation creates engagement-specific management documents from the local starter templates. Management still confirms scope, approves documents, catalogs authoritative source systems, reconciles Type 2 populations, and supplies source evidence.",
+    "",
+    "Management documents:",
+    "",
+    ...model.auditReadiness.managementDocuments.map((item) => `- **${item.title}** (\`${item.kind}\`): ${item.timing}`),
+    "",
+    "Standard populations, including zero-event populations:",
+    "",
+    ...model.auditReadiness.populationTemplates.map((item) => `- **${item.title}** (\`${item.kind}\`): source role \`${item.sourceKind}\`; start with ${item.sourcePrompt}. ${item.timing}`),
+    "",
+    "Authoritative systems of record:",
+    "",
+    ...model.auditReadiness.externalEvidence.map((item) => `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} ${item.timing}`),
+    "",
     "## Resource groups",
     ""
   );
@@ -91,6 +107,9 @@ function fieldNotes(field) {
     field.label,
     field.values ? `Values: ${field.values.map((item) => `\`${item}\``).join(", ")}` : "",
     field.relation ? `References: ${field.relation.map((item) => `\`${item}\``).join(", ")}` : "",
+    field.minimum !== undefined ? `Minimum: \`${field.minimum}\`.` : "",
+    field.maximum !== undefined ? `Maximum: \`${field.maximum}\`.` : "",
+    field.disjointFrom ? `Must not overlap \`${field.disjointFrom}\`.` : "",
     field.requiredWhen ? `Required when ${Object.entries(field.requiredWhen).map(([key, value]) => `\`${key}\` is \`${value}\``).join(" and ")}` : ""
   ].filter(Boolean).join(" ");
 }

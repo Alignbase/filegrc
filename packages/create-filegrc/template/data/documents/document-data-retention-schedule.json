@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "document-data-retention-schedule",
+  "type": "document",
+  "title": "Data Retention Schedule",
+  "status": "draft",
+  "documentKind": "schedule",
+  "ownerIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
+  "version": "1.0",
+  "effectiveOn": "{{effective_date}}",
+  "reviewCadence": {
+    "mode": "calendar",
+    "unit": "year",
+    "interval": 1,
+    "anchorDate": "{{effective_date}}"
+  },
+  "classification": "internal",
+  "audience": ["data-owners", "system-owners"],
+  "acknowledgementRequired": false,
+  "controlIds": [
+    "control-data-classification-inventory",
+    "control-data-retention-disposal"
+  ]
+}

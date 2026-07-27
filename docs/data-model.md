@@ -25,7 +25,44 @@ Each structured resource is one UTF-8 JSON file. Long-form work is an implicit M
 
 Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record.
 
-Record Markdown is shown by default for: `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`. Other resources without dedicated Markdown can add it when structured fields are not enough.
+Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`. Other resources without dedicated Markdown can add it when structured fields are not enough.
+
+## Audit preparation defaults
+
+The engine and renderer use these model-owned defaults to prepare Type 1 and Type 2 engagements. Preparation creates engagement-specific management documents from the local starter templates. Management still confirms scope, approves documents, catalogs authoritative source systems, reconciles Type 2 populations, and supplies source evidence.
+
+Management documents:
+
+- **System Description** (`soc2-system-description`): Complete before the auditor finalizes the description of the system.
+- **Management Assertion** (`soc2-management-assertion`): Agree on final wording with the auditor and approve it for the reporting date or period.
+- **Period Completeness Statement** (`soc2-period-completeness`): Complete after reconciling every audit population, including populations with zero items.
+- **Management Representation Letter** (`soc2-management-representation`): Reconcile and sign the auditor-provided letter near the end of fieldwork.
+
+Standard populations, including zero-event populations:
+
+- **Workforce Starts, Role Changes, and Departures** (`workforce-changes`): source role `workforce`; start with HR or workforce system. Export after the period closes and before the auditor selects samples.
+- **Access Grants, Changes, Reviews, and Removals** (`access-changes`): source role `identity-access`; start with Identity provider and application access sources. Export after the period closes and before access samples are selected. Split this population when different systems require different queries.
+- **Production and Infrastructure Changes** (`production-changes`): source role `production-change`; start with Source control, deployment, and infrastructure change sources. Export after the period closes and before change samples are selected. Split software and infrastructure populations when their source reports differ.
+- **Security Events and Incidents** (`security-incidents`): source role `security-monitoring`; start with Incident and security monitoring sources. Export after the period closes, including a source report that proves a zero count when management identified no incidents.
+- **Vulnerabilities and Security Scans** (`vulnerability-activity`): source role `vulnerability-management`; start with Vulnerability, dependency, and scanning tools. Export after the period closes and preserve scan coverage, findings, remediation, and exceptions.
+- **Vendors and Vendor Changes** (`vendor-changes`): source role `vendor-management`; start with Vendor inventory, contract, and purchasing sources. Export after the period closes and reconcile additions, removals, material changes, and required reviews.
+- **Devices and Other Important Assets** (`managed-assets`): source role `endpoint-asset`; start with Device management and asset inventory sources. Export after the period closes and reconcile assigned, active, lost, returned, and retired assets.
+- **Training and Policy Acknowledgements** (`training-acknowledgements`): source role `training-acknowledgement`; start with Training, signature, and workforce sources. Export after the period closes and reconcile assignments, completions, acknowledgements, exceptions, and overdue work to the workforce population.
+- **Backup Failures and Restoration Tests** (`backup-recovery`): source role `backup-recovery`; start with Backup, recovery, and monitoring sources. Export after the period closes and include scheduled jobs, failures, restorations, exercises, and follow-up work.
+- **Security Exceptions and Control Findings** (`exceptions-findings`): source role `exception-finding`; start with Exception, finding, ticketing, and risk sources. Export after the period closes and reconcile open, closed, accepted, overdue, and remediated items.
+
+Authoritative systems of record:
+
+- **Workforce** (`workforce`): Catalog the HR or workforce system that is authoritative for starts, role changes, and departures. Bring the complete workforce-change population and source reports used to reconcile access and responsibilities. Identify the source during scoping. Preserve event records as changes occur and export the complete Type 2 population after the period closes.
+- **Training and Acknowledgements** (`training-acknowledgement`): Catalog training, signature, and acknowledgement systems. Bring assignments, content revisions, completion records, signatures, exceptions, and overdue follow-up. Identify sources before assignments begin. Preserve signatures and completion proof as work occurs, then reconcile the complete Type 2 population to the workforce population after close.
+- **Identity and Access** (`identity-access`): Catalog the identity provider and each important application that enforces access. Bring identity, role, privileged-access, authentication-setting, review, and removal exports. Identify sources during scoping. Capture configuration near the Type 1 date or at the start and end of a Type 2 period; export complete change and review populations after the Type 2 period closes.
+- **Production and Change** (`production-change`): Catalog source control, deployment, and infrastructure-change systems. Bring protection settings, reviews, test and approval records, deployments, emergency changes, and rollback evidence. Identify sources before the audit period. Preserve per-change evidence as changes occur and export the complete period population after a Type 2 period closes.
+- **Monitoring and Incidents** (`security-monitoring`): Catalog logging, alerting, incident, and case-management systems. Bring configuration, coverage, alert delivery tests, alerts, investigations, incidents, recovery work, and zero-event proof. Capture configuration and coverage at the Type 1 date or across the Type 2 period. Preserve cases as they occur and export complete alert and incident populations after close.
+- **Vulnerability Management** (`vulnerability-management`): Catalog vulnerability, dependency, scanning, penetration-test, and remediation systems. Bring scope and configuration, scan results, findings, tickets, exceptions, retests, and independent reports. Confirm coverage before the audit period. Preserve scan and remediation evidence when generated and export the complete Type 2 population after close.
+- **Endpoints and Assets** (`endpoint-asset`): Catalog device-management, endpoint-compliance, and asset-inventory systems. Bring the complete device population, assignments, security configuration, compliance status, exceptions, loss, return, and disposal records. Identify sources before devices receive access. Capture configuration near the Type 1 date or across the Type 2 period and export the complete Type 2 population after close.
+- **Backup and Recovery** (`backup-recovery`): Catalog backup, recovery, and continuity systems. Bring configuration, scheduled-job history, failures, restoration results, exercises, and follow-up work. Capture configuration at the Type 1 date or across the Type 2 period. Preserve restoration and exercise results when performed and export complete job and failure history after period close.
+- **Vendors** (`vendor-management`): Catalog procurement, contract, and vendor-risk systems. Bring the vendor population, contracts, reviews, assurance reports, bridge coverage, incidents, and follow-up. Identify relevant subservice organizations during scoping. Obtain current assurance reports before fieldwork and bridge coverage through the report period when a report ends earlier.
+- **Exceptions and Findings** (`exception-finding`): Catalog the repository or ticket system authoritative for control exceptions, findings, risk acceptance, remediation, verification, and overdue work. Record items as they arise. Reconcile open and closed records to their source throughout fieldwork and export the complete Type 2 population after the period closes.
 
 ## Resource groups
 
@@ -101,7 +138,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `requirementIds` | array of id | No | References: `requirement` |
 | `controlIds` | array of id | No | References: `control` |
 | `customerFacing` | boolean | No |  |
-| `effectiveOn` | date | No |  |
+| `effectiveOn` | date | Conditional | Required when `status` is `active` |
 | `supersedesId` | id | No | References: `commitment` |
 
 #### `complementary-control`
@@ -151,16 +188,16 @@ Record Markdown: available when needed as an implicit companion file.
 | `statement` | string | Yes |  |
 | `requirementIds` | array of id | Yes | References: `requirement` |
 | `code` | string | No |  |
-| `activity` | string | No |  |
+| `activity` | string | Yes |  |
 | `controlType` | enum | No | Values: `preventive`, `detective`, `corrective` |
-| `operationMode` | enum | No | Values: `manual`, `automated`, `hybrid` |
-| `frequency` | string | No |  |
+| `operationMode` | enum | Yes | Values: `manual`, `automated`, `hybrid` |
+| `frequency` | string | Yes |  |
 | `systemIds` | array of id | No | References: `system` |
 | `commitmentIds` | array of id | No | References: `commitment` |
 | `complementaryControlIds` | array of id | No | References: `complementary-control` |
 | `policyIds` | array of id | No | References: `policy` |
 | `riskIds` | array of id | No | References: `risk` |
-| `effectiveOn` | date | No |  |
+| `effectiveOn` | date | Conditional | Required when `status` is `implemented` |
 | `retiredOn` | date | No |  |
 
 #### `control-test`
@@ -169,7 +206,7 @@ Management, internal-audit, or service-auditor tests of one control's design or 
 
 Policy basis: The information security policy requires control monitoring and audit evidence. Tests link procedures, samples, evidence, exceptions, findings, and review.
 
-Timing: Plan from control frequency, risk, and audit scope. Record the exact period or as-of date and complete review before relying on the result.
+Timing: Plan from control frequency, risk, and audit scope. Record the exact period or as-of date, link the complete population and sampled items when sampling applies, and complete review before relying on the result.
 
 Default sources: `policy-information-security`
 
@@ -190,10 +227,11 @@ Record Markdown: shown by default as an implicit companion file.
 | `auditId` | id | No | References: `audit` |
 | `testerIds` | array of id | No | References: `person` |
 | `externalTester` | object | No |  |
-| `populationCount` | integer | No |  |
-| `sampleSize` | integer | No |  |
+| `sampleSize` | integer | No | Minimum: `0`. |
+| `populationId` | id | No | References: `audit-population` |
+| `sampleEvidenceIds` | array of id | No | References: `evidence` |
 | `evidenceIds` | array of id | No | References: `evidence` |
-| `exceptionCount` | integer | No |  |
+| `exceptionCount` | integer | No | Minimum: `0`. |
 | `findingIds` | array of id | No | References: `finding` |
 | `reviewerIds` | array of id | No | References: `person` |
 | `reviewedOn` | date | No |  |
@@ -207,9 +245,9 @@ Record Markdown: shown by default as an implicit companion file.
 
 Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records. A separate team register is not required for SOC 2; named people can hold these responsibilities directly.
 
-Policy basis: The information security policy establishes a security and risk oversight group. The continuity plan assigns response and recovery roles.
+Policy basis: The information security policy establishes a security and risk oversight group chaired by an external reviewer who is separate from the policy owner and control operators. The continuity plan assigns response and recovery roles.
 
-Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes.
+Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve the independent chair.
 
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
@@ -234,7 +272,7 @@ Governed charters, plans, procedures, standards, agreements, reports, and templa
 
 Policy basis: Policies use documents for detailed procedures, plans, acknowledgements, assertions, and reports while Git supplies revision history.
 
-Timing: Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use.
+Timing: Follow each record's review cadence. Starter governed documents are reviewed at least annually and after material changes or use, with an approver who is separate from the owner.
 
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
@@ -248,10 +286,11 @@ Markdown companions:
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `active`, `superseded`, `retired` |
 | `documentKind` | string | Yes |  |
-| `approverIds` | array of id | No | References: `person`, `team` |
+| `template` | boolean | No |  |
+| `approverIds` | array of id | No | References: `person`, `team` Must not overlap `ownerIds`. |
 | `version` | string | No |  |
-| `effectiveOn` | date | No |  |
-| `approvedOn` | date | No |  |
+| `effectiveOn` | date | Conditional | Required when `status` is `active` |
+| `approvedOn` | date | Conditional | Required when `status` is `active` |
 | `reviewCadence` | object | No |  |
 | `supersedesId` | id | No | References: `document` |
 | `systemIds` | array of id | No | References: `system` |
@@ -268,7 +307,7 @@ Approved rules and responsibilities with Markdown content, owners, approvers, au
 
 Policy basis: Policies set the program's required behavior. Control, obligation, training, document, and attestation records make those requirements operational and auditable.
 
-Timing: Review at least annually and after material changes. Record approval and require a new acknowledgement when a material update affects the audience.
+Timing: Review at least annually and after material changes. The approver must be separate from the owner. Record approval and require a new acknowledgement when a material update affects the audience.
 
 Default sources: `policy-information-security`
 
@@ -281,12 +320,12 @@ Markdown companions:
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `in-review`, `approved`, `active`, `superseded`, `retired` |
-| `approverIds` | array of id | Yes | References: `person`, `team` |
+| `approverIds` | array of id | Yes | References: `person`, `team` Must not overlap `ownerIds`. |
 | `policyNumber` | string | No |  |
 | `policyKind` | string | No |  |
 | `version` | string | No |  |
-| `effectiveOn` | date | No |  |
-| `approvedOn` | date | No |  |
+| `effectiveOn` | date | Conditional | Required when `status` is `active` |
+| `approvedOn` | date | Conditional | Required when `status` is `active` |
 | `reviewCadence` | object | No |  |
 | `nextReviewConstraint` | object | No |  |
 | `supersedesId` | id | No | References: `policy` |
@@ -544,8 +583,8 @@ Record Markdown: shown by default as an implicit companion file.
 | `assessmentKind` | enum | Yes | Values: `enterprise-risk`, `system-risk`, `privacy-impact`, `vendor-risk`, `business-impact` |
 | `scope` | string | Yes |  |
 | `assessorIds` | array of id | Yes | References: `person` |
-| `reviewerIds` | array of id | Yes | References: `person` |
-| `methodology` | string | No |  |
+| `reviewerIds` | array of id | Yes | References: `person` Must not overlap `assessorIds`. |
+| `methodology` | string | Conditional | Required when `status` is `complete` |
 | `trigger` | string | No |  |
 | `attendeeIds` | array of id | No | References: `person` |
 | `systemIds` | array of id | No | References: `system` |
@@ -558,7 +597,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `findingIds` | array of id | No | References: `finding` |
 | `actionItemIds` | array of id | No | References: `action-item` |
-| `approvedOn` | date | No |  |
+| `approvedOn` | date | Conditional | Required when `status` is `complete` |
 | `sourceCommit` | string | No |  |
 
 ### People and Access
@@ -678,8 +717,8 @@ Record Markdown: shown by default as an implicit companion file.
 | `periodStart` | date | No |  |
 | `periodEnd` | date | No |  |
 | `grantDecisions` | array of object | No |  |
-| `populationCount` | integer | No |  |
-| `exceptionCount` | integer | No |  |
+| `populationCount` | integer | No | Minimum: `0`. |
+| `exceptionCount` | integer | No | Minimum: `0`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `findingIds` | array of id | No | References: `finding` |
 | `actionItemIds` | array of id | No | References: `action-item` |
@@ -691,11 +730,11 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `system`
 
-Applications, services, infrastructure, and business-system boundaries used to define audit scope, ownership, data, vendors, and recovery objectives.
+Applications, services, infrastructure, business systems, and evidence sources used to define audit scope, ownership, data, vendors, recovery objectives, and authoritative reports.
 
 Policy basis: The information security, data handling, and continuity policies require inventories of important systems with owners, criticality, classification, scope, and recovery needs.
 
-Timing: Review at least annually and after material architecture, data, vendor, service, or recovery changes.
+Timing: Review at least annually and after material architecture, data, vendor, service, recovery, or evidence-source changes. Confirm report access and extraction instructions before each audit period closes.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
@@ -703,7 +742,7 @@ The UI labels the common `title` field as **Name**.
 
 Path: `data/systems/<id>.json`
 
-Record Markdown: available when needed as an implicit companion file.
+Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -720,6 +759,8 @@ Record Markdown: available when needed as an implicit companion file.
 | `parentSystemId` | id | No | References: `system` |
 | `commitmentIds` | array of id | No | References: `commitment` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
+| `evidenceSourceKinds` | array of string | No | Evidence source roles |
+| `evidenceOwnerIds` | array of id | No | Evidence access owners References: `person`, `team` |
 | `continuityObjectives` | object | No |  |
 
 #### `asset`
@@ -821,7 +862,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `vulnerability`
 
-Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification. A separate FileGRC vulnerability register is not required for SOC 2 when a scanner or ticket system remains the source of truth and retains auditor-ready evidence.
+Confirmed weaknesses with severity, affected systems, source, dates, external IDs, owner, due date, risk treatment, evidence, and remediation verification. A separate FileGRC vulnerability register is not required for SOC 2 when a scanner or ticket system remains the source of truth and retains usable audit evidence.
 
 Policy basis: The information security policy requires owned, risk-based remediation or a documented exception with compensating controls and approval.
 
@@ -1025,7 +1066,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `evidence`
 
-Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions.
+Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions. Population exports also record their exact report parameters, timezone, count, and completeness and accuracy checks.
 
 Policy basis: The information security policy requires retained audit evidence. Acknowledgement and training workflows require signatures or repository revisions tied to the exact content reviewed.
 
@@ -1048,14 +1089,21 @@ Markdown companions:
 | `classification` | string | Yes |  |
 | `filePaths` | array of data-path | No |  |
 | `externalReference` | object | No |  |
-| `periodStart` | date | No |  |
-| `periodEnd` | date | No |  |
+| `periodStart` | date | Conditional | Required when `evidenceKind` is `population-export` |
+| `periodEnd` | date | Conditional | Required when `evidenceKind` is `population-export` |
+| `generatedAt` | timestamp | Conditional | Generated at Required when `evidenceKind` is `population-export` |
+| `timezone` | string (timezone) | Conditional | Report timezone Required when `evidenceKind` is `population-export` |
+| `queryDescription` | string | Conditional | Query or report parameters Required when `evidenceKind` is `population-export` |
+| `populationCount` | integer | Conditional | Population count Minimum: `0`. Required when `evidenceKind` is `population-export` |
+| `completenessValidation` | string | Conditional | Completeness validation Required when `evidenceKind` is `population-export` |
+| `accuracyValidation` | string | Conditional | Accuracy validation Required when `evidenceKind` is `population-export` |
+| `sourceSystemId` | id | Conditional | Source system References: `system` Required when `evidenceKind` is `population-export` |
 | `systemIds` | array of id | No | References: `system` |
 | `controlIds` | array of id | No | References: `control` |
 | `auditIds` | array of id | No | References: `audit` |
-| `collectorIds` | array of id | No | References: `person` |
-| `verifierIds` | array of id | No | References: `person` |
-| `verifiedOn` | date | No |  |
+| `collectorIds` | array of id | Yes | References: `person` |
+| `verifierIds` | array of id | Conditional | References: `person` Required when `status` is `verified` |
+| `verifiedOn` | date | Conditional | Required when `status` is `verified` |
 | `expiresOn` | date | No |  |
 | `sourceResourceIds` | array of id | No | References: `*` |
 | `sourceCommit` | string | No |  |
@@ -1118,7 +1166,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `subjectResourceIds` | array of id | No | References: `*` |
 | `obligationIds` | array of id | Yes | References: `obligation` |
 | `actionItemIds` | array of id | No | References: `action-item` |
-| `completedOn` | date | No |  |
+| `completedOn` | date | Conditional | Required when `status` is `complete` |
 
 #### `finding`
 
@@ -1202,7 +1250,7 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `in-progress`, `fieldwork`, `complete` |
-| `auditKind` | string | Yes |  |
+| `auditKind` | enum | Yes | Values: `readiness`, `soc-2-type-1`, `soc-2-type-2` |
 | `frameworkIds` | array of id | Yes | References: `framework` |
 | `scope` | string | Yes |  |
 | `auditor` | object | No |  |
@@ -1220,7 +1268,10 @@ Record Markdown: available when needed as an implicit companion file.
 | `assessmentCoverage` | object | No |  |
 | `systemDescriptionDocumentId` | id | No | References: `document` |
 | `managementAssertionDocumentId` | id | No | References: `document` |
+| `periodCompletenessDocumentId` | id | No | References: `document` |
+| `managementRepresentationDocumentId` | id | No | References: `document` |
 | `complementaryControlIds` | array of id | No | References: `complementary-control` |
+| `complementaryControlsConclusion` | enum | No | Complementary controls conclusion Values: `identified`, `not-applicable` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `subserviceMethod` | enum | No | Values: `carve-out`, `inclusive`, `not-applicable` |
 | `controlTestIds` | array of id | No | References: `control-test` |
@@ -1231,6 +1282,34 @@ Record Markdown: available when needed as an implicit companion file.
 | `reportEvidenceId` | id | No | References: `evidence` |
 | `managementResponseDocumentId` | id | No | References: `document` |
 | `supplementalDocumentIds` | array of id | No | References: `document` |
+
+#### `audit-population`
+
+One complete population of events or items for a Type 2 period. Management records the authoritative source, exact query, count, reconciliation, and fixed export, including when the count is zero.
+
+Policy basis: Management must supply complete and accurate populations so the auditor can select samples and test controls. The linked population-export evidence remains the fixed source artifact.
+
+Timing: Plan at the start of the engagement, export for the exact audit period, reconcile before fieldwork, and retain proof for zero-event populations.
+
+Path: `data/audit-populations/<id>.json`
+
+Record Markdown: shown by default as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `planned`, `reconciled`, `incomplete`, `not-applicable` |
+| `auditId` | id | Yes | References: `audit` |
+| `populationKind` | string | Yes |  |
+| `periodStart` | date | Yes |  |
+| `periodEnd` | date | Yes |  |
+| `controlIds` | array of id | No | References: `control` |
+| `sourceSystemId` | id | Conditional | Authoritative source system References: `system` Required when `status` is `reconciled` |
+| `sourceEvidenceId` | id | Conditional | References: `evidence` Required when `status` is `reconciled` |
+| `reconciledByIds` | array of id | Conditional | References: `person` Required when `status` is `reconciled` |
+| `reconciledOn` | date | Conditional | Required when `status` is `reconciled` |
+| `conclusion` | enum | Conditional | Values: `complete`, `complete-with-exceptions`, `incomplete` Required when `status` is `reconciled` |
+| `reconciliationSummary` | string | No |  |
+| `notApplicableReason` | string | Conditional | Required when `status` is `not-applicable` |
 
 #### `audit-request`
 

@@ -129,6 +129,8 @@ Closure requires a final severity and materiality decision, an incident summary,
 
 Material incidents receive a root-cause and lessons review within one week. The review records contributing conditions, control failures, recovery results, communications, corrective actions, owners, and due dates.
 
-{{company_name}} tests this plan at least annually. Exercises cover declaration, roles, escalation, evidence, communications, recovery coordination, and lessons.
+{{company_name}} tests this plan at least annually. Exercises cover declaration, roles, escalation, evidence, communications, recovery coordination, and lessons. Each annual exercise also tests at least one representative security alert from generation through receipt, acknowledgement, escalation, and a fallback route. Record timestamps, expected and actual recipients, failed steps, findings, and follow-up work.
+
+After a material change to monitoring, alert routing, escalation contacts, or response tooling, the owner tests the affected path within 30 days or records why the change cannot affect alert delivery or response.
 
 The policy owner reviews this plan at least annually and after a material incident or material change to systems, risks, contacts, or notification duties. Git history records approvals and changes.

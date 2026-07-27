@@ -5,7 +5,7 @@
   "title": "Data Protection and Handling Policy",
   "status": "draft",
   "ownerIds": ["person-policy-owner"],
-  "approverIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
   "policyKind": "information-security",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
@@ -17,6 +17,7 @@
   },
   "audience": ["employees", "contractors", "vendors"],
   "acknowledgementRequired": true,
+  "relatedDocumentIds": ["document-data-retention-schedule"],
   "controlIds": [
     "control-policy-management",
     "control-risk-assessment",
