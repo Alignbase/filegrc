@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "document-business-continuity-disaster-recovery",
+  "id": "document-incident-response-plan",
   "type": "document",
-  "title": "Business Continuity and Disaster Recovery Plan",
+  "title": "Incident Response Plan",
   "status": "draft",
   "documentKind": "plan",
   "ownerIds": ["person-policy-owner"],
@@ -17,13 +17,13 @@
   },
   "classification": "internal",
   "audience": ["employees", "contractors"],
-  "acknowledgementRequired": true,
+  "acknowledgementRequired": false,
   "controlIds": [
-    "control-policy-management",
-    "control-incident-exercise",
-    "control-backup-restoration",
-    "control-continuity-exercise"
+    "control-security-communication",
+    "control-logging-monitoring",
+    "control-incident-response",
+    "control-incident-exercise"
   ],
-  "relatedDocumentIds": ["document-incident-response-plan"],
+  "relatedDocumentIds": ["document-business-continuity-disaster-recovery"],
   "evidenceIds": []
 }

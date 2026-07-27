@@ -2,9 +2,9 @@
 
 ## Purpose and status
 
-This handbook sets a common baseline for employment practices, workplace conduct, information security, and use of {{company_name}} resources.
+This optional handbook template sets a common baseline for employment practices, workplace conduct, information security, and use of {{company_name}} resources. An employee handbook is not required for SOC 2.
 
-It is not an employment contract or legal advice. It does not promise employment for a fixed term or change any written employment agreement. Local law, written employment terms, benefit plans, and approved regional supplements control when they differ from this handbook. {{company_name}} should have qualified counsel review employment terms for each place where it employs people.
+It is not an employment contract or legal advice. It does not promise employment for a fixed term or change any written employment agreement. Local law, written employment terms, benefit plans, and approved regional supplements control when they differ from this handbook. Do not approve or distribute this template until qualified counsel has reviewed it for each place where {{company_name}} employs people and the company has named its people contact, reporting routes, and required regional supplements.
 
 ## Scope and responsibility
 
@@ -12,17 +12,17 @@ This handbook applies to employees. Contractors follow the conduct and security 
 
 Managers are responsible for applying this handbook fairly, seeking advice when local requirements are unclear, and raising concerns instead of resolving serious matters informally. Employees are responsible for reading the handbook, asking questions, following applicable requirements, and reporting suspected violations.
 
-Questions or reports may be sent to {{policy_owner_name}} at {{security_contact_email}}.
+Questions about employment, conduct, accommodations, pay, leave, or workplace safety should be sent to a manager or the designated people contact through the published company reporting route. Security events should be sent to {{security_contact_email}}.
 
 ## Communication and problem solving
 
-Employees should raise routine work questions with their manager. When the issue is not resolved, cannot reasonably be raised with that manager, or affects more than one team, the employee may contact the policy owner. Employees may also use any reporting route required by law or another company policy.
+Employees should raise routine work questions with their manager. When the issue is not resolved, cannot reasonably be raised with that manager, or affects more than one team, the employee may contact the designated people contact. Employees may also use any reporting route required by law or another company policy.
 
 Managers should listen, gather the relevant facts, explain decisions they are authorized to make, and route matters that require another owner. Employees do not need to follow this informal path before reporting misconduct or exercising a legal right.
 
 ## Reporting concerns
 
-Employees should promptly report suspected harassment, discrimination, retaliation, fraud, bribery, unsafe conditions, security events, misuse of data, or other policy violations. A report may be made to a manager, the policy owner, or the security contact. If a manager is involved in the concern, the employee should use another reporting route. A written report is not required.
+Employees should promptly report suspected harassment, discrimination, retaliation, fraud, bribery, unsafe conditions, security events, misuse of data, or other policy violations. A non-security report may be made to a manager, the designated people contact, or another published independent route. Security and data events may also be reported to {{security_contact_email}}. If a person receiving reports is involved in the concern, the employee should use another route. A written report is not required.
 
 {{company_name}} will review reports promptly and impartially, preserve relevant records, limit disclosure to people who need the information, and take appropriate corrective action when warranted. Employees must cooperate honestly. No one may retaliate against a person who makes a good-faith report, requests an accommodation, raises a pay or safety concern, or participates in a review.
 
@@ -30,7 +30,7 @@ Employees should promptly report suspected harassment, discrimination, retaliati
 
 Employment decisions are based on job-related qualifications, performance, business needs, and lawful requirements. {{company_name}} prohibits unlawful discrimination based on a characteristic protected in the employee's work location.
 
-{{company_name}} provides reasonable accommodations for disability, religion, pregnancy and related conditions, and other protected needs when required by law. Employees may request an accommodation from their manager or the policy owner without using special words. {{company_name}} and the employee will discuss the work limitation, possible accommodations, and any information lawfully needed to evaluate the request. Retaliation for requesting or using an accommodation is prohibited.
+{{company_name}} provides reasonable accommodations for disability, religion, pregnancy and related conditions, and other protected needs when required by law. Employees may request an accommodation from their manager or the designated people contact without using special words. {{company_name}} and the employee will discuss the work limitation, possible accommodations, and any information lawfully needed to evaluate the request. Retaliation for requesting or using an accommodation is prohibited.
 
 ## Harassment and respectful conduct
 

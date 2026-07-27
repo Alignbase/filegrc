@@ -67,7 +67,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     frequency: "Quarterly",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-employee-handbook", "policy-anti-bribery-corruption"]
+    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-anti-bribery-corruption"]
   },
   {
     id: "control-policy-management",
@@ -83,7 +83,6 @@ const controls = [
       "policy-anti-bribery-corruption",
       "policy-clear-desk-screen",
       DATA_POLICY_ID,
-      "policy-employee-handbook",
       INFORMATION_SECURITY_POLICY_ID,
       "policy-mobile-computing-communications"
     ]
@@ -98,7 +97,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "hybrid",
     frequency: "Ongoing and after material changes",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-employee-handbook"]
+    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
     id: "control-workforce-expectations",
@@ -110,7 +109,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     frequency: "Before access and on material change",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-employee-handbook", "policy-anti-bribery-corruption"]
+    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-anti-bribery-corruption"]
   },
   {
     id: "control-security-training",
@@ -134,7 +133,7 @@ const controls = [
     controlType: "detective",
     operationMode: "manual",
     frequency: "Annually",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-employee-handbook"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-risk-assessment",
@@ -224,7 +223,7 @@ const controls = [
     id: "control-encryption-transmission",
     code: "DATA-02",
     title: "Encryption and secure transmission",
-    statement: "Confidential and Restricted data is encrypted in transit over untrusted networks, and Restricted data is encrypted at rest with protected key access.",
+    statement: "Confidential and Restricted data is encrypted in transit over untrusted networks and at rest in approved systems and on devices, with protected key access.",
     requirements: ["CC6.1", "CC6.7"],
     activity: "Configure encryption and approved transfer methods based on classification.",
     controlType: "preventive",
@@ -427,7 +426,7 @@ const obligations = [
   },
   {
     id: "obligation-annual-policy-review",
-    title: "Annual policy and continuity-plan review",
+    title: "Annual policy and governed-plan review",
     activityType: "policy-review",
     recurrence: calendar("year", 1),
     ownerIds: [OWNER_ID],
@@ -435,10 +434,10 @@ const obligations = [
       "policy-anti-bribery-corruption",
       "policy-clear-desk-screen",
       DATA_POLICY_ID,
-      "policy-employee-handbook",
       INFORMATION_SECURITY_POLICY_ID,
       "policy-mobile-computing-communications",
-      "document-business-continuity-disaster-recovery"
+      "document-business-continuity-disaster-recovery",
+      "document-incident-response-plan"
     ],
     controlIds: ["control-policy-management"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -470,7 +469,7 @@ const obligations = [
     recurrence: calendar("year", 1),
     ownerIds: [OWNER_ID],
     controlIds: ["control-performance-review"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-employee-handbook"]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-quarterly-privileged-access-review",
@@ -602,7 +601,7 @@ const obligations = [
     completionResourceTypes: ["attestation", "evidence"],
     ownerIds: [OWNER_ID],
     controlIds: ["control-workforce-expectations"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-employee-handbook"]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-worker-start-access",

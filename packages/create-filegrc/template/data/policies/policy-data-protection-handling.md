@@ -22,7 +22,7 @@ Data owners assign the highest classification required by the data in a record, 
 | --- | --- | --- | --- |
 | Public | Approved for public release | Published web content and public documentation | Protect integrity and use approved publishing processes |
 | Internal | Intended for the workforce and approved partners | Internal procedures and routine business records | Limit access to people with a business need |
-| Confidential | Disclosure could harm {{company_name}}, a customer, or another person | Contracts, financial records, customer data, source code, and security records | Approved systems, access control, encryption in transit, and protected sharing |
+| Confidential | Disclosure could harm {{company_name}}, a customer, or another person | Contracts, financial records, customer data, source code, and security records | Approved systems, access control, encryption in transit and at rest, and protected sharing |
 | Restricted | Disclosure or alteration could cause severe harm or trigger legal duties | Credentials, cryptographic keys, regulated data, and highly sensitive security material | Explicit approval, least privilege, encryption in transit and at rest, and additional monitoring |
 
 When classification is uncertain, treat the data as Confidential until its owner decides.
@@ -65,7 +65,7 @@ Access to Confidential or Restricted data follows this process:
 
 Internal, Confidential, and Restricted data must be stored in services approved for its classification. Local storage should be limited to a business need.
 
-Confidential and Restricted data must be encrypted in transit over untrusted networks. Restricted data must also be encrypted at rest. Encryption keys and data must have separate access controls where practical.
+Confidential and Restricted data must be encrypted in transit over untrusted networks and at rest in approved systems and on devices. Encryption keys and data must have separate access controls where practical.
 
 Production data must not be copied into development or test systems unless the owner approves the use and those systems meet the same protection requirements. Prefer generated or de-identified test data.
 

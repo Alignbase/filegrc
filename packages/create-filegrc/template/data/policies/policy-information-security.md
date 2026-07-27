@@ -77,7 +77,7 @@ The Data Protection and Handling Policy defines classification, approved use, sh
 
 - Collect and retain only data needed for an approved purpose.
 - Encrypt Confidential and Restricted data in transit over untrusted networks.
-- Encrypt Restricted data at rest.
+- Encrypt Confidential and Restricted data at rest in approved systems and on devices.
 - Keep production data out of development and test systems unless approved and equally protected.
 - Restrict data exports and public links.
 - Store credentials and cryptographic keys in approved protected systems.
@@ -136,14 +136,16 @@ Development practices include:
 
 {{company_name}} monitors trusted sources for vulnerabilities affecting in-scope systems. It scans internet-facing and production systems at least quarterly and after a material change when practical. An independent penetration test is performed at least annually for the external attack surface of the in-scope service.
 
-Confirmed vulnerabilities are assigned an owner and target based on risk:
+The security owner assigns the final severity using a recognized technical scoring method together with exploit availability, reachability, affected privileges, data classification, exposure, and business impact. The remediation clock starts when {{company_name}} confirms the finding and assigns an owner. A later severity change must record the reason and date.
+
+Confirmed vulnerabilities are assigned a target based on their final severity:
 
 | Severity | Target remediation time |
 | --- | --- |
 | Critical | 7 days |
 | High | 14 days |
 | Medium | 30 days |
-| Low | 30 days |
+| Low | 90 days |
 
 If remediation cannot meet the target, the owner must document the reason, exposure, compensating controls, revised date, and risk approval.
 
@@ -168,7 +170,7 @@ Owners review important log output and access to logs at least quarterly. They a
 
 Anyone who suspects unauthorized access, malware, data loss, credential exposure, security-control failure, or other security harm must report it immediately to {{security_contact_email}}.
 
-The incident lead will:
+The Incident Response Plan defines severity, materiality, declaration, roles, escalation, evidence handling, notification assessment, recovery, and closure. The incident lead will:
 
 1. Record and assess the report.
 2. Contain the event and preserve evidence.

@@ -54,6 +54,7 @@
     "control-security-exceptions"
   ],
   "relatedDocumentIds": [
-    "document-business-continuity-disaster-recovery"
+    "document-business-continuity-disaster-recovery",
+    "document-incident-response-plan"
   ]
 }

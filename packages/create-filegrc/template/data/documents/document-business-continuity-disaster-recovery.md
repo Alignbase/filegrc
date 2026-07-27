@@ -76,17 +76,23 @@ The incident lead records:
 - Decisions, actions, communications, and timestamps
 - Recovery status and remaining risks
 
-## Recovery priorities and communication targets
+## Recovery priorities and objectives
 
-System and process owners assign a disruption severity based on business impact. More specific approved objectives recorded for a system or process take precedence.
+System and process owners define recovery objectives from business impact rather than assigning a universal target to a severity label. Each important system or process records:
 
-| Disruption severity | Full recovery target | Communication target for affected parties |
-| --- | --- | --- |
-| Low | Within 12 hours | Within 1 week |
-| Medium | Within 24 hours | Within 3 days |
-| High | Within 48 hours | Within 24 hours |
+- Its business priority and maximum tolerable downtime
+- Its recovery time objective
+- Its recovery point objective
+- The people, systems, vendors, facilities, and data it depends on
+- Minimum staffing, access, and communications needed for recovery
+- Available manual workarounds or alternate services
+- The owner responsible for validating recovery
 
-Recovery time starts when the disruption begins. System owners record recovery point objectives separately because acceptable data loss depends on the system and data.
+The incident lead normally restores Critical work before High, Medium, and Low work. The incident lead may change that order to protect people, contain security harm, preserve data integrity, meet a legal or contractual deadline, or unblock another recovery.
+
+The approved objective recorded for each affected system or process is the recovery target. If no approved objective exists, the incident lead sets and records an interim target based on business impact and dependencies. The owner must formalize the missing objective as follow-up work.
+
+Recovery timing starts when the disruption began when that time is known. If it is not known, the incident record uses the earliest confirmed time and states that limitation.
 
 ## Response and recovery
 
@@ -110,7 +116,7 @@ The incident lead chooses the audience, channel, and frequency based on impact.
 
 Internal updates should state what is known, what remains uncertain, who is responsible, and when the next update is expected. Only authorized people may communicate externally on behalf of {{company_name}}.
 
-After identifying a significant disruption and gathering the basic facts, {{company_name}} will send an initial customer communication within four hours when customers are affected. Later updates follow the event's impact and the communication targets above.
+When customers are affected, the incident lead identifies the applicable contractual commitments, legal duties, and approved communications plan, then records the audience, owner, and deadline for the initial update. When no fixed deadline applies, {{company_name}} communicates promptly after confirming enough facts to provide an accurate and useful update.
 
 Customer, regulator, insurer, or law-enforcement notifications must be reviewed by the people responsible for legal, contractual, privacy, and communications obligations. Notifications must meet applicable deadlines and avoid unsupported claims.
 

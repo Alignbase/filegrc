@@ -40,6 +40,30 @@ test("creates a complete generic repository with one dependency", async (context
   const informationSecurityPolicy = JSON.parse(await readFile(join(target, "data", "policies", "policy-information-security.json"), "utf8"));
   assert.equal("contentPath" in informationSecurityPolicy, false);
   await access(join(target, "data", "policies", "policy-information-security.md"));
+  assert.deepEqual(informationSecurityPolicy.relatedDocumentIds, [
+    "document-business-continuity-disaster-recovery",
+    "document-incident-response-plan"
+  ]);
+  const informationSecurityContent = await readFile(join(target, "data", "policies", "policy-information-security.md"), "utf8");
+  assert.match(informationSecurityContent, /The remediation clock starts when Example "Engineering" confirms the finding/);
+  assert.match(informationSecurityContent, /\| Low \| 90 days \|/);
+  const dataProtectionContent = await readFile(join(target, "data", "policies", "policy-data-protection-handling.md"), "utf8");
+  assert.match(dataProtectionContent, /Confidential and Restricted data must be encrypted in transit[\s\S]*and at rest/);
+  const continuityContent = await readFile(join(target, "data", "documents", "document-business-continuity-disaster-recovery.md"), "utf8");
+  assert.match(continuityContent, /maximum tolerable downtime/);
+  assert.doesNotMatch(continuityContent, /\| Low \| Within 12 hours \|/);
+  assert.doesNotMatch(continuityContent, /within four hours/);
+  const incidentResponseContent = await readFile(join(target, "data", "documents", "document-incident-response-plan.md"), "utf8");
+  assert.match(incidentResponseContent, /A \*\*material incident\*\* is an incident that/);
+  assert.match(incidentResponseContent, /The triggering law, contract, policy, or commitment/);
+  const employeeHandbook = await readFile(join(target, "data", "policies", "policy-employee-handbook.md"), "utf8");
+  assert.match(employeeHandbook, /optional handbook template/);
+  assert.match(employeeHandbook, /designated people contact/);
+  const employeePolicyAcknowledgement = await readFile(join(target, "data", "documents", "document-employee-policy-acknowledgement.md"), "utf8");
+  assert.doesNotMatch(employeePolicyAcknowledgement, /- Employee Handbook/);
+  assert.match(employeePolicyAcknowledgement, /Content Git commit:/);
+  const handbookAcknowledgement = await readFile(join(target, "data", "documents", "document-employee-handbook-acknowledgement.md"), "utf8");
+  assert.match(handbookAcknowledgement, /Handbook Git commit:/);
   await assert.rejects(access(join(target, "data", "content")), /ENOENT/);
   const framework = JSON.parse(await readFile(join(target, "data", "frameworks", "framework-aicpa-trust-services-criteria.json"), "utf8"));
   assert.equal(framework.version, "2017 with revised points of focus (2022)");
@@ -83,7 +107,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 123, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 124, errors: 0, warnings: 0 });
 });
 
 test("refuses a non-empty target by default", async (context) => {

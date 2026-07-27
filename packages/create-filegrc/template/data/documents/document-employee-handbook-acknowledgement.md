@@ -8,7 +8,9 @@ I understand the reporting routes and the prohibition on retaliation for a good-
 
 I understand that the handbook is not an employment contract. Local law, written employment terms, benefit plans, and approved regional supplements control when they differ from the handbook.
 
-I understand that the handbook may be updated. When {{company_name}} requires a new acknowledgement, I will review the identified revision before signing.
+I understand that the handbook may be updated. When {{company_name}} requires a new acknowledgement, I will review the identified revision before signing. The Git commit below identifies the exact handbook revision covered by this acknowledgement.
+
+Handbook Git commit: __________________________________
 
 Employee name: ______________________________________
 
