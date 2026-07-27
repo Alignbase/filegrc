@@ -67,6 +67,7 @@ jobs:
           const { value: identityToken } = await identityResponse.json();
           if (!identityToken) throw new Error("GitHub OIDC response did not include an identity token.");
 
+          const failures = [];
           for (const packageName of ["filegrc", "create-filegrc"]) {
             const exchangeResponse = await fetch(
               `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${encodeURIComponent(packageName)}`,
@@ -77,13 +78,19 @@ jobs:
             );
             if (!exchangeResponse.ok) {
               const detail = await exchangeResponse.text();
-              throw new Error(`npm OIDC exchange failed for ${packageName} (${exchangeResponse.status}): ${detail}`);
+              failures.push(`${packageName} (${exchangeResponse.status}): ${detail}`);
+              continue;
             }
             const exchange = await exchangeResponse.json();
             if (exchange.token_type !== "oidc" || !exchange.token || !exchange.expires) {
-              throw new Error(`npm returned an invalid OIDC exchange for ${packageName}.`);
+              failures.push(`${packageName}: npm returned an invalid OIDC exchange.`);
+              continue;
             }
             console.log(`${packageName}: npm trusted publishing verified until ${exchange.expires}.`);
+          }
+
+          if (failures.length > 0) {
+            throw new Error(`npm OIDC exchange failed:\n${failures.join("\n")}`);
           }
           NODE
 
