@@ -108,6 +108,7 @@ function validateDateRanges(record, path, diagnostics) {
   for (const [startField, endField] of [
     ["startDate", "endDate"],
     ["periodStart", "periodEnd"],
+    ["candidatePeriodStart", "candidatePeriodEnd"],
     ["dueWindowStart", "dueWindowEnd"]
   ]) {
     const start = record[startField];
@@ -196,13 +197,13 @@ function validateIndependentApproval(record, byId, path, diagnostics) {
       .map((id) => byId.get(id))
       .find((person) => (
         person?.id === "person-independent-approver"
-        && (!person.email || person.title === "Independent Approver")
+        && (!person.email || ["Independent Approver", "Independent Reviewer"].includes(person.title))
       ));
     if (incompleteStarterApprover) {
       diagnostics.push(error(
         "independent-approver-not-appointed",
         path,
-        "Appoint the external independent reviewer before approving this record."
+        "Appoint an independent reviewer before approving this record. The reviewer may be internal or external but must be separate from the owner."
       ));
     }
   }

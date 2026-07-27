@@ -1,0 +1,99 @@
+---
+import Brand from "./Brand.astro";
+
+const navLinks = [
+  { href: "#why", label: "Why FileGRC" },
+  { href: "#how-it-works", label: "How it works" },
+  { href: "#workflow", label: "Program path" },
+  { href: "#agents", label: "For agents" },
+];
+---
+
+<nav class="site-nav" id="site-nav" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a class="brand-link" href="/" aria-label="FileGRC home">
+      <Brand light />
+    </a>
+
+    <div class="nav-desktop">
+      {
+        navLinks.map((link) => (
+          <a class="nav-link" href={link.href}>
+            {link.label}
+          </a>
+        ))
+      }
+      <a
+        class="nav-github"
+        href="https://github.com/Sunpeak-AI/FileGRC"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        GitHub
+        <span aria-hidden="true">↗</span>
+      </a>
+    </div>
+
+    <button
+      class="nav-toggle"
+      id="nav-toggle"
+      type="button"
+      aria-label="Open navigation"
+      aria-expanded="false"
+      aria-controls="mobile-nav"
+    >
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+
+  <div class="mobile-nav" id="mobile-nav" hidden>
+    {
+      navLinks.map((link) => (
+        <a class="mobile-nav-link" href={link.href}>
+          {link.label}
+        </a>
+      ))
+    }
+    <a
+      class="mobile-nav-link"
+      href="https://github.com/Sunpeak-AI/FileGRC"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      GitHub ↗
+    </a>
+  </div>
+</nav>
+
+<script>
+  const nav = document.getElementById("site-nav");
+  const toggle = document.getElementById("nav-toggle");
+  const mobileNav = document.getElementById("mobile-nav");
+
+  function updateNav() {
+    nav?.classList.toggle("is-scrolled", window.scrollY > 12);
+  }
+
+  function setMenu(open: boolean) {
+    if (!toggle || !mobileNav) return;
+    mobileNav.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute(
+      "aria-label",
+      open ? "Close navigation" : "Open navigation",
+    );
+    toggle.classList.toggle("is-open", open);
+  }
+
+  updateNav();
+  window.addEventListener("scroll", updateNav, { passive: true });
+
+  toggle?.addEventListener("click", () => {
+    setMenu(toggle.getAttribute("aria-expanded") !== "true");
+  });
+
+  mobileNav?.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", () => setMenu(false));
+  });
+</script>

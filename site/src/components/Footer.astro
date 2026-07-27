@@ -1,0 +1,30 @@
+---
+import Brand from "./Brand.astro";
+
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="footer-orbit" aria-hidden="true"></div>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <a class="brand-link" href="/" aria-label="FileGRC home">
+        <Brand light />
+      </a>
+      <p>Run a SOC 2 program as files in Git.</p>
+    </div>
+
+    <div class="footer-links" aria-label="Footer navigation">
+      <a href="https://github.com/Sunpeak-AI/FileGRC">GitHub</a>
+      <a href="https://github.com/Sunpeak-AI/FileGRC#start-a-workspace"
+        >Get started</a
+      >
+      <a href="mailto:contact@sunpeak.ai">Contact</a>
+    </div>
+
+    <div class="footer-meta">
+      <span>MIT licensed</span>
+      <span>&copy; {year} FileGRC contributors</span>
+    </div>
+  </div>
+</footer>

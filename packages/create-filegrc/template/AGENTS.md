@@ -14,6 +14,7 @@ Do not guess a resource type, field name, enum value, relationship, or file path
 npx filegrc guide --json
 npx filegrc guide risk-assessment --json
 npx filegrc list person --json
+npx filegrc program-readiness --json
 ```
 
 The first command lists every supported action and record type. The type guide gives the purpose, policy basis, timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
@@ -93,7 +94,7 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 `data/renderer.json` stores committed renderer preferences. New workspaces set `showOnboarding` to `true`. Completing or skipping onboarding sets it to `false`; the app does not commit that change.
 
-Onboarding explains the file and Git workflow, recurring obligations, event checklists, and bulk evidence preparation, then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional audit objective. It creates or updates a `system` record and may create a planned `audit` record. Treat both as drafts to review against actual scope.
+Onboarding explains the file and Git workflow, the program path, policy obligations, and event checklists before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates a `system` record and stores the management goal and program scope on `workspace`. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can confirm the starter people and oversight team, criteria, commitments, vendors, and systems before approving policies.
 
 The renderer is optional. Agents may set `showOnboarding` to `false` and maintain all records headlessly. Restart onboarding from Repository when useful. Read-only builds never run it.
 
@@ -105,13 +106,13 @@ The generated workspace starts with the SOC 2 Security category:
 - The 33 Common Criteria reference IDs from CC1.1 through CC9.2, without the licensed criteria text
 - The nine Description Criteria reference IDs from DC1 through DC9, without the licensed criteria text
 - Planned controls mapped to those references and the included policies
-- A security and risk oversight team chaired by an external independent reviewer
+- A security and risk oversight team chaired by an independent reviewer who may be internal or external
 - Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
-Treat every planned control as a proposal until its owner, scope, operation, and evidence match actual practice. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
+Treat every planned control as a proposal until its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
 
-The recurring obligations mirror the fixed cadences in the starter policies. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.
+The recurring obligations mirror the fixed cadences in the starter policies. They remain proposals until every governing policy is active and its effective date has arrived. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.
 
 ## Policy work queue
 
@@ -122,7 +123,7 @@ npx filegrc obligations --json
 npx filegrc obligations --from 2026-01-01 --through 2026-12-31 --complete --json
 ```
 
-A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Use **Record work** in the obligation board, or create and link a completion atomically with:
+A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Use **Record work** in Work Queue, or create and link a completion atomically with:
 
 ```sh
 npx filegrc complete obligation-id completion-record.json
@@ -130,7 +131,7 @@ npx filegrc complete obligation-id completion-record.json
 
 Keep prior completion links because the planner matches each dated record to its own period.
 
-Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Start a workflow in the obligation board or run:
+Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Start a workflow in Work Queue or run:
 
 ```sh
 npx filegrc trigger person-started --occurred-on 2026-07-25 --subject person-new-worker --json
@@ -159,9 +160,32 @@ npx filegrc content risk-assessment risk-assessment-2026 --write updated-assessm
 
 Run `filegrc guide <type>` to get slot names. Policies use `content`, meetings use `agenda` and `minutes`, and implicit long-form work uses `record`. FileGRC derives the path and rejects content that does not belong to the record.
 
+## Program readiness and the candidate period
+
+Prepare the management program before creating an audit engagement:
+
+```sh
+npx filegrc program-readiness
+npx filegrc program-readiness --require-ready --json
+```
+
+The Evidence Ready gate requires:
+
+1. A management goal, selected systems, criteria, and controls.
+2. Active policies with completed text, separate management approval, real approval and effective dates, and linked controls.
+3. Implemented controls with an owner, actual procedure, scope, cadence, evidence source, mappings, and implementation date.
+4. Active authoritative systems with evidence source roles, access owners, and repeatable extraction instructions in Record Markdown.
+5. A verified `test-export` or `test-capture` evidence record for every selected control family.
+
+When the gate passes, set `workspace.candidatePeriodStart` to the date reliable evidence collection begins. Do not backdate it. `candidatePeriodStart` and `candidatePeriodEnd` express management’s target. They do not establish the final report period.
+
+Maintain risk assessments and the risk register while the program operates. Complete assessments on schedule and after material changes, and add or update controls when the conclusions require a different response. Audit preparation still checks for a current, independently reviewed assessment.
+
+Record complementary customer or subservice controls after the internal control set is defined. `complementary-control.relatedControlIds` is the source of truth for those links. FileGRC derives the reverse connections for Control pages and evidence packets.
+
 ## Audit preparation and evidence packets
 
-After setting a Type 1 as-of date or Type 2 period, initialize the engagement-specific management work:
+After engaging a CPA firm, create one audit record and set the firm-agreed Type 1 date or Type 2 period. Then initialize the engagement-specific management work:
 
 ```sh
 npx filegrc prepare-audit audit-2026-type-2
@@ -169,11 +193,13 @@ npx filegrc audit-readiness audit-2026-type-2
 npx filegrc audit-readiness audit-2026-type-2 --require-ready --json
 ```
 
+The audit record’s `typeOneAsOf`, `periodStart`, and `periodEnd` are the dates agreed with the CPA firm. Keep the workspace candidate dates even when the formal period differs.
+
 Preparation creates a separate system description, management assertion, and management representation document for the engagement from the local starter templates. Type 2 preparation also creates a period completeness statement and one `audit-population` record for each standard population. It is safe to run again and does not approve documents, mark controls implemented, or create evidence. Do not reuse one completed management document across engagements.
 
 Near the end of fieldwork, link a verified fixed-format copy of the signed management representation letter to its engagement-specific document. Date it on or after the Type 1 date or Type 2 period end. A representation that is still marked for later blocks packet delivery.
 
-Catalog each authoritative source under Systems and assign its `evidenceSourceKinds`. Name the people who can access its reports and keep extraction instructions in the system's Record Markdown. For each Type 2 population, select one source system and export the exact audit period. Split a population when different systems or queries produce its items. Link a verified `population-export` evidence record that names the same source system and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope control cannot be marked not applicable.
+Catalog each authoritative source under Systems and assign its `evidenceSourceKinds`. A third-party application is still a System because it operates controls or produces evidence. Create a separate Vendor for its provider and connect the System through `vendorId`; keep contracts, due diligence, and supplier risk on the Vendor. Name the people who can access system reports and keep extraction instructions in the System's Record Markdown. For each Type 2 population, select one source system and export the exact audit period. Split a population when different systems or queries produce its items. Link a verified `population-export` evidence record that names the same source system and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope control cannot be marked not applicable.
 
 Every evidence record names its collector. Verified evidence also names its verifier and verification date. Use `sourceSystemId` for system exports, `sourceResourceIds` for FileGRC records, and `sourceCommit` to bind the evidence to repository state.
 
@@ -195,7 +221,9 @@ Link a control test to its `audit-population` record when sampling applies. Link
 
 The seed policy owner is {{policy_owner_name}} and the reporting address is {{security_contact_email}}. Replace ownership or contacts when responsibilities change.
 
-The starter requires an external independent reviewer for SOC 2 oversight. This person must be separate from the policy owner and must not operate the controls they review. They chair Security and Risk Oversight and approve policies and governed documents. A one-person company must appoint a qualified person outside the company before approving the program. Do not use the audit firm for management or approval work without first confirming the firm's independence requirements.
+Appoint an independent management reviewer during policy review, not as a condition of defining the service boundary. The reviewer must be separate from the policy owner and able to challenge the owner’s decisions. Most organizations assign another internal leader or manager. An external reviewer is also allowed, and a one-person company needs one because no second internal person is available. The reviewer chairs Security and Risk Oversight and approves policies and governed documents.
+
+The management reviewer and CPA auditor are different roles. Do not assign the CPA firm management or approval work without first confirming the firm's independence requirements.
 
 Policy and training attestations must identify the exact Git revision of the content that a person acknowledged. Store signatures as evidence attachments and link their evidence IDs from the attestation.
 

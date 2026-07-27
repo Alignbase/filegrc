@@ -1,0 +1,35 @@
+{
+  "name": "filegrc-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "sites:prepare": "node scripts/prepare-sites.mjs",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "format": "prettier --write \"**/*.{astro,css,js,json,md,mjs,ts}\"",
+    "format:check": "prettier --check \"**/*.{astro,css,js,json,md,mjs,ts}\"",
+    "validate": "npm run typecheck && npm run format:check"
+  },
+  "dependencies": {
+    "@astrojs/react": "^6.0.1",
+    "@astrojs/sitemap": "^3.7.3",
+    "astro": "^7.1.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-github-btn": "^1.4.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "prettier": "^3.9.6",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

@@ -1,0 +1,57 @@
+# FileGRC
+
+> Run a SOC 2 program as files in Git.
+
+## What it is
+
+FileGRC is a Git-native GRC workspace for founder-led engineering teams. It
+connects policies, controls, evidence, recurring work, event checklists, program
+readiness, audit readiness, and audit packets in one reviewable repository.
+
+JSON holds structured records. Markdown holds long-form work. Git supplies file
+history, authors, timestamps, diffs, commit messages, and revisions.
+
+## Start a workspace
+
+```sh
+npx create-filegrc@latest company-grc
+cd company-grc
+npm run validate
+npm run serve
+```
+
+The starter content is a proposal. Management must review policies, tailor
+controls, name owners, connect evidence sources, and record work that actually
+occurred before treating records as final.
+
+## Product path
+
+1. Define the service boundary and criteria.
+2. Review and approve policies.
+3. Tailor and implement controls.
+4. Connect evidence sources and prove collection works.
+5. Operate recurring and event-driven work.
+6. Record the CPA engagement and prepare the audit packet.
+
+## Interfaces
+
+- Local web app for people maintaining the program
+- CLI for engineers, agents, and CI
+- Plain JSON and Markdown for direct review
+- Read-only build for sharing a committed program state
+
+## Boundaries
+
+FileGRC manages GRC records and audit evidence. It does not replace workforce,
+identity, source-control, deployment, infrastructure, monitoring, endpoint,
+backup, vulnerability, training, signature, procurement, contract, vendor-risk,
+or auditor systems.
+
+FileGRC checks management preparation and packet integrity. The independent CPA
+firm selects samples, tests controls, evaluates exceptions, judges evidence,
+and issues the SOC 2 report.
+
+## Links
+
+- Website: https://filegrc.com
+- Source: https://github.com/Sunpeak-AI/FileGRC

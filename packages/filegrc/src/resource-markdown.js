@@ -8,13 +8,14 @@ export function resourceDataPath(model, record) {
   return join(definition.collection, recordPath).replaceAll("\\", "/");
 }
 
-export function markdownSlots(model, type) {
+export function markdownSlots(model, type, record = null) {
   const definition = getResourceDefinition(model, type);
   const dedicated = Object.entries(definition.markdown ?? {}).map(([name, slot]) => ({
     name,
     label: slot.label ?? humanize(name),
     primary: Boolean(slot.primary),
-    required: Boolean(slot.required)
+    required: Boolean(slot.required || (record && conditionMatches(record, slot.requiredWhen))),
+    requiredWhen: slot.requiredWhen ?? null
   }));
   if (dedicated.length) return dedicated;
   return [{
@@ -26,7 +27,7 @@ export function markdownSlots(model, type) {
 }
 
 export function markdownDataPath(model, record, slotName) {
-  const slot = markdownSlots(model, record.type).find(({ name }) => name === slotName);
+  const slot = markdownSlots(model, record.type, record).find(({ name }) => name === slotName);
   if (!slot) throw new Error(`Unknown Markdown slot "${slotName}" for ${record.type}.`);
   const recordPath = resourceDataPath(model, record);
   const extension = extname(recordPath);
@@ -36,9 +37,13 @@ export function markdownDataPath(model, record, slotName) {
 }
 
 export function markdownEntries(model, record) {
-  return markdownSlots(model, record.type)
+  return markdownSlots(model, record.type, record)
     .map((slot) => ({ ...slot, path: markdownDataPath(model, record, slot.name) }))
     .filter(({ path }) => path);
+}
+
+function conditionMatches(record, condition) {
+  return condition && Object.entries(condition).every(([name, expected]) => record[name] === expected);
 }
 
 export function isMarkdownChoice(value) {

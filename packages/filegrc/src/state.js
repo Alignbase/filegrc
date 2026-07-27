@@ -5,6 +5,7 @@ import { getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
+import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -52,12 +53,17 @@ export async function createAppState(input = process.cwd(), options = {}) {
   };
   const asOf = options.asOf ?? currentCalendarDate(workspace.timezone);
   const generatedAt = new Date().toISOString();
+  const programReadiness = await assessProgramReadiness(loaded, {
+    asOf,
+    generatedAt
+  });
   const audits = loaded.resources.filter((record) => record.type === "audit");
   const auditPreparations = Object.fromEntries(await Promise.all(
     (audits.length ? audits : [null]).map(async (audit) => {
       const preparation = await assessAuditPreparation(loaded, {
         auditId: audit?.id,
-        generatedAt
+        generatedAt,
+        programReadiness
       });
       return [audit?.id || "none", preparation];
     })
@@ -74,6 +80,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
       diagnostics: validation.diagnostics
     },
     obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt }),
+    programReadiness,
     auditPreparations,
     git
   };

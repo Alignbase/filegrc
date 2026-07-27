@@ -85,6 +85,7 @@ The template README is the source for the monorepo root README. Root `docs/` sym
 - Local HTTP serving
 - Static audit-overview generation
 - Recurring and event-driven obligation planning
+- Program readiness and evidence-source test checks
 - Audit-period evidence packet generation
 - HTML, CSS, and browser JavaScript assets
 
@@ -94,7 +95,7 @@ Commands:
 Discovery:    help, version, model, types, describe, guide
 Read:         list, get, search, references, content
 Write:        scaffold, create, update, content, attach, detach, delete
-Policy work:  obligations, complete, trigger, complete-action, complete-event
+Program work: obligations, complete, trigger, complete-action, complete-event, program-readiness
 Audit work:   prepare-audit, audit-readiness, evidence-packet
 Rendering:    serve, build
 Verification: validate
@@ -110,7 +111,7 @@ A generated workspace must be operable by an agent that knows Git and JSON but h
 
 `filegrc get <id> --mutation` exports the complete record, existing Markdown, and their revisions. `filegrc update` consumes that shape and rejects a stale JSON or Markdown revision. Create and update therefore use the same payload and domain functions as the HTTP and browser paths.
 
-Every model resource must have automated guide and scaffold coverage. Multi-record commands must validate their domain rules and write through one serialized mutation. This includes obligation completion, policy event creation and closure, audit preparation, and evidence attachment management.
+Every model resource must have automated guide and scaffold coverage. Multi-record commands must validate their domain rules and write through one serialized mutation. This includes obligation completion, policy event creation and closure, audit preparation, and evidence attachment management. Program Readiness must use the same domain calculation in the CLI, HTTP state, static state, and browser.
 
 ## Model registry
 
@@ -177,7 +178,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - The AICPA 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
 - All nine Description Criteria reference IDs from DC1 through DC9
 - A planned control catalog mapped to the Common Criteria and starter policies
-- A security and risk oversight team chaired by an external reviewer who is separate from the policy owner and control operators
+- A security and risk oversight team chaired by a reviewer who is separate from the policy owner. The reviewer may be internal or external.
 - Recurring obligations derived from the fixed review, scan, test, training, and meeting cadences in the starter policies
 - Event obligations for workforce starts, role changes, departures, personal devices, vendor access and reassessment, material system or data-use changes, and incidents
 - General and role-based training, including conditional secure-development, privileged-role, and anti-bribery modules
@@ -186,9 +187,9 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - A default 5x5 likelihood-and-impact risk method
 - Public, Internal, Confidential, and Restricted classification definitions
 
-The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary, may create one planned readiness, Type 1, or Type 2 engagement, and assigns the named external independent approver to the stable seed record. It does not add optional trust categories or claim that the initial scope is complete.
+The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and an optional management goal, then stores them on the workspace. It does not create an audit engagement, appoint the independent management reviewer, add optional trust categories, or claim that the initial scope is complete.
 
-Every starter control is `planned`. A user must confirm the owner, system scope, actual operation, and evidence before marking it implemented. A policy statement alone does not prove that a control operates.
+Every starter control is `planned`. A user must confirm the owner, system scope, actual procedure, cadence, evidence source, implementation date, and mappings before marking it implemented. A policy statement alone does not prove that a control operates.
 
 ## Storage
 
@@ -250,9 +251,9 @@ Generated or cached data never belongs in these directories.
 
 ## Policy obligations
 
-An active `obligation` is a reusable policy rule. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
+An `obligation` is a reusable policy rule. It remains a proposal until every governing policy is active and its effective date has arrived. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
 
-Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. Starting one event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. FileGRC applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
+Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. FileGRC rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. FileGRC applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
 
 `planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. Calendar completion uses one validated mutation to create the dated operating record and append it to the obligation's `completionResourceIds`; the obligation board, API, and `filegrc complete` use that same transaction. The planner does not write derived occurrence records for calendar schedules.
 
@@ -273,6 +274,22 @@ The engine follows file renames when possible. A resource ID remains the durable
 
 CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The Repository page shows the workspace diff and creates a validated local commit when no remote exists. Once a remote is configured, it also pulls with rebase and pushes immediately after a browser commit. A failed push leaves the local commit intact and reports the failure. Agents and terminal users own synchronization and use native Git commands.
 
+## Program readiness
+
+Program Readiness answers whether management can begin a candidate Type 2 period. It has no audit ID or CPA firm requirement. The stages are:
+
+1. Define scope.
+2. Approve policies.
+3. Implement controls.
+4. Prepare evidence by configuring sources and testing collection.
+5. Operate the program.
+
+The Evidence Ready gate requires an assurance goal, selected systems, criteria, controls, effective policies, implemented controls, cataloged authoritative systems, and one verified test export or capture for every selected control family. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
+
+The renderer adds Audit as the sixth and final lifecycle stage. That stage covers the CPA firm, formal period, fieldwork, evidence packet, and report. Criteria remain part of scope because management must decide what applies before adopting policies.
+
+The workspace keeps management’s `candidatePeriodStart` and `candidatePeriodEnd`. An audit record keeps the separate CPA-agreed Type 1 date or Type 2 period. The candidate dates let management preserve evidence as soon as collection works, but they do not establish the report period.
+
 ## Audit evidence
 
 Auditors commonly receive screenshots of rendered GRC pages for the audit period. The engine therefore provides a stable evidence view for every list and detail page.
@@ -292,7 +309,7 @@ The evidence-packet engine supports a Type 1 as-of date and a Type 2 period. It 
 
 Packet output is derived under `.filegrc/evidence-packets/`. It contains an auditor-oriented HTML index, a machine-readable manifest, a control matrix, source-system index, external-evidence delivery index, evidence index, Type 2 population index, raw JSON source records, governed Markdown, fixed local attachments, committed historical versions, and per-file SHA-256 checksums. External references are listed but never fetched and keep the packet in review-required state. The packet records the source revision and whether the worktree was clean, so incomplete or uncommitted output is visibly marked as a draft.
 
-The model registry owns the four management-document definitions, ten standard population kinds, and authoritative source-system guidance used by every interface. `prepareAuditWorkspace` creates engagement-specific documents from the local starter templates. For Type 2, it also creates missing population records, maps starter controls by code, and selects a source system when exactly one cataloged system has the required evidence role. It does not approve or complete the resulting records. `assessAuditPreparation` provides the same scoped checklist to the renderer, CLI, static build, and packet readiness checks.
+The model registry owns the four management-document definitions, ten standard population kinds, and authoritative source-system guidance used by every interface. `prepareAuditWorkspace` creates engagement-specific documents from the local starter templates. For Type 2, it also creates missing population records, maps starter controls by code, and selects a source system when exactly one cataloged system has the required evidence role. It does not approve or complete the resulting records. `assessAuditPreparation` begins with Program Readiness, then checks the CPA engagement, firm-agreed period, fieldwork records, and auditor-owned steps. It provides the same scoped checklist to the renderer, CLI, static build, and packet readiness checks.
 
 Each `audit-population` records management’s reconciliation state for one complete population. The population and its linked `population-export` evidence must name the same cataloged source system. The evidence records the exact query or report parameters, timezone, generation timestamp, record count, and completeness and accuracy validation. Split populations when source systems or queries differ. A zero-event population still needs a fixed source export and query. A population linked to an in-scope control cannot be dismissed as not applicable.
 
@@ -304,26 +321,32 @@ Training material is canonical Markdown. A reusable `training` record defines it
 
 ## Rendering
 
-The homepage stays focused on three questions: where the organization is in the six-stage audit chain, what policy work needs attention, and whether an audit engagement is active. Validation and Git status remain visible in the top bar.
+The homepage includes a program progress tracker and an Evidence Collection Running milestone. Its six-step path is Define Scope, Approve Policies, Implement Controls, Prepare Evidence, Operate the Program, and Audit. Each step links to its overview page rather than a separate readiness checklist. Continue opens the first step page with unfinished work. Page completion tracks the user’s progress through the path, while Program Readiness separately checks whether management can begin reliable evidence collection. Audit remains last, though the Audit area stays available when a customer deadline needs early CPA input. Validation and Git status remain visible in the top bar.
 
-The sidebar follows that same six-stage sequence:
+The sidebar groups records by their job:
 
-- Scope: systems, assets, people, accounts, teams, and vendors
-- Criteria: frameworks, requirements, service commitments, and supplements
-- Policies: policies and governed documents
-- Controls: controls and their mappings
-- Operate Controls: obligations, evidence, governance and risk, access, security operations, resilience, training, findings, and exceptions
-- Audit: preparation, engagements, requests, populations, tests, and reports
+- Define Scope: people and the oversight team, criteria, commitments, material vendors, and in-scope systems
+- Approve Policies: policies and governed documents
+- Implement Controls: the starter control set, implementation fields, complementary customer or subservice controls, and operation-tracking status
+- Prepare Evidence: authoritative source configuration followed by verified test exports or captures
+- Operate the Program: risk assessments and risks, the Work Queue, data requests, asset inventory, vendor reviews, governance, access, security, resilience, training, findings, and exceptions
+- Audit: engagements and requests, populations, tests, packet preparation, fieldwork, and reports
 
 Resource types are nested only when the extra grouping adds meaning. Organization settings remain anchored at the bottom.
 
-For active obligations, the dashboard derives the next calendar occurrence from the recurrence rule and anchor date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence.
+The Controls page explains what the generated workspace already supplies and what management must tailor before a planned control becomes implemented. Its operation-tracking column distinguishes controls linked to recurring or event work in FileGRC from controls documented through evidence records. The Evidence page presents source configuration and test collection as two ordered tasks and shows control-family coverage for both.
 
-Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. The sidebar and list-page context use the same six stages: Scope, Criteria, Policies, Controls, Operate Controls, and Audit. The dashboard reports data validity separately from setup and operating state so a valid starter schema is not presented as audit readiness.
+Each of the six lifecycle steps has its own overview route. Clicking a step label opens that page, while its separate chevron expands or collapses the step in place. Nested subgroup rows toggle their drawers and do not have separate overview pages. Step pages link each record or working page in order, summarize record counts, and let users mark each page complete or incomplete. New workspaces start at zero percent until the user confirms the work.
+
+Third-party software commonly needs both a `system` and a `vendor`. The application is the System because it operates controls and produces evidence. The provider is the Vendor because contracts, due diligence, and supplier risk belong to the relationship. `system.vendorId` connects them, and evidence names the System as its source.
+
+For obligations whose governing policies are active and effective, the dashboard derives the next calendar occurrence from the recurrence rule and applicable policy effective date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence. Starter obligations remain proposals until policy adoption.
+
+Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Both views show model-defined guidance for the resource's purpose, policy basis, and timing. When the workspace contains the referenced policies, documents, or recurring obligations, the guide links to those current records and schedules. The dashboard reports data validity, Program Readiness, evidence collection, and Audit Readiness separately, so a valid starter schema is not presented as an operating program or active engagement.
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
-New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer uses it to offer a short modal workflow covering the operating model: artifacts are files, Git is the audit trail, recurring obligations form the work queue, and evidence can be prepared in reviewed batches. Its setup step collects only compliance-domain scope: the initial service boundary, owner, business criticality, highest data classification, internet exposure, external independent approver, and optional audit objective. It creates or updates the approver, a system, and an optional planned audit, then sets `showOnboarding` to `false`. The approver cannot match the policy owner. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them from Repository or the Git CLI.
+New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer explains the file and Git model, the program path, policy obligations, and event checklists before covering report types and the final audit stage. The setup step collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional Type 1 or Type 2 management goal. It creates or updates a system, stores the scope and goal on the workspace, and sets `showOnboarding` to `false`. It does not create an audit. The final screen opens the Step 1 overview so management can confirm the starter people and oversight team, criteria, commitments, vendors, and systems before approving policies. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them from Repository or the Git CLI.
 
 Onboarding never runs in a read-only build. It can be restarted from Repository, or bypassed entirely by editing the same data files through an agent or other tooling. Repositories created before the renderer settings record remain valid and do not start onboarding automatically.
 

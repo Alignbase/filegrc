@@ -26,9 +26,9 @@ The policy owner:
 - Coordinates incidents, exercises, reviews, and audit work.
 - Approves security exceptions or obtains the required approval.
 
-An external independent reviewer chairs the security and risk oversight group. This person must be separate from the policy owner and must not operate the controls under review. The reviewer approves policies and governed plans, challenges management's assessment of control operation, and records independent decisions.
+An independent reviewer chairs the security and risk oversight group. This person must be separate from the policy owner and able to challenge the owner's decisions. The reviewer will usually be another leader or manager in the organization, but may be external. The reviewer approves policies and governed plans, challenges management's assessment of control operation, and records independent decisions.
 
-The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions. A one-person company must appoint a qualified external person to fill the independent reviewer role before it approves the program.
+The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions. A one-person company must appoint a qualified external person to fill the independent reviewer role because no second internal person is available.
 
 System and process owners classify their systems and data, approve access, maintain safeguards, respond to findings, and keep recovery information current.
 
@@ -230,4 +230,4 @@ Violations may result in access removal, corrective action, contract remedies, o
 
 ## Review
 
-The policy owner reviews this policy at least annually and after a material change to systems, services, risks, or obligations. The external independent reviewer, who must be separate from the policy owner, approves this policy and other governed policies and plans. The security and risk oversight group reviews material changes and records its decision in meeting minutes. Git history records approvals and changes.
+The policy owner reviews this policy at least annually and after a material change to systems, services, risks, or obligations. An independent reviewer who is separate from the policy owner approves this policy and other governed policies and plans. The reviewer may be internal or external. The security and risk oversight group reviews material changes and records its decision in meeting minutes. Git history records approvals and changes.

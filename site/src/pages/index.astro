@@ -1,0 +1,374 @@
+---
+import GitHubStar from "../components/GitHubStar.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const pageTitle = "FileGRC | Run a SOC 2 Program as Files in Git";
+const pageDescription =
+  "FileGRC lets founder-led engineering teams use their agents to run SOC 2 work in plain, reviewable files they own.";
+
+const questions = [
+  {
+    number: "01",
+    question: "Own the source",
+    answer:
+      "Your policies, controls, risks, evidence indexes, and audit work stay as JSON and Markdown in your Git repository.",
+  },
+  {
+    number: "02",
+    question: "Put your agent to work",
+    answer:
+      "Your agent can create records, link evidence, work the queue, run readiness checks, and prepare the audit packet.",
+  },
+  {
+    number: "03",
+    question: "Review every change",
+    answer:
+      "Nothing disappears behind an application. Review the exact files, diff, author, date, and commit before accepting the work.",
+  },
+  {
+    number: "04",
+    question: "$0 software bill",
+    answer:
+      "FileGRC is MIT licensed and runs locally. The source systems that operate controls and the independent CPA audit remain separate.",
+  },
+];
+
+const steps = [
+  {
+    number: "1",
+    title: "Define scope",
+    body: "Name the service, criteria, dependencies, systems, and risks.",
+  },
+  {
+    number: "2",
+    title: "Approve policies",
+    body: "Review the starter proposals and record real owners, approvers, and dates.",
+  },
+  {
+    number: "3",
+    title: "Implement controls",
+    body: "Replace prompts with the procedure, scope, cadence, and evidence source.",
+  },
+  {
+    number: "4",
+    title: "Prepare evidence",
+    body: "Connect authoritative systems and prove that collection works.",
+  },
+  {
+    number: "5",
+    title: "Operate the program",
+    body: "Complete recurring work and event checklists with dated evidence.",
+  },
+  {
+    number: "6",
+    title: "Prepare the audit",
+    body: "Record the engagement and period, reconcile populations, and build the packet.",
+  },
+];
+
+const commands = [
+  [
+    "guide risk-assessment --json",
+    "Learn the fields, timing, policy context, and valid relationships.",
+  ],
+  [
+    "scaffold risk-assessment",
+    "Create the same validated JSON and Markdown shape used by the browser.",
+  ],
+  ["obligations --json", "See upcoming, due, and overdue policy work."],
+  [
+    "program-readiness --json",
+    "Check whether management can begin a reliable evidence period.",
+  ],
+  [
+    "evidence-packet --audit audit-id",
+    "Build the scoped delivery from a clean Git revision.",
+  ],
+];
+
+const siteUrl = Astro.site ?? new URL("https://filegrc.com");
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "FileGRC",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Node.js 20 or newer",
+  description: pageDescription,
+  url: siteUrl.href,
+  codeRepository: "https://github.com/Sunpeak-AI/FileGRC",
+  license: "https://opensource.org/license/mit",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+};
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={pageDescription}
+  structuredData={structuredData}
+>
+  <section class="hero">
+    <div class="hero-grid" aria-hidden="true"></div>
+    <div class="hero-glow" aria-hidden="true"></div>
+
+    <div class="shell hero-layout">
+      <div class="hero-copy">
+        <div class="hero-meta">
+          <span class="eyebrow eyebrow--light">
+            <i class="status-dot"></i>
+            Open source · MIT
+          </span>
+          <GitHubStar />
+        </div>
+
+        <h1>
+          <span>Run your SOC 2</span>
+          <span>program <em>as files</em></span>
+          <em>in Git.</em>
+        </h1>
+        <p class="hero-lede">
+          FileGRC gives a founder-led engineering team one place to adopt
+          policies, implement controls, run recurring work, collect evidence,
+          and prepare an audit.
+        </p>
+
+        <div class="install-command">
+          <span class="prompt">$</span>
+          <code id="install-command">npx create-filegrc@latest company-grc</code
+          >
+          <button
+            type="button"
+            id="copy-install"
+            aria-label="Copy install command"
+            data-command="npx create-filegrc@latest company-grc"
+          >
+            <span class="copy-icon" aria-hidden="true"></span>
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
+
+        <div class="hero-actions">
+          <a
+            class="button button--secondary"
+            href="https://github.com/Sunpeak-AI/FileGRC"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on GitHub
+            <span aria-hidden="true">↗</span>
+          </a>
+          <span class="hero-requirements">Node.js 20+ · Git</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section problem-section" id="why">
+    <div class="shell">
+      <div class="section-heading section-heading--split">
+        <div>
+          <div class="eyebrow">Why FileGRC</div>
+          <h2>Let your agent handle SOC 2, <em>for free.</em></h2>
+        </div>
+        <p>
+          Don't pay tens of thousands of dollars for a set of basic create,
+          read, update, and delete screens wrapped around data you don't
+          control. FileGRC is open source. Your records stay in your repository,
+          where your agent can do the routine work.
+        </p>
+      </div>
+
+      <div class="question-grid">
+        {
+          questions.map((item) => (
+            <article class="question-card">
+              <span>{item.number}</span>
+              <h3>{item.question}</h3>
+              <p>{item.answer}</p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section repository-section" id="how-it-works">
+    <div class="shell repository-layout">
+      <div class="repository-copy">
+        <div class="eyebrow eyebrow--light">How it works</div>
+        <h2>The repository <em>is the program.</em></h2>
+        <p>
+          There is no separate application database. The source stays useful in
+          a text editor, the local web app, the CLI, and CI because every
+          interface reads and writes the same files through the same rules.
+        </p>
+
+        <div class="source-list">
+          <div>
+            <i class="source-dot source-dot--blue"></i>
+            <p>
+              <strong>JSON</strong> holds records the engine validates, filters, and
+              connects.
+            </p>
+          </div>
+          <div>
+            <i class="source-dot source-dot--amber"></i>
+            <p>
+              <strong>Markdown</strong> holds policies, procedures, plans, minutes,
+              and narratives.
+            </p>
+          </div>
+          <div>
+            <i class="source-dot source-dot--green"></i>
+            <p>
+              <strong>Git</strong> supplies authors, timestamps, revisions, diffs,
+              and commit messages.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="file-stack" aria-label="Example FileGRC source files">
+        <div class="source-file source-file--back">
+          <span>MARKDOWN</span>
+          <strong>Access Control Policy</strong>
+          <code>policy-access-control.md</code>
+          <i></i><i></i><i></i><i></i>
+        </div>
+        <div class="source-file source-file--middle">
+          <span>JSON</span>
+          <strong>Quarterly access review</strong>
+          <code>control-access-review.json</code>
+          <pre>{`{
+  "status": "implemented",
+  "ownerId": "person-security",
+  "evidenceSourceIds": [...]
+}`}</pre>
+        </div>
+        <div class="source-file source-file--front">
+          <span>GIT</span>
+          <strong>One reviewable change</strong>
+          <code>47ebdcc · main</code>
+          <div class="diff-line diff-line--add">+ approvedOn: 2026-07-25</div>
+          <div class="diff-line diff-line--add">+ evidenceId: evidence-q3</div>
+          <div class="diff-line diff-line--remove">- status: draft</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section workflow-section" id="workflow">
+    <div class="shell">
+      <div class="section-heading section-heading--center">
+        <div class="eyebrow">One path</div>
+        <h2>Prepare, operate, <em>then audit.</em></h2>
+        <p>
+          Start with how the company actually works. Build reliable evidence
+          before you create the normal audit engagement.
+        </p>
+      </div>
+
+      <div class="workflow-list">
+        {
+          steps.map((step) => (
+            <article class="workflow-step">
+              <span class="workflow-number">{step.number}</span>
+              <div>
+                <h3>{step.title}</h3>
+                <p>{step.body}</p>
+              </div>
+            </article>
+          ))
+        }
+      </div>
+
+      <figure class="workflow-product">
+        <div class="window-bar">
+          <div class="window-dots" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <span>Program Overview</span>
+          <span class="window-state"><i></i> Data valid</span>
+        </div>
+        <div class="workflow-product__viewport">
+          <img
+            src="/filegrc-home.png"
+            alt="FileGRC program overview showing the six-step SOC 2 path"
+            width="1440"
+            height="1000"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section agent-section" id="agents">
+    <div class="agent-glow" aria-hidden="true"></div>
+    <div class="shell agent-layout">
+      <div class="agent-copy">
+        <div class="eyebrow eyebrow--light">For engineers and agents</div>
+        <h2>The browser is helpful. <em>It is not required.</em></h2>
+        <p>
+          An agent with no FileGRC context can discover the model, inspect valid
+          relationships, create records, complete scheduled work, and check the
+          result without opening the renderer.
+        </p>
+        <p>
+          The browser and CLI call the same domain functions, so headless work
+          gets the same validation and readiness calculations.
+        </p>
+      </div>
+
+      <div class="command-list">
+        {
+          commands.map(([command, description]) => (
+            <div class="command-row">
+              <code>
+                <span>$</span> npx filegrc {command}
+              </code>
+              <p>{description}</p>
+            </div>
+          ))
+        }
+      </div>
+      <div class="agent-boundary">
+        <strong>FileGRC manages GRC records and audit evidence.</strong>
+        <p>
+          Your source systems still operate controls. The independent CPA firm
+          still tests them, judges the evidence, and issues the report.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const copyButton = document.getElementById("copy-install");
+    const copyLabel = copyButton?.querySelector(".copy-label");
+
+    copyButton?.addEventListener("click", async () => {
+      const command = copyButton.dataset.command;
+      if (!command) return;
+
+      try {
+        await navigator.clipboard.writeText(command);
+        if (copyLabel) copyLabel.textContent = "Copied";
+        window.setTimeout(() => {
+          if (copyLabel) copyLabel.textContent = "Copy";
+        }, 1600);
+      } catch {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        const commandElement = document.getElementById("install-command");
+        if (!selection || !commandElement) return;
+        range.selectNodeContents(commandElement);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    });
+  </script>
+</BaseLayout>

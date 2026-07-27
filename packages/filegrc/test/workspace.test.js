@@ -63,6 +63,26 @@ test("rejects reversed date ranges", async (context) => {
   assert.ok(validation.diagnostics.some(({ code }) => code === "invalid-date-range"));
 });
 
+test("rejects a reversed management candidate period", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-candidate-date-range-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const workspacePath = join(root, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  await writeFile(workspacePath, `${JSON.stringify({
+    ...workspace,
+    assuranceGoal: "soc-2-type-2",
+    candidatePeriodStart: "2026-07-26",
+    candidatePeriodEnd: "2026-07-25"
+  }, null, 2)}\n`, "utf8");
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.diagnostics.some(({ code, message }) => (
+    code === "invalid-date-range" && message.includes("candidatePeriodEnd")
+  )));
+});
+
 test("rejects negative model counts", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-count-range-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -449,6 +469,61 @@ test("stores common Record Markdown for result-bearing resources", async (contex
     expectedContentRevisions: { [notesPath]: entry.content.record.revision }
   });
   assert.match(await readFile(join(root, "data", notesPath), "utf8"), /Follow-up verified/);
+});
+
+test("requires procedure Markdown before a control becomes implemented", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-procedure-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "framework-control-test",
+    type: "framework",
+    title: "Control test framework",
+    status: "active",
+    version: "1"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "requirement-control-test",
+    type: "requirement",
+    title: "Control test requirement",
+    frameworkId: "framework-control-test",
+    reference: "TEST1",
+    applicability: "applicable"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "system-control-test",
+    type: "system",
+    title: "Control test system",
+    status: "active",
+    criticality: "high",
+    ownerIds: ["person-owner"]
+  });
+  const control = {
+    schemaVersion: 1,
+    id: "control-procedure-test",
+    type: "control",
+    title: "Procedure test control",
+    status: "implemented",
+    statement: "Management performs the test control.",
+    ownerIds: ["person-owner"],
+    requirementIds: ["requirement-control-test"],
+    activity: "Perform and document the control.",
+    operationMode: "manual",
+    frequency: "Monthly",
+    systemIds: ["system-control-test"],
+    evidenceSourceIds: ["system-control-test"],
+    effectiveOn: "2026-07-01"
+  };
+  await assert.rejects(createResource(root, control), /Required Procedure Markdown is missing/);
+  await createResource(root, control, {
+    content: {
+      record: "# Procedure test control\n\nThe owner performs the control each month and keeps the dated result."
+    }
+  });
+  assert.equal((await validateWorkspace(root)).ok, true);
 });
 
 test("rejects empty required relationships and rolls back bundled content", async (context) => {

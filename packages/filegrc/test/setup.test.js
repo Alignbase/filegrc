@@ -38,12 +38,11 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     criticality: "high",
     dataClassification: "Confidential",
     internetExposed: true,
-    auditGoal: "none",
+    programGoal: "none",
     draft: true
   });
   assert.equal(draft.draft, true);
   assert.equal(draft.system.status, "planned");
-  assert.equal(draft.independentApprover, null);
   assert.equal(JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8")).showOnboarding, true);
 
   const running = await serveWorkspace(root, { port: 0 });
@@ -58,9 +57,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
       criticality: "high",
       dataClassification: "Confidential",
       internetExposed: true,
-      independentApproverName: "External Reviewer",
-      independentApproverEmail: "reviewer@example.test",
-      auditGoal: "none",
+      programGoal: "type-2",
       draft: false
     })
   });
@@ -68,7 +65,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   const completed = await response.json();
   assert.equal(completed.onboardingComplete, true);
   assert.equal(completed.system.status, "active");
-  assert.equal(completed.independentApprover.id, "person-independent-approver");
+  assert.equal(completed.workspace.assuranceGoal, "soc-2-type-2");
 
   const loaded = await loadWorkspace(root);
   assert.equal(loaded.resources.filter(({ type, inScope }) => type === "system" && inScope).length, 1);
@@ -82,7 +79,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     criticality: "high",
     dataClassification: "Confidential",
     internetExposed: true,
-    auditGoal: "none",
+    programGoal: "none",
     systemId: completed.system.id,
     draft: true
   });
@@ -119,11 +116,7 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
     "Restricted",
     "--internet-exposed",
     "false",
-    "--approver-name",
-    "External Reviewer",
-    "--approver-email",
-    "reviewer@example.test",
-    "--audit-goal",
+    "--program-goal",
     "readiness",
     "--json"
   ]);
@@ -133,7 +126,9 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   assert.equal(parsed.system.internetExposed, false);
   assert.equal(parsed.system.dataClassification, "Restricted");
   assert.equal(parsed.system.status, "active");
-  assert.equal(parsed.audit.auditKind, "readiness");
+  assert.equal(parsed.workspace.assuranceGoal, "readiness");
+  assert.deepEqual(parsed.workspace.systemIds, [parsed.system.id]);
+  assert.equal(parsed.audit, undefined);
 });
 
 test("setup rejects explicit retired or missing targets", async (context) => {
@@ -161,9 +156,7 @@ test("setup rejects explicit retired or missing targets", async (context) => {
     criticality: "high",
     dataClassification: "Confidential",
     internetExposed: true,
-    independentApproverName: "External Reviewer",
-    independentApproverEmail: "reviewer@example.test",
-    auditGoal: "none"
+    programGoal: "none"
   };
 
   await assert.rejects(
@@ -171,7 +164,7 @@ test("setup rejects explicit retired or missing targets", async (context) => {
     /cannot be used for initial scope/
   );
   await assert.rejects(
-    setupWorkspace(root, { ...payload, auditId: "audit-missing" }),
-    /Audit "audit-missing" was not found/
+    setupWorkspace(root, { ...payload, systemId: "system-missing" }),
+    /System "system-missing" was not found/
   );
 });

@@ -30,9 +30,11 @@ Read `AGENTS.md` and `data/AGENTS.md` before broad changes.
 
 The starter policies, controls, and obligations are proposals. They do not state that {{company_name}} operates the described controls.
 
-1. Define the service boundary and accountable owner in browser onboarding, or run `npx filegrc setup --help`.
-2. Appoint an external independent reviewer who is separate from {{policy_owner_name}} and the people who operate the controls under review.
-3. Compare the starter policies and planned controls with current operations, then edit or remove anything that does not match.
-4. Approve the reviewed baseline, run `npm run validate`, inspect the Git diff, and commit the accepted program.
+1. Use browser onboarding or `npx filegrc setup --help` to record the initial service and goal, then finish Step 1 by confirming the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems.
+2. Review the starter policies, appoint a reviewer who is separate from the policy owner, and activate only the policies that match current practice. The reviewer will usually be another person in the organization, but may be external.
+3. Review the starter control set, implement each applicable control with its actual procedure, scope, cadence, evidence sources, and implementation date, then record any complementary customer or subservice controls.
+4. Connect authoritative systems first, then verify one real test export or capture for every selected control family.
+5. Run `npx filegrc program-readiness --require-ready`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, and use Work Queue for scheduled work.
+6. Engage a CPA firm, record the separate firm-agreed period in an audit record, and prepare fieldwork.
 
 FileGRC manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.

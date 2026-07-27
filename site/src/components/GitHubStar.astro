@@ -1,0 +1,29 @@
+---
+import GitHubButton from "react-github-btn";
+---
+
+<span class="github-star" aria-label="FileGRC GitHub stars">
+  <GitHubButton
+    client:visible
+    href="https://github.com/Sunpeak-AI/FileGRC"
+    data-color-scheme="no-preference: dark; light: dark; dark: dark;"
+    data-icon="octicon-star"
+    data-size="large"
+    data-show-count="true"
+    aria-label="Star Sunpeak-AI/FileGRC on GitHub"
+  />
+</span>
+
+<style>
+  .github-star {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    line-height: 0;
+  }
+
+  .github-star :global(astro-island > span) {
+    display: flex;
+    align-items: center;
+  }
+</style>

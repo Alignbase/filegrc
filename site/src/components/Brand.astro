@@ -1,0 +1,24 @@
+---
+interface Props {
+  light?: boolean;
+  compact?: boolean;
+}
+
+const { light = false, compact = false } = Astro.props;
+---
+
+<span
+  class:list={["brand", light && "brand--light", compact && "brand--compact"]}
+>
+  <img
+    class="brand__mark"
+    src="/favicon.png?v=2"
+    alt=""
+    width="64"
+    height="64"
+  />
+  <span class="brand__copy">
+    <span class="brand__name">FileGRC</span>
+    {!compact && <span class="brand__tag">SOC 2 workspace</span>}
+  </span>
+</span>

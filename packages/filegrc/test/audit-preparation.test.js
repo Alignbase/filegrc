@@ -61,9 +61,12 @@ test("initializes model-owned Type 2 populations and management document links",
 
   const before = await assessAuditPreparation(root, { auditId: "audit-type-2" });
   assert.equal(before.canInitialize, true);
-  assert.equal(before.stages.find(({ id }) => id === "populations").counts.action, 10);
-  assert.equal(before.stages.find(({ id }) => id === "populations").title, "Population Completeness");
-  assert.equal(before.stages.find(({ id }) => id === "auditor").title, "Auditor-Owned Work");
+  assert.equal(
+    before.stages.find(({ id }) => id === "fieldwork").items.filter(({ section }) => section === "Population Completeness").length,
+    10
+  );
+  assert.equal(before.stages.find(({ id }) => id === "fieldwork").title, "Prepare Fieldwork");
+  assert.equal(before.stages.find(({ id }) => id === "auditor").title, "Fieldwork and Report");
 
   const result = await prepareAuditWorkspace(root, { auditId: "audit-type-2" });
   assert.equal(result.linkedDocumentIds.length, 4);
@@ -96,7 +99,10 @@ test("initializes model-owned Type 2 populations and management document links",
   assert.deepEqual(second.createdPopulationIds, []);
   const after = await assessAuditPreparation(root, { auditId: "audit-type-2" });
   assert.equal(after.canInitialize, false);
-  assert.equal(after.stages.find(({ id }) => id === "populations").counts.action, 10);
+  assert.equal(
+    after.stages.find(({ id }) => id === "fieldwork").items.filter(({ section, status }) => section === "Population Completeness" && status === "action").length,
+    10
+  );
 
   const cli = await execute(process.execPath, [
     new URL("../bin/filegrc.js", import.meta.url).pathname,
@@ -108,7 +114,10 @@ test("initializes model-owned Type 2 populations and management document links",
   ]);
   const cliResult = JSON.parse(cli.stdout);
   assert.equal(cliResult.audit.id, audit.id);
-  assert.equal(cliResult.stages.find(({ id }) => id === "populations").items.length, 10);
+  assert.equal(
+    cliResult.stages.find(({ id }) => id === "fieldwork").items.filter(({ section }) => section === "Population Completeness").length,
+    10
+  );
 
   await createResource(root, {
     schemaVersion: 1,
@@ -123,7 +132,10 @@ test("initializes model-owned Type 2 populations and management document links",
     typeOneAsOf: "2026-07-31"
   });
   const typeOneBefore = await assessAuditPreparation(root, { auditId: "audit-type-1" });
-  assert.equal(typeOneBefore.stages.find(({ id }) => id === "populations").counts.action, 0);
+  assert.equal(
+    typeOneBefore.stages.find(({ id }) => id === "fieldwork").items.filter(({ section, status }) => section === "Population Completeness" && status === "action").length,
+    0
+  );
   const typeOneResult = await prepareAuditWorkspace(root, { auditId: "audit-type-1" });
   assert.equal(typeOneResult.linkedDocumentIds.length, 3);
   assert.equal(typeOneResult.createdDocumentIds.length, 3);

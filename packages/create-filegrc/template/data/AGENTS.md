@@ -166,12 +166,13 @@ npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD
 ## Audit work
 
 ```sh
+npx filegrc program-readiness --json
 npx filegrc prepare-audit AUDIT_ID
 npx filegrc audit-readiness AUDIT_ID --json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 ```
 
-Fix readiness errors in source records. Do not edit packet output under `.filegrc/`. A delivery-ready FileGRC packet means the management checks passed; the engagement team still judges evidence and performs the examination.
+Run Program Readiness before creating the normal audit engagement. It checks scope, effective policies, implemented controls, evidence sources, and test captures without an audit ID. Fix readiness errors in source records. Do not edit packet output under `.filegrc/`. A delivery-ready FileGRC packet means the management checks passed; the engagement team still judges evidence and performs the examination.
 
 ## Finish every change
 

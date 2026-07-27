@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Page Not Found | FileGRC"
+  description="The FileGRC page you requested could not be found."
+  robots="noindex, follow"
+>
+  <section class="error-page">
+    <div class="error-grid" aria-hidden="true"></div>
+    <div class="shell error-page__inner">
+      <div class="error-code">404</div>
+      <h1>This record does not exist.</h1>
+      <p>The path may have changed, or the link may be incomplete.</p>
+      <a class="button button--primary" href="/">Return home <span>→</span></a>
+    </div>
+  </section>
+</BaseLayout>

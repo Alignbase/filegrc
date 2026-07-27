@@ -84,13 +84,20 @@ test("keeps work linked only to draft policies as starter proposals", () => {
   assert.equal(proposed.items[0].status, "proposed");
   assert.equal(proposed.items[0].timingStatus, "due");
 
-  const accepted = planObligations([{ ...policy, status: "approved" }, obligation], {
+  const approved = planObligations([{ ...policy, status: "approved", approvedOn: "2026-01-01", effectiveOn: "2026-01-01" }, obligation], {
+    asOf: "2026-03-15",
+    through: "2026-03-31"
+  });
+  assert.equal(approved.counts.proposed, 1);
+
+  const accepted = planObligations([{ ...policy, status: "active", approvedOn: "2026-01-01", effectiveOn: "2026-02-01" }, obligation], {
     asOf: "2026-03-15",
     through: "2026-03-31"
   });
   assert.equal(accepted.counts.proposed, 0);
   assert.equal(accepted.counts.due, 1);
   assert.equal(accepted.items[0].status, "due");
+  assert.equal(accepted.items[0].dueWindowStart, "2026-02-01");
 });
 
 test("does not start a partial event workflow while any step is still proposed", async (context) => {

@@ -2,9 +2,8 @@
   "schemaVersion": 1,
   "id": "person-independent-approver",
   "type": "person",
-  "title": "Independent Approver",
-  "status": "external",
-  "role": "External Security and Risk Oversight Reviewer",
-  "employmentType": "external-reviewer",
+  "title": "Independent Reviewer",
+  "status": "active",
+  "role": "Security and Risk Oversight Reviewer",
   "teamIds": ["team-security-risk-oversight"]
 }

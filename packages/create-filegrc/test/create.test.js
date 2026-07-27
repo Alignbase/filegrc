@@ -30,7 +30,11 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
   assert.match(readme, /FileGRC 1\.2\.3/);
   assert.match(readme, /npx filegrc setup --help/);
+  assert.match(readme, /finish Step 1 by confirming the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems/);
   assert.doesNotMatch(readme, /npx create-filegrc/);
+  const agents = await readFile(join(target, "AGENTS.md"), "utf8");
+  assert.match(agents, /Completing onboarding opens the Step 1 overview/);
+  assert.match(agents, /`complementary-control\.relatedControlIds` is the source of truth/);
   assert.equal(result.install, "skipped");
   assert.equal(result.gitMode, "initialized");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
@@ -40,11 +44,13 @@ test("creates a complete generic repository with one dependency", async (context
   assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);
   const renderer = JSON.parse(await readFile(join(target, "data", "renderer.json"), "utf8"));
   assert.equal(renderer.showOnboarding, true);
+  assert.deepEqual(renderer.completedStagePageIds, []);
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
   assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
   const independentApprover = JSON.parse(await readFile(join(target, "data", "people", "person-independent-approver.json"), "utf8"));
-  assert.equal(independentApprover.status, "external");
+  assert.equal(independentApprover.status, "active");
+  assert.equal(independentApprover.title, "Independent Reviewer");
   assert.notEqual(independentApprover.id, owner.id);
   const oversightTeam = JSON.parse(await readFile(join(target, "data", "teams", "team-security-risk-oversight.json"), "utf8"));
   assert.deepEqual(oversightTeam.memberIds, [owner.id, independentApprover.id]);

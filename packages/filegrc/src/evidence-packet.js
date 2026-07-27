@@ -132,8 +132,12 @@ export async function prepareEvidencePacket(input, options = {}) {
     const control = byId.get(controlId);
     addIds(selectedIds, control?.systemIds);
     addIds(selectedIds, control?.commitmentIds);
-    addIds(selectedIds, control?.complementaryControlIds);
     addIds(selectedIds, control?.riskIds);
+  }
+  for (const complementaryControl of records.filter((record) => record.type === "complementary-control")) {
+    if ((complementaryControl.relatedControlIds || []).some((id) => controlIds.has(id))) {
+      selectedIds.add(complementaryControl.id);
+    }
   }
   for (const systemId of audit?.systemIds || []) {
     const system = byId.get(systemId);
@@ -859,6 +863,7 @@ function controlIdsForRecord(record, byId, seen = new Set()) {
   seen.add(record.id);
   if (record.type === "control") ids.add(record.id);
   addIds(ids, record.controlIds);
+  if (record.type === "complementary-control") addIds(ids, record.relatedControlIds);
   if (record.controlId) ids.add(record.controlId);
   for (const sourceId of record.sourceResourceIds || []) addIds(ids, controlIdsForRecord(byId.get(sourceId), byId, seen));
   if (record.sourceResourceId) addIds(ids, controlIdsForRecord(byId.get(record.sourceResourceId), byId, seen));

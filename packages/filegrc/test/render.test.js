@@ -260,7 +260,7 @@ test("persists onboarding resources without requiring Git", async (context) => {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...entry.record, showOnboarding: false },
+      record: { ...entry.record, showOnboarding: false, completedStagePageIds: ["scope:system"] },
       revision: entry.revision
     })
   });
@@ -269,6 +269,7 @@ test("persists onboarding resources without requiring Git", async (context) => {
   assert.equal(system.inScope, true);
   const saved = JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8"));
   assert.equal(saved.showOnboarding, false);
+  assert.deepEqual(saved.completedStagePageIds, ["scope:system"]);
   const deleteResponse = await fetch(`${result.url}/api/resource/renderer-settings/renderer-settings`, { method: "DELETE" });
   assert.equal(deleteResponse.status, 400);
   assert.match((await deleteResponse.json()).error, /Singleton records cannot be deleted/);
@@ -341,6 +342,8 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
   assert.match(APP_STYLES, /html,body\{height:100%;overflow:hidden\}/);
   assert.match(APP_STYLES, /\.sidebar\{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain\}/);
   assert.match(APP_STYLES, /\.sidebar-nav\{[^}]*flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain/);
+  assert.match(APP_STYLES, /\.sidebar-nav\{scrollbar-width:none;-ms-overflow-style:none\}/);
+  assert.match(APP_STYLES, /\.sidebar-nav::-webkit-scrollbar\{display:none\}/);
   assert.match(APP_STYLES, /\.workspace\{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;/);
   assert.match(APP_STYLES, /\.sidebar-footer\{flex:0 0 auto;[^}]*background:#000024;/);
 });
@@ -360,12 +363,20 @@ test("uses compact topbar spacing on wide and narrow screens", () => {
   assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}/);
 });
 
+test("uses the larger interface type scale", () => {
+  assert.match(APP_STYLES, /\.nav-stage-copy strong\{font-size:12px/);
+  assert.match(APP_STYLES, /\.button\{[^}]*font-size:14\.4px/);
+  assert.match(APP_STYLES, /\.record-table\{[^}]*font-size:13\.2px/);
+  assert.match(APP_STYLES, /\.markdown p,\.markdown li\{font-size:15\.6px/);
+  assert.match(APP_STYLES, /\.page-intro h2,\.detail-head h2\{[^}]*font-size:37\.2px/);
+});
+
 test("persists each sidebar group state between page renders", () => {
   assert.match(APP_SCRIPT, /const NAV_GROUP_STORAGE_KEY = "filegrc\.sidebar\.groups\.v3"/);
   assert.match(APP_SCRIPT, /window\.localStorage\.getItem\(NAV_GROUP_STORAGE_KEY\)/);
   assert.match(APP_SCRIPT, /navigationGroupState\[stage\.id\] \?\? currentStage\?\.id === stage\.id/);
   assert.match(APP_SCRIPT, /navigationGroupState\[sectionKey\] \?\? \(sectionCurrent \|\| section\.defaultOpen\)/);
-  assert.match(APP_SCRIPT, /querySelectorAll\("\.nav-heading, \.nav-subheading"\)/);
+  assert.match(APP_SCRIPT, /querySelectorAll\("\.nav-toggle, \.nav-subgroup-toggle"\)/);
   assert.match(APP_SCRIPT, /setNavigationGroupOpen\(group\.dataset\.group, open\)/);
   assert.match(APP_SCRIPT, /window\.localStorage\.setItem\(NAV_GROUP_STORAGE_KEY, JSON\.stringify\(navigationGroupState\)\)/);
 });
@@ -398,6 +409,17 @@ test("places record context left of Markdown on wide screens", () => {
   assert.match(APP_STYLES, /\.detail-grid\{grid-template-columns:1fr\}/);
 });
 
+test("uses the full detail width when a record has no authored body", () => {
+  const detailSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderDetail"), APP_SCRIPT.indexOf("function recordNarrative"));
+  assert.match(detailSource, /const hasRecordBody = Boolean\(narrativeContent \|\| markdownContent\)/);
+  assert.match(detailSource, /const detailMain = hasRecordBody/);
+  assert.match(detailSource, /detail-grid-structured/);
+  assert.doesNotMatch(detailSource, /Add Record Markdown when this record needs context beyond its structured fields/);
+  assert.doesNotMatch(detailSource, /<h3>Record<\/h3>/);
+  assert.match(APP_STYLES, /\.detail-grid\.detail-grid-structured\{grid-template-columns:1fr\}/);
+  assert.match(APP_STYLES, /\.detail-grid-structured aside\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(320px,1fr\)\)/);
+});
+
 test("places source attributes first in record metadata", () => {
   assert.match(APP_SCRIPT, /const sourceMetadata = '<div><dt>Source file<\/dt>/);
   assert.match(APP_SCRIPT, /<dt>Workspace revision<\/dt>/);
@@ -418,7 +440,7 @@ test("aligns list and record page headers", () => {
   assert.match(APP_STYLES, /\.page-guide\{[^}]*margin:0;/);
   assert.doesNotMatch(APP_STYLES, /\.page-guide\{margin-top:-/);
   assert.match(APP_STYLES, /\.detail-head h2\{margin:7px 0\}/);
-  assert.match(APP_STYLES, /\.detail-head \.header-breadcrumbs\{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center\}/);
+  assert.match(APP_STYLES, /\.detail-head \.header-breadcrumbs\{margin:0;font-size:10\.8px;line-height:normal;min-height:11px;align-items:center\}/);
 });
 
 test("places list filters before the create action in the page header", () => {
@@ -443,37 +465,78 @@ test("provides model-driven Record Markdown without exposing its path", () => {
 
 test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /const READINESS_STAGES = \[/);
-  assert.match(APP_SCRIPT, /title: "Scope",\s+description: "Systems and boundary"/);
-  assert.match(APP_SCRIPT, /title: "Operate Controls",\s+description: "Recurring and event work"/);
-  assert.match(APP_SCRIPT, /title: "Boundary", types: \["system", "asset"\], nested: true/);
-  assert.match(APP_SCRIPT, /title: "Governance and Risk", types: \[[^\]]+\], nested: true/);
-  assert.match(APP_SCRIPT, /if \(!section\.nested\) return links/);
-  assert.match(APP_SCRIPT, /!section\.nested \? "nav-direct " : ""/);
+  assert.match(APP_SCRIPT, /number: "1",\s+title: "Define Scope",\s+description: "Ownership, criteria, and service boundary"/);
+  assert.match(APP_SCRIPT, /number: "2",\s+title: "Approve Policies",\s+description: "Tailor, review, approve, and adopt"/);
+  assert.match(APP_SCRIPT, /number: "3",\s+title: "Implement Controls",\s+description: "Tailor and finish the starter control set"/);
+  assert.match(APP_SCRIPT, /number: "4",\s+title: "Prepare Evidence",\s+description: "Connect sources and prove collection works"/);
+  assert.match(APP_SCRIPT, /number: "5",\s+title: "Operate the Program",\s+description: "Run the work and retain dated proof"/);
+  assert.match(APP_SCRIPT, /number: "6",\s+title: "Audit",\s+description: "Firm, formal period, fieldwork, and report"/);
+  assert.match(APP_SCRIPT, /title: "Service Boundary"[\s\S]*?types: \["vendor", "system"\]/);
+  assert.doesNotMatch(APP_SCRIPT, /title: "Dependencies"/);
+  assert.match(APP_SCRIPT, /title: "Criteria"[\s\S]*?types: \["framework", "requirement", "commitment"\]/);
+  assert.match(APP_SCRIPT, /title: "Control Catalog"[\s\S]*?types: \["control", "complementary-control"\]/);
+  assert.match(APP_SCRIPT, /title: "Risk"[\s\S]*?types: \["risk-assessment", "risk"\]/);
+  const scopeStage = APP_SCRIPT.slice(APP_SCRIPT.indexOf('id: "scope"'), APP_SCRIPT.indexOf('id: "policies"'));
+  const operationStage = APP_SCRIPT.slice(APP_SCRIPT.indexOf('id: "run"'), APP_SCRIPT.indexOf('id: "audit"'));
+  assert.ok(scopeStage.indexOf('id: "criteria"') < scopeStage.indexOf('id: "boundary"'));
+  assert.doesNotMatch(scopeStage, /types: \["risk-assessment", "risk"\]/);
+  assert.match(operationStage, /types: \["risk-assessment", "risk"\]/);
+  assert.match(APP_SCRIPT, /title: "Assets and Vendors"[\s\S]*?types: \["asset", "vendor-review"\]/);
+  assert.match(APP_SCRIPT, /title: "Evidence Setup"[\s\S]*?types: \["evidence"\]/);
+  assert.match(APP_SCRIPT, /title: "Work Queue"[\s\S]*?types: \["obligation", "obligation-event", "data-request"\]/);
+  assert.match(APP_SCRIPT, /title: "Access and Training"[\s\S]*?types: \["service-account", "access-grant", "access-review", "training", "attestation"\]/);
+  assert.match(APP_SCRIPT, /title: "Engagement"[\s\S]*?types: \["audit", "audit-request"\]/);
+  assert.match(APP_SCRIPT, /title: "Fieldwork"[\s\S]*?types: \["audit-population", "control-test"\]/);
+  assert.match(APP_SCRIPT, /\}\)\.join\(""\) \+ renderSidebarUtility\(section\.utility, route, direct\)/);
+  assert.match(APP_SCRIPT, /for \(const type of section\.types\)[\s\S]*if \(section\.utility === "audit-packet"\) destinations\.push/);
+  assert.match(APP_SCRIPT, /title: "Governance"[\s\S]*?types: \[[^\]]+\]/);
+  assert.match(APP_SCRIPT, /const direct = stage\.sections\.length === 1 \|\| sectionDestinations\(section\)\.length === 1/);
+  assert.match(APP_SCRIPT, /if \(direct\) return links/);
+  assert.match(APP_SCRIPT, /direct \? "nav-direct " : ""/);
   assert.match(APP_SCRIPT, /class="nav-group nav-stage /);
   assert.match(APP_SCRIPT, /class="nav-group nav-subgroup /);
+  assert.match(APP_SCRIPT, /<button class="nav-subheading-row nav-subgroup-toggle" type="button"/);
+  assert.match(APP_SCRIPT, /<span class="nav-subheading">/);
+  assert.doesNotMatch(APP_SCRIPT, /class="nav-subheading [^"]*" href="#\/stage\//);
   assert.doesNotMatch(APP_SCRIPT, /class="nav-count"/);
   assert.match(APP_SCRIPT, /class="nav-control-slot"/);
   assert.doesNotMatch(APP_SCRIPT, /<span>Overview<\/span>/);
+  assert.match(APP_SCRIPT, /class="nav-stage-number"/);
   assert.match(APP_SCRIPT, /class="brand"' \+ \(route\.name === "home" \? ' aria-current="page"'/);
   assert.doesNotMatch(APP_STYLES, /--nav-count-width/);
   assert.match(APP_STYLES, /--nav-control-width:14px/);
-  assert.match(APP_STYLES, /\.nav-stage>\.nav-heading\{[^}]*grid-template-columns:24px minmax\(0,1fr\) var\(--nav-control-width\)/);
-  assert.match(APP_STYLES, /\.nav-subgroup>\.nav-subheading,\.nav-subgroup>\.nav-items a\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--nav-control-width\)/);
+  assert.match(APP_STYLES, /\.nav-heading-row\{display:grid;grid-template-columns:minmax\(0,1fr\) 24px;gap:2px;align-items:stretch\}/);
+  assert.match(APP_STYLES, /\.nav-heading-row>\.nav-heading\{display:grid;grid-template-columns:24px minmax\(0,1fr\)/);
+  assert.match(APP_STYLES, /\.nav-stage-number\{display:grid;place-items:center/);
+  assert.match(APP_STYLES, /\.nav-subheading-row\{display:grid;grid-template-columns:minmax\(0,1fr\) 22px;gap:2px;align-items:center;width:100%/);
+  assert.match(APP_STYLES, /\.nav-toggle\{display:grid;place-items:center;width:24px;height:auto;min-height:100%/);
+  assert.match(APP_STYLES, /\.nav-chevron\{display:block;width:12px;height:12px;place-self:center/);
   assert.match(APP_STYLES, /\.nav-stage>\.nav-items>a\.nav-direct\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--nav-control-width\)/);
   assert.doesNotMatch(APP_STYLES, /\.nav-count\{/);
-  assert.match(APP_STYLES, /\.chevron\{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none\}/);
-  assert.match(APP_STYLES, /\.chevron:before\{[^}]*transform:rotate\(-45deg\)/);
-  assert.match(APP_STYLES, /\.nav-group\.open>\.nav-heading>\.chevron:before,\.nav-group\.open>\.nav-subheading>\.chevron:before\{transform:rotate\(45deg\)\}/);
+  assert.match(APP_STYLES, /\.nav-group\.open>\.nav-heading-row \.nav-chevron,\.nav-group\.open>\.nav-subheading-row \.nav-chevron\{transform:rotate\(90deg\)\}/);
+  assert.match(APP_SCRIPT, /href="#\/stage\/' \+ encodeURIComponent\(stage\.id\)/);
+  assert.match(APP_SCRIPT, /class="nav-toggle nav-stage-toggle"/);
+  assert.doesNotMatch(APP_SCRIPT, /class="nav-toggle nav-subtoggle"/);
+  assert.match(APP_SCRIPT, /querySelectorAll\("\.nav-toggle, \.nav-subgroup-toggle"\)/);
+  assert.match(APP_SCRIPT, /<svg class="nav-chevron" viewBox="0 0 12 12"/);
   assert.doesNotMatch(APP_SCRIPT, /<section class="nav-path"><p>Readiness path<\/p>/);
   assert.match(APP_SCRIPT, /function readinessStageForRoute\(route\)/);
   assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
   assert.match(APP_SCRIPT, /class="organization-nav /);
-  assert.match(APP_SCRIPT, /People and Teams/);
+  assert.doesNotMatch(APP_SCRIPT, /<h3>People and Teams<\/h3>/);
+  assert.match(APP_SCRIPT, /title: "Program Ownership"[\s\S]*?types: \["person", "team"\]/);
+  assert.match(APP_SCRIPT, /Review the starter Security and Risk Oversight team/);
   assert.match(APP_SCRIPT, /Renderer and Repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
-  assert.match(APP_SCRIPT, /Scope", "Define the service, system boundary, people, data, and vendors/);
+  assert.match(APP_SCRIPT, /programStage\("scope", "Confirm program ownership, criteria, and commitments, then describe the service, supporting systems, and dependencies/);
+  assert.match(APP_SCRIPT, /programStage\("run", "Begin the candidate period, maintain risk assessments/);
+  assert.match(APP_SCRIPT, /programStage\("policies", "Tailor the policy set/);
+  assert.match(APP_SCRIPT, /programStage\("controls", "Finish the internal control set[\s\S]*then record any complementary controls/);
+  assert.match(APP_SCRIPT, /programStage\("evidence", "For each control family/);
+  assert.doesNotMatch(APP_SCRIPT, /#\/program-readiness/);
+  assert.doesNotMatch(APP_SCRIPT, /function renderProgramReadiness/);
   assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
-  assert.match(APP_SCRIPT, /Shortlist independent CPA firms that perform SOC 2 examinations/);
+  assert.match(APP_SCRIPT, /Optional: Engage a CPA Firm Early/);
   assert.match(APP_SCRIPT, /function recordNarrative\(record, fields\)/);
   assert.match(APP_SCRIPT, /function resourceConnections\(entry\)/);
   assert.match(APP_SCRIPT, /Linked from /);
@@ -481,11 +544,11 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /field === "sourceReference"/);
   assert.match(APP_SCRIPT, /function safeExternalUrl\(value\)/);
   assert.match(APP_SCRIPT, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
-  assert.match(APP_STYLES, /\.readiness-flow\{display:grid;grid-template-columns:repeat\(6/);
+  assert.match(APP_STYLES, /\.readiness-flow\{display:grid;grid-template-columns:repeat\(3/);
   assert.match(APP_STYLES, /\.record-prose\{max-width:790px\}/);
   assert.match(APP_STYLES, /\.connections\{display:grid\}/);
   assert.match(APP_STYLES, /\.external-source\{display:flex/);
-  assert.match(APP_STYLES, /\.organization-grid\{display:grid;grid-template-columns:repeat\(3/);
+  assert.match(APP_STYLES, /\.organization-grid\{display:grid;grid-template-columns:repeat\(2/);
 });
 
 test("keeps IDs behind the guided editor and generates them from titles", () => {
@@ -512,15 +575,15 @@ test("proper-cases dropdown labels and uses native required validation", () => {
 
 test("title-cases multi-word navigation and interface headings", () => {
   assert.match(APP_SCRIPT, /function titleCase\(value\)/);
-  assert.match(APP_SCRIPT, /title: "Supplements"/);
+  assert.doesNotMatch(APP_SCRIPT, /title: "Scope Details"/);
   assert.match(APP_SCRIPT, /title: "Work Queue"/);
-  assert.match(APP_SCRIPT, /title: "Evidence Delivery"/);
+  assert.match(APP_SCRIPT, /title: "Fieldwork"/);
   assert.match(APP_SCRIPT, /esc\(titleCase\(definition\.pluralTitle\)\)/);
-  assert.match(APP_SCRIPT, /<span>Obligation Board<\/span>/);
+  assert.match(APP_SCRIPT, /if \(utility === "obligation-board"\) return ""/);
   assert.match(APP_SCRIPT, /<span>Audit Readiness<\/span>/);
   assert.match(APP_SCRIPT, /<h1>' \+ esc\(titleCase\(title\)\)/);
-  assert.match(APP_SCRIPT, /<h3>Follow the Audit Chain<\/h3>/);
-  assert.match(APP_SCRIPT, /<h2>Prepare the Audit<\/h2>/);
+  assert.match(APP_SCRIPT, /<h3>Prepare, Operate, Then Audit<\/h3>/);
+  assert.match(APP_SCRIPT, /<h2>Prepare Fieldwork<\/h2>/);
   assert.match(APP_SCRIPT, /<h2>Repository State<\/h2>/);
   assert.match(APP_SCRIPT, /esc\(titleCase\(step\.title\)\)/);
 });
@@ -581,7 +644,102 @@ test("explains purpose, policy basis, and timing in an interactive index popover
   assert.match(APP_STYLES, /\.page-guide\{display:grid;grid-template-columns:/);
   assert.match(APP_STYLES, /\.resource-guide-popover\{position:fixed;z-index:40;overflow:auto/);
   assert.match(APP_STYLES, /\.resource-guide-popover\[hidden\]\{display:none\}/);
-  assert.match(APP_STYLES, /\.setup-banner,\.page-guide\{grid-template-columns:1fr\}/);
+  assert.match(APP_STYLES, /\.setup-banner,\.page-guide,\.stage-instruction-grid,\.evidence-instruction-grid,\.stage-overview-hero/);
+});
+
+test("makes control implementation and evidence preparation explicit", () => {
+  assert.match(APP_SCRIPT, /function resourceWorkflowPanel\(type, entries\)/);
+  assert.match(APP_SCRIPT, /Finish the Starter Control Set/);
+  assert.match(APP_SCRIPT, /planned records are not implemented controls/);
+  assert.match(APP_SCRIPT, /FileGRC schedules and records that work after policies take effect/);
+  assert.match(APP_SCRIPT, /function controlOperationTracking\(control\)/);
+  assert.match(APP_SCRIPT, /Operation tracking/);
+  assert.match(APP_SCRIPT, /Work Queue[\s\S]*linked/);
+  assert.match(APP_SCRIPT, /Prove Evidence Collection Works/);
+  assert.match(APP_SCRIPT, /Connect authoritative sources/);
+  assert.match(APP_SCRIPT, /Run a test capture/);
+  assert.match(APP_SCRIPT, /test-export[\s\S]*test-capture/);
+  assert.match(APP_SCRIPT, /Work Queue[\s\S]*Other controls operate continuously or per transaction in their source systems/);
+  assert.match(APP_STYLES, /\.stage-instruction-grid\{display:grid;grid-template-columns:repeat\(3/);
+  assert.match(APP_STYLES, /\.evidence-instruction-grid\{grid-template-columns:repeat\(2/);
+  assert.match(APP_STYLES, /\.setup-banner,\.page-guide,\.stage-instruction-grid,\.evidence-instruction-grid,\.stage-overview-hero/);
+});
+
+test("renders six navigable stage pages with instructions, links, and honest progress", () => {
+  const cardSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function stagePageCard"), APP_SCRIPT.indexOf("function stageProgress"));
+  const summarySource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("const STAGE_PAGE_SUMMARIES"), APP_SCRIPT.indexOf("const STAGE_PAGE_ID_ALIASES"));
+  assert.match(APP_SCRIPT, /parts\.length === 2 && parts\[0\] === "stage"/);
+  assert.doesNotMatch(APP_SCRIPT, /parts\.length === 3 && parts\[0\] === "stage"/);
+  assert.match(APP_SCRIPT, /function renderStageOverview\(main, stageId, params = new URLSearchParams\(\)\)/);
+  assert.match(APP_SCRIPT, /if \(stage\.id === "run"\) return renderObligations\(main, params\)/);
+  assert.doesNotMatch(APP_SCRIPT, /function renderSectionOverview/);
+  assert.match(APP_SCRIPT, /function renderStagePageIndex\(stage\)/);
+  assert.match(APP_SCRIPT, /function stagePageCard\(stage, destination, index\)/);
+  assert.match(APP_SCRIPT, /function stageProgress\(stage\)/);
+  assert.match(APP_SCRIPT, /function programPathProgress\(\)/);
+  assert.match(APP_SCRIPT, /pages\.filter\(\(destination\) => stagePageComplete\(stagePageId\(stage, destination\)\)\)\.length/);
+  assert.match(APP_SCRIPT, /if \(!total\) return \{ percent: 0/);
+  assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 6/);
+  assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
+  assert.doesNotMatch(APP_SCRIPT, /stage\.steps\.map/);
+  assert.match(APP_SCRIPT, /Confirm the people and teams responsible for the program, set the management goal/);
+  assert.match(APP_SCRIPT, /Record supplemental customer promises and service requirements/);
+  assert.match(APP_SCRIPT, /Mark it implemented only after the procedure is operating/);
+  assert.match(APP_SCRIPT, /Maintain current risk assessments and risks, updating the control set when needed/);
+  assert.match(APP_SCRIPT, /types: \["framework", "requirement", "commitment"\]/);
+  assert.match(APP_SCRIPT, /types: \["person", "team"\][\s\S]*types: \["framework", "requirement", "commitment"\]/);
+  assert.match(APP_SCRIPT, /types: \["control", "complementary-control"\]/);
+  assert.doesNotMatch(APP_SCRIPT, /id: "service-description"/);
+  assert.doesNotMatch(APP_SCRIPT, /Working areas/);
+  assert.doesNotMatch(APP_SCRIPT, /Complete This Step/);
+  assert.doesNotMatch(APP_SCRIPT, /Follow each area’s instructions/);
+  assert.match(APP_SCRIPT, /class="stage-page-card ' \+ \(complete \? "complete" : ""\)/);
+  assert.match(APP_SCRIPT, /const stepLabel = "Step " \+ stage\.number \+ "\." \+ String\.fromCharCode\(97 \+ index\)/);
+  assert.match(cardSource, /<small>' \+ esc\(stepLabel\) \+ '<\/small><h3>' \+ esc\(destination\.label\)/);
+  assert.doesNotMatch(cardSource, /destination\.description/);
+  assert.doesNotMatch(cardSource, /guidance\?\.cadence/);
+  assert.doesNotMatch(cardSource, /stage-page-actions?/);
+  assert.match(summarySource, /Catalog all in-scope systems for the program\. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor \(like HR software\)\./);
+  assert.match(summarySource, /Catalog the companies that provide in-scope software or services\. Link each vendor-provided System to the company that provides it\./);
+  assert.doesNotMatch(summarySource, /manage contracts, due diligence, supplier risk, and reviews/);
+  assert.match(APP_SCRIPT, /An application or platform is a System because it operates controls or produces evidence/);
+  assert.match(APP_SCRIPT, /the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship/);
+  assert.match(APP_SCRIPT, /Create a Vendor record for each material provider[\s\S]*connect vendor-provided Systems to their providers/);
+  assert.match(APP_SCRIPT, /Issues and Remediation/);
+  assert.match(APP_SCRIPT, /Record a confirmed gap identified by a review, test, assessment, incident, meeting, or audit, then track it through verified closure/);
+  assert.doesNotMatch(APP_SCRIPT, /function sectionContextNote/);
+  assert.doesNotMatch(APP_SCRIPT, /class="relationship-note"/);
+  assert.match(APP_STYLES, /\.stage-overview-hero\{display:grid/);
+  assert.match(APP_STYLES, /\.stage-progress-card\{/);
+  assert.match(APP_STYLES, /\.stage-pages\{margin-top:24px\}/);
+  assert.match(APP_STYLES, /\.stage-page-grid\{display:grid/);
+  assert.match(APP_STYLES, /\.stage-page-card\{position:relative;display:flex/);
+  assert.match(APP_STYLES, /\.stage-page-card-link\{position:absolute;inset:0;z-index:1/);
+});
+
+test("uses the Step 5 page as the Work Queue and indexes all operating pages", () => {
+  assert.match(APP_SCRIPT, /href="#\/stage\/run">Open board/);
+  assert.match(APP_SCRIPT, /href="#\/stage\/run\?section=events"/);
+  assert.match(APP_SCRIPT, /renderStagePageIndex\(stage\) \+/);
+  assert.match(APP_SCRIPT, /<h2>Work Queue<\/h2>/);
+  assert.match(APP_SCRIPT, /Other controls operate continuously or per transaction in their source systems/);
+  assert.match(APP_SCRIPT, /types: \["finding", "action-item"\]/);
+  assert.doesNotMatch(APP_SCRIPT, /href="#\/obligations"/);
+});
+
+test("persists manual completion for step pages without blocking card navigation", () => {
+  assert.match(APP_SCRIPT, /completedStagePageIds/);
+  assert.match(APP_SCRIPT, /data-stage-page-completion/);
+  assert.match(APP_SCRIPT, /Mark incomplete/);
+  assert.match(APP_SCRIPT, /Mark complete/);
+  assert.match(APP_SCRIPT, /function toggleStagePageCompletion\(button\)/);
+  assert.match(APP_SCRIPT, /writeRendererSettingsResource/);
+  assert.match(APP_SCRIPT, /event\.stopPropagation\(\)/);
+  assert.match(APP_SCRIPT, /class="stage-page-card-link" href="' \+ destination\.href/);
+  assert.match(APP_SCRIPT, /stage-page-card-foot"><span class="stage-page-open"[\s\S]*completionControl/);
+  assert.match(APP_STYLES, /\.stage-page-card-head\{display:flex;align-items:center/);
+  assert.match(APP_STYLES, /\.stage-page-rollup\{display:flex;flex:0 0 104px;flex-direction:column;justify-content:center/);
+  assert.match(APP_STYLES, /\.stage-page-completion\{position:relative;z-index:2/);
 });
 
 test("runs optional onboarding from committed renderer settings", () => {
@@ -596,39 +754,41 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/setup"/);
   assert.match(APP_SCRIPT, /Files are the program/);
-  assert.match(APP_SCRIPT, /SOC 2 is an audit away/);
-  assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*SOC 2 is an audit away[\s\S]*Files are the program/);
+  assert.match(APP_SCRIPT, /Choose the report goal/);
+  assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*title: "Files are the program"[\s\S]*title: "Follow the audit chain"[\s\S]*title: "Choose the report goal"[\s\S]*title: "Engage the firm and prepare fieldwork"/);
   assert.match(APP_SCRIPT, /target: "\.repo-chip",[\s\S]*title: "Files are the program"/);
-  assert.match(APP_SCRIPT, /SOC 2 is just an auditor's report that you have adopted a set of policies/);
-  assert.match(APP_SCRIPT, /body: \[[\s\S]*policies meeting certain criteria\.",[\s\S]*"This includes information security criteria/);
+  assert.match(APP_SCRIPT, /SOC 2 is an independent CPA report on controls relevant to the selected Trust Services Criteria/);
+  assert.match(APP_SCRIPT, /Most customer requests focus on Security/);
   assert.match(APP_SCRIPT, /Array\.isArray\(step\.body\)[\s\S]*<p class="onboarding-body">/);
-  assert.match(APP_SCRIPT, /optionally include availability, processing integrity, confidentiality, and privacy criteria/);
-  assert.match(APP_SCRIPT, /customers requesting a SOC 2 report just need the information security criteria/);
   assert.match(APP_SCRIPT, /title: "Type 1"/);
-  assert.match(APP_SCRIPT, /Type 1 is not required for Type 2/);
+  assert.match(APP_SCRIPT, /Type 1 is optional before Type 2/);
   assert.match(APP_SCRIPT, /title: "Type 2"/);
-  assert.match(APP_SCRIPT, /most commonly six months/);
-  assert.match(APP_SCRIPT, /production infrastructure \+ monitoring/);
+  assert.match(APP_SCRIPT, /often six months/);
+  assert.match(APP_SCRIPT, /Most evidence comes from production, identity, monitoring/);
   assert.match(APP_SCRIPT, /onboarding-after-sections/);
   assert.match(APP_SCRIPT, /class="onboarding-sections"/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
-  assert.match(APP_SCRIPT, /Inventories and dated records of reviews/);
+  assert.match(APP_SCRIPT, /Scope starts with the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems/);
+  assert.match(APP_SCRIPT, /Program operation includes current risk assessments and risks/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
   assert.match(APP_SCRIPT, /Complete a checklist when key events occur/);
-  assert.match(APP_SCRIPT, /Plan the engagement and generate evidence/);
+  assert.match(APP_SCRIPT, /Engage the firm and prepare fieldwork/);
+  assert.match(APP_SCRIPT, /formal report period, fieldwork, and final report are the last stage/);
   assert.match(APP_SCRIPT, /This renderer edits those files/);
+  assert.match(APP_SCRIPT, /Use the UI, an editor, the CLI, or an agent/);
   assert.match(APP_SCRIPT, /Repository pulls with rebase/);
   assert.match(APP_SCRIPT, /terminal users run git pull --rebase, git commit, and git push directly/);
   assert.match(APP_SCRIPT, /The UI and FileGRC CLI use the same calculation/);
   assert.match(APP_SCRIPT, /Every action has a policy-based cutoff or a reasonable default deadline/);
   assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
   assert.match(APP_SCRIPT, /data-onboarding="draft">Save draft/);
-  assert.match(APP_SCRIPT, /Appoint an independent reviewer or use Save draft/);
-  assert.match(APP_SCRIPT, /name="independentApproverName" maxlength/);
-  assert.match(APP_SCRIPT, /name="independentApproverEmail" type="email" maxlength/);
-  assert.match(APP_SCRIPT, /The independent approver must be a different person from the policy owner/);
-  assert.match(APP_SCRIPT, /auditId: onboardingDraft\.auditId,\s+draft/);
-  assert.match(APP_SCRIPT, /The reviewer must be separate from the policy owner and control operators/);
+  assert.doesNotMatch(APP_SCRIPT, /name="independentApproverName" maxlength/);
+  assert.doesNotMatch(APP_SCRIPT, /name="independentApproverEmail" type="email" maxlength/);
+  assert.match(APP_SCRIPT, /programGoal: onboardingDraft\.programGoal/);
+  assert.doesNotMatch(APP_SCRIPT, /auditId: onboardingDraft\.auditId/);
+  assert.match(APP_SCRIPT, /finish Step 1 by confirming the starter people and oversight team, criteria, commitments, vendors, and systems/);
+  assert.match(APP_SCRIPT, /history\.replaceState\(null, "", draft \? "#\/" : "#\/stage\/scope"\)/);
+  assert.match(APP_SCRIPT, /Complete the remaining Step 1 pages next/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
   assert.match(APP_SCRIPT, /Git repository and remote detected/);
   assert.match(APP_SCRIPT, /Detached HEAD detected/);
@@ -679,10 +839,11 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function obligationCompletionSeed\(type, item, obligation\)/);
   assert.match(APP_SCRIPT, /data-record-obligation/);
   assert.match(APP_SCRIPT, /data-expand-obligations/);
-  assert.match(APP_SCRIPT, /#\/obligations\?section=events/);
-  assert.match(APP_SCRIPT, /#\/obligations\?event=/);
+  assert.match(APP_SCRIPT, /#\/stage\/run\?section=events/);
+  assert.match(APP_SCRIPT, /#\/stage\/run\?event=/);
   assert.match(APP_SCRIPT, /params\.get\("event"\)/);
   assert.match(APP_SCRIPT, /function renderAuditPacket\(main/);
+  assert.doesNotMatch(APP_SCRIPT, /function renderProgramReadiness\(/);
   assert.match(APP_SCRIPT, /function renderAuditPreparation\(preparation\)/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/audit-preparation"/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-packet"/);
@@ -700,6 +861,12 @@ test("renders shared obligation and evidence-packet workflows", () => {
 test("keeps the overview focused on readiness, current work, and the audit", () => {
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
   assert.match(APP_SCRIPT, /class="hero overview-hero"/);
+  assert.match(APP_SCRIPT, /class="readiness-progress-summary"/);
+  assert.match(APP_SCRIPT, /<span>Program Progress<\/span><strong>' \+ progress\.percent \+ '%<\/strong>/);
+  assert.match(APP_SCRIPT, /program pages complete/);
+  assert.match(APP_SCRIPT, /<a class="button primary" href="' \+ nextHref \+ '">Continue<\/a>/);
+  assert.doesNotMatch(APP_SCRIPT, /Build and test the management program first/);
+  assert.doesNotMatch(APP_SCRIPT, /class="panel program-start-panel"/);
   assert.match(APP_SCRIPT, /slice\(0, 3\)/);
   assert.match(APP_SCRIPT, /class="overview-grid"/);
   assert.match(APP_SCRIPT, /class="panel obligation-panel"/);
@@ -712,12 +879,25 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.doesNotMatch(APP_SCRIPT, /function programSetup\(\)/);
   assert.match(APP_STYLES, /\.overview-hero\{min-height:72px;padding:10px 20px;align-items:center\}/);
   assert.match(APP_STYLES, /\.overview-grid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(APP_STYLES, /\.readiness-progress-summary\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(APP_STYLES, /\.readiness-progress-summary>div>strong\{font-size:9\.6px;font-weight:700/);
 });
 
-test("uses stage names on resource pages and direct setup actions in the program path", () => {
+test("uses stage names and routes overview cards through stage pages", () => {
   assert.match(APP_SCRIPT, /readinessStageForType\(type\)\?\.title/);
-  assert.match(APP_SCRIPT, /\["Operate Controls", "Complete recurring and event work/);
-  assert.match(APP_SCRIPT, /inScopeSystems\.length \? "#\/resources\/system" : "#\/resources\/system\?new=1"/);
+  assert.match(APP_SCRIPT, /programStage\("run", "Begin the candidate period/);
+  assert.match(APP_SCRIPT, /function nextProgramStageHref\(\)/);
+  assert.match(APP_SCRIPT, /READINESS_STAGES\.find\(\(stage\) => \{/);
+  assert.match(APP_SCRIPT, /progress\.complete < progress\.total/);
+  assert.doesNotMatch(APP_SCRIPT, /function readinessItemHref\(item\)/);
+  assert.match(APP_SCRIPT, /programStage\("scope"[\s\S]*"#\/stage\/scope"/);
+  assert.match(APP_SCRIPT, /programStage\("policies"[\s\S]*"#\/stage\/policies"/);
+  assert.match(APP_SCRIPT, /programStage\("controls"[\s\S]*"#\/stage\/controls"/);
+  assert.match(APP_SCRIPT, /programStage\("evidence"[\s\S]*"#\/stage\/evidence"/);
+  assert.match(APP_SCRIPT, /programStage\("run"[\s\S]*"#\/stage\/run"/);
+  assert.match(APP_SCRIPT, /"#\/stage\/audit"/);
+  assert.doesNotMatch(APP_SCRIPT, /Open checklist/);
+  assert.doesNotMatch(APP_STYLES, /\.program-next-action\{/);
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
   assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type\)\)/);
   assert.match(APP_STYLES, /\.readiness-state\{/);

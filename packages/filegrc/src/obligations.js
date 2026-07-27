@@ -55,7 +55,7 @@ export function planObligations(resources, options = {}) {
   };
 
   for (const obligation of obligations) {
-    const programStatus = obligationProgramStatus(obligation, byId);
+    const programStatus = obligationProgramStatus(obligation, byId, asOf);
     if (obligation.recurrence?.mode === "event" && obligation.recurrence.eventType) {
       const eventType = obligation.recurrence.eventType;
       const group = triggerGroups.get(eventType) ?? {
@@ -86,9 +86,13 @@ export function planObligations(resources, options = {}) {
       continue;
     }
 
+    const configuredAnchor = obligation.recurrence?.anchorDate || obligation.startsOn;
+    const activationDate = obligationActivationDate(obligation, byId);
     const recurrence = {
       ...(obligation.recurrence || {}),
-      anchorDate: obligation.recurrence?.anchorDate || obligation.startsOn
+      anchorDate: configuredAnchor && activationDate
+        ? [configuredAnchor, activationDate].sort().at(-1)
+        : configuredAnchor || activationDate
     };
     if (!validCalendarRecurrence(recurrence)) continue;
     const from = requestedFrom || recurrence.anchorDate;
@@ -203,8 +207,8 @@ export async function createObligationEvent(input, options) {
     && record.recurrence.eventType === eventType
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
-  if (templates.some((record) => obligationProgramStatus(record, byId) === "proposed")) {
-    throw new Error(`Event type "${eventType}" still has starter proposals. Approve every linked policy before starting this workflow.`);
+  if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn) === "proposed")) {
+    throw new Error(`Event type "${eventType}" still has starter proposals. Activate every linked policy and reach its effective date before starting this workflow.`);
   }
   if (templates.some((record) => Number.isInteger(normalizedEventWindow(record.window).endOffsetHours)) && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
@@ -528,13 +532,25 @@ function occurrenceStatus(window, asOf, complete) {
   return "upcoming";
 }
 
-function obligationProgramStatus(obligation, byId) {
+function obligationProgramStatus(obligation, byId, asOf) {
   const policyIds = obligation.policyIds || [];
   if (!policyIds.length) return "accepted";
-  return policyIds.some((id) => {
+  return policyIds.every((id) => {
     const policy = byId.get(id);
-    return policy?.type === "policy" && ["approved", "active"].includes(policy.status);
+    return policy?.type === "policy"
+      && policy.status === "active"
+      && policy.effectiveOn
+      && policy.effectiveOn <= asOf;
   }) ? "accepted" : "proposed";
+}
+
+function obligationActivationDate(obligation, byId) {
+  const dates = (obligation.policyIds || [])
+    .map((id) => byId.get(id))
+    .filter((policy) => policy?.type === "policy")
+    .map((policy) => policy.effectiveOn)
+    .filter(Boolean);
+  return dates.sort().at(-1) || null;
 }
 
 function relativeTiming(window, asOf) {

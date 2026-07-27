@@ -15,7 +15,7 @@ Treat headless use as a first-class interface. An agent with no FileGRC context 
 
 - Keep the generated root `AGENTS.md` as the program and Git guide.
 - Keep `data/AGENTS.md` as the universal record workflow. Add collection-level `AGENTS.md` files only where a wrong action has material compliance, privacy, or audit consequences.
-- Keep `filegrc guide`, `types`, `list`, `get`, `references`, `scaffold`, CRUD, `content`, obligations, events, audit readiness, and evidence packets model-driven.
+- Keep `filegrc guide`, `types`, `list`, `get`, `references`, `scaffold`, CRUD, `content`, obligations, events, program readiness, audit readiness, and evidence packets model-driven.
 - Scaffold files are prompts, not compliance facts. They must keep incomplete work in a non-final state and make missing required values obvious.
 - Browser and CLI mutations must use the same domain functions and the same `{ record, content }` shape.
 - Every resource type must pass automated guide and scaffold coverage. Test first-class multi-record workflows through the CLI as well as their domain functions.
@@ -74,7 +74,7 @@ The authoritative model registry is `packages/filegrc/model/v1.json`. FileGRC ha
 - Store relationships as resource IDs, not relative file paths.
 - Treat IDs as immutable after a record is committed.
 - Keep attachments behind evidence records. Do not scatter unexplained files through `data/`.
-- Keep each policy and governed document approver separate from its owner. The starter requires an external independent reviewer who does not operate the controls under review; one-person organizations must appoint someone outside the company for this role.
+- Keep each policy and governed document approver separate from its owner. The reviewer may be another person in the organization or an external person. Most organizations use an internal reviewer with enough authority and separation to challenge the owner. A one-person organization needs an external reviewer because no second internal person is available.
 - Bind rendered-page evidence to the route, filters, audit period, and Git commit used to create it.
 - Bind signed attestations to the exact Git revisions of the acknowledged policies, training, or other content.
 - Do not commit secrets, credentials, session material, regulated personal data, or confidential reports unless the repository's access and retention rules explicitly permit them.

@@ -12,4 +12,6 @@ Keep a policy `draft` until its text, owner, scope, related requirements and con
 4. Update or create its recurring and event obligations.
 5. Assign training or attestations when the policy requires them.
 
+The independent policy approver is a management reviewer, not the CPA auditor. Appoint the reviewer during policy adoption. Recurring and event obligations linked to the policy remain proposals until the policy is active and its effective date has arrived.
+
 For a material revision, preserve Git history, obtain a new approval, and require a new acknowledgement when the audience’s responsibilities changed. Do not reuse the audit firm as a management approver without confirming independence.

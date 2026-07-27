@@ -27,9 +27,9 @@ Resources with no dedicated Markdown use an optional companion with the same bas
 
 Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`. Other resources without dedicated Markdown can add it when structured fields are not enough.
 
-## Audit preparation defaults
+## Program and audit readiness defaults
 
-The engine and renderer use these model-owned defaults to prepare Type 1 and Type 2 engagements. Preparation creates engagement-specific management documents from the local starter templates. Management still confirms scope, approves documents, catalogs authoritative source systems, reconciles Type 2 populations, and supplies source evidence.
+Program Readiness checks management scope, policy adoption, control implementation, authoritative source configuration, and verified test captures without requiring an audit record. Audit Readiness starts after a CPA firm is engaged and uses the defaults below to prepare Type 1 and Type 2 fieldwork.
 
 Management documents:
 
@@ -170,17 +170,19 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `control`
 
-Testable operating statements that translate policies and requirements into owned activities, system scope, frequency, and expected evidence.
+Turn each applicable policy and criterion into a control people can run and prove. Before marking it implemented, assign an owner and record its actual procedure, system scope, cadence, authoritative evidence source, linked policies and criteria, and implementation date.
 
 Policy basis: Controls implement the linked policies and map that operation to applicable criteria. A policy statement alone does not prove implementation.
 
-Timing: Operate at the frequency on each control. Review ownership, scope, design, and evidence during annual risk and policy reviews and after material changes.
+Timing: Before marking a control implemented, record its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, and implementation date. Then operate it at the stated frequency.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/controls/<id>.json`
 
-Record Markdown: available when needed as an implicit companion file.
+Markdown companions:
+
+- **Procedure**: `.md` beside the JSON record (required when `status` is `implemented`).
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -192,9 +194,9 @@ Record Markdown: available when needed as an implicit companion file.
 | `controlType` | enum | No | Values: `preventive`, `detective`, `corrective` |
 | `operationMode` | enum | Yes | Values: `manual`, `automated`, `hybrid` |
 | `frequency` | string | Yes |  |
-| `systemIds` | array of id | No | References: `system` |
+| `systemIds` | array of id | Conditional | References: `system` Required when `status` is `implemented` |
+| `evidenceSourceIds` | array of id | Conditional | Authoritative evidence sources References: `system` Required when `status` is `implemented` |
 | `commitmentIds` | array of id | No | References: `commitment` |
-| `complementaryControlIds` | array of id | No | References: `complementary-control` |
 | `policyIds` | array of id | No | References: `policy` |
 | `riskIds` | array of id | No | References: `risk` |
 | `effectiveOn` | date | Conditional | Required when `status` is `implemented` |
@@ -245,9 +247,9 @@ Record Markdown: shown by default as an implicit companion file.
 
 Committees, response teams, and accountable groups used for shared ownership, governance decisions, and meeting records. A separate team register is not required for SOC 2; named people can hold these responsibilities directly.
 
-Policy basis: The information security policy establishes a security and risk oversight group chaired by an external reviewer who is separate from the policy owner and control operators. The continuity plan assigns response and recovery roles.
+Policy basis: The information security policy establishes a security and risk oversight group chaired by a reviewer who is separate from the policy owner. The reviewer may be internal or external. The continuity plan assigns response and recovery roles.
 
-Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve the independent chair.
+Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.
 
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
@@ -303,11 +305,11 @@ Markdown companions:
 
 #### `policy`
 
-Approved rules and responsibilities with Markdown content, owners, approvers, audience, acknowledgement rules, related controls, and Git history.
+Review and tailor every applicable policy, clear organization-specific placeholders, link its controls, and record approval and an effective date. The reviewer must be separate from the policy owner, but may be another person in the organization or an external reviewer.
 
 Policy basis: Policies set the program's required behavior. Control, obligation, training, document, and attestation records make those requirements operational and auditable.
 
-Timing: Review at least annually and after material changes. The approver must be separate from the owner. Record approval and require a new acknowledgement when a material update affects the audience.
+Timing: Move a draft through review and approval, set the effective date, link its controls, and clear organization-specific placeholders before activation. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.
 
 Default sources: `policy-information-security`
 
@@ -730,11 +732,11 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `system`
 
-Applications, services, infrastructure, business systems, and evidence sources used to define audit scope, ownership, data, vendors, recovery objectives, and authoritative reports.
+Start with the service boundary and every application, service, or platform that supports it. A third-party application is still a System because it operates controls or produces evidence; link it to the provider's separate Vendor record with vendorId. Mark in-scope systems, assign owners, record data and dependencies, and document how to obtain evidence.
 
 Policy basis: The information security, data handling, and continuity policies require inventories of important systems with owners, criticality, classification, scope, and recovery needs.
 
-Timing: Review at least annually and after material architecture, data, vendor, service, recovery, or evidence-source changes. Confirm report access and extraction instructions before each audit period closes.
+Timing: Complete the in-scope inventory before policy approval and control implementation. Review it at least annually and after material architecture, data, vendor, service, recovery, or evidence-source changes. Test report access and extraction before the candidate period begins.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
@@ -765,7 +767,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `asset`
 
-Individually managed devices, media, software, records, or other physical and logical items with an owner, custodian, criticality, and lifecycle.
+Maintain important devices, media, software, records, and other physical or logical items during program operation. Assign an owner and custodian, record criticality and lifecycle, and keep the inventory current. Assets support controls but are not part of defining the service boundary.
 
 Policy basis: The information security, mobile computing, and data handling policies require important assets to be inventoried, protected according to classification, and securely returned or disposed.
 
@@ -796,7 +798,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `vendor`
 
-Third parties that provide products or services, with ownership, service, criticality, data, systems, contracts, subprocessors, continuity, and review cadence.
+Use Vendors for supplier relationships, contracts, due diligence, subprocessors, continuity, and supplier risk. A vendor-provided application should also have a System record linked through vendorId because controls and evidence attach to the application, while reviews and contracts attach to the provider.
 
 Policy basis: The information security and data handling policies require vendor inventory, risk-based review before access, suitable contract terms, and monitoring of important providers.
 
@@ -1066,11 +1068,11 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `evidence`
 
-Screenshots, signed forms, reports, exports, and other proof, bound to source records, dates, systems, controls, audits, files, and Git revisions. Population exports also record their exact report parameters, timezone, count, and completeness and accuracy checks.
+Use this page first to record a verified test capture for each selected control family, which proves evidence can be collected before the candidate period begins. During operation, add screenshots, signed forms, reports, exports, and other proof with their source systems, controls, collectors, dates, and verification.
 
 Policy basis: The information security policy requires retained audit evidence. Acknowledgement and training workflows require signatures or repository revisions tied to the exact content reviewed.
 
-Timing: Collect when a control or activity operates, verify before audit use, cover the stated period, and expire or retain according to classification and record rules.
+Timing: Test every selected control family before the candidate period begins. Once operation starts, collect evidence whenever the control or activity runs, verify it before audit use, cover the stated period, and retain it according to classification and record rules.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -1115,11 +1117,11 @@ At least one of `filePaths`, `externalReference`, **content Markdown** is requir
 
 #### `obligation`
 
-Recurring or event-driven work generated from policy commitments, including meetings, reviews, scans, tests, training, and exercises. Obligation records are not required for SOC 2; they are FileGRC's scheduling layer for policy work.
+Use obligations to run recurring and event-driven policy work such as meetings, reviews, scans, tests, training, and exercises. Work stays proposed until its governing policy takes effect, then the Work Queue shows what to complete and when. Obligation records are not required for SOC 2; they are FileGRC's scheduling layer.
 
 Policy basis: Obligations turn policy language into an owned schedule and link each task to its policies, controls, scope, and completion records.
 
-Timing: Use the recurrence and start date on each record. Create separate completion records for every period instead of overwriting the obligation.
+Timing: Treat starter work as proposed until every governing policy is active and its effective date has arrived. Then use the recurrence and activation date, and create a separate completion record for every period.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
@@ -1170,7 +1172,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `finding`
 
-Audit exceptions, control deficiencies, review issues, and other gaps that need ownership, severity, remediation, evidence, and independent verification. A finding record is not required for SOC 2 when no gap has been identified.
+Create a Finding when a control test, review, risk assessment, security test, incident review, management meeting, or audit identifies a confirmed gap. FileGRC does not create Findings automatically because management must confirm and describe the issue. Track ownership, severity, remediation, evidence, and independent verification here. A Finding record is not required for SOC 2 when no gap has been identified.
 
 Policy basis: The information security policy requires issues from monitoring, audits, incidents, scans, and reviews to be tracked through corrective action.
 
@@ -1235,11 +1237,11 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `audit`
 
-One SOC 2 engagement from auditor selection and scope through requests, fieldwork, evidence, findings, and the final report.
+Use this page after the program is collecting evidence to record a real SOC 2 engagement, the CPA firm, auditor-agreed scope and dates, requests, fieldwork, findings, and the final report. Create one earlier only when a customer deadline calls for early coordination.
 
 Policy basis: An independent CPA firm performs the examination against the selected criteria. Policies, controls, operating records, and evidence show how the organization meets them.
 
-Timing: Engage the auditor early enough to agree on scope, timing, and evidence expectations. Create one record per engagement, using an as-of date for Type 1 or a start and end period for Type 2.
+Timing: Create one record after a CPA firm is engaged, or earlier only when a customer deadline makes early coordination useful. Keep management candidate dates on the workspace and record the auditor-agreed Type 1 date or Type 2 period here.
 
 Default sources: `policy-information-security`
 
@@ -1255,9 +1257,9 @@ Record Markdown: available when needed as an implicit companion file.
 | `scope` | string | Yes |  |
 | `auditor` | object | No |  |
 | `auditorVendorId` | id | No | References: `vendor` |
-| `typeOneAsOf` | date | No |  |
-| `periodStart` | date | No |  |
-| `periodEnd` | date | No |  |
+| `typeOneAsOf` | date | No | Auditor-agreed Type 1 date |
+| `periodStart` | date | No | Auditor-agreed Type 2 period start |
+| `periodEnd` | date | No | Auditor-agreed Type 2 period end |
 | `fieldworkStart` | date | No |  |
 | `fieldworkEnd` | date | No |  |
 | `reportDate` | date | No |  |
@@ -1347,11 +1349,11 @@ Markdown companions:
 
 #### `workspace`
 
-Program-wide settings used by validation and rendering, including the organization, time zone, risk method, and classification scheme.
+Program-wide settings used by validation and rendering, including the organization, assurance goal, management candidate period, program scope, time zone, risk method, and classification scheme.
 
-Policy basis: The information security and data handling policies depend on these settings. Change the method or classifications with the related policies and controls.
+Policy basis: The information security and data handling policies depend on these settings. The program scope and management candidate period let evidence collection begin before a CPA firm confirms the formal engagement period.
 
-Timing: Review during the annual policy and risk reviews and after a material scope or methodology change.
+Timing: Review during the annual policy and risk reviews, before starting a candidate evidence period, and after a material scope or methodology change.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -1366,6 +1368,14 @@ Record Markdown: available when needed as an implicit companion file.
 | `timezone` | string (timezone) | Yes | Timezone |
 | `description` | string | No | Description |
 | `repositoryUrl` | string | No | Repository URL |
+| `assuranceGoal` | enum | No | Program goal Values: `none`, `readiness`, `soc-2-type-1`, `soc-2-type-2` |
+| `candidateTypeOneAsOf` | date | No | Management candidate Type 1 date |
+| `candidatePeriodStart` | date | No | Management candidate Type 2 period start |
+| `candidatePeriodEnd` | date | No | Management candidate Type 2 period end |
+| `frameworkIds` | array of id | No | Program frameworks References: `framework` |
+| `requirementIds` | array of id | No | Program requirements References: `requirement` |
+| `controlIds` | array of id | No | Program controls References: `control` |
+| `systemIds` | array of id | No | Program systems References: `system` |
 | `riskMethodology` | object | No | Risk methodology |
 | `classificationDefinitions` | object | No | Classifications |
 
@@ -1384,3 +1394,4 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `showOnboarding` | boolean | Yes | Show onboarding |
+| `completedStagePageIds` | array of string | No | Manually completed program pages |

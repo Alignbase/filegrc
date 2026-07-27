@@ -1,0 +1,90 @@
+---
+import Footer from "../components/Footer.astro";
+import Nav from "../components/Nav.astro";
+import "../styles/globals.css";
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalUrl?: string;
+  image?: string;
+  imageAlt?: string;
+  robots?: string;
+  structuredData?: object | object[];
+}
+
+const siteUrl = Astro.site ?? new URL("https://filegrc.com");
+const {
+  title,
+  description,
+  canonicalUrl = new URL(Astro.url.pathname, siteUrl).href,
+  image = new URL("/og-image.png", siteUrl).href,
+  imageAlt = "FileGRC, run a SOC 2 program as files in Git",
+  robots = "index, follow, max-image-preview:large, max-snippet:-1",
+  structuredData,
+} = Astro.props;
+
+const structuredDataItems = Array.isArray(structuredData)
+  ? structuredData
+  : structuredData
+    ? [structuredData]
+    : [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content="FileGRC contributors" />
+    <meta name="robots" content={robots} />
+    <meta name="theme-color" content="#05054a" />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=2" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="LLMs.txt" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="FileGRC" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={imageAlt} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    <meta name="twitter:image:alt" content={imageAlt} />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap"
+    />
+
+    {
+      structuredDataItems.map((data) => (
+        <script
+          is:inline
+          type="application/ld+json"
+          set:html={JSON.stringify(data)}
+        />
+      ))
+    }
+  </head>
+  <body>
+    <Nav />
+    <main>
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

@@ -2,7 +2,7 @@
 
 FileGRC is a zero-dependency Node.js engine for Git-native GRC workspaces. It validates structured JSON records and their Markdown companions, renders a local web app, provides safe CRUD operations, and builds a read-only audit view.
 
-The audit workflow checks management-owned scope, policy and control adoption, engagement-specific management documents, authoritative source systems, verified operating evidence, and Type 2 population completeness. Type 1 as-of and Type 2 period packets distinguish drafts from delivery-ready output without claiming to replace the engagement team's evidence judgment. They include control, source-system, external-delivery, population, and evidence indexes, raw and historical source files, fixed attachments, and SHA-256 checksums.
+Program Readiness checks management-owned scope, policy adoption, control implementation, authoritative source configuration, and verified test captures without requiring an audit record. Audit Readiness starts after CPA engagement and checks the firm-agreed date or period, engagement-specific management documents, operating evidence, and Type 2 population completeness.
 
 Most users should create a complete workspace:
 
@@ -23,6 +23,7 @@ npx filegrc list risk --json
 npx filegrc references risk-example --json
 npx filegrc describe risk
 npx filegrc search "access review"
+npx filegrc program-readiness --require-ready
 npx filegrc audit-readiness audit-id
 npx filegrc prepare-audit audit-id
 npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
@@ -30,7 +31,9 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed.
 
-`filegrc setup` provides the headless equivalent of browser onboarding. It accepts all initial service-boundary fields as flags or a JSON payload. Pass `--draft` to save planned scope while leaving independent reviewer appointment open.
+`filegrc setup` provides the headless equivalent of browser onboarding. It accepts all initial service-boundary fields and a management program goal as flags or a JSON payload. Selecting Type 1 or Type 2 updates the workspace goal and program scope. It does not create an audit record.
+
+`filegrc program-readiness` reports whether management can start a candidate Type 2 period. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
 
 Long-form Markdown lives beside its JSON record. FileGRC derives the Markdown path, so records do not store it.
 

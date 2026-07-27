@@ -32,6 +32,7 @@ export {
   createObligationEvent,
   planObligations
 } from "./obligations.js";
+export { assessProgramReadiness } from "./program-readiness.js";
 export {
   addCalendarDays,
   calendarDayDifference,

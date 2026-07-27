@@ -24,8 +24,8 @@ export async function makeWorkspace(root) {
     schemaVersion: 1,
     id: "person-approver",
     type: "person",
-    title: "Independent Approver",
-    status: "external",
+    title: "Internal Reviewer",
+    status: "active",
     email: "approver@example.com"
   });
 }

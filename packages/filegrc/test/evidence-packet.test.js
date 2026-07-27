@@ -52,6 +52,73 @@ test("waits for workspace writes before generating a packet", async (context) =>
   await access(join(result.output, "manifest.json"));
 });
 
+test("derives complementary controls from their related controls", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-complementary-controls-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResources(root, [
+    {
+      schemaVersion: 1,
+      id: "framework-security",
+      type: "framework",
+      title: "Security criteria",
+      status: "active",
+      version: "1"
+    },
+    {
+      schemaVersion: 1,
+      id: "requirement-security",
+      type: "requirement",
+      title: "Security requirement",
+      frameworkId: "framework-security",
+      reference: "SEC1",
+      applicability: "applicable"
+    },
+    {
+      schemaVersion: 1,
+      id: "system-service",
+      type: "system",
+      title: "Customer service",
+      status: "active",
+      criticality: "high",
+      ownerIds: ["person-owner"],
+      inScope: true
+    },
+    {
+      schemaVersion: 1,
+      id: "control-customer-access",
+      type: "control",
+      title: "Customer access administration",
+      status: "planned",
+      statement: "The service restricts customer administration to authorized users.",
+      ownerIds: ["person-owner"],
+      requirementIds: ["requirement-security"],
+      activity: "Restrict customer administration.",
+      operationMode: "automated",
+      frequency: "Continuous"
+    },
+    {
+      schemaVersion: 1,
+      id: "complementary-control-customer-admin",
+      type: "complementary-control",
+      title: "Customer administrator access",
+      status: "active",
+      responsibleParty: "user-entity",
+      statement: "Customers authorize and remove their administrators.",
+      systemIds: ["system-service"],
+      relatedControlIds: ["control-customer-access"]
+    }
+  ]);
+
+  const packet = await prepareEvidencePacket(root, {
+    start: "2026-01-01",
+    end: "2026-01-31",
+    generatedAt: "2026-02-01T00:00:00Z"
+  });
+
+  assert.equal(packet.records.some(({ id }) => id === "complementary-control-customer-admin"), true);
+});
+
 test("builds an auditor packet from dated records, obligation coverage, policies, and evidence", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-evidence-packet-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -111,6 +178,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       description: "Production customer service boundary.",
       dataClassification: "Confidential",
       evidenceSourceKinds: ["governance"],
+      evidenceOwnerIds: ["person-owner"],
       commitmentIds: ["commitment-protect-service"]
     },
     {
@@ -132,7 +200,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       id: "control-quarterly-risk-review",
       type: "control",
       title: "Quarterly risk review",
-      status: "implemented",
+      status: "partially-implemented",
       statement: "Management reviews service risk quarterly.",
       ownerIds: ["person-owner"],
       requirementIds: ["requirement-test-security"],
@@ -141,6 +209,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       operationMode: "manual",
       frequency: "Quarterly",
       systemIds: ["system-customer-service"],
+      evidenceSourceIds: ["system-customer-service"],
       commitmentIds: ["commitment-protect-service"],
       policyIds: ["policy-risk-governance"],
       effectiveOn: "2026-01-01"
@@ -161,6 +230,57 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       systemIds: ["system-customer-service"]
     }
   ]);
+  const riskPolicy = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-risk-governance");
+  await updateResource(root, "policy", riskPolicy.id, {
+    ...riskPolicy,
+    controlIds: ["control-quarterly-risk-review"]
+  });
+  await writeFile(
+    join(root, "data", "systems", "system-customer-service.md"),
+    "# Customer service evidence\n\nExport the complete governance review register with dates, owners, decisions, and linked follow-up work. Verify the export against the committed review records.\n",
+    "utf8"
+  );
+  await writeFile(
+    join(root, "data", "controls", "control-quarterly-risk-review.md"),
+    "# Quarterly risk review procedure\n\nThe program owner prepares the current risk register, open findings, exceptions, and prior action items. The owner records decisions and assigns follow-up work, then the independent reviewer checks the completed minutes and evidence.\n",
+    "utf8"
+  );
+  const programControl = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-quarterly-risk-review");
+  await updateResource(root, "control", programControl.id, {
+    ...programControl,
+    status: "implemented"
+  });
+  const programWorkspace = (await loadWorkspace(root)).workspace;
+  await updateResource(root, "workspace", programWorkspace.id, {
+    ...programWorkspace,
+    assuranceGoal: "soc-2-type-2",
+    frameworkIds: ["framework-test-security"],
+    requirementIds: ["requirement-test-security", "requirement-test-description"],
+    controlIds: ["control-quarterly-risk-review"],
+    systemIds: ["system-customer-service"],
+    candidatePeriodStart: "2026-01-01",
+    candidatePeriodEnd: "2026-03-31"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "evidence-risk-review-test-capture",
+    type: "evidence",
+    title: "Risk review evidence test capture",
+    status: "verified",
+    evidenceKind: "test-capture",
+    source: "Governance review register",
+    collectedOn: "2025-12-22",
+    classification: "Internal",
+    sourceSystemId: "system-customer-service",
+    controlIds: ["control-quarterly-risk-review"],
+    collectorIds: ["person-owner"],
+    verifierIds: ["person-approver"],
+    verifiedOn: "2025-12-22"
+  }, {
+    content: {
+      content: "# Test capture\n\nManagement exported and reviewed the governance register before the candidate period."
+    }
+  });
   for (const [id, title, documentKind] of [
     ["document-system-description", "System description", "soc2-system-description"],
     ["document-management-assertion", "Management assertion", "soc2-management-assertion"],

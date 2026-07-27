@@ -45,68 +45,119 @@ const READINESS_STAGES = [
   {
     id: "scope",
     number: "1",
-    title: "Scope",
-    description: "Systems and boundary",
+    title: "Define Scope",
+    description: "Ownership, criteria, and service boundary",
+    summary: "Confirm the people and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.",
     sections: [
-      { id: "boundary", title: "Boundary", types: ["system", "asset"], nested: true, defaultOpen: true },
-      { id: "dependencies", title: "Dependencies", types: ["vendor", "vendor-review"], nested: true, defaultOpen: false }
-    ]
-  },
-  {
-    id: "criteria",
-    number: "2",
-    title: "Criteria",
-    description: "What the auditor evaluates",
-    sections: [
-      { id: "framework", title: "Framework", types: ["framework", "requirement"], nested: true, defaultOpen: true },
-      { id: "service-description", title: "Supplements", types: ["commitment", "complementary-control"], nested: true, defaultOpen: false }
+      { id: "ownership", title: "Program Ownership", description: "Confirm the people and teams that own, approve, review, and operate the program.", steps: ["Replace the starter people with the organization’s actual owners and reviewers.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "team"], defaultOpen: true },
+      { id: "criteria", title: "Criteria", description: "Confirm the criteria used for the program, resolve whether each requirement applies, and record customer commitments that shape the service or control design.", steps: ["Review the included Security criteria references.", "Mark each requirement applicable or not applicable with a rationale.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["framework", "requirement", "commitment"], defaultOpen: true },
+      { id: "boundary", title: "Service Boundary", description: "Record the service and its supporting technology and providers. An application or platform is a System because it operates controls or produces evidence; the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship.", steps: ["Create a Vendor record for each material provider.", "Create System records for the customer-facing service and each supporting application, platform, or internal system that is in scope or produces evidence, then connect vendor-provided Systems to their providers.", "Assign owners, classification, dependencies, and a clear in-scope decision to each System, and keep supplier reviews with the Vendor."], types: ["vendor", "system"], defaultOpen: false }
     ]
   },
   {
     id: "policies",
-    number: "3",
-    title: "Policies",
-    description: "Rules the company adopts",
+    number: "2",
+    title: "Approve Policies",
+    description: "Tailor, review, approve, and adopt",
+    summary: "Turn every applicable policy and governed plan into the organization’s actual rules, remove placeholders, link governed controls, and establish approval and effective dates before scheduled work begins. The reviewer must be separate from the owner, is usually internal, and may be external.",
     sections: [
-      { id: "library", title: "Policy Library", types: ["policy", "document"], defaultOpen: true }
+      { id: "library", title: "Policy Library", description: "Review, approve, and activate policies and governed plans without treating starter text as adopted practice.", steps: ["Review policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, linked controls, and review cadence.", "Record approval and effective dates before changing the status to active."], types: ["policy", "document"], defaultOpen: true }
     ]
   },
   {
     id: "controls",
-    number: "4",
-    title: "Controls",
-    description: "How the rules operate",
+    number: "3",
+    title: "Implement Controls",
+    description: "Tailor and finish the starter control set",
+    summary: "Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, cadence, policy and criteria mappings, authoritative evidence source, and implementation date. Mark it implemented only after the procedure is operating, then record any controls that customers or carved-out providers must perform.",
     sections: [
-      { id: "catalog", title: "Control Catalog", types: ["control"], defaultOpen: true },
-      { id: "testing", title: "Testing", types: ["control-test"], defaultOpen: false }
+      { id: "catalog", title: "Control Catalog", description: "Finish the starter controls, record applicable complementary controls, and see whether FileGRC tracks operation through Work Queue or evidence records.", steps: ["Open every planned control and confirm its mappings and suggested frequency.", "Write the real procedure in Record Markdown and add system scope and evidence sources.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
+    ]
+  },
+  {
+    id: "evidence",
+    number: "4",
+    title: "Prepare Evidence",
+    description: "Connect sources and prove collection works",
+    summary: "Before the candidate period starts, link controls to their authoritative Systems, record the export owner and repeatable extraction instructions, and save a verified test export or capture for every selected control family.",
+    sections: [
+      { id: "collection", title: "Evidence Setup", description: "Connect authoritative systems first, then verify a real test export or capture for every selected control family.", steps: ["Treat an application as a System when it operates a control or produces evidence.", "If a third party provides that application, also create a Vendor and link the System to it.", "Create verified test-export or test-capture Evidence linked to the source System and control."], relatedLinks: [{ label: "Source Systems", href: "#/resources/system" }, { label: "Controls", href: "#/resources/control" }], types: ["evidence"], defaultOpen: true }
     ]
   },
   {
     id: "run",
     number: "5",
-    title: "Operate Controls",
-    description: "Recurring and event work",
+    title: "Operate the Program",
+    description: "Run the work and retain dated proof",
+    summary: "Record the management candidate start date when reliable evidence collection begins. Maintain current risk assessments and risks, updating the control set when needed. Complete recurring and event-driven work, run continuous and per-transaction controls, and keep dated evidence current throughout the period.",
     sections: [
-      { id: "queue", title: "Work Queue", types: ["obligation", "obligation-event", "action-item"], utility: "obligation-board", nested: true, defaultOpen: true },
-      { id: "governance-risk", title: "Governance and Risk", types: ["policy-review", "meeting", "risk-assessment", "risk", "exception"], nested: true, defaultOpen: false },
-      { id: "access-training", title: "Access and Training", types: ["access-grant", "access-review", "service-account", "training", "attestation"], nested: true, defaultOpen: false },
-      { id: "security", title: "Security Operations", types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], nested: true, defaultOpen: false },
-      { id: "resilience", title: "Resilience", types: ["backup-test", "exercise"], nested: true, defaultOpen: false },
-      { id: "evidence-issues", title: "Evidence and Issues", types: ["evidence", "finding", "data-request"], nested: true, defaultOpen: false }
+      { id: "risk", title: "Risk", description: "Maintain the program’s risk assessments and risk register as the service, threats, suppliers, and control needs change.", steps: ["Complete and approve risk assessments on schedule and after material changes.", "Record risks that need treatment, acceptance, or ongoing tracking.", "Add or update controls when the assessment identifies a new or changed response."], types: ["risk-assessment", "risk"], defaultOpen: true },
+      { id: "queue", title: "Work Queue", description: "Complete recurring, event-driven, privacy, and contractual work within its required window.", steps: ["Review proposed work while policies are drafts.", "Complete due work within its allowed window and link dated proof.", "Start event workflows when hiring, departures, incidents, or material changes occur, and track applicable data requests through completion."], types: ["obligation", "obligation-event", "data-request"], utility: "obligation-board", defaultOpen: true },
+      { id: "governance", title: "Governance", description: "Record formal reviews, oversight meetings, and approved policy or control exceptions.", steps: ["Complete scheduled policy reviews and oversight meetings.", "Record decisions, attendees, follow-up work, and evidence.", "Approve time-bound exceptions before the departure begins."], types: ["policy-review", "meeting", "exception"], defaultOpen: false },
+      { id: "inventories", title: "Assets and Vendors", description: "Maintain the asset inventory and recurring reviews of supplier relationships during operation.", steps: ["Keep ownership, custody, status, and lifecycle current for important assets.", "Perform vendor reviews on schedule and after material supplier changes.", "Link fixed reports and review evidence to the operating records."], types: ["asset", "vendor-review"], defaultOpen: false },
+      { id: "access-training", title: "Access and Training", description: "Inventory service accounts before recording access decisions, periodic reviews, assignments, and acknowledgements.", steps: ["Catalog service accounts that need separate tracking.", "Preserve access approvals and removals as they occur, then complete periodic access reviews and resolve exceptions.", "Assign training and retain acknowledgement evidence for the exact content revision."], types: ["service-account", "access-grant", "access-review", "training", "attestation"], defaultOpen: false },
+      { id: "security", title: "Security Operations", description: "Record vulnerability work, independent testing, and incident response activity for the period.", steps: ["Retain scan scope, results, vulnerabilities, remediation, and exceptions.", "Track penetration testing and follow-up findings.", "Start the incident workflow when a qualifying event occurs."], types: ["vulnerability-scan", "vulnerability", "penetration-test", "incident"], defaultOpen: false },
+      { id: "resilience", title: "Resilience", description: "Preserve proof that backups, restoration, continuity, and incident exercises work as designed.", steps: ["Record backup restoration tests and their results.", "Run continuity and incident exercises on schedule.", "Assign and close follow-up work from failed objectives or lessons learned."], types: ["backup-test", "exercise"], defaultOpen: false },
+      { id: "issues", title: "Issues and Remediation", description: "Track identified gaps and their corrective work through independent verification.", steps: ["Create a Finding when a review, test, incident, risk assessment, or audit identifies a gap.", "Use Action Items for owned remediation work and link them back to the Finding.", "Close the Finding only after remediation is independently verified."], types: ["finding", "action-item"], defaultOpen: false }
     ]
   },
   {
     id: "audit",
     number: "6",
     title: "Audit",
-    description: "Firm, requests, and report",
+    description: "Firm, formal period, fieldwork, and report",
+    summary: "After the program is collecting reliable evidence, create an Audit record for the real CPA engagement, keep the firm-agreed report period separate from management’s candidate dates, complete management documents, populations, requests, evidence delivery, and fieldwork, then preserve the findings, responses, opinion, and final report.",
     sections: [
-      { id: "engagement", title: "Engagement", types: ["audit", "audit-request"], defaultOpen: true },
-      { id: "packet", title: "Evidence Delivery", types: ["audit-population"], utility: "audit-packet", nested: true, defaultOpen: true }
+      { id: "engagement", title: "Engagement", description: "Record the actual CPA engagement, formal scope and dates, requests, and management responses.", steps: ["Create the Audit after the CPA firm is engaged.", "Record the firm-agreed type, scope, systems, criteria, and dates.", "Track incoming requests and approved response material."], types: ["audit", "audit-request"], defaultOpen: true },
+      { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Reconcile complete populations to authoritative source exports before linking them to control tests.", "Link sample evidence and resolve fieldwork requests and findings.", "Build a delivery packet from a clean Git revision."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
     ]
   }
 ];
-const ORGANIZATION_RESOURCE_TYPES = ["person", "team"];
+const STAGE_PAGE_SUMMARIES = {
+  person: "Confirm the people who will own, approve, review, or operate the program. Replace the starter names and contact details with the organization’s actual people.",
+  team: "Review the starter Security and Risk Oversight team, including its members and chair. Add another team only when the organization assigns shared responsibility to it.",
+  system: "Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software).",
+  vendor: "Catalog the companies that provide in-scope software or services. Link each vendor-provided System to the company that provides it.",
+  framework: "Confirm the criteria framework and version used for the program.",
+  requirement: "Review each criterion, decide whether it applies, and record the reason for that decision.",
+  commitment: "Record supplemental customer promises and service requirements that shape the scope or control design.",
+  policy: "Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates.",
+  document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
+  control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, evidence source, and implementation date.",
+  "complementary-control": "Record anything customers or carved-out providers must do for your controls to work as intended.",
+  evidence: "Collect a real test export or capture for each selected control family. Link it to the control and source System, then record who collected and verified it.",
+  "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
+  risk: "Record each risk identified by an assessment or operating activity. Assign an owner, rate it, and document the chosen response.",
+  obligation: "Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.",
+  "obligation-event": "When a policy-triggering event occurs, record it here and complete the actions FileGRC creates for it.",
+  "policy-review": "Record scheduled and change-driven reviews of policies and governed documents, including the decision and any follow-up.",
+  meeting: "Record required oversight meetings, including attendees, decisions, minutes, and follow-up work.",
+  exception: "Record and approve any time-limited departure from a policy or control before the departure begins.",
+  asset: "Keep the inventory of important devices, software, media, and records current, including ownership, custody, and status.",
+  "vendor-review": "Document due diligence before relying on a provider, then repeat the review on schedule or after a material change.",
+  "access-grant": "Record each person’s or service account’s access to a System, including approval, provisioning, changes, and removal.",
+  "access-review": "Review access on schedule, record each decision, and assign any access changes that result.",
+  "service-account": "Catalog non-human accounts that need separate tracking, including their owner, purpose, System, privilege, and expiry.",
+  training: "Maintain the training content people must complete, along with its audience, timing, and passing requirements.",
+  attestation: "Record each person’s completion or acknowledgement against the exact policy or training revision.",
+  "vulnerability-scan": "Record each required scan, including its scope, timing, result, and evidence.",
+  vulnerability: "Track confirmed weaknesses that need separate remediation, acceptance, or closure.",
+  "penetration-test": "Record each penetration test, including its provider, scope, period, result, and evidence.",
+  incident: "Record qualifying security or privacy events and manage their response and follow-up.",
+  "backup-test": "Record each restore test, including the Systems tested, result, timing, evidence, and follow-up.",
+  exercise: "Record each incident or continuity exercise, including its objective, participants, result, and follow-up.",
+  finding: "Record a confirmed gap identified by a review, test, assessment, incident, meeting, or audit, then track it through verified closure.",
+  "action-item": "Assign and track a specific piece of follow-up work from another program record.",
+  audit: "Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period.",
+  "audit-request": "Record each request from the audit team, assign an owner and due date, and link the approved response and evidence.",
+  "data-request": "Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.",
+  "control-test": "Record how an in-scope control was tested, what was sampled, the result, and any exceptions.",
+  "audit-population": "Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation.",
+  "utility:audit-packet": "Complete the engagement documents and populations, respond to fieldwork, and build the indexed evidence packet."
+};
+const STAGE_PAGE_ID_ALIASES = {
+  "controls:complementary-control": ["scope:complementary-control"]
+};
 const OBLIGATION_COMPLETION_TYPES = {
   "access-review": "access-review",
   "backup-test": "backup-test",
@@ -160,6 +211,7 @@ function render() {
   root.innerHTML = '<div class="shell">' + nav + '<div class="workspace"><header class="topbar">' + topbar(route) + '</header><main id="main"></main></div></div>';
   const main = root.querySelector("main");
   if (route.name === "home") renderHome(main);
+  else if (route.name === "stage") renderStageOverview(main, route.stageId, route.params);
   else if (route.name === "obligations") renderObligations(main, route.params);
   else if (route.name === "audit-packet") renderAuditPacket(main, route.params);
   else if (route.name === "list") renderList(main, route.type, route.params);
@@ -179,6 +231,7 @@ function parseRoute() {
     return { name: "missing" };
   }
   if (!parts.length) return { name: "home" };
+  if (parts.length === 2 && parts[0] === "stage" && parts[1]) return { name: "stage", stageId: parts[1], params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "obligations") return { name: "obligations", params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "audit-packet") return { name: "audit-packet", params: new URLSearchParams(query) };
   if (parts.length === 2 && parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
@@ -191,6 +244,8 @@ function parseRoute() {
 function buildNavigation(route) {
   const currentStage = readinessStageForRoute(route);
   const stages = READINESS_STAGES.map((stage) => {
+    const stagePageCurrent = (route.name === "stage" && route.stageId === stage.id)
+      || (stage.id === "run" && route.name === "obligations");
     const stageOpen = navigationGroupState[stage.id] ?? currentStage?.id === stage.id;
     const sections = stage.sections.map((section) => {
       const sectionKey = stage.id + ":" + section.id;
@@ -201,21 +256,23 @@ function buildNavigation(route) {
       const resources = section.types
         .map((type) => [type, state.model.resources[type]])
         .filter(([, definition]) => definition);
-      const links = renderSidebarUtility(section.utility, route, !section.nested) + resources.map(([type, definition]) => {
-        return '<a class="' + (!section.nested ? "nav-direct " : "") + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
-      }).join("");
-      if (!section.nested) return links;
-      return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading" type="button" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span>' + esc(section.title) + '</span><span class="chevron nav-control">›</span></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + links + '</div></section>';
+      const direct = stage.sections.length === 1 || sectionDestinations(section).length === 1;
+      const links = resources.map(([type, definition]) => {
+        return '<a class="' + (direct ? "nav-direct " : "") + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+      }).join("") + renderSidebarUtility(section.utility, route, direct);
+      if (direct) return links;
+      return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading-row nav-subgroup-toggle" type="button" aria-label="' + (sectionOpen ? "Collapse " : "Expand ") + esc(section.title) + '" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span class="nav-subheading">' + esc(section.title) + '</span><svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5"></path></svg></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + links + '</div></section>';
     }).join("");
-    return '<section class="nav-group nav-stage ' + (stageOpen ? "open" : "") + '" data-group="' + esc(stage.id) + '"><button class="nav-heading" type="button" aria-expanded="' + stageOpen + '" aria-controls="nav-group-' + esc(stage.id) + '"><span class="nav-stage-number">' + esc(stage.number) + '</span><span class="nav-stage-copy"><strong>' + esc(stage.title) + '</strong><small>' + esc(stage.description) + '</small></span><span class="chevron nav-control">›</span></button><div class="nav-items" id="nav-group-' + esc(stage.id) + '">' + sections + '</div></section>';
+    return '<section class="nav-group nav-stage ' + (stageOpen ? "open" : "") + '" data-group="' + esc(stage.id) + '"><div class="nav-heading-row"><a class="nav-heading ' + (stagePageCurrent ? "current" : "") + '" href="#/stage/' + encodeURIComponent(stage.id) + '"><span class="nav-stage-number">' + esc(stage.number) + '</span><span class="nav-stage-copy"><strong>' + esc(stage.title) + '</strong><small>' + esc(stage.description) + '</small></span></a><button class="nav-toggle nav-stage-toggle" type="button" aria-label="' + (stageOpen ? "Collapse " : "Expand ") + esc(stage.title) + '" aria-expanded="' + stageOpen + '" aria-controls="nav-group-' + esc(stage.id) + '"><svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5"></path></svg></button></div><div class="nav-items" id="nav-group-' + esc(stage.id) + '">' + sections + '</div></section>';
   }).join("");
-  const organizationCurrent = route.name === "organization" || route.name === "repository" || ["workspace", "renderer-settings", ...ORGANIZATION_RESOURCE_TYPES].includes(route.type);
+  const organizationCurrent = route.name === "organization" || route.name === "repository" || ["workspace", "renderer-settings"].includes(route.type);
   const organizationName = state.workspace.organizationName || "Organization";
   const initial = organizationName.trim().charAt(0).toUpperCase() || "O";
   return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"' + (route.name === "home" ? ' aria-current="page"' : "") + '><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>FileGRC</strong><small>SOC 2 workspace</small></span></a><nav class="sidebar-nav">' + stages + '</nav><div class="sidebar-footer"><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
 }
 
 function readinessStageForRoute(route) {
+  if (route.name === "stage") return READINESS_STAGES.find((stage) => stage.id === route.stageId);
   return READINESS_STAGES.find((stage) => stage.sections.some((section) => section.types.includes(route.type)
     || (section.utility === "obligation-board" && route.name === "obligations")
     || (section.utility === "audit-packet" && route.name === "audit-packet")));
@@ -227,9 +284,7 @@ function readinessStageForType(type) {
 
 function renderSidebarUtility(utility, route, direct = false) {
   const directClass = direct ? "nav-direct " : "";
-  if (utility === "obligation-board") {
-    return '<a class="' + directClass + (route.name === "obligations" ? "current" : "") + '" href="#/obligations"><span>Obligation Board</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
-  }
+  if (utility === "obligation-board") return "";
   if (utility === "audit-packet") {
     return '<a class="' + directClass + 'audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Audit Readiness</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
@@ -239,12 +294,14 @@ function renderSidebarUtility(utility, route, direct = false) {
 function topbar(route) {
   const title = route.name === "home"
     ? "Program Overview"
+    : route.name === "stage"
+      ? READINESS_STAGES.find((stage) => stage.id === route.stageId)?.title || "Program"
     : route.name === "organization"
       ? "Organization"
       : route.name === "repository"
         ? "Repository"
         : route.name === "obligations"
-          ? "Obligation Board"
+          ? "Work Queue"
           : route.name === "audit-packet"
             ? "Audit Readiness"
             : state.model.resources[route.type]?.pluralTitle || "FileGRC";
@@ -253,48 +310,176 @@ function topbar(route) {
 
 function renderHome(main) {
   const activeAudit = resourcesOfType("audit").find((item) => !["complete", "closed", "cancelled"].includes(item.record.status));
+  const program = state.programReadiness;
+  const activeFirm = activeAudit && (activeAudit.record.auditorVendorId || (activeAudit.record.auditor && Object.keys(activeAudit.record.auditor).length));
   const setupPending = rendererSettingsEntry()?.record.showOnboarding === true;
   const acceptedEventTriggers = state.obligations.triggers.filter(({ programStatus }) => programStatus !== "proposed");
+  const openObligations = state.obligations.items.filter((item) => item.status !== "complete");
+  const obligationHeading = openObligations.some((item) => item.status !== "proposed") ? "Due Windows" : "Starter Proposals";
   const setupBanner = setupPending
-    ? '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Appoint an independent reviewer</h3><p>The service boundary can remain planned, but policies cannot be approved until an external reviewer is appointed.</p></div><ol><li>Review the planned service boundary.</li><li>Add the reviewer name and email.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>'
+    ? '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Define the initial service boundary</h3><p>Record the management program goal and the systems that should enter policy and control review.</p></div><ol><li>Describe the service boundary.</li><li>Choose the program goal.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>'
+    : "";
+  const auditPanel = program.evidenceReady
+    ? '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Optional next phase</p><h3>' + esc(activeFirm ? titleCase(activeAudit.record.title) : "Target: " + program.target.label) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Engagements</a>') + '</div>' +
+      (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>'
     : "";
   main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + setupBanner + readinessOverview() +
-    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due Windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 3)) + '</section>' +
-    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/obligations?section=events">' + (acceptedEventTriggers.length ? "Start workflow" : "Review proposals") + '</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
-    '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(titleCase(activeAudit?.record.title || "Plan the Engagement")) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Plan audit</a>') + '</div>' +
-      (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section></div></div>';
+    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>' + obligationHeading + '</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(openObligations.slice(0, 3)) + '</section>' +
+    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">' + (acceptedEventTriggers.length ? "Start workflow" : "Review proposals") + '</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
+    auditPanel + '</div></div>';
   main.querySelector("#resume-setup")?.addEventListener("click", requestOnboarding);
 }
 
 function readinessOverview() {
-  const inScopeSystems = resourcesOfType("system").filter(({ record }) => record.inScope && record.status !== "retired");
-  const requirements = resourcesOfType("requirement").filter(({ record }) => record.applicability === "applicable");
-  const policies = resourcesOfType("policy").filter(({ record }) => !["superseded", "retired"].includes(record.status));
-  const approvedPolicies = policies.filter(({ record }) => ["approved", "active"].includes(record.status));
-  const controls = resourcesOfType("control");
-  const confirmedControls = controls.filter(({ record }) => record.status !== "planned");
-  const evidence = resourcesOfType("evidence");
-  const activeAudit = resourcesOfType("audit").find(({ record }) => !["complete", "closed", "cancelled"].includes(record.status));
+  const progress = programPathProgress();
+  const nextHref = nextProgramStageHref();
+  const programStage = (id, body, href) => {
+    const stage = READINESS_STAGES.find((candidate) => candidate.id === id);
+    const current = stageProgress(stage);
+    const remaining = current.total - current.complete;
+    const status = !remaining ? "Complete" : current.complete ? remaining + " remaining" : current.total + " to confirm";
+    return [stage.title, body, href, status, !remaining ? "good" : current.complete ? "warn" : "neutral"];
+  };
   const stages = [
-    ["Scope", "Define the service, system boundary, people, data, and vendors.", inScopeSystems.length ? "#/resources/system" : "#/resources/system?new=1", inScopeSystems.length + " in-scope " + pluralize("system", inScopeSystems.length), inScopeSystems.length ? "good" : "warn"],
-    ["Criteria", "Record what the auditor will evaluate and whether it applies.", "#/resources/requirement", requirements.length + " applicable", requirements.length ? "neutral" : "warn"],
-    ["Policies", "Set the rules and responsibilities the company adopts.", "#/resources/policy", approvedPolicies.length + " of " + policies.length + " approved", approvedPolicies.length === policies.length && policies.length ? "good" : "warn"],
-    ["Controls", "Confirm the repeatable work that satisfies those rules and criteria.", "#/resources/control", confirmedControls.length + " of " + controls.length + " reviewed", confirmedControls.length === controls.length && controls.length ? "good" : "warn"],
-    ["Operate Controls", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due · " + evidence.length + " evidence" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " starter proposals" : evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"],
-    ["Audit", "Track the firm, date or period, requests, evidence packet, findings, and report.", activeAudit ? "#/resources/audit" : "#/resources/audit?new=1", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
+    programStage("scope", "Confirm program ownership, criteria, and commitments, then describe the service, supporting systems, and dependencies.", "#/stage/scope"),
+    programStage("policies", "Tailor the policy set, obtain independent management approval, and establish effective dates.", "#/stage/policies"),
+    programStage("controls", "Finish the internal control set with actual procedures, owners, scope, and evidence sources, then record any complementary controls.", "#/stage/controls"),
+    programStage("evidence", "For each control family, finish the source-system instructions and verify a real test export or capture.", "#/stage/evidence"),
+    programStage("run", "Begin the candidate period, maintain risk assessments, work the FileGRC queue, run the remaining controls, and retain dated evidence.", "#/stage/run"),
+    programStage("audit", "Engage the CPA firm, confirm the formal period, complete fieldwork, and generate the final evidence packet.", "#/stage/audit")
   ];
-  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the Audit Chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that the controls were implemented at the Type 1 date or operated during the Type 2 period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
+  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Prepare, Operate, Then Audit</h3></div><div class="readiness-progress-summary"><div><span>Program Progress</span><strong>' + progress.percent + '%</strong><div class="progress"><span style="width:' + progress.percent + '%"></span></div><small>' + esc(progress.complete + " of " + progress.total + " program pages complete") + '</small></div><a class="button primary" href="' + nextHref + '">Continue</a></div></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
+}
+
+function nextProgramStageHref() {
+  const nextStage = READINESS_STAGES.find((stage) => {
+    const progress = stageProgress(stage);
+    return progress.complete < progress.total;
+  }) || READINESS_STAGES.at(-1);
+  if (!nextStage) return "#/stage/scope";
+  return "#/stage/" + encodeURIComponent(nextStage.id);
+}
+
+function renderStageOverview(main, stageId, params = new URLSearchParams()) {
+  const stage = READINESS_STAGES.find((candidate) => candidate.id === stageId);
+  if (!stage) return renderNotFound(main);
+  if (stage.id === "run") return renderObligations(main, params);
+  const progress = stageProgress(stage);
+  main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
+    '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 6</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
+    renderStagePageIndex(stage) + '</div>';
+}
+
+function renderStagePageIndex(stage) {
+  const destinations = stagePageDestinations(stage);
+  const cards = destinations.map((destination, index) => stagePageCard(stage, destination, index)).join("");
+  return '<section class="stage-pages" aria-label="Step ' + esc(stage.number) + ' pages"><div class="stage-page-grid">' + cards + '</div></section>';
+}
+
+function stagePageDestinations(stage) {
+  return stage.sections.flatMap((section) => sectionDestinations(section)
+    .filter((destination) => destination.utility !== "obligation-board")
+    .map((destination) => ({ ...destination, section })));
+}
+
+function stagePageId(stage, destination) {
+  return stage.id + ":" + (destination.type || "utility:" + destination.utility);
+}
+
+function stagePageComplete(pageId) {
+  const completedPageIds = rendererSettingsEntry()?.record.completedStagePageIds || [];
+  return [pageId, ...(STAGE_PAGE_ID_ALIASES[pageId] || [])].some((id) => completedPageIds.includes(id));
+}
+
+function stagePageCard(stage, destination, index) {
+  const details = destination.type ? resourceRollup(destination.type) : utilityRollup(destination.utility);
+  const summaryKey = destination.type || "utility:" + destination.utility;
+  const summary = STAGE_PAGE_SUMMARIES[summaryKey] || destination.section.description;
+  const stepLabel = "Step " + stage.number + "." + String.fromCharCode(97 + index);
+  const pageId = stagePageId(stage, destination);
+  const complete = stagePageComplete(pageId);
+  const completionControl = state.readOnly
+    ? '<span class="stage-page-completion-state ' + (complete ? "complete" : "") + '">' + (complete ? "Complete" : "Not marked complete") + '</span>'
+    : '<button class="button stage-page-completion ' + (complete ? "complete" : "") + '" type="button" data-stage-page-completion="' + esc(pageId) + '" data-complete="' + complete + '">' + (complete ? "Mark incomplete" : "Mark complete") + '</button>';
+  return '<article class="stage-page-card ' + (complete ? "complete" : "") + '"><a class="stage-page-card-link" href="' + destination.href + '" aria-label="Open ' + esc(destination.label) + '"></a><div class="stage-page-card-head"><div><small>' + esc(stepLabel) + '</small><h3>' + esc(destination.label) + '</h3></div><span class="stage-page-rollup"><strong>' + esc(details.value) + '</strong><small>' + esc(details.label) + '</small></span></div><p>' + esc(summary) + '</p><div class="stage-page-card-foot"><span class="stage-page-open" aria-hidden="true">Open ›</span>' + completionControl + '</div></article>';
+}
+
+function stageProgress(stage) {
+  const pages = stagePageDestinations(stage);
+  const complete = pages.filter((destination) => stagePageComplete(stagePageId(stage, destination))).length;
+  return progressFromCounts(complete, pages.length, "page");
+}
+
+function programPathProgress() {
+  const progress = READINESS_STAGES.map((stage) => stageProgress(stage));
+  return progressFromCounts(
+    progress.reduce((sum, current) => sum + current.complete, 0),
+    progress.reduce((sum, current) => sum + current.total, 0),
+    "program page"
+  );
+}
+
+function progressFromCounts(complete, total, noun) {
+  if (!total) return { percent: 0, complete: 0, total: 0, status: "Not started", tone: "neutral", detail: "No " + pluralize(noun, 2) + " are configured yet." };
+  const percent = Math.round((complete / total) * 100);
+  const detail = complete + " of " + total + " " + pluralize(noun, total) + " marked complete.";
+  if (complete === total) return { percent: 100, complete, total, status: "Complete", tone: "good", detail };
+  if (!complete) return { percent: 0, complete, total, status: "Not started", tone: "warn", detail };
+  return { percent, complete, total, status: "In progress", tone: "warn", detail };
+}
+
+function stageProgressCard(progress) {
+  return '<div class="stage-progress-card"><div><span class="badge ' + esc(progress.tone) + '">' + esc(progress.status) + '</span><strong>' + progress.percent + '%</strong></div><div class="progress"><span style="width:' + progress.percent + '%"></span></div><p>' + esc(progress.detail) + '</p></div>';
+}
+
+function sectionDestinations(section) {
+  const destinations = [];
+  for (const type of section.types) {
+    const definition = state.model.resources[type];
+    if (!definition) continue;
+    destinations.push({ type, kind: "Record page", label: titleCase(definition.pluralTitle), href: "#/resources/" + encodeURIComponent(type), description: definition.description });
+  }
+  if (section.utility === "obligation-board") destinations.push({ utility: section.utility, kind: "Working page", label: "Work Queue", href: "#/stage/run", description: "Complete recurring and event work with its due windows and linked proof." });
+  if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Readiness", href: "#/audit-packet", description: "Prepare engagement documents, populations, fieldwork, and the evidence packet." });
+  return destinations;
+}
+
+function resourceRollup(type) {
+  const records = resourcesOfType(type).map(({ record }) => record);
+  if (!records.length) return { value: "0", label: "No records yet" };
+  const statuses = new Map();
+  records.forEach((record) => {
+    if (record.status) statuses.set(record.status, (statuses.get(record.status) || 0) + 1);
+  });
+  const statusText = [...statuses.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([status, count]) => count + " " + humanize(status).toLowerCase()).join(" · ");
+  return { value: String(records.length), label: statusText || pluralize("record", records.length) };
+}
+
+function utilityRollup(utility) {
+  if (utility === "obligation-board") {
+    const open = state.obligations.items.filter((item) => item.status !== "complete");
+    return { value: String(open.length), label: open.length ? "Open work items" : "No work due" };
+  }
+  if (utility === "audit-packet") {
+    const audits = resourcesOfType("audit");
+    return { value: String(audits.length), label: audits.length ? pluralize("engagement", audits.length) : "No engagement yet" };
+  }
+  return { value: "0", label: "Not started" };
 }
 
 function auditEngagementPrompt(audit = null) {
   const hasAuditor = audit?.auditorVendorId || (audit?.auditor && Object.keys(audit.auditor).length);
   if (hasAuditor) return "";
-  const heading = audit ? "Auditor Not Recorded" : "Engage an Auditor Before the Target Date";
-  return '<div class="audit-engagement"><div><strong>' + heading + '</strong><p>Shortlist independent CPA firms that perform SOC 2 examinations. Share the system boundary, Security scope, Type 1 or Type 2 goal, and target timing.</p></div><ul><li>Compare relevant service experience, schedule, fee, and evidence-request process.</li><li>Agree on scope and dates before the evidence period or as early as practical.</li><li>Store the selected firm and contact in the audit record.</li></ul>' + (!audit ? '<a class="button primary" href="#/resources/audit?new=1">Create audit record</a>' : "") + '</div>';
+  const heading = audit ? "CPA Firm Not Recorded" : "Optional: Engage a CPA Firm Early";
+  return '<div class="audit-engagement"><div><strong>' + heading + '</strong><p>The program can keep operating while management selects a firm. Engage early when a customer deadline, unusual scope, or other timing risk needs CPA input.</p></div><ul><li>Share the program boundary, goal, and evidence-source plan.</li><li>Keep management candidate dates separate from the firm-agreed report period.</li><li>Create or update the audit record only for a real engagement.</li></ul>' + (!audit ? '<a class="button" href="#/resources/audit?new=1">Create engagement</a>' : "") + '</div>';
 }
 
 function renderObligations(main, params = new URLSearchParams()) {
+  const stage = READINESS_STAGES.find((candidate) => candidate.id === "run");
   const plan = state.obligations;
+  const controls = resourcesOfType("control");
+  const linkedControlIds = new Set(resourcesOfType("obligation").flatMap(({ record }) => record.controlIds || []));
+  const scheduledControls = controls.filter(({ record }) => linkedControlIds.has(record.id)).length;
   const visibleCardLimit = 6;
   const sections = ["proposed", "upcoming", "due", "overdue"].map((status) => {
     const items = plan.items.filter((item) => item.status === status);
@@ -304,12 +489,16 @@ function renderObligations(main, params = new URLSearchParams()) {
       : "";
     return '<section class="obligation-column" data-obligation-column="' + status + '"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(status) + '</span><strong>' + items.length + '</strong></div><div class="obligation-cards">' + (items.length ? cards : empty("Nothing " + status + ".")) + '</div>' + more + '</section>';
   }).join("");
-  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.programStatus === "proposed" ? "Starter proposal" : trigger.eventType) + '</p><h3>' + esc(titleCase(trigger.prompt)) + '</h3><p>' + trigger.steps.length + (trigger.programStatus === "proposed" ? ' proposed actions become available after a linked policy is approved.' : ' policy actions will be created with their own owners and due windows.') + '</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly && trigger.programStatus !== "proposed" ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
+  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.programStatus === "proposed" ? "Starter proposal" : trigger.eventType) + '</p><h3>' + esc(titleCase(trigger.prompt)) + '</h3><p>' + trigger.steps.length + (trigger.programStatus === "proposed" ? ' proposed actions become available after every linked policy is active and effective.' : ' policy actions will be created with their own owners and due windows.') + '</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly && trigger.programStatus !== "proposed" ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
   const runs = plan.eventRuns
     .filter((run) => run.status !== "canceled")
     .sort((a, b) => String(b.occurredAt || b.occurredOn).localeCompare(String(a.occurredAt || a.occurredOn)));
-  main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation Board</h2><p>Work linked only to draft policies stays a starter proposal. After a policy is approved, recurring work shows its due window and overdue date.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit templates</a></div></div>' +
+  main.innerHTML = '<div class="page obligation-board-page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
+    '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 6</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
+    renderStagePageIndex(stage) +
+    '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring and event work</p><h2>Work Queue</h2><p>This board schedules work linked to ' + scheduledControls + ' of ' + controls.length + ' controls. Other controls operate continuously or per transaction in their source systems and are documented through evidence records. Starter work remains a proposal until every governing policy is active and effective.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit schedules</a></div></div>' +
     '<div class="obligation-board">' + sections + '</div>' +
+    '</section>' +
     '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Ongoing reminders</p><h2>Start a Policy Event</h2><p>Use these when the underlying event happens. The generated checklist remains a normal set of Git-tracked records.</p></div></div><div class="event-trigger-grid">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
     '<section class="workflow-section"><div class="section-head"><div><p class="kicker">Event execution</p><h2>Active and Recent Workflows</h2><p>Link the requested completion records and evidence on each action item before marking it done.</p></div></div><div class="event-run-list">' + (runs.length ? runs.map(eventRunCard).join("") : empty("No policy events have been started.")) + '</div></section></div>';
   main.querySelectorAll("[data-start-event]").forEach((button) => button.addEventListener("click", () => {
@@ -506,12 +695,12 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Repository", state.git.available ? state.git.clean ? "Clean revision" : state.git.changes.length + " uncommitted" : "Git unavailable", "#/repository", state.git.clean ? "good" : "warn"],
     ["Engagement", selected ? selected.title : "No audit record", "#/resources/audit", selected ? "good" : "warn"],
     ["Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "warn"],
-    ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/obligations", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
+    ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/stage/run", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
   ];
   const dateFields = typeOne
     ? '<label><span>As-of date</span><input type="date" name="start" required value="' + esc(start) + '"></label>'
     : '<label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label>';
-  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit readiness and evidence</p><h2>Prepare the Audit</h2><p>Complete management-owned scope, adoption, documents, source-system evidence, and Type 2 population reconciliation here. FileGRC builds a delivery index, control matrix, source-system and external-evidence indexes, source records, attachments, history, and checksums for the engagement date or period.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section>' + renderAuditPreparation(preparation) + '<section class="panel packet-builder"><div class="panel-head"><div><p class="kicker">Evidence delivery</p><h3>' + (typeOne ? "Build the As-of Packet" : "Build the Period Packet") + '</h3></div></div><form id="packet-form">' + dateFields + '<label><span>Audit <small>required for delivery</small></span><select name="auditId"><option value="">Draft Without Audit Scope</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision. FileGRC checks preparation and integrity; the engagement team determines evidence sufficiency.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
+  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Engagement readiness and evidence</p><h2>Prepare Fieldwork</h2><p>Use this page after a CPA firm is engaged. Confirm the firm-agreed period, complete engagement-specific management documents, reconcile Type 2 populations, and build the indexed packet with its control matrix, delivery indexes, history, and checksums. Complete program adoption and test captures on the preceding stage pages.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section>' + renderAuditPreparation(preparation) + '<section class="panel packet-builder"><div class="panel-head"><div><p class="kicker">Evidence delivery</p><h3>' + (typeOne ? "Build the As-of Packet" : "Build the Period Packet") + '</h3></div></div><form id="packet-form">' + dateFields + '<label><span>Audit <small>required for delivery</small></span><select name="auditId"><option value="">Draft Without Audit Scope</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision. FileGRC checks preparation and integrity; the engagement team determines evidence sufficiency.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
   main.querySelector('select[name="auditId"]').addEventListener("change", (event) => {
     const next = event.currentTarget.value;
     location.hash = "#/audit-packet" + (next ? "?auditId=" + encodeURIComponent(next) : "");
@@ -615,13 +804,13 @@ function renderPacketResults(container, result) {
 }
 
 function obligationPreview(items) {
-  return items.length ? '<div class="obligation-preview">' + items.map((item) => '<a href="#/obligations"><span class="status-dot ' + (item.status === "overdue" ? "bad" : item.status === "due" ? "warn" : "neutral") + '"></span><span><strong>' + esc(item.title) + '</strong><small>' + esc(timingText(item)) + '</small></span></a>').join("") + '</div>' : empty("No open obligations.");
+  return items.length ? '<div class="obligation-preview">' + items.map((item) => '<a href="#/stage/run"><span class="status-dot ' + (item.status === "overdue" ? "bad" : item.status === "due" ? "warn" : "neutral") + '"></span><span><strong>' + esc(item.title) + '</strong><small>' + esc(timingText(item)) + '</small></span></a>').join("") + '</div>' : empty("No open obligations.");
 }
 
 function eventReminderPreview(triggers) {
   return triggers.length ? '<div class="event-reminder-preview">' + triggers.map((trigger) => {
     const proposed = trigger.programStatus === "proposed";
-    const href = proposed ? "#/obligations?section=events" : "#/obligations?event=" + encodeURIComponent(trigger.eventType);
+    const href = proposed ? "#/stage/run?section=events" : "#/stage/run?event=" + encodeURIComponent(trigger.eventType);
     return '<a href="' + href + '"><strong>' + esc(trigger.prompt) + '</strong><small>' + trigger.steps.length + (proposed ? ' proposed actions' : ' required actions') + '</small></a>';
   }).join("") + '</div>' : empty("No event reminders configured.");
 }
@@ -680,7 +869,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const entries = resourcesOfType(type);
   const requestedPage = Number(params.get("page"));
   let pageNumber = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-  const fields = [...new Set(["title", ...(definition.listFields || [])])].filter((name) => name !== "title");
+  const fields = [...new Set(["title", ...(definition.listFields || []), ...(type === "control" ? ["$operationTracking"] : [])])].filter((name) => name !== "title");
   const modelFields = { ...state.model.commonFields, ...definition.fields };
   const filters = Object.entries(modelFields).filter(([, field]) => field.filter).map(([name, field]) => {
     const observed = entries.flatMap(({ record }) => Array.isArray(record[name]) ? record[name] : [record[name]]).filter((value) => ["string", "number", "boolean"].includes(typeof value)).map(String);
@@ -691,7 +880,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + createButton + '</div>';
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || (ORGANIZATION_RESOURCE_TYPES.includes(type) ? "Organization" : groupTitle(definition.group))) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) + resourceWorkflowPanel(type, entries) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
   resourceGuideCleanup = setupResourceGuide(main);
@@ -708,7 +897,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + formatValue(entry.record[name], name, type) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : formatValue(entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -773,9 +962,15 @@ function renderDetail(main, type, id) {
   const addRecordContent = recordContent && !entry.content[recordContent.slot] && !state.readOnly
     ? '<div class="record-content-action"><button class="button" type="button" id="add-record-content">Add Record Markdown</button></div>'
     : "";
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Evidence packet</a>' : "") + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid"><section class="panel detail-main">' +
-    (narrativeContent || markdownContent ? narrativeContent + markdownContent + addRecordContent : '<div class="panel-head"><h3>Record</h3></div>' + empty("Add Record Markdown when this record needs context beyond its structured fields.") + addRecordContent) +
-    '</section><aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
+  const hasRecordBody = Boolean(narrativeContent || markdownContent);
+  const addRecordContentAction = !hasRecordBody && addRecordContent
+    ? '<button class="button" type="button" id="add-record-content">Add Record Markdown</button>'
+    : "";
+  const detailMain = hasRecordBody
+    ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
+    : "";
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Evidence packet</a>' : "") + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
+    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("#add-record-content")?.addEventListener("click", () => openEditor(type, entry, { addRecordContent: true }));
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
@@ -847,7 +1042,6 @@ function resourceConnections(entry) {
 function navigationResourceTypes() {
   return [
     ...READINESS_STAGES.flatMap((stage) => stage.sections.flatMap((section) => section.types)),
-    ...ORGANIZATION_RESOURCE_TYPES,
     "workspace",
     "renderer-settings"
   ];
@@ -856,10 +1050,8 @@ function navigationResourceTypes() {
 function renderOrganization(main) {
   const workspace = resourcesOfType("workspace")[0];
   const renderer = rendererSettingsEntry();
-  const people = resourcesOfType("person");
-  const teams = resourcesOfType("team");
   const organizationName = state.workspace.organizationName || "Organization";
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Administration</p><h2>' + esc(titleCase(organizationName)) + '</h2><p>Manage the organization records that supply ownership, accountability, shared teams, and renderer behavior across the compliance program.</p></div>' + (workspace ? '<a class="button primary" href="#/resource/workspace/' + encodeURIComponent(workspace.record.id) + '">Organization profile</a>' : "") + '</div><div class="organization-grid"><section class="panel organization-profile"><div class="panel-head"><div><p class="kicker">Organization</p><h3>Program Settings</h3></div></div><dl class="metadata"><div><dt>Name</dt><dd>' + esc(organizationName) + '</dd></div><div><dt>Timezone</dt><dd>' + esc(state.workspace.timezone) + '</dd></div><div><dt>Data model</dt><dd>Version ' + esc(state.workspace.dataModelVersion) + '</dd></div><div><dt>Repository</dt><dd>' + (state.git.available ? esc((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</dd></div></dl></section><section class="panel organization-directory"><div class="panel-head"><div><p class="kicker">Directory</p><h3>People and Teams</h3></div></div><div class="organization-links"><a href="#/resources/person"><span><strong>People</strong><small>Owners, approvers, trainees, reviewers, and contacts</small></span><b>' + people.length + '</b></a><a href="#/resources/team"><span><strong>Teams</strong><small>Committees, response groups, and shared ownership</small></span><b>' + teams.length + '</b></a></div></section><section class="panel organization-tools"><div class="panel-head"><div><p class="kicker">Workspace</p><h3>Renderer and Repository</h3></div></div><div class="organization-links">' + (renderer ? '<a href="#/resource/renderer-settings/' + encodeURIComponent(renderer.record.id) + '"><span><strong>Renderer Settings</strong><small>Committed behavior, including onboarding</small></span><b>›</b></a>' : "") + '<a href="#/repository"><span><strong>Repository</strong><small>Validation, file changes, history, and commits</small></span><b>›</b></a></div></section></div></div>';
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Administration</p><h2>' + esc(titleCase(organizationName)) + '</h2><p>Manage organization settings, renderer behavior, and repository state.</p></div>' + (workspace ? '<a class="button primary" href="#/resource/workspace/' + encodeURIComponent(workspace.record.id) + '">Organization profile</a>' : "") + '</div><div class="organization-grid"><section class="panel organization-profile"><div class="panel-head"><div><p class="kicker">Organization</p><h3>Program Settings</h3></div></div><dl class="metadata"><div><dt>Name</dt><dd>' + esc(organizationName) + '</dd></div><div><dt>Timezone</dt><dd>' + esc(state.workspace.timezone) + '</dd></div><div><dt>Data model</dt><dd>Version ' + esc(state.workspace.dataModelVersion) + '</dd></div><div><dt>Repository</dt><dd>' + (state.git.available ? esc((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</dd></div></dl></section><section class="panel organization-tools"><div class="panel-head"><div><p class="kicker">Workspace</p><h3>Renderer and Repository</h3></div></div><div class="organization-links">' + (renderer ? '<a href="#/resource/renderer-settings/' + encodeURIComponent(renderer.record.id) + '"><span><strong>Renderer Settings</strong><small>Committed behavior, including onboarding</small></span><b>›</b></a>' : "") + '<a href="#/repository"><span><strong>Repository</strong><small>Validation, file changes, history, and commits</small></span><b>›</b></a></div></section></div></div>';
 }
 
 function renderRepository(main) {
@@ -1014,6 +1206,25 @@ function resourceGuide(type) {
   return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use ' + esc(definition.pluralTitle) + '" hidden><div><span>Use</span><p>' + esc(definition.description) + '</p></div><div><span>Policy basis</span><p>' + esc(guidance.policyBasis) + '</p>' + sourceLinks + '</div><div><span>Timing</span><p>' + esc(guidance.cadence) + '</p>' + obligationLinks + '</div></section>';
 }
 
+function resourceWorkflowPanel(type, entries) {
+  if (type === "control") {
+    const planned = entries.filter(({ record }) => record.status === "planned").length;
+    const implemented = entries.filter(({ record }) => record.status === "implemented").length;
+    const linkedControlIds = new Set(resourcesOfType("obligation").flatMap(({ record }) => record.controlIds || []));
+    const scheduled = entries.filter(({ record }) => linkedControlIds.has(record.id)).length;
+    return '<section class="stage-instructions" aria-label="Control implementation instructions"><div class="stage-instructions-head"><div><p class="kicker">Step 3 · What to do here</p><h3>Finish the Starter Control Set</h3></div><span>' + implemented + ' implemented · ' + planned + ' planned</span></div><div class="stage-instruction-grid"><div><b>Already set up</b><p>This workspace has ' + entries.length + ' control records with starter statements, criteria and policy mappings, and suggested frequencies. They describe the expected control set, but planned records are not implemented controls.</p></div><div><b>Finish each control</b><p>Confirm it applies, replace the starter text with your actual procedure, assign its owner and system scope, connect an authoritative evidence source, set the implementation date, then mark it implemented.</p></div><div><b>Know what FileGRC runs</b><p>' + scheduled + ' controls have recurring or event work linked to the Work Queue. FileGRC schedules and records that work after policies take effect. People and source systems still perform and enforce the controls.</p><a href="#/stage/run">Open Work Queue</a></div></div></section>';
+  }
+  if (type === "evidence") {
+    const evidenceStage = state.programReadiness?.stages?.find((stage) => stage.id === "evidence");
+    const sourceItems = (evidenceStage?.items || []).filter((item) => item.id.startsWith("source-"));
+    const testItems = (evidenceStage?.items || []).filter((item) => item.id.startsWith("test-"));
+    const sourceComplete = sourceItems.filter((item) => item.status === "complete").length;
+    const testComplete = testItems.filter((item) => item.status === "complete").length;
+    return '<section class="stage-instructions" aria-label="Evidence preparation instructions"><div class="stage-instructions-head"><div><p class="kicker">Step 4 · Complete in order</p><h3>Prove Evidence Collection Works</h3></div><span>' + testComplete + ' of ' + testItems.length + ' test captures verified</span></div><div class="stage-instruction-grid evidence-instruction-grid"><div><span class="instruction-number">1</span><b>Connect authoritative sources</b><p>For every selected control family, link the controls to the system that produces the evidence. On that system, name who can export it, assign its evidence-source role, and write repeatable extraction instructions in Markdown.</p><small>' + sourceComplete + ' of ' + sourceItems.length + ' control families configured</small><a href="#/resources/system">Review source systems</a></div><div><span class="instruction-number">2</span><b>Run a test capture</b><p>Export or capture a real sample, create a verified evidence record with kind <code>test-export</code> or <code>test-capture</code>, and link it to the source system and a control in that family.</p><small>' + testComplete + ' of ' + testItems.length + ' control families tested</small><a href="#/resources/evidence?new=1">Add test capture</a></div></div><p class="stage-instructions-note">When both steps cover every selected control family, FileGRC marks the program Evidence Ready. Start the candidate period only after that point.</p></section>';
+  }
+  return "";
+}
+
 function setupResourceGuide(main) {
   const trigger = main.querySelector("#resource-guide-trigger");
   const guide = main.querySelector("#resource-guide");
@@ -1131,114 +1342,113 @@ function requestOnboarding() {
 
 function initialOnboardingDraft() {
   const systemEntry = resourcesOfType("system").find(({ record }) => record.inScope && record.status !== "retired");
-  const auditEntry = systemEntry
-    ? resourcesOfType("audit").find(({ record }) => ["planned", "in-progress", "fieldwork"].includes(record.status) && record.systemIds?.includes(systemEntry.record.id))
-    : null;
   const owner = resourcesOfType("person").find(({ record }) => record.status === "active")?.record;
-  const independentApprover = resourcesOfType("person").find(({ record }) => record.id === "person-independent-approver")?.record;
   return {
     systemId: systemEntry?.record.id || "",
-    auditId: auditEntry?.record.id || "",
     serviceName: systemEntry?.record.title || "",
     scope: systemEntry?.record.description || "",
-    ownerId: systemEntry?.record.ownerIds?.[0] || auditEntry?.record.ownerIds?.[0] || owner?.id || "",
+    ownerId: systemEntry?.record.ownerIds?.[0] || owner?.id || "",
     criticality: systemEntry?.record.criticality || "high",
     dataClassification: systemEntry?.record.dataClassification || "Confidential",
     internetExposed: systemEntry?.record.internetExposed === false ? "false" : "true",
-    auditGoal: auditGoalFromKind(auditEntry?.record.auditKind),
-    independentApproverName: independentApprover?.title === "Independent Approver" ? "" : independentApprover?.title || "",
-    independentApproverEmail: independentApprover?.email || ""
+    programGoal: programGoalFromKind(state.workspace.assuranceGoal)
   };
 }
 
 function onboardingSteps() {
+  const files = {
+    target: ".repo-chip",
+    kicker: "Mental model",
+    title: "Files are the program",
+    body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. This renderer edits those files, and Git records their history.",
+    points: [
+      "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
+      "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
+      "Repository pulls with rebase, then commits and pushes reviewed changes together.",
+      "Agents and terminal users run git pull --rebase, git commit, and git push directly.",
+      "The dashboard derives program status from the current repository state."
+    ]
+  };
+  const path = {
+    target: ".readiness-map",
+    kicker: "Program model",
+    title: "Follow the audit chain",
+    body: "The shortest dependable path is to define scope, approve policies, implement controls, prepare the evidence process, and operate the program before audit fieldwork begins.",
+    points: [
+      "Scope starts with the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems.",
+      "Program operation includes current risk assessments and risks, which may add or change controls as conditions change.",
+      "Evidence preparation means cataloging authoritative systems, documenting extraction, and testing captures before the candidate period.",
+      "The CPA firm, formal report period, fieldwork, and final report are the last stage. Engage earlier only when timing or scope needs outside input."
+    ]
+  };
+  const obligations = {
+    target: ".obligation-panel",
+    kicker: "Obligations",
+    title: "Work the policy queue",
+    body: "Recurring policy work appears as upcoming, due, or overdue. Each item shows the full allowed completion range, the first overdue date, and a live countdown to that cutoff.",
+    points: [
+      "Quarterly means any date in that cycle is valid unless the policy sets a narrower window.",
+      "Link a dated completion record and its evidence to satisfy one occurrence.",
+      "The UI and FileGRC CLI use the same calculation."
+    ]
+  };
+  const events = {
+    target: ".event-reminder-panel",
+    kicker: "Triggered work",
+    title: "Complete a checklist when key events occur",
+    body: "Use an event reminder for a new worker, role change, departure, personal device, vendor change or incident, material system or data-use change, or security incident. One action item is created for every policy requirement, with its own owner, evidence, due range, and cutoff.",
+    points: [
+      "The checklist stays open until every action is done and has the requested completion record or evidence.",
+      "Hour-based rules keep the event time and exact cutoff; day-based rules keep the policy date range.",
+      "Every action has a policy-based cutoff or a reasonable default deadline for the event.",
+      "Agents start the identical workflow with the FileGRC CLI."
+    ]
+  };
+  const reportTypes = {
+    target: null,
+    kicker: "SOC 2 report types",
+    title: "Choose the report goal",
+    body: [
+      "SOC 2 is an independent CPA report on controls relevant to the selected Trust Services Criteria.",
+      "Most customer requests focus on Security. Add Availability, Processing Integrity, Confidentiality, or Privacy only when the service and customer need call for them."
+    ],
+    sections: [
+      {
+        title: "Type 1",
+        body: "A CPA evaluates whether the controls are suitably designed and implemented at a point in time. Type 1 is optional before Type 2, but it can help with an urgent customer request."
+      },
+      {
+        title: "Type 2",
+        body: "A CPA evaluates whether the controls operated consistently throughout an agreed review period, often six months. Dated evidence must cover that period."
+      }
+    ],
+    afterSections: "Most evidence comes from production, identity, monitoring, and business systems. FileGRC records where it comes from and how it was collected."
+  };
+  const audit = {
+    target: ".audit-panel",
+    kicker: "Final stage",
+    title: "Engage the firm and prepare fieldwork",
+    body: "Once the program is ready and evidence collection is running, record the CPA firm and the agreed scope and period. Then reconcile populations, answer requests, and generate the delivery packet.",
+    points: [
+      "The audit record holds the firm-agreed date or period; the workspace keeps management's earlier candidate dates.",
+      "Audit Readiness identifies missing management documents, populations, exact-period evidence, and request work.",
+      "The CPA firm selects samples, tests controls, evaluates exceptions, and issues the report."
+    ]
+  };
+  const setup = {
+    target: null,
+    kicker: "Initial scope",
+    title: "Describe the service you plan to audit",
+    body: "This records the management goal and creates the first in-scope system. It does not create an audit engagement. Next, finish Step 1 by confirming the starter people and oversight team, criteria, commitments, vendors, and systems."
+  };
   return [
-    {
-      target: null,
-      kicker: "SOC 2 basics",
-      title: "SOC 2 is an audit away",
-      body: [
-        "SOC 2 is just an auditor's report that you have adopted a set of policies meeting certain criteria.",
-        "This includes information security criteria, but it can optionally include availability, processing integrity, confidentiality, and privacy criteria. Generally, customers requesting a SOC 2 report just need the information security criteria."
-      ],
-      sections: [
-        {
-          title: "Type 1",
-          body: "An auditor evaluates whether your policies and controls are suitably designed and in place at a specific point in time. It is a snapshot rather than a test of ongoing operation. Type 1 is not required for Type 2, but Type 1 can be helpful as a short-term solution for urgent customer requests."
-        },
-        {
-          title: "Type 2",
-          body: "An auditor evaluates whether your controls operated consistently throughout a review period, most commonly six months. You provide dated evidence showing that the policies were followed across that period."
-        }
-      ],
-      afterSections: "Just about all of the evidence needed for these audits will come from your software's production infrastructure + monitoring, or the business operations tracked in FileGRC."
-    },
-    {
-      target: ".repo-chip",
-      kicker: "Mental model",
-      title: "Files are the program",
-      body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. This renderer edits those files, and Git records their history.",
-      points: [
-        "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
-        "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
-        "Repository pulls with rebase, then commits and pushes reviewed changes together.",
-        "Agents and terminal users run git pull --rebase, git commit, and git push directly.",
-        "The dashboard derives program status from the current repository state."
-      ]
-    },
-    {
-      target: ".readiness-map",
-      kicker: "Program model",
-      title: "Follow the audit chain",
-      body: "The program runs in one direction: define the system scope, map the criteria, adopt policies, operate controls, retain dated proof, and give the auditor a coherent record of the period.",
-      points: [
-        "Criteria are external expectations. Policies are company rules. Controls state the repeatable work that meets both.",
-        "Inventories and dated records of reviews, assessments, meetings, tests, and incidents show that controls are operating.",
-        "Evidence proves an occurrence; Git proves the history of every artifact."
-      ]
-    },
-    {
-      target: ".obligation-panel",
-      kicker: "Obligations",
-      title: "Work the policy queue",
-      body: "Recurring policy work appears as upcoming, due, or overdue. Each item shows the full allowed completion range, the first overdue date, and a live countdown to that cutoff.",
-      points: [
-        "Quarterly means any date in that cycle is valid unless the policy sets a narrower window.",
-        "Link a dated completion record and its evidence to satisfy one occurrence.",
-        "The UI and FileGRC CLI use the same calculation."
-      ]
-    },
-    {
-      target: ".event-reminder-panel",
-      kicker: "Triggered work",
-      title: "Complete a checklist when key events occur",
-      body: "Use an event reminder for a new worker, role change, departure, personal device, vendor change or incident, material system or data-use change, or security incident. One action item is created for every policy requirement, with its own owner, evidence, due range, and cutoff.",
-      points: [
-        "The checklist stays open until every action is done and has the requested completion record or evidence.",
-        "Hour-based rules keep the event time and exact cutoff; day-based rules keep the policy date range.",
-        "Every action has a policy-based cutoff or a reasonable default deadline for the event.",
-        "Agents start the identical workflow with the FileGRC CLI."
-      ]
-    },
-    {
-      target: ".audit-panel",
-      kicker: "Audit",
-      title: "Plan the engagement and generate evidence",
-      body: "Engage an independent CPA firm early, record the agreed scope and date or period, then generate a scoped delivery packet from the same files used to run the program.",
-      points: [
-        "Record the firm, scope, exact date or period, and each request in the audit.",
-        "Audit Readiness identifies missing management work, source systems, and evidence, including what to export and when.",
-        "For Type 2, reconcile every period population after close. A zero count still needs its source export and query.",
-        "Generate the same indexed packet from the UI or CLI, with scoped records, Markdown, fixed attachments, delivery indexes, and checksums.",
-        "FileGRC checks management preparation and packet integrity. The auditor selects samples, tests controls, evaluates exceptions, and issues the report."
-      ]
-    },
-    {
-      target: null,
-      kicker: "Initial scope",
-      title: "Describe the service you plan to audit",
-      body: "This creates or updates one in-scope system and, if selected, one planned audit. It also assigns the external independent reviewer required to approve policies and chair oversight. The reviewer must be separate from the policy owner and control operators."
-    }
+    files,
+    path,
+    obligations,
+    events,
+    reportTypes,
+    audit,
+    setup
   ];
 }
 
@@ -1294,19 +1504,14 @@ function renderOnboardingStep() {
 
 function onboardingSetupForm() {
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
-  const contactDomain = people
-    .map(({ record }) => record.email?.split("@")[1])
-    .find(Boolean);
-  const approverEmailPlaceholder = contactDomain ? "reviewer@" + contactDomain : "Reviewer email";
   const classifications = Object.keys(state.workspace.classificationDefinitions || {});
   if (onboardingDraft.dataClassification && !classifications.includes(onboardingDraft.dataClassification)) {
     classifications.push(onboardingDraft.dataClassification);
   }
   const currentSystem = onboardingDraft.systemId ? state.resources.find(({ record }) => record.id === onboardingDraft.systemId)?.record : null;
-  const currentAudit = onboardingDraft.auditId ? state.resources.find(({ record }) => record.id === onboardingDraft.auditId)?.record : null;
   const existing = [
     currentSystem ? "Updates system " + currentSystem.title + "." : "Creates a new in-scope system.",
-    currentAudit ? "Updates planned audit " + currentAudit.title + " when an audit objective is selected." : ""
+    "Records a management program goal without creating an audit engagement."
   ].filter(Boolean).join(" ");
   const gitStatus = state.git.available && !state.git.branch
     ? '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Detached HEAD detected</strong><small>Setup changes can be saved, but browser commits, pulls, and pushes are disabled until you check out a branch.</small></span></div>'
@@ -1315,14 +1520,14 @@ function onboardingSetupForm() {
     : state.git.available
       ? '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git remote needed</strong><small>Saving and local commits still work. Add a remote before the browser can push.</small></span></div>'
       : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Saving still works. Run <code>git init</code> at the workspace root before your first compliance commit.</small></span></div>';
-  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label><span>External independent approver</span><input name="independentApproverName" maxlength="200" value="' + esc(onboardingDraft.independentApproverName) + '" placeholder="Reviewer name"><small>Required to complete setup. Must be separate from the policy owner and control operators.</small></label><label><span>Approver email</span><input name="independentApproverEmail" type="email" maxlength="320" value="' + esc(onboardingDraft.independentApproverEmail) + '" placeholder="' + esc(approverEmailPlaceholder) + '"></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No Engagement Planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness Assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Save draft keeps reviewer appointment open. Saving writes JSON files but does not commit them.</p>';
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Program goal</span><select name="programGoal" required><option value="none" ' + (onboardingDraft.programGoal === "none" ? "selected" : "") + '>No Assurance Goal Yet</option><option value="readiness" ' + (onboardingDraft.programGoal === "readiness" ? "selected" : "") + '>Program Readiness</option><option value="type-1" ' + (onboardingDraft.programGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.programGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>This records management intent only. It does not create an engagement or establish the formal report period.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Save draft keeps the system planned. Saving writes JSON files but does not commit them. Complete the remaining Step 1 pages next.</p>';
 }
 
 function captureOnboardingForm() {
   const form = onboardingDialog?.querySelector("#onboarding-setup");
   if (!form) return;
   const data = new FormData(form);
-  for (const name of ["serviceName", "scope", "ownerId", "criticality", "dataClassification", "internetExposed", "independentApproverName", "independentApproverEmail", "auditGoal"]) {
+  for (const name of ["serviceName", "scope", "ownerId", "criticality", "dataClassification", "internetExposed", "programGoal"]) {
     onboardingDraft[name] = String(data.get(name) || "").trim();
   }
 }
@@ -1332,23 +1537,6 @@ async function saveOnboarding(draft = false) {
   const form = onboardingDialog?.querySelector("#onboarding-setup");
   if (!form?.reportValidity()) return;
   captureOnboardingForm();
-  if (!draft && (!onboardingDraft.independentApproverName || !onboardingDraft.independentApproverEmail)) {
-    const field = form.elements[!onboardingDraft.independentApproverName ? "independentApproverName" : "independentApproverEmail"];
-    field.setCustomValidity("Appoint an independent reviewer or use Save draft.");
-    field.reportValidity();
-    field.addEventListener("input", () => field.setCustomValidity(""), { once: true });
-    return;
-  }
-  const policyOwner = state.resources.find(({ record }) => record.id === "person-policy-owner")?.record;
-  const sameName = policyOwner?.title?.trim().toLowerCase() === onboardingDraft.independentApproverName.toLowerCase();
-  const sameEmail = policyOwner?.email?.trim().toLowerCase() === onboardingDraft.independentApproverEmail.toLowerCase();
-  if (sameName || sameEmail) {
-    const field = form.elements[sameName ? "independentApproverName" : "independentApproverEmail"];
-    field.setCustomValidity("The independent approver must be a different person from the policy owner.");
-    field.reportValidity();
-    field.addEventListener("input", () => field.setCustomValidity(""), { once: true });
-    return;
-  }
   setOnboardingBusy(true, draft ? "Saving draft…" : "Completing…");
   try {
     const response = await localFetch("/api/setup", {
@@ -1361,18 +1549,15 @@ async function saveOnboarding(draft = false) {
         criticality: onboardingDraft.criticality,
         dataClassification: onboardingDraft.dataClassification,
         internetExposed: onboardingDraft.internetExposed === "true",
-        independentApproverName: onboardingDraft.independentApproverName,
-        independentApproverEmail: onboardingDraft.independentApproverEmail,
-        auditGoal: onboardingDraft.auditGoal,
+        programGoal: onboardingDraft.programGoal,
         systemId: onboardingDraft.systemId,
-        auditId: onboardingDraft.auditId,
         draft
       })
     });
     if (!response.ok) throw new Error(await responseMessage(response));
     state = await fetchJson("/api/state");
     closeOnboarding();
-    history.replaceState(null, "", "#/");
+    history.replaceState(null, "", draft ? "#/" : "#/stage/scope");
     render();
   } catch (error) {
     setOnboardingBusy(false);
@@ -1398,11 +1583,11 @@ async function cancelOnboarding() {
 async function persistOnboardingPreference(showOnboarding) {
   const entry = rendererSettingsEntry();
   if (!entry) throw new Error("Renderer settings are unavailable.");
-  await writeOnboardingResource({ ...entry.record, showOnboarding }, entry);
+  await writeRendererSettingsResource({ ...entry.record, showOnboarding }, entry);
   state = await fetchJson("/api/state");
 }
 
-async function writeOnboardingResource(record, entry) {
+async function writeRendererSettingsResource(record, entry) {
   const url = entry
     ? "/api/resource/" + encodeURIComponent(record.type) + "/" + encodeURIComponent(record.id)
     : "/api/resources";
@@ -1412,6 +1597,24 @@ async function writeOnboardingResource(record, entry) {
     body: JSON.stringify({ record, revision: entry?.revision })
   });
   if (!response.ok) throw new Error(await responseMessage(response));
+}
+
+async function toggleStagePageCompletion(button) {
+  const entry = rendererSettingsEntry();
+  if (!entry) throw new Error("Renderer settings are unavailable.");
+  const completed = new Set(entry.record.completedStagePageIds || []);
+  const pageId = button.dataset.stagePageCompletion;
+  if (button.dataset.complete === "true") {
+    completed.delete(pageId);
+    (STAGE_PAGE_ID_ALIASES[pageId] || []).forEach((id) => completed.delete(id));
+  } else {
+    completed.add(pageId);
+  }
+  await writeRendererSettingsResource({
+    ...entry.record,
+    completedStagePageIds: [...completed].sort()
+  }, entry);
+  state = await fetchJson("/api/state");
 }
 
 function setOnboardingBusy(busy, label = "") {
@@ -1519,19 +1722,11 @@ function closeOnboarding() {
   onboardingDialog.close();
 }
 
-function auditGoalFromKind(kind) {
+function programGoalFromKind(kind) {
   if (kind === "soc-2-type-1") return "type-1";
   if (kind === "soc-2-type-2") return "type-2";
   if (kind === "readiness") return "readiness";
   return "none";
-}
-
-function auditKindFromGoal(goal) {
-  return goal === "type-1" ? "soc-2-type-1" : goal === "type-2" ? "soc-2-type-2" : "readiness";
-}
-
-function auditTitleFromGoal(goal) {
-  return goal === "type-1" ? "SOC 2 Type 1" : goal === "type-2" ? "SOC 2 Type 2" : "SOC 2 readiness assessment";
 }
 
 function openEditor(type, entry = null, options = {}) {
@@ -1559,7 +1754,7 @@ function openEditor(type, entry = null, options = {}) {
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
   const activeMarkdown = markdownDefinitions.filter((markdown) => (
-    markdown.required || markdown.oneOf || !entry || entry.content?.[markdown.name]
+    markdown.required || markdown.requiredWhen || markdown.oneOf || !entry || entry.content?.[markdown.name]
   ));
   const recordContent = recordContentDefinition(type);
   const recordContentItem = recordContent ? entry?.content?.[recordContent.slot] : null;
@@ -1567,15 +1762,16 @@ function openEditor(type, entry = null, options = {}) {
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source ?? "# " + (record.title || "New " + definition.title) + "\n\nDescribe this " + definition.title.toLowerCase() + " here.\n";
-      const requiredMark = markdown.required ? '<span class="required-mark">Required</span>' : markdown.oneOf ? '<span class="required-mark">One Required</span>' : "";
-      return '<label class="content-editor-field" data-content-editor="' + esc(markdown.name) + '"><span>' + esc(markdown.label) + ' Markdown' + requiredMark + '</span><textarea data-markdown-slot="' + esc(markdown.name) + '" data-generated-content="' + generated + '" spellcheck="true" ' + (markdown.required ? "required" : "") + '>' + esc(source) + '</textarea></label>';
+      const requiredNow = markdown.required || conditionMatches(record, markdown.requiredWhen);
+      const requiredMark = markdown.required || markdown.requiredWhen ? '<span class="required-mark" ' + (requiredNow ? "" : "hidden") + '>Required</span>' : markdown.oneOf ? '<span class="required-mark">One Required</span>' : "";
+      return '<label class="content-editor-field" data-content-editor="' + esc(markdown.name) + '"><span>' + esc(markdown.label) + ' Markdown' + requiredMark + '</span><textarea data-markdown-slot="' + esc(markdown.name) + '" data-generated-content="' + generated + '" spellcheck="true" ' + (requiredNow ? "required" : "") + '>' + esc(source) + '</textarea></label>';
     }).join("") + renderRecordContentEditor(type, entry, options) +
     '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelectorAll("[data-editor-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
-  wireEditorRequirements(dialog, record, fields, definition.oneOf || []);
+  wireEditorRequirements(dialog, record, fields, definition.oneOf || [], markdownDefinitions);
   dialog.querySelector(".advanced-editor textarea").addEventListener("input", () => {
     dialog.dataset.jsonDirty = "true";
     dialog.querySelector("form").noValidate = true;
@@ -1686,6 +1882,7 @@ function dedicatedMarkdownDefinitions(type) {
     label: markdown.label || humanize(name),
     primary: Boolean(markdown.primary),
     required: Boolean(markdown.required),
+    requiredWhen: markdown.requiredWhen || null,
     oneOf: choices.has(name)
   }));
 }
@@ -1775,7 +1972,7 @@ function fieldWrap(name, kind, label, requiredMark, control, help, required) {
   return '<div class="form-field" data-field-group="' + esc(name) + '" data-kind="' + esc(kind) + '" data-required="' + (required ? "true" : "false") + '"><div class="field-label" id="' + esc(labelId) + '">' + esc(label) + requiredMark + '</div>' + labelledControl + (help ? '<small>' + esc(help) + '</small>' : "") + '</div>';
 }
 
-function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
+function wireEditorRequirements(dialog, base, fields, oneOfGroups, markdownDefinitions = []) {
   const refreshGroup = (group, required) => {
     group.dataset.required = required ? "true" : "false";
     const mark = group.querySelector(".required-mark");
@@ -1814,6 +2011,15 @@ function wireEditorRequirements(dialog, base, fields, oneOfGroups) {
     }
     for (const group of dialog.querySelectorAll('[data-kind="relation-array"][data-required="true"]')) {
       refreshGroup(group, true);
+    }
+    for (const markdown of markdownDefinitions) {
+      if (!markdown.requiredWhen) continue;
+      const required = Object.entries(markdown.requiredWhen).every(([conditionName, expected]) => currentValue(conditionName) === expected);
+      const wrapper = dialog.querySelector('[data-content-editor="' + CSS.escape(markdown.name) + '"]');
+      const control = wrapper?.querySelector("textarea");
+      const mark = wrapper?.querySelector(".required-mark");
+      if (control) control.required = required;
+      if (mark) mark.hidden = !required;
     }
     for (const names of oneOfGroups) {
       const choices = names.map((name) => {
@@ -1897,11 +2103,28 @@ function openContentEditor(entry, name) {
 }
 
 function bindCommon() {
-  root.querySelectorAll(".nav-heading, .nav-subheading").forEach((button) => button.addEventListener("click", () => {
+  root.querySelectorAll("[data-stage-page-completion]").forEach((button) => button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Saving…";
+    try {
+      await toggleStagePageCompletion(button);
+      render();
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = label;
+      button.title = error.message;
+    }
+  }));
+  root.querySelectorAll(".nav-toggle, .nav-subgroup-toggle").forEach((button) => button.addEventListener("click", () => {
     const group = button.closest(".nav-group");
     const open = group.classList.toggle("open");
     setNavigationGroupOpen(group.dataset.group, open);
     button.setAttribute("aria-expanded", String(open));
+    const label = button.closest(".nav-heading-row, .nav-subheading-row")?.querySelector(".nav-heading, .nav-subheading")?.textContent.trim() || "group";
+    button.setAttribute("aria-label", (open ? "Collapse " : "Expand ") + label);
   }));
   const navButton = root.querySelector(".mobile-nav");
   const sidebar = root.querySelector(".sidebar");
@@ -2064,6 +2287,7 @@ function setNavigationGroupOpen(group, open) {
 function groupTitle(id) { return state.model.groups.find((group) => group.id === id)?.title || "Program"; }
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
 function fieldLabel(type, name) {
+  if (name === "$operationTracking") return "Operation tracking";
   if (name === "title") return state.model.resources[type]?.titleLabel || state.model.commonFields.title.label;
   const recordContent = recordContentDefinition(type);
   if (recordContent && name === recordContent.slot) return recordContent.label;
@@ -2100,6 +2324,12 @@ function formatValue(value, field, type) {
   const reference = state.resources.find(({ record }) => record.id === value);
   if (reference) return '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + '">' + esc(reference.record.title) + '</a>';
   return esc(String(value));
+}
+function controlOperationTracking(control) {
+  const obligations = resourcesOfType("obligation").filter(({ record }) => (record.controlIds || []).includes(control.id));
+  return obligations.length
+    ? '<span class="operation-tracking"><strong>Work Queue</strong><small>' + obligations.length + ' linked ' + pluralize("schedule", obligations.length) + '</small></span>'
+    : '<span class="operation-tracking"><strong>Evidence records</strong><small>No scheduled obligation</small></span>';
 }
 function formatReference(value) {
   const reference = state.resources.find(({ record }) => record.id === value);
@@ -2153,34 +2383,39 @@ function esc(value) { return String(value ?? "").replace(/[&<>"']/g, (character)
 
 export const APP_STYLES = String.raw`
 :root{--ink:#151827;--muted:#5d6475;--line:#dfe3ef;--paper:#f6f7fb;--panel:#fff;--accent:#0000a5;--accent-soft:#eef1ff;--accent-light:#8aa1ff;--focus:#0000e0;--amber:#8a5200;--red:#a13a31;--sidebar:linear-gradient(135deg,#000070 0%,#000035 60%);--primary-gradient:linear-gradient(135deg,#000070 0%,#000035 60%);--surface-soft:#f2f4fa;--surface-muted:#eceff7;--field:#fff;--field-readonly:#eef0f6;--code-bg:#10162b;--code-ink:#e8ebff;--shadow:0 8px 28px rgba(0,0,53,.08);color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none}
-*{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#eef1ff;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:block;width:39px;height:39px;border-radius:10px}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:15px}.brand small{font-size:11px;color:#c5cae2;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:13px;color:#d5d9ed}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#202066;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#b4bbdc;text-transform:uppercase;letter-spacing:.11em;font-size:10px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none}.chevron:before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transform-origin:center;transition:transform .15s}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:10px;color:#b8bed7}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#000024;border-top:1px solid #34345f;color:#cbd0e5;font-size:11px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#9aabff}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:17px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:9px;margin:0}.search{height:39px;max-width:480px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4fa;border:1px solid #dfe3ef;border-radius:8px;padding:0 10px;color:#5d6475}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:13px}.search kbd{background:#fff;border:1px solid #dfe3ef;border-radius:4px;padding:1px 5px;font-size:10px}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:11px;white-space:nowrap;text-decoration:none}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#f8f9ff;background:linear-gradient(120deg,#000070,#000035);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(138,161,255,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#cbd3ff}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:28px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#dde1f4;font-size:13px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#e6e8f7;border-left:1px solid #6874ab;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:25px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:10px;color:#697184}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:14px;margin:4px 0 0}.panel-head>a{font-size:11px;color:var(--accent);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:30px;font-weight:500;display:block}.progress-number span{font-size:10px;color:var(--muted)}.progress{height:9px;background:#eceff7;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#0000a5,var(--accent-light));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#5d6475}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #e8ebf3;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:10px;color:var(--accent);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:11px}.due-list small{font-size:9px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:10px}.resource-bars i{height:5px;background:#e8ebf3;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#6676dd;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f2f4fa;border-radius:6px;font-size:10px}.catalog a:hover{background:var(--accent-soft)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:31px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:13px;margin:0}.button{border:1px solid #d0d5e3;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:12px;font-weight:650}.button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:12px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:10px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:11px}.record-table th{background:#f2f4fa;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:9px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #e8ebf3;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:9px;color:#5d6475}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#6a7181;margin-top:3px}.record-table td[data-label="Description"]{min-width:260px;max-width:520px;color:var(--muted);line-height:1.45}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#eceff7;padding:3px 7px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:11px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:10px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:9px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:29px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:23px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:15px;margin-top:1.7em}.markdown p,.markdown li{font-size:13px;line-height:1.65;color:#272c3b}.markdown code{background:#eef0f6;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#10162b;color:#e8ebff;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--accent-light);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:11px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #e8ebf3;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#5d6475}.metadata dd{margin:0;font-size:11px;min-width:0}.compact-json{white-space:pre-wrap;font-size:9px}.git-panel>code{font-size:9px;word-break:break-all}.git-panel p{font-size:10px;color:var(--muted)}.relation{color:var(--accent);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #e8ebf3}.history>div:first-child{border-top:0}.history code{font-size:9px;color:var(--accent)}.history strong,.history small{display:block}.history strong{font-size:10px}.history small{font-size:9px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#697184;text-align:center;font-size:11px;background:#f4f5fa;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:11px;overflow-wrap:anywhere}.diagnostics code{font-size:9px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(0,0,24,.28)}dialog::backdrop{background:rgba(0,0,24,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eceff7;width:32px;height:32px;border-radius:50%;font-size:22px;cursor:pointer}.editor form>p{font-size:11px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#10162b;color:#e8ebff;padding:15px;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:11px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#737a8b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.topbar-status{display:flex;align-items:center;gap:8px}.repo-chip,.validation-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:11px;white-space:nowrap;text-decoration:none}.repo-chip:hover,.validation-chip:hover{color:var(--ink);border-color:var(--accent-light)}
-.audit-progress-empty{padding:11px 13px;border-radius:8px;background:var(--surface-soft)}.audit-progress-empty strong,.audit-progress-empty span{display:block}.audit-progress-empty strong{font-size:11px}.audit-progress-empty span{margin-top:4px;color:var(--muted);font-size:9px}
+*{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#eef1ff;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:block;width:39px;height:39px;border-radius:10px}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:18px}.brand small{font-size:13.2px;color:#c5cae2;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:15.6px;color:#d5d9ed}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#202066;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#b4bbdc;text-transform:uppercase;letter-spacing:.11em;font-size:12px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none}.chevron:before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transform-origin:center;transition:transform .15s}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:12px;color:#b8bed7}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#000024;border-top:1px solid #34345f;color:#cbd0e5;font-size:13.2px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#9aabff}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:20.4px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:10.8px;margin:0}.search{height:39px;max-width:480px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4fa;border:1px solid #dfe3ef;border-radius:8px;padding:0 10px;color:#5d6475}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:15.6px}.search kbd{background:#fff;border:1px solid #dfe3ef;border-radius:4px;padding:1px 5px;font-size:12px}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#f8f9ff;background:linear-gradient(120deg,#000070,#000035);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(138,161,255,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#cbd3ff}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:33.6px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#dde1f4;font-size:15.6px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#e6e8f7;border-left:1px solid #6874ab;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:30px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:12px;color:#697184}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:16.8px;margin:4px 0 0}.panel-head>a{font-size:13.2px;color:var(--accent);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:36px;font-weight:500;display:block}.progress-number span{font-size:12px;color:var(--muted)}.progress{height:9px;background:#eceff7;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#0000a5,var(--accent-light));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:10.8px;text-transform:uppercase;letter-spacing:.08em;color:#5d6475}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #e8ebf3;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:12px;color:var(--accent);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:13.2px}.due-list small{font-size:10.8px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:12px}.resource-bars i{height:5px;background:#e8ebf3;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#6676dd;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f2f4fa;border-radius:6px;font-size:12px}.catalog a:hover{background:var(--accent-soft)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:37.2px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:15.6px;margin:0}.button{border:1px solid #d0d5e3;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:14.4px;font-weight:650}.button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:14.4px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:12px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:13.2px}.record-table th{background:#f2f4fa;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:10.8px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #e8ebf3;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:10.8px;color:#5d6475}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#6a7181;margin-top:3px}.record-table td[data-label="Description"]{min-width:260px;max-width:520px;color:var(--muted);line-height:1.45}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#eceff7;padding:3px 7px;font-size:10.8px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:13.2px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:12px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:10.8px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:34.8px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:27.6px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:18px;margin-top:1.7em}.markdown p,.markdown li{font-size:15.6px;line-height:1.65;color:#272c3b}.markdown code{background:#eef0f6;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#10162b;color:#e8ebff;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--accent-light);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:13.2px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #e8ebf3;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;color:#5d6475}.metadata dd{margin:0;font-size:13.2px;min-width:0}.compact-json{white-space:pre-wrap;font-size:10.8px}.git-panel>code{font-size:10.8px;word-break:break-all}.git-panel p{font-size:12px;color:var(--muted)}.relation{color:var(--accent);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #e8ebf3}.history>div:first-child{border-top:0}.history code{font-size:10.8px;color:var(--accent)}.history strong,.history small{display:block}.history strong{font-size:12px}.history small{font-size:10.8px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#697184;text-align:center;font-size:13.2px;background:#f4f5fa;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:13.2px;overflow-wrap:anywhere}.diagnostics code{font-size:10.8px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(0,0,24,.28)}dialog::backdrop{background:rgba(0,0,24,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eceff7;width:32px;height:32px;border-radius:50%;font-size:26.4px;cursor:pointer}.editor form>p{font-size:13.2px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#10162b;color:#e8ebff;padding:15px;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:13.2px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#737a8b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.topbar-status{display:flex;align-items:center;gap:8px}.repo-chip,.validation-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.repo-chip:hover,.validation-chip:hover{color:var(--ink);border-color:var(--accent-light)}
+.audit-progress-empty{padding:11px 13px;border-radius:8px;background:var(--surface-soft)}.audit-progress-empty strong,.audit-progress-empty span{display:block}.audit-progress-empty strong{font-size:13.2px}.audit-progress-empty span{margin-top:4px;color:var(--muted);font-size:10.8px}
 .icon-button{position:relative;display:grid;place-items:center;padding:0;color:var(--ink);font-size:0}.icon-button:before,.icon-button:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.icon-button:after{transform:rotate(-45deg)}
 html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .topbar{height:63px}
-.brand{flex:0 0 auto;margin-bottom:18px}.sidebar-nav{--nav-control-width:14px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding-right:1px}.nav-home{margin-bottom:10px}.nav-stage>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0}.nav-stage>.nav-heading:hover{background:rgba(255,255,255,.08);color:#fff}.nav-stage-number{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:8px}.nav-stage-copy,.nav-stage-copy strong,.nav-stage-copy small{display:block;min-width:0}.nav-stage-copy strong{font-size:10px;line-height:1.25}.nav-stage-copy small{margin-top:2px;color:#aeb6d8;font-size:8px;line-height:1.25;font-weight:500}.nav-stage>.nav-items{margin:2px 0 8px 17px;padding:1px 0 5px 12px;border-left:1px solid rgba(255,255,255,.14)}.nav-subgroup>.nav-subheading,.nav-subgroup>.nav-items a{width:100%;display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;padding-right:6px}.nav-subgroup>.nav-subheading{border:0;background:none;padding-top:7px;padding-bottom:4px;padding-left:7px;color:#919bc4;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;cursor:pointer}.nav-control,.nav-control-slot{justify-self:end;width:var(--nav-control-width);text-align:right}.nav-subgroup>.nav-items{padding:1px 0 4px 3px}.nav-subgroup>.nav-items a{padding-top:6px;padding-bottom:6px;padding-left:8px;font-size:11px}.nav-group.open>.nav-heading>.chevron:before,.nav-group.open>.nav-subheading>.chevron:before{transform:rotate(45deg)}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-items{display:none}.sidebar-footer{flex:0 0 auto;margin:10px -18px -18px;padding:10px 18px 14px;background:#000024;border-top:1px solid rgba(255,255,255,.14)}.organization-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 12px;gap:9px;align-items:center;padding:8px;border-radius:8px;color:#eef1ff;text-decoration:none}.organization-nav:hover,.organization-nav.current{background:rgba(255,255,255,.11)}.organization-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);font-size:11px;font-weight:800}.organization-nav strong,.organization-nav small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.organization-nav strong{font-size:10px}.organization-nav small{margin-top:2px;color:#aeb6d8;font-size:8px}.organization-arrow{color:#aeb6d8;font-size:16px}.organization-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.organization-links{display:grid}.organization-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.organization-links a:first-child{padding-top:0;border-top:0}.organization-links strong,.organization-links small{display:block}.organization-links strong{font-size:11px}.organization-links small{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.4}.organization-links b{color:var(--accent);font-size:11px}.organization-links a:hover strong{color:var(--accent)}
-.nav-stage>.nav-items>a.nav-direct{display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;width:100%;padding:6px 6px 6px 7px;font-size:11px}
+.sidebar-nav{scrollbar-width:none;-ms-overflow-style:none}.sidebar-nav::-webkit-scrollbar{display:none}
+.brand{flex:0 0 auto;margin-bottom:18px}.sidebar-nav{--nav-control-width:14px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding-right:1px}.nav-home{margin-bottom:10px}.nav-stage>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0}.nav-stage>.nav-heading:hover{background:rgba(255,255,255,.08);color:#fff}.nav-stage-number{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:9.6px}.nav-stage-copy,.nav-stage-copy strong,.nav-stage-copy small{display:block;min-width:0}.nav-stage-copy strong{font-size:12px;line-height:1.25}.nav-stage-copy small{margin-top:2px;color:#aeb6d8;font-size:9.6px;line-height:1.25;font-weight:500}.nav-stage>.nav-items{margin:2px 0 8px 17px;padding:1px 0 5px 12px;border-left:1px solid rgba(255,255,255,.14)}.nav-subgroup>.nav-subheading,.nav-subgroup>.nav-items a{width:100%;display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;padding-right:6px}.nav-subgroup>.nav-subheading{border:0;background:none;padding-top:7px;padding-bottom:4px;padding-left:7px;color:#919bc4;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780;cursor:pointer}.nav-control,.nav-control-slot{justify-self:end;width:var(--nav-control-width);text-align:right}.nav-subgroup>.nav-items{padding:1px 0 4px 3px}.nav-subgroup>.nav-items a{padding-top:6px;padding-bottom:6px;padding-left:8px;font-size:13.2px}.nav-group.open>.nav-heading>.chevron:before,.nav-group.open>.nav-subheading>.chevron:before{transform:rotate(45deg)}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-items{display:none}.sidebar-footer{flex:0 0 auto;margin:10px -18px -18px;padding:10px 18px 14px;background:#000024;border-top:1px solid rgba(255,255,255,.14)}.organization-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 12px;gap:9px;align-items:center;padding:8px;border-radius:8px;color:#eef1ff;text-decoration:none}.organization-nav:hover,.organization-nav.current{background:rgba(255,255,255,.11)}.organization-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);font-size:13.2px;font-weight:800}.organization-nav strong,.organization-nav small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.organization-nav strong{font-size:12px}.organization-nav small{margin-top:2px;color:#aeb6d8;font-size:9.6px}.organization-arrow{color:#aeb6d8;font-size:19.2px}.organization-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.organization-links{display:grid}.organization-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.organization-links a:first-child{padding-top:0;border-top:0}.organization-links strong,.organization-links small{display:block}.organization-links strong{font-size:13.2px}.organization-links small{margin-top:3px;color:var(--muted);font-size:10.8px;line-height:1.4}.organization-links b{color:var(--accent);font-size:13.2px}.organization-links a:hover strong{color:var(--accent)}
+.nav-stage>.nav-items>a.nav-direct{display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;width:100%;padding:6px 6px 6px 7px;font-size:13.2px}
+.nav-heading-row{display:grid;grid-template-columns:minmax(0,1fr) 24px;gap:2px;align-items:stretch}.nav-heading-row>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr);gap:6px;align-items:center;width:100%;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0;text-decoration:none}.nav-heading-row>.nav-heading:hover,.nav-heading-row>.nav-heading.current{background:rgba(255,255,255,.1);color:#fff}.nav-toggle{display:grid;place-items:center;width:24px;height:auto;min-height:100%;padding:0;border:0;border-radius:6px;background:none;color:#aeb6d8;cursor:pointer}.nav-toggle:hover{background:rgba(255,255,255,.1);color:#fff}.nav-chevron{display:block;width:12px;height:12px;place-self:center;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}.nav-subheading-row{display:grid;grid-template-columns:minmax(0,1fr) 22px;gap:2px;align-items:center;width:100%;padding:0;border:0;border-radius:6px;background:none;color:#919bc4;cursor:pointer}.nav-subheading-row:hover{background:rgba(255,255,255,.1);color:#fff}.nav-subheading-row>.nav-subheading{display:flex;align-items:center;min-width:0;padding:7px;color:inherit;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780}.nav-group.open>.nav-heading-row .nav-chevron,.nav-group.open>.nav-subheading-row .nav-chevron{transform:rotate(90deg)}
+.stage-overview-hero{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;align-items:center;padding:26px 28px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.stage-overview-hero h2,.group-overview-head h2{font:500 37.2px Georgia,serif;margin:7px 0}.stage-overview-hero>div>p:not(.kicker),.group-overview-head>div>p:not(.kicker){max-width:760px;color:var(--muted);font-size:14.4px;line-height:1.55;margin:0}.stage-progress-card{padding:15px 17px;background:var(--paper);border:1px solid var(--line);border-radius:9px}.stage-progress-card>div:first-child{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}.stage-progress-card>div:first-child>strong{font:500 33.6px Georgia,serif}.stage-progress-card p{color:var(--muted);font-size:10.8px;line-height:1.45;margin:9px 0 0}.badge.neutral{background:#e5e8f2;color:#555e73}.stage-overview-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:15px;margin-top:15px;align-items:start}.stage-plan ol,.group-plan ol{display:grid;gap:12px;padding-left:20px;margin:0}.stage-plan li,.group-plan li{padding-left:4px;color:var(--ink);font-size:13.2px;line-height:1.5}.stage-groups{min-width:0}.stage-groups>.section-head{margin:4px 0 13px}.stage-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-group-card{position:relative;display:block;min-height:138px;padding:18px 38px 17px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(21,40,33,.025)}.stage-group-card:hover{border-color:var(--accent-light)}.stage-group-card h3{font-size:15.6px;margin:0 0 7px}.stage-group-card p{color:var(--muted);font-size:12px;line-height:1.5;margin:0}.stage-group-card small{display:block;color:var(--accent);font-size:9.6px;font-weight:700;margin-top:12px}.stage-group-arrow{position:absolute;right:16px;top:16px;color:var(--accent);font-size:24px}.group-overview-head{display:flex;justify-content:space-between;align-items:end;gap:25px;margin-bottom:15px}.stage-status-link{display:grid;grid-template-columns:auto auto;align-items:center;gap:4px 12px;min-width:155px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;text-decoration:none}.stage-status-link>strong{font:500 28.8px Georgia,serif;text-align:right}.stage-status-link>small{grid-column:1/-1;color:var(--muted);font-size:9.6px;text-align:right}.relationship-note{display:grid;grid-template-columns:250px minmax(0,1fr);gap:20px;align-items:center;margin-bottom:15px;padding:17px 20px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:10px}.relationship-note h3{font-size:15.6px;margin:5px 0 0}.relationship-note>p{color:var(--muted);font-size:12px;line-height:1.55;margin:0}.relationship-note code{font-size:10.8px}.group-plan{margin-bottom:24px}.group-related-links{display:flex;align-items:center;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.group-related-links>span{color:var(--muted);font-size:10.8px;margin-right:auto}.group-destinations>.section-head{margin-bottom:12px}.group-destination-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.group-destination-card{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:16px;min-height:150px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(21,40,33,.025)}.group-destination-card:hover{border-color:var(--accent-light)}.group-destination-card h3{font-size:15.6px;margin:5px 0 7px}.group-destination-card p:not(.kicker){color:var(--muted);font-size:10.8px;line-height:1.5;margin:0}.destination-rollup{align-self:center;text-align:right}.destination-rollup strong,.destination-rollup small{display:block}.destination-rollup strong{font:500 32.4px Georgia,serif}.destination-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:3px}
+.stage-pages{margin-top:24px}.stage-page-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-page-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025);transition:border-color .15s,box-shadow .15s}.stage-page-card:hover{border-color:var(--accent-light);box-shadow:0 5px 16px rgba(21,40,33,.07)}.stage-page-card.complete{border-color:#b9dac6}.stage-page-card-link{position:absolute;inset:0;z-index:1;border-radius:10px}.stage-page-card-link:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.stage-page-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px}.stage-page-card-head h3{font-size:15.6px;line-height:1.35;margin:4px 0 0}.stage-page-card-head>div>small{display:block;color:var(--accent);font-size:9.6px;font-weight:700}.stage-page-card>p{color:var(--muted);font-size:12px;line-height:1.5;margin:13px 0 0}.stage-page-rollup{display:flex;flex:0 0 104px;flex-direction:column;justify-content:center;text-align:right}.stage-page-rollup strong,.stage-page-rollup small{display:block}.stage-page-rollup strong{font:500 24px Georgia,serif}.stage-page-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:2px}.stage-page-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:15px}.stage-page-completion{position:relative;z-index:2;color:var(--accent)}.stage-page-completion.complete{color:#176143;border-color:#b9dac6;background:#edf7f1}.stage-page-completion-state{color:var(--muted);font-size:10.8px}.stage-page-completion-state.complete{color:#176143;font-weight:700}.stage-page-open{color:var(--accent);font-size:12px;font-weight:700}.work-queue-section{margin-top:28px}.work-queue-section>.section-head{align-items:end}
 .button{text-decoration:none}
-.home-page{padding-top:16px;padding-bottom:16px}.overview-hero{min-height:72px;padding:10px 20px;align-items:center}.overview-hero h2{font-size:22px;margin:3px 0 2px}.overview-hero p:not(.kicker){font-size:10px}.home-page .readiness-map{padding:12px 15px}.home-page .readiness-map-head{margin-bottom:8px}.home-page .readiness-flow a{padding:7px}
+.home-page{padding-top:16px;padding-bottom:16px}.overview-hero{min-height:72px;padding:10px 20px;align-items:center}.overview-hero h2{font-size:26.4px;margin:3px 0 2px}.overview-hero p:not(.kicker){font-size:12px}.home-page .readiness-map{padding:12px 15px}.home-page .readiness-map-head{margin-bottom:8px}.home-page .readiness-flow a{padding:7px}
 .overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.overview-grid>.audit-panel{grid-column:1/-1}
-.overview-grid>.panel{padding:15px}.overview-grid .panel-head{margin-bottom:10px}.overview-grid .audit-progress{gap:7px 20px}.overview-grid .progress-number strong{font-size:26px}.overview-grid .audit-engagement{padding:8px 11px}
-.nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:10px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
+.overview-grid>.panel{padding:15px}.overview-grid .panel-head{margin-bottom:10px}.overview-grid .audit-progress{gap:7px 20px}.overview-grid .progress-number strong{font-size:31.2px}.overview-grid .audit-engagement{padding:8px 11px}
+.nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:12px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
 .list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}.list-header-tools{flex:1;justify-content:flex-end;margin:0 0 0 28px}.list-header-tools label{flex:1 1 220px;max-width:360px}.list-header-tools select{max-width:190px}.list-header-tools .button{white-space:nowrap}
-.setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:15px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:11px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:11px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:10px;font-weight:700;margin-bottom:6px}.required-mark{font-size:8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:12px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:9px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:10px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:10px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.advanced-editor p{font-size:10px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:12px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
-.record-content-action{display:flex;justify-content:flex-start;margin-top:20px}.record-content-details{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.record-content-details summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:750}.record-content-details>p{color:var(--muted);font-size:10px}.record-content-editor>span small{color:var(--muted);font-size:9px;font-weight:500}
-.program-setup{grid-template-columns:minmax(250px,.75fr) minmax(440px,1.4fr)}.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.setup-steps a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);text-decoration:none}.setup-steps a:hover{border-color:var(--accent-light)}.setup-steps a>span:first-child{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:10px}.setup-steps a.done>span:first-child{background:#dcefe4;color:#125733}.setup-steps strong,.setup-steps small{display:block}.setup-steps strong{font-size:10px}.setup-steps small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4;font-weight:500}
-.readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,.65fr) minmax(320px,1fr);gap:28px;align-items:end;margin-bottom:17px}.readiness-map-head h3{font-size:15px;margin:5px 0 0}.readiness-map-head>p{max-width:710px;color:var(--muted);font-size:11px;line-height:1.5;margin:0}.readiness-flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/4;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:8px;font-weight:800}.readiness-flow strong{font-size:10px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:8px;line-height:1.4;margin-top:3px}.readiness-state{grid-column:2;justify-self:start;margin-top:8px;padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:7px;line-height:1.2}.readiness-state.good{background:#dcefe4;color:#125733}.readiness-state.warn{background:#f6e8c9;color:#79500f}.readiness-state.bad{background:#f7dfdc;color:#873027}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:11px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:9px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:9px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:8px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:14px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:10px}.connections small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:8px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:10px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:11px}.external-source:hover strong{text-decoration:underline}
-.page-title-line{display:flex;align-items:center;gap:8px}.guide-trigger{display:grid;place-items:center;width:24px;height:24px;flex:0 0 auto;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--muted);cursor:pointer}.guide-trigger svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}.guide-trigger:hover{border-color:var(--accent-light);color:var(--accent)}.guide-trigger:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.resource-guide-popover{position:fixed;z-index:40;overflow:auto;box-shadow:0 18px 50px rgba(0,0,24,.24)}.resource-guide-popover[hidden]{display:none}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:8px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:10px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:8px;font-weight:700}
-.page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.repository-sync-status{min-height:18px;margin:7px 0 0;color:var(--muted);font-size:11px}.repository-sync-status.error{color:var(--red)}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:auto}.onboarding-dialog::backdrop{background:transparent;backdrop-filter:none}.onboarding-shade{position:fixed;inset:0;z-index:60;pointer-events:none}.onboarding-shade span{position:absolute;background:rgba(0,0,24,.58)}.onboarding-progress{display:grid;grid-template-columns:repeat(var(--onboarding-step-count),1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:25px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:12px;line-height:1.6;margin:13px 25px 0}.onboarding-body+.onboarding-body{margin-top:8px}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:11px;line-height:1.5;padding-left:3px}.onboarding-sections{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 25px 4px}.onboarding-sections section{padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.onboarding-sections strong{font-size:11px}.onboarding-sections p{margin:6px 0 0;color:var(--muted);font-size:10px;line-height:1.5}.onboarding-actions{padding:12px 25px 23px}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:11px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:10px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:9px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:9px;line-height:1.5;margin:12px 25px 0}.onboarding-dialog>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px;scroll-margin-top:102px}
-.page-intro,.detail-head{align-items:center;margin-bottom:12px}.actions{align-items:center}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:9px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+.setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:18px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:13.2px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:13.2px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:12px;font-weight:700;margin-bottom:6px}.required-mark{font-size:9.6px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:14.4px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:10.8px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:12px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:12px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:13.2px;font-weight:750}.advanced-editor p{font-size:12px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:14.4px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
+.record-content-action{display:flex;justify-content:flex-start;margin-top:20px}.record-content-details{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.record-content-details summary{cursor:pointer;color:var(--accent);font-size:13.2px;font-weight:750}.record-content-details>p{color:var(--muted);font-size:12px}.record-content-editor>span small{color:var(--muted);font-size:10.8px;font-weight:500}
+.program-setup{grid-template-columns:minmax(250px,.75fr) minmax(440px,1.4fr)}.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.setup-steps a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);text-decoration:none}.setup-steps a:hover{border-color:var(--accent-light)}.setup-steps a>span:first-child{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px}.setup-steps a.done>span:first-child{background:#dcefe4;color:#125733}.setup-steps strong,.setup-steps small{display:block}.setup-steps strong{font-size:12px}.setup-steps small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4;font-weight:500}
+.readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,1fr) minmax(320px,420px);gap:28px;align-items:center;margin-bottom:17px}.readiness-map-head h3{font-size:18px;margin:5px 0 0}.readiness-progress-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center}.readiness-progress-summary>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:baseline}.readiness-progress-summary>div>span{color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.readiness-progress-summary>div>strong{font-size:9.6px;font-weight:700;line-height:1.2}.readiness-progress-summary .progress,.readiness-progress-summary small{grid-column:1/-1}.readiness-progress-summary small{color:var(--muted);font-size:9.6px}.readiness-progress-summary>.button{white-space:nowrap}.readiness-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/4;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:9.6px;font-weight:800}.readiness-flow strong{font-size:12px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:9.6px;line-height:1.4;margin-top:3px}.readiness-state{grid-column:2;justify-self:start;margin-top:8px;padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8.4px;line-height:1.2}.readiness-state.good{background:#dcefe4;color:#125733}.readiness-state.warn{background:#f6e8c9;color:#79500f}.readiness-state.bad{background:#f7dfdc;color:#873027}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:13.2px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:10.8px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:10.8px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:10.8px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:9.6px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:10.8px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:16.8px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:9.6px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:12px}.connections small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:9.6px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:12px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:13.2px}.external-source:hover strong{text-decoration:underline}
+.page-title-line{display:flex;align-items:center;gap:8px}.guide-trigger{display:grid;place-items:center;width:24px;height:24px;flex:0 0 auto;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--muted);cursor:pointer}.guide-trigger svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}.guide-trigger:hover{border-color:var(--accent-light);color:var(--accent)}.guide-trigger:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.resource-guide-popover{position:fixed;z-index:40;overflow:auto;box-shadow:0 18px 50px rgba(0,0,24,.24)}.resource-guide-popover[hidden]{display:none}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:12px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:9.6px;font-weight:700}.stage-instructions{margin:0 0 16px;padding:18px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.stage-instructions-head{display:flex;align-items:start;justify-content:space-between;gap:16px;margin-bottom:15px}.stage-instructions-head h3{font-size:18px;margin:5px 0 0}.stage-instructions-head>span{color:var(--muted);font-size:12px}.stage-instruction-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.stage-instruction-grid>div{position:relative;padding:14px 16px;border-left:1px solid var(--line);min-width:0}.stage-instruction-grid>div:first-child{border-left:0}.stage-instruction-grid b{display:block;font-size:13.2px}.stage-instruction-grid p{color:var(--muted);font-size:12px;line-height:1.5;margin:6px 0 0}.stage-instruction-grid a{display:inline-block;color:var(--accent);font-size:12px;font-weight:700;margin-top:10px}.stage-instruction-grid small{display:block;color:var(--muted);font-size:10.8px;margin-top:9px}.evidence-instruction-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.evidence-instruction-grid>div{padding-left:48px}.instruction-number{position:absolute;left:16px;top:14px;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:10.8px;font-weight:800}.stage-instructions-note{color:var(--muted);font-size:12px;margin:12px 0 0}.operation-tracking strong,.operation-tracking small{display:block}.operation-tracking strong{font-size:12px}.operation-tracking small{color:var(--muted);font-size:9.6px;margin-top:3px}
+.page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.repository-sync-status{min-height:18px;margin:7px 0 0;color:var(--muted);font-size:13.2px}.repository-sync-status.error{color:var(--red)}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:auto}.onboarding-dialog::backdrop{background:transparent;backdrop-filter:none}.onboarding-shade{position:fixed;inset:0;z-index:60;pointer-events:none}.onboarding-shade span{position:absolute;background:rgba(0,0,24,.58)}.onboarding-progress{display:grid;grid-template-columns:repeat(var(--onboarding-step-count),1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:30px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:14.4px;line-height:1.6;margin:13px 25px 0}.onboarding-body+.onboarding-body{margin-top:8px}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:13.2px;line-height:1.5;padding-left:3px}.onboarding-sections{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 25px 4px}.onboarding-sections section{padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.onboarding-sections strong{font-size:13.2px}.onboarding-sections p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.onboarding-actions{padding:12px 25px 23px}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:13.2px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:12px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:10.8px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:10.8px;line-height:1.5;margin:12px 25px 0}.onboarding-dialog>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px;scroll-margin-top:102px}
+.page-intro,.detail-head{align-items:center;margin-bottom:12px}.actions{align-items:center}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:10.8px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}
 @media(max-width:1100px){.search{display:none}.topbar-status{margin-left:auto}.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.organization-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.resource-directory{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:20px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.topbar-status{display:none}.search{display:flex;max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.page-intro>.list-header-tools{justify-content:flex-start;margin:15px 0 0}.list-header-tools label{max-width:none}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
-@media(max-width:760px){.setup-banner,.page-guide{grid-template-columns:1fr}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:8px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}.onboarding-actions{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line)}}
+@media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:24px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.topbar-status{display:none}.search{display:flex;max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.page-intro>.list-header-tools{justify-content:flex-start;margin:15px 0 0}.list-header-tools label{max-width:none}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
+@media(max-width:760px){.setup-banner,.page-guide,.stage-instruction-grid,.evidence-instruction-grid,.stage-overview-hero,.relationship-note,.group-destination-card,.stage-page-grid{grid-template-columns:1fr}.page-guide>div,.stage-instruction-grid>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child,.stage-instruction-grid>div:first-child{border-top:0}.stage-instructions-head,.group-overview-head{display:block}.stage-instructions-head>span{display:block;margin-top:7px}.stage-progress-card,.stage-status-link{margin-top:15px}.destination-rollup{text-align:left}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:9.6px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}.onboarding-actions{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line)}}
 @media(max-width:520px){.onboarding-form,.onboarding-sections,.setup-steps{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}.obligation-card-foot{align-items:flex-start;flex-direction:column}.obligation-action{align-self:flex-start}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}
-@media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:20px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
+@media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.detail-grid-structured aside>.panel{align-self:start}}
+@media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:24px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 @media(max-width:760px){.topbar{height:56px}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
 
 body,button,input,select,textarea,dialog{color:var(--ink)}
@@ -2242,22 +2477,23 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .record-table td[data-label]::before{color:var(--muted)}
 .commit-dialog{width:min(560px,calc(100vw - 30px));max-height:calc(100vh - 32px);border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:var(--shadow);overflow:auto}
 .commit-dialog form{padding:23px}
-.commit-dialog form>p{color:var(--muted);font-size:11px;line-height:1.55}
-.commit-dialog label>span{display:block;font-size:10px;font-weight:720;margin-bottom:6px}
-.commit-dialog input{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}
+.commit-dialog form>p{color:var(--muted);font-size:13.2px;line-height:1.55}
+.commit-dialog label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}
+.commit-dialog input{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}
 .commit-files{display:grid;gap:5px;max-height:160px;overflow:auto;margin-top:14px;padding:10px;background:var(--surface-soft);border-radius:7px}
-.commit-files code{font-size:9px;overflow-wrap:anywhere}
+.commit-files code{font-size:10.8px;overflow-wrap:anywhere}
 .onboarding-progress{grid-template-columns:repeat(var(--onboarding-step-count),1fr)}
-.onboarding-git-status{display:flex;align-items:flex-start;gap:9px;margin:14px 25px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.onboarding-git-status .status-dot{margin-top:4px}.onboarding-git-status strong,.onboarding-git-status small{display:block}.onboarding-git-status strong{font-size:10px}.onboarding-git-status small{color:var(--muted);font-size:9px;line-height:1.45;margin-top:3px}.onboarding-git-status code{font-size:9px}
+.onboarding-git-status{display:flex;align-items:flex-start;gap:9px;margin:14px 25px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.onboarding-git-status .status-dot{margin-top:4px}.onboarding-git-status strong,.onboarding-git-status small{display:block}.onboarding-git-status strong{font-size:12px}.onboarding-git-status small{color:var(--muted);font-size:10.8px;line-height:1.45;margin-top:3px}.onboarding-git-status code{font-size:10.8px}
 .badge.status-overdue{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming,.badge.status-proposed{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
-.obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:10px}.obligation-preview small,.event-reminder-preview small{font-size:9px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
-.obligation-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 22px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:8px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:12px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:9px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 24px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:11px;color:var(--muted);margin:0;max-width:720px}.event-trigger-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.event-trigger-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-trigger-card h3{font-size:13px;margin:6px 0}.event-trigger-card p:not(.kicker){font-size:10px;color:var(--muted);line-height:1.5;margin:0}.event-trigger-card ol{padding-left:20px;margin:15px 0;display:grid;gap:8px}.event-trigger-card li span,.event-trigger-card li small{display:block}.event-trigger-card li span{font-size:10px}.event-trigger-card li small{font-size:8px;color:var(--muted);margin-top:2px}.event-trigger-card>.button{margin-top:auto;align-self:flex-start}.event-run-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event-run{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-run-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.event-run-head h3{font-size:13px;margin:7px 0 3px}.event-run-head h3 a{text-decoration:none}.event-run-head small{font-size:9px;color:var(--muted)}.event-run-head>strong{font:500 22px Georgia,serif}.event-run>.progress{margin:13px 0}.event-actions{display:grid}.event-actions a{display:flex;gap:9px;text-decoration:none;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}.event-actions strong,.event-actions small{display:block}.event-actions strong{font-size:10px}.event-actions small{font-size:8px;color:var(--muted);margin-top:2px}
-.obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:9px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
-.event-dialog label{display:block;margin-top:13px}.event-dialog label>span{display:block;font-size:10px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:10px}.event-dialog-steps small{font-size:8px;color:var(--muted);margin-top:2px}
-.packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:9px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:11px}.packet-note,.packet-output>p{font-size:10px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:10px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:10px}.packet-list small{font-size:8px;color:var(--muted);margin-top:2px}
-.packet-preflight{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.packet-preflight a{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);text-decoration:none}.packet-preflight .status-dot{margin-top:4px}.packet-preflight small,.packet-preflight strong{display:block}.packet-preflight small{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.07em}.packet-preflight strong{margin-top:3px;font-size:10px}
-.audit-preparation{margin-bottom:12px}.audit-preparation .panel-head{align-items:flex-start}.audit-preparation .panel-head h3{margin:3px 0}.audit-preparation .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:9px}.preparation-progress{height:5px;margin:12px 0 0;border-radius:99px;background:var(--surface-muted);overflow:hidden}.preparation-progress span{display:block;height:100%;border-radius:inherit;background:var(--primary-gradient)}.audit-preparation-note{margin:9px 0 0;color:var(--muted);font-size:9px;line-height:1.5}.preparation-stages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.preparation-stage{border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);overflow:hidden}.preparation-stage summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px 12px;cursor:pointer;list-style:none}.preparation-stage summary::-webkit-details-marker{display:none}.preparation-stage summary span,.preparation-stage summary strong,.preparation-stage summary small{display:block}.preparation-stage summary strong{font-size:10px}.preparation-stage summary small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.4}.preparation-stage summary b{flex:none;color:var(--muted);font-size:8px;font-weight:650}.preparation-items{border-top:1px solid var(--line);background:var(--panel)}.preparation-items>a,.preparation-items>div{display:grid;grid-template-columns:22px minmax(0,1fr);gap:9px;padding:10px 12px;border-top:1px solid var(--line);text-decoration:none}.preparation-items>:first-child{border-top:0}.preparation-items strong,.preparation-items small{display:block}.preparation-items strong{font-size:9px}.preparation-items small{margin-top:3px;color:var(--muted);font-size:8px;line-height:1.45}.preparation-status{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--surface-muted);color:var(--muted);font-size:9px;font-weight:800}.preparation-status.complete{background:#dcefe4;color:#125733}.preparation-status.action{background:#f7dfdc;color:#873027}.preparation-status.later{background:#f6e8c9;color:#79500f}.preparation-status.external,.preparation-status.info{background:var(--accent-soft);color:var(--accent)}.audit-preparation-error:empty{display:none}
+.obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:12px}.obligation-preview small,.event-reminder-preview small{font-size:10.8px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
+.obligation-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 26.4px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:9.6px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:14.4px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:10.8px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 28.8px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:13.2px;color:var(--muted);margin:0;max-width:720px}.event-trigger-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.event-trigger-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-trigger-card h3{font-size:15.6px;margin:6px 0}.event-trigger-card p:not(.kicker){font-size:12px;color:var(--muted);line-height:1.5;margin:0}.event-trigger-card ol{padding-left:20px;margin:15px 0;display:grid;gap:8px}.event-trigger-card li span,.event-trigger-card li small{display:block}.event-trigger-card li span{font-size:12px}.event-trigger-card li small{font-size:9.6px;color:var(--muted);margin-top:2px}.event-trigger-card>.button{margin-top:auto;align-self:flex-start}.event-run-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event-run{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-run-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.event-run-head h3{font-size:15.6px;margin:7px 0 3px}.event-run-head h3 a{text-decoration:none}.event-run-head small{font-size:10.8px;color:var(--muted)}.event-run-head>strong{font:500 26.4px Georgia,serif}.event-run>.progress{margin:13px 0}.event-actions{display:grid}.event-actions a{display:flex;gap:9px;text-decoration:none;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}.event-actions strong,.event-actions small{display:block}.event-actions strong{font-size:12px}.event-actions small{font-size:9.6px;color:var(--muted);margin-top:2px}
+.obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:10.8px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
+.event-dialog label{display:block;margin-top:13px}.event-dialog label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:12px}.event-dialog-steps small{font-size:9.6px;color:var(--muted);margin-top:2px}
+.packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:10.8px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:13.2px}.packet-note,.packet-output>p{font-size:12px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:12px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:12px}.packet-list small{font-size:9.6px;color:var(--muted);margin-top:2px}
+.packet-preflight{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.packet-preflight a{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);text-decoration:none}.packet-preflight .status-dot{margin-top:4px}.packet-preflight small,.packet-preflight strong{display:block}.packet-preflight small{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.07em}.packet-preflight strong{margin-top:3px;font-size:12px}
+.audit-preparation{margin-bottom:12px}.audit-preparation .panel-head{align-items:flex-start}.audit-preparation .panel-head h3{margin:3px 0}.audit-preparation .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:10.8px}.preparation-progress{height:5px;margin:12px 0 0;border-radius:99px;background:var(--surface-muted);overflow:hidden}.preparation-progress span{display:block;height:100%;border-radius:inherit;background:var(--primary-gradient)}.audit-preparation-note{margin:9px 0 0;color:var(--muted);font-size:10.8px;line-height:1.5}.preparation-stages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.preparation-stage{border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);overflow:hidden}.preparation-stage summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px 12px;cursor:pointer;list-style:none}.preparation-stage summary::-webkit-details-marker{display:none}.preparation-stage summary span,.preparation-stage summary strong,.preparation-stage summary small{display:block}.preparation-stage summary strong{font-size:12px}.preparation-stage summary small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.preparation-stage summary b{flex:none;color:var(--muted);font-size:9.6px;font-weight:650}.preparation-items{border-top:1px solid var(--line);background:var(--panel)}.preparation-items>a,.preparation-items>div{display:grid;grid-template-columns:22px minmax(0,1fr);gap:9px;padding:10px 12px;border-top:1px solid var(--line);text-decoration:none}.preparation-items>:first-child{border-top:0}.preparation-items strong,.preparation-items small{display:block}.preparation-items strong{font-size:10.8px}.preparation-items small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.45}.preparation-status{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--surface-muted);color:var(--muted);font-size:10.8px;font-weight:800}.preparation-status.complete{background:#dcefe4;color:#125733}.preparation-status.action{background:#f7dfdc;color:#873027}.preparation-status.later{background:#f6e8c9;color:#79500f}.preparation-status.external,.preparation-status.info{background:var(--accent-soft);color:var(--accent)}.audit-preparation-error:empty{display:none}
 @media(max-width:900px){.obligation-board,.event-trigger-grid{grid-template-columns:1fr}.event-run-list{grid-template-columns:1fr}.packet-builder form,.packet-preflight{grid-template-columns:1fr 1fr}.packet-builder .button{align-self:end}}
+@media(max-width:1000px){.stage-overview-layout{grid-template-columns:1fr}.stage-page-grid,.group-destination-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.preparation-stages{grid-template-columns:1fr}}
 @media(max-width:900px){.overview-grid{grid-template-columns:1fr}.overview-grid>.audit-panel{grid-column:auto}}
 @media(max-width:520px){.event-reminder-preview,.packet-builder form,.packet-preflight{grid-template-columns:1fr}.packet-metrics{grid-template-columns:1fr}.obligation-card-head{display:block}.obligation-card-head strong{display:block;text-align:left;margin-top:3px}}
@@ -2268,6 +2504,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
   .badge.good{background:#173b2b;color:#a8edc4}
   .badge.warn{background:#483714;color:#ffd991}
   .badge.bad{background:#4a252a;color:#ffb5ad}
+  .badge.neutral{background:#252d48;color:#c8cff0}
   .badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#173b2b;color:#a8edc4}
   .badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#4a252a;color:#ffb5ad}
   .badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#483714;color:#ffd991}

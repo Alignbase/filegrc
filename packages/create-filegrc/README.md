@@ -9,9 +9,9 @@ npm run validate
 npm run serve
 ```
 
-Setup asks for the company name, the initial policy owner, and a security contact email. The generated private project includes a starter Security program, policy-driven work queue, event checklists, audit preparation, evidence packets, and one dependency: `filegrc`.
+Setup asks for the company name, the initial policy owner, and a security contact email. The generated private project includes a starter Security program, Program Readiness, a policy-driven work queue, event checklists, later audit preparation, evidence packets, and one dependency: `filegrc`.
 
-Generated workspaces also include layered `AGENTS.md` instructions and model-driven headless commands. Agents can discover types, scaffold JSON plus Markdown, inspect relationships, perform CRUD, complete policy work, and prepare audit packets through the same domain functions used by the renderer.
+Generated workspaces also include layered `AGENTS.md` instructions and model-driven headless commands. Agents can define program scope, approve policies, implement controls, test evidence collection, complete policy work, and prepare later audit packets through the same domain functions used by the renderer.
 
 Git is initialized when needed. The browser can create local commits before a remote is configured.
 

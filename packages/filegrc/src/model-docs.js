@@ -26,9 +26,9 @@ export function generateModelDocumentation(model) {
     "",
     `Record Markdown is shown by default for: ${model.recordContent.defaultResourceTypes.map((type) => `\`${type}\``).join(", ")}. Other resources without dedicated Markdown can add it when structured fields are not enough.`,
     "",
-    "## Audit preparation defaults",
+    "## Program and audit readiness defaults",
     "",
-    "The engine and renderer use these model-owned defaults to prepare Type 1 and Type 2 engagements. Preparation creates engagement-specific management documents from the local starter templates. Management still confirms scope, approves documents, catalogs authoritative source systems, reconciles Type 2 populations, and supplies source evidence.",
+    "Program Readiness checks management scope, policy adoption, control implementation, authoritative source configuration, and verified test captures without requiring an audit record. Audit Readiness starts after a CPA firm is engaged and uses the defaults below to prepare Type 1 and Type 2 fieldwork.",
     "",
     "Management documents:",
     "",
@@ -40,7 +40,7 @@ export function generateModelDocumentation(model) {
     "",
     "Authoritative systems of record:",
     "",
-    ...model.auditReadiness.externalEvidence.map((item) => `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} ${item.timing}`),
+    ...model.evidenceSourceFamilies.map((item) => `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} ${item.timing}`),
     "",
     "## Resource groups",
     ""
@@ -68,7 +68,12 @@ export function generateModelDocumentation(model) {
         lines.push("Markdown companions:", "");
         for (const [name, markdown] of Object.entries(resource.markdown)) {
           const suffix = markdown.primary ? ".md" : `-${name}.md`;
-          lines.push(`- **${markdown.label}**: \`${suffix}\` beside the JSON record${markdown.required ? " (required)" : " (optional)"}.`);
+          const requirement = markdown.required
+            ? "required"
+            : markdown.requiredWhen
+              ? `required when ${conditionText(markdown.requiredWhen)}`
+              : "optional";
+          lines.push(`- **${markdown.label}**: \`${suffix}\` beside the JSON record (${requirement}).`);
         }
         lines.push("");
       }
@@ -85,6 +90,10 @@ export function generateModelDocumentation(model) {
     }
   }
   return lines.join("\n");
+}
+
+function conditionText(condition) {
+  return Object.entries(condition).map(([name, value]) => `\`${name}\` is \`${value}\``).join(" and ");
 }
 
 function recordContentMode(model, type, resource) {

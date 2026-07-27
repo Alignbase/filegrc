@@ -32,10 +32,19 @@ test("v1 model exposes the complete resource registry", () => {
     assert.ok(document.minimumWords >= 75);
   }
   assert.ok(model.auditReadiness.populationTemplates.every((item) => item.sourceKind && item.timing && item.controlCodes.length));
-  assert.ok(model.auditReadiness.externalEvidence.every((item) => item.id && item.sourceKinds.length && item.timing));
+  assert.ok(model.evidenceSourceFamilies.every((item) => item.id && item.sourceKinds.length && item.timing));
+  assert.deepEqual(model.resources.control.fields.evidenceSourceIds.requiredWhen, { status: "implemented" });
+  assert.deepEqual(model.resources.control.fields.systemIds.requiredWhen, { status: "implemented" });
+  assert.deepEqual(model.resources.control.markdown.record.requiredWhen, { status: "implemented" });
+  assert.equal(model.resources.control.fields.complementaryControlIds, undefined);
+  assert.deepEqual(model.resources["complementary-control"].fields.relatedControlIds.relation, ["control"]);
+  assert.ok(model.resources.workspace.fields.assuranceGoal.values.includes("soc-2-type-2"));
   assert.deepEqual(model.resources.evidence.fields.verifierIds.requiredWhen, { status: "verified" });
   assert.deepEqual(model.resources.evidence.fields.sourceSystemId.requiredWhen, { evidenceKind: "population-export" });
   assert.deepEqual(model.resources["obligation-event"].fields.completedOn.requiredWhen, { status: "complete" });
+  assert.equal(model.resources["renderer-settings"].fields.completedStagePageIds.items, "string");
+  assert.match(model.resources.finding.description, /FileGRC does not create Findings automatically/);
+  assert.match(model.resources.finding.description, /control test, review, risk assessment, security test, incident review, management meeting, or audit/);
   for (const type of model.recordContent.defaultResourceTypes) {
     const resource = model.resources[type];
     assert.ok(resource, `${type} Record Markdown type exists`);

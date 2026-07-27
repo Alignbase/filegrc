@@ -21,6 +21,7 @@ import {
   planObligations
 } from "./obligations.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
+import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
@@ -75,17 +76,15 @@ export async function runCli(argv = process.argv.slice(2)) {
       ...(flags.criticality !== undefined ? { criticality: flags.criticality } : {}),
       ...(flags.classification !== undefined ? { dataClassification: flags.classification } : {}),
       ...(flags["internet-exposed"] !== undefined ? { internetExposed: flags["internet-exposed"] } : {}),
-      ...(flags["approver-name"] !== undefined ? { independentApproverName: flags["approver-name"] } : {}),
-      ...(flags["approver-email"] !== undefined ? { independentApproverEmail: flags["approver-email"] } : {}),
-      ...(flags["audit-goal"] !== undefined ? { auditGoal: flags["audit-goal"] } : {}),
+      ...(flags["program-goal"] !== undefined ? { programGoal: flags["program-goal"] } : {}),
       ...(flags.draft ? { draft: true } : {})
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
       console.log(`System: ${result.system.id} (${result.system.status})`);
-      if (result.audit) console.log(`Audit: ${result.audit.id} (${result.audit.auditKind})`);
-      if (result.draft) console.log("Reviewer appointment remains blocking work before policy approval.");
+      console.log(`Target: ${result.workspace.assuranceGoal}`);
+      console.log("Next: review and approve the applicable policies.");
     }
     return result;
   }
@@ -202,6 +201,24 @@ export async function runCli(argv = process.argv.slice(2)) {
         for (const trigger of result.triggers) console.log(`${trigger.eventType}\t${trigger.prompt}\t${trigger.steps.length} actions`);
       }
     }
+    return result;
+  }
+  if (command === "program-readiness") {
+    const loaded = await loadWorkspace(root);
+    const result = await assessProgramReadiness(loaded, { asOf: flags["as-of"] });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} program items complete`);
+      console.log(`${result.target.label}${result.target.candidatePeriodStart ? `, candidate period starts ${result.target.candidatePeriodStart}` : ""}`);
+      for (const stage of result.stages) {
+        console.log(`\n${stage.title}`);
+        for (const item of stage.items) console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
+      }
+      if (result.canStartCandidatePeriod && !result.operating) {
+        console.log(`\nEvidence Ready: management can start the candidate Type 2 period on or after ${result.suggestedCandidatePeriodStart || result.asOf}.`);
+      }
+    }
+    if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
     return result;
   }
   if (command === "audit-readiness") {
@@ -544,6 +561,7 @@ Usage:
   filegrc list [resource-type] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
+  filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--json]
   filegrc audit-readiness [audit-id] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
@@ -593,13 +611,27 @@ Options:
   --criticality <level>       low, medium, high, or critical
   --classification <name>     dataClassification
   --internet-exposed <bool>   true or false
-  --approver-name <name>      independentApproverName
-  --approver-email <email>    independentApproverEmail
-  --audit-goal <goal>         none, readiness, type-1, or type-2
-  --draft                     Save planned scope without appointing a reviewer
+  --program-goal <goal>       none, readiness, type-1, or type-2
+  --draft                     Save the service boundary as planned
   --json                      Print the result as JSON
   --root <path>               Workspace path
   --help                      Show this help`);
+    return;
+  }
+  if (command === "program-readiness") {
+    console.log(`Usage:
+  filegrc program-readiness [options]
+
+Report whether management has defined scope, activated policies, implemented
+controls, configured authoritative evidence sources, and verified one test capture
+for every selected control family. No audit ID or CPA firm is required.
+
+Options:
+  --as-of <date>     Evaluate effective dates and obligations on YYYY-MM-DD
+  --require-ready    Exit with code 2 unless the Evidence Ready gate passes
+  --json             Print the result as JSON
+  --root <path>      Workspace path
+  --help             Show this help`);
     return;
   }
   printHelp();
@@ -623,6 +655,7 @@ function agentOverview(model) {
       list: "filegrc list [resource-type] --json",
       search: "filegrc search <query> --json",
       obligations: "filegrc obligations --json",
+      programReadiness: "filegrc program-readiness --json",
       auditReadiness: "filegrc audit-readiness <audit-id> --json",
       prepareAudit: "filegrc prepare-audit <audit-id>",
       trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",

@@ -70,7 +70,7 @@ const controls = [
     title: "Security governance",
     statement: "Management assigns security responsibilities, and a reviewer who is separate from the policy owner and control operators independently reviews the program, risks, incidents, findings, policy approvals, and overdue work at least quarterly.",
     requirements: ["CC1.1", "CC1.2", "CC1.3", "CC1.5"],
-    activity: "Assign an external independent reviewer and record quarterly oversight decisions, approvals, and actions.",
+    activity: "Assign an independent reviewer who is separate from program ownership and record quarterly oversight decisions, approvals, and actions.",
     controlType: "preventive",
     operationMode: "manual",
     frequency: "Quarterly",

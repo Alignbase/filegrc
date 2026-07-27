@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createResource, createResources, deleteResource, updateResource } from "./files.js";
 import { createResourceId } from "./id.js";
 import { resolveDataPath } from "./paths.js";
+import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -20,13 +21,23 @@ export async function assessAuditPreparation(input, options = {}) {
       : audits.find((record) => !["complete", "closed", "canceled"].includes(record.status)) || audits[0];
   if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
 
-  const stages = [];
-  stages.push(scopeStage(audit, records, byId));
-  stages.push(programStage(audit, records, byId));
-  stages.push(await documentsStage(loaded, audit, byId));
-  stages.push(evidenceStage(audit, records, byId, loaded.model));
-  stages.push(populationsStage(audit, records, byId, loaded.model));
-  stages.push(auditorStage(loaded.model));
+  const programReadiness = options.programReadiness || await assessProgramReadiness(loaded, {
+    generatedAt: options.generatedAt
+  });
+  const stages = [
+    programFoundationStage(programReadiness, loaded.workspace),
+    engagementStage(audit, byId, programReadiness),
+    scopeStage(audit, records, byId, programReadiness)
+  ];
+  const fieldworkSections = audit
+    ? [
+        await documentsStage(loaded, audit, byId),
+        evidenceStage(audit, records, byId, loaded.model),
+        populationsStage(audit, records, byId, loaded.model)
+      ]
+    : [];
+  stages.push(fieldworkStage(audit, fieldworkSections));
+  stages.push(auditorStage());
 
   for (const stage of stages) {
     stage.counts = countStatuses(stage.items);
@@ -40,7 +51,7 @@ export async function assessAuditPreparation(input, options = {}) {
     schemaVersion: 1,
     generatedAt: options.generatedAt || new Date().toISOString(),
     audit: audit ? auditSummary(audit) : null,
-    status: counts.action ? "needs-work" : audit ? "management-ready" : "not-started",
+    status: !audit ? "not-started" : counts.action ? "needs-work" : "management-ready",
     progress: {
       complete: completedManagedItems.length,
       total: managedItems.length,
@@ -169,19 +180,17 @@ export async function prepareAuditWorkspace(input, options = {}) {
   };
 }
 
-function scopeStage(audit, records, byId) {
+function scopeStage(audit, records, byId, programReadiness) {
   const items = [];
-  items.push(item(
-    "engagement",
-    audit ? "complete" : "action",
-    "Create the engagement",
-    audit
-      ? `${audit.title} is the audit record used for scope, dates, the CPA firm, requests, and the final report.`
-      : "Create a SOC 2 Type 2 audit record before collecting period evidence.",
-    audit || { type: "audit" }
-  ));
   if (!audit) {
-    return stage("scope", "Scope and Engagement", "Define the report, service boundary, criteria, dependencies, and CPA firm.", items);
+    items.push(item(
+      "formal-period",
+      "later",
+      "Confirm the formal report scope and period",
+      "Create the engagement after selecting a CPA firm. Keep operating the management program and preserving evidence in the meantime.",
+      { type: "audit" }
+    ));
+    return stage("period", "Confirm the Formal Period", "Record the auditor-agreed report scope and dates without overwriting management's candidate period.", items);
   }
 
   const periodComplete = audit.auditKind === "soc-2-type-2"
@@ -192,11 +201,11 @@ function scopeStage(audit, records, byId) {
   items.push(item(
     "period",
     periodComplete ? "complete" : "action",
-    "Set the report type and date",
+    "Set the auditor-agreed report type and date",
     periodComplete
       ? audit.auditKind === "soc-2-type-2"
-        ? `Type 2 period: ${audit.periodStart} through ${audit.periodEnd}.`
-        : `Type 1 as-of date: ${audit.typeOneAsOf}.`
+        ? `Auditor-agreed Type 2 period: ${audit.periodStart} through ${audit.periodEnd}.`
+        : `Auditor-agreed Type 1 as-of date: ${audit.typeOneAsOf}.`
       : audit.auditKind === "soc-2-type-1"
         ? "Set the Type 1 as-of date."
         : audit.auditKind === "soc-2-type-2"
@@ -204,6 +213,21 @@ function scopeStage(audit, records, byId) {
           : "Change this readiness record to a Type 1 or Type 2 engagement before planning the report.",
     audit
   ));
+  if (audit.auditKind === "soc-2-type-2" && programReadiness.target.candidatePeriodStart) {
+    const candidate = [programReadiness.target.candidatePeriodStart, programReadiness.target.candidatePeriodEnd]
+      .filter(Boolean)
+      .join(" through ");
+    const agreed = [audit.periodStart, audit.periodEnd].filter(Boolean).join(" through ");
+    items.push(item(
+      "candidate-period-comparison",
+      "info",
+      "Compare candidate and auditor-agreed periods",
+      agreed
+        ? `Management candidate: ${candidate}. Auditor agreed: ${agreed}. Preserve both sets of dates when they differ.`
+        : `Management candidate: ${candidate}. The formal period remains unset until the CPA firm agrees to it.`,
+      audit
+    ));
+  }
 
   const systems = (audit.systemIds || []).map((id) => byId.get(id)).filter(Boolean);
   const completeSystems = systems.filter((system) => (
@@ -350,85 +374,77 @@ function scopeStage(audit, records, byId) {
     audit
   ));
 
-  const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
-  const auditorNamed = Boolean(auditor || hasMeaningfulValue(audit.auditor));
-  items.push(item(
-    "auditor",
-    auditorNamed ? "complete" : "action",
-    "Engage an independent CPA firm",
-    auditorNamed
-      ? `${auditor?.title || "An independent CPA firm"} is recorded for the engagement.`
-      : "Select a CPA firm and agree on scope, timing, subservice treatment, and evidence expectations early.",
-    audit
-  ));
-  return stage("scope", "Scope and Engagement", "Define the report, service boundary, criteria, dependencies, and CPA firm.", items);
+  return stage("period", "Confirm the Formal Period", "Record the auditor-agreed report type, date or period, scope, criteria, systems, and dependency treatment.", items);
 }
 
-function programStage(audit, records, byId) {
-  const selectedControls = audit?.controlIds?.length
-    ? audit.controlIds.map((id) => byId.get(id)).filter(Boolean)
-    : records.filter((record) => record.type === "control" && record.status !== "retired");
-  const policyIds = new Set(selectedControls.flatMap((control) => control.policyIds || []));
-  const policies = (policyIds.size
-    ? [...policyIds].map((id) => byId.get(id)).filter(Boolean)
-    : records.filter((record) => record.type === "policy" && !["superseded", "retired"].includes(record.status)));
-  const approvedPolicies = policies.filter((policy) => (
-    ["approved", "active"].includes(policy.status)
-    && policy.approvedOn
-    && policy.effectiveOn
-    && (policy.ownerIds || []).length
-    && (policy.approverIds || []).length
-    && partiesIndependent(policy.ownerIds, policy.approverIds, byId)
-  ));
-  const implementedControls = selectedControls.filter((control) => (
-    control.status === "implemented"
-    && control.effectiveOn
-    && control.activity
-    && control.operationMode
-    && control.frequency
-    && (control.ownerIds || []).length
-    && (control.requirementIds || []).length
-    && (control.policyIds || []).length
-    && (!audit?.systemIds?.length || (control.systemIds || []).some((id) => audit.systemIds.includes(id)))
-  ));
-  const assessment = records.find((record) => (
-    record.type === "risk-assessment"
-    && record.status === "complete"
-    && record.methodology
-    && record.approvedOn
-    && partiesIndependent(record.assessorIds, record.reviewerIds, byId)
-    && (!audit?.periodEnd || (record.assessmentDate <= audit.periodEnd && record.assessmentDate >= shiftYear(audit.periodEnd, -1)))
-    && (!audit?.systemIds?.length || !(record.systemIds || []).length || record.systemIds.some((id) => audit.systemIds.includes(id)))
-  ));
-  return stage("program", "Adopt and Implement", "Approve the rules, confirm the controls match actual operation, and assess risk.", [
+function programFoundationStage(programReadiness, workspace) {
+  const ready = programReadiness.evidenceReady;
+  return stage("program", "Program Readiness", "The management program can be prepared and operated without an audit record or CPA firm.", [
     item(
-      "policies",
-      policies.length && approvedPolicies.length === policies.length ? "complete" : "action",
-      "Approve the applicable policies",
-      policies.length
-        ? `${approvedPolicies.length} of ${policies.length} applicable policies have an owner, separate approver, approval date, and effective date.`
-        : "Link the controls to the policies management will adopt.",
-      approvedPolicies[0] || policies[0] || { type: "policy" }
-    ),
-    item(
-      "controls",
-      selectedControls.length && implementedControls.length === selectedControls.length ? "complete" : "action",
-      "Confirm every control is implemented",
-      selectedControls.length
-        ? `${implementedControls.length} of ${selectedControls.length} selected controls are implemented, effective, owned, mapped, scoped, and define their activity, mode, and frequency.`
-        : "Select the controls for the engagement, then confirm each statement matches current practice.",
-      implementedControls[0] || selectedControls[0] || { type: "control" }
-    ),
-    item(
-      "risk-assessment",
-      assessment ? "complete" : "action",
-      "Complete the in-scope risk assessment",
-      assessment
-        ? `${assessment.title} is the most recent completed, approved, and independently reviewed assessment found for the service.`
-        : "Complete an in-scope risk assessment during the year ending with the report date or period, using the approved method and a reviewer separate from the assessor.",
-      assessment || { type: "risk-assessment" }
+      "evidence-ready",
+      ready ? "complete" : "action",
+      "Reach the Evidence Ready gate",
+      ready
+        ? `${programReadiness.target.label} is evidence-ready. ${programReadiness.operating ? "Evidence collection is running." : "Management can begin the candidate period."}`
+        : `${programReadiness.counts.action} program-readiness actions remain across scope, policies, controls, and evidence preparation.`,
+      workspace || { type: "workspace" }
     )
   ]);
+}
+
+function engagementStage(audit, byId, programReadiness) {
+  if (!audit) {
+    return stage("engagement", "Engage the Auditor", "Select a CPA firm after the program is evidence-ready, or earlier when a customer deadline makes coordination urgent.", [
+      item(
+        "engagement",
+        programReadiness.evidenceReady ? "action" : "later",
+        "Create the CPA engagement",
+        programReadiness.evidenceReady
+          ? "Select the independent CPA firm, sign the engagement, then create the audit record with the firm and contacts."
+          : "Finish the management program first. Early auditor engagement remains available when a customer deadline requires it.",
+        { type: "audit" }
+      )
+    ]);
+  }
+  const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
+  const named = Boolean(auditor || hasMeaningfulValue(audit.auditor));
+  return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and engagement contacts before treating the audit as active.", [
+    item(
+      "engagement-record",
+      "complete",
+      "Create the engagement record",
+      `${audit.title} tracks the formal scope, dates, requests, fieldwork, and report.`,
+      audit
+    ),
+    item(
+      "auditor",
+      named ? "complete" : "action",
+      "Record the independent CPA firm",
+      named
+        ? `${auditor?.title || audit.auditor?.firm || "The independent CPA firm"} is recorded for the engagement.`
+        : "Select the CPA firm and record it here. The independent management policy reviewer is a different role.",
+      audit
+    )
+  ]);
+}
+
+function fieldworkStage(audit, sections) {
+  if (!audit) {
+    return stage("fieldwork", "Prepare Fieldwork", "Build engagement-specific documents, exact-period evidence, and Type 2 populations after the firm and period are recorded.", [
+      item("fieldwork-later", "later", "Prepare engagement-specific fieldwork", "This work starts after the CPA engagement and formal period exist.", { type: "audit" })
+    ]);
+  }
+  const items = sections.flatMap((section) => section.items.map((current) => ({
+    ...current,
+    id: `${section.id}-${current.id}`,
+    section: section.title
+  })));
+  return stage(
+    "fieldwork",
+    "Prepare Fieldwork",
+    "Complete management documents, exact-period operating evidence, and Type 2 population reconciliations for the engagement.",
+    items
+  );
 }
 
 async function documentsStage(loaded, audit, byId) {
@@ -520,7 +536,7 @@ function evidenceStage(audit, records, byId, model) {
     )
   ];
   const systems = records.filter((record) => record.type === "system" && record.status === "active");
-  for (const source of model.auditReadiness?.externalEvidence || []) {
+  for (const source of model.evidenceSourceFamilies || []) {
     const relevantControls = controls.filter((control) => (source.controlCodes || []).includes(control.code));
     if (!relevantControls.length) {
       items.push(item(
@@ -589,8 +605,8 @@ function populationsStage(audit, records, byId, model) {
   );
 }
 
-function auditorStage(model) {
-  return stage("auditor", "Auditor-Owned Work", "FileGRC prepares the record set but does not make the CPA firm's independent judgments.", [
+function auditorStage() {
+  return stage("auditor", "Fieldwork and Report", "FileGRC prepares the record set but does not make the CPA firm's independent judgments.", [
     item("firm-eligibility", "external", "Firm eligibility and independence", "Confirm directly with the engagement partner that the firm and signing practitioner meet applicable licensing, peer-review, ethics, and independence requirements. Keep the signed engagement terms with the audit record if management needs a copy."),
     item("sampling", "external", "Sample selection and independent testing", "The auditor chooses samples, performs tests, evaluates exceptions, and decides whether more work is needed."),
     item("report", "external", "Report and opinion", "Management reviews and signs its representations. The auditor issues the final report and opinion."),
@@ -897,10 +913,4 @@ function countStatuses(items) {
 
 function displayValue(value) {
   return String(value || "not started").replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function shiftYear(value, offset) {
-  const date = new Date(`${value}T00:00:00Z`);
-  date.setUTCFullYear(date.getUTCFullYear() + offset);
-  return date.toISOString().slice(0, 10);
 }

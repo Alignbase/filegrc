@@ -3,5 +3,6 @@
   "id": "renderer-settings",
   "type": "renderer-settings",
   "title": "Renderer settings",
-  "showOnboarding": true
+  "showOnboarding": true,
+  "completedStagePageIds": []
 }
