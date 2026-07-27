@@ -78,6 +78,22 @@ jobs:
           trap cleanup EXIT
 
           create_version="$(node -p "require('./packages/create-filegrc/package.json').version")"
+          for package in filegrc create-filegrc; do
+            version="$(node -p "require('./packages/${package}/package.json').version")"
+            available=false
+            for _ in {1..12}; do
+              if [ "$(npm view "${package}@${version}" version 2>/dev/null || true)" = "${version}" ]; then
+                available=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "${available}" != "true" ]; then
+              echo "${package}@${version} did not become available from npm."
+              exit 1
+            fi
+          done
+
           cd "${smoke_dir}"
           npx --yes "create-filegrc@${create_version}" company-grc --yes
           cd company-grc
