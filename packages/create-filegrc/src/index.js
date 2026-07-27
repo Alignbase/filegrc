@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, lstat, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -26,13 +26,7 @@ export async function createFileGRC(options = {}) {
   };
 
   await mkdir(target, { recursive: true });
-  await cp(join(packageRoot, "template"), target, {
-    recursive: true,
-    force: false,
-    errorOnExist: true,
-    preserveTimestamps: false
-  });
-  await rename(join(target, "gitignore"), join(target, ".gitignore"));
+  await copyTemplate(target);
   await renderTemplate(target, parameterConfig, values);
   await writeBaselineRecords(target, values.effective_date);
 
@@ -177,6 +171,22 @@ async function templateDestinationPaths() {
     const templatePath = relative(template, source);
     return templatePath === "gitignore" ? ".gitignore" : templatePath;
   });
+}
+
+async function copyTemplate(target) {
+  const template = join(packageRoot, "template");
+  for (const source of await collectFiles(template)) {
+    const templatePath = relative(template, source);
+    const destinationPath = templatePath === "gitignore" ? ".gitignore" : templatePath;
+    const destination = join(target, destinationPath);
+    await assertNoSymlinkComponents(target, destinationPath);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(source, destination, {
+      force: false,
+      errorOnExist: true,
+      preserveTimestamps: false
+    });
+  }
 }
 
 async function collectFiles(directory) {
