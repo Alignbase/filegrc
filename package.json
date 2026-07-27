@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node --watch scripts/dev.mjs",
     "test": "npm test --workspaces --if-present",
-    "validate": "npm test --workspaces --if-present && node packages/filegrc/bin/filegrc.js model --check-docs"
+    "validate": "npm test --workspaces --if-present && node packages/filegrc/bin/filegrc.js model --check-docs && node scripts/check-readme-assets.mjs"
   },
   "engines": {
     "node": ">=20"

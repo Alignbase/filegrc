@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "description": "Zero-dependency Git-native GRC engine",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sunpeak-AI/FileGRC.git"
+  },
   "type": "module",
   "bin": {
-    "filegrc": "./bin/filegrc.js"
+    "filegrc": "bin/filegrc.js"
   },
   "exports": {
     ".": "./src/index.js",
