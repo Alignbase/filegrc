@@ -594,8 +594,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /function onboardingTarget\(step\)/);
   assert.match(APP_SCRIPT, /window\.addEventListener\("scroll", positionCurrentOnboarding, true\)/);
   assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
-  assert.match(APP_SCRIPT, /type: "system"/);
-  assert.match(APP_SCRIPT, /type: "audit"/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/setup"/);
   assert.match(APP_SCRIPT, /Files are the program/);
   assert.match(APP_SCRIPT, /SOC 2 is an audit away/);
   assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*SOC 2 is an audit away[\s\S]*Files are the program/);
@@ -623,14 +622,16 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /The UI and FileGRC CLI use the same calculation/);
   assert.match(APP_SCRIPT, /Every action has a policy-based cutoff or a reasonable default deadline/);
   assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
-  assert.match(APP_SCRIPT, /name="independentApproverName" required/);
-  assert.match(APP_SCRIPT, /name="independentApproverEmail" type="email" required/);
+  assert.match(APP_SCRIPT, /data-onboarding="draft">Save draft/);
+  assert.match(APP_SCRIPT, /Appoint an independent reviewer or use Save draft/);
+  assert.match(APP_SCRIPT, /name="independentApproverName" maxlength/);
+  assert.match(APP_SCRIPT, /name="independentApproverEmail" type="email" maxlength/);
   assert.match(APP_SCRIPT, /The independent approver must be a different person from the policy owner/);
-  assert.match(APP_SCRIPT, /id: "person-independent-approver"/);
-  assert.match(APP_SCRIPT, /status: "external"/);
+  assert.match(APP_SCRIPT, /auditId: onboardingDraft\.auditId,\s+draft/);
   assert.match(APP_SCRIPT, /The reviewer must be separate from the policy owner and control operators/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
   assert.match(APP_SCRIPT, /Git repository and remote detected/);
+  assert.match(APP_SCRIPT, /Detached HEAD detected/);
   assert.match(APP_SCRIPT, /Git remote needed/);
   assert.match(APP_SCRIPT, /Git setup needed/);
   assert.match(APP_SCRIPT, /Saving still works/);
@@ -665,9 +666,10 @@ test("runs optional onboarding from committed renderer settings", () => {
 
 test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function renderObligations\(main, params = new URLSearchParams\(\)\)/);
-  assert.match(APP_SCRIPT, /const sections = \["upcoming", "due", "overdue"\]\.map/);
+  assert.match(APP_SCRIPT, /const sections = \["proposed", "upcoming", "due", "overdue"\]\.map/);
   assert.doesNotMatch(APP_SCRIPT, /class="metrics obligation-metrics"/);
   assert.match(APP_SCRIPT, /state\.obligations\.counts\.overdue/);
+  assert.match(APP_SCRIPT, /state\.obligations\.counts\.proposed/);
   assert.match(APP_SCRIPT, /daysUntilOverdue/);
   assert.match(APP_SCRIPT, /dueWindowStart/);
   assert.match(APP_SCRIPT, /dueWindowEnd/);

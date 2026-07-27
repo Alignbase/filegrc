@@ -253,11 +253,17 @@ function topbar(route) {
 
 function renderHome(main) {
   const activeAudit = resourcesOfType("audit").find((item) => !["complete", "closed", "cancelled"].includes(item.record.status));
-  main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + readinessOverview() +
+  const setupPending = rendererSettingsEntry()?.record.showOnboarding === true;
+  const acceptedEventTriggers = state.obligations.triggers.filter(({ programStatus }) => programStatus !== "proposed");
+  const setupBanner = setupPending
+    ? '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Appoint an independent reviewer</h3><p>The service boundary can remain planned, but policies cannot be approved until an external reviewer is appointed.</p></div><ol><li>Review the planned service boundary.</li><li>Add the reviewer name and email.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>'
+    : "";
+  main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + setupBanner + readinessOverview() +
     '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due Windows</h3></div><a href="#/obligations">Open board</a></div>' + obligationPreview(state.obligations.items.filter((item) => item.status !== "complete").slice(0, 3)) + '</section>' +
-    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/obligations?section=events">Start workflow</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
+    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/obligations?section=events">' + (acceptedEventTriggers.length ? "Start workflow" : "Review proposals") + '</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
     '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Audit activity</p><h3>' + esc(titleCase(activeAudit?.record.title || "Plan the Engagement")) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Plan audit</a>') + '</div>' +
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section></div></div>';
+  main.querySelector("#resume-setup")?.addEventListener("click", requestOnboarding);
 }
 
 function readinessOverview() {
@@ -274,7 +280,7 @@ function readinessOverview() {
     ["Criteria", "Record what the auditor will evaluate and whether it applies.", "#/resources/requirement", requirements.length + " applicable", requirements.length ? "neutral" : "warn"],
     ["Policies", "Set the rules and responsibilities the company adopts.", "#/resources/policy", approvedPolicies.length + " of " + policies.length + " approved", approvedPolicies.length === policies.length && policies.length ? "good" : "warn"],
     ["Controls", "Confirm the repeatable work that satisfies those rules and criteria.", "#/resources/control", confirmedControls.length + " of " + controls.length + " reviewed", confirmedControls.length === controls.length && controls.length ? "good" : "warn"],
-    ["Operate Controls", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due · " + evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"],
+    ["Operate Controls", "Complete recurring and event work, then attach dated evidence.", "#/obligations", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due · " + evidence.length + " evidence" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " starter proposals" : evidence.length + " evidence", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"],
     ["Audit", "Track the firm, date or period, requests, evidence packet, findings, and report.", activeAudit ? "#/resources/audit" : "#/resources/audit?new=1", activeAudit ? "Engagement active" : "Not planned", activeAudit ? "good" : "neutral"]
   ];
   return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Follow the Audit Chain</h3></div><p>An auditor traces the system in scope to criteria, company rules, operating controls, and proof that the controls were implemented at the Type 1 date or operated during the Type 2 period.</p></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
@@ -290,7 +296,7 @@ function auditEngagementPrompt(audit = null) {
 function renderObligations(main, params = new URLSearchParams()) {
   const plan = state.obligations;
   const visibleCardLimit = 6;
-  const sections = ["upcoming", "due", "overdue"].map((status) => {
+  const sections = ["proposed", "upcoming", "due", "overdue"].map((status) => {
     const items = plan.items.filter((item) => item.status === status);
     const cards = items.map((item, index) => obligationCard(item, index >= visibleCardLimit)).join("");
     const more = items.length > visibleCardLimit
@@ -298,11 +304,11 @@ function renderObligations(main, params = new URLSearchParams()) {
       : "";
     return '<section class="obligation-column" data-obligation-column="' + status + '"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(status) + '</span><strong>' + items.length + '</strong></div><div class="obligation-cards">' + (items.length ? cards : empty("Nothing " + status + ".")) + '</div>' + more + '</section>';
   }).join("");
-  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.eventType) + '</p><h3>' + esc(titleCase(trigger.prompt)) + '</h3><p>' + trigger.steps.length + ' policy actions will be created with their own owners and due windows.</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
+  const triggers = plan.triggers.map((trigger) => '<article class="event-trigger-card"><div><p class="kicker">' + esc(trigger.programStatus === "proposed" ? "Starter proposal" : trigger.eventType) + '</p><h3>' + esc(titleCase(trigger.prompt)) + '</h3><p>' + trigger.steps.length + (trigger.programStatus === "proposed" ? ' proposed actions become available after a linked policy is approved.' : ' policy actions will be created with their own owners and due windows.') + '</p></div><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol>' + (!state.readOnly && trigger.programStatus !== "proposed" ? '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '">Start workflow</button>' : "") + '</article>').join("");
   const runs = plan.eventRuns
     .filter((run) => run.status !== "canceled")
     .sort((a, b) => String(b.occurredAt || b.occurredOn).localeCompare(String(a.occurredAt || a.occurredOn)));
-  main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation Board</h2><p>Recurring work shows when a task may be completed and the date it becomes overdue. Policy events create a tracked checklist when something changes.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit templates</a></div></div>' +
+  main.innerHTML = '<div class="page obligation-board-page"><div class="page-intro"><div><p class="kicker">Policy work queue</p><h2>Obligation Board</h2><p>Work linked only to draft policies stays a starter proposal. After a policy is approved, recurring work shows its due window and overdue date.</p></div><div class="page-actions"><button class="button" type="button" data-scroll-events>Start policy event</button><a class="button" href="#/resources/obligation">Edit templates</a></div></div>' +
     '<div class="obligation-board">' + sections + '</div>' +
     '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Ongoing reminders</p><h2>Start a Policy Event</h2><p>Use these when the underlying event happens. The generated checklist remains a normal set of Git-tracked records.</p></div></div><div class="event-trigger-grid">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
     '<section class="workflow-section"><div class="section-head"><div><p class="kicker">Event execution</p><h2>Active and Recent Workflows</h2><p>Link the requested completion records and evidence on each action item before marking it done.</p></div></div><div class="event-run-list">' + (runs.length ? runs.map(eventRunCard).join("") : empty("No policy events have been started.")) + '</div></section></div>';
@@ -336,7 +342,7 @@ function obligationCard(item, collapsed = false) {
   const type = item.actionItemId ? "action-item" : "obligation";
   const id = item.actionItemId || item.obligationId;
   const completion = !item.actionItemId ? obligationCompletionPlan(item) : null;
-  const action = !state.readOnly && item.status !== "upcoming" && completion
+  const action = !state.readOnly && !["upcoming", "proposed"].includes(item.status) && completion
     ? completion.blocked
       ? '<a class="obligation-action blocked" href="' + completion.href + '">' + esc(completion.blocked) + '</a>'
       : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
@@ -500,7 +506,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Repository", state.git.available ? state.git.clean ? "Clean revision" : state.git.changes.length + " uncommitted" : "Git unavailable", "#/repository", state.git.clean ? "good" : "warn"],
     ["Engagement", selected ? selected.title : "No audit record", "#/resources/audit", selected ? "good" : "warn"],
     ["Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "warn"],
-    ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due + " due", "#/obligations", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : "good"]
+    ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/obligations", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
   ];
   const dateFields = typeOne
     ? '<label><span>As-of date</span><input type="date" name="start" required value="' + esc(start) + '"></label>'
@@ -613,7 +619,11 @@ function obligationPreview(items) {
 }
 
 function eventReminderPreview(triggers) {
-  return triggers.length ? '<div class="event-reminder-preview">' + triggers.map((trigger) => '<a href="#/obligations?event=' + encodeURIComponent(trigger.eventType) + '"><strong>' + esc(trigger.prompt) + '</strong><small>' + trigger.steps.length + ' required actions</small></a>').join("") + '</div>' : empty("No event reminders configured.");
+  return triggers.length ? '<div class="event-reminder-preview">' + triggers.map((trigger) => {
+    const proposed = trigger.programStatus === "proposed";
+    const href = proposed ? "#/obligations?section=events" : "#/obligations?event=" + encodeURIComponent(trigger.eventType);
+    return '<a href="' + href + '"><strong>' + esc(trigger.prompt) + '</strong><small>' + trigger.steps.length + (proposed ? ' proposed actions' : ' required actions') + '</small></a>';
+  }).join("") + '</div>' : empty("No event reminders configured.");
 }
 
 function windowText(item) {
@@ -628,6 +638,7 @@ function windowText(item) {
 function timingText(item) {
   if (item.canceledAction) return "Action canceled; resolve or cancel the event";
   if (item.missingCompletion) return "Link required completion proof";
+  if (item.status === "proposed") return "Starter proposal";
   if (item.status === "overdue" && Number.isInteger(item.hoursOverdue)) {
     return item.hoursOverdue === 0 ? "Overdue less than 1 hour" : item.hoursOverdue + " hour" + (item.hoursOverdue === 1 ? "" : "s") + " overdue";
   }
@@ -876,18 +887,22 @@ function renderRepository(main) {
     ? '<button class="button" type="button" data-git-action="pull" ' + (pullDisabled ? 'disabled title="' + esc(pullDisabled) + '"' : "") + '>Pull with rebase</button>'
     : "";
   const commitButton = !state.readOnly && state.git.available && !state.git.clean
-    ? '<button class="button primary" type="button" id="commit-workspace" ' + (state.validation.ok ? "" : 'disabled title="Fix validation errors before committing"') + '>' + (hasRemote ? "Commit and push" : "Commit locally") + '</button>'
+    ? '<button class="button primary" type="button" id="commit-workspace" ' + (!state.git.branch
+      ? 'disabled title="Check out a branch before committing"'
+      : state.validation.ok ? "" : 'disabled title="Fix validation errors before committing"') + '>' + (hasRemote ? "Commit and push" : "Commit locally") + '</button>'
     : "";
   const pushButton = !state.readOnly && state.git.available && hasRemote
     ? '<button class="button primary" type="button" data-git-action="push" ' + (pushDisabled ? 'disabled title="' + esc(pushDisabled) + '"' : "") + '>Push</button>'
     : "";
-  const repositoryInstructions = hasRemote
+  const repositoryInstructions = !state.git.branch
+    ? "This workspace is on a detached HEAD. Check out a branch before using browser commit, pull, or push."
+    : hasRemote
     ? "Pull remote changes with rebase, review the workspace diff, then commit and push together."
     : "Review the workspace diff, then commit it locally. Add a Git remote when you want browser pull and push.";
   const validationBody = state.validation.diagnostics.length
     ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(item.severity) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>'
     : empty("No validation problems.");
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository State</h2><p>' + repositoryInstructions + ' Git supplies authors, timestamps, messages, revisions, and file history.</p><p class="repository-sync-status" role="status" aria-live="polite"></p></div><div class="page-actions">' + pullButton + commitButton + pushButton + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Current Revision</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(state.git.branch || "Unavailable") + '</dd></div><div><dt>Upstream</dt><dd>' + esc(state.git.upstream || "Not configured") + '</dd></div><div><dt>Remotes</dt><dd>' + esc(state.git.remotes?.join(", ") || "None configured") + '</dd></div><div><dt>Commit</dt><dd><code>' + esc(state.git.commit || "Unavailable") + '</code></dd></div><div><dt>Working tree</dt><dd>' + (state.git.clean === null ? "Unavailable" : state.git.clean ? "Clean" : "Has changes") + '</dd></div><div><dt>Generated</dt><dd>' + esc(formatLocalDateTime(state.generatedAt)) + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Uncommitted Changes</h3></div>' + (state.git.changes?.length ? '<ul class="changes">' + state.git.changes.map((change) => '<li><code>' + esc(change) + '</code></li>').join("") + '</ul>' : empty(state.git.available ? "No uncommitted changes." : state.git.message)) + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + validationBody + '</section></div></div>';
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository State</h2><p>' + repositoryInstructions + ' Git supplies authors, timestamps, messages, revisions, and file history.</p><p class="repository-sync-status" role="status" aria-live="polite"></p></div><div class="page-actions">' + pullButton + commitButton + pushButton + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Current Revision</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(state.git.branch || (state.git.available ? "Detached HEAD" : "Unavailable")) + '</dd></div><div><dt>Upstream</dt><dd>' + esc(state.git.upstream || "Not configured") + '</dd></div><div><dt>Remotes</dt><dd>' + esc(state.git.remotes?.join(", ") || "None configured") + '</dd></div><div><dt>Commit</dt><dd><code>' + esc(state.git.commit || "Unavailable") + '</code></dd></div><div><dt>Working tree</dt><dd>' + (state.git.clean === null ? "Unavailable" : state.git.clean ? "Clean" : "Has changes") + '</dd></div><div><dt>Generated</dt><dd>' + esc(formatLocalDateTime(state.generatedAt)) + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Uncommitted Changes</h3></div>' + (state.git.changes?.length ? '<ul class="changes">' + state.git.changes.map((change) => '<li><code>' + esc(change) + '</code></li>').join("") + '</ul>' : empty(state.git.available ? "No uncommitted changes." : state.git.message)) + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + validationBody + '</section></div></div>';
   main.querySelector("#commit-workspace")?.addEventListener("click", openCommitDialog);
   main.querySelectorAll("[data-git-action]").forEach((button) => button.addEventListener("click", () => runRepositoryGitAction(button.dataset.gitAction)));
   main.querySelector("#start-onboarding")?.addEventListener("click", requestOnboarding);
@@ -1242,7 +1257,10 @@ function renderOnboardingStep() {
   const body = onboardingStep === steps.length - 1
     ? onboardingSetupForm()
     : description + explanation + afterSections;
-  onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(titleCase(step.title)) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + '<button class="button primary" type="button" data-onboarding="next">' + (onboardingStep === steps.length - 1 ? "Save setup" : "Next") + '</button></div>';
+  const finalActions = onboardingStep === steps.length - 1
+    ? '<button class="button" type="button" data-onboarding="draft">Save draft</button><button class="button primary" type="button" data-onboarding="next">Complete setup</button>'
+    : '<button class="button primary" type="button" data-onboarding="next">Next</button>';
+  onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(titleCase(step.title)) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + finalActions + '</div>';
   onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", cancelOnboarding);
   onboardingDialog.querySelector('[data-onboarding="back"]')?.addEventListener("click", () => {
     captureOnboardingForm();
@@ -1250,12 +1268,13 @@ function renderOnboardingStep() {
     renderOnboardingStep();
   });
   onboardingDialog.querySelector('[data-onboarding="next"]').addEventListener("click", () => {
-    if (onboardingStep === steps.length - 1) saveOnboarding();
+    if (onboardingStep === steps.length - 1) saveOnboarding(false);
     else {
       onboardingStep += 1;
       renderOnboardingStep();
     }
   });
+  onboardingDialog.querySelector('[data-onboarding="draft"]')?.addEventListener("click", () => saveOnboarding(true));
   const target = onboardingTarget(step);
   if (target) {
     target.classList.add("onboarding-focus");
@@ -1289,12 +1308,14 @@ function onboardingSetupForm() {
     currentSystem ? "Updates system " + currentSystem.title + "." : "Creates a new in-scope system.",
     currentAudit ? "Updates planned audit " + currentAudit.title + " when an audit objective is selected." : ""
   ].filter(Boolean).join(" ");
-  const gitStatus = state.git.available && state.git.remotes?.length
+  const gitStatus = state.git.available && !state.git.branch
+    ? '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Detached HEAD detected</strong><small>Setup changes can be saved, but browser commits, pulls, and pushes are disabled until you check out a branch.</small></span></div>'
+    : state.git.available && state.git.remotes?.length
     ? '<div class="onboarding-git-status"><span class="status-dot good"></span><span><strong>Git repository and remote detected</strong><small>Setup changes will appear in the workspace diff. Browser commits push to the configured remote.</small></span></div>'
     : state.git.available
       ? '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git remote needed</strong><small>Saving and local commits still work. Add a remote before the browser can push.</small></span></div>'
       : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Saving still works. Run <code>git init</code> at the workspace root before your first compliance commit.</small></span></div>';
-  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label><span>External independent approver</span><input name="independentApproverName" required maxlength="200" value="' + esc(onboardingDraft.independentApproverName) + '" placeholder="Reviewer name"><small>Must be separate from the policy owner and control operators.</small></label><label><span>Approver email</span><input name="independentApproverEmail" type="email" required maxlength="320" value="' + esc(onboardingDraft.independentApproverEmail) + '" placeholder="' + esc(approverEmailPlaceholder) + '"></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No Engagement Planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness Assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Saving writes JSON files but does not commit them.</p>';
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label><span>External independent approver</span><input name="independentApproverName" maxlength="200" value="' + esc(onboardingDraft.independentApproverName) + '" placeholder="Reviewer name"><small>Required to complete setup. Must be separate from the policy owner and control operators.</small></label><label><span>Approver email</span><input name="independentApproverEmail" type="email" maxlength="320" value="' + esc(onboardingDraft.independentApproverEmail) + '" placeholder="' + esc(approverEmailPlaceholder) + '"></label><label class="wide"><span>Audit objective</span><select name="auditGoal" required><option value="none" ' + (onboardingDraft.auditGoal === "none" ? "selected" : "") + '>No Engagement Planned</option><option value="readiness" ' + (onboardingDraft.auditGoal === "readiness" ? "selected" : "") + '>Readiness Assessment</option><option value="type-1" ' + (onboardingDraft.auditGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.auditGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Dates, auditor, subservice method, and final scope stay unset until the engagement is planned.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Save draft keeps reviewer appointment open. Saving writes JSON files but does not commit them.</p>';
 }
 
 function captureOnboardingForm() {
@@ -1306,11 +1327,18 @@ function captureOnboardingForm() {
   }
 }
 
-async function saveOnboarding() {
+async function saveOnboarding(draft = false) {
   if (onboardingBusy) return;
   const form = onboardingDialog?.querySelector("#onboarding-setup");
   if (!form?.reportValidity()) return;
   captureOnboardingForm();
+  if (!draft && (!onboardingDraft.independentApproverName || !onboardingDraft.independentApproverEmail)) {
+    const field = form.elements[!onboardingDraft.independentApproverName ? "independentApproverName" : "independentApproverEmail"];
+    field.setCustomValidity("Appoint an independent reviewer or use Save draft.");
+    field.reportValidity();
+    field.addEventListener("input", () => field.setCustomValidity(""), { once: true });
+    return;
+  }
   const policyOwner = state.resources.find(({ record }) => record.id === "person-policy-owner")?.record;
   const sameName = policyOwner?.title?.trim().toLowerCase() === onboardingDraft.independentApproverName.toLowerCase();
   const sameEmail = policyOwner?.email?.trim().toLowerCase() === onboardingDraft.independentApproverEmail.toLowerCase();
@@ -1321,100 +1349,28 @@ async function saveOnboarding() {
     field.addEventListener("input", () => field.setCustomValidity(""), { once: true });
     return;
   }
-  setOnboardingBusy(true, "Saving…");
+  setOnboardingBusy(true, draft ? "Saving draft…" : "Completing…");
   try {
+    const response = await localFetch("/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        serviceName: onboardingDraft.serviceName,
+        boundary: onboardingDraft.scope,
+        ownerId: onboardingDraft.ownerId,
+        criticality: onboardingDraft.criticality,
+        dataClassification: onboardingDraft.dataClassification,
+        internetExposed: onboardingDraft.internetExposed === "true",
+        independentApproverName: onboardingDraft.independentApproverName,
+        independentApproverEmail: onboardingDraft.independentApproverEmail,
+        auditGoal: onboardingDraft.auditGoal,
+        systemId: onboardingDraft.systemId,
+        auditId: onboardingDraft.auditId,
+        draft
+      })
+    });
+    if (!response.ok) throw new Error(await responseMessage(response));
     state = await fetchJson("/api/state");
-    const approverEntry = state.resources.find(({ record }) => record.id === "person-independent-approver");
-    const oversightTeamExists = state.resources.some(({ record }) => record.id === "team-security-risk-oversight");
-    const independentApprover = {
-      ...(approverEntry?.record || {}),
-      schemaVersion: 1,
-      id: "person-independent-approver",
-      type: "person",
-      title: onboardingDraft.independentApproverName,
-      status: "external",
-      email: onboardingDraft.independentApproverEmail,
-      role: "External Security and Risk Oversight Reviewer",
-      employmentType: "external-reviewer",
-      ...(oversightTeamExists ? { teamIds: ["team-security-risk-oversight"] } : {})
-    };
-    await writeOnboardingResource(independentApprover, approverEntry);
-    state = await fetchJson("/api/state");
-
-    let systemEntry = onboardingDraft.systemId
-      ? state.resources.find(({ record }) => record.type === "system" && record.id === onboardingDraft.systemId)
-      : state.resources.find(({ record }) => (
-        record.type === "system"
-        && record.inScope === true
-        && record.title.trim().toLowerCase() === onboardingDraft.serviceName.toLowerCase()
-      ));
-    const systemId = systemEntry?.record.id || createResourceId("system", onboardingDraft.serviceName, state.resources.map(({ record }) => record.id));
-    onboardingDraft.systemId = systemId;
-    const system = {
-      ...(systemEntry?.record || {}),
-      schemaVersion: 1,
-      id: systemId,
-      type: "system",
-      title: onboardingDraft.serviceName,
-      status: systemEntry?.record.status || "active",
-      criticality: onboardingDraft.criticality,
-      ownerIds: [onboardingDraft.ownerId],
-      description: onboardingDraft.scope,
-      systemKind: systemEntry?.record.systemKind || "service",
-      dataClassification: onboardingDraft.dataClassification,
-      internetExposed: onboardingDraft.internetExposed === "true",
-      inScope: true
-    };
-    await writeOnboardingResource(system, systemEntry);
-    state = await fetchJson("/api/state");
-    systemEntry = state.resources.find(({ record }) => record.id === systemId);
-
-    const controlsToLink = resourcesOfType("control").filter(({ record }) => (
-      !["not-applicable", "retired"].includes(record.status)
-      && !(record.systemIds || []).includes(systemId)
-    ));
-    if (controlsToLink.length) {
-      for (const controlEntry of controlsToLink) {
-        await writeOnboardingResource({
-          ...controlEntry.record,
-          systemIds: [...new Set([...(controlEntry.record.systemIds || []), systemId])]
-        }, controlEntry);
-      }
-      state = await fetchJson("/api/state");
-    }
-    if (onboardingDraft.auditGoal !== "none") {
-      let auditEntry = onboardingDraft.auditId
-        ? state.resources.find(({ record }) => record.type === "audit" && record.id === onboardingDraft.auditId)
-        : state.resources.find(({ record }) => (
-          record.type === "audit"
-          && record.auditKind === auditKindFromGoal(onboardingDraft.auditGoal)
-          && record.title === onboardingDraft.serviceName + " " + auditTitleFromGoal(onboardingDraft.auditGoal)
-        ));
-      const kind = auditKindFromGoal(onboardingDraft.auditGoal);
-      const title = onboardingDraft.serviceName + " " + auditTitleFromGoal(onboardingDraft.auditGoal);
-      const auditId = auditEntry?.record.id || createResourceId("audit", title, state.resources.map(({ record }) => record.id));
-      onboardingDraft.auditId = auditId;
-      const audit = {
-        ...(auditEntry?.record || {}),
-        schemaVersion: 1,
-        id: auditId,
-        type: "audit",
-        title: auditEntry?.record.title || title,
-        status: auditEntry?.record.status || "planned",
-        auditKind: kind,
-        frameworkIds: auditEntry?.record.frameworkIds || resourcesOfType("framework").filter(({ record }) => record.status === "active").map(({ record }) => record.id),
-        scope: onboardingDraft.scope,
-        ownerIds: [onboardingDraft.ownerId],
-        systemIds: [...new Set([...(auditEntry?.record.systemIds || []), systemId])],
-        requirementIds: auditEntry?.record.requirementIds || resourcesOfType("requirement").filter(({ record }) => record.applicability === "applicable").map(({ record }) => record.id),
-        controlIds: auditEntry?.record.controlIds || resourcesOfType("control").filter(({ record }) => !["not-applicable", "retired"].includes(record.status)).map(({ record }) => record.id),
-        contactIds: [...new Set([...(auditEntry?.record.contactIds || []), onboardingDraft.ownerId])]
-      };
-      await writeOnboardingResource(audit, auditEntry);
-      state = await fetchJson("/api/state");
-    }
-
-    await persistOnboardingPreference(false);
     closeOnboarding();
     history.replaceState(null, "", "#/");
     render();
@@ -2293,9 +2249,9 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .commit-files code{font-size:9px;overflow-wrap:anywhere}
 .onboarding-progress{grid-template-columns:repeat(var(--onboarding-step-count),1fr)}
 .onboarding-git-status{display:flex;align-items:flex-start;gap:9px;margin:14px 25px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.onboarding-git-status .status-dot{margin-top:4px}.onboarding-git-status strong,.onboarding-git-status small{display:block}.onboarding-git-status strong{font-size:10px}.onboarding-git-status small{color:var(--muted);font-size:9px;line-height:1.45;margin-top:3px}.onboarding-git-status code{font-size:9px}
-.badge.status-overdue{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
+.badge.status-overdue{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming,.badge.status-proposed{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
 .obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:10px}.obligation-preview small,.event-reminder-preview small{font-size:9px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
-.obligation-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 22px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:8px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:12px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:9px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 24px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:11px;color:var(--muted);margin:0;max-width:720px}.event-trigger-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.event-trigger-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-trigger-card h3{font-size:13px;margin:6px 0}.event-trigger-card p:not(.kicker){font-size:10px;color:var(--muted);line-height:1.5;margin:0}.event-trigger-card ol{padding-left:20px;margin:15px 0;display:grid;gap:8px}.event-trigger-card li span,.event-trigger-card li small{display:block}.event-trigger-card li span{font-size:10px}.event-trigger-card li small{font-size:8px;color:var(--muted);margin-top:2px}.event-trigger-card>.button{margin-top:auto;align-self:flex-start}.event-run-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event-run{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-run-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.event-run-head h3{font-size:13px;margin:7px 0 3px}.event-run-head h3 a{text-decoration:none}.event-run-head small{font-size:9px;color:var(--muted)}.event-run-head>strong{font:500 22px Georgia,serif}.event-run>.progress{margin:13px 0}.event-actions{display:grid}.event-actions a{display:flex;gap:9px;text-decoration:none;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}.event-actions strong,.event-actions small{display:block}.event-actions strong{font-size:10px}.event-actions small{font-size:8px;color:var(--muted);margin-top:2px}
+.obligation-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 22px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:8px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:12px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:9px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 24px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:11px;color:var(--muted);margin:0;max-width:720px}.event-trigger-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.event-trigger-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-trigger-card h3{font-size:13px;margin:6px 0}.event-trigger-card p:not(.kicker){font-size:10px;color:var(--muted);line-height:1.5;margin:0}.event-trigger-card ol{padding-left:20px;margin:15px 0;display:grid;gap:8px}.event-trigger-card li span,.event-trigger-card li small{display:block}.event-trigger-card li span{font-size:10px}.event-trigger-card li small{font-size:8px;color:var(--muted);margin-top:2px}.event-trigger-card>.button{margin-top:auto;align-self:flex-start}.event-run-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event-run{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}.event-run-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.event-run-head h3{font-size:13px;margin:7px 0 3px}.event-run-head h3 a{text-decoration:none}.event-run-head small{font-size:9px;color:var(--muted)}.event-run-head>strong{font:500 22px Georgia,serif}.event-run>.progress{margin:13px 0}.event-actions{display:grid}.event-actions a{display:flex;gap:9px;text-decoration:none;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}.event-actions strong,.event-actions small{display:block}.event-actions strong{font-size:10px}.event-actions small{font-size:8px;color:var(--muted);margin-top:2px}
 .obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:9px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
 .event-dialog label{display:block;margin-top:13px}.event-dialog label>span{display:block;font-size:10px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:12px}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:10px}.event-dialog-steps small{font-size:8px;color:var(--muted);margin-top:2px}
 .packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:9px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:11px}.packet-note,.packet-output>p{font-size:10px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:10px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:10px}.packet-list small{font-size:8px;color:var(--muted);margin-top:2px}

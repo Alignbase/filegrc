@@ -55,6 +55,7 @@ export function planObligations(resources, options = {}) {
   };
 
   for (const obligation of obligations) {
+    const programStatus = obligationProgramStatus(obligation, byId);
     if (obligation.recurrence?.mode === "event" && obligation.recurrence.eventType) {
       const eventType = obligation.recurrence.eventType;
       const group = triggerGroups.get(eventType) ?? {
@@ -62,8 +63,10 @@ export function planObligations(resources, options = {}) {
         prompt: obligation.triggerPrompt || humanize(eventType),
         policyIds: [],
         obligationIds: [],
+        programStatus,
         steps: []
       };
+      if (programStatus === "proposed") group.programStatus = "proposed";
       group.policyIds.push(...(obligation.policyIds || []));
       group.obligationIds.push(obligation.id);
       group.steps.push({
@@ -76,6 +79,7 @@ export function planObligations(resources, options = {}) {
         scopeResourceIds: obligation.scopeResourceIds || [],
         templateResourceId: obligation.templateResourceId || null,
         completionResourceTypes: obligation.completionResourceTypes || [],
+        programStatus,
         window: normalizedEventWindow(obligation.window)
       });
       triggerGroups.set(eventType, group);
@@ -106,7 +110,8 @@ export function planObligations(resources, options = {}) {
           && completionFallsInWindow(record, window)
           && completionTypeMatches(record, obligation.completionResourceTypes)
         ));
-      const status = occurrenceStatus(window, asOf, completions.length > 0);
+      const timingStatus = occurrenceStatus(window, asOf, completions.length > 0);
+      const status = timingStatus === "complete" || programStatus === "accepted" ? timingStatus : "proposed";
       if (status === "complete" && !options.includeComplete) continue;
       if (calendarItems.length >= MAX_PLANNED_ITEMS) {
         throw new Error(`The obligation query must be narrowed with a later from date; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} calendar occurrences.`);
@@ -123,6 +128,8 @@ export function planObligations(resources, options = {}) {
         scopeResourceIds: obligation.scopeResourceIds || [],
         completionResourceIds: completions.map((record) => record.id),
         status,
+        timingStatus,
+        programStatus,
         ...window,
         ...relativeTiming(window, asOf)
       });
@@ -153,7 +160,7 @@ export function planObligations(resources, options = {}) {
     throw new Error(`The obligation query must be narrowed; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} planned items.`);
   }
   const items = [...calendarItems, ...eventItems].sort(comparePlannedItems);
-  const counts = { overdue: 0, due: 0, upcoming: 0, complete: 0 };
+  const counts = { overdue: 0, due: 0, upcoming: 0, proposed: 0, complete: 0 };
   for (const item of items) {
     if (counts[item.status] !== undefined) counts[item.status] += 1;
   }
@@ -178,6 +185,7 @@ export function planObligations(resources, options = {}) {
 export async function createObligationEvent(input, options) {
   const loaded = await loadWorkspace(input);
   const records = loaded.resources;
+  const byId = new Map(records.map((record) => [record.id, record]));
   const eventType = String(options?.eventType || "").trim();
   const occurredAt = options?.occurredAt ? requireTimestamp(options.occurredAt, "event timestamp") : null;
   const timestampDate = timestampCalendarDate(occurredAt, loaded.workspace.timezone);
@@ -195,6 +203,9 @@ export async function createObligationEvent(input, options) {
     && record.recurrence.eventType === eventType
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
+  if (templates.some((record) => obligationProgramStatus(record, byId) === "proposed")) {
+    throw new Error(`Event type "${eventType}" still has starter proposals. Approve every linked policy before starting this workflow.`);
+  }
   if (templates.some((record) => Number.isInteger(normalizedEventWindow(record.window).endOffsetHours)) && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
   }
@@ -517,6 +528,15 @@ function occurrenceStatus(window, asOf, complete) {
   return "upcoming";
 }
 
+function obligationProgramStatus(obligation, byId) {
+  const policyIds = obligation.policyIds || [];
+  if (!policyIds.length) return "accepted";
+  return policyIds.some((id) => {
+    const policy = byId.get(id);
+    return policy?.type === "policy" && ["approved", "active"].includes(policy.status);
+  }) ? "accepted" : "proposed";
+}
+
 function relativeTiming(window, asOf) {
   return {
     daysUntilStart: window.dueWindowStart > asOf ? calendarDayDifference(asOf, window.dueWindowStart) : 0,
@@ -542,7 +562,7 @@ function relativeTimestampTiming(window, now) {
 }
 
 function comparePlannedItems(a, b) {
-  const rank = { overdue: 0, due: 1, upcoming: 2, complete: 3 };
+  const rank = { overdue: 0, due: 1, upcoming: 2, proposed: 3, complete: 4 };
   return (rank[a.status] - rank[b.status])
     || String(a.overdueAt || a.overdueOn || a.dueWindowEndAt || a.dueWindowEnd || a.dueWindowStartAt || a.dueWindowStart)
       .localeCompare(String(b.overdueAt || b.overdueOn || b.dueWindowEndAt || b.dueWindowEnd || b.dueWindowStartAt || b.dueWindowStart))

@@ -10,6 +10,7 @@ import { commitAndPushWorkspace, getFileHistory, pullWorkspace, pushWorkspace } 
 import { completeObligationOccurrence, createObligationEvent, planObligations } from "./obligations.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { createAppState } from "./state.js";
+import { setupWorkspace } from "./setup.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
@@ -81,6 +82,9 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/audit-preparation") {
         return json(response, 201, await prepareAuditWorkspace(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/setup") {
+        return json(response, 200, await setupWorkspace(input, await readJson(request)));
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
         const payload = await readJson(request);

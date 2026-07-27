@@ -37,6 +37,8 @@ Setup asks for the company name, the initial policy owner, and a security contac
 
 Open the printed local URL. You can commit locally from Repository without configuring a remote. Add a remote when the team is ready to share the workspace, then the browser can pull with rebase and push reviewed commits.
 
+The creation summary reports the resolved engine version, install result, and whether the target joined an existing Git worktree. Generated workspaces receive an organization-specific README with their engine version, validation commands, and remaining setup work.
+
 ## How it works
 
 1. Add or edit compliance artifacts under `data/`.

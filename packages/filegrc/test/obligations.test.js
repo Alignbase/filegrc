@@ -39,7 +39,7 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
     asOf: "2026-03-15",
     through: "2026-04-01"
   });
-  assert.deepEqual(due.counts, { overdue: 0, due: 1, upcoming: 1, complete: 0 });
+  assert.deepEqual(due.counts, { overdue: 0, due: 1, upcoming: 1, proposed: 0, complete: 0 });
   assert.equal(due.items[0].status, "due");
   assert.equal(due.items[0].dueWindowStart, "2026-01-01");
   assert.equal(due.items[0].dueWindowEnd, "2026-03-31");
@@ -52,6 +52,105 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
   });
   assert.equal(overdue.items[0].status, "overdue");
   assert.equal(overdue.items[0].daysOverdue, 1);
+});
+
+test("keeps work linked only to draft policies as starter proposals", () => {
+  const policy = {
+    id: "policy-security",
+    type: "policy",
+    title: "Security policy",
+    status: "draft"
+  };
+  const obligation = {
+    id: "obligation-quarterly-review",
+    type: "obligation",
+    title: "Quarterly review",
+    status: "active",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 3,
+      anchorDate: "2026-01-01"
+    },
+    ownerIds: ["person-owner"],
+    policyIds: [policy.id]
+  };
+  const proposed = planObligations([policy, obligation], {
+    asOf: "2026-03-15",
+    through: "2026-03-31"
+  });
+  assert.equal(proposed.counts.due, 0);
+  assert.equal(proposed.counts.proposed, 1);
+  assert.equal(proposed.items[0].status, "proposed");
+  assert.equal(proposed.items[0].timingStatus, "due");
+
+  const accepted = planObligations([{ ...policy, status: "approved" }, obligation], {
+    asOf: "2026-03-15",
+    through: "2026-03-31"
+  });
+  assert.equal(accepted.counts.proposed, 0);
+  assert.equal(accepted.counts.due, 1);
+  assert.equal(accepted.items[0].status, "due");
+});
+
+test("does not start a partial event workflow while any step is still proposed", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-proposed-event-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "policy-worker-security",
+    type: "policy",
+    title: "Worker security policy",
+    status: "draft",
+    version: "1.0",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-approver"]
+  }, {
+    content: {
+      content: "# Worker security policy\n\nAssign security training during worker onboarding."
+    }
+  });
+  for (const obligation of [
+    {
+      id: "obligation-worker-account",
+      title: "Create worker account"
+    },
+    {
+      id: "obligation-worker-training",
+      title: "Assign worker training",
+      policyIds: ["policy-worker-security"]
+    }
+  ]) {
+    await createResource(root, {
+      schemaVersion: 1,
+      type: "obligation",
+      status: "active",
+      activityType: "onboarding",
+      recurrence: { mode: "event", eventType: "person-started" },
+      ownerIds: ["person-owner"],
+      ...obligation
+    });
+  }
+
+  const loaded = await loadWorkspace(root);
+  const plan = planObligations(loaded.resources, {
+    asOf: "2026-07-01",
+    through: "2026-07-31"
+  });
+  assert.equal(plan.triggers[0].programStatus, "proposed");
+  assert.equal(plan.triggers[0].steps.length, 2);
+  await assert.rejects(
+    createObligationEvent(root, {
+      eventType: "person-started",
+      occurredOn: "2026-07-01"
+    }),
+    /still has starter proposals/
+  );
+  assert.equal(
+    (await loadWorkspace(root)).resources.some(({ type }) => type === "obligation-event"),
+    false
+  );
 });
 
 test("matches linked completion records to the calendar period they satisfy", () => {

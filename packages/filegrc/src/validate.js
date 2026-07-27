@@ -191,6 +191,21 @@ function validateIndependentApproval(record, byId, path, diagnostics) {
       `Approvers must be separate from owners, including through team membership: ${overlap.join(", ")}.`
     ));
   }
+  if (["approved", "active"].includes(record.status)) {
+    const incompleteStarterApprover = [...approvers]
+      .map((id) => byId.get(id))
+      .find((person) => (
+        person?.id === "person-independent-approver"
+        && (!person.email || person.title === "Independent Approver")
+      ));
+    if (incompleteStarterApprover) {
+      diagnostics.push(error(
+        "independent-approver-not-appointed",
+        path,
+        "Appoint the external independent reviewer before approving this record."
+      ));
+    }
+  }
 }
 
 function expandPeople(ids, byId, seen = new Set()) {

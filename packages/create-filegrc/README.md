@@ -15,4 +15,6 @@ Generated workspaces also include layered `AGENTS.md` instructions and model-dri
 
 Git is initialized when needed. The browser can create local commits before a remote is configured.
 
+Creation output reports the resolved FileGRC version, whether installation ran, and whether the target joined an existing Git worktree or received a new repository.
+
 Use `npx create-filegrc@latest --help` for non-interactive options.

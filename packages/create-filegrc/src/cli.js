@@ -7,6 +7,8 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (options.version) return printVersion();
   const result = await createFileGRC({ target, ...options });
   console.log(`Created ${result.target}`);
+  console.log(`FileGRC ${result.engineVersion}: ${result.install === "installed" ? "installed" : "installation skipped"}`);
+  console.log(`Git: ${result.gitMode === "existing-worktree" ? "joined existing worktree" : "initialized new repository"}`);
   console.log("");
   console.log(`  cd ${result.target}`);
   if (options.install === false) console.log("  npm install");

@@ -15,6 +15,7 @@ Inside a workspace:
 ```sh
 npx filegrc validate
 npx filegrc serve
+npx filegrc setup --help
 npx filegrc build
 npx filegrc guide risk-assessment
 npx filegrc scaffold risk-assessment --title "2026 Annual Risk Assessment"
@@ -26,6 +27,10 @@ npx filegrc audit-readiness audit-id
 npx filegrc prepare-audit audit-id
 npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 ```
+
+`filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed.
+
+`filegrc setup` provides the headless equivalent of browser onboarding. It accepts all initial service-boundary fields as flags or a JSON payload. Pass `--draft` to save planned scope while leaving independent reviewer appointment open.
 
 Long-form Markdown lives beside its JSON record. FileGRC derives the Markdown path, so records do not store it.
 

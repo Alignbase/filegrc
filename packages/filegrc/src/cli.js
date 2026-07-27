@@ -24,6 +24,7 @@ import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
+import { setupWorkspace } from "./setup.js";
 import { createAppState } from "./state.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -32,6 +33,8 @@ import { loadWorkspace } from "./workspace.js";
 const BOOLEAN_FLAGS = new Set([
   "check-docs",
   "complete",
+  "draft",
+  "help",
   "json",
   "mutation",
   "preview",
@@ -47,9 +50,13 @@ export async function runCli(argv = process.argv.slice(2)) {
 
   if (["help", "--help", "-h"].includes(command)) return printHelp();
   if (["version", "--version", "-v"].includes(command)) return printVersion();
+  if (flags.help || args.includes("-h")) return printCommandHelp(command);
 
   if (command === "serve") {
-    const result = await serveWorkspace(positionals[0] ?? root, { host: flags.host, port: flags.port });
+    const result = await serveWorkspace(positionals[0] ?? root, {
+      host: flags.host ?? process.env.FILEGRC_HOST,
+      port: flags.port ?? process.env.FILEGRC_PORT
+    });
     console.log(`FileGRC workspace: ${result.url}`);
     console.log(`Data: ${result.root}/data`);
     return await new Promise((resolvePromise) => {
@@ -57,6 +64,30 @@ export async function runCli(argv = process.argv.slice(2)) {
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
     });
+  }
+  if (command === "setup") {
+    const payload = positionals[0] ? await readSetupPayload(positionals[0]) : {};
+    const result = await setupWorkspace(root, {
+      ...payload,
+      ...(flags["service-name"] !== undefined ? { serviceName: flags["service-name"] } : {}),
+      ...(flags.boundary !== undefined ? { boundary: flags.boundary } : {}),
+      ...(flags.owner !== undefined ? { ownerId: flags.owner } : {}),
+      ...(flags.criticality !== undefined ? { criticality: flags.criticality } : {}),
+      ...(flags.classification !== undefined ? { dataClassification: flags.classification } : {}),
+      ...(flags["internet-exposed"] !== undefined ? { internetExposed: flags["internet-exposed"] } : {}),
+      ...(flags["approver-name"] !== undefined ? { independentApproverName: flags["approver-name"] } : {}),
+      ...(flags["approver-email"] !== undefined ? { independentApproverEmail: flags["approver-email"] } : {}),
+      ...(flags["audit-goal"] !== undefined ? { auditGoal: flags["audit-goal"] } : {}),
+      ...(flags.draft ? { draft: true } : {})
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
+      console.log(`System: ${result.system.id} (${result.system.status})`);
+      if (result.audit) console.log(`Audit: ${result.audit.id} (${result.audit.auditKind})`);
+      if (result.draft) console.log("Reviewer appointment remains blocking work before policy approval.");
+    }
+    return result;
   }
   if (command === "build") {
     const result = await buildWorkspace(positionals[0] ?? root, { output: flags.output });
@@ -154,7 +185,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
-      console.log(`${result.counts.overdue} overdue, ${result.counts.due} due, ${result.counts.upcoming} upcoming`);
+      console.log(`${result.counts.overdue} overdue, ${result.counts.due} due, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
       for (const item of result.items) {
         const deadline = item.dueWindowEndAt || item.dueWindowEnd;
         if (!deadline) throw new Error(`Planned work "${item.title}" is missing a deadline.`);
@@ -466,6 +497,16 @@ async function readMutation(path) {
   };
 }
 
+async function readSetupPayload(path) {
+  if (!path) return {};
+  const source = path === "-" ? await readStdin() : await readFile(resolve(path), "utf8");
+  const parsed = JSON.parse(source);
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("Setup input must be a JSON object.");
+  }
+  return parsed;
+}
+
 async function readTextInput(path) {
   if (path === true || !path) throw new Error("Pass --write <markdown-file|->.");
   return path === "-" ? readStdin() : readFile(resolve(String(path)), "utf8");
@@ -492,6 +533,7 @@ function printHelp() {
 
 Usage:
   filegrc serve [root] [--host 127.0.0.1] [--port 8787]
+  filegrc setup [setup.json|-] [setup options] [--draft] [--json]
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
@@ -521,6 +563,48 @@ Usage:
 All commands accept --root <workspace>. Writes never create Git commits.`);
 }
 
+function printCommandHelp(command) {
+  if (command === "serve") {
+    console.log(`Usage:
+  filegrc serve [root] [--host address] [--port number]
+
+Options:
+  --host <address>  Bind address. Defaults to FILEGRC_HOST or 127.0.0.1.
+  --port <number>   Port. Defaults to FILEGRC_PORT or 8787. Use 0 for an available port.
+  --root <path>     Workspace path when no positional root is given.
+  --help            Show this help without starting the server.
+
+Safety:
+  The editable server has no authentication and binds to loopback by default.
+  Do not bind it to an untrusted network without trusted authentication.`);
+    return;
+  }
+  if (command === "setup") {
+    console.log(`Usage:
+  filegrc setup [setup.json|-] [options]
+
+Create or update the initial service boundary through the same validated operation
+used by browser onboarding. JSON keys use the camelCase forms shown below.
+
+Options:
+  --service-name <name>       serviceName
+  --boundary <description>    boundary
+  --owner <person-id>         ownerId
+  --criticality <level>       low, medium, high, or critical
+  --classification <name>     dataClassification
+  --internet-exposed <bool>   true or false
+  --approver-name <name>      independentApproverName
+  --approver-email <email>    independentApproverEmail
+  --audit-goal <goal>         none, readiness, type-1, or type-2
+  --draft                     Save planned scope without appointing a reviewer
+  --json                      Print the result as JSON
+  --root <path>               Workspace path
+  --help                      Show this help`);
+    return;
+  }
+  printHelp();
+}
+
 function agentOverview(model) {
   return {
     rule: "Treat data/ as the source of truth. Run guide before creating an unfamiliar type, validate after every write, review the Git diff, then commit a focused change.",
@@ -528,6 +612,7 @@ function agentOverview(model) {
       help: "filegrc help",
       version: "filegrc version",
       serve: "filegrc serve [root]",
+      setup: "filegrc setup [setup.json|-] [--draft] [--json]",
       build: "filegrc build [root]",
       validate: "filegrc validate [root] --json",
       model: "filegrc model --json",

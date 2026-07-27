@@ -22,6 +22,7 @@ export async function createFileGRC(options = {}) {
     ...prompted,
     effective_date: options.effectiveDate ?? new Date().toISOString().slice(0, 10),
     project_name: normalizePackageName(basename(target)),
+    filegrc_version: engineVersion,
     filegrc_version_range: `^${engineVersion}`
   };
 
@@ -30,13 +31,21 @@ export async function createFileGRC(options = {}) {
   await renderTemplate(target, parameterConfig, values);
   await writeBaselineRecords(target, values.effective_date);
 
-  if (options.install !== false) {
+  const installed = options.install !== false;
+  if (installed) {
     await run("npm", ["install", "--ignore-scripts"], target);
   } else {
     await writeMinimalLockfile(target, values.project_name, values.filegrc_version_range);
   }
-  if (!await isInsideGitWorktree(target)) await run("git", ["init"], target);
-  return { target, values, engineVersion };
+  const joinedExistingWorktree = await isInsideGitWorktree(target);
+  if (!joinedExistingWorktree) await run("git", ["init"], target);
+  return {
+    target,
+    values,
+    engineVersion,
+    install: installed ? "installed" : "skipped",
+    gitMode: joinedExistingWorktree ? "existing-worktree" : "initialized"
+  };
 }
 
 export async function resolveFileGRCVersion(explicitVersion) {
@@ -167,9 +176,11 @@ async function renderTemplate(target, parameterConfig, values) {
 
 async function templateDestinationPaths() {
   const template = join(packageRoot, "template");
-  return (await collectFiles(template)).map((source) => {
+  return (await collectFiles(template)).flatMap((source) => {
     const templatePath = relative(template, source);
-    return templatePath === "gitignore" ? ".gitignore" : templatePath;
+    if (templatePath === "README.md") return [];
+    if (templatePath === "WORKSPACE.md") return ["README.md"];
+    return [templatePath === "gitignore" ? ".gitignore" : templatePath];
   });
 }
 
@@ -177,7 +188,10 @@ async function copyTemplate(target) {
   const template = join(packageRoot, "template");
   for (const source of await collectFiles(template)) {
     const templatePath = relative(template, source);
-    const destinationPath = templatePath === "gitignore" ? ".gitignore" : templatePath;
+    if (templatePath === "README.md") continue;
+    const destinationPath = templatePath === "WORKSPACE.md"
+      ? "README.md"
+      : templatePath === "gitignore" ? ".gitignore" : templatePath;
     const destination = join(target, destinationPath);
     await assertNoSymlinkComponents(target, destinationPath);
     await mkdir(dirname(destination), { recursive: true });

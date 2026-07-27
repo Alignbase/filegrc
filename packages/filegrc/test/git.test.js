@@ -171,6 +171,24 @@ test("pushes branches and pulls remote changes with rebase", async (context) => 
   await assert.rejects(pushWorkspace(root), /Commit or discard workspace changes/);
 });
 
+test("blocks browser commits while HEAD is detached", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-detached-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await git(root, ["init"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initialize workspace"]);
+  await git(root, ["checkout", "--detach"]);
+  await writeFile(join(root, "draft.txt"), "draft\n", "utf8");
+
+  const summary = getGitSummary(root);
+  assert.equal(summary.available, true);
+  assert.equal(summary.branch, null);
+  await assert.rejects(commitWorkspace(root, "Commit from detached head"), /Check out a branch/);
+});
+
 function git(cwd, args) {
   return execute("git", args, { cwd });
 }

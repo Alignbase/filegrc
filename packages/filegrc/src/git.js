@@ -131,6 +131,7 @@ async function commitWorkspaceUnlocked(root, message) {
   }
   const before = getGitSummary(root);
   if (!before.available) throw new Error("Git history is unavailable for this workspace.");
+  if (!before.branch) throw new Error("Check out a branch before creating a browser commit.");
   if (before.clean) throw new Error("The workspace has no changes to commit.");
   if (!tryGit(root, ["config", "user.name"]) || !tryGit(root, ["config", "user.email"])) {
     throw new Error("Configure git user.name and user.email before committing.");

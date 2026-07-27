@@ -27,6 +27,10 @@
       "source": "target-directory-name"
     },
     {
+      "key": "filegrc_version",
+      "source": "resolved-filegrc-version"
+    },
+    {
       "key": "filegrc_version_range",
       "source": "resolved-filegrc-version"
     }

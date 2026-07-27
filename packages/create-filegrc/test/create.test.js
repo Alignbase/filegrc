@@ -4,6 +4,7 @@ import { access, mkdtemp, mkdir, readFile, readdir, realpath, symlink, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { validateWorkspace } from "../../filegrc/src/index.js";
 import { createFileGRC } from "../src/index.js";
 
@@ -26,7 +27,12 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(packageJson.private, true);
   const readme = await readFile(join(target, "README.md"), "utf8");
   assert.equal(readme.includes("{{"), false);
-  assert.match(readme, /initializes Git when needed/);
+  assert.match(readme, /# Example "Engineering" SOC 2 Program/);
+  assert.match(readme, /FileGRC 1\.2\.3/);
+  assert.match(readme, /npx filegrc setup --help/);
+  assert.doesNotMatch(readme, /npx create-filegrc/);
+  assert.equal(result.install, "skipped");
+  assert.equal(result.gitMode, "initialized");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.dataModelVersion, "1");
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
@@ -180,6 +186,14 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
   assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
+
+  await writeFile(
+    join(target, "data", "policies", "policy-information-security.json"),
+    `${JSON.stringify({ ...informationSecurityPolicy, status: "approved" }, null, 2)}\n`,
+    "utf8"
+  );
+  const prematureApproval = await validateWorkspace(target);
+  assert.ok(prematureApproval.diagnostics.some(({ code }) => code === "independent-approver-not-appointed"));
 });
 
 test("refuses a non-empty target by default", async (context) => {
@@ -284,4 +298,27 @@ test("rejects multiline identity values before writing the target", async (conte
     install: false
   }), /template token syntax/);
   await assert.rejects(access(tokenTarget), /ENOENT/);
+});
+
+test("reports the resolved version, install result, and existing Git worktree", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-output-"));
+  const target = join(parent, "program");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  execFileSync("git", ["init"], { cwd: parent, stdio: "ignore" });
+  const output = execFileSync(process.execPath, [
+    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+    target,
+    "--company-name",
+    "Example Company",
+    "--policy-owner-name",
+    "Example Owner",
+    "--security-contact-email",
+    "security@example.test",
+    "--filegrc-version",
+    "1.2.3",
+    "--no-install"
+  ], { encoding: "utf8" });
+  assert.match(output, /FileGRC 1\.2\.3: installation skipped/);
+  assert.match(output, /Git: joined existing worktree/);
+  assert.equal(await access(join(target, ".git")).then(() => true, () => false), false);
 });

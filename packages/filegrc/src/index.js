@@ -41,6 +41,7 @@ export {
 } from "./recurrence.js";
 export { searchResources, searchableValues } from "./search.js";
 export { createFileGRCServer, serveWorkspace } from "./server.js";
+export { normalizeSetupPayload, setupWorkspace } from "./setup.js";
 export { createAppState } from "./state.js";
 export { currentCalendarDate, formatCalendarDate, formatLocalDateTime } from "./time.js";
 export { validateWorkspace } from "./validate.js";
