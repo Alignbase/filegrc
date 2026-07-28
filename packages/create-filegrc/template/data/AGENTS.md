@@ -167,7 +167,7 @@ Run `obligations` before `trigger` to preview every Policy Event task, owner, de
 ## Audit work
 
 ```sh
-npx filegrc program-readiness --json
+npx filegrc program-readiness --summary --json
 npx filegrc prepare-audit AUDIT_ID
 npx filegrc audit-readiness AUDIT_ID --json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json

@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "id": "person-independent-approver",
-  "type": "person",
-  "title": "Independent Reviewer",
-  "status": "active",
-  "role": "Security and Risk Oversight Reviewer",
-  "teamIds": ["team-security-risk-oversight"]
-}

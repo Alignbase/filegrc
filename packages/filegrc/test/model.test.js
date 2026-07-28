@@ -81,6 +81,12 @@ test("v1 model exposes the complete resource registry", () => {
   assert.deepEqual(model.resources.control.fields.evidenceSourceIds.requiredWhen, { status: "implemented" });
   assert.deepEqual(model.resources.control.fields.systemIds.requiredWhen, { status: "implemented" });
   assert.deepEqual(model.resources.control.markdown.record.requiredWhen, { status: "implemented" });
+  assert.deepEqual(model.resources.policy.fields.approverIds.requiredWhen, {
+    status: ["in-review", "approved", "active"]
+  });
+  assert.deepEqual(model.resources.document.fields.approverIds.requiredWhen, {
+    status: "active"
+  });
   assert.equal(model.resources.control.fields.complementaryControlIds, undefined);
   assert.deepEqual(model.resources["complementary-control"].fields.relatedControlIds.relation, ["control"]);
   assert.ok(model.resources.workspace.fields.assuranceGoal.values.includes("soc-2-type-2"));

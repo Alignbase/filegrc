@@ -274,7 +274,7 @@
         "status": {"type":"enum","values":["draft","active","superseded","retired"],"filter":true},
         "documentKind": {"type":"string","filter":true},
         "template": {"type":"boolean","filter":true},
-        "approverIds": {"type":"array","items":"id","relation":["person","team"],"disjointFrom":"ownerIds"},
+        "approverIds": {"type":"array","items":"id","relation":["person","team"],"disjointFrom":"ownerIds","requiredWhen":{"status":"active"}},
         "version": {"type":"string"},
         "effectiveOn": {"type":"date","requiredWhen":{"status":"active"}},
         "approvedOn": {"type":"date","requiredWhen":{"status":"active"}},
@@ -678,10 +678,10 @@
         "sourceResourceIds": ["policy-information-security"],
         "obligationActivityTypes": ["policy-review"]
       },
-      "required": ["status","ownerIds","approverIds"],
+      "required": ["status","ownerIds"],
       "fields": {
         "status": {"type":"enum","values":["draft","in-review","approved","active","superseded","retired"],"filter":true},
-        "approverIds": {"type":"array","items":"id","relation":["person","team"],"disjointFrom":"ownerIds"},
+        "approverIds": {"type":"array","items":"id","relation":["person","team"],"disjointFrom":"ownerIds","requiredWhen":{"status":["in-review","approved","active"]}},
         "policyNumber": {"type":"string","search":true},
         "policyKind": {"type":"string","filter":true},
         "version": {"type":"string"},

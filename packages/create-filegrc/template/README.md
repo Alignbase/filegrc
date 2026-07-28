@@ -34,7 +34,7 @@ npm run validate
 npm run serve
 ```
 
-Setup asks for the legal organization name, the initial policy owner and their email, a security reporting address, and the program timezone. It initializes Git when needed. The first local run then defines the initial service boundary and an optional program goal. A Type 2 choice records management intent, not an audit engagement. Completing onboarding opens Step 1 so you can confirm the starter people and oversight team, criteria, commitments, vendors, and systems before moving on.
+Setup asks for the legal organization name, the initial policy owner and their email, a security reporting address, and the program timezone. It initializes Git when needed. The first local run then defines the initial service boundary and an optional program goal. A Type 2 choice records management intent, not an audit engagement. Completing onboarding opens Step 1 so you can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before moving on.
 
 Open the printed local URL. You can commit locally from Repository without configuring a remote. Add a remote when the team is ready to share the workspace, then the browser can pull with rebase and push reviewed commits.
 
@@ -71,7 +71,7 @@ npx filegrc program-path --json
 npx filegrc scaffold risk-assessment --title "2026 Annual Risk Assessment"
 npx filegrc list risk --json
 npx filegrc obligations --json
-npx filegrc program-readiness --json
+npx filegrc program-readiness --summary --json
 npx filegrc complete obligation-id completion-record.json
 npx filegrc trigger person-started --occurred-on 2026-07-25 --subject person-id
 npx filegrc complete-action action-item-id completion-record.json --completed-on 2026-07-25
@@ -79,7 +79,7 @@ npx filegrc complete-event obligation-event-id --completed-on 2026-07-25
 npx filegrc search "access review"
 ```
 
-`program-path` reports the same six steps, current status, page order, exact Instructions, Use, Policy Basis, and next actions shown in the renderer. `guide` reports that same page guidance for one resource, plus timing, required fields, valid values, relationship candidates, and Markdown locations. `scaffold` produces the same JSON and Markdown mutation shape used by the browser. Read `AGENTS.md` and `data/AGENTS.md` for the full headless workflow.
+`program-path` reports the same six steps, current status, page order, exact Instructions, Use, Policy Basis, and next actions shown in the renderer. `program-readiness --summary --json` reports compact stage counts and next actions; omit `--summary` when you need every readiness item. `guide` reports that same page guidance for one resource, plus timing, required fields, valid values, relationship candidates, and Markdown locations. `scaffold` produces the same JSON and Markdown mutation shape used by the browser. Read `AGENTS.md` and `data/AGENTS.md` for the full headless workflow.
 
 ## Start the evidence period
 

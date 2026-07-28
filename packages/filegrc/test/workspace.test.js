@@ -628,6 +628,47 @@ test("rejects empty required relationships and rolls back bundled content", asyn
   await assert.rejects(readFile(join(root, "data", "policies", "policy-no-owner.md"), "utf8"), /ENOENT/);
 });
 
+test("allows draft governance records without approvers", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-draft-approver-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const policy = await createResource(root, {
+    schemaVersion: 1,
+    id: "policy-awaiting-approver",
+    type: "policy",
+    title: "Policy awaiting approver",
+    status: "draft",
+    ownerIds: ["person-owner"]
+  }, {
+    content: { content: "# Policy awaiting approver" }
+  });
+  await assert.rejects(
+    updateResource(root, "policy", policy.record.id, { ...policy.record, status: "in-review" }),
+    /Required field "approverIds" is missing/
+  );
+  const document = await createResource(root, {
+    schemaVersion: 1,
+    id: "document-awaiting-approver",
+    type: "document",
+    title: "Document awaiting approver",
+    status: "draft",
+    documentKind: "procedure",
+    ownerIds: ["person-owner"]
+  }, {
+    content: { content: "# Document awaiting approver" }
+  });
+  assert.equal(document.record.approverIds, undefined);
+  await assert.rejects(
+    updateResource(root, "document", document.record.id, {
+      ...document.record,
+      status: "active",
+      effectiveOn: "2026-07-01",
+      approvedOn: "2026-07-01"
+    }),
+    /Required field "approverIds" is missing/
+  );
+});
+
 test("requires policy and document approvers to be separate from owners", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-independent-approver-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -673,9 +714,9 @@ test("accepts a named internal policy approver without requiring an email", asyn
   await makeWorkspace(root);
   await createResource(root, {
     schemaVersion: 1,
-    id: "person-independent-approver",
+    id: "person-reviewer",
     type: "person",
-    title: "Independent Reviewer",
+    title: "Alex Reviewer",
     status: "active"
   });
   const policy = {
@@ -685,19 +726,8 @@ test("accepts a named internal policy approver without requiring an email", asyn
     title: "Internal approver",
     status: "approved",
     ownerIds: ["person-owner"],
-    approverIds: ["person-independent-approver"]
+    approverIds: ["person-reviewer"]
   };
-  await assert.rejects(
-    createResource(root, policy, { content: { content: "# Internal approver" } }),
-    /selected approver "Independent Reviewer" is still the starter placeholder/
-  );
-  await updateResource(root, "person", "person-independent-approver", {
-    schemaVersion: 1,
-    id: "person-independent-approver",
-    type: "person",
-    title: "Alex Reviewer",
-    status: "active"
-  });
   await createResource(root, policy, { content: { content: "# Internal approver" } });
   assert.equal((await validateWorkspace(root)).ok, true);
 });

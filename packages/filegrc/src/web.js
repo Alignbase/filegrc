@@ -227,6 +227,7 @@ function renderHome(main) {
   const setupPending = rendererSettingsEntry()?.record.showOnboarding === true;
   const acceptedEventTriggers = state.obligations.triggers.filter(({ programStatus }) => programStatus !== "proposed");
   const openObligations = state.obligations.items.filter((item) => item.status !== "complete");
+  const previewObligations = distinctObligationPreviews(openObligations, 3);
   const obligationHeading = openObligations.some((item) => item.status !== "proposed") ? "Due Windows" : "Starter Proposals";
   const setupBanner = setupPending ? initialSetupBanner() : "";
   const auditPanel = program.evidenceReady
@@ -234,7 +235,7 @@ function renderHome(main) {
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>'
     : "";
   main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + setupBanner + readinessOverview() +
-    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>' + obligationHeading + '</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(openObligations.slice(0, 3)) + '</section>' +
+    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>' + obligationHeading + '</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>' +
     '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">' + (acceptedEventTriggers.length ? "Trigger work" : "Review proposals") + '</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
     auditPanel + '</div></div>';
   main.querySelector("#resume-setup")?.addEventListener("click", requestOnboarding);
@@ -267,7 +268,7 @@ function readinessOverview() {
     const stage = READINESS_STAGES.find((candidate) => candidate.id === id);
     const current = stageProgress(stage);
     const remaining = current.total - current.complete;
-    const status = !remaining ? "Complete" : current.complete ? remaining + " remaining" : current.total + " to confirm";
+    const status = !remaining ? "Review complete" : current.complete ? remaining + " pages to review" : "Review not marked";
     return [stage.title, body, href, status, !remaining ? "good" : current.complete ? "warn" : "neutral"];
   };
   const stages = [
@@ -278,7 +279,7 @@ function readinessOverview() {
     programStage("run", "Begin the candidate period, maintain risk assessments, work the filegrc queue, run the remaining controls, and retain dated evidence.", "#/stage/run"),
     programStage("audit", "Engage the CPA firm, confirm the formal period, complete fieldwork, and generate the final evidence packet.", "#/stage/audit")
   ];
-  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Prepare, Operate, Then Audit</h3></div><div class="readiness-progress-summary"><div><span>Program Progress</span><strong>' + progress.percent + '%</strong><div class="progress"><span style="width:' + progress.percent + '%"></span></div><small>' + esc(progress.complete + " of " + progress.total + " program milestones complete") + '</small></div><a class="button primary" href="' + nextHref + '">Continue</a></div></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
+  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Prepare, Operate, Then Audit</h3></div><div class="readiness-progress-summary"><div><span>Page Review Progress</span><strong>' + progress.percent + '%</strong><div class="progress"><span style="width:' + progress.percent + '%"></span></div><small>' + esc(progress.complete + " of " + progress.total + " program pages marked reviewed") + '</small></div><a class="button primary" href="' + nextHref + '">Continue</a></div></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
 }
 
 function nextProgramStageHref() {
@@ -409,12 +410,12 @@ function programPathProgress() {
 }
 
 function progressFromCounts(complete, total, noun) {
-  if (!total) return { percent: 0, complete: 0, total: 0, status: "Not started", tone: "neutral", detail: "No " + pluralize(noun, 2) + " are configured yet." };
+  if (!total) return { percent: 0, complete: 0, total: 0, status: "Nothing to review", tone: "neutral", detail: "No " + pluralize(noun, 2) + " are configured yet." };
   const percent = Math.round((complete / total) * 100);
-  const detail = complete + " of " + total + " " + pluralize(noun, total) + " marked complete.";
-  if (complete === total) return { percent: 100, complete, total, status: "Complete", tone: "good", detail };
-  if (!complete) return { percent: 0, complete, total, status: "Not started", tone: "warn", detail };
-  return { percent, complete, total, status: "In progress", tone: "warn", detail };
+  const detail = complete + " of " + total + " " + pluralize(noun, total) + " marked reviewed. This tracks page review, while readiness checks the records themselves.";
+  if (complete === total) return { percent: 100, complete, total, status: "Review complete", tone: "good", detail };
+  if (!complete) return { percent: 0, complete, total, status: "No pages marked", tone: "warn", detail };
+  return { percent, complete, total, status: "Review in progress", tone: "warn", detail };
 }
 
 function stageProgressCard(progress) {
@@ -528,7 +529,7 @@ function policyEventTrigger(trigger, index) {
   const proposed = trigger.programStatus === "proposed";
   const unavailable = state.readOnly || proposed;
   const availability = proposed
-    ? "Available after its governing policies are effective and at least one linked control is implemented."
+    ? "Available after its governing policies are effective, at least one linked control is implemented, and every task has a current owner."
     : state.readOnly
       ? "Open this workspace in writable mode to trigger the workflow."
       : trigger.steps.length + " " + pluralize("task", trigger.steps.length) + " will be added to the Work Queue.";
@@ -543,7 +544,9 @@ function obligationCard(item, collapsed = false) {
   const type = item.actionItemId ? "action-item" : "obligation";
   const id = item.actionItemId || item.obligationId;
   const completion = !item.actionItemId ? obligationCompletionPlan(item) : null;
-  const action = !state.readOnly && !["upcoming", "proposed"].includes(item.status) && completion
+  const canAct = completion?.blocked === "Assign current owner"
+    || !["upcoming", "proposed"].includes(item.status);
+  const action = !state.readOnly && canAct && completion
     ? completion.blocked
       ? '<a class="obligation-action blocked" href="' + completion.href + '">' + esc(completion.blocked) + '</a>'
       : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
@@ -554,14 +557,17 @@ function obligationCard(item, collapsed = false) {
 
 function obligationCompletionPlan(item) {
   const type = OBLIGATION_COMPLETION_TYPES[item.activityType] || "evidence";
+  if (!currentPeopleForParties(item.ownerIds || []).length) {
+    return { type, blocked: "Assign current owner", href: "#/resource/obligation/" + encodeURIComponent(item.obligationId) };
+  }
   if (["access-review", "backup-test"].includes(type) && !resourcesOfType("system").some(({ record }) => record.inScope && record.status !== "retired")) {
     return { type, blocked: "Add system first", href: "#/resources/system?new=1" };
   }
   if (type === "vendor-review" && !resourcesOfType("vendor").some(({ record }) => record.status !== "terminated")) {
     return { type, blocked: "Add vendor first", href: "#/resources/vendor?new=1" };
   }
-  if (type === "meeting" && !resourcesOfType("team").length) {
-    return { type, blocked: "Add team first", href: "#/resources/team?new=1" };
+  if (type === "meeting" && !completionTeam(item)) {
+    return { type, blocked: "Finish team and chair", href: "#/resources/team" };
   }
   return { type };
 }
@@ -585,15 +591,14 @@ function openObligationCompletion(item) {
 function obligationCompletionSeed(type, item, obligation) {
   const date = currentDate();
   const timestamp = new Date().toISOString();
-  const people = resourcesOfType("person").filter(({ record }) => record.status === "active").map(({ record }) => record.id);
-  const ownerIds = (item.ownerIds || []).filter((id) => people.includes(id));
-  const responsiblePeople = ownerIds.length ? ownerIds : people.slice(0, 1);
+  const responsiblePeople = currentPeopleForParties(item.ownerIds || []);
   const inScopeSystems = resourcesOfType("system").filter(({ record }) => record.inScope && record.status !== "retired").map(({ record }) => record.id);
   const activeVendors = resourcesOfType("vendor").filter(({ record }) => record.status !== "terminated").map(({ record }) => record.id);
   const title = item.title + " · " + formatCalendarDate(item.dueWindowStart);
   const common = { title };
   if (type === "meeting") {
-    return { ...common, status: "complete", teamId: resourcesOfType("team")[0]?.record.id, chairIds: responsiblePeople, scheduledOn: date };
+    const team = completionTeam(item);
+    return { ...common, status: "complete", teamId: team.id, chairIds: currentPeopleForParties(team.chairIds || []), scheduledOn: date };
   }
   if (type === "policy-review") {
     return { ...common, status: "complete", scopeResourceIds: obligation.scopeResourceIds || [], reviewerIds: responsiblePeople, reviewedOn: date, outcome: "passed", changesRequired: false, periodStart: item.dueWindowStart, periodEnd: item.dueWindowEnd };
@@ -824,6 +829,19 @@ function renderPacketResults(container, result) {
 
 function obligationPreview(items) {
   return items.length ? '<div class="obligation-preview">' + items.map((item) => '<a href="#/stage/run"><span class="status-dot ' + (item.status === "overdue" ? "bad" : item.status === "due" ? "warn" : "neutral") + '"></span><span><strong>' + esc(item.title) + '</strong><small>' + esc(timingText(item)) + '</small></span></a>').join("") + '</div>' : empty("No open obligations.");
+}
+
+function distinctObligationPreviews(items, limit) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const source = item.obligationId || item.actionItemId || item.key;
+    if (seen.has(source)) continue;
+    seen.add(source);
+    result.push(item);
+    if (result.length === limit) break;
+  }
+  return result;
 }
 
 function eventReminderPreview(triggers) {
@@ -1470,7 +1488,7 @@ function onboardingSteps() {
     target: null,
     kicker: "Initial scope",
     title: "Describe the service you plan to audit",
-    body: "This records the management goal and creates the first in-scope system. It does not create an audit engagement. Next, finish Step 1 by confirming the starter people and oversight team, criteria, commitments, vendors, and systems."
+    body: "This records the management goal and creates the first in-scope system. It does not create an audit engagement. Next, finish Step 1 by adding the real reviewers and operators, finishing the oversight team, and confirming the criteria, commitments, vendors, and systems."
   };
   return [
     files,
@@ -2325,6 +2343,28 @@ function formatCadence(value) {
   return value.mode ? humanize(value.mode) : "";
 }
 function resourcesOfType(type) { return state.resources.filter(({ record }) => record.type === type); }
+function currentPeopleForParties(ids = [], seen = new Set()) {
+  const people = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const party = state.resources.find(({ record }) => record.id === id)?.record;
+    if (party?.type === "person" && ["active", "external"].includes(party.status)) people.push(party.id);
+    if (party?.type === "team" && party.status === "active") {
+      people.push(...currentPeopleForParties([...(party.memberIds || []), ...(party.chairIds || [])], seen));
+    }
+  }
+  return [...new Set(people)];
+}
+function completionTeam(item) {
+  const ownerIds = new Set(item.ownerIds || []);
+  const teams = resourcesOfType("team").map(({ record }) => record);
+  const ownedTeams = teams.filter((record) => ownerIds.has(record.id));
+  return (ownedTeams.length ? ownedTeams : teams).find((record) => (
+    record.status === "active"
+    && currentPeopleForParties(record.chairIds || []).length
+  )) || null;
+}
 function searchText(record) {
   const definition = state.model.resources[record.type];
   if (!definition) return "";

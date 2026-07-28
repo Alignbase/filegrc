@@ -31,7 +31,7 @@ Read `AGENTS.md` and `data/AGENTS.md` before broad changes.
 
 The starter policies, controls, and obligations are proposals. They do not state that {{company_name}} operates the described controls.
 
-1. Use browser onboarding or `npx filegrc setup --help` to record the initial service and goal, then finish Step 1 by confirming the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems.
+1. Run `npx filegrc setup` for guided service and goal setup, or use browser onboarding. Then finish Step 1 by adding the real reviewers and operators, finishing the oversight team, and confirming applicable criteria, commitments, material vendors, and in-scope systems.
 2. Review the starter policies, appoint a reviewer who is separate from the policy owner, and activate only the policies that match current practice. The reviewer will usually be another person in the organization, but may be external.
 3. Review the starter control set, implement each applicable control with its actual procedure, scope, cadence, evidence sources, and implementation date, and confirm any linked Work Queue schedules are enabled. Marking a control implemented starts eligible schedules. Then record any complementary customer or subservice controls.
 4. Open each generated External Evidence draft, choose its authoritative source System, collect the named artifact, and have another person verify it.

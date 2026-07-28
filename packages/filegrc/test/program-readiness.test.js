@@ -19,6 +19,53 @@ import { makeWorkspace } from "./helpers.js";
 const execute = promisify(execFile);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
+test("requires the starter oversight team to be activated with a separate current chair", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-program-ownership-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "policy-security",
+    type: "policy",
+    title: "Security policy",
+    status: "draft",
+    ownerIds: ["person-owner"]
+  }, {
+    content: { content: "# Security policy" }
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "team-security-risk-oversight",
+    type: "team",
+    title: "Security and Risk Oversight",
+    status: "inactive",
+    purpose: "Review security and risk decisions.",
+    memberIds: ["person-owner"],
+    chairIds: []
+  });
+
+  const pending = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const pendingOwnership = pending.stages
+    .find(({ id }) => id === "scope")
+    .items.find(({ id }) => id === "program-ownership");
+  assert.equal(pendingOwnership.status, "action");
+  assert.match(pendingOwnership.message, /Finish and activate Security and Risk Oversight/);
+
+  const loaded = await loadWorkspace(root);
+  const team = loaded.resources.find(({ id }) => id === "team-security-risk-oversight");
+  await updateResource(root, "team", team.id, {
+    ...team,
+    status: "active",
+    memberIds: ["person-owner", "person-approver"],
+    chairIds: ["person-approver"]
+  });
+  const ready = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const readyOwnership = ready.stages
+    .find(({ id }) => id === "scope")
+    .items.find(({ id }) => id === "program-ownership");
+  assert.equal(readyOwnership.status, "complete");
+});
+
 test("reaches Evidence Ready without an audit record and keeps candidate dates separate", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-program-readiness-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -196,6 +243,23 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     "--json"
   ]);
   assert.equal(JSON.parse(cliResult.stdout).canStartCandidatePeriod, true);
+
+  const compactCliResult = await execute(process.execPath, [
+    cli,
+    "program-readiness",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-01",
+    "--summary",
+    "--json"
+  ]);
+  const compact = JSON.parse(compactCliResult.stdout);
+  assert.equal(compact.canStartCandidatePeriod, true);
+  assert.equal(compact.scopeCounts.system, 1);
+  assert.equal(compact.stages.length, 5);
+  assert.equal(Object.hasOwn(compact.stages[0], "items"), false);
+  assert.ok(compactCliResult.stdout.length < cliResult.stdout.length / 2);
 
   const current = await loadWorkspace(root);
   await updateResource(root, "workspace", current.workspace.id, {

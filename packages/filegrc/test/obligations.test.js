@@ -18,6 +18,12 @@ import {
 import { makeWorkspace } from "./helpers.js";
 
 const execute = promisify(execFile);
+const ACTIVE_OWNER = {
+  id: "person-owner",
+  type: "person",
+  title: "Program Owner",
+  status: "active"
+};
 
 test("plans flexible calendar windows with explicit due and overdue timing", () => {
   const obligation = {
@@ -35,7 +41,7 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
     ownerIds: ["person-owner"],
     completionResourceIds: []
   };
-  const due = planObligations([obligation], {
+  const due = planObligations([ACTIVE_OWNER, obligation], {
     asOf: "2026-03-15",
     through: "2026-04-01"
   });
@@ -46,7 +52,7 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
   assert.equal(due.items[0].overdueOn, "2026-04-01");
   assert.equal(due.items[0].daysUntilOverdue, 17);
 
-  const overdue = planObligations([obligation], {
+  const overdue = planObligations([ACTIVE_OWNER, obligation], {
     asOf: "2026-04-02",
     through: "2026-04-02"
   });
@@ -104,7 +110,7 @@ test("keeps work linked only to draft policies as starter proposals", () => {
     ownerIds: ["person-owner"],
     policyIds: [policy.id]
   };
-  const proposed = planObligations([policy, obligation], {
+  const proposed = planObligations([ACTIVE_OWNER, policy, obligation], {
     asOf: "2026-03-15",
     through: "2026-03-31"
   });
@@ -113,13 +119,13 @@ test("keeps work linked only to draft policies as starter proposals", () => {
   assert.equal(proposed.items[0].status, "proposed");
   assert.equal(proposed.items[0].timingStatus, "due");
 
-  const approved = planObligations([{ ...policy, status: "approved", approvedOn: "2026-01-01", effectiveOn: "2026-01-01" }, obligation], {
+  const approved = planObligations([ACTIVE_OWNER, { ...policy, status: "approved", approvedOn: "2026-01-01", effectiveOn: "2026-01-01" }, obligation], {
     asOf: "2026-03-15",
     through: "2026-03-31"
   });
   assert.equal(approved.counts.proposed, 1);
 
-  const accepted = planObligations([{ ...policy, status: "active", approvedOn: "2026-01-01", effectiveOn: "2026-02-01" }, obligation], {
+  const accepted = planObligations([ACTIVE_OWNER, { ...policy, status: "active", approvedOn: "2026-01-01", effectiveOn: "2026-02-01" }, obligation], {
     asOf: "2026-03-15",
     through: "2026-03-31"
   });
@@ -159,19 +165,55 @@ test("starts an enabled schedule when a linked control becomes implemented", () 
     policyIds: [policy.id],
     controlIds: [control.id]
   };
-  const ready = planObligations([policy, control, obligation], {
+  const ready = planObligations([ACTIVE_OWNER, policy, control, obligation], {
     asOf: "2026-03-15",
     through: "2026-03-31"
   });
   assert.equal(ready.counts.proposed, 1);
   assert.equal(ready.counts.due, 0);
 
-  const running = planObligations([policy, { ...control, status: "implemented" }, obligation], {
+  const running = planObligations([ACTIVE_OWNER, policy, { ...control, status: "implemented" }, obligation], {
     asOf: "2026-03-15",
     through: "2026-03-31"
   });
   assert.equal(running.counts.proposed, 0);
   assert.equal(running.counts.due, 1);
+});
+
+test("keeps team-owned work proposed until the team resolves to a current person", () => {
+  const team = {
+    id: "team-operations",
+    type: "team",
+    title: "Operations",
+    status: "inactive",
+    memberIds: ["person-owner"],
+    chairIds: ["person-owner"]
+  };
+  const obligation = {
+    id: "obligation-monthly-review",
+    type: "obligation",
+    title: "Monthly review",
+    status: "active",
+    activityType: "review",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 1,
+      anchorDate: "2026-01-01"
+    },
+    ownerIds: [team.id]
+  };
+  const proposed = planObligations([ACTIVE_OWNER, team, obligation], {
+    asOf: "2026-01-15",
+    through: "2026-01-31"
+  });
+  assert.equal(proposed.items[0].status, "proposed");
+
+  const running = planObligations([ACTIVE_OWNER, { ...team, status: "active" }, obligation], {
+    asOf: "2026-01-15",
+    through: "2026-01-31"
+  });
+  assert.equal(running.items[0].status, "due");
 });
 
 test("does not start a partial event workflow while any step is still proposed", async (context) => {
@@ -257,7 +299,7 @@ test("matches linked completion records to the calendar period they satisfy", ()
     status: "held",
     meetingDate: "2026-03-20"
   };
-  const plan = planObligations([obligation, meeting], {
+  const plan = planObligations([ACTIVE_OWNER, obligation, meeting], {
     asOf: "2026-04-02",
     from: "2026-01-01",
     through: "2026-04-02",

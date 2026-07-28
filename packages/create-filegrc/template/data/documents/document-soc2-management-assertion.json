@@ -9,9 +9,6 @@
   "ownerIds": [
     "person-policy-owner"
   ],
-  "approverIds": [
-    "person-independent-approver"
-  ],
   "version": "0.1",
   "classification": "Confidential"
 }

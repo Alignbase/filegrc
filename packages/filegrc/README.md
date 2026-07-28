@@ -27,6 +27,7 @@ npx filegrc references risk-example --json
 npx filegrc describe risk
 npx filegrc search "access review"
 npx filegrc evidence-test-drafts
+npx filegrc program-readiness --summary --json
 npx filegrc program-readiness --require-ready
 npx filegrc audit-readiness audit-id
 npx filegrc prepare-audit audit-id
@@ -35,11 +36,11 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed.
 
-`filegrc setup` provides the headless equivalent of browser onboarding. It accepts all initial service-boundary fields and a management program goal as flags or a JSON payload. Selecting Type 1 or Type 2 updates the workspace goal and program scope. It does not create an audit record.
+`filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Selecting Type 1 or Type 2 updates the workspace goal and program scope. It does not create an audit record.
 
 `filegrc program-path` gives agents the renderer’s six-step order, exact page Instructions, Use, Policy Basis, commands, current state, and next actions. `filegrc guide <type>` repeats the matching page guidance and adds fields, relationship candidates, Markdown slots, and timing for that record type.
 
-`filegrc program-readiness` reports whether management can start a candidate Type 2 period. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
+`filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
 
 `filegrc evidence-test-drafts` creates missing draft tests for external evidence that does not already have a dedicated Step 5 record. When a Step 5 operating record exists, put the fixed artifact in an External Evidence record and link it from that operating record. Completing browser or CLI onboarding runs the same operation automatically.
 

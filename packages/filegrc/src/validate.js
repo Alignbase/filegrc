@@ -3,6 +3,7 @@ import { getResourceDefinition } from "../model/index.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
 import { obligationIsRunning } from "./program-lifecycle.js";
+import { partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
@@ -223,9 +224,10 @@ function validateEvidencePaths(record, path, diagnostics) {
 }
 
 function validateIndependentApproval(record, byId, path, diagnostics) {
-  if (!["policy", "document"].includes(record.type) || !(record.approverIds || []).length) return;
-  const owners = expandPeople(record.ownerIds || [], byId);
-  const approvers = expandPeople(record.approverIds || [], byId);
+  if (!["policy", "document"].includes(record.type)) return;
+  if (!(record.approverIds || []).length) return;
+  const owners = partyPeople(record.ownerIds || [], byId);
+  const approvers = partyPeople(record.approverIds || [], byId);
   const overlap = [...owners].filter((id) => approvers.has(id));
   if (overlap.length) {
     diagnostics.push(error(
@@ -234,37 +236,6 @@ function validateIndependentApproval(record, byId, path, diagnostics) {
       `Approvers must be separate from owners, including through team membership: ${overlap.join(", ")}.`
     ));
   }
-  if (["approved", "active"].includes(record.status)) {
-    const incompleteStarterApprover = [...approvers]
-      .map((id) => byId.get(id))
-      .find((person) => (
-        person?.id === "person-independent-approver"
-        && ["Independent Approver", "Independent Reviewer"].includes(person.title)
-      ));
-    if (incompleteStarterApprover) {
-      diagnostics.push(error(
-        "independent-approver-not-appointed",
-        path,
-        `The selected approver "${incompleteStarterApprover.title}" is still the starter placeholder. Open People and replace it with the reviewer's actual name before approving this record. The reviewer may be internal or external but must be separate from the owner.`
-      ));
-    }
-  }
-}
-
-function expandPeople(ids, byId, seen = new Set()) {
-  const people = new Set();
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const record = byId.get(id);
-    if (record?.type === "person") people.add(id);
-    if (record?.type === "team") {
-      for (const personId of expandPeople([...(record.memberIds || []), ...(record.chairIds || [])], byId, seen)) {
-        people.add(personId);
-      }
-    }
-  }
-  return people;
 }
 
 function validateObligation(record, path, diagnostics) {

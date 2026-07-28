@@ -17,12 +17,17 @@ export async function runCli(argv = process.argv.slice(2)) {
     `${result.resourceCounts.byType.obligation || 0} obligations.`
   );
   console.log("");
-  console.log(`  cd ${result.target}`);
+  console.log(`  cd ${shellQuote(result.target)}`);
   if (options.install === false) console.log("  npm install");
+  console.log("  npx filegrc setup");
   console.log("  npm run validate");
   console.log("  npm run serve");
   console.log("");
   console.log("Review the starter drafts, then commit the approved baseline.");
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
 function parseArgs(argv) {

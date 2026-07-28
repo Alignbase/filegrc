@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { loadModel } from "../model/index.js";
 import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
@@ -42,6 +43,7 @@ const BOOLEAN_FLAGS = new Set([
   "mutation",
   "preview",
   "require-ready",
+  "summary",
   "write-docs",
   "yes"
 ]);
@@ -70,7 +72,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "setup") {
     const payload = positionals[0] ? await readSetupPayload(positionals[0]) : {};
-    const result = await setupWorkspace(root, {
+    const setupInput = await completeInteractiveSetup(root, {
       ...payload,
       ...(flags["service-name"] !== undefined ? { serviceName: flags["service-name"] } : {}),
       ...(flags.boundary !== undefined ? { boundary: flags.boundary } : {}),
@@ -81,6 +83,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ...(flags["program-goal"] !== undefined ? { programGoal: flags["program-goal"] } : {}),
       ...(flags.draft ? { draft: true } : {})
     });
+    const result = await setupWorkspace(root, setupInput);
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
@@ -226,7 +229,15 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "program-readiness") {
     const loaded = await loadWorkspace(root);
     const result = await assessProgramReadiness(loaded, { asOf: flags["as-of"] });
-    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    const output = flags.summary ? summarizeProgramReadiness(result) : result;
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else if (flags.summary) {
+      console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} program items complete`);
+      for (const stage of output.stages) {
+        console.log(`${stage.status.toUpperCase()}\t${stage.title}\t${stage.counts.action} actions`);
+      }
+      if (output.firstAction) console.log(`Next: ${output.firstAction.title}\t${output.firstAction.message}`);
+    }
     else {
       console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} program items complete`);
       console.log(`${result.target.label}${result.target.candidatePeriodStart ? `, candidate period starts ${result.target.candidatePeriodStart}` : ""}`);
@@ -239,7 +250,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       }
     }
     if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
-    return result;
+    return output;
   }
   if (command === "evidence-test-drafts") {
     const result = await ensureEvidenceTestDrafts(root);
@@ -554,6 +565,56 @@ async function readSetupPayload(path) {
   return parsed;
 }
 
+async function completeInteractiveSetup(root, payload) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return payload;
+  const loaded = await loadWorkspace(root);
+  const activePeople = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
+  if (!activePeople.length) throw new Error("Setup requires at least one active person who can own the service.");
+  const classifications = Object.keys(loaded.workspace.classificationDefinitions || {});
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const result = { ...payload };
+  const askRequired = async (label, defaultValue = "") => {
+    const suffix = defaultValue ? ` [${defaultValue}]` : "";
+    let value = "";
+    while (!value) value = (await prompt.question(`${label}${suffix}: `)).trim() || defaultValue;
+    return value;
+  };
+  const askChoice = async (label, choices, defaultValue = "") => {
+    let value = "";
+    while (!choices.includes(value)) {
+      value = await askRequired(`${label} (${choices.join("/")})`, defaultValue);
+    }
+    return value;
+  };
+  try {
+    result.serviceName ||= await askRequired(
+      "Service name",
+      loaded.workspace.organizationName ? `${loaded.workspace.organizationName} service` : ""
+    );
+    result.boundary ||= await askRequired("Service boundary");
+    result.ownerId ||= await askChoice(
+      "Service owner ID",
+      activePeople.map(({ id }) => id),
+      activePeople[0].id
+    );
+    result.criticality ||= await askChoice("Criticality", ["low", "medium", "high", "critical"], "high");
+    result.dataClassification ||= classifications.length
+      ? await askChoice(
+        "Data classification",
+        classifications,
+        classifications.includes("Confidential") ? "Confidential" : classifications[0]
+      )
+      : await askRequired("Data classification");
+    if (result.internetExposed === undefined) {
+      result.internetExposed = (await askChoice("Internet exposed", ["yes", "no"])) === "yes";
+    }
+    result.programGoal ||= await askChoice("Program goal", ["none", "readiness", "type-1", "type-2"]);
+  } finally {
+    prompt.close();
+  }
+  return result;
+}
+
 async function readTextInput(path) {
   if (path === true || !path) throw new Error("Pass --write <markdown-file|->.");
   return path === "-" ? readStdin() : readFile(resolve(String(path)), "utf8");
@@ -592,7 +653,7 @@ Usage:
   filegrc list [resource-type] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
-  filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--json]
+  filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
   filegrc evidence-test-drafts [--json]
   filegrc audit-readiness [audit-id] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
@@ -634,7 +695,8 @@ Safety:
   filegrc setup [setup.json|-] [options]
 
 Create or update the initial service boundary through the same validated operation
-used by browser onboarding. JSON keys use the camelCase forms shown below.
+used by browser onboarding. Run without input in an interactive terminal for guided
+setup. JSON keys use the camelCase forms shown below.
 
 Options:
   --service-name <name>       serviceName
@@ -662,6 +724,7 @@ is required.
 Options:
   --as-of <date>     Evaluate effective dates and obligations on YYYY-MM-DD
   --require-ready    Exit with code 2 unless the Evidence Ready gate passes
+  --summary          Omit item details and print stage counts and next actions
   --json             Print the result as JSON
   --root <path>      Workspace path
   --help             Show this help`);
@@ -858,6 +921,41 @@ function printProgramPath(result) {
     for (const command of stage.commands) console.log(`  ${command}`);
     for (const action of stage.nextActions) console.log(`Next: ${action.title} · ${action.message}`);
   }
+}
+
+function summarizeProgramReadiness(result) {
+  const summarizeItem = (item) => item ? {
+    id: item.id,
+    status: item.status,
+    title: item.title,
+    message: item.message,
+    ...(item.resourceType ? { resourceType: item.resourceType } : {}),
+    ...(item.resourceId ? { resourceId: item.resourceId } : {})
+  } : null;
+  return {
+    schemaVersion: result.schemaVersion,
+    generatedAt: result.generatedAt,
+    asOf: result.asOf,
+    status: result.status,
+    evidenceReady: result.evidenceReady,
+    operating: result.operating,
+    canStartCandidatePeriod: result.canStartCandidatePeriod,
+    suggestedCandidatePeriodStart: result.suggestedCandidatePeriodStart,
+    target: result.target,
+    progress: result.progress,
+    counts: result.counts,
+    scopeCounts: Object.fromEntries(
+      Object.entries(result.scope).map(([name, ids]) => [name.replace(/Ids$/, ""), ids.length])
+    ),
+    firstAction: summarizeItem(result.firstAction),
+    stages: result.stages.map((stage) => ({
+      id: stage.id,
+      title: stage.title,
+      status: stage.status,
+      counts: stage.counts,
+      firstAction: summarizeItem(stage.items.find(({ status }) => status === "action"))
+    }))
+  };
 }
 
 function eventWindowText(window) {

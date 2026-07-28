@@ -4,7 +4,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 const FRAMEWORK_ID = "framework-aicpa-trust-services-criteria";
 const DESCRIPTION_FRAMEWORK_ID = "framework-aicpa-soc2-description-criteria";
 const OWNER_ID = "person-policy-owner";
-const INDEPENDENT_APPROVER_ID = "person-independent-approver";
 const OVERSIGHT_TEAM_ID = "team-security-risk-oversight";
 const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
 const DATA_POLICY_ID = "policy-data-protection-handling";
@@ -963,10 +962,10 @@ export function baselineRecordFiles(effectiveDate) {
     id: OVERSIGHT_TEAM_ID,
     type: "team",
     title: "Security and Risk Oversight",
-    status: "active",
+    status: "inactive",
     purpose: "Provide independent oversight of the security program, risk register, incidents, findings, vendor and access reviews, policy changes, exercises, and overdue work. The chair must be separate from the policy owner and people who operate the controls under review.",
-    memberIds: [OWNER_ID, INDEPENDENT_APPROVER_ID],
-    chairIds: [INDEPENDENT_APPROVER_ID],
+    memberIds: [OWNER_ID],
+    chairIds: [],
     meetingCadence: calendar("month", 3, effectiveDate)
   };
   const programRepository = {

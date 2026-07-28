@@ -15,7 +15,7 @@ npx filegrc guide --json
 npx filegrc program-path --json
 npx filegrc guide risk-assessment --json
 npx filegrc list person --json
-npx filegrc program-readiness --json
+npx filegrc program-readiness --summary --json
 ```
 
 `program-path` gives agents the same six-step order, exact page Instructions, Use, Policy Basis, commands, current state, and next actions shown in the renderer. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
@@ -95,7 +95,7 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 `data/renderer.json` stores committed renderer preferences. New workspaces set `showOnboarding` to `true`. Completing or skipping onboarding sets it to `false`; the app does not commit that change.
 
-Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates a `system` record and stores the management goal and program scope on `workspace`. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can confirm the starter people and oversight team, criteria, commitments, vendors, and systems before approving policies.
+Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates a `system` record and stores the management goal and program scope on `workspace`. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies.
 
 The renderer is optional. Agents may set `showOnboarding` to `false` and maintain all records headlessly. Restart onboarding from Repository when useful. Read-only builds never run it.
 
@@ -169,7 +169,7 @@ Prepare the management program before creating an audit engagement:
 
 ```sh
 npx filegrc program-readiness
-npx filegrc program-readiness --require-ready --json
+npx filegrc program-readiness --require-ready --summary --json
 ```
 
 The Evidence Ready gate requires:

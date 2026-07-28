@@ -292,3 +292,82 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
   );
   assert.equal((await validateWorkspace(root)).ok, true);
 });
+
+test("headless document flows require a separate approver before activation", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-agent-document-approval-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+
+  const guideResult = await execute(process.execPath, [
+    cli,
+    "guide",
+    "document",
+    "--root",
+    root,
+    "--json"
+  ]);
+  const guide = JSON.parse(guideResult.stdout);
+  assert.deepEqual(
+    guide.conditionalRequirements.find(({ name }) => name === "approverIds")?.requiredWhen,
+    { status: "active" }
+  );
+
+  const scaffoldResult = await execute(process.execPath, [
+    cli,
+    "scaffold",
+    "document",
+    "--title",
+    "Access Procedure",
+    "--root",
+    root
+  ]);
+  const mutation = JSON.parse(scaffoldResult.stdout);
+  assert.equal(mutation.record.status, "draft");
+  assert.equal(mutation.record.approverIds, undefined);
+  Object.assign(mutation.record, {
+    documentKind: "procedure",
+    ownerIds: ["person-owner"]
+  });
+  const mutationPath = join(root, "document-mutation.json");
+  await writeFile(mutationPath, `${JSON.stringify(mutation, null, 2)}\n`, "utf8");
+  await execute(process.execPath, [cli, "create", mutationPath, "--root", root, "--json"]);
+
+  Object.assign(mutation.record, {
+    status: "active",
+    effectiveOn: "2026-07-01",
+    approvedOn: "2026-07-01"
+  });
+  await writeFile(mutationPath, `${JSON.stringify(mutation, null, 2)}\n`, "utf8");
+  await assert.rejects(
+    execute(process.execPath, [
+      cli,
+      "update",
+      "document",
+      mutation.record.id,
+      mutationPath,
+      "--root",
+      root,
+      "--json"
+    ]),
+    /Required field "approverIds" is missing/
+  );
+  assert.equal(
+    (await loadWorkspace(root)).resources.find(({ id }) => id === mutation.record.id).status,
+    "draft"
+  );
+
+  mutation.record.approverIds = ["person-approver"];
+  await writeFile(mutationPath, `${JSON.stringify(mutation, null, 2)}\n`, "utf8");
+  const activated = await execute(process.execPath, [
+    cli,
+    "update",
+    "document",
+    mutation.record.id,
+    mutationPath,
+    "--root",
+    root,
+    "--json"
+  ]);
+  assert.equal(JSON.parse(activated.stdout).record.status, "active");
+  assert.equal((await validateWorkspace(root)).ok, true);
+});

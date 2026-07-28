@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createResource, createResources, deleteResource, updateResource } from "./files.js";
 import { createResourceId } from "./id.js";
+import { partiesIndependent } from "./parties.js";
 import { resolveDataPath } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -944,30 +945,6 @@ function materializeManagementMarkdown(source, audit, records) {
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function partiesIndependent(ownerIds, approverIds, byId) {
-  const owners = partyPeople(ownerIds, byId);
-  const approvers = partyPeople(approverIds, byId);
-  return owners.size > 0
-    && approvers.size > 0
-    && ![...owners].some((id) => approvers.has(id));
-}
-
-function partyPeople(ids = [], byId, seen = new Set()) {
-  const people = new Set();
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const record = byId.get(id);
-    if (record?.type === "person") people.add(id);
-    if (record?.type === "team") {
-      for (const personId of partyPeople([...(record.memberIds || []), ...(record.chairIds || [])], byId, seen)) {
-        people.add(personId);
-      }
-    }
-  }
-  return people;
 }
 
 function auditSummary(audit) {

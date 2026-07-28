@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
 import { obligationIsRunning } from "./program-lifecycle.js";
+import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
@@ -33,7 +34,7 @@ export async function assessProgramReadiness(input, options = {}) {
     [...sourceStage.items, ...collectionStage.items]
   );
   const evidenceGateStages = [
-    scopeStage(workspace, scope, records),
+    scopeStage(workspace, scope, records, byId),
     await policiesStage(scope, byId, readMarkdown, asOf),
     await controlsStage(scope, byId, readMarkdown, asOf),
     evidenceStage
@@ -116,7 +117,7 @@ function programScope(workspace, records, byId) {
   };
 }
 
-function scopeStage(workspace, scope, records) {
+function scopeStage(workspace, scope, records, byId) {
   const items = [];
   const goal = workspace?.assuranceGoal || "none";
   items.push(item(
@@ -128,6 +129,8 @@ function scopeStage(workspace, scope, records) {
       : "Choose readiness, SOC 2 Type 1, or SOC 2 Type 2 as the management objective.",
     workspace || { type: "workspace" }
   ));
+
+  items.push(programOwnershipItem(records, byId));
 
   const completeSystems = scope.systems.filter((system) => (
     system.status === "active"
@@ -175,7 +178,44 @@ function scopeStage(workspace, scope, records) {
     workspace || { type: "workspace" }
   ));
 
-  return stage("scope", "Define Scope", "Set the management objective, service boundary, criteria, controls, and dependencies.", items);
+  return stage("scope", "Define Scope", "Set program ownership, the management objective, service boundary, criteria, controls, and dependencies.", items);
+}
+
+function programOwnershipItem(records, byId) {
+  const ownedRecords = records.filter((record) => (
+    ["policy", "control", "obligation"].includes(record.type)
+    && !["retired", "superseded", "not-applicable"].includes(record.status)
+  ));
+  const unresolved = ownedRecords.filter((record) => currentPartyPeople(record.ownerIds, byId).size === 0);
+  const currentOwners = new Set(ownedRecords.flatMap((record) => [...currentPartyPeople(record.ownerIds, byId)]));
+  const oversight = byId.get("team-security-risk-oversight");
+  const policyOwnerIds = new Set(records
+    .filter((record) => record.type === "policy" && !["retired", "superseded"].includes(record.status))
+    .flatMap((record) => [...partyPeople(record.ownerIds || [], byId)]));
+  const oversightChairs = oversight?.type === "team"
+    ? currentPartyPeople(oversight.chairIds || [], byId)
+    : new Set();
+  const oversightComplete = !oversight || (
+    oversight.type === "team"
+    && oversight.status === "active"
+    && currentPartyPeople(oversight.memberIds || [], byId).size > 0
+    && oversightChairs.size > 0
+    && ![...oversightChairs].some((id) => policyOwnerIds.has(id))
+  );
+  const complete = currentOwners.size > 0 && unresolved.length === 0 && oversightComplete;
+  const detail = [];
+  if (!currentOwners.size) detail.push("No current person owns the program records.");
+  if (unresolved.length) detail.push(`${unresolved.length} ownership ${unresolved.length === 1 ? "assignment does" : "assignments do"} not resolve to a current person.`);
+  if (!oversightComplete) detail.push("Finish and activate Security and Risk Oversight with a current chair who is separate from policy ownership.");
+  return item(
+    "program-ownership",
+    complete ? "complete" : "action",
+    "Confirm program owners and oversight",
+    complete
+      ? `${currentOwners.size} current ${currentOwners.size === 1 ? "person owns" : "people own"} the program records.${oversight ? " Security and Risk Oversight has a separate current chair." : ""}`
+      : detail.join(" "),
+    !oversightComplete ? oversight : unresolved[0] || { type: "person" }
+  );
 }
 
 async function policiesStage(scope, byId, readMarkdown, asOf) {
@@ -183,14 +223,11 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
   const policies = [...linkedPolicyIds].map((id) => byId.get(id)).filter((record) => (
     record?.type === "policy" && !["superseded", "retired"].includes(record.status)
   ));
-  const approvers = policies.flatMap((policy) => partyPeople(policy.approverIds || [], byId))
+  const appointedReviewer = policies
+    .filter((policy) => partiesIndependent(policy.ownerIds, policy.approverIds, byId))
+    .flatMap((policy) => [...currentPartyPeople(policy.approverIds || [], byId)])
     .map((id) => byId.get(id))
-    .filter(Boolean);
-  const appointedReviewer = approvers.find((person) => (
-    ["active", "external"].includes(person.status)
-    && person.email
-    && !(person.id === "person-independent-approver" && ["Independent Approver", "Independent Reviewer"].includes(person.title))
-  ));
+    .find(Boolean);
   const items = [
     item(
       "independent-reviewer",
@@ -199,7 +236,7 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
       appointedReviewer
         ? `${appointedReviewer.title} is recorded as a reviewer separate from policy ownership.`
         : "Appoint a reviewer who is separate from the policy owner. The reviewer may be another person in the organization or an external person, and is separate from the CPA firm that may later perform the audit.",
-      appointedReviewer || { type: "person", id: "person-independent-approver" }
+      appointedReviewer || { type: "person" }
     )
   ];
   if (!policies.length) {
@@ -547,26 +584,6 @@ function openPlaceholderCount(source) {
 
 function substantiveMarkdown(source) {
   return (source.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length >= 10;
-}
-
-function partiesIndependent(ownerIds = [], approverIds = [], byId) {
-  const owners = new Set(partyPeople(ownerIds, byId));
-  const approvers = partyPeople(approverIds, byId);
-  return owners.size > 0 && approvers.length > 0 && !approvers.some((id) => owners.has(id));
-}
-
-function partyPeople(ids = [], byId, seen = new Set()) {
-  const people = [];
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const record = byId.get(id);
-    if (record?.type === "person") people.push(id);
-    if (record?.type === "team") {
-      people.push(...partyPeople([...(record.memberIds || []), ...(record.chairIds || [])], byId, seen));
-    }
-  }
-  return [...new Set(people)];
 }
 
 function policyCheckLabel(name) {

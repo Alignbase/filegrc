@@ -202,6 +202,7 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
   set("evidenceIds", [ids.evidence]);
   set("riskIds", [ids.risk]);
   set("attendeeIds", [ids.person]);
+  if (type === "document") set("approverIds", [ids.independentApprover]);
 }
 
 async function writeRecord(root, definition, record, model) {

@@ -16,7 +16,7 @@ The renderer, CLI, generated agent instructions, and this reference use the same
 
 Confirm the people and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.
 
-- **People** (`person`): Confirm the people who will own, approve, review, or operate the program. Replace the starter names and contact details with the organization’s actual people.
+- **People** (`person`): Confirm the policy owner created during setup, then add the actual people who will approve, review, or operate the program.
 - **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Add another team only when the organization assigns shared responsibility to it.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Review each criterion, decide whether it applies, and record the reason for that decision.
@@ -26,7 +26,7 @@ Confirm the people and teams responsible for the program, set the management goa
 
 Headless commands:
 
-- `filegrc setup --help`
+- `filegrc setup`
 - `filegrc guide person --json`
 - `filegrc guide system --json`
 - `filegrc list system --json`
@@ -429,7 +429,7 @@ Markdown companions:
 | `status` | enum | Yes | Values: `draft`, `active`, `superseded`, `retired` |
 | `documentKind` | string | Yes |  |
 | `template` | boolean | No |  |
-| `approverIds` | array of id | No | References: `person`, `team` Must not overlap `ownerIds`. |
+| `approverIds` | array of id | Conditional | References: `person`, `team` Must not overlap `ownerIds`. Required when `status` is `active` |
 | `version` | string | No |  |
 | `effectiveOn` | date | Conditional | Required when `status` is `active` |
 | `approvedOn` | date | Conditional | Required when `status` is `active` |
@@ -464,7 +464,7 @@ Markdown companions:
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `draft`, `in-review`, `approved`, `active`, `superseded`, `retired` |
-| `approverIds` | array of id | Yes | References: `person`, `team` Must not overlap `ownerIds`. |
+| `approverIds` | array of id | Conditional | References: `person`, `team` Must not overlap `ownerIds`. Required when `status` is `in-review,approved,active` |
 | `policyNumber` | string | No |  |
 | `policyKind` | string | No |  |
 | `version` | string | No |  |
@@ -756,7 +756,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 People who own, approve, review, or perform program work, or receive access and training. Keep detailed personnel records in the HR system.
 
-Instructions: Confirm the people who will own, approve, review, or operate the program. Replace the starter names and contact details with the organization’s actual people.
+Instructions: Confirm the policy owner created during setup, then add the actual people who will approve, review, or operate the program.
 
 Policy basis: The information security policy and employee handbook assign work to named people and require onboarding, training, role-change, and offboarding records.
 

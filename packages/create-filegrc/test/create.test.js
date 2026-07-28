@@ -25,11 +25,11 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 142,
+    total: 141,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
-      person: 2,
+      person: 1,
       team: 1,
       policy: 6,
       document: 12,
@@ -48,9 +48,9 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(readme.includes("{{"), false);
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
   assert.match(readme, /filegrc 1\.2\.3/);
-  assert.match(readme, /npx filegrc setup --help/);
+  assert.match(readme, /npx filegrc setup/);
   assert.match(readme, /npx filegrc program-path --json/);
-  assert.match(readme, /finish Step 1 by confirming the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems/);
+  assert.match(readme, /finish Step 1 by adding the real reviewers and operators, finishing the oversight team/);
   assert.doesNotMatch(readme, /npx create-filegrc/);
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
@@ -74,19 +74,19 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(owner.title, "Example Owner");
   assert.equal(owner.email, "owner@example.test");
   assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
-  const independentApprover = JSON.parse(await readFile(join(target, "data", "people", "person-independent-approver.json"), "utf8"));
-  assert.equal(independentApprover.status, "active");
-  assert.equal(independentApprover.title, "Independent Reviewer");
-  assert.notEqual(independentApprover.id, owner.id);
+  await assert.rejects(
+    access(join(target, "data", "people", "person-independent-approver.json")),
+    /ENOENT/
+  );
   const oversightTeam = JSON.parse(await readFile(join(target, "data", "teams", "team-security-risk-oversight.json"), "utf8"));
-  assert.deepEqual(oversightTeam.memberIds, [owner.id, independentApprover.id]);
-  assert.deepEqual(oversightTeam.chairIds, [independentApprover.id]);
+  assert.equal(oversightTeam.status, "inactive");
+  assert.deepEqual(oversightTeam.memberIds, [owner.id]);
+  assert.deepEqual(oversightTeam.chairIds, []);
   for (const collection of ["policies", "documents"]) {
     const files = (await readdir(join(target, "data", collection))).filter((file) => file.endsWith(".json"));
     for (const file of files) {
       const record = JSON.parse(await readFile(join(target, "data", collection, file), "utf8"));
-      if (!record.approverIds?.length) continue;
-      assert.equal(record.ownerIds.some((id) => record.approverIds.includes(id)), false, `${record.id} has the same owner and approver`);
+      assert.equal("approverIds" in record, false, `${record.id} should wait for a real approver`);
     }
   }
   const informationSecurityPolicy = JSON.parse(await readFile(join(target, "data", "policies", "policy-information-security.json"), "utf8"));
@@ -97,7 +97,7 @@ test("creates a complete generic repository with one dependency", async (context
     "document-incident-response-plan",
     "document-data-retention-schedule"
   ]);
-  assert.deepEqual(informationSecurityPolicy.approverIds, [independentApprover.id]);
+  assert.equal("approverIds" in informationSecurityPolicy, false);
   const informationSecurityContent = await readFile(join(target, "data", "policies", "policy-information-security.md"), "utf8");
   assert.match(informationSecurityContent, /The remediation clock starts when Example "Engineering" confirms the finding/);
   assert.match(informationSecurityContent, /\| Low \| 90 days \|/);
@@ -112,7 +112,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(incidentResponseContent, /The triggering law, contract, policy, or commitment/);
   assert.match(incidentResponseContent, /representative security alert from generation through receipt, acknowledgement, escalation, and a fallback route/);
   const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
-  assert.deepEqual(retentionSchedule.approverIds, [independentApprover.id]);
+  assert.equal("approverIds" in retentionSchedule, false);
   const retentionScheduleContent = await readFile(join(target, "data", "documents", "document-data-retention-schedule.md"), "utf8");
   assert.match(retentionScheduleContent, /Security logs for important systems[\s\S]*At least 12 months/);
   assert.match(retentionScheduleContent, /Important production backups[\s\S]*At least 30 days/);
@@ -217,7 +217,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 141, errors: 0, warnings: 0 });
 
   await writeFile(
     join(target, "data", "policies", "policy-information-security.json"),
@@ -225,7 +225,9 @@ test("creates a complete generic repository with one dependency", async (context
     "utf8"
   );
   const prematureApproval = await validateWorkspace(target);
-  assert.ok(prematureApproval.diagnostics.some(({ code }) => code === "independent-approver-not-appointed"));
+  assert.ok(prematureApproval.diagnostics.some(({ code, message }) => (
+    code === "missing-field" && message.includes('"approverIds"')
+  )));
 });
 
 test("refuses a non-empty target by default", async (context) => {
@@ -391,7 +393,8 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /filegrc 1\.2\.3: installation skipped/);
   assert.match(output, /Git: joined existing worktree/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 142 records, including 42 requirements, 29 controls, and 41 obligations/);
+  assert.match(output, /Program baseline: 141 records, including 42 requirements, 29 controls, and 41 obligations/);
+  assert.match(output, /\n  npx filegrc setup\n/);
   assert.equal(
     JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8")).email,
     "security@example.test"
