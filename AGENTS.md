@@ -1,17 +1,17 @@
-# FileGRC Repository Instructions
+# filegrc Repository Instructions
 
 ## Purpose
 
-This monorepo builds FileGRC, a Git-native GRC system for SOC 2 work. It has two Node.js packages:
+This monorepo builds filegrc, a Git-native GRC system for SOC 2 work. It has two Node.js packages:
 
-- `filegrc`: the zero-dependency FileGRC engine, which validates, searches, edits, and renders GRC data.
-- `create-filegrc`: the FileGRC scaffolder, which creates a standalone SOC 2 repository.
+- `filegrc`: the zero-dependency filegrc engine, which validates, searches, edits, and renders GRC data.
+- `create-filegrc`: the filegrc scaffolder, which creates a standalone SOC 2 repository.
 
 The generated repository is the product. Keep it understandable to an engineer who opens it without prior context.
 
 ## Agent-facing product surface
 
-Treat headless use as a first-class interface. An agent with no FileGRC context must be able to discover the right record type, inspect current relationship candidates, create or update JSON and Markdown through one validated payload, complete scheduled and event work, prepare an audit, and verify the result without opening the renderer.
+Treat headless use as a first-class interface. An agent with no filegrc context must be able to discover the right record type, inspect current relationship candidates, create or update JSON and Markdown through one validated payload, complete scheduled and event work, prepare an audit, and verify the result without opening the renderer.
 
 - Keep the generated root `AGENTS.md` as the program and Git guide.
 - Keep `data/AGENTS.md` as the universal record workflow. Add collection-level `AGENTS.md` files only where a wrong action has material compliance, privacy, or audit consequences.
@@ -63,7 +63,7 @@ Treat headless use as a first-class interface. An agent with no FileGRC context 
 The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 is published. Before changing it, decide whether existing v1 workspaces remain valid. Keep compatible v1 changes, starter data, generated docs, and tests in sync. Add a new model version and an explicit migration path when a change would make existing v1 workspaces invalid.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
-- Store canonical long-form Markdown beside its structured JSON record. FileGRC derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
+- Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
 - Structure fields only when the engine needs them for validation, filtering, relationships, lifecycle rules, due-date calculations, or audit-period completeness.
 - Put variable procedures, questionnaires, interviews, per-item decisions, detailed results, and provider-specific analysis in Record Markdown. The model's `recordContent` settings determine when the renderer shows this companion body by default.
 - Do not reproduce a source form as a nested schema. Add a field only after a stable cross-workflow need is clear.
@@ -83,7 +83,7 @@ The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 i
 - Model recurring policy work as reusable obligations with an explicit allowed completion range and first overdue cutoff. Every actionable obligation needs a deadline; use the end of its policy period or a reasonable policy-aligned event window when the source does not name one.
 - Model policy-triggering changes as one event record plus normal linked action items. Create the full checklist atomically and preserve exact timestamps when a policy uses hour-based deadlines.
 - Build audit packets from an explicit Type 1 or Type 2 engagement, its exact date or period and scope, model-defined dates, policy and control context, and linked evidence. Add obligation coverage, event checklists, populations, and samples for Type 2. Keep packet output under `.filegrc/` and bind delivery-ready output to a clean Git revision.
-- Never report FileGRC management checks as passed when the required scope, management documents, approved policy coverage, implemented control coverage, source systems, evidence, or Type 2 population work is missing. Do not imply that FileGRC decides whether evidence is sufficient or appropriate; the engagement team makes that judgment.
+- Never report filegrc management checks as passed when the required scope, management documents, approved policy coverage, implemented control coverage, source systems, evidence, or Type 2 population work is missing. Do not imply that filegrc decides whether evidence is sufficient or appropriate; the engagement team makes that judgment.
 - Export auditor control, population, and evidence indexes, committed historical source versions, and per-file checksums with every packet. External references remain warnings because the packet is not self-contained.
 - Use one `audit-population` record for each complete management population and link its fixed `population-export` evidence. Record the evidence generation time, exact query or report parameters, timezone, count, and completeness and accuracy checks, including when the count is zero. Link the population and sampled-item evidence from the related control test.
 - Catalog every authoritative evidence source as a `system`, assign its `evidenceSourceKinds`, name the people who can obtain evidence, and keep extraction instructions in Record Markdown. A reconciled population and its export must name the same source system. Split a population when its items require different source systems or queries.

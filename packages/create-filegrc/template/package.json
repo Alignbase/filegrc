@@ -2,7 +2,7 @@
   "name": "{{project_name}}",
   "version": "0.2.0",
   "private": true,
-  "description": "FileGRC workspace for a SOC 2 program",
+  "description": "filegrc workspace for a SOC 2 program",
   "type": "module",
   "scripts": {
     "serve": "filegrc serve",

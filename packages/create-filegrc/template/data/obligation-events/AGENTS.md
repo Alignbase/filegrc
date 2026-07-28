@@ -15,4 +15,4 @@ Complete each action with the requested resource type and proof. Then close the 
 npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD
 ```
 
-FileGRC refuses to close an event with unfinished or unproved actions. Cancel an event only when the triggering event itself was entered in error or did not occur; explain the reason in related records or the commit message.
+filegrc refuses to close an event with unfinished or unproved actions. Cancel an event only when the triggering event itself was entered in error or did not occur; explain the reason in related records or the commit message.

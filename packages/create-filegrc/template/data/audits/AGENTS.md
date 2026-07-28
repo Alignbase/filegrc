@@ -17,10 +17,10 @@ Preparation creates engagement-specific management documents and, for Type 2, po
 
 Review both evidence paths for the exact formal date or period:
 
-1. FileGRC Evidence consists of dated Step 5 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
+1. filegrc Evidence consists of dated Step 5 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
 2. External Evidence consists of verified `evidence` records from other Systems. Confirm the source System, date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
 
-The packet compiles both paths. It includes FileGRC records and Markdown with Git history, plus External Evidence records, retained attachments, delivery indexes, and checksums.
+The packet compiles both paths. It includes filegrc records and Markdown with Git history, plus External Evidence records, retained attachments, delivery indexes, and checksums.
 
 Run readiness repeatedly and fix source records. Preview the packet before writing it:
 
@@ -29,4 +29,4 @@ npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 npx filegrc evidence-packet --audit AUDIT_ID
 ```
 
-Do not state that an auditor accepted evidence, selected a sample, cleared an exception, or issued a report unless that fact came from the engagement team. FileGRC tracks management preparation; the CPA firm owns examination judgments and the report.
+Do not state that an auditor accepted evidence, selected a sample, cleared an exception, or issued a report unless that fact came from the engagement team. filegrc tracks management preparation; the CPA firm owns examination judgments and the report.

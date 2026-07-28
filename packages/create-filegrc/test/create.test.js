@@ -6,29 +6,48 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { validateWorkspace } from "../../filegrc/src/index.js";
-import { createFileGRC } from "../src/index.js";
+import { createFilegrc } from "../src/index.js";
 
 test("creates a complete generic repository with one dependency", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   const target = join(parent, "security-program");
-  const result = await createFileGRC({
+  const result = await createFilegrc({
     target,
     companyName: "  Example \"Engineering\"  ",
     policyOwnerName: "  Example Owner  ",
+    policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
+    timezone: "America/Chicago",
     filegrcVersion: "1.2.3",
     install: false,
     effectiveDate: "2026-07-25"
   });
   assert.equal(result.engineVersion, "1.2.3");
+  assert.deepEqual(result.resourceCounts, {
+    total: 142,
+    byType: {
+      workspace: 1,
+      "renderer-settings": 1,
+      person: 2,
+      team: 1,
+      policy: 6,
+      document: 12,
+      training: 4,
+      system: 1,
+      framework: 2,
+      requirement: 42,
+      control: 29,
+      obligation: 41
+    }
+  });
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
   assert.deepEqual(packageJson.dependencies, { filegrc: "^1.2.3" });
   assert.equal(packageJson.private, true);
   const readme = await readFile(join(target, "README.md"), "utf8");
   assert.equal(readme.includes("{{"), false);
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
-  assert.match(readme, /FileGRC 1\.2\.3/);
+  assert.match(readme, /filegrc 1\.2\.3/);
   assert.match(readme, /npx filegrc setup --help/);
   assert.match(readme, /npx filegrc program-path --json/);
   assert.match(readme, /finish Step 1 by confirming the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems/);
@@ -45,6 +64,7 @@ test("creates a complete generic repository with one dependency", async (context
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.dataModelVersion, "1");
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
+  assert.equal(workspace.timezone, "America/Chicago");
   assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
   assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);
   const renderer = JSON.parse(await readFile(join(target, "data", "renderer.json"), "utf8"));
@@ -52,6 +72,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.deepEqual(renderer.completedStagePageIds, []);
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
+  assert.equal(owner.email, "owner@example.test");
   assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
   const independentApprover = JSON.parse(await readFile(join(target, "data", "people", "person-independent-approver.json"), "utf8"));
   assert.equal(independentApprover.status, "active");
@@ -135,7 +156,7 @@ test("creates a complete generic repository with one dependency", async (context
   const programRepository = JSON.parse(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.json"), "utf8"));
   assert.deepEqual(programRepository.evidenceSourceKinds, ["training-acknowledgement", "exception-finding"]);
   assert.equal(programRepository.inScope, false);
-  assert.match(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.md"), "utf8"), /system of record for FileGRC governance records/);
+  assert.match(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.md"), "utf8"), /system of record for filegrc governance records/);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
@@ -211,7 +232,7 @@ test("refuses a non-empty target by default", async (context) => {
   const target = await mkdtemp(join(tmpdir(), "create-filegrc-nonempty-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
   await writeFile(join(target, "keep.txt"), "keep", "utf8");
-  await assert.rejects(createFileGRC({
+  await assert.rejects(createFilegrc({
     target,
     yes: true,
     filegrcVersion: "1.2.3",
@@ -223,7 +244,7 @@ test("adds a workspace to a non-empty target with force without overwriting file
   const target = await mkdtemp(join(tmpdir(), "create-filegrc-force-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
   await writeFile(join(target, "keep.txt"), "keep {{company_name}}", "utf8");
-  await createFileGRC({
+  await createFilegrc({
     target,
     yes: true,
     force: true,
@@ -238,7 +259,7 @@ test("rejects force mode before writing when a template file would be overwritte
   const target = await mkdtemp(join(tmpdir(), "create-filegrc-collision-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
   await writeFile(join(target, "README.md"), "keep me", "utf8");
-  await assert.rejects(createFileGRC({
+  await assert.rejects(createFilegrc({
     target,
     yes: true,
     force: true,
@@ -256,7 +277,7 @@ test("rejects force mode when a generated baseline record would be overwritten",
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
   await mkdir(controlDirectory, { recursive: true });
   await writeFile(controlPath, "keep me", "utf8");
-  await assert.rejects(createFileGRC({
+  await assert.rejects(createFilegrc({
     target,
     yes: true,
     force: true,
@@ -275,7 +296,7 @@ test("rejects force mode when a target path traverses a symbolic link", async (c
   await mkdir(target);
   await mkdir(outside);
   await symlink(outside, join(target, "data"));
-  await assert.rejects(createFileGRC({
+  await assert.rejects(createFilegrc({
     target,
     yes: true,
     force: true,
@@ -286,12 +307,15 @@ test("rejects force mode when a target path traverses a symbolic link", async (c
   await assert.rejects(access(join(target, "README.md")), /ENOENT/);
 });
 
-test("rejects multiline identity values before writing the target", async (context) => {
+test("rejects invalid identity, email, and timezone values before writing the target", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-invalid-input-"));
   const target = join(parent, "security-program");
   const tokenTarget = join(parent, "token-program");
+  const ownerEmailTarget = join(parent, "owner-email-program");
+  const securityEmailTarget = join(parent, "security-email-program");
+  const timezoneTarget = join(parent, "timezone-program");
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
-  await assert.rejects(createFileGRC({
+  await assert.rejects(createFilegrc({
     target,
     companyName: "Example Company\nInjected heading",
     policyOwnerName: "Example Owner",
@@ -300,7 +324,7 @@ test("rejects multiline identity values before writing the target", async (conte
     install: false
   }), /single line/);
   await assert.rejects(access(target), /ENOENT/);
-  await assert.rejects(createFileGRC({
+  await assert.rejects(createFilegrc({
     target: tokenTarget,
     companyName: "{{policy_owner_name}}",
     policyOwnerName: "Example Owner",
@@ -309,6 +333,39 @@ test("rejects multiline identity values before writing the target", async (conte
     install: false
   }), /template token syntax/);
   await assert.rejects(access(tokenTarget), /ENOENT/);
+  await assert.rejects(createFilegrc({
+    target: ownerEmailTarget,
+    companyName: "Example Company",
+    policyOwnerName: "Example Owner",
+    policyOwnerEmail: "not-an-email",
+    securityContactEmail: "security@example.test",
+    timezone: "UTC",
+    filegrcVersion: "1.2.3",
+    install: false
+  }), /Policy owner email must be a valid email address/);
+  await assert.rejects(access(ownerEmailTarget), /ENOENT/);
+  await assert.rejects(createFilegrc({
+    target: securityEmailTarget,
+    companyName: "Example Company",
+    policyOwnerName: "Example Owner",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "not-an-email",
+    timezone: "UTC",
+    filegrcVersion: "1.2.3",
+    install: false
+  }), /Security contact email must be a valid email address/);
+  await assert.rejects(access(securityEmailTarget), /ENOENT/);
+  await assert.rejects(createFilegrc({
+    target: timezoneTarget,
+    companyName: "Example Company",
+    policyOwnerName: "Example Owner",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test",
+    timezone: "Central Time",
+    filegrcVersion: "1.2.3",
+    install: false
+  }), /Program timezone must be a valid IANA time zone/);
+  await assert.rejects(access(timezoneTarget), /ENOENT/);
 });
 
 test("reports the resolved version, install result, and existing Git worktree", async (context) => {
@@ -325,11 +382,30 @@ test("reports the resolved version, install result, and existing Git worktree", 
     "Example Owner",
     "--security-contact-email",
     "security@example.test",
+    "--timezone",
+    "America/Chicago",
     "--filegrc-version",
     "1.2.3",
     "--no-install"
   ], { encoding: "utf8" });
-  assert.match(output, /FileGRC 1\.2\.3: installation skipped/);
+  assert.match(output, /filegrc 1\.2\.3: installation skipped/);
   assert.match(output, /Git: joined existing worktree/);
+  assert.match(output, /Timezone: America\/Chicago/);
+  assert.match(output, /Program baseline: 142 records, including 42 requirements, 29 controls, and 41 obligations/);
+  assert.equal(
+    JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8")).email,
+    "security@example.test"
+  );
   assert.equal(await access(join(target, ".git")).then(() => true, () => false), false);
+});
+
+test("documents legal organization, owner email, reporting address, and timezone options", () => {
+  const output = execFileSync(process.execPath, [
+    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+    "--help"
+  ], { encoding: "utf8" });
+  assert.match(output, /--company-name <legal-name>\s+Legal organization name/);
+  assert.match(output, /--policy-owner-email <email>\s+Policy owner's email address/);
+  assert.match(output, /--security-contact-email <email>\s+Security reporting address/);
+  assert.match(output, /--timezone <iana-timezone>\s+Program timezone/);
 });

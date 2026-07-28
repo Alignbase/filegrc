@@ -2,9 +2,9 @@
 import GitHubStar from "../components/GitHubStar.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
-const pageTitle = "FileGRC | Run a SOC 2 Program as Files in Git";
+const pageTitle = "filegrc | Run a SOC 2 Program as Files in Git";
 const pageDescription =
-  "FileGRC lets founder-led engineering teams use their agents to run SOC 2 work in plain, reviewable files they own.";
+  "filegrc lets founder-led engineering teams use their agents to run SOC 2 work in plain, reviewable files they own.";
 
 const questions = [
   {
@@ -29,7 +29,7 @@ const questions = [
     number: "04",
     question: "$0 software bill",
     answer:
-      "FileGRC is MIT licensed and runs locally. The source systems that operate controls and the independent CPA audit remain separate.",
+      "filegrc is MIT licensed and runs locally. The source systems that operate controls and the independent CPA audit remain separate.",
   },
 ];
 
@@ -98,12 +98,12 @@ const siteUrl = Astro.site ?? new URL("https://filegrc.com");
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "FileGRC",
+  name: "filegrc",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Node.js 20 or newer",
   description: pageDescription,
   url: siteUrl.href,
-  codeRepository: "https://github.com/Sunpeak-AI/FileGRC",
+  codeRepository: "https://github.com/Sunpeak-AI/filegrc",
   license: "https://opensource.org/license/mit",
   offers: {
     "@type": "Offer",
@@ -138,7 +138,7 @@ const structuredData = {
           <em>in Git.</em>
         </h1>
         <p class="hero-lede">
-          FileGRC gives a founder-led engineering team one place to adopt
+          filegrc gives a founder-led engineering team one place to adopt
           policies, implement controls, run recurring work, collect evidence,
           and prepare an audit.
         </p>
@@ -161,7 +161,7 @@ const structuredData = {
         <div class="hero-actions">
           <a
             class="button button--secondary"
-            href="https://github.com/Sunpeak-AI/FileGRC"
+            href="https://github.com/Sunpeak-AI/filegrc"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -178,13 +178,13 @@ const structuredData = {
     <div class="shell">
       <div class="section-heading section-heading--split">
         <div>
-          <div class="eyebrow">Why FileGRC</div>
+          <div class="eyebrow">Why filegrc</div>
           <h2>Let your agent handle SOC 2, <em>for free.</em></h2>
         </div>
         <p>
           Don't pay tens of thousands of dollars for a set of basic create,
           read, update, and delete screens wrapped around data you don't
-          control. FileGRC is open source. Your records stay in your repository,
+          control. filegrc is open source. Your records stay in your repository,
           where your agent can do the routine work.
         </p>
       </div>
@@ -239,7 +239,7 @@ const structuredData = {
         </div>
       </div>
 
-      <div class="file-stack" aria-label="Example FileGRC source files">
+      <div class="file-stack" aria-label="Example filegrc source files">
         <div class="source-file source-file--back">
           <span>MARKDOWN</span>
           <strong>Access Control Policy</strong>
@@ -304,7 +304,7 @@ const structuredData = {
         <div class="workflow-product__viewport">
           <img
             src="/filegrc-home.png"
-            alt="FileGRC program overview showing the six-step SOC 2 path"
+            alt="filegrc program overview showing the six-step SOC 2 path"
             width="1440"
             height="1000"
             loading="lazy"
@@ -322,7 +322,7 @@ const structuredData = {
         <div class="eyebrow eyebrow--light">For engineers and agents</div>
         <h2>The browser is helpful. <em>It is not required.</em></h2>
         <p>
-          An agent with no FileGRC context can discover the model, inspect valid
+          An agent with no filegrc context can discover the model, inspect valid
           relationships, follow the same six steps and page instructions, create
           records, complete scheduled work, trigger Policy Events, and check the
           result without opening the renderer.
@@ -346,7 +346,7 @@ const structuredData = {
         }
       </div>
       <div class="agent-boundary">
-        <strong>FileGRC manages GRC records and audit evidence.</strong>
+        <strong>filegrc manages GRC records and audit evidence.</strong>
         <p>
           Your source systems still operate controls. The independent CPA firm
           still tests them, judges the evidence, and issues the report.

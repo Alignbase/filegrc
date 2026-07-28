@@ -24,7 +24,7 @@ const {
   description,
   canonicalUrl = new URL(Astro.url.pathname, siteUrl).href,
   image = new URL("/og-image.png", siteUrl).href,
-  imageAlt = "FileGRC, run a SOC 2 program as files in Git",
+  imageAlt = "filegrc, run a SOC 2 program as files in Git",
   robots = "index, follow, max-image-preview:large, max-snippet:-1",
   structuredData,
   ogType = "website",
@@ -48,7 +48,7 @@ const structuredDataItems = Array.isArray(structuredData)
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="author" content="FileGRC contributors" />
+    <meta name="author" content="filegrc contributors" />
     <meta name="robots" content={robots} />
     <meta name="theme-color" content="#05054a" />
     <link rel="canonical" href={canonicalUrl} />
@@ -57,7 +57,7 @@ const structuredDataItems = Array.isArray(structuredData)
 
     <meta property="og:type" content={ogType} />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:site_name" content="FileGRC" />
+    <meta property="og:site_name" content="filegrc" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />

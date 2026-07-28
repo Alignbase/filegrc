@@ -15,7 +15,7 @@ import { setupWorkspace } from "./setup.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
-export function createFileGRCServer(input = process.cwd(), options = {}) {
+export function createFilegrcServer(input = process.cwd(), options = {}) {
   return createHttpServer(async (request, response) => {
     try {
       if (!expectedHost(request, options.allowedHosts)) {
@@ -184,7 +184,7 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
   }
   const loaded = await loadWorkspace(input);
   getResourceDefinition(loaded.model, "workspace");
-  const server = createFileGRCServer(loaded.root, { allowedHosts: [host] });
+  const server = createFilegrcServer(loaded.root, { allowedHosts: [host] });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, resolve);

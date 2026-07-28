@@ -60,7 +60,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       host: flags.host ?? process.env.FILEGRC_HOST,
       port: flags.port ?? process.env.FILEGRC_PORT
     });
-    console.log(`FileGRC workspace: ${result.url}`);
+    console.log(`filegrc workspace: ${result.url}`);
     console.log(`Data: ${result.root}/data`);
     return await new Promise((resolvePromise) => {
       const stop = () => result.server.close(resolvePromise);
@@ -576,7 +576,7 @@ async function printVersion() {
 }
 
 function printHelp() {
-  console.log(`FileGRC - Git-native GRC workspace
+  console.log(`filegrc - Git-native GRC workspace
 
 Usage:
   filegrc serve [root] [--host 127.0.0.1] [--port 8787]

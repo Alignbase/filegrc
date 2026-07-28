@@ -74,7 +74,7 @@ Headless commands:
 
 Record the management candidate start date when reliable evidence collection begins. Maintain current risk assessments and risks, updating the control set when needed. Complete recurring and event-driven work, run continuous and per-transaction controls, and keep dated evidence current throughout the period.
 
-- **Policy Events** (`utility:policy-events`): Trigger the matching workflow when an event occurs. FileGRC adds every required action to the Work Queue with its owner and deadline.
+- **Policy Events** (`utility:policy-events`): Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.
 - **Work Queue** (`utility:work-queue`): Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.
 
 Operating record guides:
@@ -82,7 +82,7 @@ Operating record guides:
 - **Risk assessments** (`risk-assessment`): Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.
 - **Risks** (`risk`): Record each risk identified by an assessment or operating activity. Assign an owner, rate it, and document the chosen response.
 - **Obligations** (`obligation`): Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
-- **Policy Events** (`obligation-event`): When a policy-triggering event occurs, record it here and complete the actions FileGRC creates for it.
+- **Policy Events** (`obligation-event`): When a policy-triggering event occurs, record it here and complete the actions filegrc creates for it.
 - **Data requests** (`data-request`): Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.
 - **Policy reviews** (`policy-review`): Record scheduled and change-driven reviews of policies and governed documents, including the decision and any follow-up.
 - **Meetings** (`meeting`): Record required oversight meetings, including attendees, decisions, minutes, and follow-up work.
@@ -120,7 +120,7 @@ After the program is collecting reliable evidence, create an Audit record for th
 - **Audit requests** (`audit-request`): Record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
 - **Audit populations** (`audit-population`): Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation.
 - **Control tests** (`control-test`): Record how an in-scope control was tested, what was sampled, the result, and any exceptions.
-- **Audit Evidence & Packet** (`utility:audit-packet`): Review FileGRC Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.
+- **Audit Evidence & Packet** (`utility:audit-packet`): Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.
 
 Headless commands:
 
@@ -175,19 +175,19 @@ Standard populations, including zero-event populations:
 Authoritative systems of record:
 
 - **Workforce System** (`workforce`): Catalog the HR or workforce system that is authoritative for starts, role changes, and departures. Bring the complete workforce-change population and source reports used to reconcile access and responsibilities. Test external collection: Export a workforce-change report from the HR or workforce system containing starters, role changes, and departures. Identify the source during scoping. Preserve event records as changes occur and export the complete Type 2 population after the period closes.
-- **Training and Acknowledgements** (`training-acknowledgement`): FileGRC records training assignments, content revisions, completions, acknowledgements, exceptions, and overdue follow-up during Step 5. FileGRC operating records: `training`, `attestation`. No separate collection test is required. Set up training and acknowledgement records before assignments begin. Preserve completion proof as work occurs, then reconcile the complete Type 2 population to the workforce population after close.
+- **Training and Acknowledgements** (`training-acknowledgement`): filegrc records training assignments, content revisions, completions, acknowledgements, exceptions, and overdue follow-up during Step 5. filegrc operating records: `training`, `attestation`. No separate collection test is required. Set up training and acknowledgement records before assignments begin. Preserve completion proof as work occurs, then reconcile the complete Type 2 population to the workforce population after close.
 - **Identity and Access Systems** (`identity-access`): Catalog the identity provider and each important application that enforces access. Bring identity, role, privileged-access, authentication-setting, review, and removal exports. Test external collection: Export users, roles, privileged access, or authentication settings from the identity provider or an in-scope application. Identify sources during scoping. Capture configuration near the Type 1 date or at the start and end of a Type 2 period; export complete change and review populations after the Type 2 period closes.
 - **Production Change Systems** (`production-change`): Catalog source control, deployment, and infrastructure-change systems. Bring protection settings, reviews, test and approval records, deployments, emergency changes, and rollback evidence. Test external collection: Capture a change from the source control or deployment system showing review, testing, approval, deployment, and rollback information. Identify sources before the audit period. Preserve per-change evidence as changes occur and export the complete period population after a Type 2 period closes.
-- **Security Monitoring Systems** (`security-monitoring`): Catalog logging and alerting systems. Bring configuration, coverage, alert delivery tests, alerts, investigations, and zero-event proof. FileGRC records qualifying incidents and their response during Step 5. Test external collection: Capture logging or alert configuration and a delivered test alert from the monitoring system. Capture configuration and coverage at the Type 1 date or across the Type 2 period. Preserve cases as they occur and export complete alert and incident populations after close.
-- **Vulnerability Management** (`vulnerability-management`): FileGRC records vulnerability scans and penetration tests during Step 5. Put the scanner output or independent report in an External Evidence record and link it from the operating record rather than creating a separate collection test. FileGRC operating records: `vulnerability-scan`, `penetration-test`. No separate collection test is required. Confirm coverage before the audit period. Preserve scan and remediation evidence when generated and export the complete Type 2 population after close.
-- **Endpoint Management Systems** (`endpoint-asset`): Catalog device-management and endpoint-compliance systems. Bring the complete device population, security configuration, compliance status, and exceptions. FileGRC records asset ownership, custody, loss, return, and disposal during Step 5. Test external collection: Export devices, security configuration, and compliance status from the endpoint-management system. Identify sources before devices receive access. Capture configuration near the Type 1 date or across the Type 2 period and export the complete Type 2 population after close.
-- **Backup and Recovery** (`backup-recovery`): FileGRC records restoration tests and continuity exercises during Step 5. Put backup-system output in an External Evidence record and link it from the operating record rather than creating a separate collection test. FileGRC operating records: `backup-test`, `exercise`. No separate collection test is required. Capture configuration at the Type 1 date or across the Type 2 period. Preserve restoration and exercise results when performed and export complete job and failure history after period close.
-- **Vendors** (`vendor-management`): FileGRC records vendor reviews, risk decisions, supporting reports, exceptions, and follow-up during Step 5. FileGRC operating records: `vendor-review`. No separate collection test is required. Identify relevant subservice organizations during scoping. Complete reviews during operation, obtain current assurance reports before fieldwork, and document bridge coverage when a report ends before the report period.
-- **Exceptions and Findings** (`exception-finding`): FileGRC records control exceptions, findings, risk acceptance, remediation, verification, and overdue work during Step 5. FileGRC operating records: `exception`, `finding`, `action-item`. No separate collection test is required. Record items as they arise. Keep their status and follow-up current, then include the complete period population in fieldwork.
+- **Security Monitoring Systems** (`security-monitoring`): Catalog logging and alerting systems. Bring configuration, coverage, alert delivery tests, alerts, investigations, and zero-event proof. filegrc records qualifying incidents and their response during Step 5. Test external collection: Capture logging or alert configuration and a delivered test alert from the monitoring system. Capture configuration and coverage at the Type 1 date or across the Type 2 period. Preserve cases as they occur and export complete alert and incident populations after close.
+- **Vulnerability Management** (`vulnerability-management`): filegrc records vulnerability scans and penetration tests during Step 5. Put the scanner output or independent report in an External Evidence record and link it from the operating record rather than creating a separate collection test. filegrc operating records: `vulnerability-scan`, `penetration-test`. No separate collection test is required. Confirm coverage before the audit period. Preserve scan and remediation evidence when generated and export the complete Type 2 population after close.
+- **Endpoint Management Systems** (`endpoint-asset`): Catalog device-management and endpoint-compliance systems. Bring the complete device population, security configuration, compliance status, and exceptions. filegrc records asset ownership, custody, loss, return, and disposal during Step 5. Test external collection: Export devices, security configuration, and compliance status from the endpoint-management system. Identify sources before devices receive access. Capture configuration near the Type 1 date or across the Type 2 period and export the complete Type 2 population after close.
+- **Backup and Recovery** (`backup-recovery`): filegrc records restoration tests and continuity exercises during Step 5. Put backup-system output in an External Evidence record and link it from the operating record rather than creating a separate collection test. filegrc operating records: `backup-test`, `exercise`. No separate collection test is required. Capture configuration at the Type 1 date or across the Type 2 period. Preserve restoration and exercise results when performed and export complete job and failure history after period close.
+- **Vendors** (`vendor-management`): filegrc records vendor reviews, risk decisions, supporting reports, exceptions, and follow-up during Step 5. filegrc operating records: `vendor-review`. No separate collection test is required. Identify relevant subservice organizations during scoping. Complete reviews during operation, obtain current assurance reports before fieldwork, and document bridge coverage when a report ends before the report period.
+- **Exceptions and Findings** (`exception-finding`): filegrc records control exceptions, findings, risk acceptance, remediation, verification, and overdue work during Step 5. filegrc operating records: `exception`, `finding`, `action-item`. No separate collection test is required. Record items as they arise. Keep their status and follow-up current, then include the complete period population in fieldwork.
 - **Data Protection Configuration** (`data-handling`): Catalog the systems authoritative for encryption settings and retention rules. Bring current configuration and approved schedules. Preserve completed disposal actions, exceptions, and verification during Step 5. Test external collection: Capture encryption and retention settings from an in-scope System. Confirm configuration and retention rules before the audit period. Preserve disposal evidence when work occurs and capture configuration near the Type 1 date or across the Type 2 period.
 - **Network Security Systems** (`network-security`): Catalog the systems authoritative for network boundaries, firewall rules, and remote access. Bring current configuration, rule reviews, approvals, changes, and exceptions. Test external collection: Capture current firewall or network-access rules from the network system and confirm that remote and production access paths appear. Confirm boundary and remote-access configuration before the audit period. Preserve rule changes as they occur and capture current configuration near the Type 1 date or across the Type 2 period.
-- **Governance** (`governance`): FileGRC records policy approvals, oversight reviews, meetings, decisions, assigned actions, and completion proof in Steps 2 and 5. FileGRC operating records: `policy-review`, `meeting`. No separate collection test is required. Approve policies before they take effect. Preserve oversight records and decisions when the work occurs.
-- **Risk Management** (`risk-management`): FileGRC records risk assessments, risks, treatment decisions, reviews, and follow-up during Step 5. FileGRC operating records: `risk-assessment`, `risk`. No separate collection test is required. Complete the initial assessment while operating the program. Preserve risk changes and reviews as they occur, then include the current register in fieldwork.
+- **Governance** (`governance`): filegrc records policy approvals, oversight reviews, meetings, decisions, assigned actions, and completion proof in Steps 2 and 5. filegrc operating records: `policy-review`, `meeting`. No separate collection test is required. Approve policies before they take effect. Preserve oversight records and decisions when the work occurs.
+- **Risk Management** (`risk-management`): filegrc records risk assessments, risks, treatment decisions, reviews, and follow-up during Step 5. filegrc operating records: `risk-assessment`, `risk`. No separate collection test is required. Complete the initial assessment while operating the program. Preserve risk changes and reviews as they occur, then include the current register in fieldwork.
 
 ## Resource groups
 
@@ -199,7 +199,7 @@ Published criteria sets and versions used to define the program and audit scope.
 
 Instructions: Confirm the criteria framework and version used for the program.
 
-Policy basis: The CPA examination uses the selected Framework. FileGRC’s starter references provide orientation but do not replace the publisher’s official criteria.
+Policy basis: The CPA examination uses the selected Framework. filegrc’s starter references provide orientation but do not replace the publisher’s official criteria.
 
 Timing: Add or retire a version only through a deliberate scope decision. Reconfirm the selected version when planning each audit.
 
@@ -309,7 +309,7 @@ Instructions: Finish each applicable starter control with the procedure people w
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. Policy text alone does not show implementation.
 
-Timing: Before marking a control implemented, record its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, and implementation date. FileGRC-managed controls also require enabled schedules with effective governing policies. Marking the control implemented starts eligible schedules.
+Timing: Before marking a control implemented, record its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, and implementation date. filegrc-managed controls also require enabled schedules with effective governing policies. Marking the control implemented starts eligible schedules.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -408,7 +408,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `document`
 
-Governed plans, charters, procedures, standards, reports, and templates that are not Policies or another FileGRC record type. A general document catalog is not required for SOC 2.
+Governed plans, charters, procedures, standards, reports, and templates that are not Policies or another filegrc record type. A general document catalog is not required for SOC 2.
 
 Instructions: Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
 
@@ -1232,13 +1232,13 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `evidence`
 
-External Evidence holds exports, reports, screenshots, signed files, and approved external references collected from other Systems. Step 5 records created in FileGRC do not need a separate record here. Step 6 reviews and packages both evidence paths for the CPA firm.
+External Evidence holds exports, reports, screenshots, signed files, and approved external references collected from other Systems. Step 5 records created in filegrc do not need a separate record here. Step 6 reviews and packages both evidence paths for the CPA firm.
 
 Instructions: Complete the generated tests for external evidence that has no dedicated Step 5 record. Link each result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.
 
-Policy basis: The information security and data handling policies require retained proof from authoritative Systems when FileGRC's own operating records do not contain the full result.
+Policy basis: The information security and data handling policies require retained proof from authoritative Systems when filegrc's own operating records do not contain the full result.
 
-Timing: Before the candidate period begins, test each selected control family that relies on evidence from outside FileGRC. Once operation starts, collect external evidence whenever the control runs, keep FileGRC operating records current, verify evidence before audit use, cover the stated period, and retain it according to classification and record rules.
+Timing: Before the candidate period begins, test each selected control family that relies on evidence from outside filegrc. Once operation starts, collect external evidence whenever the control runs, keep filegrc operating records current, verify evidence before audit use, cover the stated period, and retain it according to classification and record rules.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -1289,7 +1289,7 @@ Reusable schedules for recurring or event-driven work. Obligations feed the Work
 
 Instructions: Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
 
-Policy basis: FileGRC uses Obligations to turn policy and control cadence into owned, dated work linked to its scope and required proof.
+Policy basis: filegrc uses Obligations to turn policy and control cadence into owned, dated work linked to its scope and required proof.
 
 Timing: Treat starter work as proposed until every governing policy is active and effective and, when the obligation names controls, at least one linked control is implemented. Then use the recurrence and activation date, and create a separate completion record for every period.
 
@@ -1321,7 +1321,7 @@ Markdown companions:
 
 One occurrence of an event such as hiring, departure, material change, or incident. It connects the event to the checklist generated from applicable Obligations. Policy Events are not required for SOC 2.
 
-Instructions: When a policy-triggering event occurs, record it here and complete the actions FileGRC creates for it.
+Instructions: When a policy-triggering event occurs, record it here and complete the actions filegrc creates for it.
 
 Policy basis: Policies require specific, time-bound actions after certain events. A Policy Event preserves the trigger, applicable checklist, owners, and completion state.
 
@@ -1567,7 +1567,7 @@ Optional local interface settings, including onboarding visibility and manually 
 
 Instructions: Optional local interface settings, including onboarding visibility and manually completed Step pages. Renderer settings are not required for SOC 2 and do not change compliance records.
 
-Policy basis: Renderer settings are a FileGRC convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence.
+Policy basis: Renderer settings are a filegrc convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence.
 
 Timing: Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff.
 

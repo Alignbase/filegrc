@@ -825,6 +825,11 @@ test("persists manual completion for step pages without blocking card navigation
 test("runs optional onboarding from committed renderer settings", () => {
   assert.doesNotThrow(() => new Function(APP_SCRIPT));
   assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true/);
+  assert.match(APP_SCRIPT, /function initialSetupBanner\(\)/);
+  assert.match(APP_SCRIPT, /Setup draft saved/);
+  assert.match(APP_SCRIPT, /Review the saved service boundary/);
+  assert.match(APP_SCRIPT, /Confirm the saved program goal/);
+  assert.match(APP_SCRIPT, /Complete setup to activate the planned service/);
   assert.match(APP_SCRIPT, /!state\.readOnly && rendererSettingsEntry/);
   assert.match(APP_SCRIPT, /onboardingDialog\.showModal\(\)/);
   assert.match(APP_SCRIPT, /onboardingDialog\.addEventListener\("cancel"/);
@@ -858,7 +863,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Use the UI, an editor, the CLI, or an agent/);
   assert.match(APP_SCRIPT, /Repository pulls with rebase/);
   assert.match(APP_SCRIPT, /terminal users run git pull --rebase, git commit, and git push directly/);
-  assert.match(APP_SCRIPT, /The UI and FileGRC CLI use the same calculation/);
+  assert.match(APP_SCRIPT, /The UI and filegrc CLI use the same calculation/);
   assert.match(APP_SCRIPT, /Every action has a policy-based cutoff or a reasonable default deadline/);
   assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
   assert.match(APP_SCRIPT, /data-onboarding="draft">Save draft/);
@@ -875,7 +880,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Git remote needed/);
   assert.match(APP_SCRIPT, /Git setup needed/);
   assert.match(APP_SCRIPT, /Saving still works/);
-  assert.match(APP_SCRIPT, /The FileGRC server is unavailable/);
+  assert.match(APP_SCRIPT, /The filegrc server is unavailable/);
   assert.match(APP_SCRIPT, /async function localFetch/);
   assert.match(APP_SCRIPT, /id="start-onboarding"/);
   assert.match(APP_SCRIPT, /id="commit-workspace"/);
@@ -930,7 +935,7 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.doesNotMatch(APP_SCRIPT, /function renderProgramReadiness\(/);
   assert.match(APP_SCRIPT, /function renderAuditPreparation\(preparation\)/);
   assert.match(APP_SCRIPT, /Review both evidence paths/);
-  assert.match(APP_SCRIPT, /FileGRC Evidence/);
+  assert.match(APP_SCRIPT, /filegrc Evidence/);
   assert.match(APP_SCRIPT, /External Evidence/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/audit-preparation"/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-packet"/);

@@ -227,7 +227,7 @@ async function pushWorkspaceUnlocked(root) {
 
 function syncReadySummary(root, action) {
   const summary = getGitSummary(root);
-  if (!summary.available) throw new Error(`Git history is unavailable for this workspace, so FileGRC cannot ${action}.`);
+  if (!summary.available) throw new Error(`Git history is unavailable for this workspace, so filegrc cannot ${action}.`);
   if (!summary.branch) throw new Error(`Check out a branch before trying to ${action}.`);
   if (!summary.clean) throw new Error(`Commit or discard workspace changes before trying to ${action}.`);
   return summary;

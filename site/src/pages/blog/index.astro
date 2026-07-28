@@ -9,18 +9,18 @@ const sortedPosts = posts.sort(
 const featuredPosts = sortedPosts.filter((post) => post.data.featured);
 const listedPosts = featuredPosts.length > 0 ? featuredPosts : sortedPosts;
 const siteUrl = Astro.site ?? new URL("https://filegrc.com");
-const pageTitle = "FileGRC Blog | Practical SOC 2 Guides for Engineers";
+const pageTitle = "filegrc Blog | Practical SOC 2 Guides for Engineers";
 const pageDescription =
   "Plain guides for founders and engineers running SOC 2 programs, collecting evidence, preparing audits, and managing compliance work in Git.";
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "Blog",
-  name: "FileGRC Blog",
+  name: "filegrc Blog",
   description: pageDescription,
   url: new URL("/blog", siteUrl).href,
   publisher: {
     "@type": "Organization",
-    name: "FileGRC",
+    name: "filegrc",
     url: siteUrl.href,
   },
   blogPost: listedPosts.map((post) => ({
@@ -47,7 +47,7 @@ const structuredData = {
     <div class="hero-glow" aria-hidden="true"></div>
     <div class="shell">
       <span class="eyebrow eyebrow--light">Field notes</span>
-      <h1>FileGRC Blog</h1>
+      <h1>filegrc Blog</h1>
       <p>
         Practical answers for founders and engineers doing SOC 2 work without
         turning the program into another closed SaaS database.
@@ -101,14 +101,14 @@ const structuredData = {
             <span class="eyebrow">Articles coming soon</span>
             <h2>We are writing the guides we wanted when starting SOC 2.</h2>
             <p>
-              Until then, the FileGRC repository explains the full program path
+              Until then, the filegrc repository explains the full program path
               and gives you a working local workspace.
             </p>
             <a
               class="button blog-empty__button"
-              href="https://github.com/Sunpeak-AI/FileGRC"
+              href="https://github.com/Sunpeak-AI/filegrc"
             >
-              Read the FileGRC README
+              Read the filegrc README
             </a>
           </div>
         )

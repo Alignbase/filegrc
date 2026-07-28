@@ -68,7 +68,7 @@ test("initializes model-owned Type 2 populations and management document links",
   assert.equal(before.stages.find(({ id }) => id === "fieldwork").title, "Prepare Fieldwork");
   const auditEvidenceItems = before.stages.find(({ id }) => id === "fieldwork").items
     .filter(({ section }) => section === "Audit Evidence");
-  assert.equal(auditEvidenceItems.some(({ id, title }) => id === "evidence-filegrc-evidence" && title === "Review FileGRC Evidence"), true);
+  assert.equal(auditEvidenceItems.some(({ id, title }) => id === "evidence-filegrc-evidence" && title === "Review filegrc Evidence"), true);
   assert.equal(auditEvidenceItems.some(({ id, title }) => id === "evidence-external-evidence" && title === "Review External Evidence"), true);
   assert.equal(before.stages.find(({ id }) => id === "auditor").title, "Fieldwork and Report");
 

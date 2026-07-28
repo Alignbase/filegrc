@@ -47,7 +47,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
     dataModelVersion: loaded.model.modelVersion,
     id: "workspace",
     type: "workspace",
-    title: "FileGRC workspace",
+    title: "filegrc workspace",
     organizationName: "Workspace configuration unavailable",
     timezone: "UTC"
   };

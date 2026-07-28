@@ -67,7 +67,7 @@ export function generateModelDocumentation(model) {
     "",
     ...model.evidenceSourceFamilies.map((item) => (
       item.collectionTestRequired === false
-        ? `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} FileGRC operating records: ${item.operationRecordTypes.map((type) => `\`${type}\``).join(", ")}. No separate collection test is required. ${item.timing}`
+        ? `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} filegrc operating records: ${item.operationRecordTypes.map((type) => `\`${type}\``).join(", ")}. No separate collection test is required. ${item.timing}`
         : `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} Test external collection: ${item.testPrompt} ${item.timing}`
     )),
     "",

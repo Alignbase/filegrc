@@ -355,7 +355,7 @@ function evidenceCollectionStage(scope, records, byId, model) {
           ? `${capture.title} is a draft. Open it, select the authoritative source System, collect the named artifact, and have another person verify it.`
           : capture
             ? `${capture.title} is ${capture.status} but must be verified before this family is ready.`
-          : `Run and verify one test export or test capture from an authoritative source outside FileGRC, then link it to a family control.`,
+          : `Run and verify one test export or test capture from an authoritative source outside filegrc, then link it to a family control.`,
       capture || { type: "evidence" },
       {
         familyId: family.id,

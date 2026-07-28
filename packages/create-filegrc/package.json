@@ -1,11 +1,11 @@
 {
   "name": "create-filegrc",
   "version": "0.2.0",
-  "description": "Create a FileGRC workspace for a SOC 2 program",
+  "description": "Create a filegrc workspace for a SOC 2 program",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Sunpeak-AI/FileGRC.git"
+    "url": "git+https://github.com/Sunpeak-AI/filegrc.git"
   },
   "type": "module",
   "bin": {

@@ -556,8 +556,8 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.equal(packet.summary.obligationOccurrences, 1);
   assert.equal(packet.obligations[0].status, "complete");
   assert.equal(packet.evidence[0].id, "evidence-q1-risk-review");
-  assert.equal(packet.fileGRCRecords.some(({ id }) => id === "action-item-q1-risk-review"), true);
-  assert.equal(packet.summary.fileGRCRecords, packet.fileGRCRecords.length);
+  assert.equal(packet.filegrcRecords.some(({ id }) => id === "action-item-q1-risk-review"), true);
+  assert.equal(packet.summary.filegrcRecords, packet.filegrcRecords.length);
   assert.equal(packet.policies.some(({ id }) => id === "policy-risk-governance"), true);
   assert.equal(packet.datedRecords.some(({ id }) => id === "action-item-q1-risk-review"), true);
   assert.equal(packet.records.find(({ id }) => id === "action-item-q1-risk-review").history[0].author, "Test User");
@@ -577,7 +577,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   const packetIndex = await readFile(join(written.output, "index.html"), "utf8");
   assert.match(packetIndex, /Quarterly risk meeting/);
   assert.match(packetIndex, /Create Q1 compliance records/);
-  assert.match(packetIndex, /FileGRC Evidence/);
+  assert.match(packetIndex, /filegrc Evidence/);
   assert.match(packetIndex, /External Evidence/);
   const formulaPacket = structuredClone(packet);
   formulaPacket.evidence[0].title = "=HYPERLINK(\"https://example.test\",\"Open\")";
@@ -587,7 +587,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.match(await readFile(join(written.output, "manifest.json"), "utf8"), /evidence-q1-risk-review/);
   const controlMatrix = await readFile(join(written.output, "control-matrix.csv"), "utf8");
   assert.match(controlMatrix, /RSK-01/);
-  assert.match(controlMatrix, /FileGRC Evidence IDs/);
+  assert.match(controlMatrix, /filegrc Evidence IDs/);
   assert.match(controlMatrix, /External Evidence IDs/);
   assert.match(controlMatrix, /evidence-risk-review-population/);
   assert.match(await readFile(join(written.output, "population-index.csv"), "utf8"), /Quarterly risk review population/);

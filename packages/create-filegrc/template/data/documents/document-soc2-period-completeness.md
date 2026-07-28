@@ -6,7 +6,7 @@ Reporting period: [start date] through [end date]
 
 Management reconciled every audit-population record linked to this engagement to its authoritative source and included every item relevant to the in-scope system and controls. The generated `population-index.csv` is incorporated into this statement by reference and records each population ID, source system, query, timezone, count, validation, reviewer, conclusion, and fixed export.
 
-| Population | FileGRC population ID | Result or exception |
+| Population | filegrc population ID | Result or exception |
 | --- | --- | --- |
 | Workforce starts, role changes, and departures | [Population ID] | [Result] |
 | Access grants, changes, reviews, and removals | [Population ID] | [Result] |
@@ -27,6 +27,6 @@ For a population with zero items, retain the source-system export or report that
 
 ## Management Confirmation
 
-To the best of management's knowledge after the reconciliations above, FileGRC and the linked evidence contain the complete populations and reportable events relevant to the engagement period.
+To the best of management's knowledge after the reconciliations above, filegrc and the linked evidence contain the complete populations and reportable events relevant to the engagement period.
 
 [Identify the responsible signer, title, signature or approval method, and date.]

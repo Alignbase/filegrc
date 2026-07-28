@@ -1,4 +1,4 @@
-# FileGRC Data Instructions
+# filegrc Data Instructions
 
 These instructions apply to every file under `data/`. The root `AGENTS.md` explains the program and Git workflow. A collection-level `AGENTS.md`, when present, adds rules for that resource.
 
@@ -24,7 +24,7 @@ Use `program-path` to find the current lifecycle step and see the renderer’s e
 - Work required on a schedule or event belongs in `obligation`.
 - A dated instance of work belongs in its activity type, such as `meeting`, `risk-assessment`, `access-review`, `vulnerability-scan`, `backup-test`, or `exercise`.
 - A fact that may change over time belongs in an inventory record, such as `person`, `system`, `asset`, `vendor`, or `access-grant`.
-- A dated Step 5 operating record proves that FileGRC-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
+- A dated Step 5 operating record proves that filegrc-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
 - Follow-up work belongs in `action-item`. A gap belongs in `finding`, a known threat belongs in `risk`, and an approved temporary departure belongs in `exception`.
 - An auditor request belongs in `audit-request`; the engagement itself belongs in `audit`.
 
@@ -61,7 +61,7 @@ npx filegrc create /tmp/filegrc-mutation.json
 npx filegrc validate --json
 ```
 
-Creation is atomic. If JSON, Markdown, relationships, or validation fail, FileGRC rolls back the write. IDs are globally unique and immutable after commit.
+Creation is atomic. If JSON, Markdown, relationships, or validation fail, filegrc rolls back the write. IDs are globally unique and immutable after commit.
 
 ## Read and update
 
@@ -77,7 +77,7 @@ Edit the exported mutation, then run:
 npx filegrc update RESOURCE_TYPE RESOURCE_ID /tmp/filegrc-mutation.json
 ```
 
-The mutation includes the complete record, current Markdown, and revision hashes. FileGRC rejects the update if another person or agent changed either source after export. Reload and reapply the intended change instead of overwriting it.
+The mutation includes the complete record, current Markdown, and revision hashes. filegrc rejects the update if another person or agent changed either source after export. Reload and reapply the intended change instead of overwriting it.
 
 To update JSON and Markdown together, pass `{ "record": {...}, "content": {...}, "revision": "...", "contentRevisions": {...} }`. To change one Markdown slot:
 
@@ -121,7 +121,7 @@ Delete only an uncommitted draft or a mistake:
 npx filegrc delete RESOURCE_TYPE RESOURCE_ID --yes
 ```
 
-FileGRC rejects deletion that breaks references and removes owned Markdown with the JSON. Retire, close, cancel, supersede, or replace committed records that explain historical operation.
+filegrc rejects deletion that breaks references and removes owned Markdown with the JSON. Retire, close, cancel, supersede, or replace committed records that explain historical operation.
 
 ## Evidence and attachments
 
@@ -148,7 +148,7 @@ Remove a local attachment explicitly before deleting its evidence record:
 npx filegrc detach EVIDENCE_ID source-export.csv --yes
 ```
 
-FileGRC will not delete an evidence record that still has local attachments.
+filegrc will not delete an evidence record that still has local attachments.
 
 Never invent evidence, dates, approvals, results, people, or source-system details. If a required fact is unavailable, leave the record in a non-final state and report the missing input.
 
@@ -173,7 +173,7 @@ npx filegrc audit-readiness AUDIT_ID --json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 ```
 
-Run Program Readiness before creating the normal audit engagement. It checks scope, effective policies, implemented controls, evidence sources, and test captures without an audit ID. Fix readiness errors in source records. Do not edit packet output under `.filegrc/`. A delivery-ready FileGRC packet means the management checks passed; the engagement team still judges evidence and performs the examination.
+Run Program Readiness before creating the normal audit engagement. It checks scope, effective policies, implemented controls, evidence sources, and test captures without an audit ID. Fix readiness errors in source records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
 
 ## Finish every change
 

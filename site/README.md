@@ -1,6 +1,6 @@
-# FileGRC site
+# filegrc site
 
-The FileGRC marketing site. Astro builds static HTML for Cloudflare Pages. Blog
+The filegrc marketing site. Astro builds static HTML for Cloudflare Pages. Blog
 posts use Astro content collections and MDX.
 
 ## Develop
@@ -13,7 +13,7 @@ npm run site:dev
 ```
 
 The site opens at `http://localhost:3000`.
-The site toolchain requires Node.js 22.12 or newer. FileGRC workspaces still
+The site toolchain requires Node.js 22.12 or newer. filegrc workspaces still
 support Node.js 20 or newer.
 
 ## Validate and build

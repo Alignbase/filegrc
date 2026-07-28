@@ -1,4 +1,4 @@
-# FileGRC Architecture and Delivery Plan
+# filegrc Architecture and Delivery Plan
 
 ## Status
 
@@ -8,7 +8,7 @@ Later passes can add licensed framework content, deeper control mappings, and gu
 
 ## Product
 
-FileGRC is a Git-native GRC workspace for SOC 2 programs. Engineers and agents maintain plain files, while a small Node.js engine renders an audit overview and provides validation, search, filtering, and CRUD utilities.
+filegrc is a Git-native GRC workspace for SOC 2 programs. Engineers and agents maintain plain files, while a small Node.js engine renders an audit overview and provides validation, search, filtering, and CRUD utilities.
 
 The system has three layers:
 
@@ -105,7 +105,7 @@ Verification: validate
 
 ### Headless agent contract
 
-A generated workspace must be operable by an agent that knows Git and JSON but has no FileGRC context. The root `AGENTS.md` explains the program and Git behavior. `data/AGENTS.md` defines the universal record workflow. Collection-level instruction files add compact rules for areas where a wrong action could weaken an audit, lose evidence, or expose data.
+A generated workspace must be operable by an agent that knows Git and JSON but has no filegrc context. The root `AGENTS.md` explains the program and Git behavior. `data/AGENTS.md` defines the universal record workflow. Collection-level instruction files add compact rules for areas where a wrong action could weaken an audit, lose evidence, or expose data.
 
 `filegrc program-path --json` is the headless equivalent of the renderer’s lifecycle. It reports the six steps, current status, exact page Instructions, Use, Policy Basis, commands, and next actions. `filegrc guide --json` is the compact action and type index. A type-specific guide repeats the matching page guidance and adds current relationship candidates, cadence, storage location, and Markdown slots. The shared definitions in `src/program-path.js` keep renderer and headless instruction text in sync. `filegrc scaffold` produces an incomplete `{ record, content }` mutation with a generated ID and explicit missing values. Scaffolds remain in a non-final lifecycle state and must not contain fabricated compliance facts.
 
@@ -253,7 +253,7 @@ Generated or cached data never belongs in these directories.
 
 An `obligation` is a reusable policy rule. It remains a proposal until every governing policy is active and effective and, when it names controls, at least one linked control is implemented. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
 
-Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. FileGRC rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. FileGRC applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
+Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. filegrc rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. filegrc applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
 
 `planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. Calendar completion uses one validated mutation to create the dated operating record and append it to the obligation's `completionResourceIds`; the obligation board, API, and `filegrc complete` use that same transaction. The planner does not write derived occurrence records for calendar schedules.
 
@@ -284,9 +284,9 @@ Program Readiness answers whether management can begin a candidate Type 2 period
 4. Test External Evidence collection where no dedicated Step 5 operating record exists.
 5. Operate the program.
 
-The Evidence Ready gate requires an assurance goal, selected systems, criteria, controls, effective policies, implemented controls, cataloged authoritative systems, and verified test collection for evidence that comes from outside FileGRC. Evidence created by FileGRC-managed Step 5 processes does not need a separate collection test. A FileGRC-managed control cannot be implemented while a linked non-retired Work Queue schedule is paused or waiting for policy approval. Starter schedules remain enabled but do not run until their governing policies are effective and at least one linked control is implemented. Marking a fully configured control implemented starts its eligible schedules in the same validated state change. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
+The Evidence Ready gate requires an assurance goal, selected systems, criteria, controls, effective policies, implemented controls, cataloged authoritative systems, and verified test collection for evidence that comes from outside filegrc. Evidence created by filegrc-managed Step 5 processes does not need a separate collection test. A filegrc-managed control cannot be implemented while a linked non-retired Work Queue schedule is paused or waiting for policy approval. Starter schedules remain enabled but do not run until their governing policies are effective and at least one linked control is implemented. Marking a fully configured control implemented starts its eligible schedules in the same validated state change. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
 
-The renderer adds Audit as the sixth and final lifecycle stage. That stage covers the CPA firm, formal period, FileGRC Evidence, External Evidence, fieldwork, evidence packet, and report. Criteria remain part of scope because management must decide what applies before adopting policies.
+The renderer adds Audit as the sixth and final lifecycle stage. That stage covers the CPA firm, formal period, filegrc Evidence, External Evidence, fieldwork, evidence packet, and report. Criteria remain part of scope because management must decide what applies before adopting policies.
 
 The workspace keeps management’s `candidatePeriodStart` and `candidatePeriodEnd`. An audit record keeps the separate CPA-agreed Type 1 date or Type 2 period. The candidate dates let management preserve evidence as soon as collection works, but they do not establish the report period.
 
@@ -328,15 +328,15 @@ The sidebar groups records by their job:
 - Define Scope: people and the oversight team, criteria, commitments, material vendors, and in-scope systems
 - Approve Policies: policies and governed documents
 - Implement Controls: the starter control set, implementation fields, complementary customer or subservice controls, and operation-tracking status
-- Test Evidence Collection: configure external authoritative sources and verify their exports or captures before the candidate period starts; Step 5 records created in FileGRC are excluded
+- Test Evidence Collection: configure external authoritative sources and verify their exports or captures before the candidate period starts; Step 5 records created in filegrc are excluded
 - Operate the Program: risk assessments and risks, the Work Queue, data requests, asset inventory, vendor reviews, governance, access, security, resilience, training, confirmed findings, and exceptions
-- Audit: engagements and requests, populations, tests, FileGRC Evidence and External Evidence review, packet preparation, fieldwork, and reports
+- Audit: engagements and requests, populations, tests, filegrc Evidence and External Evidence review, packet preparation, fieldwork, and reports
 
 Resource types are nested only when the extra grouping adds meaning. Organization settings remain anchored at the bottom.
 
-The Controls page explains what the generated workspace already supplies and what management must tailor before a planned control becomes implemented. Its operation-tracking column distinguishes controls linked to recurring or event work in FileGRC from controls documented through External Evidence records. External Evidence is a shared record page that uses the standard resource table and filters. Completing onboarding creates draft External Evidence records for selected control families that rely on evidence from outside FileGRC and do not already have a dedicated Step 5 record. Each draft names the artifact to collect and links its Controls. Users open the normal record row to choose the source System, attach or reference the result, record collection facts, and obtain verification. Risk, governance, vendor review, training and acknowledgement, vulnerability testing, backup and recovery testing, exception, and finding evidence belongs on the Step 5 operating records. Fixed external artifacts remain behind External Evidence records and are linked from those operating records.
+The Controls page explains what the generated workspace already supplies and what management must tailor before a planned control becomes implemented. Its operation-tracking column distinguishes controls linked to recurring or event work in filegrc from controls documented through External Evidence records. External Evidence is a shared record page that uses the standard resource table and filters. Completing onboarding creates draft External Evidence records for selected control families that rely on evidence from outside filegrc and do not already have a dedicated Step 5 record. Each draft names the artifact to collect and links its Controls. Users open the normal record row to choose the source System, attach or reference the result, record collection facts, and obtain verification. Risk, governance, vendor review, training and acknowledgement, vulnerability testing, backup and recovery testing, exception, and finding evidence belongs on the Step 5 operating records. Fixed external artifacts remain behind External Evidence records and are linked from those operating records.
 
-Step 6 reviews both evidence paths for the formal audit date or period. FileGRC Evidence is the set of dated Step 5 operating records, their Markdown, and Git history. External Evidence is the set of verified `evidence` records, fixed attachments, and approved external references from authoritative Systems. Audit Readiness reports coverage for both. The packet includes matching FileGRC records, External Evidence, control links, delivery indexes, historical revisions, and checksums.
+Step 6 reviews both evidence paths for the formal audit date or period. filegrc Evidence is the set of dated Step 5 operating records, their Markdown, and Git history. External Evidence is the set of verified `evidence` records, fixed attachments, and approved external references from authoritative Systems. Audit Readiness reports coverage for both. The packet includes matching filegrc records, External Evidence, control links, delivery indexes, historical revisions, and checksums.
 
 Each of the six lifecycle steps has its own overview route. Clicking a step label opens that page, while its separate chevron expands or collapses the step in place. Nested subgroup rows toggle their drawers and do not have separate overview pages. Steps 1 through 4 and Step 6 link each record or working page in order, summarize record counts, and let users mark each page complete or incomplete. Step 5 is an operating board, so it has no manual completion marks. It puts compact Policy Event triggers above the Work Queue. Each trigger shows every resulting task, owner, due window, and required proof in a tooltip, then creates the event and all linked Work Queue tasks atomically. Other open Action Items also appear in Work Queue. Step 5 progress comes from the candidate-period start and overdue Work Queue state.
 
@@ -381,7 +381,7 @@ Audit pages also show:
 
 ## Versioning contract
 
-FileGRC currently has one published data model, v1. Compatible additions can update that model with its starter data, generated docs, and tests. A change that would make an existing v1 workspace invalid needs a new model version and an explicit migration path.
+filegrc currently has one published data model, v1. Compatible additions can update that model with its starter data, generated docs, and tests. A change that would make an existing v1 workspace invalid needs a new model version and an explicit migration path.
 
 Package versions stay unchanged during normal development and move together when both published packages change. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 

@@ -10,14 +10,14 @@ const execute = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const textExtensions = new Set(["", ".json", ".md", ".txt", ".yml", ".yaml", ".gitignore"]);
 
-export async function createFileGRC(options = {}) {
+export async function createFilegrc(options = {}) {
   const parameterConfig = JSON.parse(await readFile(join(packageRoot, "template-parameters.json"), "utf8"));
   const target = resolve(options.target ?? "filegrc-program");
   await assertWritableTarget(target, Boolean(options.force));
   if (options.force) await assertNoTemplateCollisions(target);
 
   const prompted = await resolvePromptValues(parameterConfig.parameters, options);
-  const engineVersion = await resolveFileGRCVersion(options.filegrcVersion);
+  const engineVersion = await resolveFilegrcVersion(options.filegrcVersion);
   const values = {
     ...prompted,
     effective_date: options.effectiveDate ?? new Date().toISOString().slice(0, 10),
@@ -30,6 +30,7 @@ export async function createFileGRC(options = {}) {
   await copyTemplate(target);
   await renderTemplate(target, parameterConfig, values);
   await writeBaselineRecords(target, values.effective_date);
+  const resourceCounts = await summarizeResources(target);
 
   const installed = options.install !== false;
   if (installed) {
@@ -43,12 +44,13 @@ export async function createFileGRC(options = {}) {
     target,
     values,
     engineVersion,
+    resourceCounts,
     install: installed ? "installed" : "skipped",
     gitMode: joinedExistingWorktree ? "existing-worktree" : "initialized"
   };
 }
 
-export async function resolveFileGRCVersion(explicitVersion) {
+export async function resolveFilegrcVersion(explicitVersion) {
   if (explicitVersion) return cleanVersion(explicitVersion);
   try {
     const { stdout } = await execute("npm", ["view", "filegrc", "version", "--json"], {
@@ -67,7 +69,9 @@ async function resolvePromptValues(parameters, options) {
   const mapped = {
     company_name: options.companyName,
     policy_owner_name: options.policyOwnerName,
-    security_contact_email: options.securityContactEmail
+    policy_owner_email: options.policyOwnerEmail,
+    security_contact_email: options.securityContactEmail,
+    timezone: options.timezone
   };
   if (options.yes) {
     mapped.company_name ??= "Example Company";
@@ -77,21 +81,29 @@ async function resolvePromptValues(parameters, options) {
   for (const key of Object.keys(mapped)) {
     if (mapped[key] !== undefined && mapped[key] !== null) mapped[key] = String(mapped[key]).trim();
   }
-  const missing = parameters.filter(({ key, required }) => required && !mapped[key]);
-  if (missing.length) {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error(`Missing required values: ${missing.map(({ key }) => key).join(", ")}`);
-    }
+  if (process.stdin.isTTY && process.stdout.isTTY) {
     const prompt = createInterface({ input: process.stdin, output: process.stdout });
     try {
-      for (const parameter of missing) {
+      for (const parameter of parameters.filter(({ required, key }) => required && !mapped[key])) {
+        const defaultValue = parameterDefault(parameter, mapped);
+        const suffix = defaultValue ? ` [${defaultValue}]` : "";
         let value = "";
-        while (!value) value = (await prompt.question(`${parameter.prompt}: `)).trim();
+        while (!value) {
+          value = (await prompt.question(`${parameter.prompt}${suffix}: `)).trim() || defaultValue;
+        }
         mapped[parameter.key] = value;
       }
     } finally {
       prompt.close();
     }
+  } else {
+    for (const parameter of parameters.filter(({ required, key }) => required && !mapped[key])) {
+      mapped[parameter.key] = parameterDefault(parameter, mapped);
+    }
+  }
+  const missing = parameters.filter(({ key, required }) => required && !mapped[key]);
+  if (missing.length) {
+    throw new Error(`Missing required values: ${missing.map(({ key }) => key).join(", ")}`);
   }
   for (const key of ["company_name", "policy_owner_name"]) {
     if (/[\u0000-\u001f\u007f]/.test(mapped[key])) {
@@ -102,10 +114,37 @@ async function resolvePromptValues(parameters, options) {
       throw new Error(`${key} cannot contain template token syntax.`);
     }
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.security_contact_email)) {
-    throw new Error("Security contact email must be a valid email address.");
+  for (const [key, label] of [
+    ["policy_owner_email", "Policy owner email"],
+    ["security_contact_email", "Security contact email"]
+  ]) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped[key])) {
+      throw new Error(`${label} must be a valid email address.`);
+    }
   }
+  if (!isTimezone(mapped.timezone)) throw new Error("Program timezone must be a valid IANA time zone.");
   return mapped;
+}
+
+function parameterDefault(parameter, mapped) {
+  if (parameter.defaultFrom) return mapped[parameter.defaultFrom] || "";
+  if (parameter.defaultSource === "local-timezone") return localTimezone();
+  return "";
+}
+
+function localTimezone() {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isTimezone(timezone) ? timezone : "UTC";
+}
+
+function isTimezone(value) {
+  if (!value) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function assertWritableTarget(target, force) {
@@ -213,6 +252,19 @@ async function collectFiles(directory) {
   return result;
 }
 
+async function summarizeResources(target) {
+  const counts = {};
+  let total = 0;
+  for (const path of await collectFiles(join(target, "data"))) {
+    if (extname(path) !== ".json") continue;
+    const record = JSON.parse(await readFile(path, "utf8"));
+    if (!record?.id || !record?.type || !record?.schemaVersion) continue;
+    total += 1;
+    counts[record.type] = (counts[record.type] || 0) + 1;
+  }
+  return { total, byType: counts };
+}
+
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
@@ -251,7 +303,7 @@ async function run(command, args, cwd) {
 function cleanVersion(value) {
   const version = String(value ?? "").trim().replace(/^v/, "");
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
-    throw new Error(`Could not resolve a valid FileGRC version from "${value}".`);
+    throw new Error(`Could not resolve a valid filegrc version from "${value}".`);
   }
   return version;
 }

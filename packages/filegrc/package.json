@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Sunpeak-AI/FileGRC.git"
+    "url": "git+https://github.com/Sunpeak-AI/filegrc.git"
   },
   "type": "module",
   "bin": {

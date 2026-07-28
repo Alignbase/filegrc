@@ -2,7 +2,7 @@
 
 This private workspace holds {{company_name}}'s SOC 2 program records and audit evidence. JSON under `data/` stores structured records, Markdown stores long-form work, and Git records reviewed changes.
 
-The workspace uses FileGRC {{filegrc_version}} through the dependency range `{{filegrc_version_range}}`.
+The workspace uses filegrc {{filegrc_version}} through the dependency range `{{filegrc_version_range}}`.
 
 ## Work locally
 
@@ -36,6 +36,6 @@ The starter policies, controls, and obligations are proposals. They do not state
 3. Review the starter control set, implement each applicable control with its actual procedure, scope, cadence, evidence sources, and implementation date, and confirm any linked Work Queue schedules are enabled. Marking a control implemented starts eligible schedules. Then record any complementary customer or subservice controls.
 4. Open each generated External Evidence draft, choose its authoritative source System, collect the named artifact, and have another person verify it.
 5. Run `npx filegrc program-readiness --require-ready`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions. `npx filegrc obligations` previews every event task, owner, deadline, and requested proof before the trigger creates anything.
-6. Engage a CPA firm, record the separate firm-agreed period in an audit record, review FileGRC Evidence and External Evidence, and prepare fieldwork.
+6. Engage a CPA firm, record the separate firm-agreed period in an audit record, review filegrc Evidence and External Evidence, and prepare fieldwork.
 
-FileGRC manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.
+filegrc manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.

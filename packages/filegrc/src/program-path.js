@@ -14,7 +14,7 @@ export const RESOURCE_INSTRUCTIONS = {
   "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
   risk: "Record each risk identified by an assessment or operating activity. Assign an owner, rate it, and document the chosen response.",
   obligation: "Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.",
-  "obligation-event": "When a policy-triggering event occurs, record it here and complete the actions FileGRC creates for it.",
+  "obligation-event": "When a policy-triggering event occurs, record it here and complete the actions filegrc creates for it.",
   "policy-review": "Record scheduled and change-driven reviews of policies and governed documents, including the decision and any follow-up.",
   meeting: "Record required oversight meetings, including attendees, decisions, minutes, and follow-up work.",
   exception: "Record and approve any time-limited departure from a policy or control before the departure begins.",
@@ -99,7 +99,7 @@ export const PROGRAM_PATH = [
     description: "Tailor and finish the starter control set",
     summary: "Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, cadence, policy and criteria mappings, authoritative evidence source, and implementation date. Mark it implemented only after the procedure is operating, then record any controls that customers or carved-out providers must perform.",
     sections: [
-      { id: "catalog", title: "Control Catalog", description: "Finish the starter controls, record applicable complementary controls, and see whether FileGRC tracks operation through Work Queue or evidence records.", steps: ["Open every planned control and confirm its mappings and suggested frequency.", "Write the real procedure in Record Markdown and add system scope and evidence sources.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
+      { id: "catalog", title: "Control Catalog", description: "Finish the starter controls, record applicable complementary controls, and see whether filegrc tracks operation through Work Queue or evidence records.", steps: ["Open every planned control and confirm its mappings and suggested frequency.", "Write the real procedure in Record Markdown and add system scope and evidence sources.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
     ],
     resourceTypes: ["control", "complementary-control"],
     commands: [
@@ -170,7 +170,7 @@ export const PROGRAM_PATH = [
       {
         id: "policy-events",
         title: "Policy Events",
-        instructions: "Trigger the matching workflow when an event occurs. FileGRC adds every required action to the Work Queue with its owner and deadline.",
+        instructions: "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.",
         use: "Preview the full workflow before triggering it, then create the event and every linked task in one validated write.",
         policyBasis: "Active event obligations translate policy-triggering changes into owned, deadline-bound Action Items. Proposed workflows remain unavailable until their governing policies and linked controls are ready.",
         commands: ["filegrc obligations --json", "filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json"]
@@ -201,14 +201,14 @@ export const PROGRAM_PATH = [
     summary: "After the program is collecting reliable evidence, create an Audit record for the real CPA engagement, keep the firm-agreed report period separate from management’s candidate dates, complete management documents, populations, requests, evidence delivery, and fieldwork, then preserve the findings, responses, opinion, and final report.",
     sections: [
       { id: "engagement", title: "Engagement", description: "Record the actual CPA engagement, formal scope and dates, requests, and management responses.", steps: ["Create the Audit after the CPA firm is engaged.", "Record the firm-agreed type, scope, systems, criteria, and dates.", "Track incoming requests and approved response material."], types: ["audit", "audit-request"], defaultOpen: true },
-      { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Review dated FileGRC Evidence and verified External Evidence for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and findings.", "Build the packet from a clean Git revision; it includes FileGRC records, Markdown, External Evidence, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
+      { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Review dated filegrc Evidence and verified External Evidence for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and findings.", "Build the packet from a clean Git revision; it includes filegrc records, Markdown, External Evidence, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
     ],
     resourceTypes: ["audit", "audit-request", "audit-population", "control-test"],
     utilities: [
       {
         id: "audit-packet",
         title: "Audit Evidence & Packet",
-        instructions: "Review FileGRC Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.",
+        instructions: "Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.",
         use: "Prepare management documents and populations, answer fieldwork requests, review both evidence paths, and compile a delivery bound to a clean Git revision.",
         policyBasis: "Management prepares the scoped records, evidence, populations, assertions, and responses. The CPA firm selects samples, evaluates evidence and exceptions, and issues the report.",
         commands: ["filegrc audit-readiness AUDIT_ID --json", "filegrc evidence-packet --audit AUDIT_ID --preview --json"]

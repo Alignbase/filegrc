@@ -2,14 +2,14 @@
 
 An evidence record explains what a proof item is, where it came from, what period it supports, who collected it, and which records or controls it supports. The attachment alone is not enough.
 
-Completing onboarding creates draft collection tests only for evidence that must come from systems outside FileGRC and does not already have a dedicated Step 5 record. Risk assessments, meetings, vendor reviews, attestations, vulnerability scans, penetration tests, backup tests, exercises, exceptions, and findings do not need a separate test. When one of those operating records needs a fixed external artifact, create or update an External Evidence record for the artifact and link its ID from the operating record. Keep a generated collection test as `draft` until the artifact has actually been captured. Set it to `collected` only after selecting the source System, attaching or referencing the result, and recording the source, date, classification, and collector. Set it to `verified` only after another named person checks it.
+Completing onboarding creates draft collection tests only for evidence that must come from systems outside filegrc and does not already have a dedicated Step 5 record. Risk assessments, meetings, vendor reviews, attestations, vulnerability scans, penetration tests, backup tests, exercises, exceptions, and findings do not need a separate test. When one of those operating records needs a fixed external artifact, create or update an External Evidence record for the artifact and link its ID from the operating record. Keep a generated collection test as `draft` until the artifact has actually been captured. Set it to `collected` only after selecting the source System, attaching or referencing the result, and recording the source, date, classification, and collector. Set it to `verified` only after another named person checks it.
 
 ## Create evidence
 
 1. Run `npx filegrc guide evidence --json`.
 2. Use one evidence record for one coherent proof item or fixed export.
 3. Put local attachments under `data/evidence/EVIDENCE_ID/` and list their data-relative paths in `filePaths`.
-4. Use `externalReference` only when the file must remain in an approved external system. FileGRC never fetches it.
+4. Use `externalReference` only when the file must remain in an approved external system. filegrc never fetches it.
 5. Link `sourceResourceIds`, `controlIds`, and `auditIds` as applicable. Use `sourceCommit` when the evidence represents repository state.
 6. Name the actual collector. A `verified` record also needs the actual verifier and verification date.
 
@@ -21,7 +21,7 @@ npx filegrc attach EVIDENCE_ID /path/to/source-file --name auditor-facing-name.c
 
 The command never overwrites an existing attachment.
 
-Use `npx filegrc detach EVIDENCE_ID FILE_NAME --yes` when removing a mistaken attachment. FileGRC will not delete an evidence record while local attachments remain.
+Use `npx filegrc detach EVIDENCE_ID FILE_NAME --yes` when removing a mistaken attachment. filegrc will not delete an evidence record while local attachments remain.
 
 For a rendered page capture, record the route, filters, audit period, exact Git commit, capture time and method, source resource IDs, and screenshot. A current screenshot cannot prove an earlier state unless it is rendered from or bound to that revision.
 

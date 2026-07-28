@@ -2,18 +2,30 @@
   "parameters": [
     {
       "key": "company_name",
-      "prompt": "Company name",
+      "prompt": "Legal organization name",
       "required": true
     },
     {
       "key": "policy_owner_name",
-      "prompt": "Your name",
+      "prompt": "Policy owner name",
       "required": true
     },
     {
       "key": "security_contact_email",
       "prompt": "Security contact email",
       "required": true
+    },
+    {
+      "key": "policy_owner_email",
+      "prompt": "Policy owner email",
+      "required": true,
+      "defaultFrom": "security_contact_email"
+    },
+    {
+      "key": "timezone",
+      "prompt": "Program timezone",
+      "required": true,
+      "defaultSource": "local-timezone"
     }
   ],
   "generated": [

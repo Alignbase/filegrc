@@ -550,7 +550,7 @@ function evidenceStage(audit, records, byId, model) {
   const evidenceFamiliesFor = (control) => (model.evidenceSourceFamilies || []).filter((family) => (
     (family.controlCodes || []).includes(control.code)
   ));
-  const fileGRCRecords = records.filter((record) => (
+  const filegrcRecords = records.filter((record) => (
     !NON_EVIDENCE_RECORD_TYPES.has(record.type)
     && controlIdsForRecord(record, byId).size
     && recordRelevantToAuditDate(record, audit, model)
@@ -558,7 +558,7 @@ function evidenceStage(audit, records, byId, model) {
   const managedControls = controls.filter((control) => managedFamilies.some((family) => (
     (family.controlCodes || []).includes(control.code)
   )));
-  const controlsWithFileGRCRecords = managedControls.filter((control) => fileGRCRecords.some((record) => (
+  const controlsWithFilegrcRecords = managedControls.filter((control) => filegrcRecords.some((record) => (
     controlIdsForRecord(record, byId).has(control.id)
   )));
   const externalControls = controls.filter((control) => externalFamilies.some((family) => (
@@ -570,12 +570,12 @@ function evidenceStage(audit, records, byId, model) {
   const items = [
     item(
       "filegrc-evidence",
-      managedControls.length && controlsWithFileGRCRecords.length === managedControls.length ? "complete" : managedControls.length ? "action" : "info",
-      "Review FileGRC Evidence",
+      managedControls.length && controlsWithFilegrcRecords.length === managedControls.length ? "complete" : managedControls.length ? "action" : "info",
+      "Review filegrc Evidence",
       managedControls.length
-        ? `${controlsWithFileGRCRecords.length} of ${managedControls.length} selected controls that use FileGRC workflows have a dated operating record for the formal period. Complete each Step 5 record, link it to the control, and add results in its structured fields or Markdown.`
-        : "No selected controls use a dedicated FileGRC operating record.",
-      fileGRCRecords[0] || { type: managedFamilies[0]?.operationRecordTypes?.[0] || "control" }
+        ? `${controlsWithFilegrcRecords.length} of ${managedControls.length} selected controls that use filegrc workflows have a dated operating record for the formal period. Complete each Step 5 record, link it to the control, and add results in its structured fields or Markdown.`
+        : "No selected controls use a dedicated filegrc operating record.",
+      filegrcRecords[0] || { type: managedFamilies[0]?.operationRecordTypes?.[0] || "control" }
     ),
     item(
       "external-evidence",
@@ -600,7 +600,7 @@ function evidenceStage(audit, records, byId, model) {
       continue;
     }
     if (source.collectionTestRequired === false) {
-      const sourceRecords = fileGRCRecords.filter((record) => (
+      const sourceRecords = filegrcRecords.filter((record) => (
         relevantControls.some((control) => controlIdsForRecord(record, byId).has(control.id))
       ));
       const coveredControls = relevantControls.filter((control) => sourceRecords.some((record) => (
@@ -611,7 +611,7 @@ function evidenceStage(audit, records, byId, model) {
         coveredControls.length === relevantControls.length ? "complete" : "action",
         source.title,
         coveredControls.length === relevantControls.length
-          ? `${sourceRecords.length} dated FileGRC ${sourceRecords.length === 1 ? "record" : "records"} cover ${relevantControls.length} mapped controls. External artifacts needed to support those results are linked from the operating records.`
+          ? `${sourceRecords.length} dated filegrc ${sourceRecords.length === 1 ? "record" : "records"} cover ${relevantControls.length} mapped controls. External artifacts needed to support those results are linked from the operating records.`
           : `${coveredControls.length} of ${relevantControls.length} mapped controls have a dated ${source.operationRecordTypes.map(displayValue).join(" or ")} record for the formal period. Complete the Step 5 work and attach or reference any supporting external artifact on that record.`,
         sourceRecords[0] || { type: source.operationRecordTypes[0] }
       ));
@@ -640,7 +640,7 @@ function evidenceStage(audit, records, byId, model) {
         || { type: "system" }
     ));
   }
-  return stage("evidence", "Audit Evidence", "Review both evidence paths: dated FileGRC operating records and verified External Evidence from authoritative systems. FileGRC includes both in the audit packet.", items);
+  return stage("evidence", "Audit Evidence", "Review both evidence paths: dated filegrc operating records and verified External Evidence from authoritative systems. filegrc includes both in the audit packet.", items);
 }
 
 function populationsStage(audit, records, byId, model) {
@@ -676,11 +676,11 @@ function populationsStage(audit, records, byId, model) {
 }
 
 function auditorStage() {
-  return stage("auditor", "Fieldwork and Report", "FileGRC prepares the record set but does not make the CPA firm's independent judgments.", [
+  return stage("auditor", "Fieldwork and Report", "filegrc prepares the record set but does not make the CPA firm's independent judgments.", [
     item("firm-eligibility", "external", "Firm eligibility and independence", "Confirm directly with the engagement partner that the firm and signing practitioner meet applicable licensing, peer-review, ethics, and independence requirements. Keep the signed engagement terms with the audit record if management needs a copy."),
     item("sampling", "external", "Sample selection and independent testing", "The auditor chooses samples, performs tests, evaluates exceptions, and decides whether more work is needed."),
     item("report", "external", "Report and opinion", "Management reviews and signs its representations. The auditor issues the final report and opinion."),
-    item("criteria", "external", "Authoritative criteria and examination guidance", "FileGRC stores reference IDs and orientation text. Use the publisher's current official criteria and the engagement team's examination guidance for scope, evaluation, and reporting.")
+    item("criteria", "external", "Authoritative criteria and examination guidance", "filegrc stores reference IDs and orientation text. Use the publisher's current official criteria and the engagement team's examination guidance for scope, evaluation, and reporting.")
   ]);
 }
 

@@ -15,7 +15,7 @@ export function resolveWorkspaceRoot(input = process.cwd()) {
     current = parent;
   }
 
-  throw new Error("No FileGRC workspace was found from the requested path.");
+  throw new Error("No filegrc workspace was found from the requested path.");
 }
 
 export function isWithin(parent, candidate) {

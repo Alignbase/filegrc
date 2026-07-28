@@ -21,7 +21,7 @@ export function renderIndex(state = null) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>FileGRC</title>
+  <title>filegrc</title>
   <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="./filegrc.css">
 </head>
@@ -52,7 +52,7 @@ const READINESS_STAGES = SHARED_PROGRAM_STAGES.map((stage) => ({
 }));
 const STAGE_PAGE_SUMMARIES = ${JSON.stringify({
   ...RESOURCE_INSTRUCTIONS,
-  "utility:audit-packet": "Review FileGRC Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet."
+  "utility:audit-packet": "Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet."
 })};
 const POLICY_EVENT_NAMES = ${JSON.stringify(POLICY_EVENT_NAMES)};
 const STAGE_PAGE_ID_ALIASES = {
@@ -174,7 +174,7 @@ function buildNavigation(route) {
   const organizationCurrent = route.name === "organization" || route.name === "repository" || ["workspace", "renderer-settings"].includes(route.type);
   const organizationName = state.workspace.organizationName || "Organization";
   const initial = organizationName.trim().charAt(0).toUpperCase() || "O";
-  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"' + (route.name === "home" ? ' aria-current="page"' : "") + '><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>FileGRC</strong><small>SOC 2 workspace</small></span></a><nav class="sidebar-nav">' + stages + '</nav><div class="sidebar-footer"><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
+  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"' + (route.name === "home" ? ' aria-current="page"' : "") + '><img class="mark" src="./favicon.png" alt="" width="39" height="39"><span><strong>filegrc</strong><small>SOC 2 workspace</small></span></a><nav class="sidebar-nav">' + stages + '</nav><div class="sidebar-footer"><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
 }
 
 function readinessStageForRoute(route) {
@@ -216,7 +216,7 @@ function topbar(route) {
           ? "Work Queue"
           : route.name === "audit-packet"
             ? "Audit Readiness"
-            : state.model.resources[route.type]?.pluralTitle || "FileGRC";
+            : state.model.resources[route.type]?.pluralTitle || "filegrc";
   return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><label class="search"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><div class="topbar-status"><a class="validation-chip" href="#/repository"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + (state.git.clean ? "good" : "warn") + '"></span>' + esc(state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable") + '</a></div>';
 }
 
@@ -228,9 +228,7 @@ function renderHome(main) {
   const acceptedEventTriggers = state.obligations.triggers.filter(({ programStatus }) => programStatus !== "proposed");
   const openObligations = state.obligations.items.filter((item) => item.status !== "complete");
   const obligationHeading = openObligations.some((item) => item.status !== "proposed") ? "Due Windows" : "Starter Proposals";
-  const setupBanner = setupPending
-    ? '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Define the initial service boundary</h3><p>Record the management program goal and the systems that should enter policy and control review.</p></div><ol><li>Describe the service boundary.</li><li>Choose the program goal.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>'
-    : "";
+  const setupBanner = setupPending ? initialSetupBanner() : "";
   const auditPanel = program.evidenceReady
     ? '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Optional next phase</p><h3>' + esc(activeFirm ? titleCase(activeAudit.record.title) : "Target: " + program.target.label) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Engagements</a>') + '</div>' +
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>'
@@ -240,6 +238,26 @@ function renderHome(main) {
     '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">' + (acceptedEventTriggers.length ? "Trigger work" : "Review proposals") + '</a></div>' + eventReminderPreview(state.obligations.triggers.slice(0, 4)) + '</section>' +
     auditPanel + '</div></div>';
   main.querySelector("#resume-setup")?.addEventListener("click", requestOnboarding);
+}
+
+function initialSetupBanner() {
+  const system = resourcesOfType("system").find(({ record }) => record.inScope && record.status !== "retired")?.record;
+  if (!system) {
+    return '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Define the initial service boundary</h3><p>Record the management program goal and the systems that should enter policy and control review.</p></div><ol><li>Describe the service boundary.</li><li>Choose the program goal.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>';
+  }
+  const goal = programGoalFromKind(state.workspace.assuranceGoal);
+  const goalLabels = {
+    readiness: "Program Readiness",
+    "type-1": "SOC 2 Type 1",
+    "type-2": "SOC 2 Type 2"
+  };
+  const goalStep = goal === "none"
+    ? "Choose the program goal."
+    : "Confirm the saved program goal: " + goalLabels[goal] + ".";
+  const completion = system.status === "planned"
+    ? "Complete setup to activate the planned service and continue to Step 1."
+    : "Complete setup to close onboarding and continue to Step 1.";
+  return '<section class="setup-banner"><div><p class="kicker">Setup draft saved</p><h3>Review and complete initial setup</h3><p>' + esc(system.title) + ' already has a saved service boundary.</p></div><ol><li>Review the saved service boundary.</li><li>' + esc(goalStep) + '</li><li>' + esc(completion) + '</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>';
 }
 
 function readinessOverview() {
@@ -257,7 +275,7 @@ function readinessOverview() {
     programStage("policies", "Tailor the policy set, obtain independent management approval, and establish effective dates.", "#/stage/policies"),
     programStage("controls", "Finish the internal control set with actual procedures, owners, scope, and evidence sources, then record any complementary controls.", "#/stage/controls"),
     programStage("evidence", "For each control family, finish the source-system instructions and verify a real test export or capture.", "#/stage/evidence"),
-    programStage("run", "Begin the candidate period, maintain risk assessments, work the FileGRC queue, run the remaining controls, and retain dated evidence.", "#/stage/run"),
+    programStage("run", "Begin the candidate period, maintain risk assessments, work the filegrc queue, run the remaining controls, and retain dated evidence.", "#/stage/run"),
     programStage("audit", "Engage the CPA firm, confirm the formal period, complete fieldwork, and generate the final evidence packet.", "#/stage/audit")
   ];
   return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Prepare, Operate, Then Audit</h3></div><div class="readiness-progress-summary"><div><span>Program Progress</span><strong>' + progress.percent + '%</strong><div class="progress"><span style="width:' + progress.percent + '%"></span></div><small>' + esc(progress.complete + " of " + progress.total + " program milestones complete") + '</small></div><a class="button primary" href="' + nextHref + '">Continue</a></div></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
@@ -411,7 +429,7 @@ function sectionDestinations(section) {
     destinations.push({ type, kind: "Record page", label: titleCase(definition.pluralTitle), href: "#/resources/" + encodeURIComponent(type), description: definition.description });
   }
   if (section.utility === "obligation-board") destinations.push({ utility: section.utility, kind: "Working page", label: "Work Queue", href: "#/stage/run", description: "Complete recurring work, Policy Event tasks, and assigned follow-up with its due windows and linked proof." });
-  if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Evidence & Packet", href: "#/audit-packet", description: "Review FileGRC and External Evidence, prepare fieldwork, and build the indexed packet." });
+  if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Evidence & Packet", href: "#/audit-packet", description: "Review filegrc and External Evidence, prepare fieldwork, and build the indexed packet." });
   return destinations;
 }
 
@@ -468,7 +486,7 @@ function renderObligations(main, params = new URLSearchParams()) {
   main.innerHTML = '<div class="page obligation-board-page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 6</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
     feedback +
-    '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>Trigger the matching workflow when an event occurs. FileGRC adds every required action to the Work Queue with its owner and deadline.</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
+    '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
     '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring, event, and assigned work</p><h2>Work Queue</h2><p>This board schedules work linked to ' + scheduledControls + ' of ' + controls.length + ' controls and includes ' + assignedFollowUp + ' open ' + pluralize("Action Item", assignedFollowUp) + '. Triggered Policy Event actions appear here as individual tasks in Upcoming, Due, or Overdue. Other controls operate continuously or per transaction in their source systems and are documented through evidence records. Starter work remains a proposal until its governing policies are effective and at least one linked control is implemented.</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div>' +
     '<div class="obligation-board">' + sections + '</div>' +
     '</section></div>';
@@ -678,10 +696,10 @@ function openObligationEventDialog(trigger) {
 function renderAuditPacket(main, params = new URLSearchParams()) {
   const audits = resourcesOfType("audit");
   const evidence = resourcesOfType("evidence");
-  const fileGRCRecordTypes = new Set((state.model.evidenceSourceFamilies || [])
+  const filegrcRecordTypes = new Set((state.model.evidenceSourceFamilies || [])
     .filter((family) => family.collectionTestRequired === false)
     .flatMap((family) => family.operationRecordTypes || []));
-  const fileGRCRecords = state.resources.filter(({ record }) => fileGRCRecordTypes.has(record.type));
+  const filegrcRecords = state.resources.filter(({ record }) => filegrcRecordTypes.has(record.type));
   const requestedAudit = params.get("auditId");
   const selected = audits.find(({ record }) => record.id === requestedAudit)?.record || audits.find(({ record }) => record.status !== "complete")?.record || null;
   const today = currentDate();
@@ -693,15 +711,15 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
   const preflight = [
     ["Repository", state.git.available ? state.git.clean ? "Clean revision" : state.git.changes.length + " uncommitted" : "Git unavailable", "#/repository", state.git.clean ? "good" : "warn"],
     ["Engagement", selected ? selected.title : "No audit record", "#/resources/audit", selected ? "good" : "warn"],
-    ["FileGRC Evidence", fileGRCRecords.length + " operating " + pluralize("record", fileGRCRecords.length), "#/stage/run", "neutral"],
+    ["filegrc Evidence", filegrcRecords.length + " operating " + pluralize("record", filegrcRecords.length), "#/stage/run", "neutral"],
     ["External Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
     ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/stage/run", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
   ];
-  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">FileGRC Evidence</span><h4>Review operating records</h4><p>Complete the applicable Step 5 records, link them to their Controls, and record results in their fields or Markdown. Link any external artifact needed to support the result. The packet includes the records, Markdown, Git history, and linked artifacts.</p></a><a href="#/resources/evidence"><span class="step-label">External Evidence</span><h4>Review imported or referenced proof</h4><p>Verify the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference. The packet includes the records, retained files, delivery index, and checksums.</p></a></div></section>';
+  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Complete the applicable Step 5 records, link them to their Controls, and record results in their fields or Markdown. Link any external artifact needed to support the result. The packet includes the records, Markdown, Git history, and linked artifacts.</p></a><a href="#/resources/evidence"><span class="step-label">External Evidence</span><h4>Review imported or referenced proof</h4><p>Verify the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference. The packet includes the records, retained files, delivery index, and checksums.</p></a></div></section>';
   const dateFields = typeOne
     ? '<label><span>As-of date</span><input type="date" name="start" required value="' + esc(start) + '"></label>'
     : '<label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label>';
-  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence and packet</p><h2>Prepare Fieldwork</h2><p>Confirm the firm-agreed date or period, review FileGRC Evidence and External Evidence, complete management documents and Type 2 populations, then build the indexed packet. FileGRC compiles both evidence paths with their links, control matrix, history, attachments, indexes, and checksums.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section>' + evidencePaths + renderAuditPreparation(preparation) + '<section class="panel packet-builder"><div class="panel-head"><div><p class="kicker">Evidence delivery</p><h3>' + (typeOne ? "Build the As-of Packet" : "Build the Period Packet") + '</h3></div></div><form id="packet-form">' + dateFields + '<label><span>Audit <small>required for delivery</small></span><select name="auditId"><option value="">Draft Without Audit Scope</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision. FileGRC checks preparation and integrity; the engagement team determines evidence sufficiency.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
+  main.innerHTML = '<div class="page audit-packet-page"><div class="page-intro"><div><p class="kicker">Audit evidence and packet</p><h2>Prepare Fieldwork</h2><p>Confirm the firm-agreed date or period, review filegrc Evidence and External Evidence, complete management documents and Type 2 populations, then build the indexed packet. filegrc compiles both evidence paths with their links, control matrix, history, attachments, indexes, and checksums.</p></div></div><section class="packet-preflight" aria-label="Packet readiness">' + preflight.map(([label, value, href, tone]) => '<a href="' + href + '"><span class="status-dot ' + tone + '"></span><span><small>' + esc(label) + '</small><strong>' + esc(value) + '</strong></span></a>').join("") + '</section>' + evidencePaths + renderAuditPreparation(preparation) + '<section class="panel packet-builder"><div class="panel-head"><div><p class="kicker">Evidence delivery</p><h3>' + (typeOne ? "Build the As-of Packet" : "Build the Period Packet") + '</h3></div></div><form id="packet-form">' + dateFields + '<label><span>Audit <small>required for delivery</small></span><select name="auditId"><option value="">Draft Without Audit Scope</option>' + audits.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === selected?.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><button class="button primary" type="submit" ' + (state.readOnly ? "disabled" : "") + '>' + (draft ? "Generate draft" : "Generate packet") + '</button></form><p class="packet-note">' + (state.readOnly ? "Packet generation requires the local writable renderer or the CLI." : draft ? "Drafts expose coverage gaps now. Commit a clean revision and select an audit record before delivery." : "The packet is derived under .filegrc/ and bound to the selected audit and current Git revision. filegrc checks preparation and integrity; the engagement team determines evidence sufficiency.") + '</p><div class="dialog-error" role="alert"></div></section><div id="packet-results"></div></div>';
   main.querySelector('select[name="auditId"]').addEventListener("change", (event) => {
     const next = event.currentTarget.value;
     location.hash = "#/audit-packet" + (next ? "?auditId=" + encodeURIComponent(next) : "");
@@ -796,12 +814,12 @@ function renderPacketResults(container, result) {
   const packet = result.packet;
   const ready = packet.readiness.status === "delivery-ready";
   container.innerHTML = '<section class="metrics packet-metrics">' +
-    metric("FileGRC Evidence", packet.summary.fileGRCRecords, packet.summary.records + " total packet records", "neutral") +
+    metric("filegrc Evidence", packet.summary.filegrcRecords, packet.summary.records + " total packet records", "neutral") +
     metric("Obligations", packet.summary.obligationOccurrences, packet.summary.eventRuns + " event workflows", "neutral") +
     metric("External Evidence", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
     metric("Review items", packet.summary.gaps, packet.summary.errors + " errors · " + packet.summary.warnings + " warnings", packet.summary.errors ? "bad" : packet.summary.warnings ? "warn" : "good") +
-    '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">' + (ready ? "FileGRC management checks passed" : "Draft packet") + '</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. ' + (ready ? "Verify the checksums, reconcile external deliveries, and let the engagement team confirm evidence sufficiency." : "Do not deliver it until every error is resolved and each warning has been reviewed.") + '</p></section>' +
-    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included FileGRC Evidence</h3></div>' + (packet.fileGRCRecords.length ? '<div class="packet-list">' + packet.fileGRCRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No FileGRC Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included External Evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.evidenceKind)) + '</small></a>').join("") + '</div>' : empty("No External Evidence matched.")) + '</section></div>';
+    '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">' + (ready ? "filegrc management checks passed" : "Draft packet") + '</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. ' + (ready ? "Verify the checksums, reconcile external deliveries, and let the engagement team confirm evidence sufficiency." : "Do not deliver it until every error is resolved and each warning has been reviewed.") + '</p></section>' +
+    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included External Evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.evidenceKind)) + '</small></a>').join("") + '</div>' : empty("No External Evidence matched.")) + '</section></div>';
 }
 
 function obligationPreview(items) {
@@ -1182,7 +1200,7 @@ function openCommitDialog() {
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog";
   dialog.setAttribute("aria-labelledby", "commit-dialog-title");
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Git audit trail</p><h2 id="commit-dialog-title">' + (hasRemote ? "Commit and Push Workspace Changes" : "Commit Workspace Changes") + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + (hasRemote ? "Commit every change under this FileGRC workspace, then push the commit to its Git remote." : "Commit every change under this FileGRC workspace. Add a Git remote later when you are ready to sync it.") + ' Use a message that explains why the compliance records changed.</p><label><span>Commit message</span><input name="message" required maxlength="200" placeholder="Record quarterly access review"></label><div class="commit-files">' + state.git.changes.map((change) => '<code>' + esc(change) + '</code>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-commit="cancel">Cancel</button><button type="submit" class="button primary">' + actionLabel + '</button></div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Git audit trail</p><h2 id="commit-dialog-title">' + (hasRemote ? "Commit and Push Workspace Changes" : "Commit Workspace Changes") + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + (hasRemote ? "Commit every change under this filegrc workspace, then push the commit to its Git remote." : "Commit every change under this filegrc workspace. Add a Git remote later when you are ready to sync it.") + ' Use a message that explains why the compliance records changed.</p><label><span>Commit message</span><input name="message" required maxlength="200" placeholder="Record quarterly access review"></label><div class="commit-files">' + state.git.changes.map((change) => '<code>' + esc(change) + '</code>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-commit="cancel">Cancel</button><button type="submit" class="button primary">' + actionLabel + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
@@ -1402,7 +1420,7 @@ function onboardingSteps() {
     points: [
       "Quarterly means any date in that cycle is valid unless the policy sets a narrower window.",
       "Link a dated completion record and its evidence to satisfy one occurrence.",
-      "The UI and FileGRC CLI use the same calculation."
+      "The UI and filegrc CLI use the same calculation."
     ]
   };
   const events = {
@@ -1414,7 +1432,7 @@ function onboardingSteps() {
       "The checklist stays open until every action is done and has the requested completion record or evidence.",
       "Hour-based rules keep the event time and exact cutoff; day-based rules keep the policy date range.",
       "Every action has a policy-based cutoff or a reasonable default deadline for the event.",
-      "Agents start the identical workflow with the FileGRC CLI."
+      "Agents start the identical workflow with the filegrc CLI."
     ]
   };
   const reportTypes = {
@@ -1435,7 +1453,7 @@ function onboardingSteps() {
         body: "A CPA evaluates whether the controls operated consistently throughout an agreed review period, often six months. Dated evidence must cover that period."
       }
     ],
-    afterSections: "Most evidence comes from production, identity, monitoring, and business systems. FileGRC records where it comes from and how it was collected."
+    afterSections: "Most evidence comes from production, identity, monitoring, and business systems. filegrc records where it comes from and how it was collected."
   };
   const audit = {
     target: ".audit-panel",
@@ -2507,7 +2525,7 @@ async function localFetch(url, options) {
   try {
     return await fetch(url, options);
   } catch {
-    throw new Error("The FileGRC server is unavailable. Restart npm run serve, or pnpm dev in the monorepo, and try again.");
+    throw new Error("The filegrc server is unavailable. Restart npm run serve, or pnpm dev in the monorepo, and try again.");
   }
 }
 async function fetchJson(url, options) { const response = await localFetch(url, options); if (!response.ok) throw new Error(await responseMessage(response)); return response.json(); }

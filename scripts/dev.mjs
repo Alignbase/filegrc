@@ -1,7 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFileGRC } from "../packages/create-filegrc/src/index.js";
+import { createFilegrc } from "../packages/create-filegrc/src/index.js";
 import { serveWorkspace } from "../packages/filegrc/src/index.js";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -11,7 +11,7 @@ const enginePackage = JSON.parse(await readFile(join(repositoryRoot, "packages",
 const port = parsePort(process.env.FILEGRC_DEV_PORT);
 
 if (!await exists(workspaceConfig)) {
-  await createFileGRC({
+  await createFilegrc({
     target: workspaceRoot,
     yes: true,
     install: false,
@@ -21,7 +21,7 @@ if (!await exists(workspaceConfig)) {
 }
 
 const { url } = await serveWorkspace(workspaceRoot, { port });
-console.log(`FileGRC development app: ${url}`);
+console.log(`filegrc development app: ${url}`);
 console.log(`Data: ${join(workspaceRoot, "data")}`);
 console.log("Delete .filegrc/dev-workspace to reset the starter data.");
 

@@ -4,7 +4,7 @@
   "type": "person",
   "title": "{{policy_owner_name}}",
   "status": "active",
-  "email": "{{security_contact_email}}",
+  "email": "{{policy_owner_email}}",
   "role": "Policy Owner",
   "teamIds": ["team-security-risk-oversight"]
 }
