@@ -268,13 +268,13 @@ async function summarizeResources(target) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.2.0",
+    version: "0.3.0",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.2.0",
+        version: "0.3.0",
         dependencies: { filegrc: versionRange }
       }
     }
