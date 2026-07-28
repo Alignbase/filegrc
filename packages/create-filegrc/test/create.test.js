@@ -230,6 +230,86 @@ test("creates a complete generic repository with one dependency", async (context
   )));
 });
 
+test("creates a five-record foundation without selecting a framework", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-foundation-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const target = join(parent, "program");
+  const result = await createFilegrc({
+    target,
+    yes: true,
+    starter: "foundation",
+    filegrcVersion: "1.2.3",
+    install: false
+  });
+  assert.equal(result.starter, "foundation");
+  assert.deepEqual(result.stages, [
+    { id: "foundation", status: "created", records: 5 },
+    { id: "soc2-security", status: "skipped", records: 0 }
+  ]);
+  assert.deepEqual(result.resourceCounts, {
+    total: 5,
+    byType: {
+      workspace: 1,
+      "renderer-settings": 1,
+      person: 1,
+      system: 1,
+      team: 1
+    }
+  });
+  const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
+  assert.equal(workspace.title, "Example Company GRC Program");
+  assert.equal(workspace.frameworkIds, undefined);
+  assert.equal(workspace.controlIds, undefined);
+  const agents = await readFile(join(target, "AGENTS.md"), "utf8");
+  assert.match(agents, /^# filegrc Workspace Instructions/m);
+  assert.match(agents, /No framework or assurance program has been selected yet/);
+  assert.match(agents, /does not include framework requirements, policies, governed documents/);
+  assert.doesNotMatch(agents, /The generated workspace starts with the SOC 2 Security category/);
+  assert.equal((await validateWorkspace(target)).ok, true);
+  assert.equal(
+    (await readdir(join(target, "data", "policies"))).some((name) => name.endsWith(".json")),
+    false
+  );
+});
+
+test("preserves legal-name punctuation without generating doubled sentence punctuation", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-punctuation-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const target = join(parent, "program");
+  await createFilegrc({
+    target,
+    companyName: "Example Systems, Inc.",
+    policyOwnerName: "Example Owner",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test",
+    timezone: "America/Chicago",
+    filegrcVersion: "1.2.3",
+    install: false
+  });
+  const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
+  assert.equal(workspace.organizationName, "Example Systems, Inc.");
+  for (const path of await collectTextFiles(target)) {
+    assert.doesNotMatch(await readFile(path, "utf8"), /Example Systems, Inc\.\./, path);
+  }
+});
+
+test("writes an explicit local filegrc package dependency", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-local-package-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const target = join(parent, "program");
+  const localPackage = fileURLToPath(new URL("../../filegrc/", import.meta.url));
+  const result = await createFilegrc({
+    target,
+    yes: true,
+    filegrcPackage: localPackage,
+    install: false
+  });
+  const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
+  assert.equal(result.engineSource, "local");
+  assert.equal(result.enginePackage, localPackage.replace(/\/$/, ""));
+  assert.equal(packageJson.dependencies.filegrc, `file:${localPackage.replace(/\/$/, "")}`);
+});
+
 test("refuses a non-empty target by default", async (context) => {
   const target = await mkdtemp(join(tmpdir(), "create-filegrc-nonempty-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(target, { recursive: true, force: true })));
@@ -411,4 +491,61 @@ test("documents legal organization, owner email, reporting address, and timezone
   assert.match(output, /--policy-owner-email <email>\s+Policy owner's email address/);
   assert.match(output, /--security-contact-email <email>\s+Security reporting address/);
   assert.match(output, /--timezone <iana-timezone>\s+Program timezone/);
+  assert.match(output, /--starter <profile>\s+security \(default\) or foundation/);
+  assert.match(output, /--filegrc-package <directory>\s+Install an unpublished local filegrc package/);
+  assert.match(output, /--config <json-file\|->\s+Read creation and optional setup values/);
 });
+
+test("creates and configures a service from one JSON config", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-config-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const target = join(parent, "program");
+  const configPath = join(parent, "setup.json");
+  const localPackage = fileURLToPath(new URL("../../filegrc/", import.meta.url));
+  await writeFile(configPath, `${JSON.stringify({
+    companyName: "Example Company",
+    policyOwnerName: "Example Owner",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test",
+    timezone: "America/Chicago",
+    starter: "security",
+    filegrcPackage: localPackage,
+    setup: {
+      serviceName: "Example Service",
+      boundary: "The production service and supporting infrastructure.",
+      criticality: "high",
+      dataClassification: "Confidential",
+      internetExposed: true,
+      programGoal: "type-2"
+    }
+  }, null, 2)}\n`, "utf8");
+  const output = execFileSync(process.execPath, [
+    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+    target,
+    "--config",
+    configPath
+  ], { encoding: "utf8" });
+  assert.match(output, /Stage foundation: created \(5 records\)/);
+  assert.match(output, /Stage soc2-security: created \(136 records\)/);
+  assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
+  const validation = await validateWorkspace(target);
+  assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
+  const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
+  assert.deepEqual(workspace.systemIds, ["system-example-service"]);
+  const control = JSON.parse(await readFile(join(target, "data", "controls", "control-security-governance.json"), "utf8"));
+  assert.equal(control.systemIds, undefined);
+  const evidenceFiles = (await readdir(join(target, "data", "evidence"))).filter((name) => name.endsWith(".json"));
+  assert.deepEqual(evidenceFiles, []);
+});
+
+async function collectTextFiles(directory) {
+  const result = [];
+  for (const item of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, item.name);
+    if (item.isDirectory()) result.push(...await collectTextFiles(path));
+    else if (item.isFile() && ["", ".json", ".md", ".txt", ".yml", ".yaml"].includes(item.name.includes(".") ? `.${item.name.split(".").at(-1)}` : "")) {
+      result.push(path);
+    }
+  }
+  return result;
+}

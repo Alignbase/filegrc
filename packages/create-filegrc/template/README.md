@@ -34,6 +34,8 @@ npm run validate
 npm run serve
 ```
 
+The default `security` starter builds the full proposed SOC 2 Security program. Use `--starter foundation` to create only the five structural records when you want to select a framework and program content later. Company and service values can also be supplied together through `create-filegrc --config setup.json`.
+
 Setup asks for the legal organization name, the initial policy owner and their email, a security reporting address, and the program timezone. It initializes Git when needed. The first local run then defines the initial service boundary and an optional program goal. A Type 2 choice records management intent, not an audit engagement. Completing onboarding opens Step 1 so you can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before moving on.
 
 Open the printed local URL. You can commit locally from Repository without configuring a remote. Add a remote when the team is ready to share the workspace, then the browser can pull with rebase and push reviewed commits.
@@ -45,7 +47,7 @@ The creation summary reports the resolved engine version, program timezone, star
 1. Confirm the program’s people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems.
 2. Review and activate the policies with a separate management reviewer, who is usually internal and may be external.
 3. Tailor the starter controls, add each owner, actual procedure, scope, cadence, evidence source, and implementation date, and confirm any linked Work Queue schedules are enabled. Marking a control implemented starts eligible schedules. Then record any complementary customer or subservice controls.
-4. Open each generated External Evidence draft, choose its authoritative source System, collect the named artifact, and have another person verify it.
+4. After confirming the applicable controls and authoritative source Systems, preview the proposed External Evidence drafts with `npx filegrc evidence-test-drafts --preview --json`. Create only the relevant drafts, collect each named artifact, and have another person verify it.
 5. Start the management candidate period, maintain risk assessments and risks, update controls when needed, work the filegrc queue, and preserve dated evidence.
 6. Engage a CPA firm, record the separate firm-agreed period, review filegrc Evidence and External Evidence, prepare fieldwork, and generate the evidence packet.
 

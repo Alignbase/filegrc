@@ -203,9 +203,21 @@ function programOwnershipItem(records, byId) {
     && ![...oversightChairs].some((id) => policyOwnerIds.has(id))
   );
   const complete = currentOwners.size > 0 && unresolved.length === 0 && oversightComplete;
+  const unresolvedAssignments = unresolved.map((record) => ({
+    resourceType: record.type,
+    resourceId: record.id,
+    title: record.title,
+    ownerIds: record.ownerIds || [],
+    reasons: ownershipResolutionReasons(record.ownerIds || [], byId)
+  }));
   const detail = [];
   if (!currentOwners.size) detail.push("No current person owns the program records.");
-  if (unresolved.length) detail.push(`${unresolved.length} ownership ${unresolved.length === 1 ? "assignment does" : "assignments do"} not resolve to a current person.`);
+  if (unresolved.length) {
+    detail.push(
+      `${unresolved.length} ${unresolved.length === 1 ? "record has" : "records have"} no current person owner: ` +
+      `${unresolvedAssignments.map(({ title, resourceId }) => `${title} (${resourceId})`).join(", ")}.`
+    );
+  }
   if (!oversightComplete) detail.push("Finish and activate Security and Risk Oversight with a current chair who is separate from policy ownership.");
   return item(
     "program-ownership",
@@ -214,8 +226,27 @@ function programOwnershipItem(records, byId) {
     complete
       ? `${currentOwners.size} current ${currentOwners.size === 1 ? "person owns" : "people own"} the program records.${oversight ? " Security and Risk Oversight has a separate current chair." : ""}`
       : detail.join(" "),
-    !oversightComplete ? oversight : unresolved[0] || { type: "person" }
+    !oversightComplete ? oversight : unresolved[0] || { type: "person" },
+    { unresolvedAssignments }
   );
+}
+
+function ownershipResolutionReasons(ownerIds, byId) {
+  if (!ownerIds.length) return [{ ownerId: null, reason: "missing-owner" }];
+  return ownerIds.flatMap((ownerId) => {
+    const owner = byId.get(ownerId);
+    if (!owner) return [{ ownerId, reason: "missing-record" }];
+    if (owner.type === "person" && owner.status !== "active") {
+      return [{ ownerId, reason: "inactive-person" }];
+    }
+    if (owner.type === "team" && owner.status !== "active") {
+      return [{ ownerId, reason: "inactive-team" }];
+    }
+    if (currentPartyPeople([ownerId], byId).size === 0) {
+      return [{ ownerId, reason: owner.type === "team" ? "team-has-no-current-members" : "no-current-person" }];
+    }
+    return [];
+  });
 }
 
 async function policiesStage(scope, byId, readMarkdown, asOf) {

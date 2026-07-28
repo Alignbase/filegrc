@@ -4,33 +4,43 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline/promises";
-import { baselineRecordPaths, writeBaselineRecords } from "./defaults.js";
+import { baselineRecordFiles, baselineRecordPaths, writeBaselineRecords } from "./defaults.js";
 
 const execute = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const textExtensions = new Set(["", ".json", ".md", ".txt", ".yml", ".yaml", ".gitignore"]);
+const STARTER_PROFILES = new Set(["foundation", "security"]);
+const SECURITY_TEMPLATE_COLLECTIONS = new Set(["documents", "policies", "training"]);
 
 export async function createFilegrc(options = {}) {
   const parameterConfig = JSON.parse(await readFile(join(packageRoot, "template-parameters.json"), "utf8"));
   const target = resolve(options.target ?? "filegrc-program");
+  const starter = normalizeStarterProfile(options.starter);
+  if (options.setup && options.install === false) {
+    throw new Error("Combined service setup requires installation. Remove --no-install or run filegrc setup after npm install.");
+  }
+  validateCombinedSetup(options.setup);
   await assertWritableTarget(target, Boolean(options.force));
-  if (options.force) await assertNoTemplateCollisions(target);
+  if (options.force) await assertNoTemplateCollisions(target, starter);
 
   const prompted = await resolvePromptValues(parameterConfig.parameters, options);
-  const engineVersion = await resolveFilegrcVersion(options.filegrcVersion);
+  const engine = await resolveEngine(options);
+  const starterText = starterTemplateText(starter, prompted.company_name);
   const values = {
     ...prompted,
     effective_date: options.effectiveDate ?? new Date().toISOString().slice(0, 10),
     project_name: normalizePackageName(basename(target)),
-    filegrc_version: engineVersion,
-    filegrc_version_range: `^${engineVersion}`
+    filegrc_version: engine.version,
+    filegrc_version_range: engine.dependency,
+    ...starterText
   };
 
   await mkdir(target, { recursive: true });
-  await copyTemplate(target);
-  await renderTemplate(target, parameterConfig, values);
-  await writeBaselineRecords(target, values.effective_date);
-  const resourceCounts = await summarizeResources(target);
+  await copyTemplate(target, starter);
+  await renderTemplate(target, parameterConfig, values, starter);
+  await writeBaselineRecords(target, values.effective_date, starter);
+  await applyStarterScope(target, starter, values.effective_date);
+  const initialResourceCounts = await summarizeResources(target);
 
   const installed = options.install !== false;
   if (installed) {
@@ -40,14 +50,31 @@ export async function createFilegrc(options = {}) {
   }
   const joinedExistingWorktree = await isInsideGitWorktree(target);
   if (!joinedExistingWorktree) await run("git", ["init"], target);
+  const setup = options.setup ? await runCombinedSetup(target, options.setup) : null;
+  const resourceCounts = setup ? await summarizeResources(target) : initialResourceCounts;
   return {
     target,
     values,
-    engineVersion,
+    starter,
+    engineVersion: engine.version,
+    engineSource: engine.localPath ? "local" : "registry",
+    enginePackage: engine.localPath || null,
+    dependency: engine.dependency,
+    stages: starterStages(starter, initialResourceCounts),
     resourceCounts,
+    setup,
     install: installed ? "installed" : "skipped",
     gitMode: joinedExistingWorktree ? "existing-worktree" : "initialized"
   };
+}
+
+export function normalizeStarterProfile(value = "security") {
+  const profile = String(value || "security").trim().toLowerCase();
+  const normalized = profile === "empty" ? "foundation" : profile === "soc2-security" ? "security" : profile;
+  if (!STARTER_PROFILES.has(normalized)) {
+    throw new Error(`Starter profile must be one of ${[...STARTER_PROFILES].join(", ")}.`);
+  }
+  return normalized;
 }
 
 export async function resolveFilegrcVersion(explicitVersion) {
@@ -63,6 +90,28 @@ export async function resolveFilegrcVersion(explicitVersion) {
     const ownPackage = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
     return cleanVersion(ownPackage.version);
   }
+}
+
+async function resolveEngine(options) {
+  if (options.filegrcVersion && options.filegrcPackage) {
+    throw new Error("Use either filegrcVersion or filegrcPackage, not both.");
+  }
+  if (!options.filegrcPackage) {
+    const version = await resolveFilegrcVersion(options.filegrcVersion);
+    return { version, dependency: `^${version}`, localPath: null };
+  }
+  const localPath = resolve(String(options.filegrcPackage));
+  let packageJson;
+  try {
+    packageJson = JSON.parse(await readFile(join(localPath, "package.json"), "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read a local filegrc package at ${localPath}: ${error.message}`);
+  }
+  if (packageJson.name !== "filegrc") {
+    throw new Error(`Local package at ${localPath} is named "${packageJson.name || ""}", expected "filegrc".`);
+  }
+  const version = cleanVersion(packageJson.version);
+  return { version, dependency: `file:${localPath.replaceAll("\\", "/")}`, localPath };
 }
 
 async function resolvePromptValues(parameters, options) {
@@ -161,9 +210,9 @@ async function assertWritableTarget(target, force) {
   }
 }
 
-async function assertNoTemplateCollisions(target) {
+async function assertNoTemplateCollisions(target, starter) {
   const collisions = [];
-  for (const destinationPath of [...await templateDestinationPaths(), ...baselineRecordPaths()]) {
+  for (const destinationPath of [...await templateDestinationPaths(starter), ...baselineRecordPaths(starter)]) {
     await assertNoSymlinkComponents(target, destinationPath);
     try {
       await lstat(join(target, destinationPath));
@@ -192,20 +241,22 @@ async function assertNoSymlinkComponents(target, relativePath) {
   }
 }
 
-async function renderTemplate(target, parameterConfig, values) {
+async function renderTemplate(target, parameterConfig, values, starter) {
   const declared = new Set([
     ...parameterConfig.parameters.map(({ key }) => key),
     ...parameterConfig.generated.map(({ key }) => key)
   ]);
-  const files = (await templateDestinationPaths()).map((path) => join(target, path));
+  const files = (await templateDestinationPaths(starter)).map((path) => join(target, path));
   for (const path of files) {
     if (!textExtensions.has(extname(path)) && basename(path) !== ".gitignore") continue;
     let source = await readFile(path, "utf8");
     const jsonFile = extname(path) === ".json";
-    source = source.replace(/\{\{([a-z0-9_]+)\}\}/g, (match, token) => {
+    source = source.replace(/\{\{([a-z0-9_]+)\}\}(\.)?/g, (match, token, sentencePeriod = "") => {
       if (!declared.has(token)) throw new Error(`Unknown template token "{{${token}}}" in ${path}`);
       if (values[token] === undefined) throw new Error(`No value resolved for template token "{{${token}}}"`);
-      return jsonFile ? jsonStringContents(values[token]) : String(values[token]);
+      const value = jsonFile ? jsonStringContents(values[token]) : String(values[token]);
+      const punctuation = !jsonFile && sentencePeriod && /[.!?]$/u.test(value) ? "" : sentencePeriod;
+      return value + punctuation;
     });
     const unresolved = /\{\{([a-z0-9_]+)\}\}/.exec(source);
     if (unresolved) throw new Error(`Unresolved template token "{{${unresolved[1]}}}" in ${path}`);
@@ -213,20 +264,22 @@ async function renderTemplate(target, parameterConfig, values) {
   }
 }
 
-async function templateDestinationPaths() {
+async function templateDestinationPaths(starter = "security") {
   const template = join(packageRoot, "template");
   return (await collectFiles(template)).flatMap((source) => {
     const templatePath = relative(template, source);
+    if (!includeTemplatePath(templatePath, starter)) return [];
     if (templatePath === "README.md") return [];
     if (templatePath === "WORKSPACE.md") return ["README.md"];
     return [templatePath === "gitignore" ? ".gitignore" : templatePath];
   });
 }
 
-async function copyTemplate(target) {
+async function copyTemplate(target, starter = "security") {
   const template = join(packageRoot, "template");
   for (const source of await collectFiles(template)) {
     const templatePath = relative(template, source);
+    if (!includeTemplatePath(templatePath, starter)) continue;
     if (templatePath === "README.md") continue;
     const destinationPath = templatePath === "WORKSPACE.md"
       ? "README.md"
@@ -240,6 +293,13 @@ async function copyTemplate(target) {
       preserveTimestamps: false
     });
   }
+}
+
+function includeTemplatePath(templatePath, starter) {
+  if (starter === "security") return true;
+  const segments = templatePath.split(/[\\/]/);
+  if (segments[0] !== "data" || !SECURITY_TEMPLATE_COLLECTIONS.has(segments[1])) return true;
+  return segments.at(-1) === "AGENTS.md";
 }
 
 async function collectFiles(directory) {
@@ -263,6 +323,127 @@ async function summarizeResources(target) {
     counts[record.type] = (counts[record.type] || 0) + 1;
   }
   return { total, byType: counts };
+}
+
+async function applyStarterScope(target, starter, effectiveDate) {
+  if (starter !== "security") return;
+  const records = baselineRecordFiles(effectiveDate, starter).map(({ record }) => record);
+  const workspacePath = join(target, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  const ids = (type) => records.filter((record) => record.type === type).map((record) => record.id);
+  await writeFile(workspacePath, `${JSON.stringify({
+    ...workspace,
+    frameworkIds: ids("framework"),
+    requirementIds: ids("requirement"),
+    controlIds: ids("control")
+  }, null, 2)}\n`, "utf8");
+}
+
+function starterStages(starter, counts) {
+  const foundationTypes = new Set(["workspace", "renderer-settings", "person", "team", "system"]);
+  const foundation = Object.entries(counts.byType)
+    .filter(([type]) => foundationTypes.has(type))
+    .reduce((total, [, count]) => total + count, 0);
+  return [
+    { id: "foundation", status: "created", records: foundation },
+    {
+      id: "soc2-security",
+      status: starter === "security" ? "created" : "skipped",
+      records: starter === "security" ? counts.total - foundation : 0
+    }
+  ];
+}
+
+function starterTemplateText(starter, companyName) {
+  if (starter === "foundation") {
+    return {
+      program_title: `${companyName} GRC Program`,
+      program_description: "Governance, risk, and compliance workspace without a preselected framework.",
+      program_summary: `This private workspace holds ${companyName}'s governance, risk, compliance, and audit-evidence records. JSON under \`data/\` stores structured records, Markdown stores long-form work, and Git records reviewed changes.`,
+      agent_title: "filegrc Workspace Instructions",
+      agent_purpose: `This repository is ${companyName}’s foundation filegrc workspace. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files. No framework or assurance program has been selected yet.`,
+      starter_baseline: `## Foundation baseline
+
+The generated workspace starts with five structural records:
+
+- Workspace and renderer settings
+- The initial active owner
+- An inactive security and risk oversight team that still needs an independent chair
+- The filegrc Git repository as a governance system of record
+- A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
+
+This profile does not include framework requirements, policies, governed documents, training, controls, obligations, or audit-management templates. Add and review those records for the selected framework before treating Program Readiness or Audit Readiness as meaningful. Do not infer that an absent control, policy, or schedule is unnecessary.`,
+      audit_preparation_guidance: "The foundation profile does not include the local SOC 2 management-document templates used by `prepare-audit`. Add reviewed templates and program scope before initializing audit work. Audit preparation must not invent missing policy, control, or evidence facts.",
+      starter_setup: `## Start the program
+
+This foundation profile contains the workspace, initial owner, oversight team, renderer settings, and filegrc system of record. It does not select a framework or create proposed policies, controls, obligations, or evidence.
+
+1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding.
+2. Use \`npx filegrc guide --json\` before creating framework requirements, policies, controls, obligations, and evidence sources.
+3. Run \`npx filegrc validate\`, review the Git diff, and commit each reviewed program layer.`
+    };
+  }
+  return {
+    program_title: `${companyName} SOC 2 Program`,
+    program_description: "SOC 2 Security program based on the AICPA Trust Services Criteria.",
+    program_summary: `This private workspace holds ${companyName}'s SOC 2 program records and audit evidence. JSON under \`data/\` stores structured records, Markdown stores long-form work, and Git records reviewed changes.`,
+    agent_title: "filegrc SOC 2 Workspace Instructions",
+    agent_purpose: `This repository is ${companyName}’s filegrc workspace for its SOC 2 program. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files.`,
+    starter_baseline: `## Starter baseline
+
+The generated workspace starts with the SOC 2 Security category:
+
+- Active framework records for the 2017 Trust Services Criteria with revised points of focus (2022) and the 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
+- The 33 Common Criteria reference IDs from CC1.1 through CC9.2, without the licensed criteria text
+- The nine Description Criteria reference IDs from DC1 through DC9, without the licensed criteria text
+- Planned controls mapped to those references and the included policies
+- A security and risk oversight team chaired by an independent reviewer who may be internal or external
+- Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
+- A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
+
+Treat every planned control as a proposal until its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. For a control linked to filegrc obligations, every non-retired Work Queue schedule must be enabled and its governing policies effective. Marking the control implemented starts eligible schedules. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
+
+The recurring obligations mirror the fixed cadences in the starter policies. They remain proposals until every governing policy is active and effective and, when they name controls, at least one linked control is implemented. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.`,
+    audit_preparation_guidance: "Preparation creates a separate system description, management assertion, and management representation document for the engagement from the local starter templates. Type 2 preparation also creates a period completeness statement and one `audit-population` record for each standard population. It is safe to run again and does not approve documents, mark controls implemented, or create evidence. Do not reuse one completed management document across engagements.",
+    starter_setup: `## Finish initial setup
+
+The starter policies, controls, and obligations are proposals. They do not state that ${companyName} operates the described controls.
+
+1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding. Then finish Step 1 by adding the real reviewers and operators, finishing the oversight team, and confirming applicable criteria, commitments, material vendors, and in-scope systems.
+2. Review the starter policies, appoint a reviewer who is separate from the policy owner, and activate only the policies that match current practice. The reviewer will usually be another person in the organization, but may be external.
+3. Review the starter control set, implement each applicable control with its actual procedure, scope, cadence, evidence sources, and implementation date, and confirm any linked Work Queue schedules are enabled. Marking a control implemented starts eligible schedules. Then record any complementary customer or subservice controls.
+4. Preview External Evidence drafts with \`npx filegrc evidence-test-drafts --preview --json\`. Create them only after confirming applicable controls and authoritative source systems.
+5. Run \`npx filegrc program-readiness --require-ready\`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions.
+6. Engage a CPA firm, record the separate firm-agreed period in an audit record, review filegrc Evidence and External Evidence, and prepare fieldwork.`
+  };
+}
+
+function validateCombinedSetup(setup) {
+  if (!setup) return;
+  if (Array.isArray(setup) || typeof setup !== "object") throw new Error("setup must be a JSON object.");
+  const required = ["serviceName", "boundary", "criticality", "dataClassification", "internetExposed"];
+  const missing = required.filter((name) => setup[name] === undefined || setup[name] === "");
+  if (missing.length) throw new Error(`Combined setup is missing: ${missing.join(", ")}.`);
+}
+
+async function runCombinedSetup(target, input) {
+  const setup = { programGoal: "none", ownerId: "person-policy-owner", ...input };
+  const args = [
+    join(target, "node_modules", "filegrc", "bin", "filegrc.js"),
+    "setup",
+    "--service-name", String(setup.serviceName),
+    "--boundary", String(setup.boundary),
+    "--owner", String(setup.ownerId),
+    "--criticality", String(setup.criticality),
+    "--classification", String(setup.dataClassification),
+    "--internet-exposed", String(setup.internetExposed),
+    "--program-goal", String(setup.programGoal),
+    "--summary",
+    "--json"
+  ];
+  if (setup.draft === true) args.push("--draft");
+  const result = await run(process.execPath, args, target);
+  return JSON.parse(result.stdout);
 }
 
 async function writeMinimalLockfile(target, name, versionRange) {

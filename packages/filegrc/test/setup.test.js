@@ -111,11 +111,31 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(completed.onboardingComplete, true);
   assert.equal(completed.system.status, "active");
   assert.equal(completed.workspace.assuranceGoal, "soc-2-type-2");
-  assert.equal(completed.evidenceTestDraftIds.length, 1);
+  assert.deepEqual(completed.linkedControlIds, []);
+  assert.deepEqual(completed.evidenceTestDraftIds, []);
 
-  const loaded = await loadWorkspace(root);
+  let loaded = await loadWorkspace(root);
   assert.equal(loaded.resources.filter(({ type, inScope }) => type === "system" && inScope).length, 1);
   assert.equal(JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8")).showOnboarding, false);
+  assert.equal(loaded.resources.filter(({ type }) => type === "evidence").length, 0);
+  assert.equal(loaded.resources.find(({ id }) => id === "control-access").systemIds, undefined);
+
+  const evidencePreview = JSON.parse((await execute(process.execPath, [
+    cliPath,
+    "evidence-test-drafts",
+    "--root",
+    root,
+    "--preview",
+    "--json"
+  ])).stdout);
+  assert.equal(evidencePreview.preview, true);
+  assert.equal(evidencePreview.create.length, 1);
+  assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "evidence").length, 0);
+
+  const draftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
+  assert.equal(draftResponse.status, 201);
+  assert.equal((await draftResponse.json()).created.length, 1);
+  loaded = await loadWorkspace(root);
   const evidenceDraft = loaded.resources.find(({ type }) => type === "evidence");
   assert.equal(evidenceDraft.status, "draft");
   assert.equal(evidenceDraft.evidenceKind, "test-export");
@@ -124,9 +144,9 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(loaded.resources.some(({ collectionTestFamilyId }) => collectionTestFamilyId === "governance"), false);
   assert.equal((await validateWorkspace(root)).ok, true);
 
-  const draftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
-  assert.equal(draftResponse.status, 201);
-  assert.equal((await draftResponse.json()).created.length, 0);
+  const repeatedDraftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
+  assert.equal(repeatedDraftResponse.status, 201);
+  assert.equal((await repeatedDraftResponse.json()).created.length, 0);
 
   const resumedDraft = await setupWorkspace(root, {
     serviceName: "Example Service",
@@ -155,7 +175,7 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
     version: "1",
     publisher: "Standards body"
   });
-  const result = await execute(process.execPath, [
+  const baseArguments = [
     cliPath,
     "setup",
     "--root",
@@ -173,18 +193,30 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
     "--internet-exposed",
     "false",
     "--program-goal",
-    "readiness",
-    "--json"
-  ]);
+    "readiness"
+  ];
+  const preview = await execute(process.execPath, [...baseArguments, "--preview", "--json"]);
+  const previewResult = JSON.parse(preview.stdout);
+  assert.equal(previewResult.preview, true);
+  assert.equal(previewResult.changes.controls, 0);
+  assert.equal(previewResult.changes.evidenceDrafts, 0);
+  assert.equal((await loadWorkspace(root)).resources.some(({ title }) => title === "CLI Service"), false);
+
+  const result = await execute(process.execPath, [...baseArguments, "--summary", "--json"]);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.draft, false);
   assert.equal(parsed.onboardingComplete, true);
-  assert.equal(parsed.system.internetExposed, false);
-  assert.equal(parsed.system.dataClassification, "Restricted");
+  assert.equal(parsed.preview, false);
   assert.equal(parsed.system.status, "active");
-  assert.equal(parsed.workspace.assuranceGoal, "readiness");
-  assert.deepEqual(parsed.workspace.systemIds, [parsed.system.id]);
-  assert.equal(parsed.audit, undefined);
+  assert.equal(parsed.target.assuranceGoal, "readiness");
+  assert.equal(parsed.target.scopeCounts.frameworks, 0);
+  assert.equal(parsed.workspace, undefined);
+  const loaded = await loadWorkspace(root);
+  const system = loaded.resources.find(({ id }) => id === parsed.system.id);
+  assert.equal(system.internetExposed, false);
+  assert.equal(system.dataClassification, "Restricted");
+  assert.equal(loaded.workspace.assuranceGoal, "readiness");
+  assert.deepEqual(loaded.workspace.systemIds, [parsed.system.id]);
 });
 
 test("setup rejects explicit retired or missing targets", async (context) => {

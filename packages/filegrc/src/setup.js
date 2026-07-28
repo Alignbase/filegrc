@@ -1,5 +1,4 @@
 import { createResource, updateResource } from "./files.js";
-import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
 import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -10,78 +9,58 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
   const loaded = await loadWorkspace(input);
   const setup = normalizeSetupPayload(payload);
   validateSetup(loaded, setup);
+  const plan = buildSetupRecords(loaded, setup);
 
-  let current = loaded;
-  let system = findSetupSystem(current.resources, setup);
-  const systemId = system?.id || createResourceId("system", setup.serviceName, current.resources.map(({ id }) => id));
-  system = {
-    ...(system || {}),
-    schemaVersion: 1,
-    id: systemId,
-    type: "system",
-    title: setup.serviceName,
-    status: setup.draft ? system?.status || "planned" : (system?.status === "planned" ? "active" : system?.status || "active"),
-    criticality: setup.criticality,
-    ownerIds: [setup.ownerId],
-    description: setup.boundary,
-    systemKind: system?.systemKind || "service",
-    dataClassification: setup.dataClassification,
-    internetExposed: setup.internetExposed,
-    inScope: true
-  };
-  await upsertResource(current.root, current.resources.find(({ id }) => id === systemId), system);
-
-  current = await loadWorkspace(current.root);
-  const linkedControlIds = [];
-  for (const control of current.resources.filter(({ type, status }) => (
-    type === "control" && !["not-applicable", "retired"].includes(status)
-  ))) {
-    if ((control.systemIds || []).includes(systemId)) continue;
-    await updateResource(current.root, "control", control.id, {
-      ...control,
-      systemIds: [...new Set([...(control.systemIds || []), systemId])]
-    });
-    linkedControlIds.push(control.id);
-  }
-
-  current = await loadWorkspace(current.root);
-  const existingWorkspace = current.resources.find(({ type }) => type === "workspace");
-  if (!existingWorkspace) throw new Error("The workspace settings record was not found.");
-  const workspace = {
-    ...existingWorkspace,
-    assuranceGoal: assuranceGoalFromSetup(setup.programGoal),
-    frameworkIds: current.resources
-      .filter(({ type, status }) => type === "framework" && status === "active")
-      .map(({ id }) => id),
-    requirementIds: current.resources
-      .filter(({ type, applicability }) => type === "requirement" && applicability === "applicable")
-      .map(({ id }) => id),
-    controlIds: current.resources
-      .filter(({ type, status }) => type === "control" && !["not-applicable", "retired"].includes(status))
-      .map(({ id }) => id),
-    systemIds: [...new Set([...(existingWorkspace.systemIds || []), systemId])]
-  };
-  await updateResource(current.root, "workspace", workspace.id, workspace);
-
-  current = await loadWorkspace(current.root);
-  const renderer = current.resources.find(({ type }) => type === "renderer-settings");
-  if (renderer) {
-    await updateResource(current.root, renderer.type, renderer.id, {
-      ...renderer,
-      showOnboarding: setup.draft
-    });
-  }
-  const evidenceTestDrafts = setup.draft
-    ? { created: [], existing: [], total: 0 }
-    : await ensureEvidenceTestDrafts(current.root);
+  await upsertResource(loaded.root, plan.existingSystem, plan.system);
+  await updateResource(loaded.root, "workspace", plan.workspace.id, plan.workspace);
+  if (plan.renderer) await updateResource(loaded.root, plan.renderer.type, plan.renderer.id, plan.renderer);
 
   return {
     draft: setup.draft,
-    system,
-    workspace,
-    linkedControlIds,
-    evidenceTestDraftIds: evidenceTestDrafts.created.map(({ id }) => id),
+    system: plan.system,
+    workspace: plan.workspace,
+    linkedControlIds: [],
+    evidenceTestDraftIds: [],
     onboardingComplete: !setup.draft
+  };
+}
+
+export async function planWorkspaceSetup(input = process.cwd(), payload = {}) {
+  const loaded = await loadWorkspace(input);
+  const setup = normalizeSetupPayload(payload);
+  validateSetup(loaded, setup);
+  const plan = buildSetupRecords(loaded, setup);
+  return {
+    schemaVersion: 1,
+    preview: true,
+    draft: setup.draft,
+    changes: {
+      system: plan.existingSystem ? "update" : "create",
+      workspace: "update",
+      renderer: plan.renderer ? "update" : "unchanged",
+      controls: 0,
+      evidenceDrafts: 0
+    },
+    system: setupSystemSummary(plan.system),
+    target: setupTargetSummary(plan.workspace),
+    onboardingComplete: !setup.draft
+  };
+}
+
+export function summarizeSetupResult(result) {
+  return {
+    schemaVersion: 1,
+    preview: false,
+    draft: result.draft,
+    changes: {
+      system: "saved",
+      workspace: "updated",
+      controls: result.linkedControlIds?.length || 0,
+      evidenceDrafts: result.evidenceTestDraftIds?.length || 0
+    },
+    system: setupSystemSummary(result.system),
+    target: setupTargetSummary(result.workspace),
+    onboardingComplete: result.onboardingComplete
   };
 }
 
@@ -146,6 +125,44 @@ function findSetupSystem(resources, setup) {
     ));
 }
 
+function buildSetupRecords(loaded, setup) {
+  const existingSystem = findSetupSystem(loaded.resources, setup);
+  const systemId = existingSystem?.id || createResourceId(
+    "system",
+    setup.serviceName,
+    loaded.resources.map(({ id }) => id)
+  );
+  const system = {
+    ...(existingSystem || {}),
+    schemaVersion: 1,
+    id: systemId,
+    type: "system",
+    title: setup.serviceName,
+    status: setup.draft
+      ? existingSystem?.status || "planned"
+      : existingSystem?.status === "planned"
+        ? "active"
+        : existingSystem?.status || "active",
+    criticality: setup.criticality,
+    ownerIds: [setup.ownerId],
+    description: setup.boundary,
+    systemKind: existingSystem?.systemKind || "service",
+    dataClassification: setup.dataClassification,
+    internetExposed: setup.internetExposed,
+    inScope: true
+  };
+  const existingWorkspace = loaded.resources.find(({ type }) => type === "workspace");
+  if (!existingWorkspace) throw new Error("The workspace settings record was not found.");
+  const workspace = {
+    ...existingWorkspace,
+    assuranceGoal: assuranceGoalFromSetup(setup.programGoal),
+    systemIds: [...new Set([...(existingWorkspace.systemIds || []), systemId])]
+  };
+  const existingRenderer = loaded.resources.find(({ type }) => type === "renderer-settings");
+  const renderer = existingRenderer ? { ...existingRenderer, showOnboarding: setup.draft } : null;
+  return { existingSystem, system, workspace, renderer };
+}
+
 async function upsertResource(root, existing, record) {
   return existing
     ? updateResource(root, record.type, record.id, record)
@@ -157,6 +174,27 @@ function assuranceGoalFromSetup(goal) {
   if (goal === "type-2") return "soc-2-type-2";
   if (goal === "readiness") return "readiness";
   return "none";
+}
+
+function setupSystemSummary(system) {
+  return {
+    id: system.id,
+    title: system.title,
+    status: system.status,
+    inScope: system.inScope
+  };
+}
+
+function setupTargetSummary(workspace) {
+  return {
+    assuranceGoal: workspace.assuranceGoal,
+    scopeCounts: {
+      systems: workspace.systemIds?.length || 0,
+      frameworks: workspace.frameworkIds?.length || 0,
+      requirements: workspace.requirementIds?.length || 0,
+      controls: workspace.controlIds?.length || 0
+    }
+  };
 }
 
 function booleanValue(value, name) {

@@ -3,10 +3,10 @@
   "dataModelVersion": "1",
   "id": "workspace",
   "type": "workspace",
-  "title": "{{company_name}} SOC 2 Program",
+  "title": "{{program_title}}",
   "organizationName": "{{company_name}}",
   "timezone": "{{timezone}}",
-  "description": "SOC 2 Security program based on the AICPA Trust Services Criteria.",
+  "description": "{{program_description}}",
   "riskMethodology": {
     "method": "5x5 likelihood and impact",
     "likelihoodScale": ["Rare", "Unlikely", "Possible", "Likely", "Almost certain"],

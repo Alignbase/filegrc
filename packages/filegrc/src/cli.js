@@ -6,7 +6,7 @@ import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldRes
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { buildWorkspace } from "./build.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
-import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
+import { ensureEvidenceTestDrafts, planEvidenceTestDrafts } from "./evidence-tests.js";
 import {
   addEvidenceAttachment,
   createResource,
@@ -28,7 +28,7 @@ import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
-import { setupWorkspace } from "./setup.js";
+import { planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
 import { createAppState } from "./state.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -83,15 +83,22 @@ export async function runCli(argv = process.argv.slice(2)) {
       ...(flags["program-goal"] !== undefined ? { programGoal: flags["program-goal"] } : {}),
       ...(flags.draft ? { draft: true } : {})
     });
-    const result = await setupWorkspace(root, setupInput);
-    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    const result = flags.preview
+      ? await planWorkspaceSetup(root, setupInput)
+      : await setupWorkspace(root, setupInput);
+    const output = flags.summary && !flags.preview ? summarizeSetupResult(result) : result;
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else if (flags.preview) {
+      console.log(`Setup preview: ${result.changes.system} system ${result.system.id}; update workspace target to ${result.target.assuranceGoal}.`);
+      console.log("No controls will be linked and no evidence drafts will be created.");
+    }
     else {
       console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
       console.log(`System: ${result.system.id} (${result.system.status})`);
       console.log(`Target: ${result.workspace.assuranceGoal}`);
       console.log("Next: finish Step 1 by confirming people, criteria, commitments, vendors, and in-scope systems. Run filegrc program-path for the full path.");
     }
-    return result;
+    return output;
   }
   if (command === "build") {
     const result = await buildWorkspace(positionals[0] ?? root, { output: flags.output });
@@ -253,6 +260,29 @@ export async function runCli(argv = process.argv.slice(2)) {
     return output;
   }
   if (command === "evidence-test-drafts") {
+    if (flags.preview) {
+      const loaded = await loadWorkspace(root);
+      const plan = planEvidenceTestDrafts(loaded);
+      const result = {
+        schemaVersion: 1,
+        preview: true,
+        total: plan.length,
+        create: plan.filter(({ existing }) => !existing).map((item) => ({
+          familyId: item.familyId,
+          title: item.title,
+          testEvidenceKind: item.testEvidenceKind,
+          controlIds: item.controlIds
+        })),
+        existing: plan.filter(({ existing }) => existing).map(({ existing }) => ({
+          id: existing.id,
+          title: existing.title,
+          status: existing.status
+        }))
+      };
+      if (flags.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Evidence draft preview: create ${result.create.length}; preserve ${result.existing.length}.`);
+      return result;
+    }
     const result = await ensureEvidenceTestDrafts(root);
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.length} External Evidence test ${result.created.length === 1 ? "draft" : "drafts"}; ${result.total} required families are represented.`);
@@ -641,7 +671,7 @@ function printHelp() {
 
 Usage:
   filegrc serve [root] [--host 127.0.0.1] [--port 8787]
-  filegrc setup [setup.json|-] [setup options] [--draft] [--json]
+  filegrc setup [setup.json|-] [setup options] [--draft] [--preview] [--summary] [--json]
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
@@ -654,7 +684,7 @@ Usage:
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
-  filegrc evidence-test-drafts [--json]
+  filegrc evidence-test-drafts [--preview] [--json]
   filegrc audit-readiness [audit-id] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
@@ -707,6 +737,8 @@ Options:
   --internet-exposed <bool>   true or false
   --program-goal <goal>       none, readiness, type-1, or type-2
   --draft                     Save the service boundary as planned
+  --preview                   Validate and report planned writes without saving
+  --summary                   Omit full workspace relationship arrays
   --json                      Print the result as JSON
   --root <path>               Workspace path
   --help                      Show this help`);
@@ -750,10 +782,12 @@ Options:
     console.log(`Usage:
   filegrc evidence-test-drafts [options]
 
-Create missing draft External Evidence records for collection that does not
-already have a dedicated Step 5 operating record. Existing tests are preserved.
+Preview or create missing draft External Evidence records for collection that
+does not already have a dedicated Step 5 operating record. Existing tests are
+preserved. Run after confirming applicable controls and source systems.
 
 Options:
+  --preview      Report proposed drafts without creating them
   --json         Print created and existing records as JSON
   --root <path>  Workspace path
   --help         Show this help`);
@@ -770,7 +804,7 @@ function agentOverview(model) {
       help: "filegrc help",
       version: "filegrc version",
       serve: "filegrc serve [root]",
-      setup: "filegrc setup [setup.json|-] [--draft] [--json]",
+      setup: "filegrc setup [setup.json|-] [--draft] [--preview] [--summary] [--json]",
       build: "filegrc build [root]",
       validate: "filegrc validate [root] --json",
       model: "filegrc model --json",
@@ -783,7 +817,7 @@ function agentOverview(model) {
       search: "filegrc search <query> --json",
       obligations: "filegrc obligations --json",
       programReadiness: "filegrc program-readiness --json",
-      evidenceTestDrafts: "filegrc evidence-test-drafts --json",
+      evidenceTestDrafts: "filegrc evidence-test-drafts --preview --json",
       auditReadiness: "filegrc audit-readiness <audit-id> --json",
       prepareAudit: "filegrc prepare-audit <audit-id>",
       trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
@@ -924,13 +958,17 @@ function printProgramPath(result) {
 }
 
 function summarizeProgramReadiness(result) {
+  const ownership = result.stages
+    .flatMap((stage) => stage.items)
+    .find((item) => item.id === "program-ownership");
   const summarizeItem = (item) => item ? {
     id: item.id,
     status: item.status,
     title: item.title,
     message: item.message,
     ...(item.resourceType ? { resourceType: item.resourceType } : {}),
-    ...(item.resourceId ? { resourceId: item.resourceId } : {})
+    ...(item.resourceId ? { resourceId: item.resourceId } : {}),
+    ...(item.unresolvedAssignments?.length ? { unresolvedAssignments: item.unresolvedAssignments } : {})
   } : null;
   return {
     schemaVersion: result.schemaVersion,
@@ -947,6 +985,7 @@ function summarizeProgramReadiness(result) {
     scopeCounts: Object.fromEntries(
       Object.entries(result.scope).map(([name, ids]) => [name.replace(/Ids$/, ""), ids.length])
     ),
+    unresolvedOwnership: ownership?.unresolvedAssignments || [],
     firstAction: summarizeItem(result.firstAction),
     stages: result.stages.map((stage) => ({
       id: stage.id,

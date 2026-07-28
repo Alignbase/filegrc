@@ -23,6 +23,11 @@ test("requires the starter oversight team to be activated with a separate curren
   const root = await mkdtemp(join(tmpdir(), "filegrc-program-ownership-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
+  const initialWorkspace = await loadWorkspace(root);
+  await updateResource(root, "workspace", initialWorkspace.workspace.id, {
+    ...initialWorkspace.workspace,
+    assuranceGoal: "readiness"
+  });
   await createResource(root, {
     schemaVersion: 1,
     id: "policy-security",
@@ -43,13 +48,47 @@ test("requires the starter oversight team to be activated with a separate curren
     memberIds: ["person-owner"],
     chairIds: []
   });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "obligation-quarterly-oversight",
+    type: "obligation",
+    title: "Quarterly oversight meeting",
+    status: "active",
+    activityType: "meeting",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 3,
+      anchorDate: "2026-01-01"
+    },
+    ownerIds: ["team-security-risk-oversight"]
+  });
 
   const pending = await assessProgramReadiness(root, { asOf: "2026-07-01" });
   const pendingOwnership = pending.stages
     .find(({ id }) => id === "scope")
     .items.find(({ id }) => id === "program-ownership");
   assert.equal(pendingOwnership.status, "action");
+  assert.match(pendingOwnership.message, /Quarterly oversight meeting \(obligation-quarterly-oversight\)/);
   assert.match(pendingOwnership.message, /Finish and activate Security and Risk Oversight/);
+  assert.deepEqual(pendingOwnership.unresolvedAssignments, [{
+    resourceType: "obligation",
+    resourceId: "obligation-quarterly-oversight",
+    title: "Quarterly oversight meeting",
+    ownerIds: ["team-security-risk-oversight"],
+    reasons: [{ ownerId: "team-security-risk-oversight", reason: "inactive-team" }]
+  }]);
+  const compactPending = JSON.parse((await execute(process.execPath, [
+    cli,
+    "program-readiness",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-01",
+    "--summary",
+    "--json"
+  ])).stdout);
+  assert.equal(compactPending.unresolvedOwnership[0].resourceId, "obligation-quarterly-oversight");
 
   const loaded = await loadWorkspace(root);
   const team = loaded.resources.find(({ id }) => id === "team-security-risk-oversight");

@@ -884,11 +884,11 @@ const obligations = [
   }
 ];
 
-export function baselineRecordPaths() {
-  return baselineRecordFiles("2000-01-01").map(({ path }) => path);
+export function baselineRecordPaths(starter = "security") {
+  return baselineRecordFiles("2000-01-01", starter).map(({ path }) => path);
 }
 
-export function baselineRecordFiles(effectiveDate) {
+export function baselineRecordFiles(effectiveDate, starter = "security") {
   const framework = {
     schemaVersion: 1,
     id: FRAMEWORK_ID,
@@ -1006,20 +1006,25 @@ export function baselineRecordFiles(effectiveDate) {
     policyIds: obligation.policyIds
   }));
 
+  const foundation = [
+    recordFile("systems", programRepository),
+    recordFile("teams", team)
+  ];
+  if (starter === "foundation") return foundation;
+  if (starter !== "security") throw new Error(`Unknown starter profile "${starter}".`);
   return [
     recordFile("frameworks", framework),
     recordFile("frameworks", descriptionFramework),
     ...commonRequirements.map((record) => recordFile("requirements", record)),
     ...descriptionRequirements.map((record) => recordFile("requirements", record)),
     ...controlRecords.map((record) => recordFile("controls", record)),
-    recordFile("systems", programRepository),
-    recordFile("teams", team),
+    ...foundation,
     ...obligationRecords.map((record) => recordFile("obligations", record))
   ];
 }
 
-export async function writeBaselineRecords(target, effectiveDate) {
-  for (const { path: relativePath, record } of baselineRecordFiles(effectiveDate)) {
+export async function writeBaselineRecords(target, effectiveDate, starter = "security") {
+  for (const { path: relativePath, record } of baselineRecordFiles(effectiveDate, starter)) {
     const path = join(target, relativePath);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", flag: "wx" });

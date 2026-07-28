@@ -119,7 +119,7 @@ export const PROGRAM_PATH = [
     ],
     resourceTypes: ["evidence"],
     commands: [
-      "filegrc evidence-test-drafts --json",
+      "filegrc evidence-test-drafts --preview --json",
       "filegrc guide evidence --json",
       "filegrc list evidence --json",
       "filegrc program-readiness --json"

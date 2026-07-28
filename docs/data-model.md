@@ -65,7 +65,7 @@ Before starting the candidate period, test external evidence collection only whe
 
 Headless commands:
 
-- `filegrc evidence-test-drafts --json`
+- `filegrc evidence-test-drafts --preview --json`
 - `filegrc guide evidence --json`
 - `filegrc list evidence --json`
 - `filegrc program-readiness --json`

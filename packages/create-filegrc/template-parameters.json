@@ -45,6 +45,38 @@
     {
       "key": "filegrc_version_range",
       "source": "resolved-filegrc-version"
+    },
+    {
+      "key": "program_title",
+      "source": "starter-profile"
+    },
+    {
+      "key": "program_description",
+      "source": "starter-profile"
+    },
+    {
+      "key": "program_summary",
+      "source": "starter-profile"
+    },
+    {
+      "key": "starter_setup",
+      "source": "starter-profile"
+    },
+    {
+      "key": "agent_title",
+      "source": "starter-profile"
+    },
+    {
+      "key": "agent_purpose",
+      "source": "starter-profile"
+    },
+    {
+      "key": "starter_baseline",
+      "source": "starter-profile"
+    },
+    {
+      "key": "audit_preparation_guidance",
+      "source": "starter-profile"
     }
   ]
 }
