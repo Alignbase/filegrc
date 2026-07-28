@@ -216,13 +216,13 @@ async function collectFiles(directory) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.1.0",
+    version: "0.2.0",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.1.0",
+        version: "0.2.0",
         dependencies: { filegrc: versionRange }
       }
     }

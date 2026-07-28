@@ -60,7 +60,7 @@ Treat headless use as a first-class interface. An agent with no FileGRC context 
 
 ## Data rules
 
-The authoritative model registry is `packages/filegrc/model/v1.json`. FileGRC has not shipped, so update v1, the starter data, generated docs, and tests together. Do not add a second model or migration code until a published version creates a real compatibility boundary.
+The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 is published. Before changing it, decide whether existing v1 workspaces remain valid. Keep compatible v1 changes, starter data, generated docs, and tests in sync. Add a new model version and an explicit migration path when a change would make existing v1 workspaces invalid.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. FileGRC derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
@@ -114,11 +114,11 @@ Private exports may be inspected to understand generic workflows, but they are n
 
 ## Versions and releases
 
-The project is unreleased. Keep `filegrc`, `create-filegrc`, the template package, and the lockfile at `0.1.0` during normal development. Change the current v1 contract directly and keep all generated data and tests in sync. Do not build compatibility layers for versions nobody can have installed.
+Use semantic versioning for published releases. Keep package versions unchanged during normal development, then update the coordinated package, template, and lockfile versions as part of a release.
 
 At release time, bump each package whose published files or behavior changed. `filegrc` includes `bin/`, `src/`, and `model/`. `create-filegrc` includes its CLI, prompts, dependency resolution, template, starter records, policies, and generated lockfile behavior. Root-only documentation, tests, and development scripts do not need a package bump.
 
-After the first publication, use semantic versioning and reassess upgrades from the contract that actually shipped. Publish `filegrc` before any `create-filegrc` release that depends on it. A package update must never rewrite a consumer's policies or compliance records without an explicit command and reviewable Git diff.
+Publish `filegrc` before any `create-filegrc` release that depends on it. A package update must never rewrite a consumer's policies or compliance records without an explicit command and reviewable Git diff.
 
 ## Validation
 

@@ -379,11 +379,11 @@ Audit pages also show:
 - Never render raw secrets into generated output.
 - Make evidence classification visible before export.
 
-## Pre-release contract
+## Versioning contract
 
-FileGRC has one data model, v1, and both packages stay at `0.1.0` during normal development. Before the first npm publication, schema and template changes update that single contract directly. There is no migration command or historical reader yet because no consumer release exists.
+FileGRC currently has one published data model, v1. Compatible additions can update that model with its starter data, generated docs, and tests. A change that would make an existing v1 workspace invalid needs a new model version and an explicit migration path.
 
-After the first publication, reassess versioning from the contract that actually shipped. Do not add speculative compatibility code now.
+Package versions stay unchanged during normal development and move together when both published packages change. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 
 ## Delivery state
 
