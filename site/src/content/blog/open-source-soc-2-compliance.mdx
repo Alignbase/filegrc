@@ -1,0 +1,237 @@
+---
+title: "Open Source SOC 2 Compliance: What Software Can and Cannot Replace"
+description: "A practical guide to running SOC 2 work with open source software, including what stays with your team, source systems, and CPA firm."
+publishedDate: "2026-07-28"
+lastMod: "2026-07-28"
+author: "Abe Wheeler"
+tags:
+  [
+    "open source SOC 2 compliance",
+    "free SOC 2 compliance software",
+    "SOC 2 compliance as code",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "FileGRC keeps SOC 2 records in JSON, Markdown, and Git."
+faqs:
+  - question: "Can open source software make a company SOC 2 compliant?"
+    answer: "No. Software can organize program records and evidence, while management defines and operates the controls and an independent CPA firm performs the examination."
+  - question: "Is open source SOC 2 software free?"
+    answer: "The software may have no license fee, but your company still pays for staff time, security tools, source systems, control operation, and the independent CPA examination."
+  - question: "What does FileGRC replace?"
+    answer: "FileGRC replaces a separate GRC record database for teams that want to manage SOC 2 program records and audit evidence as files in Git."
+  - question: "Does FileGRC collect evidence from cloud systems?"
+    answer: "No. FileGRC catalogs source systems and stores or references fixed evidence that your team collects from them."
+  - question: "Can an AI agent run SOC 2 work in an open source repository?"
+    answer: "An agent can inspect records, prepare validated changes, complete scheduled work from reviewed input, and run readiness checks. People still approve policies, operate controls, review sensitive changes, and make management and audit judgments."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the FileGRC source and setup guide"
+    url: "https://github.com/Sunpeak-AI/FileGRC"
+---
+
+Open source SOC 2 compliance software can keep policies, controls, owners,
+recurring work, and evidence records in a system your team owns. It cannot
+operate your security controls, replace the systems that produce evidence, or
+issue a SOC 2 report. Your company remains responsible for its system and
+controls, and an independent CPA firm performs the examination.
+
+## TL;DR
+
+- Use open source software to own the program record, review changes, track
+  deadlines, and assemble evidence.
+- Keep identity, cloud, endpoint, source control, monitoring, backup, training,
+  signature, and other operating data in their source systems.
+- Export fixed evidence from those systems, record its source and collection
+  details, then link it to the control work it supports.
+- Use Git for reviewable changes, not as a place for secrets or personal data
+  that may need deletion.
+- Engage a CPA firm for the SOC 2 examination and its judgment about whether
+  the evidence is sufficient and appropriate.
+
+## What open source SOC 2 compliance software can do
+
+The useful unit of work is not a dashboard score. It is a connected set of
+records that answers concrete questions:
+
+- What service and systems are in scope?
+- Which policies has management approved?
+- Which controls are implemented, who owns them, and how do they operate?
+- What recurring or event-driven work is due?
+- Which system produced each item of evidence?
+- What changed during the period?
+- What will management give the CPA firm for fieldwork?
+
+Open source software can model those records, validate their relationships, and
+keep them in a format your team can inspect. A file-based system can also work
+locally and in CI without sending program data to another hosted database.
+
+The [AICPA describes SOC as a suite of services that CPAs may
+provide](https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services)
+in connection with system-level controls. Its published [Trust Services
+Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+cover security, availability, processing integrity, confidentiality, and
+privacy. Software can help management map and maintain its work against the
+applicable criteria. It does not turn that work into an assurance report.
+
+| Work                                                         | Good fit for an open source GRC repository?                               | Owner                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------- |
+| Scope, policies, controls, risks, vendors, and systems       | Yes                                                                       | Management                    |
+| Recurring tasks and event checklists                         | Yes                                                                       | Management and control owners |
+| Evidence index, collection notes, and fixed attachments      | Yes, subject to repository access and retention rules                     | Management                    |
+| Identity, cloud, endpoint, backup, and monitoring operations | No, keep these in their source systems                                    | System owners                 |
+| Control design and operation                                 | Software can track it, but people and systems perform it                  | Management                    |
+| Evidence evaluation and sample selection                     | Software can prepare records, but the engagement team makes the judgments | CPA firm                      |
+| SOC 2 examination and report                                 | No                                                                        | Independent CPA firm          |
+
+## What belongs in the repository
+
+A small software company does not need to copy every operational record into
+its GRC system. It needs enough structure to show what management decided, what
+work occurred, and where the supporting proof came from.
+
+### Structured program records
+
+Store fields that you need to validate, filter, relate, or schedule. Examples
+include:
+
+- a stable record ID;
+- status and owner;
+- approval, occurrence, completion, and verification dates;
+- links between policies, controls, systems, obligations, risks, tests, and
+  evidence;
+- cadence, due windows, and deadlines;
+- the authoritative source system for exported evidence.
+
+Avoid duplicating data that Git already supplies, such as a second change log
+or `updatedBy` field. Keep domain dates explicit because a commit timestamp does
+not tell you when management approved a policy or when a review occurred.
+
+### Long-form work in Markdown
+
+Policies, procedures, risk analysis, meeting minutes, management assertions,
+system narratives, and audit responses need room for prose. Markdown keeps that
+work readable in a text editor and reviewable in a pull request.
+
+Signed forms, third-party reports, screenshots, and fixed exports are
+different. Store them as evidence attachments when the fixed representation is
+part of the proof, then connect them to a structured evidence record.
+
+### Source and collection details
+
+An evidence file without context creates more questions. Record:
+
+- the system that produced it;
+- who collected it and when;
+- the exact query, report parameters, period, and timezone when relevant;
+- what completeness and accuracy checks management performed;
+- who verified it and when;
+- which control, test, obligation, event, or population it supports.
+
+For a Type 2 period, preserve complete management populations before sampling.
+A zero-item population still needs a defined source, query, period, count, and
+completeness check. The CPA firm decides which items to sample and whether the
+resulting evidence supports its work.
+
+## What the repository must not replace
+
+Open source GRC software is a record and workflow layer. It should point to
+authoritative systems instead of pretending to be one.
+
+Keep these functions in the tools that actually operate them:
+
+- workforce identity and employment records;
+- access control and authentication;
+- source control and deployment;
+- cloud and infrastructure configuration;
+- logs, monitoring, and incident detection;
+- endpoint management and vulnerability scanning;
+- backups and recovery tests;
+- security training and signatures;
+- procurement, contracts, and vendor operations.
+
+Your repository can catalog each system, name the people who can obtain
+evidence, and document the export procedure. Your team still needs to run the
+system and collect the fixed artifact.
+
+The same boundary applies to professional judgment. Management chooses scope,
+accepts risks, approves policies, designs controls, and asserts what its system
+does. The CPA firm plans and performs the examination, selects samples,
+evaluates exceptions, and issues the report.
+
+## Why put SOC 2 work in Git?
+
+Git makes the program fit the review habits an engineering team already uses.
+[GitHub's guide to Git](https://docs.github.com/en/get-started/using-git/about-git)
+explains that version control tracks which changes were made, who made them,
+when they changed, and why. A repository also carries the files and their
+revision history together.
+
+For GRC work, that gives you:
+
+- plain files that work with editors, scripts, CI, and agents;
+- diffs for policy, control, and evidence-record changes;
+- commits that bind a reviewed state to a revision;
+- branches and pull requests for approval before merging;
+- a local copy that remains useful without a network connection;
+- one history instead of a separate application audit log.
+
+Git also makes mistakes durable. Do not commit secrets, credentials, session
+data, regulated personal data, or personal data that may need erasure. Keep the
+repository private unless its contents are safe to publish, restrict access,
+and review attachment rules before adding evidence.
+
+## A practical open source SOC 2 workflow
+
+1. **Define the service boundary.** List the product, people, processes,
+   infrastructure, data, vendors, and systems that may affect the service.
+2. **Choose the applicable criteria and write the program.** Treat starter
+   policies and controls as proposals. Tailor them to what the company really
+   does, assign owners, and use a separate reviewer for policy approval.
+3. **Catalog source systems.** For each kind of external evidence, name the
+   authoritative system, collector, export steps, and verification method.
+4. **Implement and test controls.** Record actual procedures and dates. Run a
+   sample collection before relying on a recurring evidence process.
+5. **Operate scheduled and event work.** Complete access reviews, vendor work,
+   risk work, training, incidents, personnel changes, and other policy-driven
+   tasks with dated proof.
+6. **Start a management candidate period only when collection is reliable.**
+   This date records management's operating intent. Keep it separate from any
+   later period agreed with the CPA firm.
+7. **Prepare the examination.** Record the engagement, exact scope and dates,
+   management documents, complete populations, tests, and evidence. Export a
+   packet tied to a clean Git revision.
+
+You may engage a CPA firm earlier when scope, timing, customer terms, or an
+unusual service creates uncertainty. Open source software can reduce the need
+for a separate GRC license, but it cannot remove the labor, operating systems,
+or CPA work from the process.
+
+## How FileGRC handles compliance as code
+
+[FileGRC](/) is an MIT-licensed, Git-native workspace for SOC 2 program records
+and audit evidence. JSON holds structured records, Markdown holds long-form
+work, and Git supplies the change history. The browser and CLI use the same
+validation and domain logic, so an engineer or agent can inspect and prepare
+the same changes without a separate API-only record store.
+
+```sh
+npx create-filegrc@latest company-grc
+cd company-grc
+npm run validate
+
+npx filegrc program-path --json
+npx filegrc obligations --json
+npx filegrc program-readiness --json
+```
+
+FileGRC does not fetch evidence from external systems. It catalogs those
+systems, tracks collection and verification, links fixed evidence to the work
+it supports, and prepares an indexed audit packet. The engagement team still
+decides whether the evidence is sufficient and appropriate.
+
+That boundary is the test for any free or open source SOC 2 tool: you should be
+able to name the records it manages, the work your team still performs, the
+systems that remain authoritative, and the decisions reserved for the CPA
+firm.
