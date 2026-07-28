@@ -1,0 +1,181 @@
+---
+import type { CollectionEntry } from "astro:content";
+import BlogCta from "../components/BlogCta.astro";
+import BaseLayout from "./BaseLayout.astro";
+
+interface Props {
+  post: CollectionEntry<"blog">;
+}
+
+type BlogFaq = {
+  question: string;
+  answer: string;
+};
+
+type FurtherReadingLink = {
+  text: string;
+  url: string;
+};
+
+const { post } = Astro.props;
+const {
+  title,
+  description,
+  publishedDate,
+  lastMod,
+  author,
+  image,
+  imageCaption,
+} = post.data;
+const tags: string[] = post.data.tags;
+const faqs: BlogFaq[] = post.data.faqs;
+const furtherReading: FurtherReadingLink[] | undefined =
+  post.data.furtherReading;
+const authorXUrl = post.data.authorXUrl ?? "https://x.com/AbeWheeler5";
+const authorLinkedinUrl =
+  post.data.authorLinkedinUrl ?? "https://www.linkedin.com/in/abrahamwheeler/";
+const siteUrl = Astro.site ?? new URL("https://filegrc.com");
+const imageUrl = image ?? new URL("/og-image.png", siteUrl).href;
+const articleUrl = new URL(`/blogs/${post.id}`, siteUrl).href;
+const formattedDate = publishedDate.toLocaleDateString("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+const articleStructuredData = {
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  headline: title,
+  description,
+  image: imageUrl,
+  url: articleUrl,
+  datePublished: publishedDate.toISOString(),
+  dateModified: lastMod.toISOString(),
+  inLanguage: "en-US",
+  author: {
+    "@type": "Person",
+    name: author,
+    url: authorLinkedinUrl,
+    sameAs: [authorXUrl],
+  },
+  publisher: {
+    "@type": "Organization",
+    name: "FileGRC",
+    url: siteUrl.href,
+    logo: {
+      "@type": "ImageObject",
+      url: new URL("/favicon.png", siteUrl).href,
+    },
+  },
+  mainEntityOfPage: {
+    "@type": "WebPage",
+    "@id": articleUrl,
+  },
+  articleSection: tags[0],
+  keywords: tags.join(", "),
+};
+
+const faqStructuredData = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((faq: BlogFaq) => ({
+    "@type": "Question",
+    name: faq.question,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: faq.answer,
+    },
+  })),
+};
+---
+
+<BaseLayout
+  title={`${title} | FileGRC Blog`}
+  description={description}
+  image={imageUrl}
+  imageAlt={imageCaption ?? title}
+  canonicalUrl={articleUrl}
+  structuredData={[articleStructuredData, faqStructuredData]}
+  ogType="article"
+  publishedTime={publishedDate}
+  modifiedTime={lastMod}
+  author={author}
+  tags={tags}
+>
+  <div class="blog-page">
+    <div class="shell blog-shell">
+      <a class="blog-back" href="/blog">← All posts</a>
+      <article class="blog-article">
+        <header class="blog-header">
+          <div class="blog-tags">
+            {tags.map((tag: string) => <span>{tag}</span>)}
+          </div>
+          <h1>{title}</h1>
+          <p class="blog-description">{description}</p>
+          <div class="blog-byline">
+            <time datetime={publishedDate.toISOString()}>{formattedDate}</time>
+            <span>{author}</span>
+            <a
+              href={authorXUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${author} on X`}>X</a
+            >
+            <a
+              href={authorLinkedinUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${author} on LinkedIn`}>LinkedIn</a
+            >
+          </div>
+        </header>
+
+        {
+          image && (
+            <figure class="blog-image">
+              <img src={image} alt={imageCaption ?? title} loading="eager" />
+              {imageCaption && <figcaption>{imageCaption}</figcaption>}
+            </figure>
+          )
+        }
+
+        <div class="blog-content">
+          <slot />
+        </div>
+
+        <BlogCta />
+
+        {
+          furtherReading && furtherReading.length > 0 && (
+            <section class="blog-related">
+              <h2>Further reading</h2>
+              <ul>
+                {furtherReading.map((link: FurtherReadingLink) => (
+                  <li>
+                    <a href={link.url}>{link.text}</a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+
+        <section class="blog-faq">
+          <h2>Frequently asked questions</h2>
+          <div>
+            {
+              faqs.map((faq: BlogFaq) => (
+                <details>
+                  <summary>{faq.question}</summary>
+                  <p>{faq.answer}</p>
+                </details>
+              ))
+            }
+          </div>
+        </section>
+      </article>
+    </div>
+  </div>
+</BaseLayout>

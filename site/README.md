@@ -1,6 +1,7 @@
 # FileGRC site
 
-The FileGRC marketing site. Astro builds static HTML for Cloudflare Pages.
+The FileGRC marketing site. Astro builds static HTML for Cloudflare Pages. Blog
+posts use Astro content collections and MDX.
 
 ## Develop
 
@@ -23,6 +24,13 @@ npm run site:build
 ```
 
 Set `SITE_URL` when building for a domain other than `https://filegrc.com`.
+
+## Blog
+
+Blog posts live in `src/content/blog/`, render at `/blogs/<slug>`, and appear on
+the `/blog` index. Invoke the user-level `write-filegrc-blog` skill before
+creating or editing a post. The skill contains the FileGRC keyword strategy,
+frontmatter contract, sourcing rules, and writing workflow.
 
 ## Deploy
 
