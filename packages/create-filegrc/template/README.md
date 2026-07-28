@@ -1,12 +1,12 @@
 # filegrc
 
+![filegrc, run a SOC 2 program as files in Git](docs/filegrc-social-preview.png)
+
 Run a SOC 2 program as files in Git.
 
 filegrc gives a founder-led engineering team one place to adopt policies, implement controls, test External Evidence collection, run recurring compliance work, and prepare an audit. JSON holds structured records, Markdown holds long-form work, and Git supplies the change history.
 
 There is no separate application database. The repository is the program, so engineers and agents can use the same data through the web app, a text editor, or the CLI.
-
-![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
 ## Why it exists
 
@@ -56,6 +56,8 @@ Third-party software is usually both a System and a Vendor. The application is t
 ## Run the program
 
 Use Overview to follow one six-step path: define scope, approve policies, implement controls, test External Evidence, operate the program, then complete the audit. Steps 1 through 4 and Step 6 open an overview with instructions, record links, progress, and completion status. Step 5 opens Policy Events and the Work Queue because operation is ongoing rather than a one-time checklist. The progress tracker opens the first incomplete step.
+
+![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
 Use Work Queue for recurring work, Policy Event tasks, and other assigned follow-up. Trigger a Policy Event when the underlying change occurs, and filegrc adds its required actions to the queue with their owners and deadlines. Create a separate Action Item only when follow-up needs its own assignee, deadline, and completion proof. Each queue item shows its due window or deadline. Link dated proof to close the work.
 

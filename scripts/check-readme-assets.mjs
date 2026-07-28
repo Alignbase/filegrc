@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { lstat, readFile } from "node:fs/promises";
 
-const screenshots = ["filegrc-home.png", "filegrc-audit.png"];
+const screenshots = ["filegrc-social-preview.png", "filegrc-home.png", "filegrc-audit.png"];
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 
 for (const screenshot of screenshots) {
@@ -18,4 +18,10 @@ for (const screenshot of screenshots) {
   );
 }
 
-console.log("Root README screenshots are regular files and match the generated workspace.");
+assert.deepEqual(
+  await readFile(new URL("../docs/filegrc-social-preview.png", import.meta.url)),
+  await readFile(new URL("../site/public/og-image.png", import.meta.url)),
+  "The root README social preview must match the site Open Graph image"
+);
+
+console.log("Root README images match the generated workspace and site Open Graph image.");
