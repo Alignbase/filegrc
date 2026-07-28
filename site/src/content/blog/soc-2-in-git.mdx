@@ -1,0 +1,287 @@
+---
+title: "I Built a Git-Native SOC 2 Tool Because I Didn't Want Another SaaS Bill"
+description: "A technical look at running SOC 2 in Git with JSON records, Markdown policies, reviewable changes, a CLI, and agent-ready workflows."
+publishedDate: "2026-07-27"
+lastMod: "2026-07-27"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 in Git",
+    "Git-native GRC",
+    "SOC 2 compliance as code",
+    "AI agent for SOC 2",
+  ]
+featured: false
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc stores structured SOC 2 records in JSON, long-form work in Markdown, and change history in Git."
+faqs:
+  - question: "Can a company run its SOC 2 program in Git?"
+    answer: "A company can manage its SOC 2 program records and audit evidence in Git when the repository has a defined model, validation, access controls, and a review process. Source systems still operate controls and produce much of the evidence, while an independent CPA firm performs the examination."
+  - question: "Does Git history replace dates in SOC 2 records?"
+    answer: "No. Git records when a file changed, who committed it, and the exact diff. Records still need explicit dates for events such as approvals, control tests, incidents, training, and evidence collection."
+  - question: "Can an AI agent manage SOC 2 work in Git?"
+    answer: "An agent can inspect records, prepare validated changes, complete work from reviewed input, and run readiness checks. People still approve policies, operate controls, review sensitive changes, and make management and audit judgments."
+  - question: "Does filegrc collect evidence from cloud and identity systems?"
+    answer: "No. filegrc catalogs source systems and stores or references fixed evidence collected from them. It does not log in to external systems and collect evidence automatically."
+  - question: "Is filegrc free SOC 2 software?"
+    answer: "filegrc is open source under the MIT license and has no software license fee. A SOC 2 program still costs staff time, security tooling, source systems, control operation, evidence collection, and the independent CPA examination."
+furtherReading:
+  - text: "What open source SOC 2 software can and cannot replace"
+    url: "/blogs/open-source-soc-2-compliance"
+  - text: "Run a SOC 2 program as files in Git"
+    url: "/"
+---
+
+Running SOC 2 in Git means keeping structured program records in JSON,
+long-form work in Markdown, and change history in the repository. That gives
+engineers reviewable diffs and agent-ready files. It does not operate security
+controls, collect every item of external evidence, or replace the independent
+CPA examination.
+
+I started building [filegrc](https://github.com/Sunpeak-AI/filegrc) after
+writing this on X:
+
+> Didn't feel like paying a zillion dollars again for basic SOC 2 software, so
+> rolled my own this weekend.
+>
+> 100% file-based, uses Git for audit trails. Agents can absolutely cook on
+> this thing. Open sourced in case helpful to anyone else.
+
+That short post got much more attention than I expected. Here is the technical
+idea behind it.
+
+## Why put SOC 2 records in Git?
+
+Much of the work in a SOC 2 program comes down to connected records:
+
+- Which service, systems, and commitments are in scope?
+- Which policies has management approved?
+- Which controls are implemented, and who owns them?
+- What recurring or event-driven work is due?
+- Which source system produced each item of evidence?
+- What changed during the period?
+- Which records and files will management give the CPA firm?
+
+Engineering teams already use Git to review structured text, preserve changes,
+and tie each revision to an author and reason. I wanted those same properties
+for the program record.
+
+The repository should still have a domain model. A folder full of loose
+documents cannot calculate due work, validate relationships, or tell an agent
+which record it should create next.
+
+## What Git-native GRC means in filegrc
+
+filegrc uses JSON for data the engine needs to validate, filter, connect, or use
+in a calculation. It uses Markdown for policies, procedures, meeting minutes,
+plans, narratives, and other long-form work.
+
+A generated workspace looks roughly like this:
+
+```text
+company-grc/
+├── AGENTS.md
+├── data/
+│   ├── action-items/
+│   ├── audit-populations/
+│   ├── audits/
+│   ├── documents/
+│   ├── evidence/
+│   ├── obligations/
+│   ├── people/
+│   ├── policies/
+│   ├── risk-assessments/
+│   ├── systems/
+│   ├── training/
+│   └── workspace.json
+├── package.json
+└── README.md
+```
+
+A policy record contains the fields the engine needs:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "policy-information-security",
+  "type": "policy",
+  "title": "Information Security Policy",
+  "status": "draft",
+  "ownerIds": ["person-policy-owner"],
+  "approverIds": ["person-independent-approver"],
+  "version": "1.0",
+  "effectiveOn": "2026-08-01",
+  "reviewCadence": {
+    "mode": "calendar",
+    "unit": "year",
+    "interval": 1,
+    "anchorDate": "2026-08-01"
+  }
+}
+```
+
+The policy text lives beside it:
+
+```text
+data/policies/policy-information-security.json
+data/policies/policy-information-security.md
+```
+
+This split keeps stable, reusable facts in JSON without forcing every paragraph
+or procedure into nested fields.
+
+## Git history and domain dates answer different questions
+
+Git already records the author, timestamp, diff, commit message, and revision
+for a repository change. filegrc does not copy those values into a second
+change log.
+
+The records still keep dates that describe the security program.
+
+| Question                                  | Source              |
+| ----------------------------------------- | ------------------- |
+| When did this file enter the repository?  | Git commit          |
+| Who committed the change?                 | Git commit          |
+| What changed between two revisions?       | Git diff            |
+| When did management approve the policy?   | Policy record       |
+| When did the control test occur?          | Control test record |
+| When was evidence collected and verified? | Evidence record     |
+| When did an incident occur?               | Incident record     |
+
+Suppose someone performs an access review on July 10 and commits the completed
+record on July 11. The record needs the July 10 completion date. The Git commit
+documents the repository change on July 11.
+
+Both dates matter, and they should not be treated as the same event.
+
+## The files need validation
+
+filegrc has a versioned model registry that defines:
+
+- Resource types and required fields
+- Valid values
+- Relationships between records
+- Conditional requirements
+- Markdown content slots
+- Default browser metadata
+
+The validator, CLI, browser forms, search index, and generated model
+documentation all read from that registry.
+
+You can validate the workspace with:
+
+```sh
+npm run validate
+```
+
+The engine checks individual records and relationships across the program. It
+can report missing owners, broken references, invalid dates, incomplete policy
+events, missing Markdown, and unsafe evidence paths.
+
+The model also keeps starter files honest. New work starts as a draft or
+proposal. A template does not become a compliance fact just because it exists
+in the repository.
+
+## Why agents work well with a file-based GRC system
+
+An agent can read JSON and Markdown without learning a private application API
+or scraping a browser. That alone is not enough. The agent also needs a way to
+discover the model, inspect current relationship candidates, and verify a
+change.
+
+Generated filegrc workspaces include an `AGENTS.md` program guide. The CLI
+provides the rest of the context:
+
+```sh
+npx filegrc guide risk-assessment --json
+npx filegrc list risk --json
+npx filegrc references system-id --json
+npx filegrc scaffold risk-assessment \
+  --title "2026 Annual Risk Assessment"
+```
+
+An agent can ask which fields a record requires, inspect valid relationship
+targets, prepare a mutation, and run validation afterward.
+
+Recurring and event-driven work uses the same interface:
+
+```sh
+npx filegrc obligations --json
+
+npx filegrc trigger person-started \
+  --occurred-on 2026-07-25 \
+  --subject person-id
+
+npx filegrc complete-action action-item-id \
+  completion-record.json \
+  --completed-on 2026-07-25
+```
+
+The browser and CLI call the same domain functions. An agent receives the same
+validation, due-date calculations, and readiness checks as a person using the
+local web app.
+
+People still review sensitive changes. Management approves policies and risk
+decisions. Control owners perform the work. The CPA firm decides whether audit
+evidence is sufficient and appropriate.
+
+## Why the engine has no dependencies
+
+The `filegrc` engine uses Node.js built-in modules only. It does not need a
+database, compiler, bundler, or hosted service. It runs locally, in CI, or in a
+basic server environment with Node.js 20 or newer and Git.
+
+The engine handles:
+
+- Workspace validation
+- Search and CRUD operations
+- Recurring obligations
+- Policy-triggered events
+- Program and audit readiness checks
+- Evidence packet generation
+- A local web interface
+
+Writes are atomic. Paths are checked against the workspace boundary. CRUD
+commands do not create Git commits unless the user explicitly requests one.
+
+Those constraints keep the program usable when the network is unavailable and
+make the repository easier to inspect.
+
+## What should stay outside the repository
+
+Git is a poor place for secrets, credentials, session material, regulated
+personal data, or personal data that may need deletion later.
+
+It also does not replace the systems that operate security controls. Identity,
+source control, cloud infrastructure, monitoring, endpoint, backup, training,
+signature, procurement, and vendor systems remain authoritative for their own
+data.
+
+filegrc catalogs those systems and records how to obtain evidence from them.
+Your team can then attach or reference a fixed export, report, screenshot, or
+signed file through an evidence record.
+
+The repository manages the program record and audit evidence. It does not
+perform the SOC 2 examination or issue the report. The
+[AICPA describes SOC as a suite of services performed by
+CPAs](https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services).
+
+## Try filegrc locally
+
+Create a workspace with:
+
+```sh
+npx create-filegrc@latest company-grc
+cd company-grc
+npm run validate
+npm run serve
+```
+
+Setup creates draft records and guides you through scope, policies, controls,
+evidence, recurring work, and later audit preparation.
+
+Review the starter content against how your company actually operates. Then
+commit the version that reflects reality.
+
+If you already keep infrastructure and application changes in Git, which SOC 2
+records would you want beside them?
