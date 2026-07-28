@@ -28,9 +28,8 @@ Set `SITE_URL` when building for a domain other than `https://filegrc.com`.
 ## Blog
 
 Blog posts live in `src/content/blog/`, render at `/blogs/<slug>`, and appear on
-the `/blog` index. Invoke the user-level `write-filegrc-blog` skill before
-creating or editing a post. The skill contains the FileGRC keyword strategy,
-frontmatter contract, sourcing rules, and writing workflow.
+the `/blog` index. The content collection validates post metadata, FAQ entries,
+and related reading links.
 
 ## Deploy
 

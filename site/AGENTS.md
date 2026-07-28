@@ -21,8 +21,6 @@ repository root `AGENTS.md` before changing product claims or setup commands.
 - Do not imply that FileGRC decides whether audit evidence is sufficient.
 - Keep sentences short and speak directly to engineers.
 - Follow the writing style rules in the repository root `AGENTS.md`.
-- Invoke the user-level `write-filegrc-blog` skill before creating or editing
-  posts under `src/content/blog/`.
 - Keep blog claims inside FileGRC's product boundary. FileGRC manages GRC
   records and audit evidence, but the CPA firm performs the audit and decides
   whether evidence is sufficient.
