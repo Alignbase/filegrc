@@ -20,7 +20,7 @@ Agents and terminal users can inspect the workspace without the browser:
 
 ```sh
 npx filegrc guide --json
-npx filegrc program-path --json
+npx filegrc program-path --next --json
 npx filegrc obligations --json
 npx filegrc validate --json
 ```

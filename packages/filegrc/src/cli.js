@@ -37,10 +37,12 @@ import { loadWorkspace } from "./workspace.js";
 const BOOLEAN_FLAGS = new Set([
   "check-docs",
   "complete",
+  "current",
   "draft",
   "help",
   "json",
   "mutation",
+  "next",
   "preview",
   "require-ready",
   "summary",
@@ -95,8 +97,11 @@ export async function runCli(argv = process.argv.slice(2)) {
     else {
       console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
       console.log(`System: ${result.system.id} (${result.system.status})`);
+      if (result.draft) {
+        console.log("Planned and in scope means selected for scope review, not approved or active.");
+      }
       console.log(`Target: ${result.workspace.assuranceGoal}`);
-      console.log("Next: finish Step 1 by confirming people, criteria, commitments, vendors, and in-scope systems. Run filegrc program-path for the full path.");
+      console.log("Next: finish Step 1 by confirming people, criteria, commitments, vendors, and in-scope systems. Run npx filegrc program-path --next --json.");
     }
     return output;
   }
@@ -165,9 +170,10 @@ export async function runCli(argv = process.argv.slice(2)) {
     const auditId = positionals[0] || flags.audit;
     const auditReadiness = auditId ? await assessAuditPreparation(loaded, { auditId }) : null;
     const result = buildProgramPathResult(loaded.model, readiness, auditReadiness);
-    if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else printProgramPath(result);
-    return result;
+    const output = selectProgramPathOutput(result, flags);
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else printProgramPathOutput(output, flags);
+    return output;
   }
   if (command === "scaffold") {
     const loaded = await loadWorkspace(root);
@@ -678,7 +684,7 @@ Usage:
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--json]
-  filegrc program-path [audit-id] [--as-of YYYY-MM-DD] [--json]
+  filegrc program-path [audit-id] [--as-of YYYY-MM-DD] [--summary|--next|--current] [--json]
   filegrc scaffold <resource-type> --title text [--id resource-id]
   filegrc list [resource-type] [--json]
   filegrc search <query> [--type resource-type] [--json]
@@ -773,7 +779,10 @@ and current readiness state. Pass an audit ID to include Step 6 status.
 Options:
   --audit <id>       Audit record to use for Step 6
   --as-of <date>     Evaluate readiness on YYYY-MM-DD
-  --json             Print the full agent-oriented path as JSON
+  --summary          Print compact status and the first action for all six steps
+  --next             Print only the current step and its first action
+  --current          Print the full guide for the current step only
+  --json             Print the selected path view as JSON
   --root <path>      Workspace path
   --help             Show this help`);
     return;
@@ -797,44 +806,48 @@ Options:
 }
 
 function agentOverview(model) {
+  const commands = {
+    help: "filegrc help",
+    version: "filegrc version",
+    serve: "filegrc serve [root]",
+    setup: "filegrc setup [setup.json|-] [--draft] [--preview] [--summary] [--json]",
+    build: "filegrc build [root]",
+    validate: "filegrc validate [root] --json",
+    model: "filegrc model --json",
+    describe: "filegrc describe <resource-type>",
+    types: "filegrc types --json",
+    guide: "filegrc guide [resource-type] --json",
+    programPath: "filegrc program-path [audit-id] --next --json",
+    scaffold: "filegrc scaffold <resource-type> --title <name>",
+    list: "filegrc list [resource-type] --json",
+    search: "filegrc search <query> --json",
+    obligations: "filegrc obligations --json",
+    programReadiness: "filegrc program-readiness --json",
+    evidenceTestDrafts: "filegrc evidence-test-drafts --preview --json",
+    auditReadiness: "filegrc audit-readiness <audit-id> --json",
+    prepareAudit: "filegrc prepare-audit <audit-id>",
+    trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
+    evidencePacket: "filegrc evidence-packet --audit <audit-id> --preview --json",
+    get: "filegrc get <resource-id> [--mutation]",
+    references: "filegrc references <resource-id> --json",
+    create: "filegrc create <record-or-mutation.json>",
+    complete: "filegrc complete <obligation-id> <completion-mutation.json>",
+    completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
+    completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",
+    update: "filegrc update <resource-type> <id> <record-or-mutation.json>",
+    content: "filegrc content <resource-type> <id> [slot] [--write <markdown-file|->]",
+    attach: "filegrc attach <evidence-id> <source-file> [--name <file-name>]",
+    detach: "filegrc detach <evidence-id> <attachment-name> --yes",
+    delete: "filegrc delete <resource-type> <id> --yes",
+    commit: "git diff --check && git diff && git add <reviewed-paths> && git commit -m <reason>"
+  };
   return {
     rule: "Treat data/ as the source of truth. Run guide before creating an unfamiliar type, validate after every write, review the Git diff, then commit a focused change.",
     programPath: buildAgentProgramPath(model),
-    actions: {
-      help: "filegrc help",
-      version: "filegrc version",
-      serve: "filegrc serve [root]",
-      setup: "filegrc setup [setup.json|-] [--draft] [--preview] [--summary] [--json]",
-      build: "filegrc build [root]",
-      validate: "filegrc validate [root] --json",
-      model: "filegrc model --json",
-      describe: "filegrc describe <resource-type>",
-      types: "filegrc types --json",
-      guide: "filegrc guide [resource-type] --json",
-      programPath: "filegrc program-path [audit-id] --json",
-      scaffold: "filegrc scaffold <resource-type> --title <name>",
-      list: "filegrc list [resource-type] --json",
-      search: "filegrc search <query> --json",
-      obligations: "filegrc obligations --json",
-      programReadiness: "filegrc program-readiness --json",
-      evidenceTestDrafts: "filegrc evidence-test-drafts --preview --json",
-      auditReadiness: "filegrc audit-readiness <audit-id> --json",
-      prepareAudit: "filegrc prepare-audit <audit-id>",
-      trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
-      evidencePacket: "filegrc evidence-packet --audit <audit-id> --preview --json",
-      get: "filegrc get <resource-id> [--mutation]",
-      references: "filegrc references <resource-id> --json",
-      create: "filegrc create <record-or-mutation.json>",
-      complete: "filegrc complete <obligation-id> <completion-mutation.json>",
-      completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
-      completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",
-      update: "filegrc update <resource-type> <id> <record-or-mutation.json>",
-      content: "filegrc content <resource-type> <id> [slot] [--write <markdown-file|->]",
-      attach: "filegrc attach <evidence-id> <source-file> [--name <file-name>]",
-      detach: "filegrc detach <evidence-id> <attachment-name> --yes",
-      delete: "filegrc delete <resource-type> <id> --yes",
-      commit: "git diff --check && git diff && git add <reviewed-paths> && git commit -m <reason>"
-    },
+    actions: Object.fromEntries(Object.entries(commands).map(([name, command]) => [
+      name,
+      command.startsWith("filegrc ") ? `npx ${command}` : command
+    ])),
     resourceTypes: listResourceTypes(model).map(({ type, title, group }) => ({ type, title, group }))
   };
 }
@@ -885,12 +898,12 @@ function printAgentGuide(result) {
     for (const field of relationshipFields) {
       const hasCandidates = field.relation.candidates.length > 0;
       const suffix = field.relation.truncated && hasCandidates
-        ? `, … (${field.relation.candidateCount} total; use filegrc list)`
+        ? `, … (${field.relation.candidateCount} total; use npx filegrc list)`
         : "";
       const candidates = hasCandidates
         ? field.relation.candidates.join(", ") + suffix
         : field.relation.candidateCount
-          ? `use filegrc list (${field.relation.candidateCount} possible)`
+          ? `use npx filegrc list (${field.relation.candidateCount} possible)`
           : "none";
       console.log(`${field.name}\t${field.relation.types.join("|")}\t${candidates}`);
     }
@@ -957,19 +970,130 @@ function printProgramPath(result) {
   }
 }
 
+function selectProgramPathOutput(result, flags) {
+  const modes = ["summary", "next", "current"].filter((name) => flags[name]);
+  if (modes.length > 1) throw new Error("Use only one of --summary, --next, or --current.");
+  if (flags.summary) return summarizeProgramPath(result);
+  if (flags.next) return nextProgramPath(result);
+  if (flags.current) {
+    const stage = result.stages.find(({ id }) => id === result.currentStep.id);
+    return { ...result, stages: stage ? [stage] : [] };
+  }
+  return result;
+}
+
+function summarizeProgramPath(result) {
+  return {
+    schemaVersion: result.schemaVersion,
+    asOf: result.asOf,
+    currentStep: result.currentStep,
+    evidenceReady: result.evidenceReady,
+    operating: result.operating,
+    stages: result.stages.map((stage) => ({
+      id: stage.id,
+      number: stage.number,
+      title: stage.title,
+      status: stage.status,
+      counts: stage.counts,
+      nextAction: summarizePathAction(stage.nextActions[0])
+    }))
+  };
+}
+
+function nextProgramPath(result) {
+  const stage = result.stages.find(({ id }) => id === result.currentStep.id);
+  const nextAction = stage?.nextActions[0];
+  return {
+    schemaVersion: result.schemaVersion,
+    asOf: result.asOf,
+    currentStep: result.currentStep,
+    evidenceReady: result.evidenceReady,
+    operating: result.operating,
+    step: stage ? {
+      id: stage.id,
+      number: stage.number,
+      title: stage.title,
+      status: stage.status,
+      summary: stage.summary,
+      nextAction: summarizePathAction(nextAction),
+      commands: nextActionCommands(stage, nextAction)
+    } : null
+  };
+}
+
+function summarizePathAction(action) {
+  if (!action) return null;
+  return {
+    id: action.id,
+    status: action.status,
+    title: action.title,
+    message: action.message,
+    ...(action.resourceType ? { resourceType: action.resourceType } : {}),
+    ...(action.resourceId ? { resourceId: action.resourceId } : {})
+  };
+}
+
+function nextActionCommands(stage, action) {
+  if (action?.commands?.length) return action.commands;
+  if (!action?.resourceType) return stage.commands;
+  const resourceType = shellArgument(action.resourceType);
+  const commands = [`npx filegrc guide ${resourceType} --json`];
+  if (action.resourceId) {
+    const resourceId = shellArgument(action.resourceId);
+    commands.push(`npx filegrc get ${resourceId} --mutation`);
+    commands.push(`npx filegrc update ${resourceType} ${resourceId} MUTATION.json --json`);
+  } else {
+    commands.push(`npx filegrc list ${resourceType} --json`);
+    commands.push(`npx filegrc scaffold ${resourceType} --title "NAME"`);
+    commands.push("npx filegrc create MUTATION.json --json");
+  }
+  return commands;
+}
+
+function shellArgument(value) {
+  const text = String(value);
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(text)
+    ? text
+    : `'${text.replaceAll("'", "'\\''")}'`;
+}
+
+function printProgramPathOutput(result, flags) {
+  if (flags.summary) {
+    console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
+    for (const stage of result.stages) {
+      console.log(`${String(stage.status).toUpperCase()}\tStep ${stage.number}\t${stage.title}`);
+    }
+    const current = result.stages.find(({ id }) => id === result.currentStep.id);
+    if (current?.nextAction) console.log(`Next: ${current.nextAction.title} · ${current.nextAction.message}`);
+    return;
+  }
+  if (flags.next) {
+    console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
+    if (result.step?.nextAction) {
+      console.log(`Next: ${result.step.nextAction.title} · ${result.step.nextAction.message}`);
+    }
+    for (const command of result.step?.commands || []) console.log(`  ${command}`);
+    return;
+  }
+  printProgramPath(result);
+}
+
 function summarizeProgramReadiness(result) {
   const ownership = result.stages
     .flatMap((stage) => stage.items)
     .find((item) => item.id === "program-ownership");
-  const summarizeItem = (item) => item ? {
+  const summarizeItem = (item, options = {}) => item ? {
     id: item.id,
     status: item.status,
     title: item.title,
-    message: item.message,
+    ...(options.message === false ? {} : { message: item.message }),
     ...(item.resourceType ? { resourceType: item.resourceType } : {}),
-    ...(item.resourceId ? { resourceId: item.resourceId } : {}),
-    ...(item.unresolvedAssignments?.length ? { unresolvedAssignments: item.unresolvedAssignments } : {})
+    ...(item.resourceId ? { resourceId: item.resourceId } : {})
   } : null;
+  const unresolvedOwnership = ownership?.unresolvedAssignments || [];
+  const ownershipReasons = unresolvedOwnership
+    .flatMap((assignment) => assignment.reasons || [])
+    .reduce((counts, { reason }) => ({ ...counts, [reason]: (counts[reason] || 0) + 1 }), {});
   return {
     schemaVersion: result.schemaVersion,
     generatedAt: result.generatedAt,
@@ -985,14 +1109,18 @@ function summarizeProgramReadiness(result) {
     scopeCounts: Object.fromEntries(
       Object.entries(result.scope).map(([name, ids]) => [name.replace(/Ids$/, ""), ids.length])
     ),
-    unresolvedOwnership: ownership?.unresolvedAssignments || [],
+    unresolvedOwnership: {
+      count: unresolvedOwnership.length,
+      byReason: ownershipReasons,
+      resourceIds: unresolvedOwnership.map(({ resourceId }) => resourceId)
+    },
     firstAction: summarizeItem(result.firstAction),
     stages: result.stages.map((stage) => ({
       id: stage.id,
       title: stage.title,
       status: stage.status,
       counts: stage.counts,
-      firstAction: summarizeItem(stage.items.find(({ status }) => status === "action"))
+      firstAction: summarizeItem(stage.items.find(({ status }) => status === "action"), { message: false })
     }))
   };
 }

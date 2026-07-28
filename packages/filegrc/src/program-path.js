@@ -235,8 +235,8 @@ export function buildAgentProgramPath(model) {
         instructions: RESOURCE_INSTRUCTIONS[type] || definition.description,
         use: definition.description,
         policyBasis: definition.guidance.policyBasis,
-        guide: `filegrc guide ${type} --json`,
-        list: `filegrc list ${type} --json`
+        guide: `npx filegrc guide ${type} --json`,
+        list: `npx filegrc list ${type} --json`
       };
     });
     const utilityPages = (stage.utilities || []).map((utility, index) => ({
@@ -246,14 +246,19 @@ export function buildAgentProgramPath(model) {
       instructions: utility.instructions,
       use: utility.use,
       policyBasis: utility.policyBasis,
-      commands: utility.commands
+      commands: utility.commands.map(agentCommand)
     }));
     return {
       ...stage,
+      commands: stage.commands.map(agentCommand),
       pages: stage.id === "run" ? utilityPages : [...resourcePages, ...utilityPages],
       ...(stage.id === "run" ? { operatingRecords: resourcePages } : {})
     };
   });
+}
+
+function agentCommand(command) {
+  return command.startsWith("filegrc ") ? `npx ${command}` : command;
 }
 
 export function resourceProgramContext(type) {

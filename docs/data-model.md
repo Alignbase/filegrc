@@ -26,10 +26,10 @@ Confirm the people and teams responsible for the program, set the management goa
 
 Headless commands:
 
-- `filegrc setup`
-- `filegrc guide person --json`
-- `filegrc guide system --json`
-- `filegrc list system --json`
+- `npx filegrc setup`
+- `npx filegrc guide person --json`
+- `npx filegrc guide system --json`
+- `npx filegrc list system --json`
 
 ### Step 2. Approve Policies
 
@@ -40,9 +40,9 @@ Turn every applicable policy and governed plan into the organization’s actual 
 
 Headless commands:
 
-- `filegrc guide policy --json`
-- `filegrc list policy --json`
-- `filegrc get POLICY_ID --mutation`
+- `npx filegrc guide policy --json`
+- `npx filegrc list policy --json`
+- `npx filegrc get POLICY_ID --mutation`
 
 ### Step 3. Implement Controls
 
@@ -53,9 +53,9 @@ Review the starter catalog against the scoped service, then give every applicabl
 
 Headless commands:
 
-- `filegrc guide control --json`
-- `filegrc list control --json`
-- `filegrc get CONTROL_ID --mutation`
+- `npx filegrc guide control --json`
+- `npx filegrc list control --json`
+- `npx filegrc get CONTROL_ID --mutation`
 
 ### Step 4. Test Evidence Collection
 
@@ -65,10 +65,10 @@ Before starting the candidate period, test external evidence collection only whe
 
 Headless commands:
 
-- `filegrc evidence-test-drafts --preview --json`
-- `filegrc guide evidence --json`
-- `filegrc list evidence --json`
-- `filegrc program-readiness --json`
+- `npx filegrc evidence-test-drafts --preview --json`
+- `npx filegrc guide evidence --json`
+- `npx filegrc list evidence --json`
+- `npx filegrc program-readiness --json`
 
 ### Step 5. Operate the Program
 
@@ -105,12 +105,12 @@ Operating record guides:
 
 Headless commands:
 
-- `filegrc obligations --json`
-- `filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json`
-- `filegrc complete OBLIGATION_ID completion-mutation.json --json`
-- `filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --json`
-- `filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --json`
-- `filegrc program-readiness --json`
+- `npx filegrc obligations --json`
+- `npx filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json`
+- `npx filegrc complete OBLIGATION_ID completion-mutation.json --json`
+- `npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --json`
+- `npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --json`
+- `npx filegrc program-readiness --json`
 
 ### Step 6. Audit
 
@@ -124,10 +124,10 @@ After the program is collecting reliable evidence, create an Audit record for th
 
 Headless commands:
 
-- `filegrc guide audit --json`
-- `filegrc prepare-audit AUDIT_ID --json`
-- `filegrc audit-readiness AUDIT_ID --json`
-- `filegrc evidence-packet --audit AUDIT_ID --preview --json`
+- `npx filegrc guide audit --json`
+- `npx filegrc prepare-audit AUDIT_ID --json`
+- `npx filegrc audit-readiness AUDIT_ID --json`
+- `npx filegrc evidence-packet --audit AUDIT_ID --preview --json`
 
 ## Common fields
 

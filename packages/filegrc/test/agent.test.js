@@ -78,6 +78,8 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   const path = buildAgentProgramPath(loaded.model);
   assert.equal(path.length, 6);
   assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
+  assert.equal(path[0].pages.find(({ type }) => type === "system").guide, "npx filegrc guide system --json");
+  assert.ok(path.every((stage) => stage.commands.every((command) => command.startsWith("npx filegrc "))));
   assert.deepEqual(path[4].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
   assert.equal(path[4].operatingRecords.length, path[4].resourceTypes.length + path[4].supportingResourceTypes.length);
   assert.equal(path[4].operatingRecords.every(({ order }) => order === null), true);
@@ -86,6 +88,64 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(parsedPath.currentStep.number, 1);
   assert.equal(parsedPath.stages.length, 6);
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
+  const pathSummaryCommand = await execute(process.execPath, [
+    cli,
+    "program-path",
+    "--root",
+    root,
+    "--summary",
+    "--json"
+  ]);
+  const parsedPathSummary = JSON.parse(pathSummaryCommand.stdout);
+  assert.equal(parsedPathSummary.stages.length, 6);
+  assert.equal(parsedPathSummary.stages[0].pages, undefined);
+  assert.equal(parsedPathSummary.stages[0].nextAction?.checks, undefined);
+  assert.ok(pathSummaryCommand.stdout.length < pathCommand.stdout.length / 4);
+  const nextPath = JSON.parse((await execute(process.execPath, [
+    cli,
+    "program-path",
+    "--root",
+    root,
+    "--next",
+    "--json"
+  ])).stdout);
+  assert.equal(nextPath.currentStep.number, 1);
+  assert.equal(nextPath.step.id, "scope");
+  assert.equal(nextPath.stages, undefined);
+  assert.deepEqual(nextPath.step.commands, [
+    "npx filegrc guide workspace --json",
+    "npx filegrc get workspace --mutation",
+    "npx filegrc update workspace workspace MUTATION.json --json"
+  ]);
+  const workspacePath = join(root, "data", "workspace.json");
+  const malformedWorkspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  malformedWorkspace.id = "workspace; touch PWNED";
+  await writeFile(workspacePath, `${JSON.stringify(malformedWorkspace, null, 2)}\n`, "utf8");
+  const malformedNextPath = JSON.parse((await execute(process.execPath, [
+    cli,
+    "program-path",
+    "--root",
+    root,
+    "--next",
+    "--json"
+  ])).stdout);
+  assert.deepEqual(malformedNextPath.step.commands, [
+    "npx filegrc guide workspace --json",
+    "npx filegrc get 'workspace; touch PWNED' --mutation",
+    "npx filegrc update workspace 'workspace; touch PWNED' MUTATION.json --json"
+  ]);
+  malformedWorkspace.id = "workspace";
+  await writeFile(workspacePath, `${JSON.stringify(malformedWorkspace, null, 2)}\n`, "utf8");
+  const currentPath = JSON.parse((await execute(process.execPath, [
+    cli,
+    "program-path",
+    "--root",
+    root,
+    "--current",
+    "--json"
+  ])).stdout);
+  assert.deepEqual(currentPath.stages.map(({ id }) => id), ["scope"]);
+  assert.ok(currentPath.stages[0].pages.length > 0);
 
   for (const { type } of types) {
     const guide = buildAgentGuide(loaded, type);

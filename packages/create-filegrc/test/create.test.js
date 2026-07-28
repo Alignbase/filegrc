@@ -49,16 +49,16 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
   assert.match(readme, /filegrc 1\.2\.3/);
   assert.match(readme, /npx filegrc setup/);
-  assert.match(readme, /npx filegrc program-path --json/);
+  assert.match(readme, /npx filegrc program-path --next --json/);
   assert.match(readme, /finish Step 1 by adding the real reviewers and operators, finishing the oversight team/);
   assert.doesNotMatch(readme, /npx create-filegrc/);
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
-  assert.match(agents, /npx filegrc program-path --json/);
+  assert.match(agents, /npx filegrc program-path --next --json/);
   assert.match(agents, /adds its full set of Action Items to the Work Queue in a single validated write/);
   assert.match(agents, /`complementary-control\.relatedControlIds` is the source of truth/);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
-  assert.match(dataGuide, /renderer’s exact page Instructions, Use, Policy Basis, commands, and next actions/);
+  assert.match(dataGuide, /current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions/);
   assert.equal(result.install, "skipped");
   assert.equal(result.gitMode, "initialized");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
@@ -475,11 +475,50 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /Timezone: America\/Chicago/);
   assert.match(output, /Program baseline: 141 records, including 42 requirements, 29 controls, and 41 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
+  assert.match(output, /Immediate human decisions:/);
+  assert.match(output, /Select and confirm the assurance goal/);
+  assert.match(output, /Appoint an independent reviewer who is separate from the policy owner/);
   assert.equal(
     JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8")).email,
     "security@example.test"
   );
   assert.equal(await access(join(target, ".git")).then(() => true, () => false), false);
+});
+
+test("warns when creation joins a detached Git worktree", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-detached-"));
+  const target = join(parent, "program");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  execFileSync("git", ["init"], { cwd: parent, stdio: "ignore" });
+  execFileSync("git", [
+    "-c",
+    "user.name=Example Owner",
+    "-c",
+    "user.email=owner@example.test",
+    "commit",
+    "--allow-empty",
+    "-m",
+    "Initialize worktree"
+  ], { cwd: parent, stdio: "ignore" });
+  execFileSync("git", ["checkout", "--detach"], { cwd: parent, stdio: "ignore" });
+  const output = execFileSync(process.execPath, [
+    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+    target,
+    "--company-name",
+    "Example Company",
+    "--policy-owner-name",
+    "Example Owner",
+    "--security-contact-email",
+    "security@example.test",
+    "--timezone",
+    "America/Chicago",
+    "--filegrc-version",
+    "1.2.3",
+    "--no-install"
+  ], { encoding: "utf8" });
+  assert.match(output, /Git: joined existing worktree/);
+  assert.match(output, /Warning: detached HEAD detected/);
+  assert.match(output, /browser commit, pull, or push/);
 });
 
 test("documents legal organization, owner email, reporting address, and timezone options", () => {
@@ -528,6 +567,8 @@ test("creates and configures a service from one JSON config", async (context) =>
   assert.match(output, /Stage foundation: created \(5 records\)/);
   assert.match(output, /Stage soc2-security: created \(136 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
+  assert.match(output, /npx filegrc program-path --next --json/);
+  assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
   assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));

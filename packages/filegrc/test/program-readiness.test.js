@@ -69,8 +69,16 @@ test("requires the starter oversight team to be activated with a separate curren
     .find(({ id }) => id === "scope")
     .items.find(({ id }) => id === "program-ownership");
   assert.equal(pendingOwnership.status, "action");
-  assert.match(pendingOwnership.message, /Quarterly oversight meeting \(obligation-quarterly-oversight\)/);
+  assert.match(pendingOwnership.message, /1 record has no current person owner/);
+  assert.doesNotMatch(pendingOwnership.message, /obligation-quarterly-oversight/);
   assert.match(pendingOwnership.message, /Finish and activate Security and Risk Oversight/);
+  assert.deepEqual(pendingOwnership.commands, [
+    "npx filegrc guide person --json",
+    "npx filegrc list person --json",
+    'npx filegrc scaffold person --title "REVIEWER NAME" | npx filegrc create - --json',
+    "npx filegrc get team-security-risk-oversight --mutation",
+    "npx filegrc update team team-security-risk-oversight MUTATION.json --json"
+  ]);
   assert.deepEqual(pendingOwnership.unresolvedAssignments, [{
     resourceType: "obligation",
     resourceId: "obligation-quarterly-oversight",
@@ -88,7 +96,11 @@ test("requires the starter oversight team to be activated with a separate curren
     "--summary",
     "--json"
   ])).stdout);
-  assert.equal(compactPending.unresolvedOwnership[0].resourceId, "obligation-quarterly-oversight");
+  assert.equal(compactPending.unresolvedOwnership.count, 1);
+  assert.deepEqual(compactPending.unresolvedOwnership.resourceIds, ["obligation-quarterly-oversight"]);
+  assert.deepEqual(compactPending.unresolvedOwnership.byReason, { "inactive-team": 1 });
+  assert.equal(compactPending.firstAction.unresolvedAssignments, undefined);
+  assert.equal(compactPending.stages[0].firstAction.message, undefined);
 
   const loaded = await loadWorkspace(root);
   const team = loaded.resources.find(({ id }) => id === "team-security-risk-oversight");
@@ -115,14 +127,23 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     type: "policy",
     title: "Access policy",
     status: "draft",
-    ownerIds: ["person-owner"],
-    approverIds: ["person-approver"]
+    ownerIds: ["person-owner"]
   }, {
     content: {
       content: "# Access policy\n\nManagement approves access, reviews privileged access, and retains evidence from the identity system."
     }
   });
   await createResources(root, [
+    {
+      schemaVersion: 1,
+      id: "team-security-risk-oversight",
+      type: "team",
+      title: "Security and Risk Oversight",
+      status: "active",
+      purpose: "Review security and risk decisions.",
+      memberIds: ["person-owner", "person-approver"],
+      chairIds: ["person-approver"]
+    },
     {
       schemaVersion: 1,
       id: "framework-security",
@@ -195,10 +216,21 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     "# Access approval procedure\n\nThe requester states the business need and requested role. The service owner checks least privilege, records approval in the identity system, and verifies the granted role against the approved request.\n",
     "utf8"
   );
+  const reviewerPending = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const reviewerAssignment = reviewerPending.stages
+    .find(({ id }) => id === "policies")
+    .items.find(({ id }) => id === "independent-reviewer");
+  assert.equal(reviewerAssignment.status, "action");
+  assert.equal(reviewerAssignment.title, "Assign the independent policy reviewer");
+  assert.match(reviewerAssignment.message, /Approver/i);
+  assert.equal(reviewerAssignment.resourceType, "policy");
+  assert.equal(reviewerAssignment.resourceId, "policy-access");
+
   const policy = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-access");
   await updateResource(root, "policy", policy.id, {
     ...policy,
     status: "active",
+    approverIds: ["person-approver"],
     approvedOn: "2026-05-25",
     effectiveOn: "2026-06-01",
     controlIds: ["control-access"]

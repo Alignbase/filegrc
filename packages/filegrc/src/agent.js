@@ -93,7 +93,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
       "Inspect existing records and relation candidates before writing.",
       "Create a scaffold, then replace every null value and empty required array with facts from an authoritative source.",
       "Keep stable metadata in JSON and put the work performed, inputs, results, decisions, exceptions, and follow-up in the recommended Markdown companion.",
-      "Run filegrc validate, review the full Git diff, and commit the JSON, Markdown, and attachments together with a message that explains why the record changed."
+      "Run npx filegrc validate, review the full Git diff, and commit the JSON, Markdown, and attachments together with a message that explains why the record changed."
     ],
     completionChecks: [
       "The record describes work that actually occurred; planned work is not marked complete.",

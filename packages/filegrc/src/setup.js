@@ -19,6 +19,7 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
     draft: setup.draft,
     system: plan.system,
     workspace: plan.workspace,
+    renderer: plan.renderer,
     linkedControlIds: [],
     evidenceTestDraftIds: [],
     onboardingComplete: !setup.draft
@@ -43,6 +44,7 @@ export async function planWorkspaceSetup(input = process.cwd(), payload = {}) {
     },
     system: setupSystemSummary(plan.system),
     target: setupTargetSummary(plan.workspace),
+    renderer: plan.renderer ? setupRendererSummary(plan.renderer) : null,
     onboardingComplete: !setup.draft
   };
 }
@@ -60,6 +62,7 @@ export function summarizeSetupResult(result) {
     },
     system: setupSystemSummary(result.system),
     target: setupTargetSummary(result.workspace),
+    renderer: result.renderer ? setupRendererSummary(result.renderer) : null,
     onboardingComplete: result.onboardingComplete
   };
 }
@@ -177,23 +180,27 @@ function assuranceGoalFromSetup(goal) {
 }
 
 function setupSystemSummary(system) {
-  return {
-    id: system.id,
-    title: system.title,
-    status: system.status,
-    inScope: system.inScope
-  };
+  return { ...system };
 }
 
 function setupTargetSummary(workspace) {
   return {
     assuranceGoal: workspace.assuranceGoal,
+    systemIds: [...(workspace.systemIds || [])],
     scopeCounts: {
       systems: workspace.systemIds?.length || 0,
       frameworks: workspace.frameworkIds?.length || 0,
       requirements: workspace.requirementIds?.length || 0,
       controls: workspace.controlIds?.length || 0
     }
+  };
+}
+
+function setupRendererSummary(renderer) {
+  return {
+    id: renderer.id,
+    type: renderer.type,
+    showOnboarding: renderer.showOnboarding
   };
 }
 

@@ -875,6 +875,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /history\.replaceState\(null, "", draft \? "#\/" : "#\/stage\/scope"\)/);
   assert.match(APP_SCRIPT, /Complete the remaining Step 1 pages next/);
   assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
+  assert.match(APP_SCRIPT, /selected for scope review, but it is not approved or active/);
   assert.match(APP_SCRIPT, /Git repository and remote detected/);
   assert.match(APP_SCRIPT, /Detached HEAD detected/);
   assert.match(APP_SCRIPT, /Git remote needed/);
@@ -900,7 +901,10 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{background:transparent;backdrop-filter:none\}/);
   assert.match(APP_STYLES, /\.onboarding-shade\{position:fixed;inset:0;z-index:60;pointer-events:none\}/);
   assert.match(APP_STYLES, /\.onboarding-focus\{/);
-  assert.match(APP_STYLES, /\.onboarding-dialog\{max-height:56vh\}\.onboarding-actions\{position:sticky/);
+  assert.match(APP_SCRIPT, /class="onboarding-scroll"/);
+  assert.match(APP_STYLES, /\.onboarding-dialog\[open\]\{display:flex;flex-direction:column/);
+  assert.match(APP_STYLES, /\.onboarding-scroll\{min-height:0;overflow-y:auto\}/);
+  assert.match(APP_STYLES, /\.onboarding-actions\{flex:0 0 auto;[\s\S]*border-top:1px solid var\(--line\)/);
   assert.match(APP_SCRIPT, /--onboarding-step-count:' \+ steps\.length/);
   assert.match(APP_STYLES, /\.onboarding-progress\{grid-template-columns:repeat\(var\(--onboarding-step-count\),1fr\)/);
   assert.match(APP_STYLES, /\.onboarding-body\+\.onboarding-body\{margin-top:8px\}/);

@@ -57,7 +57,7 @@ Starter records connect policies, controls, owners, systems, evidence, and sched
 The browser is helpful, but it is not required. An agent can discover the model, inspect valid relationships, create records, complete scheduled work, trigger events, and check the result from the CLI.
 
 ```sh
-npx filegrc program-path --json
+npx filegrc program-path --next --json
 npx filegrc guide risk-assessment --json
 npx filegrc obligations --json
 npx filegrc program-readiness --summary --json

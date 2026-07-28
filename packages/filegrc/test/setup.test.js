@@ -200,6 +200,15 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   assert.equal(previewResult.preview, true);
   assert.equal(previewResult.changes.controls, 0);
   assert.equal(previewResult.changes.evidenceDrafts, 0);
+  assert.equal(previewResult.system.description, "Production service boundary.");
+  assert.deepEqual(previewResult.system.ownerIds, ["person-owner"]);
+  assert.equal(previewResult.system.criticality, "critical");
+  assert.equal(previewResult.system.dataClassification, "Restricted");
+  assert.equal(previewResult.system.internetExposed, false);
+  assert.equal(previewResult.system.inScope, true);
+  assert.equal(previewResult.target.assuranceGoal, "readiness");
+  assert.deepEqual(previewResult.target.systemIds, [previewResult.system.id]);
+  assert.equal(previewResult.renderer, null);
   assert.equal((await loadWorkspace(root)).resources.some(({ title }) => title === "CLI Service"), false);
 
   const result = await execute(process.execPath, [...baseArguments, "--summary", "--json"]);
@@ -215,8 +224,18 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   const system = loaded.resources.find(({ id }) => id === parsed.system.id);
   assert.equal(system.internetExposed, false);
   assert.equal(system.dataClassification, "Restricted");
+  assert.deepEqual(system, previewResult.system);
+  assert.equal(loaded.workspace.assuranceGoal, previewResult.target.assuranceGoal);
+  assert.deepEqual(loaded.workspace.systemIds, previewResult.target.systemIds);
+  assert.deepEqual(
+    loaded.resources.find(({ type }) => type === "renderer-settings") || null,
+    previewResult.renderer
+  );
   assert.equal(loaded.workspace.assuranceGoal, "readiness");
   assert.deepEqual(loaded.workspace.systemIds, [parsed.system.id]);
+
+  const textResult = await execute(process.execPath, baseArguments);
+  assert.match(textResult.stdout, /filegrc program-path --next --json/);
 });
 
 test("setup rejects explicit retired or missing targets", async (context) => {

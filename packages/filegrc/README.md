@@ -20,7 +20,7 @@ npx filegrc serve
 npx filegrc setup --help
 npx filegrc build
 npx filegrc guide risk-assessment
-npx filegrc program-path --json
+npx filegrc program-path --next --json
 npx filegrc scaffold risk-assessment --title "2026 Annual Risk Assessment"
 npx filegrc list risk --json
 npx filegrc references risk-example --json
@@ -38,7 +38,7 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 `filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Add `--preview` to validate and inspect the planned service and workspace writes without saving. Add `--summary --json` for compact agent output. Selecting Type 1 or Type 2 updates the workspace goal and selected systems. Setup does not select framework records, link controls, create evidence, or create an audit record.
 
-`filegrc program-path` gives agents the renderer’s six-step order, exact page Instructions, Use, Policy Basis, commands, current state, and next actions. `filegrc guide <type>` repeats the matching page guidance and adds fields, relationship candidates, Markdown slots, and timing for that record type.
+`filegrc program-path --next --json` gives an agent the current step and first action without loading the full lifecycle. Use `--summary` for compact status across all six steps, `--current` for the full current-step guide, or no compact flag for every step. `filegrc guide <type>` repeats the matching page guidance and adds fields, relationship candidates, Markdown slots, and timing for that record type.
 
 `filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
 

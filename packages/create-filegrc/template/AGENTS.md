@@ -12,13 +12,13 @@ Do not guess a resource type, field name, enum value, relationship, or file path
 
 ```sh
 npx filegrc guide --json
-npx filegrc program-path --json
+npx filegrc program-path --next --json
 npx filegrc guide risk-assessment --json
 npx filegrc list person --json
 npx filegrc program-readiness --summary --json
 ```
 
-`program-path` gives agents the same six-step order, exact page Instructions, Use, Policy Basis, commands, current state, and next actions shown in the renderer. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
+`program-path --next --json` gives agents the current step and first action. Use `--summary` for all six step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
 
 For a new record, generate a mutation envelope:
 

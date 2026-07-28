@@ -213,12 +213,10 @@ function programOwnershipItem(records, byId) {
   const detail = [];
   if (!currentOwners.size) detail.push("No current person owns the program records.");
   if (unresolved.length) {
-    detail.push(
-      `${unresolved.length} ${unresolved.length === 1 ? "record has" : "records have"} no current person owner: ` +
-      `${unresolvedAssignments.map(({ title, resourceId }) => `${title} (${resourceId})`).join(", ")}.`
-    );
+    detail.push(`${unresolved.length} ${unresolved.length === 1 ? "record has" : "records have"} no current person owner.`);
   }
   if (!oversightComplete) detail.push("Finish and activate Security and Risk Oversight with a current chair who is separate from policy ownership.");
+  const oversightId = oversight?.id ? shellArgument(oversight.id) : null;
   return item(
     "program-ownership",
     complete ? "complete" : "action",
@@ -227,7 +225,18 @@ function programOwnershipItem(records, byId) {
       ? `${currentOwners.size} current ${currentOwners.size === 1 ? "person owns" : "people own"} the program records.${oversight ? " Security and Risk Oversight has a separate current chair." : ""}`
       : detail.join(" "),
     !oversightComplete ? oversight : unresolved[0] || { type: "person" },
-    { unresolvedAssignments }
+    {
+      unresolvedAssignments,
+      ...(!oversightComplete && oversight ? {
+        commands: [
+          "npx filegrc guide person --json",
+          "npx filegrc list person --json",
+          'npx filegrc scaffold person --title "REVIEWER NAME" | npx filegrc create - --json',
+          `npx filegrc get ${oversightId} --mutation`,
+          `npx filegrc update team ${oversightId} MUTATION.json --json`
+        ]
+      } : {})
+    }
   );
 }
 
@@ -259,15 +268,30 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
     .flatMap((policy) => [...currentPartyPeople(policy.approverIds || [], byId)])
     .map((id) => byId.get(id))
     .find(Boolean);
+  const policyOwnerIds = new Set(policies.flatMap((policy) => (
+    [...partyPeople(policy.ownerIds || [], byId)]
+  )));
+  const oversight = byId.get("team-security-risk-oversight");
+  const availableReviewer = oversight?.type === "team" && oversight.status === "active"
+    ? [...currentPartyPeople(oversight.chairIds || [], byId)]
+      .filter((id) => !policyOwnerIds.has(id))
+      .map((id) => byId.get(id))
+      .find(Boolean)
+    : null;
+  const reviewerNeedsAssignment = !appointedReviewer && availableReviewer && policies.length;
   const items = [
     item(
       "independent-reviewer",
       appointedReviewer ? "complete" : "action",
-      "Appoint the independent policy reviewer",
+      reviewerNeedsAssignment
+        ? "Assign the independent policy reviewer"
+        : "Appoint the independent policy reviewer",
       appointedReviewer
         ? `${appointedReviewer.title} is recorded as a reviewer separate from policy ownership.`
-        : "Appoint a reviewer who is separate from the policy owner. The reviewer may be another person in the organization or an external person, and is separate from the CPA firm that may later perform the audit.",
-      appointedReviewer || { type: "person" }
+        : reviewerNeedsAssignment
+          ? `${availableReviewer.title} chairs Security and Risk Oversight. Assign this person as approver on each policy after review.`
+          : "Appoint a reviewer who is separate from the policy owner. The reviewer may be another person in the organization or an external person, and is separate from the CPA firm that may later perform the audit.",
+      appointedReviewer || (reviewerNeedsAssignment ? policies[0] : { type: "person" })
     )
   ];
   if (!policies.length) {
@@ -668,6 +692,13 @@ function item(id, status, title, message, resource = {}, details = {}) {
     ...(resource.id ? { resourceId: resource.id } : {}),
     ...details
   };
+}
+
+function shellArgument(value) {
+  const text = String(value);
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(text)
+    ? text
+    : `'${text.replaceAll("'", "'\\''")}'`;
 }
 
 function countStatuses(items) {

@@ -8,14 +8,14 @@ Treat the installed model as the authority. Do not infer a schema from a nearby 
 
 ```sh
 npx filegrc guide --json
-npx filegrc program-path --json
+npx filegrc program-path --next --json
 npx filegrc types --json
 npx filegrc guide RESOURCE_TYPE --json
 npx filegrc list RESOURCE_TYPE --json
 npx filegrc search "TERM" --json
 ```
 
-Use `program-path` to find the current lifecycle step and see the renderer’s exact page Instructions, Use, Policy Basis, commands, and next actions. Use `guide` before any unfamiliar create or status transition. It repeats the page guidance and reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
+Use `program-path --next --json` to find the current lifecycle step and first action. Use `--summary` for all six step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. Use `guide` before any unfamiliar create or status transition. It repeats the page guidance and reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
 
 ## Choose the right record
 

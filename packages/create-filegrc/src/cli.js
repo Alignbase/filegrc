@@ -31,6 +31,9 @@ export async function runCli(argv = process.argv.slice(2)) {
     `${result.install === "installed" ? "installed" : "installation skipped"}`
   );
   console.log(`Git: ${result.gitMode === "existing-worktree" ? "joined existing worktree" : "initialized new repository"}`);
+  if (result.gitDetached) {
+    console.log("Warning: detached HEAD detected. Check out a branch before using browser commit, pull, or push.");
+  }
   console.log(`Timezone: ${result.values.timezone}`);
   for (const stage of result.stages) {
     console.log(`Stage ${stage.id}: ${stage.status}${stage.status === "created" ? ` (${stage.records} records)` : ""}`);
@@ -45,17 +48,33 @@ export async function runCli(argv = process.argv.slice(2)) {
   console.log(`  cd ${shellQuote(result.target)}`);
   if (options.install === false) console.log("  npm install");
   if (!result.setup) console.log("  npx filegrc setup");
+  if (result.setup) console.log("  npx filegrc program-path --next --json");
   console.log("  npm run validate");
   console.log("  npm run serve");
   console.log("");
   if (result.setup) {
     console.log(`Service setup: ${result.setup.system.id} (${result.setup.system.status}), target ${result.setup.target.assuranceGoal}.`);
+    if (result.setup.draft) {
+      console.log("Planned and in scope means selected for scope review, not approved or active.");
+    }
   }
+  console.log("Immediate human decisions:");
+  console.log(result.setup?.target.assuranceGoal && result.setup.target.assuranceGoal !== "none"
+    ? `  1. Confirm the selected assurance goal with management: ${assuranceGoalLabel(result.setup.target.assuranceGoal)}.`
+    : "  1. Select and confirm the assurance goal.");
+  console.log("  2. Appoint an independent reviewer who is separate from the policy owner.");
   console.log("Review the generated records, then commit the approved baseline.");
 }
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function assuranceGoalLabel(value) {
+  if (value === "soc-2-type-1") return "SOC 2 Type 1";
+  if (value === "soc-2-type-2") return "SOC 2 Type 2";
+  if (value === "readiness") return "Program Readiness";
+  return "No assurance goal selected";
 }
 
 function parseArgs(argv) {

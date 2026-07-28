@@ -50,6 +50,7 @@ export async function createFilegrc(options = {}) {
   }
   const joinedExistingWorktree = await isInsideGitWorktree(target);
   if (!joinedExistingWorktree) await run("git", ["init"], target);
+  const gitHead = await inspectGitHead(target);
   const setup = options.setup ? await runCombinedSetup(target, options.setup) : null;
   const resourceCounts = setup ? await summarizeResources(target) : initialResourceCounts;
   return {
@@ -64,7 +65,9 @@ export async function createFilegrc(options = {}) {
     resourceCounts,
     setup,
     install: installed ? "installed" : "skipped",
-    gitMode: joinedExistingWorktree ? "existing-worktree" : "initialized"
+    gitMode: joinedExistingWorktree ? "existing-worktree" : "initialized",
+    gitBranch: gitHead.branch,
+    gitDetached: gitHead.detached
   };
 }
 
@@ -469,6 +472,20 @@ async function isInsideGitWorktree(target) {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function inspectGitHead(target) {
+  try {
+    const { stdout } = await execute("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: target });
+    return { branch: stdout.trim() || null, detached: false };
+  } catch {
+    try {
+      await execute("git", ["rev-parse", "--verify", "HEAD"], { cwd: target });
+      return { branch: null, detached: true };
+    } catch {
+      return { branch: null, detached: false };
+    }
   }
 }
 
