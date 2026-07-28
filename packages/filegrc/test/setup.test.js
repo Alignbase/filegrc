@@ -30,6 +30,51 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     title: "Renderer settings",
     showOnboarding: true
   });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "framework-security",
+    type: "framework",
+    title: "Security framework",
+    status: "active",
+    version: "1"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "requirement-access",
+    type: "requirement",
+    title: "Access requirement",
+    frameworkId: "framework-security",
+    reference: "TEST-ACCESS",
+    applicability: "applicable"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "control-access",
+    type: "control",
+    title: "Access control",
+    status: "planned",
+    statement: "Access is approved and limited.",
+    ownerIds: ["person-owner"],
+    requirementIds: ["requirement-access"],
+    code: "IAM-01",
+    activity: "Approve and provision access.",
+    operationMode: "manual",
+    frequency: "Per event"
+  });
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "control-governance",
+    type: "control",
+    title: "Governance oversight",
+    status: "planned",
+    statement: "Management reviews the control program.",
+    ownerIds: ["person-owner"],
+    requirementIds: ["requirement-access"],
+    code: "GOV-01",
+    activity: "Record oversight reviews and decisions.",
+    operationMode: "manual",
+    frequency: "Quarterly"
+  });
 
   const draft = await setupWorkspace(root, {
     serviceName: "Example Service",
@@ -66,11 +111,22 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(completed.onboardingComplete, true);
   assert.equal(completed.system.status, "active");
   assert.equal(completed.workspace.assuranceGoal, "soc-2-type-2");
+  assert.equal(completed.evidenceTestDraftIds.length, 1);
 
   const loaded = await loadWorkspace(root);
   assert.equal(loaded.resources.filter(({ type, inScope }) => type === "system" && inScope).length, 1);
   assert.equal(JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8")).showOnboarding, false);
+  const evidenceDraft = loaded.resources.find(({ type }) => type === "evidence");
+  assert.equal(evidenceDraft.status, "draft");
+  assert.equal(evidenceDraft.evidenceKind, "test-export");
+  assert.equal(evidenceDraft.collectionTestFamilyId, "identity-access");
+  assert.deepEqual(evidenceDraft.controlIds, ["control-access"]);
+  assert.equal(loaded.resources.some(({ collectionTestFamilyId }) => collectionTestFamilyId === "governance"), false);
   assert.equal((await validateWorkspace(root)).ok, true);
+
+  const draftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
+  assert.equal(draftResponse.status, 201);
+  assert.equal((await draftResponse.json()).created.length, 0);
 
   const resumedDraft = await setupWorkspace(root, {
     serviceName: "Example Service",

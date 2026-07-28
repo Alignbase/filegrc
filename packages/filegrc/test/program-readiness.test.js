@@ -109,11 +109,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     "# Access approval procedure\n\nThe requester states the business need and requested role. The service owner checks least privilege, records approval in the identity system, and verifies the granted role against the approved request.\n",
     "utf8"
   );
-  const control = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-access");
-  await updateResource(root, "control", control.id, {
-    ...control,
-    status: "implemented"
-  });
   const policy = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-access");
   await updateResource(root, "policy", policy.id, {
     ...policy,
@@ -121,6 +116,11 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     approvedOn: "2026-05-25",
     effectiveOn: "2026-06-01",
     controlIds: ["control-access"]
+  });
+  const control = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-access");
+  await updateResource(root, "control", control.id, {
+    ...control,
+    status: "implemented"
   });
   await createResource(root, {
     schemaVersion: 1,
@@ -164,6 +164,21 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(readyWorkspace.resources.find(({ id }) => id === "person-approver").status, "active");
   assert.equal(ready.stages.find(({ id }) => id === "policies").counts.action, 0);
   assert.equal(readyWorkspace.resources.some(({ type }) => type === "audit"), false);
+
+  const testEvidence = readyWorkspace.resources.find(({ id }) => id === "evidence-access-test-export");
+  const collectedEvidence = { ...testEvidence, status: "collected" };
+  delete collectedEvidence.verifierIds;
+  delete collectedEvidence.verifiedOn;
+  await updateResource(root, "evidence", testEvidence.id, collectedEvidence);
+  const awaitingVerification = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const awaitingTest = awaitingVerification.stages.find(({ id }) => id === "evidence").items.find(({ id }) => id === "test-family-identity-access");
+  assert.equal(awaitingVerification.evidenceReady, false);
+  assert.equal(awaitingTest.status, "action");
+  assert.equal(awaitingTest.evidenceId, testEvidence.id);
+  assert.equal(awaitingTest.testEvidenceKind, "test-export");
+  assert.match(awaitingTest.testPrompt, /users, roles, privileged access/);
+  assert.deepEqual(awaitingTest.sourceSystemIds, ["system-identity"]);
+  await updateResource(root, "evidence", testEvidence.id, testEvidence);
 
   const auditReadiness = await assessAuditPreparation(root, { programReadiness: ready });
   assert.equal(auditReadiness.status, "not-started");

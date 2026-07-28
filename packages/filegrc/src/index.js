@@ -3,6 +3,7 @@ export { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldRes
 export { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 export { buildWorkspace } from "./build.js";
 export { generateEvidencePacket, prepareEvidencePacket, writeEvidencePacket } from "./evidence-packet.js";
+export { ensureEvidenceTestDrafts, planEvidenceTestDrafts } from "./evidence-tests.js";
 export {
   addEvidenceAttachment,
   createResource,
@@ -33,6 +34,14 @@ export {
   planObligations
 } from "./obligations.js";
 export { assessProgramReadiness } from "./program-readiness.js";
+export {
+  buildAgentProgramPath,
+  policyEventName,
+  POLICY_EVENT_NAMES,
+  PROGRAM_PATH,
+  RESOURCE_INSTRUCTIONS,
+  resourceProgramContext
+} from "./program-path.js";
 export {
   addCalendarDays,
   calendarDayDifference,

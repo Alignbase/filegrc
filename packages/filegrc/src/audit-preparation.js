@@ -7,6 +7,30 @@ import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 
+const NON_EVIDENCE_RECORD_TYPES = new Set([
+  "audit",
+  "audit-population",
+  "audit-request",
+  "commitment",
+  "complementary-control",
+  "control",
+  "control-test",
+  "document",
+  "evidence",
+  "framework",
+  "obligation",
+  "organization",
+  "person",
+  "policy",
+  "renderer-settings",
+  "requirement",
+  "system",
+  "team",
+  "training",
+  "vendor",
+  "workspace"
+]);
+
 export async function assessAuditPreparation(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
@@ -516,23 +540,51 @@ async function documentsStage(loaded, audit, byId) {
 function evidenceStage(audit, records, byId, model) {
   const controls = (audit?.controlIds || []).map((id) => byId.get(id)).filter(Boolean);
   const evidence = records.filter((record) => record.type === "evidence");
-  const periodEvidence = evidence.filter((record) => (
+  const externalEvidence = evidence.filter((record) => (
     record.status === "verified"
     && (record.evidenceKind !== "rendered-record" || record.sourceCommit)
     && evidenceRelevantToAuditDate(record, audit)
   ));
-  const controlsWithEvidence = controls.filter((control) => periodEvidence.some((record) => (
+  const managedFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.collectionTestRequired === false);
+  const externalFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.collectionTestRequired !== false);
+  const evidenceFamiliesFor = (control) => (model.evidenceSourceFamilies || []).filter((family) => (
+    (family.controlCodes || []).includes(control.code)
+  ));
+  const fileGRCRecords = records.filter((record) => (
+    !NON_EVIDENCE_RECORD_TYPES.has(record.type)
+    && controlIdsForRecord(record, byId).size
+    && recordRelevantToAuditDate(record, audit, model)
+  ));
+  const managedControls = controls.filter((control) => managedFamilies.some((family) => (
+    (family.controlCodes || []).includes(control.code)
+  )));
+  const controlsWithFileGRCRecords = managedControls.filter((control) => fileGRCRecords.some((record) => (
+    controlIdsForRecord(record, byId).has(control.id)
+  )));
+  const externalControls = controls.filter((control) => externalFamilies.some((family) => (
+    (family.controlCodes || []).includes(control.code)
+  )) || !evidenceFamiliesFor(control).length);
+  const controlsWithExternalEvidence = externalControls.filter((control) => externalEvidence.some((record) => (
     controlIdsForRecord(record, byId).has(control.id)
   )));
   const items = [
     item(
-      "control-evidence",
-      controls.length && controlsWithEvidence.length === controls.length ? "complete" : "action",
-      "Collect operating evidence from authoritative systems",
-      controls.length
-        ? `${controlsWithEvidence.length} of ${controls.length} selected controls have verified evidence for the period.`
-        : "Select the engagement controls before checking their operating evidence.",
-      periodEvidence[0] || { type: "evidence" }
+      "filegrc-evidence",
+      managedControls.length && controlsWithFileGRCRecords.length === managedControls.length ? "complete" : managedControls.length ? "action" : "info",
+      "Review FileGRC Evidence",
+      managedControls.length
+        ? `${controlsWithFileGRCRecords.length} of ${managedControls.length} selected controls that use FileGRC workflows have a dated operating record for the formal period. Complete each Step 5 record, link it to the control, and add results in its structured fields or Markdown.`
+        : "No selected controls use a dedicated FileGRC operating record.",
+      fileGRCRecords[0] || { type: managedFamilies[0]?.operationRecordTypes?.[0] || "control" }
+    ),
+    item(
+      "external-evidence",
+      externalControls.length && controlsWithExternalEvidence.length === externalControls.length ? "complete" : externalControls.length ? "action" : "info",
+      "Review External Evidence",
+      externalControls.length
+        ? `${controlsWithExternalEvidence.length} of ${externalControls.length} selected controls that rely on external systems have verified External Evidence for the formal period. Confirm the source System, date or period, control links, collector, verifier, and retained artifact or approved external reference.`
+        : "No selected controls require a separate External Evidence record.",
+      externalEvidence[0] || { type: "evidence" }
     )
   ];
   const systems = records.filter((record) => record.type === "system" && record.status === "active");
@@ -547,10 +599,28 @@ function evidenceStage(audit, records, byId, model) {
       ));
       continue;
     }
+    if (source.collectionTestRequired === false) {
+      const sourceRecords = fileGRCRecords.filter((record) => (
+        relevantControls.some((control) => controlIdsForRecord(record, byId).has(control.id))
+      ));
+      const coveredControls = relevantControls.filter((control) => sourceRecords.some((record) => (
+        controlIdsForRecord(record, byId).has(control.id)
+      )));
+      items.push(item(
+        `filegrc-${source.id}`,
+        coveredControls.length === relevantControls.length ? "complete" : "action",
+        source.title,
+        coveredControls.length === relevantControls.length
+          ? `${sourceRecords.length} dated FileGRC ${sourceRecords.length === 1 ? "record" : "records"} cover ${relevantControls.length} mapped controls. External artifacts needed to support those results are linked from the operating records.`
+          : `${coveredControls.length} of ${relevantControls.length} mapped controls have a dated ${source.operationRecordTypes.map(displayValue).join(" or ")} record for the formal period. Complete the Step 5 work and attach or reference any supporting external artifact on that record.`,
+        sourceRecords[0] || { type: source.operationRecordTypes[0] }
+      ));
+      continue;
+    }
     const sourceSystems = systems.filter((system) => (
       (system.evidenceSourceKinds || []).some((kind) => (source.sourceKinds || []).includes(kind))
     ));
-    const coveredControls = relevantControls.filter((control) => periodEvidence.some((record) => (
+    const coveredControls = relevantControls.filter((control) => externalEvidence.some((record) => (
       sourceSystems.some((system) => system.id === record.sourceSystemId)
       && controlIdsForRecord(record, byId).has(control.id)
     )));
@@ -565,12 +635,12 @@ function evidenceStage(audit, records, byId, model) {
       status,
       source.title,
       message,
-      periodEvidence.find((record) => sourceSystems.some((system) => system.id === record.sourceSystemId))
+      externalEvidence.find((record) => sourceSystems.some((system) => system.id === record.sourceSystemId))
         || sourceSystems[0]
         || { type: "system" }
     ));
   }
-  return stage("evidence", "Operating Evidence Sources", "Catalog each authoritative system, record when to extract its evidence, and bind verified exports to the controls. FileGRC packages the proof but does not replace those systems.", items);
+  return stage("evidence", "Audit Evidence", "Review both evidence paths: dated FileGRC operating records and verified External Evidence from authoritative systems. FileGRC includes both in the audit packet.", items);
 }
 
 function populationsStage(audit, records, byId, model) {
@@ -736,6 +806,27 @@ function evidenceRelevantToAuditDate(record, audit) {
   }
   return Boolean(audit.periodStart && audit.periodEnd)
     && evidenceOverlaps(record, audit.periodStart, audit.periodEnd);
+}
+
+function recordRelevantToAuditDate(record, audit, model) {
+  if (!audit) return false;
+  const start = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodStart;
+  const end = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodEnd;
+  if (!start || !end) return false;
+  if (record.periodStart && record.periodEnd && record.periodStart <= end && record.periodEnd >= start) {
+    return true;
+  }
+  const definition = model.resources[record.type];
+  const fields = { ...model.commonFields, ...(definition?.fields || {}) };
+  return Object.entries(fields).some(([name, field]) => {
+    const value = record[name];
+    if (field.type === "date") return value >= start && value <= end;
+    if (field.type === "timestamp" && typeof value === "string") {
+      const date = value.slice(0, 10);
+      return date >= start && date <= end;
+    }
+    return false;
+  });
 }
 
 function controlIdsForRecord(record, byId, seen = new Set()) {

@@ -1,6 +1,8 @@
-# Evidence Instructions
+# External Evidence Instructions
 
 An evidence record explains what a proof item is, where it came from, what period it supports, who collected it, and which records or controls it supports. The attachment alone is not enough.
+
+Completing onboarding creates draft collection tests only for evidence that must come from systems outside FileGRC and does not already have a dedicated Step 5 record. Risk assessments, meetings, vendor reviews, attestations, vulnerability scans, penetration tests, backup tests, exercises, exceptions, and findings do not need a separate test. When one of those operating records needs a fixed external artifact, create or update an External Evidence record for the artifact and link its ID from the operating record. Keep a generated collection test as `draft` until the artifact has actually been captured. Set it to `collected` only after selecting the source System, attaching or referencing the result, and recording the source, date, classification, and collector. Set it to `verified` only after another named person checks it.
 
 ## Create evidence
 

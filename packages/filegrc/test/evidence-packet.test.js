@@ -177,7 +177,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       inScope: true,
       description: "Production customer service boundary.",
       dataClassification: "Confidential",
-      evidenceSourceKinds: ["governance"],
+      evidenceSourceKinds: ["risk-management"],
       evidenceOwnerIds: ["person-owner"],
       commitmentIds: ["commitment-protect-service"]
     },
@@ -267,7 +267,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     type: "evidence",
     title: "Risk review evidence test capture",
     status: "verified",
-    evidenceKind: "test-capture",
+    evidenceKind: "test-export",
     source: "Governance review register",
     collectedOn: "2025-12-22",
     classification: "Internal",
@@ -488,6 +488,31 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       reviewerIds: ["person-approver"],
       reviewedOn: "2026-04-01",
       completedOn: "2026-04-01"
+    },
+    {
+      schemaVersion: 1,
+      id: "finding-risk-review-documentation",
+      type: "finding",
+      title: "Risk review documentation follow-up",
+      status: "closed",
+      severity: "low",
+      sourceResourceId: "control-test-quarterly-risk-review",
+      description: "The review record needed a clearer approval note.",
+      ownerIds: ["person-owner"],
+      dueOn: "2026-04-01",
+      resolvedOn: "2026-04-01",
+      verifiedByIds: ["person-approver"],
+      verifiedOn: "2026-04-01"
+    },
+    {
+      schemaVersion: 1,
+      id: "action-item-risk-review-documentation",
+      type: "action-item",
+      title: "Clarify risk review approval",
+      status: "done",
+      assigneeIds: ["person-owner"],
+      sourceResourceId: "finding-risk-review-documentation",
+      completedOn: "2026-04-01"
     }
   ]);
   const audit = (await loadWorkspace(root)).resources.find(({ id }) => id === "audit-2026-type-2");
@@ -531,9 +556,13 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.equal(packet.summary.obligationOccurrences, 1);
   assert.equal(packet.obligations[0].status, "complete");
   assert.equal(packet.evidence[0].id, "evidence-q1-risk-review");
+  assert.equal(packet.fileGRCRecords.some(({ id }) => id === "action-item-q1-risk-review"), true);
+  assert.equal(packet.summary.fileGRCRecords, packet.fileGRCRecords.length);
   assert.equal(packet.policies.some(({ id }) => id === "policy-risk-governance"), true);
   assert.equal(packet.datedRecords.some(({ id }) => id === "action-item-q1-risk-review"), true);
   assert.equal(packet.records.find(({ id }) => id === "action-item-q1-risk-review").history[0].author, "Test User");
+  assert.equal(packet.records.some(({ id }) => id === "finding-risk-review-documentation"), true);
+  assert.equal(packet.records.some(({ id }) => id === "action-item-risk-review-documentation"), true);
   assert.equal(packet.readiness.status, "delivery-ready");
   assert.equal(packet.controlCoverage[0].evidenceIds.includes("evidence-q1-risk-review"), true);
   assert.equal(packet.populations.length, 11);
@@ -548,6 +577,8 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   const packetIndex = await readFile(join(written.output, "index.html"), "utf8");
   assert.match(packetIndex, /Quarterly risk meeting/);
   assert.match(packetIndex, /Create Q1 compliance records/);
+  assert.match(packetIndex, /FileGRC Evidence/);
+  assert.match(packetIndex, /External Evidence/);
   const formulaPacket = structuredClone(packet);
   formulaPacket.evidence[0].title = "=HYPERLINK(\"https://example.test\",\"Open\")";
   const formulaOutput = await writeEvidencePacket(root, formulaPacket, { output: ".filegrc/formula-packet" });
@@ -556,6 +587,8 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.match(await readFile(join(written.output, "manifest.json"), "utf8"), /evidence-q1-risk-review/);
   const controlMatrix = await readFile(join(written.output, "control-matrix.csv"), "utf8");
   assert.match(controlMatrix, /RSK-01/);
+  assert.match(controlMatrix, /FileGRC Evidence IDs/);
+  assert.match(controlMatrix, /External Evidence IDs/);
   assert.match(controlMatrix, /evidence-risk-review-population/);
   assert.match(await readFile(join(written.output, "population-index.csv"), "utf8"), /Quarterly risk review population/);
   assert.match(await readFile(join(written.output, "SHA256SUMS"), "utf8"), /control-matrix\.csv/);

@@ -8,13 +8,14 @@ Treat the installed model as the authority. Do not infer a schema from a nearby 
 
 ```sh
 npx filegrc guide --json
+npx filegrc program-path --json
 npx filegrc types --json
 npx filegrc guide RESOURCE_TYPE --json
 npx filegrc list RESOURCE_TYPE --json
 npx filegrc search "TERM" --json
 ```
 
-Use `guide` before any unfamiliar create or status transition. It reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, policy context, timing, and exact paths. Use `describe` only when you need the raw model definition.
+Use `program-path` to find the current lifecycle step and see the renderer’s exact page Instructions, Use, Policy Basis, commands, and next actions. Use `guide` before any unfamiliar create or status transition. It repeats the page guidance and reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
 
 ## Choose the right record
 
@@ -23,7 +24,7 @@ Use `guide` before any unfamiliar create or status transition. It reports requir
 - Work required on a schedule or event belongs in `obligation`.
 - A dated instance of work belongs in its activity type, such as `meeting`, `risk-assessment`, `access-review`, `vulnerability-scan`, `backup-test`, or `exercise`.
 - A fact that may change over time belongs in an inventory record, such as `person`, `system`, `asset`, `vendor`, or `access-grant`.
-- Proof belongs in `evidence`, not in an unexplained attachment.
+- A dated Step 5 operating record proves that FileGRC-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
 - Follow-up work belongs in `action-item`. A gap belongs in `finding`, a known threat belongs in `risk`, and an approved temporary departure belongs in `exception`.
 - An auditor request belongs in `audit-request`; the engagement itself belongs in `audit`.
 
@@ -90,7 +91,7 @@ Never replace a complete record with a partial JSON object. Never change `id` or
 
 JSON is for stable metadata used by validation, relationships, filters, schedules, and audit checks. Markdown is for the actual work: inputs, method, observations, results, rationale, decisions, exceptions, and follow-up.
 
-If `guide` marks a Markdown slot recommended, fill it before treating the deliverable as complete. Link evidence and resulting risks, findings, exceptions, or action items in JSON. Do not put a report’s entire variable structure into new JSON fields.
+If `guide` marks a Markdown slot recommended, fill it before treating the deliverable as complete. Keep observations and report details in the source record’s Markdown. Create a Finding only for a confirmed gap that needs its own remediation lifecycle. Create an Action Item only when follow-up needs a separate assignee, deadline, and completion proof. Set each child record’s `sourceResourceId` to the record that produced it; do not maintain reverse Finding or Action Item arrays on the source. Do not put a report’s entire variable structure into new JSON fields.
 
 Use explicit business dates. Git records when a file changed, but it does not replace `occurredOn`, `assessmentDate`, `reviewedOn`, `completedOn`, or similar fields.
 
@@ -161,7 +162,7 @@ npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-
 npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD
 ```
 
-`complete` and `complete-action` validate the expected completion type and link the new record atomically. `complete-event` refuses to close the workflow until every action has its requested proof. For hour-based deadlines use `--occurred-at` with an RFC 3339 timestamp and timezone.
+Run `obligations` before `trigger` to preview every Policy Event task, owner, deadline, and requested proof. Triggering creates the event and adds all linked Action Items to the Work Queue atomically. `complete` and `complete-action` validate the expected completion type and link the new record atomically. `complete-event` refuses to close the workflow until every action has its requested proof. For hour-based deadlines use `--occurred-at` with an RFC 3339 timestamp and timezone.
 
 ## Audit work
 

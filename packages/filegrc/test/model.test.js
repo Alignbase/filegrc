@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { generateModelDocumentation, loadModel } from "../src/index.js";
+import {
+  generateModelDocumentation,
+  loadModel,
+  POLICY_EVENT_NAMES,
+  PROGRAM_PATH,
+  RESOURCE_INSTRUCTIONS
+} from "../src/index.js";
 
 test("v1 model exposes the complete resource registry", () => {
   const model = loadModel("1");
   assert.equal(model.modelVersion, "1");
+  assert.equal(PROGRAM_PATH.length, 6);
+  assert.equal(POLICY_EVENT_NAMES["person-started"], "New Worker");
+  assert.deepEqual(PROGRAM_PATH.map(({ title }) => title), [
+    "Define Scope",
+    "Approve Policies",
+    "Implement Controls",
+    "Test Evidence Collection",
+    "Operate the Program",
+    "Audit"
+  ]);
   assert.equal(Object.keys(model.resources).length, 41);
   for (const type of ["workspace", "renderer-settings", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit", "audit-population"]) {
     assert.ok(model.resources[type], `${type} is defined`);
@@ -17,8 +33,23 @@ test("v1 model exposes the complete resource registry", () => {
     assert.ok((resource.guidance.sourceResourceIds ?? []).every((id) => typeof id === "string"), `${type} source IDs are strings`);
     assert.ok((resource.guidance.obligationActivityTypes ?? []).every((activityType) => typeof activityType === "string"), `${type} activity types are strings`);
   }
+  for (const type of PROGRAM_PATH.flatMap(({ resourceTypes, supportingResourceTypes = [] }) => [...resourceTypes, ...supportingResourceTypes])) {
+    assert.ok(model.resources[type], `${type} in the program path exists`);
+    assert.ok(RESOURCE_INSTRUCTIONS[type], `${type} has shared renderer and agent instructions`);
+  }
+  for (const stage of PROGRAM_PATH) {
+    assert.deepEqual(
+      stage.sections.flatMap(({ types }) => types),
+      stage.resourceTypes,
+      `${stage.title} uses the same resource order in the renderer and headless path`
+    );
+  }
   assert.equal(model.resources.person.titleLabel, "Name");
   assert.equal(model.resources.policy.titleLabel, undefined);
+  assert.equal(model.resources.evidence.title, "External Evidence");
+  assert.equal(model.resources.evidence.pluralTitle, "External Evidence");
+  assert.equal(model.resources["obligation-event"].title, "Policy Event");
+  assert.equal(model.resources["obligation-event"].pluralTitle, "Policy Events");
   assert.equal(model.recordContent.slot, "record");
   assert.equal(model.recordContent.label, "Record");
   assert.equal(model.recordContent.defaultResourceTypes.length, 17);
@@ -32,7 +63,21 @@ test("v1 model exposes the complete resource registry", () => {
     assert.ok(document.minimumWords >= 75);
   }
   assert.ok(model.auditReadiness.populationTemplates.every((item) => item.sourceKind && item.timing && item.controlCodes.length));
-  assert.ok(model.evidenceSourceFamilies.every((item) => item.id && item.sourceKinds.length && item.timing));
+  assert.ok(model.evidenceSourceFamilies.every((item) => item.id && item.sourceKinds.length && item.testEvidenceKind && item.testPrompt && item.timing));
+  const managedEvidenceFamilies = model.evidenceSourceFamilies.filter((item) => item.collectionTestRequired === false);
+  assert.deepEqual(
+    managedEvidenceFamilies.map(({ id }) => id),
+    [
+      "training-acknowledgement",
+      "vulnerability-management",
+      "backup-recovery",
+      "vendor-management",
+      "exception-finding",
+      "governance",
+      "risk-management"
+    ]
+  );
+  assert.ok(managedEvidenceFamilies.every((item) => item.operationRecordTypes.length));
   assert.deepEqual(model.resources.control.fields.evidenceSourceIds.requiredWhen, { status: "implemented" });
   assert.deepEqual(model.resources.control.fields.systemIds.requiredWhen, { status: "implemented" });
   assert.deepEqual(model.resources.control.markdown.record.requiredWhen, { status: "implemented" });
@@ -40,11 +85,26 @@ test("v1 model exposes the complete resource registry", () => {
   assert.deepEqual(model.resources["complementary-control"].fields.relatedControlIds.relation, ["control"]);
   assert.ok(model.resources.workspace.fields.assuranceGoal.values.includes("soc-2-type-2"));
   assert.deepEqual(model.resources.evidence.fields.verifierIds.requiredWhen, { status: "verified" });
-  assert.deepEqual(model.resources.evidence.fields.sourceSystemId.requiredWhen, { evidenceKind: "population-export" });
+  assert.ok(model.resources.evidence.fields.status.values.includes("draft"));
+  assert.deepEqual(model.resources.evidence.fields.source.requiredWhen.status, ["collected", "verified", "expired", "withdrawn"]);
+  assert.deepEqual(model.resources.evidence.fields.sourceSystemId.requiredWhen, {
+    evidenceKind: ["population-export", "test-export", "test-capture"],
+    status: ["collected", "verified", "expired", "withdrawn"]
+  });
   assert.deepEqual(model.resources["obligation-event"].fields.completedOn.requiredWhen, { status: "complete" });
   assert.equal(model.resources["renderer-settings"].fields.completedStagePageIds.items, "string");
-  assert.match(model.resources.finding.description, /FileGRC does not create Findings automatically/);
+  assert.match(model.resources.finding.description, /Keep observations and report details in the source record’s Markdown/);
   assert.match(model.resources.finding.description, /control test, review, risk assessment, security test, incident review, management meeting, or audit/);
+  assert.deepEqual(model.resources.finding.fields.dueOn.requiredWhen.status, ["open", "remediating", "resolved"]);
+  assert.deepEqual(model.resources.finding.fields.verifiedByIds.requiredWhen, { status: "closed" });
+  assert.deepEqual(model.resources["action-item"].oneOf[0], {
+    fields: ["dueOn", "dueWindowEndAt"],
+    when: { status: ["open", "in-progress", "blocked"] }
+  });
+  for (const resource of Object.values(model.resources)) {
+    assert.equal(resource.fields?.findingIds, undefined);
+    assert.equal(resource.fields?.actionItemIds, undefined);
+  }
   for (const type of model.recordContent.defaultResourceTypes) {
     const resource = model.resources[type];
     assert.ok(resource, `${type} Record Markdown type exists`);
@@ -57,7 +117,8 @@ test("v1 model exposes the complete resource registry", () => {
   assert.deepEqual(model.resources.policy.markdown, {
     content: { label: "Policy", primary: true, required: true }
   });
-  assert.equal(model.resources.evidence.oneOf[0].includes("$markdown:content"), true);
+  assert.equal(model.resources.evidence.oneOf[0].fields.includes("$markdown:content"), true);
+  assert.ok(model.resources.evidence.oneOf[0].when.status.includes("verified"));
   for (const type of [
     "renderer-settings",
     "service-account",

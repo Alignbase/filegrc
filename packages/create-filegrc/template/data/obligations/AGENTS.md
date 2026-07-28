@@ -5,8 +5,8 @@ An obligation is a reusable policy schedule or event template. It is not the rec
 - Calendar obligations need a valid recurrence anchor, owners, expected completion types, and policy or control links.
 - Event obligations need a stable lowercase `eventType`, a prompt, owners, expected completion types, and an explicit deadline window.
 - Keep completed occurrences in `completionResourceIds`. Do not replace prior links when a new period starts.
-- Keep starter obligations as proposals until every governing policy is active and its effective date has arrived.
+- Keep starter obligations as proposals until every governing policy is active and effective and, when the obligation names controls, at least one linked control is implemented.
 - When an approved cadence changes, update the policy, control, and obligation together.
 - Pause or retire a template only when the underlying policy work no longer applies. Do not delete historical templates that explain prior periods.
 
-Use `npx filegrc obligations --json` to inspect calculated work. Use `npx filegrc complete OBLIGATION_ID completion-mutation.json` to create and link a dated occurrence in one validated write.
+Use `npx filegrc obligations --json` to inspect calculated recurring work and preview every Policy Event task, owner, deadline, and requested proof. Use `npx filegrc complete OBLIGATION_ID completion-mutation.json` to create and link a dated occurrence in one validated write. Use `npx filegrc trigger EVENT_TYPE ...` only after the matching event occurs; it adds all configured Action Items to the Work Queue atomically.

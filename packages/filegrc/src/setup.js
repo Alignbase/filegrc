@@ -1,4 +1,5 @@
 import { createResource, updateResource } from "./files.js";
+import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
 import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -70,12 +71,16 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
       showOnboarding: setup.draft
     });
   }
+  const evidenceTestDrafts = setup.draft
+    ? { created: [], existing: [], total: 0 }
+    : await ensureEvidenceTestDrafts(current.root);
 
   return {
     draft: setup.draft,
     system,
     workspace,
     linkedControlIds,
+    evidenceTestDraftIds: evidenceTestDrafts.created.map(({ id }) => id),
     onboardingComplete: !setup.draft
   };
 }

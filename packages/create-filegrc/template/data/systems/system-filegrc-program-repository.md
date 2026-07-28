@@ -1,6 +1,6 @@
 # FileGRC Program Repository
 
-This Git repository is the system of record for FileGRC governance records and their revision history. It can supply the training and acknowledgement catalog, exception and finding populations, policy and document approvals, obligation history, event checklists, and management evidence indexes.
+This Git repository is the system of record for FileGRC governance records and their revision history. It can supply the training and acknowledgement catalog, exception and finding populations, policy and document approvals, obligation history, Policy Event workflows, and management evidence indexes.
 
 ## Evidence Extraction
 

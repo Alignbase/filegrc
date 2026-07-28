@@ -7,11 +7,13 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
+  buildAgentProgramPath,
   buildAgentGuide,
   findResourceReferences,
   listResourceTypes,
   loadWorkspace,
   scaffoldResourceMutation,
+  RESOURCE_INSTRUCTIONS,
   updateResource,
   validateWorkspace
 } from "../src/index.js";
@@ -28,7 +30,17 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   const types = listResourceTypes(loaded.model);
   assert.equal(types.length, Object.keys(loaded.model.resources).length);
   const overview = await execute(process.execPath, [cli, "guide", "--root", root, "--json"]);
-  assert.deepEqual(Object.keys(JSON.parse(overview.stdout).actions), [
+  const parsedOverview = JSON.parse(overview.stdout);
+  assert.equal(parsedOverview.programPath.length, 6);
+  assert.deepEqual(parsedOverview.programPath.map(({ title }) => title), [
+    "Define Scope",
+    "Approve Policies",
+    "Implement Controls",
+    "Test Evidence Collection",
+    "Operate the Program",
+    "Audit"
+  ]);
+  assert.deepEqual(Object.keys(parsedOverview.actions), [
     "help",
     "version",
     "serve",
@@ -39,11 +51,13 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "describe",
     "types",
     "guide",
+    "programPath",
     "scaffold",
     "list",
     "search",
     "obligations",
     "programReadiness",
+    "evidenceTestDrafts",
     "auditReadiness",
     "prepareAudit",
     "trigger",
@@ -61,10 +75,24 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "delete",
     "commit"
   ]);
+  const path = buildAgentProgramPath(loaded.model);
+  assert.equal(path.length, 6);
+  assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
+  assert.deepEqual(path[4].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
+  assert.equal(path[4].operatingRecords.length, path[4].resourceTypes.length + path[4].supportingResourceTypes.length);
+  assert.equal(path[4].operatingRecords.every(({ order }) => order === null), true);
+  const pathCommand = await execute(process.execPath, [cli, "program-path", "--root", root, "--json"]);
+  const parsedPath = JSON.parse(pathCommand.stdout);
+  assert.equal(parsedPath.currentStep.number, 1);
+  assert.equal(parsedPath.stages.length, 6);
+  assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
 
   for (const { type } of types) {
     const guide = buildAgentGuide(loaded, type);
     assert.equal(guide.type, type);
+    assert.equal(guide.instructions, RESOURCE_INSTRUCTIONS[type] || loaded.model.resources[type].description);
+    assert.equal(guide.use, loaded.model.resources[type].description);
+    if (RESOURCE_INSTRUCTIONS[type]) assert.ok(guide.programStep, `${type} has a program step`);
     assert.ok(guide.requiredAtCreation.some(({ name }) => name === "id"));
     assert.ok(guide.requiredAtCreation.some(({ name }) => name === "title"));
     assert.ok(guide.workflow.length >= 4);

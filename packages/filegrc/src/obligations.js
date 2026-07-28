@@ -10,6 +10,7 @@ import {
 } from "./recurrence.js";
 import { isRfc3339Timestamp } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
+import { obligationProgramStatus } from "./program-lifecycle.js";
 
 const COMPLETION_DATE_FIELDS = [
   "completedOn",
@@ -160,10 +161,14 @@ export function planObligations(resources, options = {}) {
     .filter((run) => run.status !== "canceled")
     .flatMap((run) => run.actions)
     .filter((item) => item.status !== "complete" || options.includeComplete);
-  if (calendarItems.length + eventItems.length > MAX_PLANNED_ITEMS) {
+  const standaloneItems = records
+    .filter((record) => record.type === "action-item" && !eventIds.has(record.sourceResourceId))
+    .map((record) => planStandaloneAction(record, byId, asOf, now))
+    .filter((item) => item.status !== "complete" || options.includeComplete);
+  if (calendarItems.length + eventItems.length + standaloneItems.length > MAX_PLANNED_ITEMS) {
     throw new Error(`The obligation query must be narrowed; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} planned items.`);
   }
-  const items = [...calendarItems, ...eventItems].sort(comparePlannedItems);
+  const items = [...calendarItems, ...eventItems, ...standaloneItems].sort(comparePlannedItems);
   const counts = { overdue: 0, due: 0, upcoming: 0, proposed: 0, complete: 0 };
   for (const item of items) {
     if (counts[item.status] !== undefined) counts[item.status] += 1;
@@ -177,6 +182,7 @@ export function planObligations(resources, options = {}) {
     items,
     calendarItems,
     eventItems,
+    standaloneItems,
     triggers: [...triggerGroups.values()].map((group) => ({
       ...group,
       policyIds: [...new Set(group.policyIds)],
@@ -208,7 +214,7 @@ export async function createObligationEvent(input, options) {
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
   if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn) === "proposed")) {
-    throw new Error(`Event type "${eventType}" still has starter proposals. Activate every linked policy and reach its effective date before starting this workflow.`);
+    throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing policy effective and implement at least one linked control before starting this workflow.`);
   }
   if (templates.some((record) => Number.isInteger(normalizedEventWindow(record.window).endOffsetHours)) && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
@@ -251,7 +257,6 @@ export async function createObligationEvent(input, options) {
     ...(occurredAt ? { occurredAt } : {}),
     ownerIds: [...new Set(templates.flatMap((record) => record.ownerIds || []))],
     obligationIds: templates.map((record) => record.id),
-    actionItemIds: actions.map((record) => record.id),
     ...(subjectResourceIds.length ? { subjectResourceIds } : {})
   };
   await createResources(loaded.root, [event, ...actions]);
@@ -307,7 +312,7 @@ export async function completeObligationEvent(input, options) {
   const event = loaded.resources.find((record) => (
     record.type === "obligation-event" && record.id === options?.eventId
   ));
-  if (!event) throw new Error(`Obligation event "${options?.eventId ?? ""}" was not found.`);
+  if (!event) throw new Error(`Policy Event "${options?.eventId ?? ""}" was not found.`);
   const completedOn = requireDate(options?.completedOn, "completion date");
   if (completedOn < event.occurredOn) {
     throw new Error("The event completion date cannot be before its occurrence date.");
@@ -319,12 +324,12 @@ export async function completeObligationEvent(input, options) {
   });
   const run = plan.eventRuns.find((item) => item.id === event.id);
   if (!run || run.actions.length === 0) {
-    throw new Error(`Obligation event "${event.id}" has no action checklist.`);
+    throw new Error(`Policy Event "${event.id}" has no action checklist.`);
   }
   const incomplete = run.actions.filter((action) => action.status !== "complete");
   if (incomplete.length) {
     throw new Error(
-      `Obligation event "${event.id}" still has incomplete actions: ${incomplete.map((action) => action.actionItemId).join(", ")}.`
+      `Policy Event "${event.id}" still has incomplete actions: ${incomplete.map((action) => action.actionItemId).join(", ")}.`
     );
   }
   return updateResource(loaded.root, "obligation-event", event.id, {
@@ -483,11 +488,58 @@ function planEventRun(event, actionItems, byId, asOf, now) {
     occurredOn: event.occurredOn,
     occurredAt: event.occurredAt || null,
     subjectResourceIds: event.subjectResourceIds || [],
-    actionItemIds: event.actionItemIds || [],
+    actionItemIds: actions.map((item) => item.actionItemId),
     recordedStatus: event.status,
     status: derivedStatus,
     completeCount: actions.filter((item) => item.status === "complete").length,
     actions
+  };
+}
+
+function planStandaloneAction(record, byId, asOf, now) {
+  const source = byId.get(record.sourceResourceId);
+  const dueWindowEnd = record.dueWindowEnd || record.dueOn || null;
+  const dueWindowStart = record.dueWindowStart || dueWindowEnd;
+  const dueWindowEndAt = record.dueWindowEndAt || null;
+  const dueWindowStartAt = record.dueWindowStartAt || dueWindowEndAt;
+  const window = {
+    dueWindowStart,
+    dueWindowEnd,
+    overdueOn: record.overdueOn || (dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null),
+    dueWindowStartAt,
+    dueWindowEndAt,
+    overdueAt: record.overdueAt || dueWindowEndAt
+  };
+  const complete = ["done", "canceled"].includes(record.status);
+  const status = complete
+    ? "complete"
+    : window.overdueAt && new Date(now) > new Date(window.overdueAt)
+      ? "overdue"
+      : window.dueWindowStartAt && new Date(now) < new Date(window.dueWindowStartAt)
+        ? "upcoming"
+        : !window.overdueAt && window.overdueOn && window.overdueOn <= asOf
+          ? "overdue"
+          : window.dueWindowStart && window.dueWindowStart > asOf
+            ? "upcoming"
+            : "due";
+  return {
+    key: record.id,
+    kind: "action",
+    actionItemId: record.id,
+    sourceResourceId: record.sourceResourceId,
+    title: record.title,
+    ownerIds: record.assigneeIds || [],
+    policyIds: source?.policyIds || [],
+    controlIds: source?.controlIds || [],
+    systemIds: source?.systemIds || [],
+    completionResourceIds: record.completionResourceIds || [],
+    evidenceIds: record.evidenceIds || [],
+    recordedStatus: record.status,
+    completedOn: record.completedOn || null,
+    status,
+    ...window,
+    ...relativeTiming(window, asOf),
+    ...relativeTimestampTiming(window, now)
   };
 }
 
@@ -530,18 +582,6 @@ function occurrenceStatus(window, asOf, complete) {
   if (window.overdueOn <= asOf) return "overdue";
   if (window.dueWindowStart <= asOf) return "due";
   return "upcoming";
-}
-
-function obligationProgramStatus(obligation, byId, asOf) {
-  const policyIds = obligation.policyIds || [];
-  if (!policyIds.length) return "accepted";
-  return policyIds.every((id) => {
-    const policy = byId.get(id);
-    return policy?.type === "policy"
-      && policy.status === "active"
-      && policy.effectiveOn
-      && policy.effectiveOn <= asOf;
-  }) ? "accepted" : "proposed";
 }
 
 function obligationActivationDate(obligation, byId) {

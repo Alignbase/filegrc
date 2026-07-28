@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
+import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
 import { FAVICON_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
 import { commitAndPushWorkspace, getFileHistory, pullWorkspace, pushWorkspace } from "./git.js";
@@ -82,6 +83,9 @@ export function createFileGRCServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/audit-preparation") {
         return json(response, 201, await prepareAuditWorkspace(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/evidence-test-drafts") {
+        return json(response, 201, await ensureEvidenceTestDrafts(input));
       }
       if (request.method === "POST" && url.pathname === "/api/setup") {
         return json(response, 200, await setupWorkspace(input, await readJson(request)));

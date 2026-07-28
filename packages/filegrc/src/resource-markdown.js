@@ -43,7 +43,9 @@ export function markdownEntries(model, record) {
 }
 
 function conditionMatches(record, condition) {
-  return condition && Object.entries(condition).every(([name, expected]) => record[name] === expected);
+  return condition && Object.entries(condition).every(([name, expected]) => (
+    Array.isArray(expected) ? expected.includes(record[name]) : record[name] === expected
+  ));
 }
 
 export function isMarkdownChoice(value) {

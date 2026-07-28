@@ -9,7 +9,7 @@ Use a `risk-assessment` for the dated assessment process and one `risk` record f
 3. Scaffold the assessment and keep it `planned` or `in-progress` while the work is underway.
 4. Write the method, inputs reviewed, threats considered, observations, decisions, and conclusion in Record Markdown.
 5. Create or update the individual `risk` records. Link all risks considered with `riskIds`, newly identified risks with `newRiskIds`, and materially changed risks with `changedRiskIds`.
-6. Link evidence, findings, and follow-up action items. Do not hide an unresolved issue in the narrative.
+6. Link evidence from the assessment. When a confirmed gap needs its own lifecycle, create a Finding whose `sourceResourceId` points to this assessment. Create an Action Item only for separately assigned follow-up. Do not hide an unresolved issue in the narrative.
 7. Use a reviewer who is not one of the assessors. Set `methodology` and `approvedOn` before marking the assessment `complete`.
 8. Run validation, review the full diff, and commit the assessment, risk changes, and evidence together when practical.
 

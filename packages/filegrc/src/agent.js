@@ -1,5 +1,6 @@
 import { createResourceId } from "./id.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { RESOURCE_INSTRUCTIONS, resourceProgramContext } from "./program-path.js";
 
 const STARTING_STATUS_ORDER = [
   "draft",
@@ -73,7 +74,10 @@ export function buildAgentGuide(loaded, type, options = {}) {
     type,
     title: definition.title,
     pluralTitle: definition.pluralTitle,
+    instructions: RESOURCE_INSTRUCTIONS[type] || definition.description,
+    use: definition.description,
     purpose: definition.description,
+    programStep: resourceProgramContext(type),
     policyBasis: definition.guidance.policyBasis,
     cadence: definition.guidance.cadence,
     policySourceIds: definition.guidance.sourceResourceIds ?? [],

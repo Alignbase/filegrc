@@ -1,13 +1,13 @@
 # Policy Event Instructions
 
-Do not create an `obligation-event` or its action items by hand. Start the configured checklist:
+Do not create an `obligation-event` or its Action Items by hand. Preview the configured Policy Event, then trigger its work:
 
 ```sh
 npx filegrc obligations --json
 npx filegrc trigger EVENT_TYPE --occurred-on YYYY-MM-DD --subject RESOURCE_ID --json
 ```
 
-Use `--occurred-at` with an RFC 3339 timestamp when any action has an hour-based deadline. The command creates the event and full action checklist atomically.
+The obligations output lists every task the trigger will add, with its owner, deadline, and requested proof. Use `--occurred-at` with an RFC 3339 timestamp when any action has an hour-based deadline. The trigger creates the event and adds all Action Items to the Work Queue atomically, then reports the event, task count, task IDs, and deadlines.
 
 Complete each action with the requested resource type and proof. Then close the workflow:
 

@@ -1,4 +1,7 @@
+import { buildAgentProgramPath, RESOURCE_INSTRUCTIONS } from "./program-path.js";
+
 export function generateModelDocumentation(model) {
+  const programPath = buildAgentProgramPath(model);
   const lines = [
     "# GRC Data Model",
     "",
@@ -10,6 +13,28 @@ export function generateModelDocumentation(model) {
     "",
     "Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.",
     "",
+    "## Program path",
+    "",
+    "The renderer, CLI, generated agent instructions, and this reference use the same six-step lifecycle:",
+    "",
+    ...programPath.flatMap((stage) => [
+      `### Step ${stage.number}. ${stage.title}`,
+      "",
+      stage.summary,
+      "",
+      ...stage.pages.map((page) => `- **${page.title}** (\`${page.type || `utility:${page.utility}`}\`): ${page.instructions}`),
+      "",
+      ...(stage.operatingRecords?.length ? [
+        "Operating record guides:",
+        "",
+        ...stage.operatingRecords.map((page) => `- **${page.title}** (\`${page.type}\`): ${page.instructions}`),
+        ""
+      ] : []),
+      "Headless commands:",
+      "",
+      ...stage.commands.map((command) => `- \`${command}\``),
+      ""
+    ]),
     "## Common fields",
     "",
     "| Field | Type | Required | Meaning |",
@@ -40,7 +65,11 @@ export function generateModelDocumentation(model) {
     "",
     "Authoritative systems of record:",
     "",
-    ...model.evidenceSourceFamilies.map((item) => `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} ${item.timing}`),
+    ...model.evidenceSourceFamilies.map((item) => (
+      item.collectionTestRequired === false
+        ? `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} FileGRC operating records: ${item.operationRecordTypes.map((type) => `\`${type}\``).join(", ")}. No separate collection test is required. ${item.timing}`
+        : `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} Test external collection: ${item.testPrompt} ${item.timing}`
+    )),
     "",
     "## Resource groups",
     ""
@@ -52,6 +81,7 @@ export function generateModelDocumentation(model) {
     lines.push(`### ${group.title}`, "");
     for (const [type, resource] of resources) {
       lines.push(`#### \`${type}\``, "", resource.description, "");
+      lines.push(`Instructions: ${RESOURCE_INSTRUCTIONS[type] || resource.description}`, "");
       lines.push(`Policy basis: ${resource.guidance.policyBasis}`, "");
       lines.push(`Timing: ${resource.guidance.cadence}`, "");
       if (resource.guidance.sourceResourceIds?.length) {
@@ -83,8 +113,10 @@ export function generateModelDocumentation(model) {
         const requiredLabel = required.has(name) || field.required ? "Yes" : field.requiredWhen ? "Conditional" : "No";
         lines.push(`| \`${name}\` | ${fieldType(field)} | ${requiredLabel} | ${escapeCell(fieldNotes(field))} |`);
       }
-      for (const choices of resource.oneOf ?? []) {
-        lines.push("", `At least one of ${choices.map(choiceLabel).join(", ")} is required.`);
+      for (const group of resource.oneOf ?? []) {
+        const choices = Array.isArray(group) ? group : group.fields || [];
+        const condition = Array.isArray(group) ? "" : ` when ${conditionText(group.when)}`;
+        lines.push("", `At least one of ${choices.map(choiceLabel).join(", ")} is required${condition}.`);
       }
       lines.push("");
     }
@@ -93,7 +125,11 @@ export function generateModelDocumentation(model) {
 }
 
 function conditionText(condition) {
-  return Object.entries(condition).map(([name, value]) => `\`${name}\` is \`${value}\``).join(" and ");
+  return Object.entries(condition).map(([name, value]) => (
+    Array.isArray(value)
+      ? `\`${name}\` is one of ${value.map((item) => `\`${item}\``).join(", ")}`
+      : `\`${name}\` is \`${value}\``
+  )).join(" and ");
 }
 
 function recordContentMode(model, type, resource) {

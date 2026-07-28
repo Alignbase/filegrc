@@ -5,6 +5,7 @@ import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldRes
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { buildWorkspace } from "./build.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
+import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
 import {
   addEvidenceAttachment,
   createResource,
@@ -21,6 +22,7 @@ import {
   planObligations
 } from "./obligations.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
+import { buildAgentProgramPath, policyEventName } from "./program-path.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { searchResources } from "./search.js";
@@ -84,7 +86,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
       console.log(`System: ${result.system.id} (${result.system.status})`);
       console.log(`Target: ${result.workspace.assuranceGoal}`);
-      console.log("Next: review and approve the applicable policies.");
+      console.log("Next: finish Step 1 by confirming people, criteria, commitments, vendors, and in-scope systems. Run filegrc program-path for the full path.");
     }
     return result;
   }
@@ -147,6 +149,16 @@ export async function runCli(argv = process.argv.slice(2)) {
     else printAgentGuide(result);
     return result;
   }
+  if (command === "program-path") {
+    const loaded = await loadWorkspace(root);
+    const readiness = await assessProgramReadiness(loaded, { asOf: flags["as-of"] });
+    const auditId = positionals[0] || flags.audit;
+    const auditReadiness = auditId ? await assessAuditPreparation(loaded, { auditId }) : null;
+    const result = buildProgramPathResult(loaded.model, readiness, auditReadiness);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else printProgramPath(result);
+    return result;
+  }
   if (command === "scaffold") {
     const loaded = await loadWorkspace(root);
     const type = positionals[0];
@@ -197,8 +209,16 @@ export async function runCli(argv = process.argv.slice(2)) {
         ].join("\t"));
       }
       if (result.triggers.length) {
-        console.log("\nEvent reminders:");
-        for (const trigger of result.triggers) console.log(`${trigger.eventType}\t${trigger.prompt}\t${trigger.steps.length} actions`);
+        console.log("\nPolicy Events:");
+        for (const trigger of result.triggers) {
+          console.log(`${trigger.programStatus.toUpperCase()}\t${policyEventName(trigger.eventType)} (${trigger.eventType})\t${trigger.steps.length} Work Queue ${trigger.steps.length === 1 ? "task" : "tasks"}`);
+          for (const step of trigger.steps) {
+            const owners = step.ownerIds.length ? step.ownerIds.join(",") : "unassigned";
+            const proof = step.completionResourceTypes.length ? step.completionResourceTypes.join("|") : "not specified";
+            console.log(`  ${step.title}\t${eventWindowText(step.window)}\towner=${owners}\tproof=${proof}`);
+          }
+          if (trigger.programStatus !== "proposed") console.log(`  Trigger: filegrc trigger ${trigger.eventType} --occurred-on YYYY-MM-DD --subject RESOURCE_ID --json`);
+        }
       }
     }
     return result;
@@ -219,6 +239,12 @@ export async function runCli(argv = process.argv.slice(2)) {
       }
     }
     if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
+    return result;
+  }
+  if (command === "evidence-test-drafts") {
+    const result = await ensureEvidenceTestDrafts(root);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Created ${result.created.length} External Evidence test ${result.created.length === 1 ? "draft" : "drafts"}; ${result.total} required families are represented.`);
     return result;
   }
   if (command === "audit-readiness") {
@@ -254,7 +280,11 @@ export async function runCli(argv = process.argv.slice(2)) {
       title: flags.title
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else console.log(`Created ${result.event.id} with ${result.actions.length} action items.`);
+    else {
+      console.log(`Work added to the Work Queue: ${result.actions.length} ${result.actions.length === 1 ? "task" : "tasks"} created for ${result.event.title}.`);
+      console.log(`Event: obligation-event/${result.event.id}`);
+      for (const action of result.actions) console.log(`Task: action-item/${action.id}\t${action.title}\t${action.dueWindowEndAt || action.dueWindowEnd || action.overdueAt || action.overdueOn}`);
+    }
     return result;
   }
   if (command === "evidence-packet") {
@@ -356,7 +386,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "complete-event") {
     const eventId = positionals[0];
-    if (!eventId) throw new Error("An obligation event ID is required.");
+    if (!eventId) throw new Error("A Policy Event ID is required.");
     const result = await completeObligationEvent(root, {
       eventId,
       completedOn: flags["completed-on"],
@@ -557,11 +587,13 @@ Usage:
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--json]
+  filegrc program-path [audit-id] [--as-of YYYY-MM-DD] [--json]
   filegrc scaffold <resource-type> --title text [--id resource-id]
   filegrc list [resource-type] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--json]
+  filegrc evidence-test-drafts [--json]
   filegrc audit-readiness [audit-id] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
@@ -623,8 +655,9 @@ Options:
   filegrc program-readiness [options]
 
 Report whether management has defined scope, activated policies, implemented
-controls, configured authoritative evidence sources, and verified one test capture
-for every selected control family. No audit ID or CPA firm is required.
+controls, configured authoritative evidence sources, and verified test collection
+for external evidence without a dedicated Step 5 record. No audit ID or CPA firm
+is required.
 
 Options:
   --as-of <date>     Evaluate effective dates and obligations on YYYY-MM-DD
@@ -634,12 +667,42 @@ Options:
   --help             Show this help`);
     return;
   }
+  if (command === "program-path") {
+    console.log(`Usage:
+  filegrc program-path [audit-id] [options]
+
+Show the same six-step SOC 2 lifecycle used by the renderer. Each step includes
+its exact page instructions, Use and Policy Basis context, resource commands,
+and current readiness state. Pass an audit ID to include Step 6 status.
+
+Options:
+  --audit <id>       Audit record to use for Step 6
+  --as-of <date>     Evaluate readiness on YYYY-MM-DD
+  --json             Print the full agent-oriented path as JSON
+  --root <path>      Workspace path
+  --help             Show this help`);
+    return;
+  }
+  if (command === "evidence-test-drafts") {
+    console.log(`Usage:
+  filegrc evidence-test-drafts [options]
+
+Create missing draft External Evidence records for collection that does not
+already have a dedicated Step 5 operating record. Existing tests are preserved.
+
+Options:
+  --json         Print created and existing records as JSON
+  --root <path>  Workspace path
+  --help         Show this help`);
+    return;
+  }
   printHelp();
 }
 
 function agentOverview(model) {
   return {
     rule: "Treat data/ as the source of truth. Run guide before creating an unfamiliar type, validate after every write, review the Git diff, then commit a focused change.",
+    programPath: buildAgentProgramPath(model),
     actions: {
       help: "filegrc help",
       version: "filegrc version",
@@ -651,11 +714,13 @@ function agentOverview(model) {
       describe: "filegrc describe <resource-type>",
       types: "filegrc types --json",
       guide: "filegrc guide [resource-type] --json",
+      programPath: "filegrc program-path [audit-id] --json",
       scaffold: "filegrc scaffold <resource-type> --title <name>",
       list: "filegrc list [resource-type] --json",
       search: "filegrc search <query> --json",
       obligations: "filegrc obligations --json",
       programReadiness: "filegrc program-readiness --json",
+      evidenceTestDrafts: "filegrc evidence-test-drafts --json",
       auditReadiness: "filegrc audit-readiness <audit-id> --json",
       prepareAudit: "filegrc prepare-audit <audit-id>",
       trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
@@ -679,6 +744,8 @@ function agentOverview(model) {
 
 function printAgentOverview(result) {
   console.log(result.rule);
+  console.log("\nProgram path:");
+  for (const stage of result.programPath) console.log(`${stage.number}. ${stage.title}\t${stage.summary}`);
   console.log("\nActions:");
   for (const [name, command] of Object.entries(result.actions)) console.log(`${name}\t${command}`);
   console.log("\nResource types:");
@@ -687,7 +754,11 @@ function printAgentOverview(result) {
 
 function printAgentGuide(result) {
   console.log(`${result.title} (${result.type})`);
-  console.log(`Purpose: ${result.purpose}`);
+  if (result.programStep) {
+    console.log(`Program step: ${result.programStep.order ? `Step ${result.programStep.order}` : `Step ${result.programStep.number}`} · ${result.programStep.title}`);
+  }
+  console.log(`Instructions: ${result.instructions}`);
+  console.log(`Use: ${result.use}`);
   console.log(`Policy basis: ${result.policyBasis}`);
   console.log(`Timing: ${result.cadence}`);
   console.log(`JSON: ${result.location}`);
@@ -729,6 +800,74 @@ function printAgentGuide(result) {
   }
   console.log("\nWorkflow:");
   result.workflow.forEach((step, index) => console.log(`${index + 1}. ${step}`));
+}
+
+function buildProgramPathResult(model, readiness, auditReadiness) {
+  const readinessById = new Map(readiness.stages.map((stage) => [stage.id, stage]));
+  const stages = buildAgentProgramPath(model).map((stage) => {
+    if (stage.id === "audit") {
+      return {
+        ...stage,
+        status: auditReadiness?.status || "not-started",
+        counts: auditReadiness?.counts || null,
+        nextActions: auditReadiness?.firstAction ? [auditReadiness.firstAction] : []
+      };
+    }
+    const readinessId = stage.id === "run" ? "operation" : stage.id;
+    const current = readinessById.get(readinessId);
+    const status = stage.id === "run" && readiness.operating
+      ? "operating"
+      : current?.status || "not-started";
+    return {
+      ...stage,
+      status,
+      counts: current?.counts || null,
+      nextActions: (current?.items || []).filter((item) => item.status === "action")
+    };
+  });
+  const currentStep = stages.find((stage) => !["complete", "operating", "management-ready"].includes(stage.status)) || stages.at(-1);
+  return {
+    schemaVersion: 1,
+    asOf: readiness.asOf,
+    currentStep: { id: currentStep.id, number: currentStep.number, title: currentStep.title },
+    evidenceReady: readiness.evidenceReady,
+    operating: readiness.operating,
+    stages
+  };
+}
+
+function printProgramPath(result) {
+  console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
+  console.log(`Evidence Ready: ${result.evidenceReady ? "yes" : "no"}; operating: ${result.operating ? "yes" : "no"}`);
+  for (const stage of result.stages) {
+    console.log(`\nStep ${stage.number}. ${stage.title} [${String(stage.status).toUpperCase()}]`);
+    console.log(stage.summary);
+    for (const page of stage.pages) {
+      console.log(`${page.order ? `Step ${page.order}` : "Operating area"} · ${page.title} (${page.type || `utility:${page.utility}`})`);
+      console.log(`  Instructions: ${page.instructions}`);
+      console.log(`  Use: ${page.use}`);
+      console.log(`  Policy basis: ${page.policyBasis}`);
+    }
+    if (stage.operatingRecords?.length) {
+      console.log("Operating record guides:");
+      for (const record of stage.operatingRecords) {
+        console.log(`  ${record.type}\t${record.instructions}\t${record.guide}`);
+      }
+    }
+    console.log("Commands:");
+    for (const command of stage.commands) console.log(`  ${command}`);
+    for (const action of stage.nextActions) console.log(`Next: ${action.title} · ${action.message}`);
+  }
+}
+
+function eventWindowText(window) {
+  if (Number.isInteger(window?.endOffsetHours)) {
+    return window.endOffsetHours === 0 ? "due at event time" : `due within ${window.endOffsetHours} hours`;
+  }
+  if (Number.isInteger(window?.endOffsetDays)) {
+    return window.endOffsetDays === 0 ? "due on event date" : `due within ${window.endOffsetDays} days`;
+  }
+  return "due within 30 days";
 }
 
 function formatGuideField(field) {

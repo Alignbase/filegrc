@@ -30,11 +30,16 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
   assert.match(readme, /FileGRC 1\.2\.3/);
   assert.match(readme, /npx filegrc setup --help/);
+  assert.match(readme, /npx filegrc program-path --json/);
   assert.match(readme, /finish Step 1 by confirming the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems/);
   assert.doesNotMatch(readme, /npx create-filegrc/);
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
+  assert.match(agents, /npx filegrc program-path --json/);
+  assert.match(agents, /adds its full set of Action Items to the Work Queue in a single validated write/);
   assert.match(agents, /`complementary-control\.relatedControlIds` is the source of truth/);
+  const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
+  assert.match(dataGuide, /renderer’s exact page Instructions, Use, Policy Basis, commands, and next actions/);
   assert.equal(result.install, "skipped");
   assert.equal(result.gitMode, "initialized");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));

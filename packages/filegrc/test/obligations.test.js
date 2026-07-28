@@ -54,6 +54,35 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
   assert.equal(overdue.items[0].daysOverdue, 1);
 });
 
+test("puts standalone Action Items in Work Queue without a reverse source link", () => {
+  const source = {
+    id: "finding-access-delay",
+    type: "finding",
+    title: "Access removal delay",
+    status: "open"
+  };
+  const action = {
+    id: "action-item-remove-access",
+    type: "action-item",
+    title: "Remove remaining access",
+    status: "in-progress",
+    assigneeIds: ["person-owner"],
+    sourceResourceId: source.id,
+    dueOn: "2026-03-20"
+  };
+  const plan = planObligations([source, action], {
+    asOf: "2026-03-15",
+    through: "2026-03-31"
+  });
+  assert.equal(plan.standaloneItems.length, 1);
+  assert.equal(plan.items[0].kind, "action");
+  assert.equal(plan.items[0].actionItemId, action.id);
+  assert.equal(plan.items[0].status, "upcoming");
+  assert.equal(plan.items[0].dueWindowStart, action.dueOn);
+  assert.equal(plan.items[0].overdueOn, "2026-03-21");
+  assert.deepEqual(plan.counts, { overdue: 0, due: 0, upcoming: 1, proposed: 0, complete: 0 });
+});
+
 test("keeps work linked only to draft policies as starter proposals", () => {
   const policy = {
     id: "policy-security",
@@ -98,6 +127,51 @@ test("keeps work linked only to draft policies as starter proposals", () => {
   assert.equal(accepted.counts.due, 1);
   assert.equal(accepted.items[0].status, "due");
   assert.equal(accepted.items[0].dueWindowStart, "2026-02-01");
+});
+
+test("starts an enabled schedule when a linked control becomes implemented", () => {
+  const policy = {
+    id: "policy-security",
+    type: "policy",
+    title: "Security policy",
+    status: "active",
+    approvedOn: "2026-01-01",
+    effectiveOn: "2026-01-01"
+  };
+  const control = {
+    id: "control-quarterly-review",
+    type: "control",
+    title: "Quarterly review",
+    status: "planned"
+  };
+  const obligation = {
+    id: "obligation-quarterly-review",
+    type: "obligation",
+    title: "Quarterly review",
+    status: "active",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 3,
+      anchorDate: "2026-01-01"
+    },
+    ownerIds: ["person-owner"],
+    policyIds: [policy.id],
+    controlIds: [control.id]
+  };
+  const ready = planObligations([policy, control, obligation], {
+    asOf: "2026-03-15",
+    through: "2026-03-31"
+  });
+  assert.equal(ready.counts.proposed, 1);
+  assert.equal(ready.counts.due, 0);
+
+  const running = planObligations([policy, { ...control, status: "implemented" }, obligation], {
+    asOf: "2026-03-15",
+    through: "2026-03-31"
+  });
+  assert.equal(running.counts.proposed, 0);
+  assert.equal(running.counts.due, 1);
 });
 
 test("does not start a partial event workflow while any step is still proposed", async (context) => {
@@ -247,7 +321,7 @@ test("creates an event run and its policy checklist as one valid batch", async (
   });
   assert.equal(created.actions.length, 3);
   assert.equal(created.actions[0].sourceResourceId, created.event.id);
-  assert.deepEqual(created.event.actionItemIds, created.actions.map(({ id }) => id));
+  assert.equal(created.event.actionItemIds, undefined);
   const trainingAction = created.actions.find(({ title }) => title === "Complete security training");
   assert.match(trainingAction.description, /Review scoped resources: person-owner/);
   const defaultDeadlineAction = created.actions.find(({ title }) => title === "Review onboarding completion");
@@ -266,6 +340,10 @@ test("creates an event run and its policy checklist as one valid batch", async (
   assert.equal(trainingStep.templateResourceId, "person-owner");
   assert.equal(plan.triggers[0].steps.find(({ title }) => title === "Review onboarding completion").window.endOffsetDays, 30);
   assert.equal(plan.eventRuns[0].actions.length, 3);
+  assert.deepEqual(
+    plan.eventRuns[0].actionItemIds.toSorted(),
+    created.actions.map(({ id }) => id).toSorted()
+  );
   assert.deepEqual(plan.eventRuns[0].actions.find(({ title }) => title === "Complete security training").scopeResourceIds, ["person-owner"]);
   assert.equal(plan.eventRuns[0].actions.find(({ title }) => title === "Register issued device").daysUntilOverdue, 2);
 
@@ -281,6 +359,19 @@ test("creates an event run and its policy checklist as one valid batch", async (
     "--json"
   ]);
   assert.equal(JSON.parse(obligationsCli.stdout).eventRuns[0].actions.length, 3);
+  const obligationsText = await execute(process.execPath, [
+    fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
+    "obligations",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-02",
+    "--through",
+    "2026-08-01"
+  ]);
+  assert.match(obligationsText.stdout, /Policy Events:/);
+  assert.match(obligationsText.stdout, /New Worker \(person-started\)\t3 Work Queue tasks/);
+  assert.match(obligationsText.stdout, /Complete security training[\s\S]*owner=person-owner[\s\S]*proof=attestation\|evidence/);
   const triggerCli = await execute(process.execPath, [
     fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
     "trigger",
@@ -297,7 +388,23 @@ test("creates an event run and its policy checklist as one valid batch", async (
   const triggerResult = JSON.parse(triggerCli.stdout);
   assert.equal(triggerResult.actions.length, 3);
   assert.equal(triggerResult.event.title, "Onboard=support engineer");
-  assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "obligation-event").length, 2);
+  const triggerText = await execute(process.execPath, [
+    fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
+    "trigger",
+    "person-started",
+    "--root",
+    root,
+    "--occurred-on",
+    "2026-09-01",
+    "--subject",
+    "person-owner",
+    "--title",
+    "Onboard security engineer"
+  ]);
+  assert.match(triggerText.stdout, /Work added to the Work Queue: 3 tasks created for Onboard security engineer/);
+  assert.match(triggerText.stdout, /Event: obligation-event\//);
+  assert.equal((triggerText.stdout.match(/^Task: action-item\//gm) || []).length, 3);
+  assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "obligation-event").length, 3);
 });
 
 test("headless completion helpers enforce expected types and update links atomically", async (context) => {
@@ -459,7 +566,11 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
   assert.equal(overdue.eventItems[0].hoursOverdue, 0);
 
   const action = resources.find(({ id }) => id === created.actions[0].id);
-  await updateResource(root, "action-item", action.id, { ...action, status: "done" });
+  await updateResource(root, "action-item", action.id, {
+    ...action,
+    status: "done",
+    completedOn: "2026-07-02"
+  });
   const missingProof = planObligations((await loadWorkspace(root)).resources, {
     asOf: "2026-07-02",
     through: "2026-07-03",

@@ -4,6 +4,8 @@ FileGRC is a zero-dependency Node.js engine for Git-native GRC workspaces. It va
 
 Program Readiness checks management-owned scope, policy adoption, control implementation, authoritative source configuration, and verified test captures without requiring an audit record. Audit Readiness starts after CPA engagement and checks the firm-agreed date or period, engagement-specific management documents, operating evidence, and Type 2 population completeness.
 
+Controls linked to FileGRC obligations show whether their Work Queue schedules are waiting for policy approval, ready for implementation, running, paused, or mixed. Marking a fully configured control implemented starts its enabled schedules when their governing policies are effective.
+
 Most users should create a complete workspace:
 
 ```sh
@@ -18,11 +20,13 @@ npx filegrc serve
 npx filegrc setup --help
 npx filegrc build
 npx filegrc guide risk-assessment
+npx filegrc program-path --json
 npx filegrc scaffold risk-assessment --title "2026 Annual Risk Assessment"
 npx filegrc list risk --json
 npx filegrc references risk-example --json
 npx filegrc describe risk
 npx filegrc search "access review"
+npx filegrc evidence-test-drafts
 npx filegrc program-readiness --require-ready
 npx filegrc audit-readiness audit-id
 npx filegrc prepare-audit audit-id
@@ -33,7 +37,13 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 `filegrc setup` provides the headless equivalent of browser onboarding. It accepts all initial service-boundary fields and a management program goal as flags or a JSON payload. Selecting Type 1 or Type 2 updates the workspace goal and program scope. It does not create an audit record.
 
+`filegrc program-path` gives agents the renderer’s six-step order, exact page Instructions, Use, Policy Basis, commands, current state, and next actions. `filegrc guide <type>` repeats the matching page guidance and adds fields, relationship candidates, Markdown slots, and timing for that record type.
+
 `filegrc program-readiness` reports whether management can start a candidate Type 2 period. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
+
+`filegrc evidence-test-drafts` creates missing draft tests for external evidence that does not already have a dedicated Step 5 record. When a Step 5 operating record exists, put the fixed artifact in an External Evidence record and link it from that operating record. Completing browser or CLI onboarding runs the same operation automatically.
+
+`filegrc obligations` shows recurring work and a task-level preview for each Policy Event, including owners, deadlines, and requested proof. `filegrc trigger` adds the event and all of its Action Items to the Work Queue atomically, then prints the created task IDs and deadlines.
 
 Long-form Markdown lives beside its JSON record. FileGRC derives the Markdown path, so records do not store it.
 

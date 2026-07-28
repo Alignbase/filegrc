@@ -107,11 +107,18 @@ export async function makeComprehensiveWorkspace(root) {
       else if (required.has(name)) record[name] = sampleValue(name, field, ids, model, type);
     }
     for (const [name, field] of Object.entries(fields)) {
-      if (field.requiredWhen && Object.entries(field.requiredWhen).every(([key, value]) => record[key] === value)) {
+      if (field.requiredWhen && Object.entries(field.requiredWhen).every(([key, value]) => (
+        Array.isArray(value) ? value.includes(record[key]) : record[key] === value
+      ))) {
         record[name] ??= sampleValue(name, field, ids, model, type);
       }
     }
-    for (const choices of definition.oneOf ?? []) {
+    for (const group of definition.oneOf ?? []) {
+      const choices = Array.isArray(group) ? group : group.fields || [];
+      const active = Array.isArray(group) || Object.entries(group.when || {}).every(([key, value]) => (
+        Array.isArray(value) ? value.includes(record[key]) : record[key] === value
+      ));
+      if (!active) continue;
       if (!choices.some((name) => record[name] !== undefined)) {
         const name = choices[0];
         record[name] = sampleValue(name, fields[name], ids, model, type);
@@ -193,7 +200,6 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
   set("controlIds", [ids.control]);
   set("systemIds", [ids.system]);
   set("evidenceIds", [ids.evidence]);
-  set("actionItemIds", [ids["action-item"]]);
   set("riskIds", [ids.risk]);
   set("attendeeIds", [ids.person]);
 }

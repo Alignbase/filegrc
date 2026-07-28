@@ -12,12 +12,13 @@ Do not guess a resource type, field name, enum value, relationship, or file path
 
 ```sh
 npx filegrc guide --json
+npx filegrc program-path --json
 npx filegrc guide risk-assessment --json
 npx filegrc list person --json
 npx filegrc program-readiness --json
 ```
 
-The first command lists every supported action and record type. The type guide gives the purpose, policy basis, timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
+`program-path` gives agents the same six-step order, exact page Instructions, Use, Policy Basis, commands, current state, and next actions shown in the renderer. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
 
 For a new record, generate a mutation envelope:
 
@@ -94,7 +95,7 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 `data/renderer.json` stores committed renderer preferences. New workspaces set `showOnboarding` to `true`. Completing or skipping onboarding sets it to `false`; the app does not commit that change.
 
-Onboarding explains the file and Git workflow, the program path, policy obligations, and event checklists before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates a `system` record and stores the management goal and program scope on `workspace`. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can confirm the starter people and oversight team, criteria, commitments, vendors, and systems before approving policies.
+Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates a `system` record and stores the management goal and program scope on `workspace`. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can confirm the starter people and oversight team, criteria, commitments, vendors, and systems before approving policies.
 
 The renderer is optional. Agents may set `showOnboarding` to `false` and maintain all records headlessly. Restart onboarding from Repository when useful. Read-only builds never run it.
 
@@ -110,11 +111,11 @@ The generated workspace starts with the SOC 2 Security category:
 - Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
-Treat every planned control as a proposal until its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
+Treat every planned control as a proposal until its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. For a control linked to FileGRC obligations, every non-retired Work Queue schedule must be enabled and its governing policies effective. Marking the control implemented starts eligible schedules. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
 
-The recurring obligations mirror the fixed cadences in the starter policies. They remain proposals until every governing policy is active and its effective date has arrived. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.
+The recurring obligations mirror the fixed cadences in the starter policies. They remain proposals until every governing policy is active and effective and, when they name controls, at least one linked control is implemented. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.
 
-## Policy work queue
+## Work Queue and Policy Events
 
 Run the same obligation planner used by the web app:
 
@@ -122,6 +123,8 @@ Run the same obligation planner used by the web app:
 npx filegrc obligations --json
 npx filegrc obligations --from 2026-01-01 --through 2026-12-31 --complete --json
 ```
+
+Work Queue includes recurring obligations, Policy Event tasks, and every other open Action Item. Create an Action Item only when follow-up from a Finding, Risk, Incident, review, test, meeting, Exception, or request needs its own assignee, deadline, and completion proof. Point `sourceResourceId` to the record that produced the task. Use that source record’s Markdown for the report and observations.
 
 A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Use **Record work** in Work Queue, or create and link a completion atomically with:
 
@@ -131,14 +134,14 @@ npx filegrc complete obligation-id completion-record.json
 
 Keep prior completion links because the planner matches each dated record to its own period.
 
-Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Start a workflow in Work Queue or run:
+Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Use Trigger Work on Step 5 or run:
 
 ```sh
 npx filegrc trigger person-started --occurred-on 2026-07-25 --subject person-new-worker --json
 npx filegrc trigger person-ended --occurred-at 2026-07-25T16:30:00-05:00 --subject person-departing-worker --json
 ```
 
-The command creates one `obligation-event` and its complete action checklist in a single validated write. Hour-based deadlines require an RFC 3339 event timestamp so an immediate or 24-hour cutoff is exact. Day-based deadlines use the event’s calendar date. Link the requested completion resources and evidence to each action item, then mark the actions done and the event complete. Every generated action has a cutoff. FileGRC applies a 30-day deadline when a custom event obligation omits one.
+Run `npx filegrc obligations` first to preview every task, owner, deadline, and requested proof for each available Policy Event. The trigger command creates one `obligation-event` and adds its full set of Action Items to the Work Queue in a single validated write. Its success output names the event, task count, task IDs, and deadlines. Hour-based deadlines require an RFC 3339 event timestamp so an immediate or 24-hour cutoff is exact. Day-based deadlines use the event’s calendar date. Link the requested completion resources and evidence to each action item, then mark the actions done and the event complete. Every generated action has a cutoff. FileGRC applies a 30-day deadline when a custom event obligation omits one.
 
 Complete an event action and link its new proof in one validated write:
 
@@ -173,9 +176,11 @@ The Evidence Ready gate requires:
 
 1. A management goal, selected systems, criteria, and controls.
 2. Active policies with completed text, separate management approval, real approval and effective dates, and linked controls.
-3. Implemented controls with an owner, actual procedure, scope, cadence, evidence source, mappings, and implementation date.
+3. Implemented controls with an owner, actual procedure, scope, cadence, evidence source, mappings, implementation date, and every eligible linked Work Queue schedule running.
 4. Active authoritative systems with evidence source roles, access owners, and repeatable extraction instructions in Record Markdown.
-5. A verified `test-export` or `test-capture` evidence record for every selected control family.
+5. A verified `test-export` or `test-capture` evidence record for each selected control family that relies on evidence from outside FileGRC.
+
+Completing onboarding creates draft External Evidence records only for evidence that must come from other systems and does not already have a dedicated Step 5 record. FileGRC-managed records, such as risk assessments, meetings, vendor reviews, attestations, vulnerability scans, penetration tests, backup tests, exercises, exceptions, and findings, do not need a separate collection test. Put any fixed external artifact in an External Evidence record and link it from the operating record. For each generated draft, choose its authoritative source System, attach or reference the real result, record its collector and classification, then have another person verify it. Run `npx filegrc evidence-test-drafts` to create any drafts needed after the control set changes.
 
 When the gate passes, set `workspace.candidatePeriodStart` to the date reliable evidence collection begins. Do not backdate it. `candidatePeriodStart` and `candidatePeriodEnd` express management’s target. They do not establish the final report period.
 
@@ -197,6 +202,13 @@ The audit record’s `typeOneAsOf`, `periodStart`, and `periodEnd` are the dates
 
 Preparation creates a separate system description, management assertion, and management representation document for the engagement from the local starter templates. Type 2 preparation also creates a period completeness statement and one `audit-population` record for each standard population. It is safe to run again and does not approve documents, mark controls implemented, or create evidence. Do not reuse one completed management document across engagements.
 
+Review both evidence paths against the exact firm-agreed date or period:
+
+1. FileGRC Evidence consists of dated Step 5 operating records. Complete each applicable record, link it to the Controls it supports, record the result in structured fields or Markdown, and link any external artifact needed to support that result.
+2. External Evidence consists of verified `evidence` records from authoritative Systems. Confirm the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
+
+Audit Readiness reports coverage for both paths. The packet includes the matching FileGRC records and Markdown with Git history, plus External Evidence records, retained attachments, delivery indexes, and checksums.
+
 Near the end of fieldwork, link a verified fixed-format copy of the signed management representation letter to its engagement-specific document. Date it on or after the Type 1 date or Type 2 period end. A representation that is still marked for later blocks packet delivery.
 
 Catalog each authoritative source under Systems and assign its `evidenceSourceKinds`. A third-party application is still a System because it operates controls or produces evidence. Create a separate Vendor for its provider and connect the System through `vendorId`; keep contracts, due diligence, and supplier risk on the Vendor. Name the people who can access system reports and keep extraction instructions in the System's Record Markdown. For each Type 2 population, select one source system and export the exact audit period. Split a population when different systems or queries produce its items. Link a verified `population-export` evidence record that names the same source system and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope control cannot be marked not applicable.
@@ -211,7 +223,7 @@ npx filegrc evidence-packet --audit audit-2026-type-2
 npx filegrc evidence-packet --audit audit-2026-type-2 --preview --require-ready
 ```
 
-The packet includes records explicitly related to the selected engagement, its systems, controls, criteria, policies, evidence, and dependencies. It does not include unrelated dated records from the workspace. A Type 2 packet adds period operating records, recurring obligation occurrences, event workflows, and management population reconciliations. Output includes a control matrix, source-system index, external-evidence delivery index, population index, evidence index, committed historical source versions, and SHA-256 checksums. Output under `.filegrc/evidence-packets/` is derived and must not be hand-edited or committed.
+The packet includes records explicitly related to the selected engagement, its systems, controls, criteria, policies, evidence, and dependencies. It does not include unrelated dated records from the workspace. A Type 2 packet adds FileGRC Evidence, recurring obligation occurrences, event workflows, and management population reconciliations. Output includes a control matrix with separate FileGRC Evidence and External Evidence columns, source-system index, external-evidence delivery index, population index, evidence index, committed historical source versions, and SHA-256 checksums. Output under `.filegrc/evidence-packets/` is derived and must not be hand-edited or committed.
 
 Treat a packet as ready for management delivery only when its status is `delivery-ready`, its review list is clear, and its manifest names a clean Git revision. This means FileGRC's management checks passed. It does not mean the engagement team found the evidence sufficient or appropriate. The generator copies raw records, Markdown, and local fixed attachments. It never fetches external references. Reconcile `external-evidence-index.csv` to the auditor portal or other approved delivery system before telling the engagement team that submission is complete.
 
@@ -227,7 +239,7 @@ The management reviewer and CPA auditor are different roles. Do not assign the C
 
 Policy and training attestations must identify the exact Git revision of the content that a person acknowledged. Store signatures as evidence attachments and link their evidence IDs from the attestation.
 
-Committee and risk meeting minutes are `meeting` resources with a primary Markdown companion. An optional `-agenda.md` companion holds the agenda. Record attendees, decisions, risks discussed, and action item IDs. Keep action tracking in `action-item` records.
+Committee and risk meeting minutes are `meeting` resources with a primary Markdown companion. An optional `-agenda.md` companion holds the agenda. Record attendees, decisions, and risks discussed on the Meeting. When follow-up needs separate tracking, create an `action-item` whose `sourceResourceId` points to the Meeting.
 
 ## Audit evidence
 

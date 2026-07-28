@@ -2,8 +2,9 @@ import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
+import { obligationIsRunning } from "./program-lifecycle.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
-import { isRfc3339Timestamp } from "./time.js";
+import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -17,6 +18,14 @@ export async function validateWorkspace(input = process.cwd()) {
   const diagnostics = [...loaded.diagnostics];
   const { byId } = indexResources(loaded.resources);
   const seen = new Map();
+  const asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC");
+  const obligationsByControl = new Map();
+  for (const obligation of loaded.resources.filter((record) => record.type === "obligation" && record.status !== "retired")) {
+    for (const controlId of obligation.controlIds || []) {
+      if (!obligationsByControl.has(controlId)) obligationsByControl.set(controlId, []);
+      obligationsByControl.get(controlId).push(obligation);
+    }
+  }
 
   for (const entry of loaded.entries) {
     const { record } = entry;
@@ -88,6 +97,7 @@ export async function validateWorkspace(input = process.cwd()) {
     }
     validateIndependentApproval(record, byId, displayPath, diagnostics);
     validateCompletedObligationEvent(record, byId, displayPath, diagnostics);
+    validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, displayPath, diagnostics);
     await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
   }
 
@@ -102,6 +112,36 @@ export async function validateWorkspace(input = process.cwd()) {
     },
     loaded
   };
+}
+
+function validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, path, diagnostics) {
+  if (record.type !== "control" || record.status !== "implemented") return;
+  const schedules = obligationsByControl.get(record.id) || [];
+  if (!schedules.length || schedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))) return;
+  const stopped = schedules.filter((obligation) => !obligationIsRunning(obligation, byId, asOf));
+  const paused = stopped.filter((obligation) => obligation.status === "paused");
+  const waiting = stopped.filter((obligation) => obligation.status === "active");
+  const policyBlockers = [...new Set(waiting.flatMap((obligation) => (obligation.policyIds || []).map((id) => {
+    const policy = byId.get(id);
+    if (!policy || policy.type !== "policy") return `${id} (missing)`;
+    if (policy.status !== "active") return `${policy.title} (${policy.status})`;
+    if (!policy.effectiveOn) return `${policy.title} (effective date missing)`;
+    if (policy.effectiveOn > asOf) return `${policy.title} (effective ${policy.effectiveOn})`;
+    return null;
+  })).filter(Boolean))];
+  const reasons = [
+    waiting.length
+      ? `${waiting.length} enabled ${waiting.length === 1 ? "schedule is" : "schedules are"} waiting for governing ${policyBlockers.length === 1 ? "policy" : "policies"} to become active and effective${policyBlockers.length ? `: ${policyBlockers.join(", ")}` : ""}. Complete Step 2 first.`
+      : "",
+    paused.length
+      ? `${paused.length} linked ${paused.length === 1 ? "schedule is" : "schedules are"} paused. Enable ${paused.length === 1 ? "it" : "them"} before implementing the control.`
+      : ""
+  ].filter(Boolean).join(" ");
+  diagnostics.push(error(
+    "control-work-queue-not-running",
+    path,
+    `This control cannot be marked implemented yet. ${reasons}`
+  ));
 }
 
 function validateDateRanges(record, path, diagnostics) {
@@ -132,9 +172,11 @@ function validateCompletedObligationEvent(record, byId, path, diagnostics) {
       "completedOn cannot be before occurredOn."
     ));
   }
-  const actionIds = record.actionItemIds || [];
+  const actionIds = [...byId.values()]
+    .filter((candidate) => candidate.type === "action-item" && candidate.sourceResourceId === record.id)
+    .map((candidate) => candidate.id);
   if (actionIds.length === 0) {
-    diagnostics.push(error("incomplete-obligation-event", path, "A complete obligation event must have action items."));
+    diagnostics.push(error("incomplete-obligation-event", path, "A complete Policy Event must have action items."));
     return;
   }
   for (const actionId of actionIds) {
@@ -197,13 +239,13 @@ function validateIndependentApproval(record, byId, path, diagnostics) {
       .map((id) => byId.get(id))
       .find((person) => (
         person?.id === "person-independent-approver"
-        && (!person.email || ["Independent Approver", "Independent Reviewer"].includes(person.title))
+        && ["Independent Approver", "Independent Reviewer"].includes(person.title)
       ));
     if (incompleteStarterApprover) {
       diagnostics.push(error(
         "independent-approver-not-appointed",
         path,
-        "Appoint an independent reviewer before approving this record. The reviewer may be internal or external but must be separate from the owner."
+        `The selected approver "${incompleteStarterApprover.title}" is still the starter placeholder. Open People and replace it with the reviewer's actual name before approving this record. The reviewer may be internal or external but must be separate from the owner.`
       ));
     }
   }
@@ -380,7 +422,9 @@ async function validateMarkdown(record, definition, model, root, path, diagnosti
     }
   }
 
-  for (const choices of definition.oneOf ?? []) {
+  for (const group of definition.oneOf ?? []) {
+    const choices = Array.isArray(group) ? group : group.fields;
+    if (!Array.isArray(choices) || (!Array.isArray(group) && !conditionMatches(record, group.when))) continue;
     const satisfied = choices.some((name) => (
       isMarkdownChoice(name)
         ? present.has(name.slice("$markdown:".length))
@@ -496,7 +540,9 @@ function isTimezone(value) {
 }
 
 function conditionMatches(record, condition) {
-  return Object.entries(condition).every(([name, value]) => record[name] === value);
+  return Boolean(condition) && Object.entries(condition).every(([name, expected]) => (
+    Array.isArray(expected) ? expected.includes(record[name]) : record[name] === expected
+  ));
 }
 
 function findDefinitionType(model, definition) {

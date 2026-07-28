@@ -37,12 +37,12 @@ const steps = [
   {
     number: "1",
     title: "Define scope",
-    body: "Name the service, criteria, dependencies, systems, and risks.",
+    body: "Confirm program owners, criteria, commitments, vendors, and in-scope systems.",
   },
   {
     number: "2",
     title: "Approve policies",
-    body: "Review the starter proposals and record real owners, approvers, and dates.",
+    body: "Tailor the proposals and record real owners, separate reviewers, approval dates, and effective dates.",
   },
   {
     number: "3",
@@ -51,31 +51,39 @@ const steps = [
   },
   {
     number: "4",
-    title: "Prepare evidence",
-    body: "Connect authoritative systems and prove that collection works.",
+    title: "Test evidence collection",
+    body: "Complete the generated External Evidence drafts and verify collection from each authoritative System.",
   },
   {
     number: "5",
     title: "Operate the program",
-    body: "Complete recurring work and event checklists with dated evidence.",
+    body: "Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.",
   },
   {
     number: "6",
-    title: "Prepare the audit",
-    body: "Record the engagement and period, reconcile populations, and build the packet.",
+    title: "Audit",
+    body: "Engage the CPA firm, record its agreed period, support fieldwork, and build the packet.",
   },
 ];
 
 const commands = [
   [
+    "program-path --json",
+    "Follow the same six-step path, instructions, and current status shown in the browser.",
+  ],
+  [
     "guide risk-assessment --json",
-    "Learn the fields, timing, policy context, and valid relationships.",
+    "Read the exact Instructions, Use, and Policy Basis shown in the browser, plus fields and relationships.",
   ],
   [
     "scaffold risk-assessment",
     "Create the same validated JSON and Markdown shape used by the browser.",
   ],
   ["obligations --json", "See upcoming, due, and overdue policy work."],
+  [
+    "trigger person-started --occurred-on 2026-07-25 --subject person-id",
+    "Add every required hiring task to the Work Queue in one validated write.",
+  ],
   [
     "program-readiness --json",
     "Check whether management can begin a reliable evidence period.",
@@ -315,7 +323,8 @@ const structuredData = {
         <h2>The browser is helpful. <em>It is not required.</em></h2>
         <p>
           An agent with no FileGRC context can discover the model, inspect valid
-          relationships, create records, complete scheduled work, and check the
+          relationships, follow the same six steps and page instructions, create
+          records, complete scheduled work, trigger Policy Events, and check the
           result without opening the renderer.
         </p>
         <p>

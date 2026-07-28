@@ -437,6 +437,29 @@ test("requires configured Markdown and accepts Markdown as an evidence source", 
   assert.match(await readFile(join(root, "data", "evidence", evidence.id, "evidence.md"), "utf8"), /Review notes/);
 });
 
+test("allows evidence collection drafts but requires collection facts before advancing them", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-evidence-draft-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const draft = {
+    schemaVersion: 1,
+    id: "evidence-access-collection-test",
+    type: "evidence",
+    title: "Access Evidence Collection Test",
+    status: "draft",
+    evidenceKind: "test-export",
+    collectionTestFamilyId: "identity-access",
+    collectionTestPrompt: "Export users and roles."
+  };
+  await createResource(root, draft);
+  assert.equal((await validateWorkspace(root)).ok, true);
+  await assert.rejects(
+    updateResource(root, "evidence", draft.id, { ...draft, status: "collected" }),
+    /Required field "source" is missing/
+  );
+  assert.equal((await loadWorkspace(root)).resources.find(({ id }) => id === draft.id).status, "draft");
+});
+
 test("stores common Record Markdown for result-bearing resources", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-record-markdown-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -450,7 +473,8 @@ test("stores common Record Markdown for result-bearing resources", async (contex
     severity: "medium",
     sourceResourceId: "person-owner",
     description: "The scheduled review completed after its cutoff.",
-    ownerIds: ["person-owner"]
+    ownerIds: ["person-owner"],
+    dueOn: "2026-08-01"
   };
 
   await createResource(root, finding, {
@@ -524,6 +548,64 @@ test("requires procedure Markdown before a control becomes implemented", async (
     }
   });
   assert.equal((await validateWorkspace(root)).ok, true);
+
+  const policy = {
+    schemaVersion: 1,
+    id: "policy-procedure-test",
+    type: "policy",
+    title: "Procedure test policy",
+    status: "draft",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-approver"],
+    controlIds: [control.id]
+  };
+  await createResource(root, policy, {
+    content: {
+      content: "# Procedure test policy\n\nThe owner completes and records the scheduled control."
+    }
+  });
+  const obligation = {
+    schemaVersion: 1,
+    id: "obligation-procedure-test",
+    type: "obligation",
+    title: "Run the procedure test",
+    status: "active",
+    activityType: "control-test",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 1,
+      anchorDate: "2026-07-01"
+    },
+    ownerIds: ["person-owner"],
+    controlIds: [control.id],
+    policyIds: [policy.id]
+  };
+  await assert.rejects(
+    createResource(root, obligation),
+    /enabled schedule is waiting for governing policy to become active and effective: Procedure test policy \(draft\)\. Complete Step 2 first/
+  );
+  await updateResource(root, "policy", policy.id, {
+    ...policy,
+    status: "active",
+    approvedOn: "2026-07-01",
+    effectiveOn: "2026-07-01"
+  });
+  await createResource(root, obligation);
+  await updateResource(root, "control", control.id, { ...control, status: "planned" });
+  await updateResource(root, "control", control.id, control);
+  assert.equal(
+    (await loadWorkspace(root)).resources.find(({ id }) => id === control.id).status,
+    "implemented"
+  );
+  await assert.rejects(
+    updateResource(root, "obligation", obligation.id, { ...obligation, status: "paused" }),
+    /linked schedule is paused\. Enable it before implementing the control/
+  );
+  assert.equal(
+    (await loadWorkspace(root)).resources.find(({ id }) => id === obligation.id).status,
+    "active"
+  );
 });
 
 test("rejects empty required relationships and rolls back bundled content", async (context) => {
@@ -583,6 +665,41 @@ test("requires policy and document approvers to be separate from owners", async 
   }, {
     content: { content: "# Team overlap" }
   }), /including through team membership/);
+});
+
+test("accepts a named internal policy approver without requiring an email", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-named-approver-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "person-independent-approver",
+    type: "person",
+    title: "Independent Reviewer",
+    status: "active"
+  });
+  const policy = {
+    schemaVersion: 1,
+    id: "policy-internal-approver",
+    type: "policy",
+    title: "Internal approver",
+    status: "approved",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-independent-approver"]
+  };
+  await assert.rejects(
+    createResource(root, policy, { content: { content: "# Internal approver" } }),
+    /selected approver "Independent Reviewer" is still the starter placeholder/
+  );
+  await updateResource(root, "person", "person-independent-approver", {
+    schemaVersion: 1,
+    id: "person-independent-approver",
+    type: "person",
+    title: "Alex Reviewer",
+    status: "active"
+  });
+  await createResource(root, policy, { content: { content: "# Internal approver" } });
+  assert.equal((await validateWorkspace(root)).ok, true);
 });
 
 test("does not count an empty array as a one-of value", async (context) => {

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
+import { obligationIsRunning } from "./program-lifecycle.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
@@ -27,8 +28,8 @@ export async function assessProgramReadiness(input, options = {}) {
   const collectionStage = evidenceCollectionStage(scope, records, byId, loaded.model);
   const evidenceStage = stage(
     "evidence",
-    "Prepare Evidence",
-    "Catalog authoritative systems, document repeatable extraction, and verify one test capture for every selected control family.",
+    "Test Evidence Collection",
+    "For external evidence without a dedicated Step 5 record, catalog the authoritative Systems, document repeatable extraction, and verify one test capture before operation begins.",
     [...sourceStage.items, ...collectionStage.items]
   );
   const evidenceGateStages = [
@@ -245,6 +246,11 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
   for (const control of scope.controls) {
     const source = await readMarkdown(control);
     const sourceSystems = (control.evidenceSourceIds || []).map((id) => byId.get(id)).filter((record) => record?.type === "system");
+    const queueSchedules = [...byId.values()].filter((record) => (
+      record.type === "obligation"
+      && record.status !== "retired"
+      && (record.controlIds || []).includes(control.id)
+    ));
     const checks = {
       implemented: control.status === "implemented",
       owner: (control.ownerIds || []).length > 0,
@@ -254,7 +260,10 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
       evidenceSource: sourceSystems.length > 0,
       implementationDate: Boolean(control.effectiveOn && control.effectiveOn <= asOf),
       policyMapping: (control.policyIds || []).length > 0,
-      criteriaMapping: (control.requirementIds || []).length > 0
+      criteriaMapping: (control.requirementIds || []).length > 0,
+      ...(queueSchedules.length ? {
+        workQueue: queueSchedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))
+      } : {})
     };
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
     items.push(item(
@@ -265,18 +274,21 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
         ? `Before implementation: ${missing.join(", ")}.`
         : `Implemented ${control.effectiveOn}; owned, scoped, scheduled, documented, mapped, and tied to ${sourceSystems.length} authoritative ${sourceSystems.length === 1 ? "source" : "sources"}.`,
       control,
-      { checks }
+      {
+        checks,
+        workQueue: queueSchedules.length ? {
+          running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf)).length,
+          total: queueSchedules.length
+        } : null
+      }
     ));
   }
-  return stage("controls", "Implement Controls", "Each implemented control needs an owner, actual procedure, scope, cadence, evidence source, mappings, and implementation date.", items);
+  return stage("controls", "Implement Controls", "Each implemented control needs an owner, actual procedure, scope, cadence, evidence source, mappings, an implementation date, and any linked Work Queue schedules running.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
-  const families = selectedControlFamilies(scope.controls, model);
+  const families = selectedControlFamilies(scope.controls, model).filter(requiresCollectionTest);
   const items = [];
-  if (!families.length) {
-    items.push(item("source-families", "action", "Map evidence sources", "No selected control families have authoritative evidence sources.", { type: "system" }));
-  }
   for (const family of families) {
     const selectedSources = [...new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []))]
       .map((id) => byId.get(id))
@@ -316,35 +328,47 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
 }
 
 function evidenceCollectionStage(scope, records, byId, model) {
-  const families = selectedControlFamilies(scope.controls, model);
+  const families = selectedControlFamilies(scope.controls, model).filter(requiresCollectionTest);
   const captures = records.filter((record) => (
     record.type === "evidence"
-    && record.status === "verified"
     && TEST_EVIDENCE_KINDS.has(record.evidenceKind)
-    && record.sourceSystemId
   ));
   const items = families.map((family) => {
-    const sourceIds = new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []));
+    const configuredSourceIds = new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []));
     const controlIds = new Set(family.controls.map((control) => control.id));
-    const capture = captures.find((record) => (
-      sourceIds.has(record.sourceSystemId)
-      && [...controlIdsForRecord(record, byId)].some((id) => controlIds.has(id))
-    ));
+    const capture = captures.find((record) => record.collectionTestFamilyId === family.id)
+      || captures.find((record) => (
+        [...controlIdsForRecord(record, byId)].some((id) => controlIds.has(id))
+      ));
+    const sourceIds = new Set([
+      ...configuredSourceIds,
+      ...(capture?.sourceSystemId ? [capture.sourceSystemId] : [])
+    ]);
+    const verified = capture?.status === "verified";
     return item(
       `test-family-${family.id}`,
-      capture ? "complete" : "action",
+      verified ? "complete" : "action",
       family.title,
-      capture
+      verified
         ? `${capture.title} proves that management successfully captured and verified evidence from ${byId.get(capture.sourceSystemId)?.title || "the authoritative source"}.`
-        : `Run and verify one test export or test capture from an authoritative source for this selected control family, then link it to a family control.`,
+        : capture?.status === "draft"
+          ? `${capture.title} is a draft. Open it, select the authoritative source System, collect the named artifact, and have another person verify it.`
+          : capture
+            ? `${capture.title} is ${capture.status} but must be verified before this family is ready.`
+          : `Run and verify one test export or test capture from an authoritative source outside FileGRC, then link it to a family control.`,
       capture || { type: "evidence" },
-      { controlIds: [...controlIds], evidenceId: capture?.id || null }
+      {
+        familyId: family.id,
+        controlIds: [...controlIds],
+        sourceSystemIds: [...sourceIds],
+        evidenceId: capture?.id || null,
+        evidenceStatus: capture?.status || null,
+        testEvidenceKind: family.testEvidenceKind,
+        testPrompt: family.testPrompt
+      }
     );
   });
-  if (!items.length) {
-    items.push(item("test-families", "action", "Test evidence collection", "Select and implement controls before testing their evidence sources.", { type: "evidence" }));
-  }
-  return stage("collection", "Test Evidence Collection", "A verified test export or capture is required for every selected control family before the candidate period can begin.", items);
+  return stage("collection", "Test Evidence Collection", "A verified test export or capture is required for each external evidence family that does not already have a dedicated Step 5 operating record.", items);
 }
 
 function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
@@ -435,7 +459,7 @@ function riskAssessmentItem(scope, records, byId, asOf) {
   );
 }
 
-function selectedControlFamilies(controls, model) {
+export function selectedControlFamilies(controls, model) {
   const remaining = new Set(controls.map((control) => control.id));
   const families = [];
   for (const definition of model.evidenceSourceFamilies || []) {
@@ -446,6 +470,10 @@ function selectedControlFamilies(controls, model) {
       id: definition.id,
       title: definition.title,
       sourceKinds: definition.sourceKinds || [],
+      testEvidenceKind: definition.testEvidenceKind || "test-capture",
+      testPrompt: definition.testPrompt || `Capture usable evidence for ${definition.title.toLowerCase()}.`,
+      collectionTestRequired: definition.collectionTestRequired !== false,
+      operationRecordTypes: definition.operationRecordTypes || [],
       controls: selected
     });
   }
@@ -466,10 +494,18 @@ function selectedControlFamilies(controls, model) {
       id: `control-${prefix}`,
       title,
       sourceKinds: [],
+      testEvidenceKind: "test-capture",
+      testPrompt: `Capture usable evidence for the selected ${title.toLowerCase()} controls.`,
+      collectionTestRequired: true,
+      operationRecordTypes: [],
       controls: selected
     });
   }
   return families;
+}
+
+function requiresCollectionTest(family) {
+  return family.collectionTestRequired !== false;
 }
 
 async function primaryMarkdown(loaded, record) {
@@ -553,7 +589,8 @@ function controlCheckLabel(name) {
     evidenceSource: "authoritative evidence source",
     implementationDate: "implementation date",
     policyMapping: "policy mapping",
-    criteriaMapping: "criteria mapping"
+    criteriaMapping: "criteria mapping",
+    workQueue: "running Work Queue schedules"
   })[name] || name;
 }
 
