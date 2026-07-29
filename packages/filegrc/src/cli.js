@@ -29,6 +29,7 @@ import { markdownEntries } from "./resource-markdown.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
 import { planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
+import { printGithubStarMessage } from "./startup.js";
 import { createAppState } from "./state.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -64,13 +65,19 @@ export async function runCli(argv = process.argv.slice(2)) {
       host: flags.host ?? process.env.FILEGRC_HOST,
       port: flags.port ?? process.env.FILEGRC_PORT
     });
-    console.log(`filegrc workspace: ${result.url}`);
-    console.log(`Data: ${result.root}/data`);
-    return await new Promise((resolvePromise) => {
-      const stop = () => result.server.close(resolvePromise);
+    const stopped = new Promise((resolvePromise) => {
+      const stop = () => {
+        process.removeListener("SIGINT", stop);
+        process.removeListener("SIGTERM", stop);
+        result.server.close(resolvePromise);
+      };
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
     });
+    console.log(`filegrc workspace: ${result.url}`);
+    console.log(`Data: ${result.root}/data`);
+    printGithubStarMessage();
+    return await stopped;
   }
   if (command === "setup") {
     const payload = positionals[0] ? await readSetupPayload(positionals[0]) : {};

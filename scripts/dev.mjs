@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFilegrc } from "../packages/create-filegrc/src/index.js";
 import { serveWorkspace } from "../packages/filegrc/src/index.js";
+import { printGithubStarMessage } from "../packages/filegrc/src/startup.js";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = join(repositoryRoot, ".filegrc", "dev-workspace");
@@ -24,6 +25,7 @@ const { url } = await serveWorkspace(workspaceRoot, { port });
 console.log(`filegrc development app: ${url}`);
 console.log(`Data: ${join(workspaceRoot, "data")}`);
 console.log("Delete .filegrc/dev-workspace to reset the starter data.");
+printGithubStarMessage();
 
 async function exists(path) {
   try {

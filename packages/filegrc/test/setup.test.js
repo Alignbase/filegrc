@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,12 +11,62 @@ import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
 const cliPath = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+const childProcessTimeout = 60_000;
 
 test("serve help exits without starting a server and documents bind safety", async () => {
-  const result = await execute(process.execPath, [cliPath, "serve", "--help"], { timeout: 2_000 });
+  const result = await execute(process.execPath, [cliPath, "serve", "--help"], { timeout: childProcessTimeout });
   assert.match(result.stdout, /Usage:\s+filegrc serve/);
   assert.match(result.stdout, /FILEGRC_PORT/);
   assert.match(result.stdout, /no authentication/);
+});
+
+test("serve ends startup output with the GitHub star message", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-serve-output-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+
+  const child = spawn(process.execPath, [cliPath, "serve", root, "--port", "0"], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  let stopping = false;
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+    if (!stopping && stdout.includes("https://github.com/Sunpeak-AI/filegrc")) {
+      stopping = true;
+      child.kill("SIGTERM");
+    }
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  const exit = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`Timed out waiting for server startup output.\n${stderr}`));
+    }, childProcessTimeout);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal });
+    });
+  });
+
+  assert.ok(
+    exit.code === 0 || (process.platform === "win32" && exit.signal === "SIGTERM"),
+    stderr || `Server exited with code ${exit.code} and signal ${exit.signal}.`
+  );
+  assert.equal(
+    stdout.slice(stdout.lastIndexOf("\n\x1b[38;2;255;184;0m")),
+    "\n\x1b[38;2;255;184;0m⭐️  → ❤️  https://github.com/Sunpeak-AI/filegrc\x1b[0m\n\n"
+  );
 });
 
 test("setup saves planned scope as a draft and completes through the shared HTTP operation", async (context) => {
