@@ -1,0 +1,246 @@
+---
+title: "SOC 2 Evidence Examples: What to Collect and Record"
+description: "Practical SOC 2 evidence examples for access, changes, vendors, incidents, training, and more, with the context each item needs."
+publishedDate: "2026-07-29"
+lastMod: "2026-07-29"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 evidence examples",
+    "SOC 2 evidence collection",
+    "SOC 2 evidence request list",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects SOC 2 operating records to fixed evidence from authoritative systems."
+faqs:
+  - question: "What are common SOC 2 evidence examples?"
+    answer: "Examples include approved policies, access review records, user and role exports, change approvals, deployment records, vulnerability scan reports, incident records, backup test results, vendor reviews, risk assessments, and training completion records. The exact request depends on the audit scope, controls, period, and CPA firm's testing plan."
+  - question: "What makes SOC 2 evidence usable?"
+    answer: "Usable evidence identifies the control activity, authoritative source, relevant date or period, collector, scope, result, exceptions, and any verification performed. It should be fixed or reproducible enough for another reviewer to understand what the item proves."
+  - question: "Is a screenshot enough for SOC 2 evidence?"
+    answer: "A screenshot may support a control when it clearly shows the source, setting, scope, and date. It may need collection notes, a system export, a ticket, or an operating record to explain what was reviewed and what happened."
+  - question: "What is a SOC 2 audit population?"
+    answer: "An audit population is the complete set of relevant events or items for a Type 2 period, such as production changes or access removals. Management preserves and reconciles the population, then the CPA firm selects samples for testing."
+  - question: "Does filegrc collect SOC 2 evidence automatically?"
+    answer: "No. filegrc catalogs authoritative systems and stores or references fixed evidence collected from them. It also keeps dated operating records created inside the workspace and links both evidence paths for audit preparation."
+  - question: "Who decides whether SOC 2 evidence is sufficient?"
+    answer: "The CPA firm performing the examination decides whether evidence is sufficient and appropriate for its work. Management prepares the program records, populations, source artifacts, and explanations requested for the engagement."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+SOC 2 evidence examples include approved policies, access reviews, user
+exports, change approvals, deployment records, scan reports, incident records,
+backup tests, vendor reviews, and training completions. A file by itself is
+rarely the whole answer. Record where it came from, what control activity it
+supports, the relevant date or period, who collected it, what happened, and any
+exceptions or follow-up.
+
+## TL;DR
+
+- Build an evidence bundle for each control activity, not a folder of
+  unexplained screenshots.
+- Keep source artifacts in or behind evidence records, and link them to the
+  policy, control, operating record, test, or population they support.
+- Preserve a complete Type 2 population before the CPA firm selects samples.
+- Record collection and verification facts separately because collecting a
+  file does not prove that someone checked it.
+- Ask the CPA firm for its exact request list. Examples help you prepare, but
+  they do not set the engagement team's testing plan.
+
+## SOC 2 evidence examples by control activity
+
+There is no universal evidence list for every SOC 2 examination. Scope,
+service commitments, applicable criteria, control design, timing, and the CPA
+firm's testing plan all affect the request.
+
+The
+[AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide criteria for evaluating controls relevant to security, availability,
+processing integrity, confidentiality, and privacy. The AICPA's
+[SOC 2 guide description](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy-OPL)
+describes SOC 2 as an assertion-based examination of a service organization's
+system description and controls. Your evidence should trace back to the actual
+controls in that scoped system.
+
+Use this table as a preparation map, then confirm the exact request with the
+CPA firm.
+
+| Control activity              | Source artifacts                                                             | Management record and context                                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Policy approval               | Approved policy text, acknowledgement or approval record                     | Policy owner, separate approver, version, approval date, effective date, and exact Git revision             |
+| Access provisioning           | Access request, approval, role assignment, account record                    | Person, system, access level, business need, approver, provisioner, and grant date                          |
+| Access removal                | Departure or role-change record, removal ticket, account status export       | Trigger date, systems checked, remover, removal time, exceptions, and completion proof                      |
+| Periodic access review        | User and role export, privileged-access report, review worksheet             | Review scope, source systems, reviewers, population count, decisions, exceptions, approval, and remediation |
+| Production change             | Pull request, test result, approval, deployment record, rollback information | Change owner, systems, review and deploy dates, result, emergency status, and linked complete population    |
+| Vulnerability management      | Scan report, finding export, remediation ticket, rescan result               | Scan scope, tool, run time, severity, owner, due date, resolution, exception, and verification              |
+| Security monitoring           | Logging configuration, alert test, alert or case export                      | Systems covered, test date, alert owner, investigation, outcome, and zero-event explanation when relevant   |
+| Incident response             | Alert, case timeline, communications, post-incident review                   | Occurrence and detection times, severity, responders, actions, notifications, root cause, and follow-up     |
+| Backup and recovery           | Backup job report, failure alert, restore-test output                        | Systems, test date, tester, recovery result, exceptions, corrective work, and review                        |
+| Vendor management             | Vendor inventory, risk review, contract record, third-party assurance report | Service, data access, risk rating, reviewer, decision, review date, exceptions, and next review             |
+| Risk assessment               | Risk register, assessment analysis, meeting record, approvals                | Scope, method, participants, findings, treatment decisions, owners, and completion date                     |
+| Training and acknowledgements | Assignment roster, completion export, signed acknowledgement                 | Assigned population, content revision, due date, completion, overdue follow-up, and exceptions              |
+
+These are examples, not promises that each item will be requested or accepted.
+The CPA firm decides which procedures to perform and whether the resulting
+evidence is sufficient and appropriate.
+
+## A useful evidence bundle has more than an attachment
+
+An attachment answers, "What file did we save?" An evidence bundle also answers
+why the file matters and how a reviewer should read it.
+
+For each item, record:
+
+1. **Control activity.** Name the policy, control, review, test, obligation,
+   event, or audit request the evidence supports.
+2. **Authoritative source.** Identify the system that operated the control or
+   produced the data.
+3. **Scope.** State which systems, people, accounts, changes, vendors, or other
+   items the artifact covers.
+4. **Date or period.** Keep the as-of date, generated timestamp, timezone, or
+   covered period explicit.
+5. **Collection method.** Save the report name, filters, query, parameters, or
+   capture route needed to explain or reproduce the item.
+6. **People.** Name the collector and, when verified, the separate verifier.
+7. **Result.** Record the review decision, conclusion, exceptions, and
+   follow-up instead of making the reader infer them from a screenshot.
+8. **Fixed source.** Preserve the export, report, signed file, screenshot, or
+   approved external reference used for the review.
+
+A screenshot can be useful when it shows a setting at a point in time. It is
+weaker when the product name, selected account, filters, date, or surrounding
+workflow is missing. Add collection notes or a source export when the image
+cannot explain those facts.
+
+## Separate filegrc records from external evidence
+
+filegrc uses two evidence paths because some control work happens inside the
+workspace and some proof comes from another system.
+
+filegrc Evidence is the dated operating record and its Markdown and Git
+history. Examples include an access review, risk assessment, vendor review,
+incident, vulnerability scan, backup test, meeting, training completion, or
+policy event completed in the workspace.
+
+External Evidence is a fixed artifact collected from another authoritative
+system. Examples include a user export, deployment report, scan output, signed
+acknowledgement, screenshot, or third-party report.
+
+Many activities need both. An access review record can state the scope,
+reviewer, decisions, exceptions, and approval. The linked external evidence can
+preserve the user and role export that the reviewer examined.
+
+This split is part of
+[running SOC 2 as files in Git](/blogs/soc-2-in-git). JSON holds facts that
+filegrc can validate and connect, Markdown holds the analysis, and Git supplies
+the change history. Source systems still operate controls and produce their own
+evidence.
+
+## Type 1 and Type 2 evidence answer different timing questions
+
+For a Type 1 report, the evidence needs to support control design and
+implementation at the specified date. The AICPA notes that the service auditor
+evaluates Type 1 controls as of a specific date, and that the timing of
+evidential support depends on professional judgment in the
+[AICPA discussion of SOC engagement standards](https://www.aicpa-cima.com/professional-insights/video/maintaining-high-standards-for-soc-engagements).
+
+For a Type 2 report, management also needs records across the period so the CPA
+firm can test operating effectiveness. A single end-of-period screenshot does
+not describe every quarterly review, production change, access removal, or
+training assignment that occurred.
+
+Preserve a complete management population for each sampled process. For a
+production-change population, that could mean every in-scope software,
+deployment, and infrastructure change in the period. For access, it could mean
+all grants, role changes, reviews, and removals from the applicable source
+systems.
+
+Record the exact:
+
+- period start and end;
+- authoritative source system;
+- report or query parameters;
+- generation timestamp and timezone;
+- item count;
+- completeness and accuracy checks;
+- fixed population export.
+
+A zero-item population still needs those facts. "No incidents occurred" or "no
+emergency changes occurred" is a population conclusion that needs a source and
+defined period.
+
+Management preserves and reconciles the population. The CPA firm selects its
+samples and performs its own tests.
+
+## Example of a recorded population export
+
+This shortened example shows the context around one fixed export:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "evidence-production-change-population-2026",
+  "type": "evidence",
+  "title": "2026 Production Change Population",
+  "status": "verified",
+  "evidenceKind": "population-export",
+  "source": "Source control and deployment report",
+  "collectedOn": "2027-01-02",
+  "classification": "Internal",
+  "filePaths": [
+    "evidence/evidence-production-change-population-2026/production-changes.csv"
+  ],
+  "periodStart": "2026-01-01",
+  "periodEnd": "2026-12-31",
+  "generatedAt": "2027-01-02T15:30:00Z",
+  "timezone": "UTC",
+  "queryDescription": "All in-scope production deployments completed in 2026.",
+  "populationCount": 184,
+  "completenessValidation": "Reconciled to the deployment history.",
+  "accuracyValidation": "Checked identifiers, timestamps, and environments.",
+  "sourceSystemId": "system-deployment",
+  "controlIds": ["control-change-management"],
+  "collectorIds": ["person-change-owner"],
+  "verifierIds": ["person-security-reviewer"],
+  "verifiedOn": "2027-01-03"
+}
+```
+
+The CSV is the artifact. The JSON tells a reviewer where it came from, which
+period and control it covers, how management checked it, and who performed the
+work.
+
+Use fictional IDs and values when testing a template. Do not copy customer,
+employee, or production data into a public repository.
+
+## Turn the examples into an evidence request list
+
+Start with the controls your company actually plans to operate. Do not begin
+with a generic spreadsheet that assumes every possible control applies.
+
+1. List each implemented control and its owner, cadence, in-scope systems, and
+   evidence source.
+2. Decide whether the activity creates a filegrc operating record, external
+   evidence, or both.
+3. Catalog the authoritative systems and the people who can export from them.
+4. Define the exact artifact, query, filters, date, timezone, and expected
+   fields.
+5. Test collection before management starts a candidate evidence period.
+6. Schedule recurring work and preserve event-driven work when it occurs.
+7. After a Type 2 period closes, export and reconcile each complete population
+   before sampling.
+8. Verify the evidence, resolve gaps, and map the final records to the CPA
+   firm's requests.
+
+[filegrc](/) turns those decisions into connected records, due work, readiness
+checks, and an indexed evidence packet tied to a Git revision. It does not log
+in to external systems, choose the CPA firm's samples, or decide whether the
+evidence supports the examination.
+
+For a fuller explanation of that boundary, read
+[what open source SOC 2 software can and cannot replace](/blogs/open-source-soc-2-compliance).
