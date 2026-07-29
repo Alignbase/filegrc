@@ -20,6 +20,8 @@ test("builds a self-contained read-only site", async (context) => {
   assert.match(html, /<link rel="icon" type="image\/png" href="\.\/favicon\.png">/);
   const favicon = await readFile(join(output, "favicon.png"));
   assert.deepEqual([...favicon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  const logoMark = await readFile(join(output, "logo-mark-white.png"));
+  assert.deepEqual([...logoMark.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   await access(join(output, "filegrc-app.js"));
   await access(join(output, "filegrc.css"));
 });
@@ -104,6 +106,10 @@ test("serves state and browser assets", async (context) => {
   assert.equal(faviconResponse.status, 200);
   assert.equal(faviconResponse.headers.get("content-type"), "image/png");
   assert.deepEqual([...new Uint8Array(await faviconResponse.arrayBuffer()).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  const logoMarkResponse = await fetch(`${result.url}/logo-mark-white.png`);
+  assert.equal(logoMarkResponse.status, 200);
+  assert.equal(logoMarkResponse.headers.get("content-type"), "image/png");
+  assert.deepEqual([...new Uint8Array(await logoMarkResponse.arrayBuffer()).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 
   const person = {
     schemaVersion: 1,
@@ -402,7 +408,7 @@ test("uses the shared blue gradient and follows the browser color scheme", () =>
   assert.match(renderIndex(), /<meta name="color-scheme" content="light dark">/);
   assert.match(APP_STYLES, /--primary-gradient:linear-gradient\(135deg,#000070 0%,#000035 60%\)/);
   assert.match(APP_STYLES, /\.sidebar\{background:var\(--sidebar\);color:#eef1ff\}/);
-  assert.match(APP_SCRIPT, /<img class="mark" src="\.\/favicon\.png" alt="" width="39" height="39">/);
+  assert.match(APP_SCRIPT, /<img class="mark" src="\.\/logo-mark-white\.png" alt="" width="39" height="39">/);
   assert.match(APP_STYLES, /\.button\.primary\{background:var\(--primary-gradient\);border-color:#000070;color:#fff\}/);
   assert.match(APP_STYLES, /@media\(prefers-color-scheme:dark\)/);
 });

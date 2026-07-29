@@ -5,7 +5,7 @@ import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
-import { FAVICON_PNG } from "./favicon.js";
+import { FAVICON_PNG, LOGO_MARK_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
 import { commitAndPushWorkspace, getFileHistory, pullWorkspace, pushWorkspace } from "./git.js";
 import { completeObligationOccurrence, createObligationEvent, planObligations } from "./obligations.js";
@@ -137,6 +137,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }
       }
       if (request.method === "GET" && url.pathname === "/favicon.png") return text(response, 200, FAVICON_PNG, "image/png");
+      if (request.method === "GET" && url.pathname === "/logo-mark-white.png") return text(response, 200, LOGO_MARK_PNG, "image/png");
       if (request.method === "GET" && url.pathname === "/filegrc-app.js") return text(response, 200, APP_SCRIPT, "text/javascript; charset=utf-8");
       if (request.method === "GET" && url.pathname === "/filegrc.css") return text(response, 200, APP_STYLES, "text/css; charset=utf-8");
       if (request.method === "GET" && url.pathname.startsWith("/packet/")) {

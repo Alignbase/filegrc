@@ -1,40 +1,30 @@
 import assert from "node:assert/strict";
-import { inflateSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import test from "node:test";
-import { FAVICON_PNG } from "../src/favicon.js";
+import { FAVICON_PNG, LOGO_MARK_PNG } from "../src/favicon.js";
 
-test("renders a thick document outline with a clean folded corner", () => {
-  const pixels = decodePixels(FAVICON_PNG);
-
-  assert.deepEqual(pixelAt(pixels, 0, 0), [0, 0, 0, 0]);
-  assert.deepEqual(pixelAt(pixels, 12, 30), [248, 249, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 22, 20), [0, 0, 79, 255]);
-  assert.deepEqual(pixelAt(pixels, 32, 42), [0, 0, 54, 255]);
-  assert.deepEqual(pixelAt(pixels, 45, 14), [248, 249, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 39, 15), [248, 249, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 45, 20), [248, 249, 255, 255]);
-  assert.deepEqual(pixelAt(pixels, 42, 15), [0, 0, 68, 255]);
+test("uses the FileGRC commit page favicon", () => {
+  assert.deepEqual(
+    [...FAVICON_PNG.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10]
+  );
+  assert.equal(FAVICON_PNG.readUInt32BE(16), 64);
+  assert.equal(FAVICON_PNG.readUInt32BE(20), 64);
+  assert.equal(
+    createHash("sha256").update(FAVICON_PNG).digest("hex"),
+    "70a3f128009b62097fb34b7b57149e91f8e3a0478c194622fad2ee7ad83613cf"
+  );
 });
 
-function decodePixels(png) {
-  const chunks = [];
-  let offset = 8;
-  while (offset < png.length) {
-    const length = png.readUInt32BE(offset);
-    const type = png.toString("ascii", offset + 4, offset + 8);
-    if (type === "IDAT") chunks.push(png.subarray(offset + 8, offset + 8 + length));
-    offset += length + 12;
-  }
-  const rows = inflateSync(Buffer.concat(chunks));
-  const pixels = Buffer.alloc(64 * 64 * 4);
-  for (let y = 0; y < 64; y += 1) {
-    const rowOffset = y * (64 * 4 + 1);
-    assert.equal(rows[rowOffset], 0);
-    rows.copy(pixels, y * 64 * 4, rowOffset + 1, rowOffset + 1 + 64 * 4);
-  }
-  return pixels;
-}
-
-function pixelAt(pixels, x, y) {
-  return [...pixels.subarray((y * 64 + x) * 4, (y * 64 + x + 1) * 4)];
-}
+test("uses the transparent FileGRC mark on dark surfaces", () => {
+  assert.deepEqual(
+    [...LOGO_MARK_PNG.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10]
+  );
+  assert.equal(LOGO_MARK_PNG.readUInt32BE(16), 64);
+  assert.equal(LOGO_MARK_PNG.readUInt32BE(20), 64);
+  assert.equal(
+    createHash("sha256").update(LOGO_MARK_PNG).digest("hex"),
+    "73eb99aa200fb877b302e39404e16e2e7c16260379cf2765b4b01eea34cf9f28"
+  );
+});

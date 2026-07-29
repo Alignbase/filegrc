@@ -24,4 +24,16 @@ assert.deepEqual(
   "The root README social preview must match the site Open Graph image"
 );
 
-console.log("Root README images match the generated workspace and site Open Graph image.");
+assert.deepEqual(
+  await readFile(new URL("../site/public/favicon.png", import.meta.url)),
+  await readFile(new URL("../packages/filegrc/src/favicon.png", import.meta.url)),
+  "The marketing site and FileGRC engine must use the same favicon"
+);
+
+assert.deepEqual(
+  await readFile(new URL("../site/public/logo-mark-white.png", import.meta.url)),
+  await readFile(new URL("../packages/filegrc/src/logo-mark-white.png", import.meta.url)),
+  "The marketing site and FileGRC engine must use the same transparent logo mark"
+);
+
+console.log("Root README images and FileGRC logo assets match.");

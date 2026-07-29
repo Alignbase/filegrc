@@ -5,18 +5,13 @@ interface Props {
 }
 
 const { light = false, compact = false } = Astro.props;
+const mark = light ? "/logo-mark-white.png?v=1" : "/favicon.png?v=4";
 ---
 
 <span
   class:list={["brand", light && "brand--light", compact && "brand--compact"]}
 >
-  <img
-    class="brand__mark"
-    src="/favicon.png?v=2"
-    alt=""
-    width="64"
-    height="64"
-  />
+  <img class="brand__mark" src={mark} alt="" width="64" height="64" />
   <span class="brand__copy">
     <span class="brand__name">filegrc</span>
     {!compact && <span class="brand__tag">SOC 2 workspace</span>}

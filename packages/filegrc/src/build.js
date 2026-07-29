@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FAVICON_PNG } from "./favicon.js";
+import { FAVICON_PNG, LOGO_MARK_PNG } from "./favicon.js";
 import { resolveWorkspacePath, resolveWorkspaceRoot } from "./paths.js";
 import { createAppState } from "./state.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
@@ -12,6 +12,7 @@ export async function buildWorkspace(input = process.cwd(), options = {}) {
   const paths = {
     html: resolveWorkspacePath(root, join(outputOption, "index.html")),
     favicon: resolveWorkspacePath(root, join(outputOption, "favicon.png")),
+    logoMark: resolveWorkspacePath(root, join(outputOption, "logo-mark-white.png")),
     script: resolveWorkspacePath(root, join(outputOption, "filegrc-app.js")),
     styles: resolveWorkspacePath(root, join(outputOption, "filegrc.css"))
   };
@@ -20,6 +21,7 @@ export async function buildWorkspace(input = process.cwd(), options = {}) {
   await Promise.all([
     writeFile(paths.html, renderIndex(state), "utf8"),
     writeFile(paths.favicon, FAVICON_PNG),
+    writeFile(paths.logoMark, LOGO_MARK_PNG),
     writeFile(paths.script, APP_SCRIPT, "utf8"),
     writeFile(paths.styles, APP_STYLES, "utf8")
   ]);
