@@ -1,0 +1,268 @@
+---
+title: "SOC 2 Audit Populations: Build a Complete Type 2 Source Set"
+description: "A practical guide to defining, exporting, and reconciling complete SOC 2 audit populations before the CPA firm selects samples."
+publishedDate: "2026-07-30"
+lastMod: "2026-07-30"
+author: "Abe Wheeler"
+tags:
+  ["SOC 2 audit populations", "SOC 2 Type 2 evidence", "SOC 2 audit sampling"]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc links each Type 2 audit population to its source system, fixed export, and reconciliation."
+faqs:
+  - question: "What is a SOC 2 audit population?"
+    answer: "A SOC 2 audit population is the complete set of control-relevant events or items from a defined Type 2 period, such as production changes, access grants, or workforce departures. Management prepares the population, and the CPA firm decides how to test it."
+  - question: "Who selects samples from a SOC 2 audit population?"
+    answer: "The CPA firm performing the examination selects samples and sets its testing approach. Management should supply the complete population and enough source context for the firm to assess and use it."
+  - question: "What should a SOC 2 population export include?"
+    answer: "Keep the exact period, source system, query or report parameters, timezone, generation time, item count, fixed export, and management's completeness and accuracy checks. Link the export to the controls and audit it supports."
+  - question: "Do zero-event populations need evidence?"
+    answer: "Yes. A zero count still needs an authoritative source, defined query, exact period, fixed export or report, and reconciliation. A statement that no events occurred does not show how management reached that result."
+  - question: "Can one SOC 2 audit population combine several systems?"
+    answer: "Split the population when different systems or queries produce the items. Keeping one source system and query per population makes the boundaries, count, and reconciliation easier to inspect."
+  - question: "Does filegrc choose SOC 2 audit samples?"
+    answer: "No. filegrc records management populations and links their source exports, controls, and reconciliation details. The CPA firm chooses samples, performs tests, evaluates exceptions, and decides whether the evidence is sufficient."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+A SOC 2 audit population is the complete set of control-relevant events or
+items from a defined Type 2 period. Examples include all production changes,
+access grants, workforce departures, or security incidents in scope. Management
+defines and reconciles each population to an authoritative source. The CPA firm
+then selects samples and decides how to test them.
+
+## TL;DR
+
+- Define populations from the controls, period, systems, and events in scope.
+- Use one authoritative system and repeatable query for each population.
+- Preserve the exact query, timezone, generation time, count, and fixed export.
+- Reconcile completeness and accuracy before the CPA firm selects samples.
+- Document zero-event populations with the same care as nonzero populations.
+- Keep management's population work separate from the CPA firm's sampling and
+  testing decisions.
+
+## What is a SOC 2 audit population?
+
+An audit population is the full source set from which a CPA firm may select
+items to test. If a control says every production change requires review and
+approval, the related population should cover every in-scope production change
+during the examination period. A folder containing a few approved pull
+requests is evidence for those items, but it is not the population.
+
+The
+[AICPA describes SOC 2](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy-OPL)
+as an examination of a service organization's system description and controls
+relevant to security, availability, processing integrity, confidentiality, or
+privacy. For Type 2 work, the CPA firm evaluates control operation across a
+period. Complete populations give the firm a defined source set for that work.
+
+The AICPA's
+[audit sampling guide](https://www.aicpa-cima.com/cpe-learning/publication/audit-sampling-audit-guide)
+describes sampling as a way to obtain audit evidence by testing less than 100%
+of the data. Management does not need to guess the firm's sample size or method.
+It needs to preserve the complete data set and explain where it came from.
+
+| Item          | What it is                                                              | Who owns the decision                                   |
+| ------------- | ----------------------------------------------------------------------- | ------------------------------------------------------- |
+| Population    | The complete set of relevant items for the defined period and scope     | Management prepares and reconciles it                   |
+| Sample        | Items selected from the population for testing                          | The CPA firm selects it                                 |
+| Item evidence | Approval, ticket, log, review, or other proof for a selected item       | Management supplies it; the CPA firm evaluates it       |
+| Test result   | The CPA firm's conclusion from its procedures, including any exceptions | The CPA firm performs the test and evaluates the result |
+
+## Which SOC 2 audit populations should you prepare?
+
+Start with the controls in the agreed audit scope and ask which ones create
+repeatable events or items during the Type 2 period. There is no universal list
+that applies to every company. A small software company may need populations
+such as:
+
+- workforce starts, role changes, and departures;
+- access grants, changes, reviews, and removals;
+- production and infrastructure changes;
+- security events and incidents;
+- vulnerabilities, scans, and remediation activity;
+- vendor additions, removals, changes, and reviews;
+- managed devices and other important assets;
+- training assignments, completions, and policy acknowledgements;
+- backup failures, restoration tests, and recovery exercises;
+- security exceptions, control findings, and remediation work.
+
+Treat this as a planning list, then confirm it with the CPA firm. The final set
+depends on the controls, systems, period, and testing plan for your engagement.
+
+One broad label may hide several populations. For example, source control may
+hold application changes while an infrastructure platform holds configuration
+changes. If the systems or queries differ, split the population. The firm can
+then trace each count to one source instead of trying to untangle a merged
+spreadsheet.
+
+## Record the source before the period closes
+
+Do not wait for fieldwork to learn whether a complete export exists. For each
+planned population, record:
+
+- the related control or controls;
+- the exact start and end dates;
+- the authoritative source system;
+- the person who can obtain the export;
+- the query, report, filters, and timezone;
+- the fields needed to identify each item;
+- the expected treatment of canceled, deleted, test, duplicate, or out-of-scope
+  items;
+- the reconciliation and review method.
+
+Run a test export before management relies on the process. Check whether the
+system retains the full period, whether timestamps use the expected timezone,
+and whether the export includes stable identifiers. If one report cannot cover
+the planned scope, change the plan while there is still time to preserve the
+missing source data.
+
+## How to build and reconcile a SOC 2 audit population
+
+### 1. Fix the period and scope
+
+Use the exact dates and systems in the recorded CPA engagement. A management
+candidate period can help you start preserving evidence, but do not present it
+as the CPA-agreed period until the engagement records that agreement.
+
+### 2. Export the complete source set
+
+Run the saved report or query against the authoritative system. Preserve the
+raw result as a fixed artifact. Record the generation timestamp and timezone so
+a reviewer can understand which boundary dates the query included.
+
+### 3. Record the query and exclusions
+
+Write the report name, filters, environments, status values, and exclusion
+rules in plain language. "All changes" is not enough if the actual query
+excluded canceled deployments or test environments.
+
+### 4. Count the source rows
+
+Record the population count before the CPA firm selects samples. If you
+transform the export, keep the raw source and explain how the final count
+changed.
+
+### 5. Check completeness
+
+Ask whether the export contains every in-scope item for the period. A useful
+check may reconcile deployment records to source-control merges, workforce
+departures to identity removals, or training assignments to the workforce
+roster. The right check depends on the source and control.
+
+The
+[U.S. Government Accountability Office's data reliability guide](https://www.gao.gov/assets/710/706666.pdf)
+is not SOC 2 guidance, but it gives a useful public framework for thinking about
+audit data: reliability depends on accuracy, completeness, and applicability
+for the audit purpose.
+
+### 6. Check accuracy
+
+Test that key fields mean what you say they mean. Check a small set of source
+records for identifiers, dates, status, environment, and ownership. This
+management check supports the export's use, but it does not replace the CPA
+firm's procedures.
+
+### 7. Review exceptions and record the reconciliation
+
+Document duplicates, missing fields, late entries, or source limitations. Name
+the person who reconciled the population, the date, and the conclusion:
+complete, complete with exceptions, or incomplete. Do not hide a source gap
+behind a clean spreadsheet.
+
+## A complete population record and export
+
+This shortened filegrc example separates the management population record from
+the fixed source export:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "audit-population-production-changes-2026",
+  "type": "audit-population",
+  "title": "2026 Production Changes",
+  "status": "reconciled",
+  "auditId": "audit-2026-type-2",
+  "populationKind": "production-changes",
+  "periodStart": "2026-01-01",
+  "periodEnd": "2026-12-31",
+  "ownerIds": ["person-change-owner"],
+  "controlIds": ["control-change-management"],
+  "sourceSystemId": "system-deployment",
+  "sourceEvidenceId": "evidence-production-change-population-2026",
+  "reconciledByIds": ["person-security-reviewer"],
+  "reconciledOn": "2027-01-03",
+  "conclusion": "complete",
+  "reconciliationSummary": "Reconciled deployment history to approved changes."
+}
+```
+
+The linked `population-export` evidence should record the exact period, query,
+generation time, timezone, count, completeness check, accuracy check, source
+system, collector, verifier, and fixed file. See the
+[recorded population export example](/blogs/soc-2-evidence-examples#example-of-a-recorded-population-export)
+for the companion evidence record.
+
+Use fictional IDs and values when testing a template. Keep secrets and personal
+data that may need deletion out of Git.
+
+## Zero-event populations still need a source
+
+A zero count can be the correct result. A company may have no security
+incidents, emergency production changes, or new vendors during the period. The
+CPA firm still needs a basis for understanding that result.
+
+For a zero-event population, keep:
+
+- the same exact period and scope;
+- the authoritative source system;
+- the query or report parameters;
+- the fixed zero-row export or source report;
+- the count of zero;
+- the completeness and accuracy checks;
+- the reconciler, date, and conclusion.
+
+Do not mark a population as not applicable merely because the count is zero. If
+the control remained in scope and an event could have occurred, zero is a
+population result.
+
+## Common population mistakes
+
+| Mistake                                    | Why it causes follow-up                                           | Better record                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Sending only the requested sample items    | The CPA firm cannot trace them to a defined complete source set   | Preserve the full export before samples are selected                  |
+| Combining several systems in one sheet     | The source, query, exclusions, and count become hard to reproduce | Split by authoritative system and query                               |
+| Exporting with loose date filters          | Boundary items may be missing or included twice                   | Record exact timestamps, timezone, and inclusive or exclusive filters |
+| Cleaning the file without keeping raw data | Reviewers cannot trace changes made during preparation            | Keep the raw export and document every transformation                 |
+| Treating zero as not applicable            | A blank statement does not prove that no events occurred          | Keep the zero-row export, query, count, and reconciliation            |
+| Choosing samples for the CPA firm          | Management may bias or narrow the source set before testing       | Supply the complete population and let the firm select samples        |
+
+## Manage populations as files in Git
+
+[filegrc](/) records each Type 2 population with its audit, controls, source
+system, fixed export, count, reconciliation, and conclusion. The audit-readiness
+check flags missing or incomplete population work, and the evidence packet adds
+a population index tied to a clean Git revision.
+
+```sh
+npx filegrc prepare-audit audit-2026-type-2 --json
+npx filegrc audit-readiness audit-2026-type-2 --json
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --json
+```
+
+The repository keeps the population record reviewable beside the rest of the
+program. This follows the same pattern as
+[running SOC 2 work in Git](/blogs/soc-2-in-git): JSON holds structured facts,
+Markdown holds the reconciliation method and notes, fixed files preserve source
+artifacts, and Git supplies the revision history.
+
+filegrc does not query external systems, choose samples, perform audit tests, or
+decide whether evidence is sufficient. Your team exports and reconciles the
+source data. The CPA firm plans and performs the examination.
+
+If you are deciding what else should live in the repository, read
+[what open source SOC 2 software can and cannot replace](/blogs/open-source-soc-2-compliance).
