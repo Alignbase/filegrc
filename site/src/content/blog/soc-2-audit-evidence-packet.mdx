@@ -1,0 +1,312 @@
+---
+title: "SOC 2 Audit Evidence Packet: What to Include and Check"
+description: "Learn what a SOC 2 audit evidence packet should contain, how to review it before fieldwork, and what still stays with your CPA firm."
+publishedDate: "2026-07-31"
+lastMod: "2026-07-31"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 audit evidence packet",
+    "SOC 2 audit preparation",
+    "SOC 2 evidence handoff",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc builds a scoped SOC 2 evidence packet with records, indexes, history, attachments, and checksums."
+faqs:
+  - question: "What is a SOC 2 audit evidence packet?"
+    answer: "A SOC 2 audit evidence packet is management's organized set of scoped records, evidence, indexes, and supporting files for a CPA firm's fieldwork. It is not the SOC 2 report and does not replace the firm's testing or judgment."
+  - question: "What should a SOC 2 audit evidence packet include?"
+    answer: "Include the engagement scope and dates, control matrix, systems of record, evidence index, fixed attachments, policies and management documents, relevant operating records, committed source history, and file checksums. A Type 2 packet also needs period coverage, reconciled populations, and requested sample evidence when sampling applies."
+  - question: "Is an evidence request list the same as an evidence packet?"
+    answer: "No. The CPA firm's request list states what it wants. The evidence packet organizes management's approved records and files used to answer those requests, while the firm's portal or tracker may remain the source of truth for request status."
+  - question: "Does a delivery-ready evidence packet mean the auditor accepted the evidence?"
+    answer: "No. Delivery-ready means management's filegrc checks passed and the packet has no recorded errors or warnings. The CPA firm still decides whether evidence is sufficient and appropriate, performs testing, evaluates exceptions, and issues the report."
+  - question: "How should a company send a SOC 2 evidence packet?"
+    answer: "Review the packet for secrets, personal data, customer data, and out-of-scope material, then use the CPA firm's approved encrypted transfer channel. Do not email an unencrypted packet, and apply the company's access and retention rules to every exported copy."
+  - question: "What do SHA-256 checksums prove in an evidence packet?"
+    answer: "Checksums let the sender and receiver detect whether packet files changed after the checksum list was generated. They do not encrypt the files, prove who created them, or show that a CPA firm accepted the evidence."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+A SOC 2 audit evidence packet is management's organized set of scoped records,
+evidence, indexes, and supporting files for a CPA firm's fieldwork. A useful
+packet shows the exact engagement, date or period, controls, source systems,
+evidence paths, and file integrity. It is not the SOC 2 report, and it does not
+replace the CPA firm's testing or judgment.
+
+## TL;DR
+
+- Build the packet from a recorded CPA engagement with exact scope and dates.
+- Include control, evidence, source-system, and Type 2 population indexes.
+- Preserve fixed attachments, long-form records, and committed source history.
+- Generate from a clean Git revision and verify every file with checksums.
+- Review external references and send them through the approved delivery
+  system.
+- Treat "delivery-ready" as a management check, not auditor acceptance.
+
+## What is a SOC 2 audit evidence packet?
+
+The packet is a handoff from management to the engagement team. It connects the
+company's system description, policies, controls, operating records, external
+evidence, and testing support to one defined SOC 2 examination.
+
+The
+[AICPA describes SOC 2](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy-OPL)
+as an examination of a service organization's system and controls relevant to
+security, availability, processing integrity, confidentiality, or privacy. The
+CPA firm performs that examination and issues the report. Management prepares
+the system description, controls, records, and evidence that support fieldwork.
+
+Three documents often get confused:
+
+| Item                  | Purpose                                                        | Owner                          |
+| --------------------- | -------------------------------------------------------------- | ------------------------------ |
+| Evidence request list | States what the engagement team wants and tracks follow-up     | CPA firm, often in its portal  |
+| Audit evidence packet | Organizes management's scoped records and files for delivery   | Management prepares it         |
+| SOC 2 report          | Communicates the examination, tests, results, and firm opinion | Independent CPA firm issues it |
+
+The packet should follow the request list without trying to replace it. Keep
+the CPA firm's portal or request tracker authoritative when that is how the
+engagement team manages fieldwork.
+
+## What should a SOC 2 audit evidence packet include?
+
+A reviewable packet needs more than a ZIP file full of screenshots. It should
+let another person trace each item to the engagement, control, source system,
+period, and management record that explains it.
+
+| Packet part                       | What a reviewer should be able to learn                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------- |
+| Engagement summary                | Audit kind, scope, applicable date or period, and subservice method                   |
+| Review status                     | Open management errors, warnings, and readiness state                                 |
+| Control matrix                    | Criteria, controls, systems, operating records, external evidence, tests, and samples |
+| Source-system index               | Which systems produced evidence and why each source is authoritative                  |
+| Evidence index                    | Source, collector, verifier, period, controls, attachments, and references            |
+| External-evidence delivery index  | Which items must be delivered or accessed outside the packet                          |
+| Population index for Type 2       | Complete source sets, counts, queries, systems, and reconciliation conclusions        |
+| Policies and management documents | Approved content relevant to the selected engagement                                  |
+| Operating records                 | Dated work performed inside the GRC workspace                                         |
+| Fixed attachments                 | Exports, reports, screenshots, signed files, and other retained source artifacts      |
+| Committed source history          | Prior committed versions with Git revision metadata                                   |
+| Manifest and checksums            | Machine-readable packet facts and a digest for every other file                       |
+| Handling instructions             | Classification, external-reference, transfer, access, and retention warnings          |
+
+The exact contents depend on the recorded scope and the CPA firm's requests.
+Do not add unrelated records because they happened during the period. Extra
+files create privacy and review risk without helping the engagement.
+
+If you are still deciding what evidence to collect, start with these
+[SOC 2 evidence examples](/blogs/soc-2-evidence-examples). The packet comes
+later, after the underlying records and source artifacts are ready.
+
+## Type 1 and Type 2 packets need different coverage
+
+A Type 1 examination addresses controls as of a specified date. A Type 2
+examination addresses controls over a period, so its management packet needs
+period-wide operating support.
+
+| Coverage area                         | Type 1 as-of date | Type 2 period |
+| ------------------------------------- | ----------------- | ------------- |
+| Engagement scope and agreed date(s)   | Yes               | Yes           |
+| Management system description         | Yes               | Yes           |
+| Approved policies and control context | Yes               | Yes           |
+| Evidence tied to the relevant timing  | Yes               | Yes           |
+| Recurring obligation coverage         | Not period-based  | Yes           |
+| Event workflow coverage               | Not period-based  | Yes           |
+| Complete management populations       | Usually no        | Yes           |
+| Sample evidence when sampling applies | Not period-based  | Yes           |
+
+For Type 2, prepare and reconcile each complete source set before the CPA firm
+selects samples. The
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) explains how to
+record the source, query, period, count, and completeness and accuracy checks.
+
+## Build the packet from the engagement record
+
+### 1. Record the CPA engagement
+
+Create one audit record for the real engagement. Record the Type 1 date or Type
+2 period only after the CPA firm agrees to it. Include the scope, audit kind,
+firm, owners, applicable framework reference, and in-scope systems and
+controls.
+
+A management candidate period may help your team preserve evidence earlier.
+Keep it separate from the firm-agreed dates.
+
+### 2. Prepare the management records
+
+Create engagement-specific management documents. For Type 2, also create the
+planned population records and connect them to the applicable controls and
+source systems.
+
+Preparation should create drafts, not approvals or compliance claims. People
+still review the system description, approve management documents, implement
+controls, and reconcile populations.
+
+### 3. Run readiness before generating files
+
+Check the engagement, dates, scope, documents, controls, evidence, source
+systems, and Type 2 population work. Fix the source records instead of editing
+packet output.
+
+In filegrc:
+
+```sh
+npx filegrc prepare-audit audit-2026-type-2
+npx filegrc audit-readiness audit-2026-type-2 --json
+npx filegrc audit-readiness audit-2026-type-2 --require-ready --json
+```
+
+### 4. Preview the selected records
+
+Preview the packet before writing a directory:
+
+```sh
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --json
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --require-ready
+```
+
+Check the selected records, control coverage, systems, populations, evidence,
+and review messages. A record should be included because it relates to the
+engagement, not merely because its date falls inside the period.
+
+### 5. Commit the reviewed source state
+
+Resolve the remaining management gaps and commit the approved records. Build
+the delivery candidate from a clean worktree so the manifest can name the
+exact Git revision.
+
+Git history answers which source version the packet came from. Domain fields
+still answer when a policy was approved, an event occurred, evidence was
+collected, or a population was reconciled. See
+[how SOC 2 records work in Git](/blogs/soc-2-in-git) for that distinction.
+
+### 6. Generate the packet
+
+Write the derived output only after the preview matches the intended
+engagement:
+
+```sh
+npx filegrc evidence-packet --audit audit-2026-type-2
+```
+
+A filegrc packet has this general shape:
+
+```text
+.filegrc/evidence-packets/audit-2026-type-2/
+├── index.html
+├── README.md
+├── HANDLING.md
+├── manifest.json
+├── control-matrix.csv
+├── evidence-index.csv
+├── source-system-index.csv
+├── external-evidence-index.csv
+├── population-index.csv
+├── records/
+├── content/
+├── attachments/
+├── history/
+│   └── index.json
+└── SHA256SUMS
+```
+
+Packet output is derived. Do not hand-edit or commit it. Fix the source record
+and generate a new packet when something is wrong.
+
+## Read the packet status correctly
+
+filegrc uses three packet states:
+
+| Status            | Meaning for management                                                 |
+| ----------------- | ---------------------------------------------------------------------- |
+| `draft`           | One or more errors block management delivery                           |
+| `review-required` | No blocking errors remain, but one or more warnings need review        |
+| `delivery-ready`  | filegrc's recorded management checks passed with no errors or warnings |
+
+`delivery-ready` does not mean the CPA firm accepted the files or found them
+sufficient and appropriate. It does not mean samples passed, exceptions were
+cleared, or a report opinion was issued. Record those facts only when the
+engagement team provides them.
+
+## Handle external references separately
+
+Some evidence may remain in an auditor portal, approved file store, or other
+controlled system. filegrc lists external references but never fetches them.
+Their presence keeps a generated packet in `review-required` state.
+
+Before saying the handoff is complete:
+
+1. Open `external-evidence-index.csv`.
+2. Match each listed item to the CPA firm's approved delivery system.
+3. Confirm the delivered item uses the same period, source, and identifier.
+4. Record follow-up in the engagement's request workflow.
+5. Keep access limited to the people who need it.
+
+An external link in a manifest does not prove that the engagement team received
+the file or can still access it.
+
+## Verify checksums after transfer
+
+filegrc writes a SHA-256 digest for every other packet file. The
+[NIST Secure Hash Standard](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)
+explains that message digests can detect whether content changed after the
+digest was generated.
+
+After transfer, the sender or receiver can run:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+```
+
+or:
+
+```sh
+sha256sum -c SHA256SUMS
+```
+
+A matching checksum shows that the transferred bytes match the checksum list.
+It does not encrypt the packet, identify who created it, prove approval, or
+show that the evidence supports a control. Use organization-controlled transfer
+and access systems for those needs.
+
+## Review the packet before sending it
+
+Run this final management review:
+
+- Confirm the packet names the intended audit, scope, and exact dates.
+- Read every error and warning.
+- Reconcile the control matrix to the CPA firm's request list.
+- Confirm external evidence came from the recorded source system.
+- Check Type 2 populations, counts, queries, and linked sample evidence.
+- Open fixed attachments and confirm they match their evidence records.
+- Review committed historical versions for out-of-scope or sensitive material.
+- Remove secrets, unnecessary personal data, customer data, and unrelated
+  records by fixing packet scope or source records.
+- Verify `SHA256SUMS`.
+- Read `HANDLING.md` and apply the strictest included classification.
+- Transfer through the CPA firm's approved encrypted channel.
+
+Do not email an unencrypted packet. filegrc does not encrypt or sign the output
+because those choices depend on organization-controlled keys and delivery
+systems.
+
+## Build the packet as files, not a second database
+
+[filegrc](/) builds a SOC 2 audit evidence packet from the same JSON, Markdown,
+attachments, and Git history your team reviews during the program. It selects
+records related to the chosen engagement, creates the indexes, copies fixed
+local evidence, exports committed source versions, and writes per-file
+checksums.
+
+This follows the boundary described in
+[what open source SOC 2 software can and cannot replace](/blogs/open-source-soc-2-compliance).
+filegrc manages the program record and evidence handoff. Source systems still
+operate controls and produce external evidence. Management still reviews the
+packet. The CPA firm still selects samples, performs tests, evaluates
+exceptions, decides whether evidence is sufficient, and issues the report.
