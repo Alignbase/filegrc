@@ -116,9 +116,25 @@ Private exports may be inspected to understand generic workflows, but they are n
 
 Use semantic versioning for published releases. Keep package versions unchanged during normal development, then update the coordinated package, template, and lockfile versions as part of a release.
 
-At release time, bump each package whose published files or behavior changed. `filegrc` includes `bin/`, `src/`, and `model/`. `create-filegrc` includes its CLI, prompts, dependency resolution, template, starter records, policies, and generated lockfile behavior. Root-only documentation, tests, and development scripts do not need a package bump.
+Choose the release level from the highest-impact published change. `filegrc` includes `bin/`, `src/`, and `model/`. `create-filegrc` includes its CLI, prompts, dependency resolution, template, starter records, policies, and generated lockfile behavior. Root-only documentation, tests, and development scripts do not need a release.
 
 Publish `filegrc` before any `create-filegrc` release that depends on it. A package update must never rewrite a consumer's policies or compliance records without an explicit command and reviewable Git diff.
+
+### Release checklist
+
+1. Compare `HEAD` with the latest release tag and confirm the next semantic version. The publish workflow is coordinated and requires `filegrc` and `create-filegrc` to match the release tag, so every npm release bumps both package manifests.
+2. Update every coordinated version copy. The current surfaces are the root `package.json`, both publishable package manifests, `packages/create-filegrc/template/package.json`, `site/package.json`, the root lockfile entries, and the minimal generated lockfile fallback in `packages/create-filegrc/src/index.js`. Search for the old exact version after editing so a copy is not missed.
+3. Install from the lockfile with `npm ci`. Run `CI=true npm run validate` with the same Node major used by `.github/workflows/publish.yml`, then run `npm run site:build`, both `npm pack --dry-run --workspace` checks, `npm audit`, and the private-source and secret scans. When the active Node version differs from the workflow, use a version manager or an isolated Node package command and print `node --version` before validation.
+4. Generate and validate a fresh consumer repository when the template or scaffolder changed. Test it with the unreleased local `filegrc` package so the smoke test does not resolve the previous npm release.
+5. Commit all release changes and pre-release fixes before creating the tag. Push `main`, create the version tag at that exact commit, verify `main` and the tag resolve to the same commit, then publish the GitHub release. Publishing the GitHub release starts `.github/workflows/publish.yml`.
+6. Follow the publish workflow through validation, package inspection, trusted publishing, both npm publishes, and the installed README smoke test. The GitHub release alone does not mean the npm release completed.
+7. Verify both package versions and `latest` tags from the npm registry. Verify each package has a provenance attestation, then confirm the worktree is clean and `main`, the Git tag, and the GitHub release all resolve to the intended commit.
+
+Keep Git test repositories deterministic. When a test initializes its working repository on `main` and later clones a bare remote, initialize the bare remote with `--initial-branch=main` too. Do not depend on a developer or runner's global `init.defaultBranch`.
+
+If a hosted validation run appears stuck, compare it with the exact workflow Node version locally. After cancelling a stuck run, inspect its completed job log before retrying because `node:test` may wait on open server handles after an earlier assertion failure.
+
+Before recovering a failed release, query npm for both package versions. If neither package was published, delete the failed GitHub release and tag before recreating them at a corrected commit. If one package was published, do not move the tag or reuse the version for changed source. Rerun the idempotent workflow from the same tagged commit to publish the missing package, or cut a new patch release when source changes are required.
 
 ## Validation
 
