@@ -116,12 +116,12 @@ test("pushes branches and pulls remote changes with rebase", async (context) => 
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
 
   await makeWorkspace(root);
-  await git(root, ["init"]);
+  await git(root, ["init", "--initial-branch=main"]);
   await git(root, ["config", "user.name", "Test User"]);
   await git(root, ["config", "user.email", "test@example.test"]);
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "Initialize workspace"]);
-  await git(parent, ["init", "--bare", remote]);
+  await git(parent, ["init", "--bare", "--initial-branch=main", remote]);
   await git(root, ["remote", "add", "origin", remote]);
 
   const firstPush = await pushWorkspace(root);
@@ -312,7 +312,7 @@ test("trunk mode blocks missing Git setup and unrelated monorepo changes", async
   assert.match(state.repository.message, /remote "origin" does not exist/);
   await new Promise((resolve) => running.server.close(resolve));
 
-  await git(parent, ["init", "--bare", remote]);
+  await git(parent, ["init", "--bare", "--initial-branch=main", remote]);
   await git(repositoryRoot, ["remote", "add", "origin", remote]);
   running = await serveWorkspace(root, { port: 0 });
   state = await fetchJson(`${running.url}/api/state`);
@@ -555,7 +555,7 @@ test("retry sync refuses diverged history and commits that include files outside
   await writeFile(join(repositoryRoot, "application.txt"), "initial\n", "utf8");
   await git(repositoryRoot, ["add", "."]);
   await git(repositoryRoot, ["commit", "-m", "Initialize monorepo"]);
-  await git(parent, ["init", "--bare", remote]);
+  await git(parent, ["init", "--bare", "--initial-branch=main", remote]);
   await git(repositoryRoot, ["remote", "add", "origin", remote]);
   await git(repositoryRoot, ["push", "-u", "origin", "main"]);
   await git(parent, ["clone", remote, peer]);
@@ -608,7 +608,7 @@ async function makeTrunkGitFixture(context, prefix) {
   await configureGit(root);
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "Initialize workspace"]);
-  await git(parent, ["init", "--bare", remote]);
+  await git(parent, ["init", "--bare", "--initial-branch=main", remote]);
   await git(root, ["remote", "add", "origin", remote]);
   await git(root, ["push", "-u", "origin", "main"]);
   return { parent, root, remote };
