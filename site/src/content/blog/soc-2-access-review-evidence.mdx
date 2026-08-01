@@ -1,0 +1,274 @@
+---
+title: "SOC 2 Access Review Evidence: What to Save and Why"
+description: "Learn what SOC 2 access review evidence should contain, how to prove remediation, and how to keep the review tied to its source data."
+publishedDate: "2026-08-01"
+lastMod: "2026-08-01"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 access review evidence",
+    "SOC 2 access review",
+    "user access review evidence",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects each access review to its source systems, decisions, evidence, approval, and remediation."
+faqs:
+  - question: "What is SOC 2 access review evidence?"
+    answer: "SOC 2 access review evidence is the dated record of which systems and access grants management reviewed, the complete source data used, each reviewer decision, approval, exceptions, and proof that required access changes were completed."
+  - question: "What should a SOC 2 access review include?"
+    answer: "Record the review date or period, systems and account types in scope, source exports and counts, reviewers, the decision for each access grant, exceptions, approval, and evidence for every removal or role change."
+  - question: "Does SOC 2 require quarterly access reviews?"
+    answer: "The AICPA Trust Services Criteria call for periodic review of access credentials but do not set one universal quarterly schedule. Management should define a risk-based cadence in its policy and control, operate it consistently, and confirm that design with the CPA firm."
+  - question: "Is a spreadsheet enough for SOC 2 access review evidence?"
+    answer: "A spreadsheet can record review decisions, but it should stay tied to the complete dated source export, reviewer identity, approval, exceptions, and proof of completed changes. A clean sheet without its source and remediation trail leaves important questions unanswered."
+  - question: "How do you prove access was removed after a review?"
+    answer: "Keep the review decision, the assigned change or ticket, the completion date, and a fixed export, log, or screenshot from the authoritative system showing the new access state. Link that proof to the affected decision."
+  - question: "Does filegrc pull user lists from identity systems?"
+    answer: "No. Your team exports access data from each authoritative system. filegrc records the review, links the fixed evidence or approved external reference, tracks follow-up, and keeps the resulting files reviewable in Git."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+SOC 2 access review evidence should show what access management reviewed, the
+complete source data used, who made each decision, and whether required changes
+were completed. Save more than a signed spreadsheet. Keep the dated source
+export, scope, reviewer decisions, approval, exceptions, and proof of each
+removal or role change together.
+
+## TL;DR
+
+- Start with a complete, dated export from every system in scope.
+- Include human, privileged, service, shared, and temporary access when the
+  control covers those account types.
+- Record a keep, change, revoke, or exception decision for each access item.
+- Link every change decision to proof of completion in the source system.
+- Set the cadence in your policy and control. SOC 2 does not impose one
+  universal quarterly schedule.
+- Keep sensitive account data in a repository only when access and retention
+  rules permit it.
+
+## What counts as SOC 2 access review evidence?
+
+An access review is a control activity. Its evidence should let another
+reviewer answer five questions:
+
+1. What systems, accounts, roles, and period did the review cover?
+2. Was the source list complete as of the stated date?
+3. Who decided whether each access grant was still appropriate?
+4. Which grants needed removal, reduction, or an approved exception?
+5. Did the team complete and verify those changes?
+
+The
+[AICPA Trust Services Criteria](https://us.aicpa.org/content/dam/aicpa/interestareas/frc/assuranceadvisoryservices/downloadabledocuments/trust-services-criteria-redlined.pdf)
+say entities should periodically review whether access credentials remain
+appropriate, remove credentials when access is no longer authorized, and
+manage access according to roles, responsibilities, least privilege, and
+segregation of duties. Those criteria describe the control objective. Your
+policy, control design, systems, risks, and CPA firm's testing plan shape the
+exact review and evidence.
+
+| Evidence part            | What to preserve                                                                                         | Question it answers                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Policy and control       | Scope, owner, cadence, decision rules, and deadline for changes                                          | What process did management commit to run? |
+| Source population        | Full user, role, group, privilege, or entitlement export with source, filters, time, timezone, and count | What access existed when the review began? |
+| Review record            | Systems, period, reviewers, method, and decision for each item                                           | What did the reviewers check and decide?   |
+| Approval                 | Approver identity and approval date                                                                      | Who accepted the completed review?         |
+| Remediation proof        | Ticket, change record, log, or new export showing the changed state                                      | Were removals and reductions completed?    |
+| Exceptions and follow-up | Reason, risk owner, approval, due date, and linked action                                                | What remains open, and who owns it?        |
+
+A screenshot may support one setting or changed account, but it rarely proves
+that the reviewer started with a complete population. A source export plus the
+review record gives the screenshot context.
+
+## Quarterly is a control choice, not a blanket SOC 2 rule
+
+The AICPA criterion says access credentials should receive periodic review. It
+does not set one schedule for every service organization or every system.
+
+Other security guidance can help management choose a cadence. For example,
+[CIS Safeguard 5.1](https://cas.docs.cisecurity.org/en/latest/source/Controls5/)
+recommends validating active accounts at least quarterly. NIST SP 800-53 uses
+an organization-defined frequency for reviewing user privileges and
+organization-defined time limits for disabling certain accounts in
+[AC-2 and AC-6](https://csrc.nist.gov/CSRC/media/Projects/risk-management/800-53%20Downloads/800-53r5/SP_800-53_v5_1-derived-OSCAL.pdf).
+Those sources are security guidance, not a substitute for the control design
+agreed for your SOC 2 examination.
+
+A small software company might review privileged and production access more
+often than low-risk access to an internal tool. Whatever cadence management
+chooses, write it into the policy and control, schedule the work, and preserve
+each completed review. Ask the CPA firm to confirm whether the control design
+fits the planned scope and report.
+
+## Define the access review scope before exporting data
+
+Start with the systems in the SOC 2 scope and the control's exact wording. For
+each system, decide which access types the review covers:
+
+- active workforce and contractor accounts;
+- administrators, owners, and other privileged roles;
+- production, support, and customer-data access;
+- service accounts, automation identities, and API credentials;
+- shared, emergency, guest, and temporary accounts;
+- groups, roles, and indirect entitlements that grant access.
+
+Do not assume that a central identity-provider export covers every in-scope
+application. Some systems keep local users, roles, tokens, or service accounts.
+Catalog each authoritative source and name the person who can produce its
+export.
+
+The source file should identify the system, report or query, filters,
+generation time, timezone, as-of date, and row count. Keep stable account or
+grant identifiers when the system supplies them. Avoid copying names, email
+addresses, or other personal data into Git when a later deletion request may
+require erasure. Use opaque IDs and an approved restricted store or external
+reference when that risk applies.
+
+For more on source boundaries and fixed artifacts, read the
+[SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples).
+
+## Record decisions at the access-grant level
+
+A review summary such as "all access approved" hides which grants someone
+actually checked. Record one decision for each account, role, group membership,
+or other access item in scope.
+
+| Decision  | Meaning                                                                             | Supporting detail                                   |
+| --------- | ----------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Keep      | Access still matches the person's or account's approved need                        | Reviewer and short basis                            |
+| Change    | Access is needed, but the role or privilege should be reduced or adjusted           | Target state, owner, due date, and completion proof |
+| Revoke    | Access is no longer authorized or needed                                            | Removal owner, due date, and completion proof       |
+| Exception | Access falls outside the normal rule but management accepts it for a defined period | Reason, risk, approver, safeguards, and expiry      |
+
+Use the actual reviewer for each system. A reviewer should understand the
+business need and current role well enough to challenge the access. Record a
+separate approver when your policy or control requires one.
+
+If the review uncovers a broader control gap, create a finding with its own
+owner and remediation path. If it produces a discrete task, create an action
+item. Do not bury incomplete work in the review notes and mark the review clean.
+
+## Prove that every access change happened
+
+A revoke decision is an instruction, not proof of revocation. Keep the full
+chain:
+
+1. The review item identifies the account, system, current access, and revoke
+   or change decision.
+2. A ticket or action item assigns the work and deadline.
+3. The system owner changes the access in the authoritative system.
+4. A fixed log, export, ticket record, or screenshot shows the resulting state
+   and completion time.
+5. The reviewer or another named person checks the proof and closes the
+   follow-up.
+
+If remediation remains open, record that state. The CPA firm decides how an
+open item affects testing and any reported exception. FileGRC does not make
+that judgment.
+
+## A practical access review record
+
+This shortened example shows the management record around the source artifacts.
+The IDs and values are fictional:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "access-review-2026-q3-production",
+  "type": "access-review",
+  "title": "Q3 2026 Production Access Review",
+  "status": "complete",
+  "reviewDate": "2026-09-25",
+  "periodStart": "2026-07-01",
+  "periodEnd": "2026-09-30",
+  "reviewerIds": ["person-system-owner"],
+  "systemIds": ["system-identity", "system-production"],
+  "scope": "Privileged and production access, including service accounts",
+  "populationCount": 24,
+  "exceptionCount": 1,
+  "outcome": "passed-with-exceptions",
+  "evidenceIds": [
+    "evidence-q3-access-export",
+    "evidence-q3-access-remediation"
+  ],
+  "approvedByIds": ["person-security-reviewer"],
+  "approvedOn": "2026-09-27",
+  "sourceCommit": "0123456789abcdef"
+}
+```
+
+Use the record's Markdown for the method, per-item decisions, observations,
+exception rationale, and follow-up. Keep each fixed external export or
+remediation artifact behind an evidence record. The JSON holds the stable facts
+and relationships that FileGRC validates.
+
+In a generated FileGRC workspace, inspect the current model before creating the
+record:
+
+```sh
+npx filegrc guide access-review --json
+npx filegrc obligations --json
+npx filegrc scaffold access-review --title "Q3 2026 Production Access Review" > /tmp/access-review.json
+```
+
+For scheduled work, fill the scaffold with real facts and complete the matching
+obligation:
+
+```sh
+npx filegrc complete OBLIGATION_ID /tmp/access-review.json
+npx filegrc validate --json
+git diff --check
+git diff
+```
+
+For an ad hoc review with no matching obligation, use `npx filegrc create`
+instead. Do not run both paths for the same review.
+
+## Type 1 and Type 2 need different timing support
+
+For a Type 1 examination, the access records, control design, and current
+review evidence support the specified date. For Type 2, management also needs
+to preserve every required review across the agreed period so the CPA firm can
+test operating effectiveness.
+
+Do not recreate missed reviews at the end of a Type 2 period. Record the actual
+work and dates. A late review, skipped review, or incomplete remediation may
+need a finding or an audit exception, depending on the facts and the CPA firm's
+procedures.
+
+The firm may also request a complete population of access grants, role changes,
+departures, reviews, or removals. Management should preserve and reconcile that
+source set before the firm selects samples. The
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) explains that
+workflow.
+
+## Check the evidence bundle before fieldwork
+
+Before sending access review evidence, confirm:
+
+- the review matches the policy cadence and control scope;
+- every in-scope system has an authoritative source;
+- each export has an as-of date, generation time, timezone, filters, and count;
+- local accounts and non-human identities were included or explicitly
+  addressed;
+- every source row received a reviewer decision;
+- approval identifies the real approver and date;
+- every change decision has linked completion proof;
+- open exceptions and actions show owners, deadlines, and current status;
+- sensitive account data follows repository access and retention rules;
+- the review, source evidence, and remediation evidence are linked to the
+  relevant control and audit request.
+
+When the engagement starts, map the bundle to the CPA firm's exact request.
+Then include it in the
+[SOC 2 audit evidence packet](/blogs/soc-2-audit-evidence-packet) with the rest
+of the scoped records, indexes, attachments, source history, and checksums.
+
+[filegrc](/) records access reviews as JSON and Markdown, links fixed evidence,
+tracks scheduled work and follow-up, and keeps the history in Git. It does not
+pull users or roles from external systems, operate access controls, select
+audit samples, or decide whether the evidence is sufficient.
