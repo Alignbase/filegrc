@@ -1,6 +1,6 @@
 {
   "name": "create-filegrc",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Create a filegrc workspace for a SOC 2 program",
   "license": "MIT",
   "repository": {

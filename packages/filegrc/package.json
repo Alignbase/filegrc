@@ -1,6 +1,6 @@
 {
   "name": "filegrc",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Zero-dependency Git-native GRC engine",
   "license": "MIT",
   "repository": {
