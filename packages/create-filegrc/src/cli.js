@@ -30,9 +30,30 @@ export async function runCli(argv = process.argv.slice(2)) {
     `filegrc ${result.engineVersion}${result.enginePackage ? ` from ${result.enginePackage}` : ""}: ` +
     `${result.install === "installed" ? "installed" : "installation skipped"}`
   );
+  console.log("Use a dedicated private repository for your FileGRC workspace. The browser");
+  console.log("commits and pushes each saved program change, so a standalone repository keeps");
+  console.log("the compliance audit trail separate from application development history.");
   console.log(`Git: ${result.gitMode === "existing-worktree" ? "joined existing worktree" : "initialized new repository"}`);
-  if (result.gitDetached) {
-    console.log("Warning: detached HEAD detected. Check out a branch before using browser commit, pull, or push.");
+  if (result.gitMode === "existing-worktree") {
+    console.log("");
+    console.log("This FileGRC workspace joined an existing Git repository.");
+    console.log("");
+    console.log("FileGRC recommends a dedicated private repository because browser saves create");
+    console.log("frequent compliance commits. A standalone repository keeps the GRC audit trail");
+    console.log("separate from application development history.");
+    console.log("");
+    console.log("Monorepo mode remains supported. Browser Git operations will commit only files");
+    console.log("inside this FileGRC workspace.");
+  }
+  if (
+    result.gitMode === "existing-worktree"
+    && result.repository.mode === "trunk"
+    && (result.gitDetached || result.gitBranch !== result.repository.authoritativeBranch)
+  ) {
+    console.log("");
+    console.log("The browser will open in read-only mode until this workspace is available on");
+    console.log("the configured authoritative branch. File creation and CLI validation still");
+    console.log("work from this checkout.");
   }
   console.log(`Timezone: ${result.values.timezone}`);
   for (const stage of result.stages) {
@@ -103,6 +124,9 @@ function parseArgs(argv) {
     else if (name === "starter") options.starter = next();
     else if (name === "filegrc-version") options.filegrcVersion = next();
     else if (name === "filegrc-package") options.filegrcPackage = next();
+    else if (name === "repository-mode") options.repositoryMode = next();
+    else if (name === "authoritative-branch") options.authoritativeBranch = next();
+    else if (name === "repository-remote") options.repositoryRemote = next();
     else if (name === "service-name") setup.serviceName = next();
     else if (name === "boundary") setup.boundary = next();
     else if (name === "service-owner") setup.ownerId = next();
@@ -131,6 +155,9 @@ Options:
   --starter <profile>               security (default) or foundation
   --filegrc-version <version>       Override resolved engine version
   --filegrc-package <directory>     Install an unpublished local filegrc package
+  --repository-mode <mode>          trunk (default) or manual
+  --authoritative-branch <name>     Browser write branch, defaults to main
+  --repository-remote <name>        Browser sync remote, defaults to origin
   --service-name <name>             Complete service setup after creation
   --boundary <description>          Initial service boundary
   --service-owner <person-id>       Defaults to person-policy-owner

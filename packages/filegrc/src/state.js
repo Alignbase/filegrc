@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
-import { getGitSummary, getWorkspaceHistories } from "./git.js";
+import { getBrowserRepositoryState, getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
@@ -42,6 +42,10 @@ export async function createAppState(input = process.cwd(), options = {}) {
 
   const git = getGitSummary(loaded.root);
   delete git.root;
+  const repository = await getBrowserRepositoryState(loaded.root, {
+    readOnly: options.readOnly,
+    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+  });
   const workspace = loaded.workspace ?? {
     schemaVersion: 1,
     dataModelVersion: loaded.model.modelVersion,
@@ -70,7 +74,8 @@ export async function createAppState(input = process.cwd(), options = {}) {
   ));
   return {
     generatedAt,
-    readOnly: Boolean(options.readOnly),
+    readOnly: Boolean(options.readOnly || (repository.mode === "trunk" && !repository.writesAllowed)),
+    repository,
     workspace,
     model: loaded.model,
     resources: entries,

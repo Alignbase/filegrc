@@ -185,3 +185,5 @@ git diff
 ```
 
 Review every changed JSON, Markdown, and attachment. Confirm the diff contains no secrets, temporary files, source exports with prohibited data, or derived `.filegrc/` output. Make one focused commit whose message says why the compliance record changed.
+
+These commands are for CLI and agent work, which continues to manage Git explicitly. Browser saves in trunk mode commit and push automatically from the configured authoritative branch. Do not use a feature branch as a record approval state, and never include application changes when this workspace lives in a monorepo.

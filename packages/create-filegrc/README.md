@@ -1,6 +1,6 @@
 # create-filegrc
 
-Create a Git-native filegrc workspace for a SOC 2 program:
+Create a Git-native filegrc workspace for a SOC 2 program. Use a dedicated private repository so browser-generated compliance commits stay separate from application development history.
 
 ```sh
 npx create-filegrc@latest company-grc
@@ -40,7 +40,7 @@ npx create-filegrc@latest company-grc --config setup.json
 
 Generated workspaces also include layered `AGENTS.md` instructions and model-driven headless commands. `filegrc program-path` gives agents the same six steps, exact page guidance, current status, and next actions shown in the renderer. Agents can define program scope, approve policies, implement controls, test External Evidence, complete policy work, trigger event tasks, and prepare later audit packets through the same domain functions used by the renderer.
 
-Git is initialized when needed. The browser can create local commits before a remote is configured.
+Git is initialized on `main` when needed. New workspaces use trunk mode with `main` and `origin`. Browser editing becomes available after that branch has an upstream; each save fast-forwards, validates, commits, and pushes automatically. Existing parent repositories are supported and never receive a nested Git repository.
 
 Creation output reports the resolved filegrc version, program timezone, starter record counts, whether installation ran, and whether the target joined an existing Git worktree or received a new repository.
 

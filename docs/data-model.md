@@ -1563,13 +1563,13 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `renderer-settings`
 
-Optional local interface settings, including onboarding visibility and manually completed Step pages. Renderer settings are not required for SOC 2 and do not change compliance records.
+Optional local interface and browser repository settings, including onboarding visibility, manually completed Step pages, and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.
 
-Instructions: Optional local interface settings, including onboarding visibility and manually completed Step pages. Renderer settings are not required for SOC 2 and do not change compliance records.
+Instructions: Optional local interface and browser repository settings, including onboarding visibility, manually completed Step pages, and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.
 
-Policy basis: Renderer settings are a filegrc convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence.
+Policy basis: Renderer settings are a filegrc convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence. Record lifecycle status represents approval; Git branches do not.
 
-Timing: Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff.
+Timing: Change it when the team wants to rerun or suppress an optional renderer workflow or change repository synchronization. Existing workspaces without repositoryMode keep manual browser Git behavior.
 
 Path: `data/renderer.json`
 
@@ -1579,3 +1579,6 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `showOnboarding` | boolean | Yes | Show onboarding |
 | `completedStagePageIds` | array of string | No | Manually completed program pages |
+| `repositoryMode` | enum | No | Repository mode Values: `trunk`, `manual` |
+| `authoritativeBranch` | string (git-name) | No | Authoritative branch (defaults to main) |
+| `repositoryRemote` | string (git-name) | No | Repository remote (defaults to origin) |

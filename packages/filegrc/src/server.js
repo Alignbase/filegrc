@@ -7,7 +7,15 @@ import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet
 import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
 import { FAVICON_PNG, LOGO_MARK_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
-import { commitAndPushWorkspace, getFileHistory, pullWorkspace, pushWorkspace } from "./git.js";
+import {
+  commitAndPushWorkspace,
+  getBrowserRepositoryState,
+  getFileHistory,
+  pullWorkspace,
+  pushWorkspace,
+  retryBrowserSync,
+  runBrowserMutation
+} from "./git.js";
 import { completeObligationOccurrence, createObligationEvent, planObligations } from "./obligations.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { createAppState } from "./state.js";
@@ -26,7 +34,9 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 403, { error: "Cross-origin writes are not allowed." });
       }
       if (request.method === "GET" && url.pathname === "/api/state") {
-        return json(response, 200, await createAppState(input));
+        return json(response, 200, await createAppState(input, {
+          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+        }));
       }
       if (request.method === "GET" && url.pathname === "/api/history") {
         const path = url.searchParams.get("path");
@@ -44,17 +54,22 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }));
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-events") {
-        return json(response, 201, await createObligationEvent(input, await readJson(request)));
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: (result) => `Create policy event: ${result.event?.title || payload.title || payload.eventType}`
+        }, () => createObligationEvent(input, payload)));
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-completions") {
         const payload = await readJson(request);
         if (!safeSegment(payload.obligationId)) return json(response, 400, { error: "A safe obligation ID is required." });
-        const result = await completeObligationOccurrence(input, {
+        const result = await browserMutation(input, options, {
+          message: () => `Complete ${resourceTypeLabel(payload.record?.type)}: ${payload.record?.title || payload.obligationId}`
+        }, () => completeObligationOccurrence(input, {
           obligationId: payload.obligationId,
           record: payload.record,
           content: payload.content,
           expectedRevision: payload.revision
-        });
+        }));
         return json(response, 201, result);
       }
       if (request.method === "GET" && url.pathname === "/api/evidence-packet") {
@@ -82,34 +97,54 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         });
       }
       if (request.method === "POST" && url.pathname === "/api/audit-preparation") {
-        return json(response, 201, await prepareAuditWorkspace(input, await readJson(request)));
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: () => `Prepare audit: ${payload.auditId || "engagement"}`
+        }, () => prepareAuditWorkspace(input, payload)));
       }
       if (request.method === "POST" && url.pathname === "/api/evidence-test-drafts") {
-        return json(response, 201, await ensureEvidenceTestDrafts(input));
+        return json(response, 201, await browserMutation(input, options, {
+          message: "Create evidence collection test drafts"
+        }, () => ensureEvidenceTestDrafts(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/setup") {
-        return json(response, 200, await setupWorkspace(input, await readJson(request)));
+        const payload = await readJson(request);
+        return json(response, 200, await browserMutation(input, options, {
+          message: (result) => `${payload.draft === true ? "Save onboarding draft" : "Complete onboarding"} for ${result.workspace.organizationName}`
+        }, () => setupWorkspace(input, payload)));
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
         const payload = await readJson(request);
         const record = payload.record ?? payload;
-        const result = await createResource(input, record, { content: payload.record ? payload.content : undefined });
-        return json(response, 201, { record: result.record });
+        const result = await browserMutation(input, options, {
+          message: () => `Create ${resourceTypeLabel(record.type)}: ${record.title || record.id}`
+        }, () => createResource(input, record, { content: payload.record ? payload.content : undefined }));
+        return json(response, 201, { record: result.record, synchronization: result.synchronization });
       }
       if (request.method === "POST" && url.pathname === "/api/commit") {
+        await requireManualBrowserGit(input, options);
         const payload = await readJson(request);
         return json(response, 201, await commitAndPushWorkspace(input, payload.message));
       }
       if (request.method === "POST" && url.pathname === "/api/git/pull") {
+        await requireManualBrowserGit(input, options);
         return json(response, 200, await pullWorkspace(input));
       }
       if (request.method === "POST" && url.pathname === "/api/git/push") {
+        await requireManualBrowserGit(input, options);
         return json(response, 200, await pushWorkspace(input));
+      }
+      if (request.method === "POST" && url.pathname === "/api/git/retry-sync") {
+        return json(response, 200, await retryBrowserSync(input, {
+          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+        }));
       }
       if (request.method === "PUT" && url.pathname === "/api/content") {
         const payload = await readJson(request);
-        const result = await updateContent(input, payload.path, payload.source, { expectedRevision: payload.revision });
-        return json(response, 200, { path: result.dataRelativePath });
+        const result = await browserMutation(input, options, {
+          message: () => `Update content: ${payload.path}`
+        }, () => updateContent(input, payload.path, payload.source, { expectedRevision: payload.revision }));
+        return json(response, 200, { path: result.dataRelativePath, synchronization: result.synchronization });
       }
       const match = /^\/api\/resource\/([^/]+)\/([^/]+)$/.exec(url.pathname);
       if (match) {
@@ -124,16 +159,26 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (request.method === "PUT") {
           const payload = await readJson(request);
           const record = payload.record ?? payload;
-          const result = await updateResource(input, type, id, record, {
+          const result = await browserMutation(input, options, {
+            message: () => `Update ${resourceTypeLabel(type)}: ${record.title || id}`
+          }, () => updateResource(input, type, id, record, {
             content: payload.record ? payload.content : undefined,
             expectedRevision: payload.revision,
             expectedContentRevisions: payload.contentRevisions
-          });
-          return json(response, 200, { record: result.record });
+          }));
+          return json(response, 200, { record: result.record, synchronization: result.synchronization });
         }
         if (request.method === "DELETE") {
-          const result = await deleteResource(input, type, id, { expectedRevision: url.searchParams.get("revision") });
-          return json(response, 200, { deleted: true, type, id, deletedContent: result.deletedContent });
+          const result = await browserMutation(input, options, {
+            message: () => `Delete ${resourceTypeLabel(type)}: ${id}`
+          }, () => deleteResource(input, type, id, { expectedRevision: url.searchParams.get("revision") }));
+          return json(response, 200, {
+            deleted: true,
+            type,
+            id,
+            deletedContent: result.deletedContent,
+            synchronization: result.synchronization
+          });
         }
       }
       if (request.method === "GET" && url.pathname === "/favicon.png") return text(response, 200, FAVICON_PNG, "image/png");
@@ -185,7 +230,10 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
   }
   const loaded = await loadWorkspace(input);
   getResourceDefinition(loaded.model, "workspace");
-  const server = createFilegrcServer(loaded.root, { allowedHosts: [host] });
+  const server = createFilegrcServer(loaded.root, {
+    allowedHosts: [host],
+    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true
+  });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, resolve);
@@ -196,6 +244,26 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
     address: server.address(),
     url: `http://${urlHost(host)}:${server.address().port}`
   };
+}
+
+function browserMutation(input, options, mutationOptions, task) {
+  return runBrowserMutation(input, {
+    ...mutationOptions,
+    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true
+  }, task);
+}
+
+async function requireManualBrowserGit(input, options) {
+  const repository = await getBrowserRepositoryState(input, {
+    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+  });
+  if (repository.mode === "trunk") {
+    throw new Error("Browser commit, pull, and push controls are disabled in trunk mode. Saved changes synchronize automatically.");
+  }
+}
+
+function resourceTypeLabel(value) {
+  return String(value || "record").replaceAll("-", " ");
 }
 
 async function readJson(request) {
@@ -296,7 +364,7 @@ function statusFor(error) {
   if (/exceeds 2 MB/i.test(error.message)) return 413;
   if (/changed after you opened|source changed|revision changed/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
-  if (/Git could not (?:pull|push)|upstream branch|multiple remotes|no Git remote|check out a branch|before trying to (?:pull|push)/i.test(error.message)) return 409;
+  if (/Git could not|upstream branch|multiple remotes|no Git remote|configured repository remote|safe Git name|check out a branch|before trying to (?:pull|push)|authoritative branch|not synchronized|not synced|diverged|waiting to be pushed|Retry sync|outside this FileGRC workspace|worktree has uncommitted changes|development write override|browser commit, pull, and push/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
   if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves|valid .*date|not found|no active obligations|end date|through date|already exists|EEXIST/i.test(error.message)) return 400;
   return 500;

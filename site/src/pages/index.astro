@@ -21,9 +21,9 @@ const questions = [
   },
   {
     number: "03",
-    question: "Review every change",
+    question: "Keep a focused history",
     answer:
-      "Nothing disappears behind an application. Review the exact files, diff, author, date, and commit before accepting the work.",
+      "Each browser save validates, creates one focused commit on the authoritative branch, and pushes it. The exact files, author, date, and diff stay reviewable.",
   },
   {
     number: "04",
@@ -237,6 +237,13 @@ const structuredData = {
             </p>
           </div>
         </div>
+        <p>
+          Use a dedicated private repository for your FileGRC workspace. The
+          browser commits and pushes each saved program change, so a standalone
+          repository keeps the compliance audit trail separate from application
+          development history. Record status represents approval; Git branches
+          do not.
+        </p>
       </div>
 
       <div class="file-stack" aria-label="Example filegrc source files">

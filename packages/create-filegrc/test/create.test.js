@@ -61,6 +61,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(dataGuide, /current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions/);
   assert.equal(result.install, "skipped");
   assert.equal(result.gitMode, "initialized");
+  assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.dataModelVersion, "1");
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
@@ -69,6 +70,9 @@ test("creates a complete generic repository with one dependency", async (context
   assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);
   const renderer = JSON.parse(await readFile(join(target, "data", "renderer.json"), "utf8"));
   assert.equal(renderer.showOnboarding, true);
+  assert.equal(renderer.repositoryMode, "trunk");
+  assert.equal(renderer.authoritativeBranch, "main");
+  assert.equal(renderer.repositoryRemote, "origin");
   assert.deepEqual(renderer.completedStagePageIds, []);
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
@@ -396,6 +400,8 @@ test("rejects invalid identity, email, and timezone values before writing the ta
   const ownerEmailTarget = join(parent, "owner-email-program");
   const securityEmailTarget = join(parent, "security-email-program");
   const timezoneTarget = join(parent, "timezone-program");
+  const branchTarget = join(parent, "branch-program");
+  const remoteTarget = join(parent, "remote-program");
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   await assert.rejects(createFilegrc({
     target,
@@ -448,6 +454,22 @@ test("rejects invalid identity, email, and timezone values before writing the ta
     install: false
   }), /Program timezone must be a valid IANA time zone/);
   await assert.rejects(access(timezoneTarget), /ENOENT/);
+  await assert.rejects(createFilegrc({
+    target: branchTarget,
+    yes: true,
+    filegrcVersion: "1.2.3",
+    authoritativeBranch: "release/.hidden",
+    install: false
+  }), /authoritative branch must be a safe Git name/);
+  await assert.rejects(access(branchTarget), /ENOENT/);
+  await assert.rejects(createFilegrc({
+    target: remoteTarget,
+    yes: true,
+    filegrcVersion: "1.2.3",
+    repositoryRemote: "origin.lock",
+    install: false
+  }), /repository remote must be a safe Git name/);
+  await assert.rejects(access(remoteTarget), /ENOENT/);
 });
 
 test("reports the resolved version, install result, and existing Git worktree", async (context) => {
@@ -471,7 +493,11 @@ test("reports the resolved version, install result, and existing Git worktree", 
     "--no-install"
   ], { encoding: "utf8" });
   assert.match(output, /filegrc 1\.2\.3: installation skipped/);
+  assert.match(output, /Use a dedicated private repository for your FileGRC workspace/);
   assert.match(output, /Git: joined existing worktree/);
+  assert.match(output, /This FileGRC workspace joined an existing Git repository/);
+  assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
+  assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
   assert.match(output, /Program baseline: 141 records, including 42 requirements, 29 controls, and 41 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
@@ -488,6 +514,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
 test("warns when creation joins a detached Git worktree", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-detached-"));
   const target = join(parent, "program");
+  const manualTarget = join(parent, "manual-program");
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   execFileSync("git", ["init"], { cwd: parent, stdio: "ignore" });
   execFileSync("git", [
@@ -517,8 +544,29 @@ test("warns when creation joins a detached Git worktree", async (context) => {
     "--no-install"
   ], { encoding: "utf8" });
   assert.match(output, /Git: joined existing worktree/);
-  assert.match(output, /Warning: detached HEAD detected/);
-  assert.match(output, /browser commit, pull, or push/);
+  assert.match(output, /browser will open in read-only mode/);
+  assert.match(output, /configured authoritative branch/);
+  assert.match(output, /File creation and CLI validation still/);
+
+  const manualOutput = execFileSync(process.execPath, [
+    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+    manualTarget,
+    "--company-name",
+    "Example Company",
+    "--policy-owner-name",
+    "Example Owner",
+    "--security-contact-email",
+    "security@example.test",
+    "--timezone",
+    "America/Chicago",
+    "--filegrc-version",
+    "1.2.3",
+    "--repository-mode",
+    "manual",
+    "--no-install"
+  ], { encoding: "utf8" });
+  assert.match(manualOutput, /Git: joined existing worktree/);
+  assert.doesNotMatch(manualOutput, /browser will open in read-only mode/);
 });
 
 test("documents legal organization, owner email, reporting address, and timezone options", () => {
@@ -532,7 +580,36 @@ test("documents legal organization, owner email, reporting address, and timezone
   assert.match(output, /--timezone <iana-timezone>\s+Program timezone/);
   assert.match(output, /--starter <profile>\s+security \(default\) or foundation/);
   assert.match(output, /--filegrc-package <directory>\s+Install an unpublished local filegrc package/);
+  assert.match(output, /--repository-mode <mode>\s+trunk \(default\) or manual/);
+  assert.match(output, /--authoritative-branch <name>\s+Browser write branch/);
+  assert.match(output, /--repository-remote <name>\s+Browser sync remote/);
   assert.match(output, /--config <json-file\|->\s+Read creation and optional setup values/);
+});
+
+test("standalone CLI creation starts on main without a monorepo warning", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-standalone-output-"));
+  const target = join(parent, "program");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const output = execFileSync(process.execPath, [
+    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+    target,
+    "--company-name",
+    "Example Company",
+    "--policy-owner-name",
+    "Example Owner",
+    "--security-contact-email",
+    "security@example.test",
+    "--timezone",
+    "UTC",
+    "--filegrc-version",
+    "1.2.3",
+    "--no-install"
+  ], { encoding: "utf8" });
+  assert.match(output, /Git: initialized new repository/);
+  assert.match(output, /Use a dedicated private repository for your FileGRC workspace/);
+  assert.doesNotMatch(output, /joined an existing Git repository/);
+  assert.doesNotMatch(output, /Monorepo mode remains supported/);
+  assert.equal(execFileSync("git", ["branch", "--show-current"], { cwd: target, encoding: "utf8" }).trim(), "main");
 });
 
 test("creates and configures a service from one JSON config", async (context) => {

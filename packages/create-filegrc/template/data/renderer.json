@@ -4,5 +4,8 @@
   "type": "renderer-settings",
   "title": "Renderer settings",
   "showOnboarding": true,
+  "repositoryMode": "trunk",
+  "authoritativeBranch": "main",
+  "repositoryRemote": "origin",
   "completedStagePageIds": []
 }

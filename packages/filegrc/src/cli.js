@@ -36,6 +36,7 @@ import { validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
 
 const BOOLEAN_FLAGS = new Set([
+  "allow-non-authoritative-writes",
   "check-docs",
   "complete",
   "current",
@@ -63,7 +64,8 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "serve") {
     const result = await serveWorkspace(positionals[0] ?? root, {
       host: flags.host ?? process.env.FILEGRC_HOST,
-      port: flags.port ?? process.env.FILEGRC_PORT
+      port: flags.port ?? process.env.FILEGRC_PORT,
+      allowNonAuthoritativeWrites: flags["allow-non-authoritative-writes"] === true
     });
     const stopped = new Promise((resolvePromise) => {
       const stop = () => {
@@ -683,7 +685,7 @@ function printHelp() {
   console.log(`filegrc - Git-native GRC workspace
 
 Usage:
-  filegrc serve [root] [--host 127.0.0.1] [--port 8787]
+  filegrc serve [root] [--host 127.0.0.1] [--port 8787] [--allow-non-authoritative-writes]
   filegrc setup [setup.json|-] [setup options] [--draft] [--preview] [--summary] [--json]
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
@@ -720,12 +722,15 @@ All commands accept --root <workspace>. Writes never create Git commits.`);
 function printCommandHelp(command) {
   if (command === "serve") {
     console.log(`Usage:
-  filegrc serve [root] [--host address] [--port number]
+  filegrc serve [root] [--host address] [--port number] [--allow-non-authoritative-writes]
 
 Options:
   --host <address>  Bind address. Defaults to FILEGRC_HOST or 127.0.0.1.
   --port <number>   Port. Defaults to FILEGRC_PORT or 8787. Use 0 for an available port.
   --root <path>     Workspace path when no positional root is given.
+  --allow-non-authoritative-writes
+                     Allow local browser writes from a task checkout. This explicit
+                     development override never commits or pushes.
   --help            Show this help without starting the server.
 
 Safety:

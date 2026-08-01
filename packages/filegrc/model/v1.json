@@ -104,17 +104,20 @@
       "pluralTitle": "Renderer settings",
       "group": "repository",
       "singleton": "renderer.json",
-      "description": "Optional local interface settings, including onboarding visibility and manually completed Step pages. Renderer settings are not required for SOC 2 and do not change compliance records.",
+      "description": "Optional local interface and browser repository settings, including onboarding visibility, manually completed Step pages, and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.",
       "guidance": {
-        "policyBasis": "Renderer settings are a filegrc convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence.",
-        "cadence": "Change it when the team wants to rerun or suppress an optional renderer workflow, then review and commit the resulting diff."
+        "policyBasis": "Renderer settings are a filegrc convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence. Record lifecycle status represents approval; Git branches do not.",
+        "cadence": "Change it when the team wants to rerun or suppress an optional renderer workflow or change repository synchronization. Existing workspaces without repositoryMode keep manual browser Git behavior."
       },
       "required": ["showOnboarding"],
       "fields": {
         "showOnboarding": {"type":"boolean","label":"Show onboarding"},
-        "completedStagePageIds": {"type":"array","items":"string","label":"Manually completed program pages"}
+        "completedStagePageIds": {"type":"array","items":"string","label":"Manually completed program pages"},
+        "repositoryMode": {"type":"enum","values":["trunk","manual"],"label":"Repository mode"},
+        "authoritativeBranch": {"type":"string","format":"git-name","label":"Authoritative branch (defaults to main)"},
+        "repositoryRemote": {"type":"string","format":"git-name","label":"Repository remote (defaults to origin)"}
       },
-      "listFields": ["title","showOnboarding","completedStagePageIds"]
+      "listFields": ["title","showOnboarding","repositoryMode","authoritativeBranch","repositoryRemote","completedStagePageIds"]
     },
     "person": {
       "title": "Person",

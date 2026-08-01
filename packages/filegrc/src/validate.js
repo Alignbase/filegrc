@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { getResourceDefinition } from "../model/index.js";
+import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
 import { obligationIsRunning } from "./program-lifecycle.js";
@@ -476,6 +477,7 @@ function validateValue(name, value, field, model, path, diagnostics) {
   }
   if (field.format === "email" && !EMAIL_PATTERN.test(value)) fail("must be an email address.");
   if (field.format === "timezone" && !isTimezone(value)) fail("must be an IANA time zone.");
+  if (field.format === "git-name" && !isSafeGitName(value)) fail("must be a safe Git name.");
 }
 
 function validateNumericRange(value, field, fail) {

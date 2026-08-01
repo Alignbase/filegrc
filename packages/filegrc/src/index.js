@@ -18,11 +18,14 @@ export {
 export {
   commitAndPushWorkspace,
   commitWorkspace,
+  getBrowserRepositoryState,
   getFileHistory,
   getGitSummary,
   getWorkspaceHistories,
   pullWorkspace,
-  pushWorkspace
+  pushWorkspace,
+  retryBrowserSync,
+  runBrowserMutation
 } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";

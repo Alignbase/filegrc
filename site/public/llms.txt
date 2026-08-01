@@ -24,6 +24,12 @@ The starter content is a proposal. Management must review policies, tailor
 controls, name owners, connect evidence sources, and record work that actually
 occurred before treating records as final.
 
+Use a dedicated private repository for each FileGRC workspace. New workspaces
+use `main` as the authoritative browser branch. Each browser save fast-forwards,
+validates, commits, and pushes. Record status represents approval. Detached and
+feature-branch checkouts are read-only by default. CLI and agent workflows
+continue to manage Git explicitly.
+
 ## Product path
 
 1. Define the service boundary and criteria.

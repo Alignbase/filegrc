@@ -17,6 +17,8 @@ test("serve help exits without starting a server and documents bind safety", asy
   const result = await execute(process.execPath, [cliPath, "serve", "--help"], { timeout: childProcessTimeout });
   assert.match(result.stdout, /Usage:\s+filegrc serve/);
   assert.match(result.stdout, /FILEGRC_PORT/);
+  assert.match(result.stdout, /--allow-non-authoritative-writes/);
+  assert.match(result.stdout, /never commits or pushes/);
   assert.match(result.stdout, /no authentication/);
 });
 

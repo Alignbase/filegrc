@@ -99,6 +99,9 @@ test("v1 model exposes the complete resource registry", () => {
   });
   assert.deepEqual(model.resources["obligation-event"].fields.completedOn.requiredWhen, { status: "complete" });
   assert.equal(model.resources["renderer-settings"].fields.completedStagePageIds.items, "string");
+  assert.deepEqual(model.resources["renderer-settings"].fields.repositoryMode.values, ["trunk", "manual"]);
+  assert.equal(model.resources["renderer-settings"].fields.authoritativeBranch.format, "git-name");
+  assert.equal(model.resources["renderer-settings"].fields.repositoryRemote.format, "git-name");
   assert.match(model.resources.finding.description, /Keep observations and report details in the source record’s Markdown/);
   assert.match(model.resources.finding.description, /control test, review, risk assessment, security test, incident review, management meeting, or audit/);
   assert.deepEqual(model.resources.finding.fields.dueOn.requiredWhen.status, ["open", "remediating", "resolved"]);

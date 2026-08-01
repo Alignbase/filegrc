@@ -16,6 +16,7 @@ export async function createFilegrc(options = {}) {
   const parameterConfig = JSON.parse(await readFile(join(packageRoot, "template-parameters.json"), "utf8"));
   const target = resolve(options.target ?? "filegrc-program");
   const starter = normalizeStarterProfile(options.starter);
+  const repository = normalizeRepositoryOptions(options);
   if (options.setup && options.install === false) {
     throw new Error("Combined service setup requires installation. Remove --no-install or run filegrc setup after npm install.");
   }
@@ -38,6 +39,7 @@ export async function createFilegrc(options = {}) {
   await mkdir(target, { recursive: true });
   await copyTemplate(target, starter);
   await renderTemplate(target, parameterConfig, values, starter);
+  await writeRendererRepositorySettings(target, repository);
   await writeBaselineRecords(target, values.effective_date, starter);
   await applyStarterScope(target, starter, values.effective_date);
   const initialResourceCounts = await summarizeResources(target);
@@ -49,7 +51,7 @@ export async function createFilegrc(options = {}) {
     await writeMinimalLockfile(target, values.project_name, values.filegrc_version_range);
   }
   const joinedExistingWorktree = await isInsideGitWorktree(target);
-  if (!joinedExistingWorktree) await run("git", ["init"], target);
+  if (!joinedExistingWorktree) await run("git", ["init", `--initial-branch=${repository.authoritativeBranch}`], target);
   const gitHead = await inspectGitHead(target);
   const setup = options.setup ? await runCombinedSetup(target, options.setup) : null;
   const resourceCounts = setup ? await summarizeResources(target) : initialResourceCounts;
@@ -67,7 +69,8 @@ export async function createFilegrc(options = {}) {
     install: installed ? "installed" : "skipped",
     gitMode: joinedExistingWorktree ? "existing-worktree" : "initialized",
     gitBranch: gitHead.branch,
-    gitDetached: gitHead.detached
+    gitDetached: gitHead.detached,
+    repository
   };
 }
 
@@ -78,6 +81,54 @@ export function normalizeStarterProfile(value = "security") {
     throw new Error(`Starter profile must be one of ${[...STARTER_PROFILES].join(", ")}.`);
   }
   return normalized;
+}
+
+function normalizeRepositoryOptions(options) {
+  const mode = String(options.repositoryMode ?? "trunk").trim();
+  if (!["trunk", "manual"].includes(mode)) {
+    throw new Error("Repository mode must be trunk or manual.");
+  }
+  return {
+    mode,
+    authoritativeBranch: normalizeGitSetting(options.authoritativeBranch, "main", "authoritative branch"),
+    remote: normalizeGitSetting(options.repositoryRemote, "origin", "repository remote")
+  };
+}
+
+function normalizeGitSetting(value, fallback, label) {
+  const result = String(value ?? fallback).trim();
+  if (!safeGitName(result)) {
+    throw new Error(`${label} must be a safe Git name.`);
+  }
+  return result;
+}
+
+function safeGitName(value) {
+  const segments = value.split("/");
+  return Boolean(value)
+    && value !== "@"
+    && value !== "HEAD"
+    && !value.startsWith("-")
+    && !value.includes("..")
+    && !value.includes("@{")
+    && !/[\s~^:?*[\]\\\u0000-\u001f\u007f]/.test(value)
+    && segments.every((segment) => (
+      segment
+      && !segment.startsWith(".")
+      && !segment.endsWith(".")
+      && !segment.endsWith(".lock")
+    ));
+}
+
+async function writeRendererRepositorySettings(target, repository) {
+  const path = join(target, "data", "renderer.json");
+  const renderer = JSON.parse(await readFile(path, "utf8"));
+  await writeFile(path, `${JSON.stringify({
+    ...renderer,
+    repositoryMode: repository.mode,
+    authoritativeBranch: repository.authoritativeBranch,
+    repositoryRemote: repository.remote
+  }, null, 2)}\n`, "utf8");
 }
 
 export async function resolveFilegrcVersion(explicitVersion) {

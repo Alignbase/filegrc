@@ -34,7 +34,7 @@ npx filegrc prepare-audit audit-id
 npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 ```
 
-`filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed.
+`filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
 `filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Add `--preview` to validate and inspect the planned service and workspace writes without saving. Add `--summary --json` for compact agent output. Selecting Type 1 or Type 2 updates the workspace goal and selected systems. Setup does not select framework records, link controls, create evidence, or create an audit record.
 
@@ -54,7 +54,7 @@ Use `filegrc attach <evidence-id> <source-file>` to copy a fixed evidence file u
 
 Use `filegrc detach <evidence-id> <attachment-name> --yes` for explicit removal. Evidence records with linked local attachments cannot be deleted.
 
-The package requires Node.js 20 or newer. It uses Git for authors, commit timestamps, messages, diffs, and revisions. Browser commits are explicit. Without a remote they remain local; with a remote the browser commits and pushes together. Browser pulls use rebase. Agents and terminal users use Git directly; the filegrc CLI does not wrap pull, commit, or push.
+The package requires Node.js 20 or newer. It uses Git for authors, commit timestamps, messages, diffs, and revisions. New workspaces use trunk mode, which fetches and fast-forwards before each browser mutation, validates and commits the saved change, then pushes. Existing settings without `repositoryMode` keep manual browser Git behavior. Agents and terminal users use Git directly; the filegrc CLI does not wrap pull, commit, or push.
 
 The editable server has no authentication and binds to loopback by default. Put it behind trusted authentication before exposing it on a network, or publish the read-only static build.
 

@@ -103,6 +103,18 @@ Verification: validate
 
 `filegrc serve` provides the interactive local view and CRUD operations. `filegrc build` creates a read-only static view. `filegrc validate` is suitable for local use and CI.
 
+### Browser repository transactions
+
+FileGRC recommends one dedicated private repository per organization. Browser editing creates frequent focused commits for records, onboarding, approvals, evidence, recurring work, and renderer settings. A standalone repository keeps that compliance history separate from application development commits. Monorepos remain supported, and the scaffolder never creates a nested repository inside an existing worktree or relocates an existing workspace.
+
+New renderer settings use trunk mode with `main` as the authoritative branch and `origin` as the remote. Existing workspaces without `repositoryMode` keep manual behavior. Record lifecycle fields represent draft, proposed, approved, and retired states; Git branches do not represent approval.
+
+Each trunk-mode browser mutation runs under one server-side serialization lock. It checks Git availability, the authoritative checkout, the configured remote and upstream, repository operations, the whole worktree, and ahead commits. It fetches the remote, fast-forwards only, reloads the target, applies optimistic revisions, calls the existing domain mutation, validates, stages only the FileGRC workspace, commits a generated message, and pushes. Onboarding uses the same transaction for its system, workspace, and renderer writes.
+
+Fetch or fast-forward failure occurs before a write. Stale revisions and validation errors roll back the FileGRC mutation. Commit failure leaves the changed files visible and blocks later browser changes. Push failure keeps the focused local commit and reports `Not synced`; Retry sync is available only when every ahead commit changes files inside the FileGRC workspace. FileGRC never pushes an ahead commit that includes another monorepo path, and it never switches branches, merges, rebases, resets external files, or resolves conflicts.
+
+Detached and non-authoritative checkouts are read-only. `filegrc serve --allow-non-authoritative-writes` is an explicit development override that restores local browser writes without automatic fetch, commit, or push. CLI and agent mutations keep their existing Git behavior.
+
 ### Headless agent contract
 
 A generated workspace must be operable by an agent that knows Git and JSON but has no filegrc context. The root `AGENTS.md` explains the program and Git behavior. `data/AGENTS.md` defines the universal record workflow. Collection-level instruction files add compact rules for areas where a wrong action could weaken an audit, lose evidence, or expose data.
@@ -146,7 +158,7 @@ The registry may expose a JSON Schema projection for editors and outside tools, 
 
 ### `create-filegrc`
 
-`create-filegrc` creates a standalone repository with:
+`create-filegrc` creates a standalone repository on `main` with:
 
 - A private `package.json`
 - One dependency, `filegrc`
@@ -155,7 +167,8 @@ The registry may expose a JSON Schema projection for editors and outside tools, 
 - Generic seed records
 - A high-level README
 - Detailed consumer instructions in `AGENTS.md`
-- A `data/` directory using the current data-model version
+  - A `data/` directory using the current data-model version
+  - Trunk repository settings for `main` and `origin`
 
 The generator resolves the current `filegrc` release and records a normal semver range. This keeps initial output current while the lockfile makes installs repeatable.
 
@@ -272,7 +285,7 @@ These are presentation fields, not data fields. Operational dates remain explici
 
 The engine follows file renames when possible. A resource ID remains the durable identity if a path changes.
 
-CRUD operations write files atomically but do not create hidden commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The Repository page shows the workspace diff and creates a validated local commit when no remote exists. Once a remote is configured, it also pulls with rebase and pushes immediately after a browser commit. A failed push leaves the local commit intact and reports the failure. Agents and terminal users own synchronization and use native Git commands.
+Domain CRUD operations write files atomically and do not create commits. Record and Markdown updates use content revisions, so a stale browser cannot overwrite a newer filesystem change. Deleting a draft also deletes authored Markdown that no other resource references. The trunk-mode browser wraps those domain writes in the authoritative-branch transaction described above. Manual-mode browser, CLI, and agent writes stay local until the user or agent manages Git.
 
 ## Program readiness
 
@@ -350,9 +363,9 @@ Each resource type gets a responsive list page with search and filters, plus a d
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
-New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true`. The local renderer explains the file and Git model, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. The setup step collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional Type 1 or Type 2 management goal. It creates or updates one system, adds that system and the goal to the workspace, and sets `showOnboarding` to `false`. It does not select frameworks, requirements, or controls, link every control to the service, create evidence, or create an audit. The headless `setup --preview` command reports the same planned writes without saving, and `setup --summary --json` returns compact agent output. The final browser screen opens the Step 1 overview so management can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies. Skipping also sets the flag to `false`. These writes remain uncommitted until a user or agent reviews and commits them from Repository or the Git CLI.
+New generated workspaces include `data/renderer.json` with `showOnboarding` set to `true` and trunk settings for `main` and `origin`. The local renderer explains the file and Git model, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. The setup step collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional Type 1 or Type 2 management goal. It creates or updates one system, adds that system and the goal to the workspace, and sets `showOnboarding` to `false`. It does not select frameworks, requirements, or controls, link every control to the service, create evidence, or create an audit. The headless `setup --preview` command reports the same planned writes without saving, and `setup --summary --json` returns compact agent output. The final browser screen opens the Step 1 overview so management can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies. Skipping also sets the flag to `false`. In trunk mode, browser onboarding validates, commits, and pushes its related writes together. Headless setup remains a normal CLI mutation and leaves Git to the user or agent.
 
-Onboarding never runs in a read-only build. It can be restarted from Repository, or bypassed entirely by editing the same data files through an agent or other tooling. Repositories created before the renderer settings record remain valid and do not start onboarding automatically.
+Onboarding never runs in a read-only build or a trunk-mode checkout that cannot synchronize safely. It can be restarted from Repository, or bypassed entirely by editing the same data files through an agent or other tooling. Repositories created before the renderer settings record remain valid and do not start onboarding automatically.
 
 The static build is read-only. Search and filtering run in the browser against a generated index. CRUD is available only from the local server.
 

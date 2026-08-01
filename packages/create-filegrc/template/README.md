@@ -8,6 +8,8 @@ filegrc gives founder-led engineering teams one place to adopt policies, impleme
 
 It is open source, MIT licensed, and runs locally.
 
+Use a dedicated private repository for your FileGRC workspace. The browser commits and pushes each saved program change, so a standalone repository keeps the compliance audit trail separate from application development history.
+
 ```sh
 npx create-filegrc@latest company-grc
 cd company-grc
@@ -26,6 +28,10 @@ The repository is the program. There is no separate application database.
 - **Git** supplies authors, timestamps, revisions, diffs, and commit messages.
 
 Use the same source through the local web app, a text editor, the CLI, or CI. Browser and CLI actions call the same rules, so engineers and agents see the same validation and readiness results.
+
+New workspaces use `main` as the authoritative browser branch. Browser saves fetch and fast-forward from `origin`, validate the change, create a focused commit, and push it. Draft, proposed, approved, and retired records all live on that branch because record status, not a Git branch, represents approval.
+
+Detached and feature-branch checkouts are read-only in the browser by default. Developers can run `npx filegrc serve --allow-non-authoritative-writes` for local task-worktree edits; that override never commits or pushes. Existing workspaces without `repositoryMode` keep manual browser Git behavior. CLI and agent workflows continue to manage Git explicitly.
 
 ## One path from setup to audit
 

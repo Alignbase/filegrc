@@ -240,6 +240,8 @@ test("persists onboarding resources without requiring Git", async (context) => {
   context.after(() => new Promise((resolve) => result.server.close(resolve)));
   const state = await (await fetch(`${result.url}/api/state`)).json();
   assert.equal(state.git.available, false);
+  assert.equal(state.repository.mode, "manual");
+  assert.equal(state.readOnly, false);
   const systemResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -867,8 +869,9 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /formal report period, fieldwork, and final report are the last stage/);
   assert.match(APP_SCRIPT, /This renderer edits those files/);
   assert.match(APP_SCRIPT, /Use the UI, an editor, the CLI, or an agent/);
-  assert.match(APP_SCRIPT, /Repository pulls with rebase/);
-  assert.match(APP_SCRIPT, /terminal users run git pull --rebase, git commit, and git push directly/);
+  assert.match(APP_SCRIPT, /each browser save fast-forwards, validates, creates one focused commit, and pushes it/);
+  assert.match(APP_SCRIPT, /Record status represents approval/);
+  assert.match(APP_SCRIPT, /Agents and terminal users continue to manage Git explicitly/);
   assert.match(APP_SCRIPT, /The UI and filegrc CLI use the same calculation/);
   assert.match(APP_SCRIPT, /Every action has a policy-based cutoff or a reasonable default deadline/);
   assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
@@ -880,13 +883,12 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /finish Step 1 by adding the real reviewers and operators, finishing the oversight team/);
   assert.match(APP_SCRIPT, /history\.replaceState\(null, "", draft \? "#\/" : "#\/stage\/scope"\)/);
   assert.match(APP_SCRIPT, /Complete the remaining Step 1 pages next/);
-  assert.match(APP_SCRIPT, /Saving writes JSON files but does not commit them/);
+  assert.match(APP_SCRIPT, /browser saves and synchronizes the related files together/);
   assert.match(APP_SCRIPT, /selected for scope review, but it is not approved or active/);
-  assert.match(APP_SCRIPT, /Git repository and remote detected/);
-  assert.match(APP_SCRIPT, /Detached HEAD detected/);
-  assert.match(APP_SCRIPT, /Git remote needed/);
+  assert.match(APP_SCRIPT, /Completing onboarding will save its related workspace, system, and renderer changes in one commit and push it/);
+  assert.match(APP_SCRIPT, /Manual repository mode/);
   assert.match(APP_SCRIPT, /Git setup needed/);
-  assert.match(APP_SCRIPT, /Saving still works/);
+  assert.match(APP_SCRIPT, /Manual-mode writes still work/);
   assert.match(APP_SCRIPT, /The filegrc server is unavailable/);
   assert.match(APP_SCRIPT, /async function localFetch/);
   assert.match(APP_SCRIPT, /id="start-onboarding"/);
@@ -902,6 +904,9 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /state\.git\.upstream/);
   assert.match(APP_SCRIPT, /class="repository-sync-status"/);
   assert.match(APP_SCRIPT, /Pushed " \+ result\.shortCommit/);
+  assert.match(APP_SCRIPT, /Retry sync/);
+  assert.match(APP_SCRIPT, /Development write override active/);
+  assert.match(APP_SCRIPT, /Pending FileGRC-only Commits/);
   assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{background:transparent;backdrop-filter:none\}/);
