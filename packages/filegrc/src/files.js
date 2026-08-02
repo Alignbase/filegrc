@@ -2,9 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
-import { serializeWorkspaceMutation } from "./mutation.js";
+import { serializeWorkspaceMutation, workspaceValidationDeferred } from "./mutation.js";
 import { isCanonicalDataPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { measureTiming } from "./timing.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 
@@ -213,7 +214,10 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     throw new Error("Batch expected revisions must be keyed by resource ID.");
   }
   const loaded = await loadWorkspace(input);
-  const before = await validateWorkspace(loaded);
+  const deferValidation = workspaceValidationDeferred();
+  const before = deferValidation || changes.validateWholeWorkspace
+    ? null
+    : await validateWorkspace(loaded);
   const existingById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const ids = new Set();
   const writes = [];
@@ -221,7 +225,7 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     validateBatchRecord(record, ids);
     if (existingById.has(record.id)) throw new Error(`Resource "${record.id}" already exists.`);
     const path = resourcePath(loaded.root, loaded.model, record);
-    writes.push({ mode: "create", path, record, previous: null });
+    writes.push({ operation: "create", path, record, previous: null, fileMode: 0o666 });
   }
   for (const record of updates) {
     validateBatchRecord(record, ids);
@@ -232,33 +236,48 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     }
     const path = resourcePath(loaded.root, loaded.model, record);
     const previous = await readFile(path, "utf8");
+    const mode = (await stat(path)).mode & 0o777;
     assertRevision(
       previous,
       expectedRevisions[record.id] || existing.revision,
       `Resource "${record.id}"`
     );
-    writes.push({ mode: "update", path, record, previous });
+    writes.push({ operation: "update", path, record, previous, fileMode: mode });
   }
   const written = [];
   try {
     for (const item of writes) {
-      await writeAtomic(item.path, item.record, { exclusive: item.mode === "create" });
+      await writeAtomic(item.path, item.record, { exclusive: item.operation === "create" });
       written.push(item);
     }
-    const result = await validateWorkspace(loaded.root);
-    const introduced = newErrors(result, before);
-    if (introduced.length) throw new Error(formatWriteFailure(introduced, "resource batch"));
+    let validation = null;
+    if (!deferValidation) {
+      validation = await validateWorkspace(loaded.root);
+      const errors = changes.validateWholeWorkspace
+        ? validation.diagnostics.filter(({ severity }) => severity === "error")
+        : newErrors(validation, before);
+      if (errors.length) throw new Error(formatWriteFailure(errors, "resource batch"));
+    }
+    return {
+      created: creates,
+      updated: updates,
+      validation
+    };
   } catch (error) {
+    const rollbackErrors = [];
     for (const item of written.reverse()) {
-      if (item.mode === "create") await rm(item.path, { force: true });
-      else await writeTextAtomic(item.path, item.previous);
+      try {
+        if (item.operation === "create") await rm(item.path, { force: true });
+        else await writeTextAtomic(item.path, item.previous, { mode: item.fileMode });
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError.message);
+      }
+    }
+    if (rollbackErrors.length) {
+      throw new Error(`${error.message} FileGRC could not restore every file in the resource batch: ${rollbackErrors.join(" ")}`);
     }
     throw error;
   }
-  return {
-    created: creates,
-    updated: updates
-  };
 }
 
 function validateBatchRecord(record, ids) {
@@ -325,7 +344,8 @@ async function createResourceAndLinkUnlocked(input, record, linkTarget, options)
 async function createResourcesUnlocked(input, records) {
   if (!Array.isArray(records) || records.length === 0) throw new Error("At least one resource is required.");
   const loaded = await loadWorkspace(input);
-  const before = await validateWorkspace(loaded);
+  const deferValidation = workspaceValidationDeferred();
+  const before = deferValidation ? null : await validateWorkspace(loaded);
   const ids = new Set();
   const writes = [];
   for (const record of records) {
@@ -347,9 +367,11 @@ async function createResourcesUnlocked(input, records) {
       await writeAtomic(item.path, item.record, { exclusive: true });
       written.push(item);
     }
-    const result = await validateWorkspace(loaded.root);
-    const introduced = newErrors(result, before);
-    if (introduced.length) throw new Error(formatWriteFailure(introduced, "resource batch"));
+    if (!deferValidation) {
+      const result = await validateWorkspace(loaded.root);
+      const introduced = newErrors(result, before);
+      if (introduced.length) throw new Error(formatWriteFailure(introduced, "resource batch"));
+    }
   } catch (error) {
     for (const item of written.reverse()) await rm(item.path, { force: true });
     throw error;
@@ -359,7 +381,8 @@ async function createResourcesUnlocked(input, records) {
 
 async function createResourceUnlocked(input, record, options) {
   const loaded = await loadWorkspace(input);
-  const before = await validateWorkspace(loaded);
+  const deferValidation = workspaceValidationDeferred();
+  const before = deferValidation ? null : await validateWorkspace(loaded);
   const path = resourcePath(loaded.root, loaded.model, record);
   try {
     await stat(path);
@@ -377,9 +400,11 @@ async function createResourceUnlocked(input, record, options) {
     }
     await writeAtomic(path, record, { exclusive: true });
     recordWritten = true;
-    const result = await validateWorkspace(loaded.root);
-    const introduced = newErrors(result, before);
-    if (introduced.length) throw new Error(formatWriteFailure(introduced, record.id));
+    if (!deferValidation) {
+      const result = await validateWorkspace(loaded.root);
+      const introduced = newErrors(result, before);
+      if (introduced.length) throw new Error(formatWriteFailure(introduced, record.id));
+    }
   } catch (error) {
     if (recordWritten) await rm(path, { force: true });
     for (const item of written) await rm(item.path, { force: true });
@@ -397,7 +422,8 @@ async function updateResourceUnlocked(input, type, id, record, options) {
     throw new Error("The type and ID in the record must match the resource being updated.");
   }
   const loaded = await loadWorkspace(input);
-  const before = await validateWorkspace(loaded);
+  const deferValidation = workspaceValidationDeferred();
+  const before = deferValidation ? null : await validateWorkspace(loaded);
   const path = resourcePath(loaded.root, loaded.model, record);
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The record");
@@ -407,9 +433,11 @@ async function updateResourceUnlocked(input, type, id, record, options) {
   try {
     for (const item of contentWrites) await writeTextAtomic(item.path, item.source);
     await writeAtomic(path, record);
-    const result = await validateWorkspace(loaded.root);
-    const introduced = newErrors(result, before);
-    if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
+    if (!deferValidation) {
+      const result = await validateWorkspace(loaded.root);
+      const introduced = newErrors(result, before);
+      if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
+    }
   } catch (error) {
     await writeTextAtomic(path, previous);
     for (const item of contentWrites) {
@@ -449,7 +477,8 @@ export async function deleteResource(input, type, id, options = {}) {
 
 async function deleteResourceUnlocked(input, type, id, options) {
   const loaded = await loadWorkspace(input);
-  const before = await validateWorkspace(loaded);
+  const deferValidation = workspaceValidationDeferred();
+  const before = deferValidation ? null : await validateWorkspace(loaded);
   const definition = getResourceDefinition(loaded.model, type);
   if (definition.singleton) throw new Error("Singleton records cannot be deleted.");
   const path = resourcePath(loaded.root, loaded.model, { type, id });
@@ -464,9 +493,11 @@ async function deleteResourceUnlocked(input, type, id, options) {
   try {
     await rm(path);
     for (const item of contentFiles) await rm(item.path, { force: true });
-    const result = await validateWorkspace(loaded.root);
-    const introduced = newErrors(result, before);
-    if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
+    if (!deferValidation) {
+      const result = await validateWorkspace(loaded.root);
+      const introduced = newErrors(result, before);
+      if (introduced.length) throw new Error(formatWriteFailure(introduced, id));
+    }
   } catch (error) {
     await writeTextAtomic(path, source, { mode });
     for (const item of contentFiles) {
@@ -489,11 +520,17 @@ export function resourcePath(input, model, record) {
 }
 
 async function writeAtomic(path, value, options = {}) {
-  const source = `${JSON.stringify(value, null, 2)}\n`;
-  await writeTextAtomic(path, source, options);
+  return measureTiming("writes", async () => {
+    const source = `${JSON.stringify(value, null, 2)}\n`;
+    await writeTextAtomicUnmeasured(path, source, options);
+  });
 }
 
 async function writeTextAtomic(path, source, options = {}) {
+  return measureTiming("writes", () => writeTextAtomicUnmeasured(path, source, options));
+}
+
+async function writeTextAtomicUnmeasured(path, source, options = {}) {
   await mkdir(dirname(path), { recursive: true });
   const temp = join(dirname(path), `.${randomUUID()}.tmp`);
   let mode = options.mode ?? 0o666;

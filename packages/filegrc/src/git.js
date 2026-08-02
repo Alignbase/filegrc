@@ -1,14 +1,19 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
+import { performance } from "node:perf_hooks";
 import { isSafeGitName } from "./git-name.js";
-import { serializeWorkspaceMutation } from "./mutation.js";
+import { serializeWorkspaceMutation, withDeferredWorkspaceValidation } from "./mutation.js";
 import { resolveWorkspaceRoot } from "./paths.js";
-import { validateWorkspace } from "./validate.js";
+import { measureTiming, measureTimingSync, timingEnabled } from "./timing.js";
+import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
 
 const lastSuccessfulSynchronizations = new Map();
+const workspaceHistoryCache = new Map();
+const backgroundSynchronizations = new Map();
+export const BROWSER_VALIDATION = Symbol("filegrc.browserValidation");
 
 export function getGitSummary(input = process.cwd()) {
   const root = resolveWorkspaceRoot(input);
@@ -65,6 +70,13 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12) {
   const wanted = new Set(relativePaths);
   const histories = new Map([...wanted].map((path) => [path, []]));
   if (!wanted.size) return histories;
+  const head = tryGit(root, ["rev-parse", "HEAD"]) || null;
+  const cached = workspaceHistoryCache.get(root);
+  if (cached?.head === head && cached.limitPerFile === limitPerFile) {
+    for (const path of wanted) histories.set(path, cached.histories.get(path) ?? []);
+    return histories;
+  }
+  const allHistories = new Map();
   try {
     const output = git(root, ["log", "--relative", "--format=%x1e%H%x1f%aI%x1f%an%x1f%s", "--name-only", "--", "data"]);
     for (const block of output.split("\x1e")) {
@@ -72,13 +84,16 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12) {
       if (lines.length < 2) continue;
       const commit = parseLogLine(lines[0]);
       for (const path of lines.slice(1)) {
-        const history = histories.get(path);
-        if (history && history.length < limitPerFile) history.push(commit);
+        if (!allHistories.has(path)) allHistories.set(path, []);
+        const history = allHistories.get(path);
+        if (history.length < limitPerFile) history.push(commit);
       }
     }
   } catch {
     // An uncommitted workspace has no history yet.
   }
+  workspaceHistoryCache.set(root, { head, limitPerFile, histories: allHistories });
+  for (const path of wanted) histories.set(path, allHistories.get(path) ?? []);
   return histories;
 }
 
@@ -184,11 +199,14 @@ export async function retryBrowserSync(input = process.cwd(), options = {}) {
   return serializeWorkspaceMutation(input, async (root) => {
     const config = await getRepositoryConfig(root);
     if (config.mode !== "trunk") throw new Error("Retry sync is available only in trunk repository mode.");
+    if (backgroundSynchronizations.get(root)?.status === "syncing") {
+      throw new Error("A FileGRC background push is already in progress. Wait for it to finish before retrying sync.");
+    }
     if (options.allowNonAuthoritativeWrites === true) {
       throw new Error("Retry sync is disabled while the development write override is active.");
     }
     const before = requireTrunkPreconditions(root, config, { allowAhead: true });
-    fetchConfiguredRemote(root, config.remote);
+    await fetchConfiguredRemote(root, config.remote);
     const synchronized = inspectTrunkRepository(root, config, getGitSummary(root));
     if (synchronized.behind > 0 && synchronized.ahead > 0) {
       throw new Error("The authoritative branch has diverged from its upstream. FileGRC will not merge or rebase it. Reconcile the repository with Git, then reload.");
@@ -200,13 +218,14 @@ export async function retryBrowserSync(input = process.cwd(), options = {}) {
     if (ready.ahead > 0 && !ready.pendingCommitsFilegrcOnly) {
       throw new Error("At least one commit ahead of upstream changes files outside this FileGRC workspace. FileGRC will not push it. Reconcile the repository with Git.");
     }
-    if (ready.ahead > 0) pushConfiguredBranch(root, config);
+    if (ready.ahead > 0) await pushConfiguredBranch(root, config);
     const after = inspectTrunkRepository(root, config, getGitSummary(root));
     if (after.ahead !== 0 || after.behind !== 0) {
       throw new Error("The authoritative branch is still not synchronized. Reload the repository state before trying again.");
     }
     const synchronizedAt = new Date().toISOString();
     lastSuccessfulSynchronizations.set(root, synchronizedAt);
+    backgroundSynchronizations.delete(root);
     return {
       commit: after.currentCommit,
       shortCommit: after.currentCommit?.slice(0, 8) ?? null,
@@ -220,7 +239,7 @@ export async function retryBrowserSync(input = process.cwd(), options = {}) {
 
 async function runTrunkMutationUnlocked(root, config, options, task) {
   requireTrunkPreconditions(root, config);
-  fetchConfiguredRemote(root, config.remote);
+  await fetchConfiguredRemote(root, config.remote);
   let synchronized = inspectTrunkRepository(root, config, getGitSummary(root));
   if (synchronized.ahead > 0 && synchronized.behind > 0) {
     throw new Error("The authoritative branch has diverged from its upstream. FileGRC will not merge or rebase it. Reconcile the repository with Git, then reload.");
@@ -238,13 +257,18 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
 
   let result;
   let subject;
+  let validationProof;
   try {
-    result = await task(root);
+    result = await withDeferredWorkspaceValidation(() => task(root));
     subject = generatedCommitMessage(typeof options?.message === "function" ? options.message(result) : options?.message);
     const validation = await validateWorkspace(root);
     if (!validation.ok) {
       throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. The browser change was rolled back.`);
     }
+    validationProof = {
+      validation,
+      fingerprint: (await fingerprintWorkspace(validation.loaded)).fingerprint
+    };
     assertNoOutsideWorktreeChanges(root);
   } catch (error) {
     try {
@@ -256,7 +280,7 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   }
 
   if (!getGitSummary(root).changes.length && options?.allowNoChanges === true) {
-    return {
+    return withValidationProof({
       ...result,
       synchronization: {
         status: "unchanged",
@@ -266,7 +290,7 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
         synchronizedAt: lastSuccessfulSynchronizations.get(root) ?? null,
         pushError: null
       }
-    };
+    }, validationProof);
   }
   if (!getGitSummary(root).changes.length) {
     throw new Error("The browser action did not change any FileGRC workspace files.");
@@ -278,35 +302,100 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   assertNoOutsideWorktreeChanges(root, false);
   assertOnlyWorkspaceFilesStaged(root);
   try {
-    gitForWrite(root, ["commit", "-m", subject, "--", "."], "create the FileGRC browser commit");
+    measureTimingSync("commit", () => {
+      gitForWrite(root, ["commit", "-m", subject, "--", "."], "create the FileGRC browser commit");
+    });
   } catch (error) {
     throw new Error(`${error.message} The saved files remain in the Git worktree and later browser changes are blocked.`);
   }
 
   const committed = getGitSummary(root);
-  let pushError = null;
-  try {
-    pushConfiguredBranch(root, config);
-  } catch (error) {
-    pushError = `${error.message} The local FileGRC commit was retained. Use Retry sync after the remote is available.`;
-  }
-  const after = inspectTrunkRepository(root, config, getGitSummary(root));
-  let synchronizedAt = null;
-  if (!pushError && after.ahead === 0 && after.behind === 0) {
-    synchronizedAt = new Date().toISOString();
-    lastSuccessfulSynchronizations.set(root, synchronizedAt);
-  }
-  return {
+  queueBackgroundPush(root, config, committed, options?.backgroundPushDelayMs);
+  return withValidationProof({
     ...result,
     synchronization: {
-      status: pushError ? "not-synced" : "synced",
+      status: "syncing",
       commit: committed.commit,
       shortCommit: committed.shortCommit,
-      upstream: after.upstream,
-      synchronizedAt,
-      pushError
+      upstream: synchronized.upstream,
+      synchronizedAt: null,
+      pushError: null
+    }
+  }, validationProof);
+}
+
+function withValidationProof(result, proof) {
+  if (result && typeof result === "object") {
+    Object.defineProperty(result, BROWSER_VALIDATION, { value: proof });
+  }
+  return result;
+}
+
+function queueBackgroundPush(root, config, committed, delayMs = 0) {
+  backgroundSynchronizations.set(root, {
+    status: "syncing",
+    commit: committed.commit,
+    shortCommit: committed.shortCommit,
+    startedAt: new Date().toISOString(),
+    error: null
+  });
+  const start = () => {
+    try {
+      const ready = requireTrunkPreconditions(root, config, { allowAhead: true });
+      if (ready.currentCommit !== committed.commit) {
+        throw new Error("The authoritative branch changed after FileGRC created its browser commit. FileGRC did not push it.");
+      }
+      if (ready.behind > 0) {
+        throw new Error("The authoritative branch changed upstream after FileGRC created its browser commit. FileGRC did not push it.");
+      }
+      if (ready.ahead < 1 || !ready.pendingCommitsFilegrcOnly) {
+        throw new Error("The pending commits are no longer limited to this FileGRC workspace. FileGRC did not push them.");
+      }
+      void finishBackgroundPush(root, config, committed);
+    } catch (error) {
+      recordBackgroundPushFailure(root, committed, error);
     }
   };
+  const delay = Math.max(0, Math.min(Number(delayMs) || 0, 30_000));
+  if (delay) setTimeout(start, delay);
+  else setImmediate(start);
+}
+
+async function finishBackgroundPush(root, config, committed) {
+  const started = performance.now();
+  let outcome = "failed";
+  try {
+    await pushConfiguredBranch(root, config, committed.commit);
+    const after = inspectTrunkRepository(root, config, getGitSummary(root), { ignoreBackground: true });
+    if (after.ahead !== 0 || after.behind !== 0) {
+      throw new Error("The authoritative branch is still not synchronized after the background push.");
+    }
+    const synchronizedAt = new Date().toISOString();
+    lastSuccessfulSynchronizations.set(root, synchronizedAt);
+    backgroundSynchronizations.delete(root);
+    outcome = "synced";
+  } catch (error) {
+    recordBackgroundPushFailure(root, committed, error);
+  } finally {
+    if (timingEnabled()) {
+      console.error(`[filegrc timing] ${JSON.stringify({
+        operation: "background-sync",
+        push: { count: 1, durationMs: performance.now() - started },
+        outcome
+      })}`);
+    }
+  }
+}
+
+function recordBackgroundPushFailure(root, committed, error) {
+  backgroundSynchronizations.set(root, {
+    status: "failed",
+    commit: committed.commit,
+    shortCommit: committed.shortCommit,
+    startedAt: backgroundSynchronizations.get(root)?.startedAt ?? null,
+    finishedAt: new Date().toISOString(),
+    error: `${error.message} The local FileGRC commit was retained. Use Retry sync after the remote is available.`
+  });
 }
 
 async function commitWorkspaceUnlocked(root, message) {
@@ -440,7 +529,8 @@ async function getRepositoryConfig(root) {
   };
 }
 
-function inspectTrunkRepository(root, config, summary = getGitSummary(root)) {
+function inspectTrunkRepository(root, config, summary = getGitSummary(root), options = {}) {
+  const background = options.ignoreBackground ? null : backgroundSynchronizations.get(root);
   const base = {
     mode: "trunk",
     authoritativeBranch: config.authoritativeBranch,
@@ -455,6 +545,14 @@ function inspectTrunkRepository(root, config, summary = getGitSummary(root)) {
     lastSuccessfulSynchronization: lastSuccessfulSynchronizations.get(root) ?? null,
     wholeWorktreeClean: summary.available ? wholeWorktreeClean(root) : null,
     operationInProgress: summary.available ? repositoryOperation(root) : null,
+    backgroundSynchronization: background ? {
+      status: background.status,
+      commit: background.commit,
+      shortCommit: background.shortCommit,
+      startedAt: background.startedAt,
+      finishedAt: background.finishedAt ?? null,
+      error: background.error
+    } : null,
     writesAllowed: false
   };
   if (config.configurationError) {
@@ -526,6 +624,16 @@ function inspectTrunkRepository(root, config, summary = getGitSummary(root)) {
       message: "The Git worktree has uncommitted changes. Commit, discard, or move them with Git before using browser writes."
     };
   }
+  if (background?.status === "syncing" && background.commit === summary.commit) {
+    return {
+      ...details,
+      status: "syncing",
+      label: "Syncing",
+      message: `The FileGRC commit ${background.shortCommit} is saved locally and is being pushed to ${expectedUpstream}.`,
+      writesAllowed: false,
+      retrySafe: false
+    };
+  }
   if (counts.ahead === null || counts.behind === null) {
     return {
       ...details,
@@ -536,19 +644,27 @@ function inspectTrunkRepository(root, config, summary = getGitSummary(root)) {
   }
   if (counts.ahead > 0 || counts.behind > 0) {
     const external = counts.ahead > 0 && !pendingCommitsFilegrcOnly;
+    const backgroundFailure = background?.status === "failed"
+      && background.commit === summary.commit
+      && counts.ahead > 0
+      && counts.behind === 0
+      && pendingCommitsFilegrcOnly
+      ? background.error
+      : null;
     return {
       ...details,
       status: "not-synced",
       label: "Not synced",
-      message: external
+      message: backgroundFailure || (external
         ? "A commit ahead of upstream changes files outside this FileGRC workspace. Reconcile it with Git. FileGRC will not push it."
         : counts.ahead > 0 && counts.behind > 0
           ? "The authoritative branch has diverged from upstream. Reconcile it with Git. FileGRC will not merge or rebase it."
           : counts.ahead > 0
             ? "FileGRC-only commits are waiting to be pushed. Use Retry sync."
-            : "The authoritative branch is behind upstream. The next browser mutation will fast-forward before writing.",
+            : "The authoritative branch is behind upstream. The next browser mutation will fast-forward before writing."),
       writesAllowed: counts.ahead === 0 && counts.behind > 0,
-      retrySafe: counts.ahead > 0 && counts.behind === 0 && pendingCommitsFilegrcOnly
+      retrySafe: counts.ahead > 0 && counts.behind === 0 && pendingCommitsFilegrcOnly,
+      backgroundSyncError: backgroundFailure
     };
   }
   return {
@@ -577,20 +693,20 @@ function requireTrunkPreconditions(root, config, options = {}) {
   return state;
 }
 
-function fetchConfiguredRemote(root, remote) {
-  gitForWrite(root, ["fetch", "--prune", "--", remote], `fetch ${remote}`);
+async function fetchConfiguredRemote(root, remote) {
+  return measureTiming("fetch", () => gitForWriteAsync(root, ["fetch", "--prune", "--", remote], `fetch ${remote}`));
 }
 
 function fastForwardConfiguredBranch(root, upstream) {
   gitForWrite(root, ["merge", "--ff-only", "--", upstream], `fast-forward from ${upstream}`);
 }
 
-function pushConfiguredBranch(root, config) {
-  gitForWrite(
+async function pushConfiguredBranch(root, config, source = "HEAD") {
+  return measureTiming("push", () => gitForWriteAsync(
     root,
-    ["push", "--porcelain", "--", config.remote, `HEAD:refs/heads/${config.authoritativeBranch}`],
+    ["push", "--porcelain", "--", config.remote, `${source}:refs/heads/${config.authoritativeBranch}`],
     `push ${config.authoritativeBranch} to ${config.remote}`
-  );
+  ));
 }
 
 function wholeWorktreeClean(root) {
@@ -783,6 +899,73 @@ function gitForWrite(cwd, args, action = "create the commit") {
     const message = sanitizeGitErrorMessage(error.stderr?.trim() || error.stdout?.trim() || error.message);
     throw new Error(`Git could not ${action}. ${message}`);
   }
+}
+
+async function gitForWriteAsync(cwd, args, action = "update the repository") {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_MERGE_AUTOEDIT: "no"
+      }
+    });
+    const stdout = [];
+    const stderr = [];
+    let size = 0;
+    let timedOut = false;
+    let forceKillTimer = null;
+    const terminate = (signal) => {
+      try {
+        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch {
+        try {
+          child.kill(signal);
+        } catch {
+          // The process may have exited between the timeout and termination.
+        }
+      }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      terminate("SIGTERM");
+      forceKillTimer = setTimeout(() => terminate("SIGKILL"), 2_000);
+    }, 30_000);
+    child.stdout.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= 20_000_000) stdout.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= 20_000_000) stderr.push(chunk);
+    });
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      clearTimeout(forceKillTimer);
+      reject(new Error(`Git could not ${action}. ${sanitizeGitErrorMessage(error.message)}`));
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(forceKillTimer);
+      const output = Buffer.concat(stdout).toString("utf8").trim();
+      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
+      if (code === 0 && !timedOut && size <= 20_000_000) {
+        resolve(output);
+        return;
+      }
+      const detail = size > 20_000_000
+        ? "Git output exceeded 20 MB."
+        : timedOut
+          ? "Git timed out after 30 seconds."
+          : errorOutput || output || `Git exited with status ${code}.`;
+      const message = sanitizeGitErrorMessage(detail);
+      reject(new Error(`Git could not ${action}. ${message}`));
+    });
+  });
 }
 
 export function sanitizeGitErrorMessage(value) {

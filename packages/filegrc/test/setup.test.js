@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createResource, loadWorkspace, serveWorkspace, setupWorkspace, validateWorkspace } from "../src/index.js";
+import { collectTimings } from "../src/timing.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
@@ -164,6 +165,10 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(completed.system.status, "active");
   assert.equal(completed.workspace.assuranceGoal, "soc-2-type-2");
   assert.deepEqual(completed.linkedControlIds, []);
+  assert.equal(completed.state.resources.length, 9);
+  assert.equal(completed.state.workspace.assuranceGoal, "soc-2-type-2");
+  assert.equal(completed.state.resources.find(({ record }) => record.id === completed.system.id).record.status, "active");
+  assert.equal(completed.state.resources.find(({ record }) => record.type === "renderer-settings").record.showOnboarding, false);
 
   let loaded = await loadWorkspace(root);
   assert.equal(loaded.resources.filter(({ type, inScope }) => type === "system" && inScope).length, 1);
@@ -219,6 +224,71 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     draft: true
   });
   assert.equal(resumedDraft.system.status, "active");
+});
+
+test("setup applies its records in one validation pass", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-setup-validation-count-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await writeJson(join(root, "data", "renderer.json"), {
+    schemaVersion: 1,
+    id: "renderer-settings",
+    type: "renderer-settings",
+    title: "Renderer settings",
+    showOnboarding: true
+  });
+
+  const { result, timings } = await collectTimings(() => setupWorkspace(root, {
+    serviceName: "Counted Service",
+    boundary: "The production service and supporting infrastructure.",
+    ownerId: "person-owner",
+    criticality: "high",
+    dataClassification: "Confidential",
+    internetExposed: true,
+    programGoal: "readiness",
+    draft: false
+  }));
+
+  assert.equal(result.onboardingComplete, true);
+  assert.equal(timings.validation.count, 1);
+  assert.equal(timings.writes.count, 3);
+});
+
+test("setup restores every affected file when a later batch write fails", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-setup-rollback-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, "data", "systems"), { recursive: true });
+  const rendererPath = join(root, "data", "renderer.json");
+  const workspacePath = join(root, "data", "workspace.json");
+  await writeJson(rendererPath, {
+    schemaVersion: 1,
+    id: "renderer-settings",
+    type: "renderer-settings",
+    title: "Renderer settings",
+    showOnboarding: true
+  });
+  const originalWorkspace = await readFile(workspacePath, "utf8");
+  const originalRenderer = await readFile(rendererPath, "utf8");
+  await chmod(join(root, "data"), 0o555);
+  try {
+    await assert.rejects(setupWorkspace(root, {
+      serviceName: "Rollback Service",
+      boundary: "The production service and supporting infrastructure.",
+      ownerId: "person-owner",
+      criticality: "high",
+      dataClassification: "Confidential",
+      internetExposed: true,
+      programGoal: "readiness",
+      draft: false
+    }), /EACCES|EPERM|permission denied/i);
+  } finally {
+    await chmod(join(root, "data"), 0o755);
+  }
+
+  assert.equal(await readFile(workspacePath, "utf8"), originalWorkspace);
+  assert.equal(await readFile(rendererPath, "utf8"), originalRenderer);
+  await assert.rejects(access(join(root, "data", "systems", "system-rollback-service.json")), /ENOENT/);
 });
 
 test("setup accepts all initial scope fields as noninteractive CLI flags", async (context) => {

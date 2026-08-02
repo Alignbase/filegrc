@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { createResources, getGitSummary, getWorkspaceHistories, runBrowserMutation, serveWorkspace } from "../src/index.js";
+import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getWorkspaceHistories, runBrowserMutation, serveWorkspace, updateResource } from "../src/index.js";
 import {
+  BROWSER_VALIDATION,
   commitAndPushWorkspace,
   commitWorkspace,
   hasGitRevision,
@@ -14,6 +15,7 @@ import {
   pushWorkspace,
   sanitizeGitErrorMessage
 } from "../src/git.js";
+import { collectTimings } from "../src/timing.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
@@ -215,7 +217,10 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
     body: JSON.stringify({ record: updated, revision: owner.revision })
   });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).synchronization.status, "synced");
+  const saved = await response.json();
+  assert.ok(["syncing", "synced"].includes(saved.synchronization.status));
+  assert.ok(["syncing", "synced"].includes(saved.state.repository.status));
+  await waitForRepository(running.url);
   assert.equal((await git(fixture.root, ["log", "-1", "--format=%s"])).stdout.trim(), "Update person: Program Owner");
   assert.match(
     (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
@@ -253,6 +258,110 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
     "Remote reviewer"
   );
   assert.equal((await git(fixture.root, ["rev-list", "--count", "HEAD"])).stdout.trim(), "3");
+});
+
+test("trunk-mode browser saves return after the local commit while push continues in the background", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-background-push-");
+  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 3_000 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+  const initial = await fetchJson(`${running.url}/api/state`);
+  const owner = initial.resources.find(({ record }) => record.id === "person-owner");
+
+  const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      record: { ...owner.record, role: "Background sync owner" },
+      revision: owner.revision
+    })
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.synchronization.status, "syncing");
+  assert.equal(result.state.repository.status, "syncing");
+  assert.equal(result.state.readOnly, true);
+  assert.match(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8"), /Background sync owner/);
+  assert.doesNotMatch(
+    (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
+    /Background sync owner/
+  );
+
+  const statusStarted = Date.now();
+  const pending = await fetchJson(`${running.url}/api/git/sync-status`);
+  assert.equal(pending.repository.status, "syncing");
+  assert.ok(Date.now() - statusStarted < 1_500, "sync status should remain responsive while Git push is running");
+
+  const synchronized = await waitForRepository(running.url, "synced");
+  assert.equal(synchronized.ahead, 0);
+  assert.match(
+    (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
+    /Background sync owner/
+  );
+});
+
+test("remote commits that arrive before a background push are never overwritten", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-background-race-");
+  const peer = join(fixture.parent, "peer");
+  await git(fixture.parent, ["clone", fixture.remote, peer]);
+  await configureGit(peer, "Peer User", "peer@example.test");
+  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 3_000 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+  const initial = await fetchJson(`${running.url}/api/state`);
+  const owner = initial.resources.find(({ record }) => record.id === "person-owner");
+
+  const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      record: { ...owner.record, role: "Pending local owner" },
+      revision: owner.revision
+    })
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).synchronization.status, "syncing");
+
+  await writeFile(join(peer, "remote-note.txt"), "remote change during background sync\n", "utf8");
+  await git(peer, ["add", "."]);
+  await git(peer, ["commit", "-m", "Commit while FileGRC is syncing"]);
+  await git(peer, ["push"]);
+
+  const failed = await waitForRepository(running.url, "not-synced");
+  assert.match(failed.backgroundSyncError, /Git could not push/);
+  assert.match((await git(fixture.remote, ["show", "main:remote-note.txt"])).stdout, /remote change during background sync/);
+  assert.doesNotMatch(
+    (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
+    /Pending local owner/
+  );
+  const retry = await fetch(`${running.url}/api/git/retry-sync`, { method: "POST" });
+  assert.equal(retry.status, 409);
+  assert.match((await retry.json()).error, /diverged/);
+});
+
+test("a trunk browser record save validates once and reuses that proof for current state", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-validation-count-");
+  const initialState = await createAppState(fixture.root);
+  const owner = initialState.resources.find(({ record }) => record.id === "person-owner");
+
+  const { result, timings } = await collectTimings(async () => {
+    const mutation = await runBrowserMutation(fixture.root, {
+      message: "Update owner once"
+    }, () => updateResource(fixture.root, "person", owner.record.id, {
+      ...owner.record,
+      role: "Validation count owner"
+    }, {
+      expectedRevision: owner.revision
+    }));
+    const state = await createAppState(fixture.root, {
+      includeDetails: false,
+      validationProof: mutation[BROWSER_VALIDATION]
+    });
+    return { mutation, state };
+  });
+
+  assert.equal(timings.validation.count, 1);
+  assert.equal(result.state.resources.find(({ record }) => record.id === owner.record.id).record.role, "Validation count owner");
+  assert.equal(result.mutation.synchronization.status, "syncing");
+  assert.equal((await waitForRepository(fixture.root)).status, "synced");
 });
 
 test("the evidence map is read-only in trunk mode", async (context) => {
@@ -461,22 +570,33 @@ test("trunk mode rejects unsafe configured Git names before synchronization", as
 
 test("failed trunk pushes remain visible and retry only FileGRC commits", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-retry-");
-  const hook = join(fixture.remote, "hooks", "pre-receive");
-  await writeFile(hook, "#!/bin/sh\nexit 1\n", "utf8");
-  await chmod(hook, 0o755);
-  let running = await serveWorkspace(fixture.root, { port: 0 });
+  const unavailableRemote = `${fixture.remote}.unavailable`;
+  let running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 5_000 });
   context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
-  const state = await fetchJson(`${running.url}/api/state`);
-  const owner = state.resources.find(({ record }) => record.id === "person-owner");
-  const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
-    method: "PUT",
+  const response = await fetch(`${running.url}/api/setup`, {
+    method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ record: { ...owner.record, role: "Pending push" }, revision: owner.revision })
+    body: JSON.stringify({
+      serviceName: "Pending Push Service",
+      boundary: "The production service and supporting infrastructure.",
+      ownerId: "person-owner",
+      criticality: "high",
+      dataClassification: "Confidential",
+      internetExposed: true,
+      programGoal: "readiness",
+      draft: false
+    })
   });
   assert.equal(response.status, 200);
   const result = await response.json();
-  assert.equal(result.synchronization.status, "not-synced");
-  assert.match(result.synchronization.pushError, /local FileGRC commit was retained/);
+  assert.equal(result.synchronization.status, "syncing");
+  assert.equal(result.synchronization.pushError, null);
+  assert.equal(result.state.repository.status, "syncing");
+  assert.equal(result.state.resources.find(({ record }) => record.id === result.system.id).record.status, "active");
+  await rename(fixture.remote, unavailableRemote);
+  const failed = await waitForRepository(running.url, "not-synced");
+  assert.equal(failed.ahead, 1);
+  assert.match(failed.backgroundSyncError, /local FileGRC commit was retained/);
   await new Promise((resolve) => running.server.close(resolve));
   running = await serveWorkspace(fixture.root, { port: 0 });
   const pending = await fetchJson(`${running.url}/api/state`);
@@ -484,9 +604,12 @@ test("failed trunk pushes remain visible and retry only FileGRC commits", async 
   assert.equal(pending.repository.ahead, 1);
   assert.equal(pending.repository.retrySafe, true);
 
-  await rm(hook);
+  await rename(unavailableRemote, fixture.remote);
   const retry = await fetch(`${running.url}/api/git/retry-sync`, { method: "POST" });
   assert.equal(retry.status, 200);
+  const retryResult = await retry.json();
+  assert.equal(retryResult.state.repository.status, "synced");
+  assert.equal(retryResult.state.repository.ahead, 0);
   const synchronized = await fetchJson(`${running.url}/api/state`);
   assert.equal(synchronized.repository.status, "synced");
   assert.equal(synchronized.repository.ahead, 0);
@@ -542,6 +665,7 @@ test("two trunk-mode servers cannot overwrite a concurrent browser save", async 
     })
   });
   assert.equal(firstResponse.status, 200);
+  await waitForRepository(first.url);
   const secondResponse = await fetch(`${second.url}/api/resource/person/person-owner`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -584,7 +708,8 @@ test("trunk-mode onboarding writes and synchronizes its related files in one com
     })
   });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).synchronization.status, "synced");
+  assert.ok(["syncing", "synced"].includes((await response.json()).synchronization.status));
+  await waitForRepository(running.url);
   assert.equal(Number((await git(fixture.root, ["rev-list", "--count", "HEAD"])).stdout.trim()), before + 1);
   assert.equal((await git(fixture.root, ["log", "-1", "--format=%s"])).stdout.trim(), "Complete onboarding for Test Organization");
   const names = (await git(fixture.root, ["show", "--format=", "--name-only", "HEAD"])).stdout.trim().split("\n").sort();
@@ -593,6 +718,43 @@ test("trunk-mode onboarding writes and synchronizes its related files in one com
     "data/systems/system-example-service.json",
     "data/workspace.json"
   ]);
+});
+
+test("invalid final onboarding state rolls back every file and creates no commit", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-onboarding-invalid-");
+  const workspacePath = join(fixture.root, "data", "workspace.json");
+  const invalidWorkspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  delete invalidWorkspace.organizationName;
+  await writeJson(workspacePath, invalidWorkspace);
+  await git(fixture.root, ["add", "."]);
+  await git(fixture.root, ["commit", "-m", "Create invalid benchmark state"]);
+  await git(fixture.root, ["push"]);
+  const originalWorkspace = await readFile(workspacePath, "utf8");
+  const before = (await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim();
+  const running = await serveWorkspace(fixture.root, { port: 0 });
+  context.after(() => new Promise((resolve) => running.server.close(resolve)));
+
+  const response = await fetch(`${running.url}/api/setup`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      serviceName: "Invalid Final State",
+      boundary: "The production service and supporting infrastructure.",
+      ownerId: "person-owner",
+      criticality: "high",
+      dataClassification: "Confidential",
+      internetExposed: true,
+      programGoal: "readiness",
+      draft: false
+    })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /validation error/i);
+  assert.equal((await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim(), before);
+  assert.equal(await readFile(workspacePath, "utf8"), originalWorkspace);
+  await assert.rejects(access(join(fixture.root, "data", "systems", "system-invalid-final-state.json")), /ENOENT/);
+  assert.equal((await git(fixture.root, ["status", "--porcelain=v1"])).stdout.trim(), "");
 });
 
 test("retry sync refuses diverged history and commits that include files outside a nested FileGRC workspace", async (context) => {
@@ -691,6 +853,21 @@ async function fetchJson(url) {
   const response = await fetch(url);
   assert.equal(response.status, 200);
   return response.json();
+}
+
+async function waitForRepository(input, expectedStatus = "synced", timeoutMs = 15_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const repository = input.startsWith?.("http")
+      ? (await fetchJson(`${input}/api/git/sync-status`)).repository
+      : await getBrowserRepositoryState(input);
+    if (repository.status === expectedStatus) return repository;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const repository = input.startsWith?.("http")
+    ? (await fetchJson(`${input}/api/git/sync-status`)).repository
+    : await getBrowserRepositoryState(input);
+  assert.fail(`Expected repository status ${expectedStatus}, received ${repository.status}.`);
 }
 
 function git(cwd, args) {

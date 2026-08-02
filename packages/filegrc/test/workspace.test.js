@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createAppState, createResource, createResourceAndLink, deleteResource, loadWorkspace, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
+import { collectTimings } from "../src/timing.js";
+import { fingerprintWorkspace } from "../src/validate.js";
 import { makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
@@ -32,6 +34,25 @@ test("loads, validates, and searches resources", async (context) => {
   const reloaded = await loadWorkspace(root);
   assert.equal(reloaded.workspace.organizationName, "Test Organization");
   assert.equal(reloaded.model.modelVersion, "1");
+});
+
+test("reusable validation state invalidates when a source record changes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-validation-proof-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const validation = await validateWorkspace(root);
+  const fingerprint = (await fingerprintWorkspace(validation.loaded)).fingerprint;
+  const ownerPath = join(root, "data", "people", "person-owner.json");
+  const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+  await writeFile(ownerPath, `${JSON.stringify({ ...owner, role: "External source edit" }, null, 2)}\n`, "utf8");
+
+  const { result: state, timings } = await collectTimings(() => createAppState(root, {
+    includeDetails: false,
+    validationProof: { validation, fingerprint }
+  }));
+
+  assert.equal(timings.validation.count, 1);
+  assert.equal(state.resources.find(({ record }) => record.id === owner.id).record.role, "External source edit");
 });
 
 test("rejects an invalid workspace timezone", async (context) => {
@@ -355,6 +376,9 @@ test("creates and updates Markdown content with its resource", async (context) =
   assert.match(await readFile(join(root, "data", policyContentPath), "utf8"), /Updated content/);
   const contentRevision = (await createAppState(root)).resources.find(({ record }) => record.id === policy.id).content.content.revision;
   await writeFile(join(root, "data", policyContentPath), "# Access Control Policy\n\nExternal edit.\n", "utf8");
+  const externallyEdited = (await createAppState(root)).resources.find(({ record }) => record.id === policy.id).content.content;
+  assert.match(externallyEdited.html, /External edit/);
+  assert.doesNotMatch(externallyEdited.html, /Updated content/);
   await assert.rejects(
     updateContent(root, policyContentPath, "# Access Control Policy\n\nStale edit.", { expectedRevision: contentRevision }),
     /changed after you opened/i

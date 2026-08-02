@@ -29,7 +29,7 @@ The repository is the program. There is no separate application database.
 
 Use the same source through the local web app, a text editor, the CLI, or CI. Browser and CLI actions call the same rules, so engineers and agents see the same validation and readiness results.
 
-New workspaces use `main` as the authoritative browser branch. Browser saves fetch and fast-forward from `origin`, validate the change, create a focused commit, and push it. Draft, proposed, approved, and retired records all live on that branch because record status, not a Git branch, represents approval.
+New workspaces use `main` as the authoritative browser branch. Browser saves fetch and fast-forward from `origin`, validate the change, and create a focused local commit. The UI then unlocks for navigation while Git push continues in the background. Other writes remain locked until the Repository status confirms `Synced`; a failed push keeps the local commit and offers Retry sync. Draft, proposed, approved, and retired records all live on that branch because record status, not a Git branch, represents approval.
 
 Detached and feature-branch checkouts are read-only in the browser by default. Developers can run `npx filegrc serve --allow-non-authoritative-writes` for local task-worktree edits; that override never commits or pushes. Existing workspaces without `repositoryMode` keep manual browser Git behavior. CLI and agent workflows continue to manage Git explicitly.
 

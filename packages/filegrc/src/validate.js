@@ -1,4 +1,6 @@
-import { stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, stat } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
 import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
@@ -7,6 +9,7 @@ import { obligationIsRunning } from "./program-lifecycle.js";
 import { partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
+import { recordTiming } from "./timing.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -16,6 +19,15 @@ const MAX_OBLIGATION_OFFSET_DAYS = 36_600;
 const MAX_OBLIGATION_OFFSET_HOURS = MAX_OBLIGATION_OFFSET_DAYS * 24;
 
 export async function validateWorkspace(input = process.cwd()) {
+  const timingStarted = performance.now();
+  try {
+    return await validateWorkspaceUnmeasured(input);
+  } finally {
+    recordTiming("validation", performance.now() - timingStarted);
+  }
+}
+
+async function validateWorkspaceUnmeasured(input) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const diagnostics = [...loaded.diagnostics];
   const { byId } = indexResources(loaded.resources);
@@ -115,6 +127,40 @@ export async function validateWorkspace(input = process.cwd()) {
     },
     loaded
   };
+}
+
+export async function fingerprintWorkspace(input = process.cwd()) {
+  const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
+  const hash = createHash("sha256");
+  hash.update(`model\0${loaded.model.modelVersion}\0`);
+  for (const entry of [...loaded.entries].sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
+    hash.update(`record\0${entry.relativePath}\0${entry.source.length}\0${entry.source}`);
+    const definition = loaded.model.resources[entry.record?.type];
+    if (!definition) continue;
+    for (const item of markdownEntries(loaded.model, entry.record).sort((a, b) => a.path.localeCompare(b.path))) {
+      try {
+        const source = await readFile(resolveDataPath(loaded.root, item.path), "utf8");
+        hash.update(`markdown\0${item.path}\0${source.length}\0${source}`);
+      } catch {
+        hash.update(`markdown-missing\0${item.path}\0`);
+      }
+    }
+    const fields = { ...loaded.model.commonFields, ...definition.fields };
+    for (const [name, field] of Object.entries(fields)) {
+      if (field.format !== "data-path" && field.items !== "data-path") continue;
+      const value = entry.record[name];
+      const paths = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+      for (const path of [...paths].sort()) {
+        try {
+          const file = await stat(resolveDataPath(loaded.root, path));
+          hash.update(`data-path\0${path}\0${file.isFile() ? "file" : "other"}\0`);
+        } catch {
+          hash.update(`data-path-missing\0${path}\0`);
+        }
+      }
+    }
+  }
+  return { fingerprint: hash.digest("hex"), loaded };
 }
 
 function validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, path, diagnostics) {

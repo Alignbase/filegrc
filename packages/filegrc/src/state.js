@@ -8,36 +8,38 @@ import { resolveDataPath } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
-import { validateWorkspace } from "./validate.js";
+import { serializeWorkspaceMutation } from "./mutation.js";
+import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
+
+const renderedMarkdownCache = new Map();
+const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
 
 export async function createAppState(input = process.cwd(), options = {}) {
-  const validation = await validateWorkspace(input);
+  return serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options));
+}
+
+async function createAppStateUnlocked(input, options) {
+  let validation;
+  if (options.validationProof) {
+    const current = await fingerprintWorkspace(input);
+    validation = current.fingerprint === options.validationProof.fingerprint
+      ? { ...options.validationProof.validation, loaded: current.loaded }
+      : await validateWorkspace(current.loaded);
+  } else {
+    validation = await validateWorkspace(input);
+  }
   const { loaded } = validation;
   const entries = [];
-  const relativePaths = loaded.entries.map((entry) => `data/${entry.relativePath}`);
-  const histories = getWorkspaceHistories(loaded.root, relativePaths, 12);
+  const includeDetails = options.includeDetails !== false;
+  const histories = includeDetails
+    ? getWorkspaceHistories(loaded.root, loaded.entries.map((entry) => `data/${entry.relativePath}`), 12)
+    : new Map();
 
   for (const entry of loaded.entries) {
-    const record = structuredClone(entry.record);
-    const content = {};
-    if (loaded.model.resources[record.type]) {
-      for (const item of markdownEntries(loaded.model, record)) {
-        try {
-          const path = resolveDataPath(loaded.root, item.path);
-          const source = await readFile(path, "utf8");
-          content[item.name] = { source, html: renderMarkdown(source), path: item.path, revision: contentRevision(source) };
-        } catch {
-          // Validation reports missing required Markdown.
-        }
-      }
-    }
-    entries.push({
-      record,
-      relativePath: `data/${entry.relativePath}`,
-      revision: contentRevision(entry.source),
-      content,
+    entries.push(await createStateEntry(loaded, entry, {
+      includeDetails,
       history: histories.get(`data/${entry.relativePath}`) ?? []
-    });
+    }));
   }
 
   const git = getGitSummary(loaded.root);
@@ -89,6 +91,65 @@ export async function createAppState(input = process.cwd(), options = {}) {
     auditPreparations,
     git
   };
+}
+
+export async function createResourceDetail(input, type, id) {
+  return serializeWorkspaceMutation(input, async (root) => {
+    const validation = await validateWorkspace(root);
+    const entry = validation.loaded.entries.find(({ record }) => record.type === type && record.id === id);
+    if (!entry) return null;
+    const relativePath = `data/${entry.relativePath}`;
+    const histories = getWorkspaceHistories(validation.loaded.root, [relativePath], 12);
+    return createStateEntry(validation.loaded, entry, {
+      includeDetails: true,
+      history: histories.get(relativePath) ?? []
+    });
+  });
+}
+
+async function createStateEntry(loaded, entry, options) {
+  const record = structuredClone(entry.record);
+  const content = {};
+  if (loaded.model.resources[record.type]) {
+    for (const item of markdownEntries(loaded.model, record)) {
+      try {
+        const path = resolveDataPath(loaded.root, item.path);
+        const source = await readFile(path, "utf8");
+        content[item.name] = {
+          source,
+          ...(options.includeDetails ? { html: renderMarkdownCached(source) } : {}),
+          path: item.path,
+          revision: contentRevision(source)
+        };
+      } catch {
+        // Validation reports missing required Markdown.
+      }
+    }
+  }
+  return {
+    record,
+    relativePath: `data/${entry.relativePath}`,
+    revision: contentRevision(entry.source),
+    content,
+    history: options.includeDetails ? options.history : undefined,
+    detailsLoaded: options.includeDetails
+  };
+}
+
+function renderMarkdownCached(source) {
+  const revision = contentRevision(source);
+  const cached = renderedMarkdownCache.get(revision);
+  if (cached !== undefined) {
+    renderedMarkdownCache.delete(revision);
+    renderedMarkdownCache.set(revision, cached);
+    return cached;
+  }
+  const html = renderMarkdown(source);
+  renderedMarkdownCache.set(revision, html);
+  if (renderedMarkdownCache.size > MAX_RENDERED_MARKDOWN_CACHE_ENTRIES) {
+    renderedMarkdownCache.delete(renderedMarkdownCache.keys().next().value);
+  }
+  return html;
 }
 
 function contentRevision(source) {

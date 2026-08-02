@@ -86,7 +86,12 @@ let onboardingShade = null;
 let onboardingStep = 0;
 let onboardingDraft = null;
 let onboardingBusy = false;
+let onboardingStillWorkingTimer = null;
+let onboardingPendingDraft = false;
+const resourceDetailRequests = new Map();
 let resourceGuideCleanup = null;
+let repositorySyncPollTimer = null;
+let repositorySyncPollInFlight = false;
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could Not Load the Workspace</h1><pre></pre></main>';
@@ -100,6 +105,7 @@ async function start() {
   window.addEventListener("resize", positionCurrentOnboarding);
   window.addEventListener("scroll", positionCurrentOnboarding, true);
   render();
+  scheduleRepositorySyncPoll();
   if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true) {
     queueMicrotask(requestOnboarding);
   }
@@ -112,7 +118,7 @@ function render() {
   if (previousNavigation) navigationScrollTop = previousNavigation.scrollTop;
   const route = parseRoute();
   const nav = buildNavigation(route);
-  root.innerHTML = '<div class="shell">' + nav + '<div class="workspace"><header class="topbar">' + topbar(route) + '</header><main id="main"></main></div></div>';
+  root.innerHTML = '<div class="shell">' + nav + '<div class="workspace"><header class="topbar">' + topbar(route) + '</header>' + repositorySyncAlert() + '<main id="main"></main></div></div>';
   const nextNavigation = root.querySelector(".sidebar-nav");
   if (nextNavigation) nextNavigation.scrollTop = navigationScrollTop;
   const main = root.querySelector("main");
@@ -242,6 +248,15 @@ function repositoryStatusTone(status) {
   if (status === "synced") return "good";
   if (status === "syncing") return "neutral";
   return "warn";
+}
+
+function repositorySyncAlert() {
+  if (state.repository?.status === "syncing") {
+    return '<div class="repository-sync-alert syncing" role="status" aria-live="polite"><span class="status-dot neutral"></span><span><strong>Saved and committed locally.</strong> Git push is continuing in the background. Other changes unlock when synchronization finishes.</span><a href="#/repository">View status</a></div>';
+  }
+  const message = state.repository?.backgroundSyncError;
+  if (!message) return "";
+  return '<div class="repository-sync-alert" role="alert"><span class="status-dot warn"></span><span><strong>Saved locally, but Git sync failed.</strong> ' + esc(message) + '</span><a href="#/repository">Review and retry</a></div>';
 }
 
 function renderHome(main) {
@@ -781,7 +796,7 @@ function openObligationEventDialog(trigger) {
         name: policyEventName(trigger.eventType),
         taskCount: created.actions?.length || trigger.steps.length
       };
-      state = await fetchJson("/api/state");
+      applyMutationState(created);
       dialog.close();
       history.replaceState(null, "", "#/stage/run");
       render();
@@ -837,7 +852,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
         body: JSON.stringify({ auditId: selected.id })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
-      state = await fetchJson("/api/state");
+      applyMutationState(await response.json());
       render();
     } catch (caught) {
       error.textContent = caught.message;
@@ -1105,6 +1120,11 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   if (!entry || !definition) return renderNotFound(main);
   const contextStage = params.get("stage");
   const contextQuery = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
+  if (entry.detailsLoaded === false) {
+    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading" role="status">Loading record content and file history…</section></div>';
+    loadResourceDetail(type, id);
+    return;
+  }
   const fields = { ...state.model.commonFields, ...definition.fields };
   const recordContent = recordContentDefinition(type);
   const narrative = recordNarrative(entry.record, fields);
@@ -1153,12 +1173,38 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     try {
       const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
       if (!response.ok) return showError(await responseMessage(response));
-      state = await fetchJson("/api/state");
+      applyMutationState(await response.json());
       location.hash = "#/resources/" + encodeURIComponent(type) + contextQuery;
     } catch (error) {
       showError(error.message);
     }
   });
+}
+
+async function loadResourceDetail(type, id) {
+  const key = type + "\0" + id;
+  if (resourceDetailRequests.has(key)) return resourceDetailRequests.get(key);
+  const request = (async () => {
+    try {
+      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id));
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const detail = await response.json();
+      const index = state.resources.findIndex(({ record }) => record.type === type && record.id === id);
+      if (index >= 0) state.resources[index] = detail;
+      const route = parseRoute();
+      if (route.name === "detail" && route.type === type && route.id === id) render();
+    } catch (error) {
+      const route = parseRoute();
+      if (route.name === "detail" && route.type === type && route.id === id) {
+        const main = root.querySelector("main");
+        if (main) main.innerHTML = '<div class="page"><section class="panel"><div class="dialog-error" role="alert">' + esc(error.message) + '</div></section></div>';
+      }
+    } finally {
+      resourceDetailRequests.delete(key);
+    }
+  })();
+  resourceDetailRequests.set(key, request);
+  return request;
 }
 
 function issueSeed(type, source) {
@@ -1413,7 +1459,7 @@ async function runRepositoryGitAction(action) {
     const response = await localFetch("/api/git/" + action, { method: "POST" });
     if (!response.ok) throw new Error(await responseMessage(response));
     const result = await response.json();
-    state = await fetchJson("/api/state");
+    applyMutationState(result);
     render();
     const currentStatus = document.querySelector(".repository-sync-status");
     if (currentStatus) currentStatus.textContent = action === "pull"
@@ -1461,7 +1507,7 @@ function openCommitDialog() {
       });
       if (!response.ok) throw new Error(await responseMessage(response));
       const result = await response.json();
-      state = await fetchJson("/api/state");
+      applyMutationState(result);
       dialog.close();
       render();
       const status = document.querySelector(".repository-sync-status");
@@ -1607,6 +1653,7 @@ function requestOnboarding() {
     onboardingDialog = null;
     onboardingDraft = null;
     onboardingBusy = false;
+    onboardingPendingDraft = false;
   });
   renderOnboardingStep();
 }
@@ -1635,7 +1682,7 @@ function onboardingSteps() {
     points: [
       "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
       "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
-      "In trunk mode, each browser save fast-forwards, validates, creates one focused commit, and pushes it.",
+      "In trunk mode, each browser save fast-forwards, validates, creates one focused local commit, then pushes it in the background. The workspace stays read-only until sync finishes.",
       "Record status represents approval. Draft, proposed, approved, and retired records all stay on the authoritative branch.",
       "Agents and terminal users continue to manage Git explicitly.",
       "The dashboard derives program status from the current repository state."
@@ -1740,7 +1787,7 @@ function renderOnboardingStep() {
     ? onboardingSetupForm()
     : description + explanation + afterSections;
   const finalActions = onboardingStep === steps.length - 1
-    ? '<button class="button" type="button" data-onboarding="draft">Save draft</button><button class="button primary" type="button" data-onboarding="next">Complete setup</button>'
+    ? '<span class="onboarding-save-status" role="status" aria-live="polite"></span><button class="button" type="button" data-onboarding="draft">Save draft</button><button class="button primary" type="button" data-onboarding="next">Complete setup</button>'
     : '<button class="button primary" type="button" data-onboarding="next">Next</button>';
   onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-scroll"><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(titleCase(step.title)) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + finalActions + '</div>';
   onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", cancelOnboarding);
@@ -1786,7 +1833,7 @@ function onboardingSetupForm() {
     "Records a management program goal without creating an audit engagement."
   ].filter(Boolean).join(" ");
   const gitStatus = state.repository?.mode === "trunk"
-    ? '<div class="onboarding-git-status ' + (state.repository.status === "synced" ? "" : "warning") + '"><span class="status-dot ' + repositoryStatusTone(state.repository.status) + '"></span><span><strong>' + esc(state.repository.label) + '</strong><small>' + esc(state.repository.status === "synced" ? "Completing onboarding will save its related workspace, system, and renderer changes in one commit and push it." : state.repository.message) + '</small></span></div>'
+    ? '<div class="onboarding-git-status ' + (state.repository.status === "synced" ? "" : "warning") + '"><span class="status-dot ' + repositoryStatusTone(state.repository.status) + '"></span><span><strong>' + esc(state.repository.label) + '</strong><small>' + esc(state.repository.status === "synced" ? "Completing onboarding will save its related workspace, system, and renderer changes in one local commit, then push it in the background." : state.repository.message) + '</small></span></div>'
     : state.git.available && state.git.branch
       ? '<div class="onboarding-git-status"><span class="status-dot good"></span><span><strong>Manual repository mode</strong><small>Setup changes will stay local until you commit and synchronize them.</small></span></div>'
       : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Manual-mode writes still work, but Git history is unavailable until the repository is configured.</small></span></div>';
@@ -1825,14 +1872,55 @@ async function saveOnboarding(draft = false) {
       })
     });
     if (!response.ok) throw new Error(await responseMessage(response));
-    state = await fetchJson("/api/state");
+    const result = await response.json();
+    applyMutationState(result);
+    if (result.synchronization?.pushError) {
+      onboardingDraft.systemId = result.system?.id || onboardingDraft.systemId;
+      onboardingPendingDraft = draft;
+      setOnboardingBusy(false);
+      showOnboardingError(result.synchronization.pushError, true);
+      return;
+    }
     closeOnboarding();
     history.replaceState(null, "", draft ? "#/" : "#/stage/scope");
     render();
   } catch (error) {
     setOnboardingBusy(false);
-    const errorNode = onboardingDialog?.querySelector(".dialog-error");
-    if (errorNode) errorNode.textContent = error.message;
+    showOnboardingError(error.message);
+  }
+}
+
+function showOnboardingError(message, retrySync = false) {
+  const errorNode = onboardingDialog?.querySelector(".dialog-error");
+  if (!errorNode) return;
+  errorNode.textContent = message;
+  if (!retrySync) return;
+  onboardingDialog.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = true; });
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "button onboarding-retry-sync";
+  retry.textContent = "Retry sync";
+  retry.disabled = false;
+  retry.addEventListener("click", retryOnboardingSync);
+  errorNode.append(document.createElement("br"), retry);
+}
+
+async function retryOnboardingSync() {
+  if (onboardingBusy) return;
+  setOnboardingBusy(true, "Retrying sync…");
+  try {
+    const response = await localFetch("/api/git/retry-sync", { method: "POST" });
+    if (!response.ok) throw new Error(await responseMessage(response));
+    const result = await response.json();
+    if (!result.state) throw new Error("The sync response did not include the current workspace state.");
+    state = result.state;
+    const draft = onboardingPendingDraft;
+    closeOnboarding();
+    history.replaceState(null, "", draft ? "#/" : "#/stage/scope");
+    render();
+  } catch (error) {
+    setOnboardingBusy(false);
+    showOnboardingError(error.message, true);
   }
 }
 
@@ -1853,8 +1941,7 @@ async function cancelOnboarding() {
 async function persistOnboardingPreference(showOnboarding) {
   const entry = rendererSettingsEntry();
   if (!entry) throw new Error("Renderer settings are unavailable.");
-  await writeRendererSettingsResource({ ...entry.record, showOnboarding }, entry);
-  state = await fetchJson("/api/state");
+  applyMutationState(await writeRendererSettingsResource({ ...entry.record, showOnboarding }, entry));
 }
 
 async function writeRendererSettingsResource(record, entry) {
@@ -1867,6 +1954,7 @@ async function writeRendererSettingsResource(record, entry) {
     body: JSON.stringify({ record, revision: entry?.revision })
   });
   if (!response.ok) throw new Error(await responseMessage(response));
+  return response.json();
 }
 
 async function toggleStagePageCompletion(button) {
@@ -1880,21 +1968,28 @@ async function toggleStagePageCompletion(button) {
   } else {
     completed.add(pageId);
   }
-  await writeRendererSettingsResource({
+  applyMutationState(await writeRendererSettingsResource({
     ...entry.record,
     completedStagePageIds: [...completed].sort()
-  }, entry);
-  state = await fetchJson("/api/state");
+  }, entry));
 }
 
 function setOnboardingBusy(busy, label = "") {
   if (!onboardingDialog) return;
+  clearTimeout(onboardingStillWorkingTimer);
+  onboardingStillWorkingTimer = null;
   onboardingBusy = busy;
   onboardingDialog.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = busy; });
   const next = onboardingDialog.querySelector('[data-onboarding="next"]');
   if (next && label) next.textContent = label;
   const skip = onboardingDialog.querySelector('[data-onboarding="skip"]');
   if (skip && label && onboardingStep !== onboardingSteps().length - 1) skip.textContent = label;
+  if (busy && onboardingStep === onboardingSteps().length - 1) {
+    onboardingStillWorkingTimer = setTimeout(() => {
+      const status = onboardingDialog?.querySelector(".onboarding-save-status");
+      if (status) status.textContent = "Still working. Git sync and workspace checks can take a moment.";
+    }, 1_500);
+  }
   if (!busy) renderOnboardingStep();
 }
 
@@ -1987,6 +2082,8 @@ function clearOnboardingFocus() {
 
 function closeOnboarding() {
   if (!onboardingDialog) return;
+  clearTimeout(onboardingStillWorkingTimer);
+  onboardingStillWorkingTimer = null;
   onboardingBusy = false;
   clearOnboardingFocus();
   onboardingDialog.close();
@@ -2053,7 +2150,7 @@ function openEditor(type, entry = null, options = {}) {
           : "";
       return '<label class="content-editor-field" data-content-editor="' + esc(markdown.name) + '"><span>' + esc(markdown.label) + ' Markdown' + requiredMark + '</span><textarea data-markdown-slot="' + esc(markdown.name) + '" data-generated-content="' + generated + '" spellcheck="true" ' + (requiredNow ? "required" : "") + '>' + esc(source) + '</textarea></label>';
     }).join("") + renderRecordContentEditor(type, entry, options) +
-    '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
+    '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="save-status" role="status" aria-live="polite"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
@@ -2084,6 +2181,7 @@ function openEditor(type, entry = null, options = {}) {
   }
   dialog.querySelector("form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (dialog.dataset.mutationBusy === "true") return;
     try {
       const advanced = dialog.dataset.jsonDirty === "true";
       if (!advanced && !dialog.querySelector("form").reportValidity()) return;
@@ -2114,6 +2212,7 @@ function openEditor(type, entry = null, options = {}) {
         ...activeMarkdown.map(({ name }) => [entry?.content?.[name]?.path, entry?.content?.[name]?.revision]),
         [recordContentItem?.path, recordContentItem?.revision]
       ].filter(([path, revision]) => path && revision));
+      setMutationBusy(dialog, true, "Saving…", options.saveLabel || "Save file");
       const response = await localFetch(url, {
         method: entry ? "PUT" : "POST",
         headers: { "content-type": "application/json" },
@@ -2126,11 +2225,12 @@ function openEditor(type, entry = null, options = {}) {
         })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
-      state = await fetchJson("/api/state");
+      applyMutationState(await response.json());
       dialog.close();
       location.hash = "#/resource/" + encodeURIComponent(updated.type) + "/" + encodeURIComponent(updated.id) + (contextStage ? "?stage=" + encodeURIComponent(contextStage) : "");
       render();
     } catch (error) {
+      setMutationBusy(dialog, false, "", options.saveLabel || "Save file");
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });
@@ -2415,18 +2515,21 @@ function openContentEditor(entry, name) {
   const dialog = document.createElement("dialog");
   dialog.className = "editor content-dialog";
   dialog.setAttribute("aria-labelledby", "content-editor-title");
-  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">Edit Markdown</p><h2 id="content-editor-title">' + esc(titleCase(entry.record.title)) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p><code>' + esc(item.path) + '</code></p><textarea class="markdown-source" spellcheck="true" aria-label="Markdown content">' + esc(item.source) + '</textarea><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-content">Save Markdown</button></div></form>';
+  dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">Edit Markdown</p><h2 id="content-editor-title">' + esc(titleCase(entry.record.title)) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p><code>' + esc(item.path) + '</code></p><textarea class="markdown-source" spellcheck="true" aria-label="Markdown content">' + esc(item.source) + '</textarea><div class="dialog-error" role="alert"></div><div class="save-status" role="status" aria-live="polite"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-content">Save Markdown</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector("#save-content").addEventListener("click", async () => {
+    if (dialog.dataset.mutationBusy === "true") return;
     try {
+      setMutationBusy(dialog, true, "Saving…", "Save Markdown");
       const response = await localFetch("/api/content", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: item.path, source: dialog.querySelector(".markdown-source").value, revision: item.revision }) });
       if (!response.ok) throw new Error(await responseMessage(response));
-      state = await fetchJson("/api/state");
+      applyMutationState(await response.json());
       dialog.close();
       render();
     } catch (error) {
+      setMutationBusy(dialog, false, "", "Save Markdown");
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });
@@ -2804,6 +2907,76 @@ function pluralize(noun, count) {
   return noun + "s";
 }
 function renderNotFound(main) { main.innerHTML = '<div class="page">' + empty("That resource does not exist.") + '</div>'; }
+function applyMutationState(result) {
+  if (!result?.state) throw new Error("The save response did not include the current workspace state.");
+  state = result.state;
+  scheduleRepositorySyncPoll(result.synchronization);
+}
+
+function scheduleRepositorySyncPoll(synchronization = state.repository?.backgroundSynchronization) {
+  const syncing = synchronization?.status === "syncing"
+    || state.repository?.status === "syncing";
+  if (!syncing) {
+    clearTimeout(repositorySyncPollTimer);
+    repositorySyncPollTimer = null;
+    return;
+  }
+  if (repositorySyncPollTimer || repositorySyncPollInFlight) return;
+  repositorySyncPollTimer = setTimeout(pollRepositorySync, 400);
+}
+
+async function pollRepositorySync() {
+  repositorySyncPollTimer = null;
+  if (repositorySyncPollInFlight) return;
+  repositorySyncPollInFlight = true;
+  let continuePolling = false;
+  try {
+    const response = await localFetch("/api/git/sync-status");
+    if (!response.ok) throw new Error(await responseMessage(response));
+    const result = await response.json();
+    const wasSyncing = state.repository?.status === "syncing";
+    state.repository = result.repository;
+    state.git = result.git;
+    state.readOnly = result.readOnly;
+    if (result.repository?.status === "syncing") {
+      continuePolling = true;
+    } else if (wasSyncing) {
+      render();
+    }
+  } catch {
+    continuePolling = true;
+  } finally {
+    repositorySyncPollInFlight = false;
+  }
+  if (continuePolling) {
+    repositorySyncPollTimer = setTimeout(pollRepositorySync, 1_000);
+  }
+}
+
+function setMutationBusy(dialog, busy, label, idleLabel) {
+  clearTimeout(dialog._stillWorkingTimer);
+  dialog._stillWorkingTimer = null;
+  dialog.dataset.mutationBusy = busy ? "true" : "false";
+  dialog.querySelectorAll("button,input,select,textarea").forEach((control) => {
+    if (busy) {
+      control.dataset.mutationWasDisabled = control.disabled ? "true" : "false";
+      control.disabled = true;
+    } else if (control.dataset.mutationWasDisabled === "false") {
+      control.disabled = false;
+      delete control.dataset.mutationWasDisabled;
+    }
+  });
+  const button = dialog.querySelector("#save-record,#save-content");
+  if (button) button.textContent = busy ? label : idleLabel;
+  const status = dialog.querySelector(".save-status");
+  if (status) status.textContent = "";
+  if (busy) {
+    dialog._stillWorkingTimer = setTimeout(() => {
+      if (status) status.textContent = "Still working. Git sync and workspace checks can take a moment.";
+    }, 1_500);
+  }
+}
+
 function showError(message) {
   const dialog = document.createElement("dialog");
   dialog.className = "alert-dialog";
@@ -2881,7 +3054,9 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,1fr) minmax(320px,420px);gap:28px;align-items:center;margin-bottom:17px}.readiness-map-head h3{font-size:18px;margin:5px 0 0}.readiness-progress-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center}.readiness-progress-summary>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:baseline}.readiness-progress-summary>div>span{color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.readiness-progress-summary>div>strong{font-size:9.6px;font-weight:700;line-height:1.2}.readiness-progress-summary .progress,.readiness-progress-summary small{grid-column:1/-1}.readiness-progress-summary small{color:var(--muted);font-size:9.6px}.readiness-progress-summary>.button{white-space:nowrap}.readiness-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/4;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:9.6px;font-weight:800}.readiness-flow strong{font-size:12px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:9.6px;line-height:1.4;margin-top:3px}.readiness-state{grid-column:2;justify-self:start;margin-top:8px;padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8.4px;line-height:1.2}.readiness-state.good{background:#dcefe4;color:#125733}.readiness-state.warn{background:#f6e8c9;color:#79500f}.readiness-state.bad{background:#f7dfdc;color:#873027}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:13.2px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:10.8px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:10.8px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:10.8px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:9.6px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:10.8px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:16.8px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:9.6px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:12px}.connections small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:9.6px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:12px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:13.2px}.external-source:hover strong{text-decoration:underline}
 .page-title-line{display:flex;align-items:center;gap:8px}.guide-trigger{display:grid;place-items:center;width:24px;height:24px;flex:0 0 auto;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--muted);cursor:pointer}.guide-trigger svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}.guide-trigger:hover{border-color:var(--accent-light);color:var(--accent)}.guide-trigger:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.page-guide{display:grid;grid-template-columns:1.05fr 1.25fr 1fr;gap:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.resource-guide-popover{position:fixed;z-index:40;overflow:auto;box-shadow:0 18px 50px rgba(0,0,24,.24)}.resource-guide-popover[hidden]{display:none}.page-guide>div{padding:14px 16px;border-left:1px solid var(--line);min-width:0}.page-guide>div:first-child{border-left:0}.page-guide>div>span{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780;margin-bottom:6px}.page-guide p{color:var(--muted);font-size:12px;line-height:1.5;margin:0}.guide-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.guide-links a{color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:4px 7px;text-decoration:none;font-size:9.6px;font-weight:700}
 .operation-tracking{display:grid;gap:2px;min-width:0;text-decoration:none}.operation-tracking strong,.operation-tracking small{display:block;overflow-wrap:anywhere}.operation-tracking small{color:var(--muted);line-height:1.35}.operation-tracking.running strong{color:#176143}.operation-tracking.waiting strong,.operation-tracking.mixed strong{color:var(--amber)}.operation-tracking.paused strong{color:var(--red)}a.operation-tracking:hover strong{text-decoration:underline}
-.page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.repository-sync-status{min-height:18px;margin:7px 0 0;color:var(--muted);font-size:13.2px}.repository-sync-status.error{color:var(--red)}.repository-state-banner,.repository-override{display:flex;align-items:flex-start;gap:13px;margin-bottom:14px}.repository-state-banner>.status-dot,.repository-override>.status-dot{margin-top:5px}.repository-state-banner h3{margin:3px 0 5px}.repository-state-banner p:last-child,.repository-override p{margin:0;color:var(--muted);line-height:1.5}.repository-override{padding:14px 17px;border:1px solid #e9c888;border-radius:9px;background:#fff8e8;font-size:13.2px}.repository-override strong{display:block;margin-bottom:4px}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:hidden}.onboarding-dialog[open]{display:flex;flex-direction:column}.onboarding-dialog::backdrop{background:transparent;backdrop-filter:none}.onboarding-shade{position:fixed;inset:0;z-index:60;pointer-events:none}.onboarding-shade span{position:absolute;background:rgba(0,0,24,.58)}.onboarding-progress{display:grid;flex:0 0 auto;grid-template-columns:repeat(var(--onboarding-step-count),1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-scroll{min-height:0;overflow-y:auto}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:30px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:14.4px;line-height:1.6;margin:13px 25px 0}.onboarding-body+.onboarding-body{margin-top:8px}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:13.2px;line-height:1.5;padding-left:3px}.onboarding-sections{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 25px 4px}.onboarding-sections section{padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.onboarding-sections strong{font-size:13.2px}.onboarding-sections p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.onboarding-actions{flex:0 0 auto;padding:12px 25px 23px;border-top:1px solid var(--line);background:var(--panel)}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:13.2px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:12px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:10.8px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:10.8px;line-height:1.5;margin:12px 25px 16px}.onboarding-scroll>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px;scroll-margin-top:102px}
+.page-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.repository-sync-status{min-height:18px;margin:7px 0 0;color:var(--muted);font-size:13.2px}.repository-sync-status.error{color:var(--red)}.repository-sync-alert{display:flex;align-items:flex-start;gap:9px;padding:10px 22px;border-bottom:1px solid #e9c888;background:#fff8e8;color:var(--ink);font-size:12px;line-height:1.45}.repository-sync-alert.syncing{border-color:var(--line);background:var(--surface-soft)}.repository-sync-alert .status-dot{flex:0 0 auto;margin-top:4px}.repository-sync-alert a{margin-left:auto;white-space:nowrap}.repository-state-banner,.repository-override{display:flex;align-items:flex-start;gap:13px;margin-bottom:14px}.repository-state-banner>.status-dot,.repository-override>.status-dot{margin-top:5px}.repository-state-banner h3{margin:3px 0 5px}.repository-state-banner p:last-child,.repository-override p{margin:0;color:var(--muted);line-height:1.5}.repository-override{padding:14px 17px;border:1px solid #e9c888;border-radius:9px;background:#fff8e8;font-size:13.2px}.repository-override strong{display:block;margin-bottom:4px}.onboarding-dialog{width:min(470px,calc(100vw - 30px));max-height:calc(100vh - 32px);margin:0;border:1px solid var(--line);border-radius:13px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(0,0,24,.38);overflow:hidden}.onboarding-dialog[open]{display:flex;flex-direction:column}.onboarding-dialog::backdrop{background:transparent;backdrop-filter:none}.onboarding-shade{position:fixed;inset:0;z-index:60;pointer-events:none}.onboarding-shade span{position:absolute;background:rgba(0,0,24,.58)}.onboarding-progress{display:grid;flex:0 0 auto;grid-template-columns:repeat(var(--onboarding-step-count),1fr);gap:5px;padding:18px 24px 0}.onboarding-progress span{height:3px;border-radius:3px;background:var(--surface-muted)}.onboarding-progress span.active{background:var(--accent-light)}.onboarding-scroll{min-height:0;overflow-y:auto}.onboarding-head{padding:22px 25px 0}.onboarding-head h2{font-family:Georgia,serif;font-size:30px;font-weight:500;letter-spacing:-.015em;margin:8px 0 0}.onboarding-body{color:var(--muted);font-size:14.4px;line-height:1.6;margin:13px 25px 0}.onboarding-body+.onboarding-body{margin-top:8px}.onboarding-points{display:grid;gap:9px;margin:18px 25px 4px;padding-left:19px}.onboarding-points li{font-size:13.2px;line-height:1.5;padding-left:3px}.onboarding-sections{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 25px 4px}.onboarding-sections section{padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.onboarding-sections strong{font-size:13.2px}.onboarding-sections p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.onboarding-actions{flex:0 0 auto;flex-wrap:wrap;padding:12px 25px 23px;border-top:1px solid var(--line);background:var(--panel)}.onboarding-skip{margin-right:auto;color:var(--muted);text-transform:none;letter-spacing:0;font-size:13.2px}.onboarding-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:18px 25px 0}.onboarding-form label{display:block;min-width:0}.onboarding-form label.wide{grid-column:1/-1}.onboarding-form label>span{display:block;color:var(--ink);font-size:12px;font-weight:720;margin-bottom:6px}.onboarding-form input,.onboarding-form select,.onboarding-form textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.onboarding-form textarea{min-height:78px;resize:vertical}.onboarding-form small{display:block;color:var(--muted);font-size:10.8px;line-height:1.45;margin-top:5px}.onboarding-write-note{color:var(--muted);font-size:10.8px;line-height:1.5;margin:12px 25px 16px}.onboarding-scroll>.dialog-error{margin:8px 25px 0}.onboarding-focus{outline:4px solid var(--accent-light)!important;outline-offset:5px;scroll-margin-top:102px}
+.onboarding-save-status{color:var(--muted);font-size:10.8px;line-height:1.35}.onboarding-save-status:empty{display:none}.onboarding-save-status:not(:empty){order:-1;flex-basis:100%;margin-bottom:4px}.onboarding-retry-sync{margin-top:9px}.detail-loading{color:var(--muted)}
+.save-status{min-height:16px;color:var(--muted);font-size:10.8px;line-height:1.35}
 .page-intro,.detail-head{align-items:center;margin-bottom:12px}.actions{align-items:center}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:10.8px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}
 @media(max-width:1100px){.search{display:none}.topbar-status{margin-left:auto}.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.organization-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.resource-directory{grid-template-columns:repeat(2,minmax(0,1fr))}}

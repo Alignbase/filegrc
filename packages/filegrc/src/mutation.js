@@ -3,6 +3,7 @@ import { resolveWorkspaceRoot } from "./paths.js";
 
 const mutationQueues = new Map();
 const activeMutation = new AsyncLocalStorage();
+const deferredValidation = new AsyncLocalStorage();
 
 export function serializeWorkspaceMutation(input, task) {
   const root = resolveWorkspaceRoot(input);
@@ -15,4 +16,12 @@ export function serializeWorkspaceMutation(input, task) {
   });
   mutationQueues.set(root, tracked);
   return tracked;
+}
+
+export function withDeferredWorkspaceValidation(task) {
+  return deferredValidation.run(true, task);
+}
+
+export function workspaceValidationDeferred() {
+  return deferredValidation.getStore() === true;
 }

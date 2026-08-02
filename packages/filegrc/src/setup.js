@@ -1,4 +1,4 @@
-import { createResource, updateResource } from "./files.js";
+import { applyResourceBatch } from "./files.js";
 import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -10,10 +10,19 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
   const setup = normalizeSetupPayload(payload);
   validateSetup(loaded, setup);
   const plan = buildSetupRecords(loaded, setup);
+  const updates = [
+    ...(plan.existingSystem ? [plan.system] : []),
+    plan.workspace,
+    ...(plan.renderer ? [plan.renderer] : [])
+  ];
+  const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, entry.revision]));
 
-  await upsertResource(loaded.root, plan.existingSystem, plan.system);
-  await updateResource(loaded.root, "workspace", plan.workspace.id, plan.workspace);
-  if (plan.renderer) await updateResource(loaded.root, plan.renderer.type, plan.renderer.id, plan.renderer);
+  await applyResourceBatch(loaded.root, {
+    create: plan.existingSystem ? [] : [plan.system],
+    update: updates,
+    expectedRevisions: Object.fromEntries(updates.map((record) => [record.id, revisionById.get(record.id)])),
+    validateWholeWorkspace: true
+  });
 
   return {
     draft: setup.draft,
@@ -161,12 +170,6 @@ function buildSetupRecords(loaded, setup) {
   const existingRenderer = loaded.resources.find(({ type }) => type === "renderer-settings");
   const renderer = existingRenderer ? { ...existingRenderer, showOnboarding: setup.draft } : null;
   return { existingSystem, system, workspace, renderer };
-}
-
-async function upsertResource(root, existing, record) {
-  return existing
-    ? updateResource(root, record.type, record.id, record)
-    : createResource(root, record);
 }
 
 function assuranceGoalFromSetup(goal) {

@@ -69,7 +69,7 @@ Use a dedicated private repository for your FileGRC workspace. The browser commi
 
 New workspaces use trunk repository mode with `main` as the authoritative branch and `origin` as the remote. Each browser mutation checks the whole Git worktree, fetches the remote, fast-forwards only, rechecks the edited revision, writes through the normal domain function, validates the workspace, stages only this FileGRC workspace, creates a focused commit, and pushes it. Browser onboarding commits its related workspace, system, and renderer changes together.
 
-The Repository page reports `Synced`, `Syncing`, `Not synced`, `Read-only checkout`, or `Git setup required`. A failed push keeps the local FileGRC commit and offers Retry sync when every ahead commit changes only this workspace. FileGRC never pushes an ahead commit that includes files outside this workspace, and it never merges, rebases, switches branches, resolves conflicts, or changes files outside the workspace.
+The Repository page reports `Synced`, `Syncing`, `Not synced`, `Read-only checkout`, or `Git setup required`. Browser saves return after the validated local commit, then push in the background. Treat `Syncing` as locally durable but not yet durable on the remote, and wait for `Synced` before starting another write. A failed push keeps the local FileGRC commit and offers Retry sync when every ahead commit changes only this workspace. FileGRC never pushes an ahead commit that includes files outside this workspace, and it never merges, rebases, switches branches, resolves conflicts, or changes files outside the workspace.
 
 Record lifecycle fields are the approval source. Draft, proposed, approved, and retired records may all live on the authoritative branch. Do not use Git branches to represent policy approval.
 
@@ -108,7 +108,7 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 ## Renderer settings and onboarding
 
-`data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`, `authoritativeBranch` to `main`, and `repositoryRemote` to `origin`. In trunk mode, completing or skipping onboarding commits and pushes the related change. Existing settings without `repositoryMode` keep manual behavior.
+`data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`, `authoritativeBranch` to `main`, and `repositoryRemote` to `origin`. In trunk mode, completing or skipping onboarding commits the related change and starts its background push. Existing settings without `repositoryMode` keep manual behavior.
 
 Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates one `system` record and stores that selected system and the management goal on `workspace`. It does not select framework records, link controls to the service, or create evidence. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies.
 
