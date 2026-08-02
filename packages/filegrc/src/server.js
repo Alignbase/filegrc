@@ -104,7 +104,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/evidence-test-drafts") {
         return json(response, 201, await browserMutation(input, options, {
-          message: "Create evidence collection test drafts"
+          message: "Create evidence collection test drafts",
+          allowNoChanges: true
         }, () => ensureEvidenceTestDrafts(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/setup") {

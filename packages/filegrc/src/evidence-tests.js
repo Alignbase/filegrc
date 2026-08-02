@@ -7,7 +7,7 @@ const TEST_EVIDENCE_KINDS = new Set(["test-export", "test-capture"]);
 
 export function planEvidenceTestDrafts(loaded) {
   const workspace = loaded.workspace;
-  const selectedIds = new Set(workspace.controlIds || []);
+  const selectedIds = new Set(workspace?.controlIds || []);
   const controls = loaded.resources.filter((record) => (
     record.type === "control"
     && (!selectedIds.size || selectedIds.has(record.id))
@@ -33,6 +33,28 @@ export function planEvidenceTestDrafts(loaded) {
       existing
     };
   });
+}
+
+export function previewEvidenceTestDrafts(loaded) {
+  const plan = planEvidenceTestDrafts(loaded);
+  return {
+    schemaVersion: 1,
+    preview: true,
+    total: plan.length,
+    create: plan.filter(({ existing }) => !existing).map((item) => ({
+      familyId: item.familyId,
+      title: item.title,
+      testEvidenceKind: item.testEvidenceKind,
+      testPrompt: item.testPrompt,
+      controlIds: item.controlIds
+    })),
+    existing: plan.filter(({ existing }) => existing).map(({ familyId, existing }) => ({
+      familyId,
+      id: existing.id,
+      title: existing.title,
+      status: existing.status
+    }))
+  };
 }
 
 export async function ensureEvidenceTestDrafts(input = process.cwd()) {

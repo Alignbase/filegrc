@@ -80,6 +80,11 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").guide, "npx filegrc guide system --json");
   assert.ok(path.every((stage) => stage.commands.every((command) => command.startsWith("npx filegrc "))));
+  assert.deepEqual(path[3].commands.slice(0, 2), [
+    "npx filegrc evidence-test-drafts --preview --json",
+    "npx filegrc evidence-test-drafts"
+  ]);
+  assert.match(path[3].summary, /preview the proposed External Evidence tests and explicitly create the missing drafts/i);
   assert.deepEqual(path[4].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
   assert.equal(path[4].operatingRecords.length, path[4].resourceTypes.length + path[4].supportingResourceTypes.length);
   assert.equal(path[4].operatingRecords.every(({ order }) => order === null), true);

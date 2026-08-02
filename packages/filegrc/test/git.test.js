@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { getGitSummary, getWorkspaceHistories, runBrowserMutation, serveWorkspace } from "../src/index.js";
+import { createResources, getGitSummary, getWorkspaceHistories, runBrowserMutation, serveWorkspace } from "../src/index.js";
 import {
   commitAndPushWorkspace,
   commitWorkspace,
@@ -253,6 +253,70 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
     "Remote reviewer"
   );
   assert.equal((await git(fixture.root, ["rev-list", "--count", "HEAD"])).stdout.trim(), "3");
+});
+
+test("trunk-mode evidence draft creation commits once and repeated creation is unchanged", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-evidence-drafts-");
+  await createResources(fixture.root, [
+    {
+      schemaVersion: 1,
+      id: "framework-security",
+      type: "framework",
+      title: "Security criteria",
+      status: "active",
+      version: "1"
+    },
+    {
+      schemaVersion: 1,
+      id: "requirement-access",
+      type: "requirement",
+      title: "Access requirement",
+      frameworkId: "framework-security",
+      reference: "TEST-ACCESS",
+      applicability: "applicable"
+    },
+    {
+      schemaVersion: 1,
+      id: "control-access",
+      type: "control",
+      title: "Access control",
+      status: "planned",
+      statement: "Access is approved and limited.",
+      ownerIds: ["person-owner"],
+      requirementIds: ["requirement-access"],
+      code: "IAM-01",
+      activity: "Approve and provision access.",
+      operationMode: "manual",
+      frequency: "Per event"
+    }
+  ]);
+  await git(fixture.root, ["add", "."]);
+  await git(fixture.root, ["commit", "-m", "Add access control"]);
+  await git(fixture.root, ["push"]);
+
+  const running = await serveWorkspace(fixture.root, { port: 0 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+  const firstResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
+  assert.equal(firstResponse.status, 201);
+  const first = await firstResponse.json();
+  assert.equal(first.created.length, 1);
+  assert.equal(first.created[0].collectionTestFamilyId, "identity-access");
+  assert.equal(first.synchronization.status, "synced");
+  assert.equal((await git(fixture.root, ["log", "-1", "--format=%s"])).stdout.trim(), "Create evidence collection test drafts");
+  assert.match(
+    (await git(fixture.remote, ["show", `main:data/evidence/${first.created[0].id}/evidence.json`])).stdout,
+    /"collectionTestFamilyId": "identity-access"/
+  );
+
+  const committed = (await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim();
+  const repeatedResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
+  assert.equal(repeatedResponse.status, 201);
+  const repeated = await repeatedResponse.json();
+  assert.equal(repeated.created.length, 0);
+  assert.equal(repeated.existing.length, 1);
+  assert.equal(repeated.synchronization.status, "unchanged");
+  assert.equal((await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim(), committed);
+  assert.equal((await git(fixture.root, ["status", "--porcelain"])).stdout, "");
 });
 
 test("trunk mode makes detached and non-authoritative checkouts read-only unless the development override is active", async (context) => {

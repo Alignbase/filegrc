@@ -255,6 +255,19 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
     throw error;
   }
 
+  if (!getGitSummary(root).changes.length && options?.allowNoChanges === true) {
+    return {
+      ...result,
+      synchronization: {
+        status: "unchanged",
+        commit: synchronized.currentCommit,
+        shortCommit: synchronized.currentCommit?.slice(0, 8) ?? null,
+        upstream: synchronized.upstream,
+        synchronizedAt: lastSuccessfulSynchronizations.get(root) ?? null,
+        pushError: null
+      }
+    };
+  }
   if (!getGitSummary(root).changes.length) {
     throw new Error("The browser action did not change any FileGRC workspace files.");
   }

@@ -305,7 +305,7 @@
       "description": "External Evidence holds exports, reports, screenshots, signed files, and approved external references collected from other Systems. Step 5 records created in filegrc do not need a separate record here. Step 6 reviews and packages both evidence paths for the CPA firm.",
       "guidance": {
         "policyBasis": "The information security and data handling policies require retained proof from authoritative Systems when filegrc's own operating records do not contain the full result.",
-        "cadence": "Before the candidate period begins, test each selected control family that relies on evidence from outside filegrc. Once operation starts, collect external evidence whenever the control runs, keep filegrc operating records current, verify evidence before audit use, cover the stated period, and retain it according to classification and record rules.",
+        "cadence": "After confirming applicable controls and authoritative source Systems, preview proposed collection-test drafts, explicitly create the missing drafts, then collect and verify each required test before the candidate period begins. Once operation starts, collect external evidence whenever the control runs, keep filegrc operating records current, verify evidence before audit use, cover the stated period, and retain it according to classification and record rules.",
         "sourceResourceIds": ["policy-information-security","policy-data-protection-handling"]
       },
       "required": ["status","evidenceKind"],

@@ -701,18 +701,33 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /type === "obligation" && name === "status"\) return "Configuration"/);
   assert.doesNotMatch(APP_SCRIPT, /Work Queue · ' \+ esc\(label\)/);
   assert.match(APP_SCRIPT, /governing policies are effective and at least one linked control is implemented/);
-  assert.match(APP_SCRIPT, /Complete the generated tests for external evidence that has no dedicated Step 5 record/);
+  assert.match(APP_SCRIPT, /preview and explicitly create the missing collection-test drafts/);
   assert.match(APP_SCRIPT, /Work Queue[\s\S]*Other controls operate continuously or per transaction in their source systems/);
   assert.doesNotMatch(APP_STYLES, /\.stage-instruction-grid/);
   assert.doesNotMatch(APP_STYLES, /\.evidence-instruction-grid/);
 });
 
-test("uses the standard record table for evidence collection drafts", () => {
+test("previews and creates Step 4 evidence drafts before using the standard record table", () => {
   assert.doesNotMatch(APP_SCRIPT, /function evidenceCollectionTestPlan\(\)/);
   assert.doesNotMatch(APP_SCRIPT, /data-edit-evidence-test/);
   assert.doesNotMatch(APP_SCRIPT, /Open Draft/);
   assert.doesNotMatch(APP_SCRIPT, /Finish Source Setup/);
   assert.doesNotMatch(APP_STYLES, /\.evidence-test-card/);
+  assert.match(APP_SCRIPT, /function renderEvidenceTestDraftCallout\(\)/);
+  assert.match(APP_SCRIPT, /state\.evidenceTestDrafts\?\.create/);
+  assert.match(APP_SCRIPT, /data-preview-evidence-test-drafts/);
+  assert.match(APP_SCRIPT, /Preview ' \+ missing\.length \+ " proposed "/);
+  assert.match(APP_SCRIPT, /item\.testEvidenceKind/);
+  assert.match(APP_SCRIPT, /item\.testPrompt/);
+  assert.match(APP_SCRIPT, /item\.controlIds\.map\(formatReference\)/);
+  assert.match(APP_SCRIPT, /data-create-evidence-test-drafts>Create test drafts/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-test-drafts", \{ method: "POST" \}\)/);
+  assert.match(APP_SCRIPT, /evidenceTestDraftFeedback = \{/);
+  assert.match(APP_SCRIPT, /state = await fetchJson\("\/api\/state"\)/);
+  assert.match(APP_SCRIPT, /Created " \+ created\.length \+ " " \+ pluralize\("test draft"/);
+  assert.match(APP_STYLES, /\.evidence-draft-callout\{/);
+  assert.match(APP_STYLES, /\.evidence-draft-preview-item\{/);
+  assert.match(APP_STYLES, /\.evidence-draft-preview\[hidden\]\{display:none\}/);
   assert.match(APP_SCRIPT, /<section class="record-table-wrap"><table class="record-table">/);
 });
 

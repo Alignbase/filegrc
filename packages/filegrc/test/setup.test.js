@@ -172,6 +172,14 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(loaded.resources.filter(({ type }) => type === "evidence").length, 0);
   assert.equal(loaded.resources.find(({ id }) => id === "control-access").systemIds, undefined);
 
+  const browserState = await (await fetch(`${running.url}/api/state`)).json();
+  assert.equal(browserState.evidenceTestDrafts.preview, true);
+  assert.equal(browserState.evidenceTestDrafts.create.length, 1);
+  assert.equal(browserState.evidenceTestDrafts.create[0].familyId, "identity-access");
+  assert.equal(browserState.evidenceTestDrafts.create[0].testEvidenceKind, "test-export");
+  assert.match(browserState.evidenceTestDrafts.create[0].testPrompt, /users, roles, privileged access/);
+  assert.deepEqual(browserState.evidenceTestDrafts.create[0].controlIds, ["control-access"]);
+
   const evidencePreview = JSON.parse((await execute(process.execPath, [
     cliPath,
     "evidence-test-drafts",
@@ -182,17 +190,28 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   ])).stdout);
   assert.equal(evidencePreview.preview, true);
   assert.equal(evidencePreview.create.length, 1);
+  assert.match(evidencePreview.create[0].testPrompt, /users, roles, privileged access/);
   assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "evidence").length, 0);
 
+  await createResource(root, {
+    schemaVersion: 1,
+    id: "evidence-existing-review",
+    type: "evidence",
+    title: "Existing review evidence",
+    status: "draft",
+    evidenceKind: "review"
+  });
   const draftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
   assert.equal(draftResponse.status, 201);
   assert.equal((await draftResponse.json()).created.length, 1);
   loaded = await loadWorkspace(root);
-  const evidenceDraft = loaded.resources.find(({ type }) => type === "evidence");
+  const evidenceDraft = loaded.resources.find(({ collectionTestFamilyId }) => collectionTestFamilyId === "identity-access");
   assert.equal(evidenceDraft.status, "draft");
   assert.equal(evidenceDraft.evidenceKind, "test-export");
   assert.equal(evidenceDraft.collectionTestFamilyId, "identity-access");
   assert.deepEqual(evidenceDraft.controlIds, ["control-access"]);
+  assert.equal(loaded.resources.find(({ id }) => id === "evidence-existing-review").title, "Existing review evidence");
+  assert.equal(loaded.resources.filter(({ type }) => type === "evidence").length, 2);
   assert.equal(loaded.resources.some(({ collectionTestFamilyId }) => collectionTestFamilyId === "governance"), false);
   assert.equal((await validateWorkspace(root)).ok, true);
 

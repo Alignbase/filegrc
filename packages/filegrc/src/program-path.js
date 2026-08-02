@@ -10,7 +10,7 @@ export const RESOURCE_INSTRUCTIONS = {
   document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
   control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, evidence source, and implementation date.",
   "complementary-control": "Record anything customers or carved-out providers must do for your controls to work as intended.",
-  evidence: "Complete the generated tests for external evidence that has no dedicated Step 5 record. Link each result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.",
+  evidence: "After confirming applicable Controls and authoritative source Systems, preview and explicitly create the missing collection-test drafts. Complete each test for external evidence that has no dedicated Step 5 record, link the result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.",
   "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
   risk: "Record each risk identified by an assessment or operating activity. Assign an owner, rate it, and document the chosen response.",
   obligation: "Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.",
@@ -113,13 +113,14 @@ export const PROGRAM_PATH = [
     number: 4,
     title: "Test Evidence Collection",
     description: "Verify sources before the period starts",
-    summary: "Before starting the candidate period, test external evidence collection only where no dedicated Step 5 operating record exists. When Step 5 already records the work, attach or reference the external artifact there instead of creating a separate test.",
+    summary: "After confirming the applicable controls and authoritative source Systems, preview the proposed External Evidence tests and explicitly create the missing drafts. Complete and verify each test before starting the candidate period. When Step 5 already records the work, attach or reference the external artifact there instead of creating a separate test.",
     sections: [
-      { id: "collection", title: "Collection Test", description: "Test external evidence collection only where no dedicated Step 5 operating record exists.", steps: ["Confirm that each externally evidenced control names an authoritative source System.", "Complete each generated test export or capture.", "When a Step 5 operating record exists, link the artifact’s External Evidence record there instead."], relatedLinks: [{ label: "Source Systems", href: "#/resources/system" }, { label: "Controls", href: "#/resources/control" }], types: ["evidence"], defaultOpen: true }
+      { id: "collection", title: "Collection Test", description: "Preview and create the missing drafts, then test external evidence collection only where no dedicated Step 5 operating record exists.", steps: ["Confirm that each externally evidenced control names an authoritative source System.", "Preview the proposed drafts and review each family, evidence kind, collection prompt, and linked controls.", "Explicitly create the missing drafts after the controls and source Systems are correct.", "Complete and verify each generated test export or capture.", "When a Step 5 operating record exists, link the artifact’s External Evidence record there instead."], relatedLinks: [{ label: "Source Systems", href: "#/resources/system" }, { label: "Controls", href: "#/resources/control" }], types: ["evidence"], defaultOpen: true }
     ],
     resourceTypes: ["evidence"],
     commands: [
       "filegrc evidence-test-drafts --preview --json",
+      "filegrc evidence-test-drafts",
       "filegrc guide evidence --json",
       "filegrc list evidence --json",
       "filegrc program-readiness --json"

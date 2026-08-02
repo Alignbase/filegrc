@@ -11,6 +11,7 @@ import {
   assessProgramReadiness,
   createResource,
   createResources,
+  ensureEvidenceTestDrafts,
   loadWorkspace,
   updateResource
 } from "../src/index.js";
@@ -240,26 +241,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     ...control,
     status: "implemented"
   });
-  await createResource(root, {
-    schemaVersion: 1,
-    id: "evidence-access-test-export",
-    type: "evidence",
-    title: "Access evidence test export",
-    status: "verified",
-    evidenceKind: "test-export",
-    source: "Identity system",
-    collectedOn: "2026-06-15",
-    classification: "Internal",
-    sourceSystemId: "system-identity",
-    controlIds: ["control-access"],
-    collectorIds: ["person-owner"],
-    verifierIds: ["person-approver"],
-    verifiedOn: "2026-06-15"
-  }, {
-    content: {
-      content: "# Access test export\n\nManagement exported the access report and confirmed that the expected fields and records were present."
-    }
-  });
   const loaded = await loadWorkspace(root);
   await updateResource(root, "workspace", loaded.workspace.id, {
     ...loaded.workspace,
@@ -268,6 +249,76 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     requirementIds: ["requirement-access"],
     controlIds: ["control-access"],
     systemIds: ["system-service"]
+  });
+
+  const missingDraft = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const missingTest = missingDraft.stages.find(({ id }) => id === "evidence").items.find(({ id }) => id === "test-family-identity-access");
+  assert.equal(missingDraft.evidenceReady, false);
+  assert.equal(missingTest.status, "action");
+  assert.equal(missingTest.evidenceId, null);
+  assert.match(missingTest.message, /evidence-test-drafts --preview --json/);
+  assert.deepEqual(missingTest.commands, [
+    "npx filegrc evidence-test-drafts --preview --json",
+    "npx filegrc evidence-test-drafts",
+    "npx filegrc program-readiness --json"
+  ]);
+  const currentEvidencePath = JSON.parse((await execute(process.execPath, [
+    cli,
+    "program-path",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-01",
+    "--current",
+    "--json"
+  ])).stdout);
+  assert.equal(currentEvidencePath.currentStep.id, "evidence");
+  assert.deepEqual(currentEvidencePath.stages[0].commands.slice(0, 2), [
+    "npx filegrc evidence-test-drafts --preview --json",
+    "npx filegrc evidence-test-drafts"
+  ]);
+  assert.match(currentEvidencePath.stages[0].summary, /preview the proposed External Evidence tests and explicitly create the missing drafts/i);
+  const nextEvidencePath = JSON.parse((await execute(process.execPath, [
+    cli,
+    "program-path",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-01",
+    "--next",
+    "--json"
+  ])).stdout);
+  assert.equal(nextEvidencePath.step.id, "evidence");
+  assert.match(nextEvidencePath.step.nextAction.message, /then create them with/);
+  assert.deepEqual(nextEvidencePath.step.commands, missingTest.commands);
+
+  const draftResult = await ensureEvidenceTestDrafts(root);
+  assert.equal(draftResult.created.length, 1);
+  const drafted = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const draftedTest = drafted.stages.find(({ id }) => id === "evidence").items.find(({ id }) => id === "test-family-identity-access");
+  assert.equal(drafted.evidenceReady, false);
+  assert.equal(draftedTest.status, "action");
+  assert.equal(draftedTest.evidenceStatus, "draft");
+  assert.equal(draftedTest.evidenceId, draftResult.created[0].id);
+  assert.match(draftedTest.message, /select the authoritative source System/);
+
+  const evidenceDraft = (await loadWorkspace(root)).resources.find(({ id }) => id === draftResult.created[0].id);
+  const testEvidence = {
+    ...evidenceDraft,
+    title: "Access evidence test export",
+    status: "verified",
+    source: "Identity system",
+    collectedOn: "2026-06-15",
+    classification: "Internal",
+    sourceSystemId: "system-identity",
+    collectorIds: ["person-owner"],
+    verifierIds: ["person-approver"],
+    verifiedOn: "2026-06-15"
+  };
+  await updateResource(root, "evidence", evidenceDraft.id, testEvidence, {
+    content: {
+      content: "# Access test export\n\nManagement exported the access report and confirmed that the expected fields and records were present."
+    }
   });
 
   const ready = await assessProgramReadiness(root, { asOf: "2026-07-01" });
@@ -283,7 +334,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(ready.stages.find(({ id }) => id === "policies").counts.action, 0);
   assert.equal(readyWorkspace.resources.some(({ type }) => type === "audit"), false);
 
-  const testEvidence = readyWorkspace.resources.find(({ id }) => id === "evidence-access-test-export");
   const collectedEvidence = { ...testEvidence, status: "collected" };
   delete collectedEvidence.verifierIds;
   delete collectedEvidence.verifiedOn;

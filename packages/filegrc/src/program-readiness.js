@@ -447,7 +447,7 @@ function evidenceCollectionStage(scope, records, byId, model) {
           ? `${capture.title} is a draft. Open it, select the authoritative source System, collect the named artifact, and have another person verify it.`
           : capture
             ? `${capture.title} is ${capture.status} but must be verified before this family is ready.`
-          : `Run and verify one test export or test capture from an authoritative source outside filegrc, then link it to a family control.`,
+          : "Preview the missing External Evidence drafts with `npx filegrc evidence-test-drafts --preview --json`, then create them with `npx filegrc evidence-test-drafts`. Complete and verify the resulting test export or capture from an authoritative source System.",
       capture || { type: "evidence" },
       {
         familyId: family.id,
@@ -456,7 +456,14 @@ function evidenceCollectionStage(scope, records, byId, model) {
         evidenceId: capture?.id || null,
         evidenceStatus: capture?.status || null,
         testEvidenceKind: family.testEvidenceKind,
-        testPrompt: family.testPrompt
+        testPrompt: family.testPrompt,
+        ...(!capture ? {
+          commands: [
+            "npx filegrc evidence-test-drafts --preview --json",
+            "npx filegrc evidence-test-drafts",
+            "npx filegrc program-readiness --json"
+          ]
+        } : {})
       }
     );
   });

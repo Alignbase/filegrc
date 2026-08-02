@@ -27,6 +27,7 @@ npx filegrc references risk-example --json
 npx filegrc describe risk
 npx filegrc search "access review"
 npx filegrc evidence-test-drafts --preview --json
+npx filegrc evidence-test-drafts
 npx filegrc program-readiness --summary --json
 npx filegrc program-readiness --require-ready
 npx filegrc audit-readiness audit-id
@@ -42,7 +43,7 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 `filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
 
-`filegrc evidence-test-drafts --preview --json` reports the missing draft tests for external evidence without writing them. Run `filegrc evidence-test-drafts` after confirming applicable controls and authoritative source Systems. When a Step 5 operating record exists, put the fixed artifact in an External Evidence record and link it from that operating record.
+`filegrc evidence-test-drafts --preview --json` reports each missing family, evidence kind, collection prompt, and linked controls without writing records. Run `filegrc evidence-test-drafts` after confirming applicable controls and authoritative source Systems. Repeating the apply command preserves existing records. When a Step 5 operating record exists, put the fixed artifact in an External Evidence record and link it from that operating record.
 
 `filegrc obligations` shows recurring work and a task-level preview for each Policy Event, including owners, deadlines, and requested proof. `filegrc trigger` adds the event and all of its Action Items to the Work Queue atomically, then prints the created task IDs and deadlines.
 

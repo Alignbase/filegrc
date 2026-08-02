@@ -59,13 +59,14 @@ Headless commands:
 
 ### Step 4. Test Evidence Collection
 
-Before starting the candidate period, test external evidence collection only where no dedicated Step 5 operating record exists. When Step 5 already records the work, attach or reference the external artifact there instead of creating a separate test.
+After confirming the applicable controls and authoritative source Systems, preview the proposed External Evidence tests and explicitly create the missing drafts. Complete and verify each test before starting the candidate period. When Step 5 already records the work, attach or reference the external artifact there instead of creating a separate test.
 
-- **External Evidence** (`evidence`): Complete the generated tests for external evidence that has no dedicated Step 5 record. Link each result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.
+- **External Evidence** (`evidence`): After confirming applicable Controls and authoritative source Systems, preview and explicitly create the missing collection-test drafts. Complete each test for external evidence that has no dedicated Step 5 record, link the result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.
 
 Headless commands:
 
 - `npx filegrc evidence-test-drafts --preview --json`
+- `npx filegrc evidence-test-drafts`
 - `npx filegrc guide evidence --json`
 - `npx filegrc list evidence --json`
 - `npx filegrc program-readiness --json`
@@ -1234,11 +1235,11 @@ Record Markdown: shown by default as an implicit companion file.
 
 External Evidence holds exports, reports, screenshots, signed files, and approved external references collected from other Systems. Step 5 records created in filegrc do not need a separate record here. Step 6 reviews and packages both evidence paths for the CPA firm.
 
-Instructions: Complete the generated tests for external evidence that has no dedicated Step 5 record. Link each result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.
+Instructions: After confirming applicable Controls and authoritative source Systems, preview and explicitly create the missing collection-test drafts. Complete each test for external evidence that has no dedicated Step 5 record, link the result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.
 
 Policy basis: The information security and data handling policies require retained proof from authoritative Systems when filegrc's own operating records do not contain the full result.
 
-Timing: Before the candidate period begins, test each selected control family that relies on evidence from outside filegrc. Once operation starts, collect external evidence whenever the control runs, keep filegrc operating records current, verify evidence before audit use, cover the stated period, and retain it according to classification and record rules.
+Timing: After confirming applicable controls and authoritative source Systems, preview proposed collection-test drafts, explicitly create the missing drafts, then collect and verify each required test before the candidate period begins. Once operation starts, collect external evidence whenever the control runs, keep filegrc operating records current, verify evidence before audit use, cover the stated period, and retain it according to classification and record rules.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 

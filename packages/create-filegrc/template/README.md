@@ -44,6 +44,8 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 5. **Operate the program.** Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.
 6. **Audit.** Record the CPA engagement and agreed period, support fieldwork, and build the packet.
 
+Step 4 keeps draft creation explicit. After confirming the applicable controls and authoritative source systems, preview the proposed tests with `npx filegrc evidence-test-drafts --preview --json`, then create the missing drafts with `npx filegrc evidence-test-drafts`. Setup and onboarding do not create External Evidence.
+
 The Program Overview shows what is done, what is blocked, and what to do next.
 
 ## The routine work stays connected

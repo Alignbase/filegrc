@@ -6,7 +6,7 @@ import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldRes
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { buildWorkspace } from "./build.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
-import { ensureEvidenceTestDrafts, planEvidenceTestDrafts } from "./evidence-tests.js";
+import { ensureEvidenceTestDrafts, previewEvidenceTestDrafts } from "./evidence-tests.js";
 import {
   addEvidenceAttachment,
   createResource,
@@ -277,23 +277,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "evidence-test-drafts") {
     if (flags.preview) {
       const loaded = await loadWorkspace(root);
-      const plan = planEvidenceTestDrafts(loaded);
-      const result = {
-        schemaVersion: 1,
-        preview: true,
-        total: plan.length,
-        create: plan.filter(({ existing }) => !existing).map((item) => ({
-          familyId: item.familyId,
-          title: item.title,
-          testEvidenceKind: item.testEvidenceKind,
-          controlIds: item.controlIds
-        })),
-        existing: plan.filter(({ existing }) => existing).map(({ existing }) => ({
-          id: existing.id,
-          title: existing.title,
-          status: existing.status
-        }))
-      };
+      const result = previewEvidenceTestDrafts(loaded);
       if (flags.json) console.log(JSON.stringify(result, null, 2));
       else console.log(`Evidence draft preview: create ${result.create.length}; preserve ${result.existing.length}.`);
       return result;
@@ -805,7 +789,9 @@ Options:
 
 Preview or create missing draft External Evidence records for collection that
 does not already have a dedicated Step 5 operating record. Existing tests are
-preserved. Run after confirming applicable controls and source systems.
+preserved. Run after confirming applicable controls and source systems. Preview
+the proposed family, evidence kind, collection prompt, and linked controls first,
+then run the command without --preview to create the missing drafts.
 
 Options:
   --preview      Report proposed drafts without creating them
@@ -835,7 +821,7 @@ function agentOverview(model) {
     search: "filegrc search <query> --json",
     obligations: "filegrc obligations --json",
     programReadiness: "filegrc program-readiness --json",
-    evidenceTestDrafts: "filegrc evidence-test-drafts --preview --json",
+    evidenceTestDrafts: "filegrc evidence-test-drafts [--preview] [--json]",
     auditReadiness: "filegrc audit-readiness <audit-id> --json",
     prepareAudit: "filegrc prepare-audit <audit-id>",
     trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
