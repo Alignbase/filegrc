@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   assessAuditPreparation,
+  assessEvidenceMap,
   assessProgramReadiness,
   createResource,
   createResources,
-  ensureEvidenceTestDrafts,
   loadWorkspace,
   updateResource
 } from "../src/index.js";
@@ -220,6 +220,40 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       effectiveOn: "2026-06-01"
     }
   ]);
+  const retrievalPending = await assessEvidenceMap(root, { asOf: "2026-07-01" });
+  assert.deepEqual(retrievalPending.items[0].sourceSystemChecks, [{
+    sourceSystemId: "system-identity",
+    complete: false,
+    checks: {
+      active: true,
+      sourceRole: true,
+      accessOwners: true,
+      retrievalInstructions: false
+    }
+  }]);
+  assert.deepEqual(retrievalPending.items[0].controlMappings, [{
+    controlId: "control-access",
+    sourceSystemIds: ["system-identity"],
+    completeSourceSystemIds: [],
+    mapped: true,
+    complete: false
+  }]);
+  assert.deepEqual(retrievalPending.items[0].commands, [
+    "npx filegrc get system-identity --mutation > /tmp/system-identity.json",
+    "npx filegrc update system system-identity /tmp/system-identity.json --json",
+    "npx filegrc evidence-map --json"
+  ]);
+  const retrievalPendingCli = await execute(process.execPath, [
+    cli,
+    "evidence-map",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-01"
+  ]);
+  assert.match(retrievalPendingCli.stdout, /Source role: identity-access/);
+  assert.match(retrievalPendingCli.stdout, /system-identity: add retrieval instructions/);
+  assert.match(retrievalPendingCli.stdout, /Next: npx filegrc get system-identity --mutation/);
   await writeFile(
     join(root, "data", "systems", "system-identity.md"),
     "# Identity evidence exports\n\nExport the complete access-grant report with request, approver, role, system, and grant time. Reconcile the export to the service access list and retain the fixed file.\n",
@@ -263,76 +297,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     systemIds: ["system-service"]
   });
 
-  const missingDraft = await assessProgramReadiness(root, { asOf: "2026-07-01" });
-  const missingTest = missingDraft.stages.find(({ id }) => id === "evidence").items.find(({ id }) => id === "test-family-identity-access");
-  assert.equal(missingDraft.evidenceReady, false);
-  assert.equal(missingTest.status, "action");
-  assert.equal(missingTest.evidenceId, null);
-  assert.match(missingTest.message, /evidence-test-drafts --preview --json/);
-  assert.deepEqual(missingTest.commands, [
-    "npx filegrc evidence-test-drafts --preview --json",
-    "npx filegrc evidence-test-drafts",
-    "npx filegrc program-readiness --json"
-  ]);
-  const currentEvidencePath = JSON.parse((await execute(process.execPath, [
-    cli,
-    "program-path",
-    "--root",
-    root,
-    "--as-of",
-    "2026-07-01",
-    "--current",
-    "--json"
-  ])).stdout);
-  assert.equal(currentEvidencePath.currentStep.id, "evidence");
-  assert.deepEqual(currentEvidencePath.stages[0].commands.slice(0, 2), [
-    "npx filegrc evidence-test-drafts --preview --json",
-    "npx filegrc evidence-test-drafts"
-  ]);
-  assert.match(currentEvidencePath.stages[0].summary, /preview the proposed External Evidence tests and explicitly create the missing drafts/i);
-  const nextEvidencePath = JSON.parse((await execute(process.execPath, [
-    cli,
-    "program-path",
-    "--root",
-    root,
-    "--as-of",
-    "2026-07-01",
-    "--next",
-    "--json"
-  ])).stdout);
-  assert.equal(nextEvidencePath.step.id, "evidence");
-  assert.match(nextEvidencePath.step.nextAction.message, /then create them with/);
-  assert.deepEqual(nextEvidencePath.step.commands, missingTest.commands);
-
-  const draftResult = await ensureEvidenceTestDrafts(root);
-  assert.equal(draftResult.created.length, 1);
-  const drafted = await assessProgramReadiness(root, { asOf: "2026-07-01" });
-  const draftedTest = drafted.stages.find(({ id }) => id === "evidence").items.find(({ id }) => id === "test-family-identity-access");
-  assert.equal(drafted.evidenceReady, false);
-  assert.equal(draftedTest.status, "action");
-  assert.equal(draftedTest.evidenceStatus, "draft");
-  assert.equal(draftedTest.evidenceId, draftResult.created[0].id);
-  assert.match(draftedTest.message, /select the authoritative source System/);
-
-  const evidenceDraft = (await loadWorkspace(root)).resources.find(({ id }) => id === draftResult.created[0].id);
-  const testEvidence = {
-    ...evidenceDraft,
-    title: "Access evidence test export",
-    status: "verified",
-    source: "Identity system",
-    collectedOn: "2026-06-15",
-    classification: "Internal",
-    sourceSystemId: "system-identity",
-    collectorIds: ["person-owner"],
-    verifierIds: ["person-approver"],
-    verifiedOn: "2026-06-15"
-  };
-  await updateResource(root, "evidence", evidenceDraft.id, testEvidence, {
-    content: {
-      content: "# Access test export\n\nManagement exported the access report and confirmed that the expected fields and records were present."
-    }
-  });
-
   const ready = await assessProgramReadiness(root, { asOf: "2026-07-01" });
   assert.equal(ready.status, "evidence-ready");
   assert.equal(ready.evidenceReady, true);
@@ -345,20 +309,46 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(readyWorkspace.resources.find(({ id }) => id === "person-approver").status, "active");
   assert.equal(ready.stages.find(({ id }) => id === "policies").counts.action, 0);
   assert.equal(readyWorkspace.resources.some(({ type }) => type === "audit"), false);
+  const evidenceMap = await assessEvidenceMap(root, { asOf: "2026-07-01" });
+  assert.equal(evidenceMap.status, "complete");
+  assert.equal(evidenceMap.items.length, 1);
+  assert.equal(evidenceMap.items[0].id, "source-family-identity-access");
+  assert.equal(evidenceMap.items[0].evidenceKind, "export");
+  assert.match(evidenceMap.items[0].evidencePrompt, /users, roles, privileged access/);
+  assert.deepEqual(evidenceMap.items[0].sourceKinds, ["identity-access"]);
+  assert.deepEqual(evidenceMap.items[0].sourceSystemIds, ["system-identity"]);
+  assert.deepEqual(evidenceMap.items[0].completeSourceSystemIds, ["system-identity"]);
+  assert.deepEqual(evidenceMap.items[0].sourceSystemChecks, [{
+    sourceSystemId: "system-identity",
+    complete: true,
+    checks: {
+      active: true,
+      sourceRole: true,
+      accessOwners: true,
+      retrievalInstructions: true
+    }
+  }]);
+  assert.deepEqual(evidenceMap.items[0].controlMappings, [{
+    controlId: "control-access",
+    sourceSystemIds: ["system-identity"],
+    completeSourceSystemIds: ["system-identity"],
+    mapped: true,
+    complete: true
+  }]);
+  assert.match(evidenceMap.workflow.join(" "), /evidenceSourceIds/);
 
-  const collectedEvidence = { ...testEvidence, status: "collected" };
-  delete collectedEvidence.verifierIds;
-  delete collectedEvidence.verifiedOn;
-  await updateResource(root, "evidence", testEvidence.id, collectedEvidence);
-  const awaitingVerification = await assessProgramReadiness(root, { asOf: "2026-07-01" });
-  const awaitingTest = awaitingVerification.stages.find(({ id }) => id === "evidence").items.find(({ id }) => id === "test-family-identity-access");
-  assert.equal(awaitingVerification.evidenceReady, false);
-  assert.equal(awaitingTest.status, "action");
-  assert.equal(awaitingTest.evidenceId, testEvidence.id);
-  assert.equal(awaitingTest.testEvidenceKind, "test-export");
-  assert.match(awaitingTest.testPrompt, /users, roles, privileged access/);
-  assert.deepEqual(awaitingTest.sourceSystemIds, ["system-identity"]);
-  await updateResource(root, "evidence", testEvidence.id, testEvidence);
+  const evidenceMapCli = JSON.parse((await execute(process.execPath, [
+    cli,
+    "evidence-map",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-01",
+    "--json"
+  ])).stdout);
+  assert.equal(evidenceMapCli.status, "complete");
+  assert.deepEqual(evidenceMapCli.items[0].controlIds, ["control-access"]);
+  assert.deepEqual(evidenceMapCli.items[0].commands, ["npx filegrc evidence-map --json"]);
 
   const auditReadiness = await assessAuditPreparation(root, { programReadiness: ready });
   assert.equal(auditReadiness.status, "not-started");

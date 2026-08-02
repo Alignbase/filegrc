@@ -164,7 +164,6 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(completed.system.status, "active");
   assert.equal(completed.workspace.assuranceGoal, "soc-2-type-2");
   assert.deepEqual(completed.linkedControlIds, []);
-  assert.deepEqual(completed.evidenceTestDraftIds, []);
 
   let loaded = await loadWorkspace(root);
   assert.equal(loaded.resources.filter(({ type, inScope }) => type === "system" && inScope).length, 1);
@@ -173,24 +172,26 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(loaded.resources.find(({ id }) => id === "control-access").systemIds, undefined);
 
   const browserState = await (await fetch(`${running.url}/api/state`)).json();
-  assert.equal(browserState.evidenceTestDrafts.preview, true);
-  assert.equal(browserState.evidenceTestDrafts.create.length, 1);
-  assert.equal(browserState.evidenceTestDrafts.create[0].familyId, "identity-access");
-  assert.equal(browserState.evidenceTestDrafts.create[0].testEvidenceKind, "test-export");
-  assert.match(browserState.evidenceTestDrafts.create[0].testPrompt, /users, roles, privileged access/);
-  assert.deepEqual(browserState.evidenceTestDrafts.create[0].controlIds, ["control-access"]);
+  const browserEvidenceMap = browserState.programReadiness.stages.find(({ id }) => id === "evidence");
+  const browserIdentityMap = browserEvidenceMap.items.find(({ familyId }) => familyId === "identity-access");
+  assert.ok(browserIdentityMap);
+  assert.equal(browserIdentityMap.evidenceKind, "export");
+  assert.match(browserIdentityMap.evidencePrompt, /users, roles, privileged access/);
+  assert.deepEqual(browserIdentityMap.controlIds, ["control-access"]);
+  assert.deepEqual(browserIdentityMap.sourceSystemIds, []);
+  assert.equal(browserIdentityMap.status, "action");
 
-  const evidencePreview = JSON.parse((await execute(process.execPath, [
+  const evidenceMap = JSON.parse((await execute(process.execPath, [
     cliPath,
-    "evidence-test-drafts",
+    "evidence-map",
     "--root",
     root,
-    "--preview",
     "--json"
   ])).stdout);
-  assert.equal(evidencePreview.preview, true);
-  assert.equal(evidencePreview.create.length, 1);
-  assert.match(evidencePreview.create[0].testPrompt, /users, roles, privileged access/);
+  const identityMap = evidenceMap.items.find(({ familyId }) => familyId === "identity-access");
+  assert.ok(identityMap);
+  assert.equal(identityMap.status, "action");
+  assert.match(identityMap.evidencePrompt, /users, roles, privileged access/);
   assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "evidence").length, 0);
 
   await createResource(root, {
@@ -201,23 +202,10 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     status: "draft",
     evidenceKind: "review"
   });
-  const draftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
-  assert.equal(draftResponse.status, 201);
-  assert.equal((await draftResponse.json()).created.length, 1);
   loaded = await loadWorkspace(root);
-  const evidenceDraft = loaded.resources.find(({ collectionTestFamilyId }) => collectionTestFamilyId === "identity-access");
-  assert.equal(evidenceDraft.status, "draft");
-  assert.equal(evidenceDraft.evidenceKind, "test-export");
-  assert.equal(evidenceDraft.collectionTestFamilyId, "identity-access");
-  assert.deepEqual(evidenceDraft.controlIds, ["control-access"]);
   assert.equal(loaded.resources.find(({ id }) => id === "evidence-existing-review").title, "Existing review evidence");
-  assert.equal(loaded.resources.filter(({ type }) => type === "evidence").length, 2);
-  assert.equal(loaded.resources.some(({ collectionTestFamilyId }) => collectionTestFamilyId === "governance"), false);
+  assert.equal(loaded.resources.filter(({ type }) => type === "evidence").length, 1);
   assert.equal((await validateWorkspace(root)).ok, true);
-
-  const repeatedDraftResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
-  assert.equal(repeatedDraftResponse.status, 201);
-  assert.equal((await repeatedDraftResponse.json()).created.length, 0);
 
   const resumedDraft = await setupWorkspace(root, {
     serviceName: "Example Service",
@@ -270,7 +258,6 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   const previewResult = JSON.parse(preview.stdout);
   assert.equal(previewResult.preview, true);
   assert.equal(previewResult.changes.controls, 0);
-  assert.equal(previewResult.changes.evidenceDrafts, 0);
   assert.equal(previewResult.system.description, "Production service boundary.");
   assert.deepEqual(previewResult.system.ownerIds, ["person-owner"]);
   assert.equal(previewResult.system.criticality, "critical");

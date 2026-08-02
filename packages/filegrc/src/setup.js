@@ -21,7 +21,6 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
     workspace: plan.workspace,
     renderer: plan.renderer,
     linkedControlIds: [],
-    evidenceTestDraftIds: [],
     onboardingComplete: !setup.draft
   };
 }
@@ -39,8 +38,7 @@ export async function planWorkspaceSetup(input = process.cwd(), payload = {}) {
       system: plan.existingSystem ? "update" : "create",
       workspace: "update",
       renderer: plan.renderer ? "update" : "unchanged",
-      controls: 0,
-      evidenceDrafts: 0
+      controls: 0
     },
     system: setupSystemSummary(plan.system),
     target: setupTargetSummary(plan.workspace),
@@ -57,8 +55,7 @@ export function summarizeSetupResult(result) {
     changes: {
       system: "saved",
       workspace: "updated",
-      controls: result.linkedControlIds?.length || 0,
-      evidenceDrafts: result.evidenceTestDraftIds?.length || 0
+      controls: result.linkedControlIds?.length || 0
     },
     system: setupSystemSummary(result.system),
     target: setupTargetSummary(result.workspace),

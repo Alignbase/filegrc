@@ -40,11 +40,11 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 1. **Define scope.** Confirm people, dated appointments, teams, criteria, commitments, vendors, and in-scope systems.
 2. **Approve policies.** Tailor the proposals and record separate owners and reviewers.
 3. **Implement controls.** Add the real procedure, scope, cadence, and evidence source.
-4. **Test evidence collection.** Collect and verify evidence from each authoritative system.
+4. **Map evidence.** Connect every control to its authoritative evidence systems, access owners, and retrieval instructions.
 5. **Operate the program.** Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.
 6. **Audit.** Record the CPA engagement and agreed period, support fieldwork, and build the packet.
 
-Step 4 keeps draft creation explicit. After confirming the applicable controls and authoritative source systems, preview the proposed tests with `npx filegrc evidence-test-drafts --preview --json`, then create the missing drafts with `npx filegrc evidence-test-drafts`. Setup and onboarding do not create External Evidence.
+Step 4 is a read-only evidence map. Review it with `npx filegrc evidence-map --json`, then fix missing mappings in the Control and System records. Create External Evidence during Step 5 only when a real export, report, screenshot, signed file, or approved external reference exists.
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 

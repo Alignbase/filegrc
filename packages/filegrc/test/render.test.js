@@ -460,7 +460,7 @@ test("places list filters before the create action in the page header", () => {
   const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
   assert.match(listSource, /const listTools = '<div class="list-tools list-header-tools">/);
   assert.match(listSource, /records<\/span>' \+ createButton \+ '<\/div>'/);
-  assert.match(listSource, /\+ listTools \+ '<\/div>' \+ resourceGuide\(type\)/);
+  assert.match(listSource, /\+ listTools \+ '<\/div>' \+ contextualListGuide\(type, contextStage\) \+ resourceGuide\(type\)/);
   assert.match(APP_STYLES, /\.list-header-tools\{flex:1;justify-content:flex-end;margin:0 0 0 28px\}/);
   assert.match(APP_STYLES, /\.page-intro>\.list-header-tools\{justify-content:flex-start;margin:15px 0 0\}/);
 });
@@ -485,7 +485,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
       { number: 1, title: "Define Scope", description: "Ownership, criteria, and service boundary" },
       { number: 2, title: "Approve Policies", description: "Tailor, review, approve, and adopt" },
       { number: 3, title: "Implement Controls", description: "Tailor and finish the starter control set" },
-      { number: 4, title: "Test Evidence Collection", description: "Verify sources before the period starts" },
+      { number: 4, title: "Map Evidence", description: "Connect controls to authoritative sources" },
       { number: 5, title: "Operate the Program", description: "Run the work and retain dated proof" },
       { number: 6, title: "Audit", description: "Firm, formal period, fieldwork, and report" }
     ]
@@ -502,8 +502,9 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.ok(scopeStage.sections.findIndex(({ id }) => id === "criteria") < scopeStage.sections.findIndex(({ id }) => id === "boundary"));
   assert.equal(scopeStage.resourceTypes.includes("risk"), false);
   assert.deepEqual(section(operationStage, "Assets and Vendors").types, ["asset", "vendor-review"]);
-  assert.deepEqual(section(PROGRAM_PATH[3], "Collection Test").types, ["evidence"]);
+  assert.deepEqual(section(PROGRAM_PATH[3], "Evidence Map").types, []);
   assert.deepEqual(section(operationStage, "Work Queue").types, ["obligation", "obligation-event", "data-request"]);
+  assert.deepEqual(section(operationStage, "External Evidence").types, ["evidence"]);
   assert.deepEqual(section(operationStage, "Access and Training").types, ["service-account", "access-grant", "access-review", "training", "attestation"]);
   assert.deepEqual(section(auditStage, "Engagement").types, ["audit", "audit-request"]);
   assert.deepEqual(section(auditStage, "Fieldwork").types, ["audit-population", "control-test"]);
@@ -552,7 +553,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /programStage\("run", "Begin the candidate period, maintain risk assessments/);
   assert.match(APP_SCRIPT, /programStage\("policies", "Tailor the policy set/);
   assert.match(APP_SCRIPT, /programStage\("controls", "Finish the internal control set[\s\S]*then record any complementary controls/);
-  assert.match(APP_SCRIPT, /programStage\("evidence", "For each control family/);
+  assert.match(APP_SCRIPT, /programStage\("evidence", "Map every control family/);
   assert.doesNotMatch(APP_SCRIPT, /#\/program-readiness/);
   assert.doesNotMatch(APP_SCRIPT, /function renderProgramReadiness/);
   assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
@@ -584,6 +585,7 @@ test("keeps IDs behind the guided editor and generates them from titles", () => 
   assert.match(APP_SCRIPT, /createResourceId\(type, nextTitle/);
   assert.match(APP_SCRIPT, /titleLabel \|\| state\.model\.commonFields\.title\.label/);
   assert.match(APP_SCRIPT, /A stable ID and file name will be generated from this value/);
+  assert.match(APP_SCRIPT, /labels\.slice\(0, -1\)\.join\(", "\) \+ ", or " \+ labels\.at\(-1\)/);
   assert.doesNotMatch(APP_SCRIPT, /\[\s*"id",\s*"title"/);
 });
 
@@ -709,34 +711,47 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /type === "obligation" && name === "status"\) return "Configuration"/);
   assert.doesNotMatch(APP_SCRIPT, /Work Queue · ' \+ esc\(label\)/);
   assert.match(APP_SCRIPT, /governing policies are effective and at least one linked control is implemented/);
-  assert.match(APP_SCRIPT, /preview and explicitly create the missing collection-test drafts/);
+  assert.match(APP_SCRIPT, /Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists/);
   assert.match(APP_SCRIPT, /Work Queue[\s\S]*Other controls operate continuously or per transaction in their source systems/);
   assert.doesNotMatch(APP_STYLES, /\.stage-instruction-grid/);
   assert.doesNotMatch(APP_STYLES, /\.evidence-instruction-grid/);
 });
 
-test("previews and creates Step 4 evidence drafts before using the standard record table", () => {
-  assert.doesNotMatch(APP_SCRIPT, /function evidenceCollectionTestPlan\(\)/);
-  assert.doesNotMatch(APP_SCRIPT, /data-edit-evidence-test/);
-  assert.doesNotMatch(APP_SCRIPT, /Open Draft/);
-  assert.doesNotMatch(APP_SCRIPT, /Finish Source Setup/);
-  assert.doesNotMatch(APP_STYLES, /\.evidence-test-card/);
-  assert.match(APP_SCRIPT, /function renderEvidenceTestDraftCallout\(\)/);
-  assert.match(APP_SCRIPT, /state\.evidenceTestDrafts\?\.create/);
-  assert.match(APP_SCRIPT, /data-preview-evidence-test-drafts/);
-  assert.match(APP_SCRIPT, /Preview ' \+ missing\.length \+ " proposed "/);
-  assert.match(APP_SCRIPT, /item\.testEvidenceKind/);
-  assert.match(APP_SCRIPT, /item\.testPrompt/);
-  assert.match(APP_SCRIPT, /item\.controlIds\.map\(formatReference\)/);
-  assert.match(APP_SCRIPT, /data-create-evidence-test-drafts>Create test drafts/);
-  assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-test-drafts", \{ method: "POST" \}\)/);
-  assert.match(APP_SCRIPT, /evidenceTestDraftFeedback = \{/);
-  assert.match(APP_SCRIPT, /state = await fetchJson\("\/api\/state"\)/);
-  assert.match(APP_SCRIPT, /Created " \+ created\.length \+ " " \+ pluralize\("test draft"/);
-  assert.match(APP_STYLES, /\.evidence-draft-callout\{/);
-  assert.match(APP_STYLES, /\.evidence-draft-preview-item\{/);
-  assert.match(APP_STYLES, /\.evidence-draft-preview\[hidden\]\{display:none\}/);
-  assert.match(APP_SCRIPT, /<section class="record-table-wrap"><table class="record-table">/);
+test("renders a read-only Step 4 evidence map and creates real evidence during operation", () => {
+  assert.match(APP_SCRIPT, /function renderEvidenceMap\(\)/);
+  assert.match(APP_SCRIPT, /state\.programReadiness\?\.stages\?\.find\(\(stage\) => stage\.id === "evidence"\)/);
+  assert.match(APP_SCRIPT, /item\.evidencePrompt/);
+  assert.match(APP_SCRIPT, /item\.sourceKinds\?\.length/);
+  assert.match(APP_SCRIPT, /item\.sourceSystemChecks \|\| \[\]/);
+  assert.match(APP_SCRIPT, /add retrieval instructions/);
+  assert.match(APP_SCRIPT, /item\.controlIds \|\| \[\]\)\.map\(\(id\) => formatReference\(id, "evidence"\)\)/);
+  assert.match(APP_SCRIPT, /item\.sourceSystemIds \|\| \[\]\)\.map/);
+  assert.match(APP_SCRIPT, /href="#\/resources\/system\?new=1&amp;stage=evidence">Add source System/);
+  assert.match(APP_SCRIPT, /href="#\/resources\/control\?stage=evidence">Map Controls/);
+  assert.deepEqual(PROGRAM_PATH[3].sections[0].relatedLinks, [
+    { type: "system", label: "Source Systems", href: "#/resources/system?stage=evidence" },
+    { type: "control", label: "Controls", href: "#/resources/control?stage=evidence" }
+  ]);
+  assert.match(APP_SCRIPT, /section\.relatedLinks \|\| \[\]\)\.map/);
+  assert.match(APP_SCRIPT, /const contextualStageId = route\.params\?\.get\("stage"\)/);
+  assert.match(APP_SCRIPT, /name: "detail", type: parts\[1\], id: parts\[2\], params: new URLSearchParams\(query\)/);
+  assert.match(APP_SCRIPT, /link\.type === route\.type/);
+  assert.match(APP_SCRIPT, /function contextualListGuide\(type, stageId\)/);
+  assert.match(APP_SCRIPT, /Complete each authoritative source/);
+  assert.match(APP_SCRIPT, /Connect every selected Control/);
+  assert.match(APP_SCRIPT, /contextStage === "evidence" && type === "system" \? \["evidenceSourceKinds", "evidenceOwnerIds"\]/);
+  assert.match(APP_SCRIPT, /contextStage === "evidence" && type === "control" \? \["evidenceSourceIds"\]/);
+  assert.match(APP_SCRIPT, /\.\.\.\(definition\.formFields \|\| \[\]\)/);
+  assert.match(APP_SCRIPT, /Use a role shown on the Step 4 evidence family/);
+  assert.doesNotMatch(APP_SCRIPT, /evidenceTestDrafts/);
+  assert.doesNotMatch(APP_SCRIPT, /api\/evidence-test-drafts/);
+  assert.doesNotMatch(APP_SCRIPT, /Create test drafts/);
+  assert.match(APP_STYLES, /\.evidence-map\{/);
+  assert.match(APP_STYLES, /\.evidence-map-card\{/);
+  assert.match(APP_STYLES, /\.evidence-map-source\.complete\{/);
+  assert.match(APP_STYLES, /\.context-workflow\{/);
+  assert.match(APP_SCRIPT, /External Evidence/);
+  assert.match(APP_SCRIPT, /Create records only for real exports, reports, screenshots, signed files, or approved external references/);
 });
 
 test("renders six navigable stage pages with instructions, links, and honest progress", () => {
@@ -803,6 +818,12 @@ test("uses the Step 5 page for compact policy-event triggers and the Work Queue"
   assert.doesNotMatch(stepFive, /renderStagePageIndex\(stage\)/);
   assert.doesNotMatch(stepFive, /data-stage-page-completion/);
   assert.ok(stepFive.indexOf("<h2>Policy Events</h2>") < stepFive.indexOf("<h2>Work Queue</h2>"));
+  assert.match(stepFive, /renderExternalEvidenceSection\(\)/);
+  assert.match(APP_SCRIPT, /function renderExternalEvidenceSection\(\)/);
+  assert.match(APP_SCRIPT, /data-new-external-evidence>New external evidence/);
+  assert.match(APP_SCRIPT, /data-new-external-evidence.*openEditor\("evidence"\)/s);
+  assert.match(APP_SCRIPT, /field\.showWhenInactive !== true/);
+  assert.match(APP_STYLES, /\.external-evidence-list\{/);
   assert.match(stepFive, /policyEventTrigger\(trigger, index\)/);
   assert.match(stepFive, /Trigger Work/);
   assert.doesNotMatch(stepFive, /Trigger Workflow/);
@@ -1022,7 +1043,8 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
 });
 
 test("uses stage names and routes overview cards through stage pages", () => {
-  assert.match(APP_SCRIPT, /readinessStageForType\(type\)\?\.title/);
+  assert.match(APP_SCRIPT, /: readinessStageForType\(type\)/);
+  assert.match(APP_SCRIPT, /listStage\?\.title \|\| groupTitle/);
   assert.match(APP_SCRIPT, /programStage\("run", "Begin the candidate period/);
   assert.match(APP_SCRIPT, /function nextProgramStageHref\(\)/);
   assert.match(APP_SCRIPT, /READINESS_STAGES\.find\(\(stage\) => \{/);
@@ -1037,7 +1059,7 @@ test("uses stage names and routes overview cards through stage pages", () => {
   assert.doesNotMatch(APP_SCRIPT, /Open checklist/);
   assert.doesNotMatch(APP_STYLES, /\.program-next-action\{/);
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
-  assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type\)\)/);
+  assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type, null, \{ contextStage \}\)\)/);
   assert.match(APP_STYLES, /\.readiness-state\{/);
 });
 

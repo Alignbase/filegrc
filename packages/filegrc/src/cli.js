@@ -6,7 +6,6 @@ import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldRes
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { buildWorkspace } from "./build.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
-import { ensureEvidenceTestDrafts, previewEvidenceTestDrafts } from "./evidence-tests.js";
 import {
   addEvidenceAttachment,
   createResource,
@@ -24,7 +23,7 @@ import {
 } from "./obligations.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { buildAgentProgramPath, policyEventName } from "./program-path.js";
-import { assessProgramReadiness } from "./program-readiness.js";
+import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { migrateLegacyRoles, planRoleMigration } from "./role-migration.js";
 import { searchResources } from "./search.js";
@@ -102,7 +101,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else if (flags.preview) {
       console.log(`Setup preview: ${result.changes.system} system ${result.system.id}; update workspace target to ${result.target.assuranceGoal}.`);
-      console.log("No controls will be linked and no evidence drafts will be created.");
+      console.log("No controls will be linked and no evidence records will be created.");
     }
     else {
       console.log(`${result.draft ? "Saved draft scope" : "Completed initial setup"} for ${result.system.title}.`);
@@ -307,17 +306,25 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
     return output;
   }
-  if (command === "evidence-test-drafts") {
-    if (flags.preview) {
-      const loaded = await loadWorkspace(root);
-      const result = previewEvidenceTestDrafts(loaded);
-      if (flags.json) console.log(JSON.stringify(result, null, 2));
-      else console.log(`Evidence draft preview: create ${result.create.length}; preserve ${result.existing.length}.`);
-      return result;
-    }
-    const result = await ensureEvidenceTestDrafts(root);
+  if (command === "evidence-map") {
+    const loaded = await loadWorkspace(root);
+    const result = await assessEvidenceMap(loaded, { asOf: flags["as-of"] });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else console.log(`Created ${result.created.length} External Evidence test ${result.created.length === 1 ? "draft" : "drafts"}; ${result.total} required families are represented.`);
+    else {
+      console.log(`${result.status.toUpperCase()}: ${result.counts.complete} mapped, ${result.counts.action} need action`);
+      for (const item of result.items) {
+        console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
+        if (item.status !== "action") continue;
+        if (item.sourceKinds?.length) console.log(`  Source role: ${item.sourceKinds.join(" or ")}`);
+        for (const source of item.sourceSystemChecks || []) {
+          const missing = Object.entries(source.checks)
+            .filter(([, passed]) => !passed)
+            .map(([name]) => evidenceSourceCheckName(name));
+          if (missing.length) console.log(`  ${source.sourceSystemId}: ${missing.join(", ")}`);
+        }
+        if (item.commands?.length) console.log(`  Next: ${item.commands[0]}`);
+      }
+    }
     return result;
   }
   if (command === "audit-readiness") {
@@ -717,7 +724,7 @@ Usage:
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
-  filegrc evidence-test-drafts [--preview] [--json]
+  filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
   filegrc audit-readiness [audit-id] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
@@ -805,9 +812,8 @@ Options:
   filegrc program-readiness [options]
 
 Report whether management has defined scope, activated policies, implemented
-controls, configured authoritative evidence sources, and verified test collection
-for external evidence without a dedicated Step 5 record. No audit ID or CPA firm
-is required.
+controls, and mapped every selected control to a configured authoritative evidence
+source. No audit ID or CPA firm is required.
 
 Options:
   --as-of <date>     Evaluate effective dates and obligations on YYYY-MM-DD
@@ -837,20 +843,18 @@ Options:
   --help             Show this help`);
     return;
   }
-  if (command === "evidence-test-drafts") {
+  if (command === "evidence-map") {
     console.log(`Usage:
-  filegrc evidence-test-drafts [options]
+  filegrc evidence-map [options]
 
-Preview or create missing draft External Evidence records for collection that
-does not already have a dedicated Step 5 operating record. Existing tests are
-preserved. Run after confirming applicable controls and source systems. Preview
-the proposed family, evidence kind, collection prompt, and linked controls first,
-then run the command without --preview to create the missing drafts.
+Show the Step 4 evidence map for every selected control family. Each item reports
+the required source roles, linked controls, authoritative source Systems,
+per-record checks, and exact edit commands. The map itself is read-only.
 
 Options:
-  --preview      Report proposed drafts without creating them
-  --json         Print created and existing records as JSON
-  --root <path>  Workspace path
+  --as-of <date>  Evaluate the map on YYYY-MM-DD
+  --json          Print the map as JSON
+  --root <path>   Workspace path
   --help         Show this help`);
     return;
   }
@@ -876,7 +880,7 @@ function agentOverview(model) {
     search: "filegrc search <query> --json",
     obligations: "filegrc obligations --json",
     programReadiness: "filegrc program-readiness --json",
-    evidenceTestDrafts: "filegrc evidence-test-drafts [--preview] [--json]",
+    evidenceMap: "filegrc evidence-map --json",
     auditReadiness: "filegrc audit-readiness <audit-id> --json",
     prepareAudit: "filegrc prepare-audit <audit-id>",
     trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
@@ -1114,6 +1118,15 @@ function shellArgument(value) {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(text)
     ? text
     : `'${text.replaceAll("'", "'\\''")}'`;
+}
+
+function evidenceSourceCheckName(name) {
+  return ({
+    active: "activate source",
+    sourceRole: "add source role",
+    accessOwners: "add access owner",
+    retrievalInstructions: "add retrieval instructions"
+  })[name] || name;
 }
 
 function printProgramPathOutput(result, flags) {

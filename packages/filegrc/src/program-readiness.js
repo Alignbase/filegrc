@@ -7,8 +7,6 @@ import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 
-const TEST_EVIDENCE_KINDS = new Set(["test-capture", "test-export"]);
-
 export async function assessProgramReadiness(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
@@ -26,12 +24,11 @@ export async function assessProgramReadiness(input, options = {}) {
   };
 
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
-  const collectionStage = evidenceCollectionStage(scope, records, byId, loaded.model);
   const evidenceStage = stage(
     "evidence",
-    "Test Evidence Collection",
-    "For external evidence without a dedicated Step 5 record, catalog the authoritative Systems, document repeatable extraction, and verify one test capture before operation begins.",
-    [...sourceStage.items, ...collectionStage.items]
+    "Map Evidence",
+    "Map every selected control to an authoritative System, name who can retrieve its evidence, and document repeatable extraction before operation begins.",
+    sourceStage.items
   );
   const evidenceGateStages = [
     scopeStage(workspace, scope, records, byId),
@@ -93,6 +90,25 @@ export async function assessProgramReadiness(input, options = {}) {
       controlIds: scope.controls.map((record) => record.id)
     },
     stages
+  };
+}
+
+export async function assessEvidenceMap(input, options = {}) {
+  const readiness = await assessProgramReadiness(input, options);
+  const evidence = readiness.stages.find((stage) => stage.id === "evidence");
+  return {
+    schemaVersion: 1,
+    generatedAt: readiness.generatedAt,
+    asOf: readiness.asOf,
+    status: evidence.status,
+    counts: evidence.counts,
+    workflow: [
+      "Choose an existing System or create the System that is authoritative for each evidence family.",
+      "On every source System, set an evidence source role, name current evidence access owners, and write repeatable retrieval instructions in Record Markdown.",
+      "Set each selected Control's evidenceSourceIds to the authoritative Systems that produce its evidence.",
+      "Run evidence-map again and resolve every incomplete source check and control mapping before starting the candidate period."
+    ],
+    items: evidence.items
   };
 }
 
@@ -395,32 +411,64 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
-  const families = selectedControlFamilies(scope.controls, model).filter(requiresCollectionTest);
+  const families = selectedControlFamilies(scope.controls, model);
   const items = [];
   for (const family of families) {
     const selectedSources = [...new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []))]
       .map((id) => byId.get(id))
       .filter((record) => record?.type === "system");
     const completeSources = [];
+    const sourceSystemChecks = [];
     for (const source of selectedSources) {
       const instructions = await readMarkdown(source);
       const matchesRole = !family.sourceKinds.length
         || family.sourceKinds.some((kind) => (source.evidenceSourceKinds || []).includes(kind));
-      if (
-        source.status === "active"
-        && matchesRole
-        && (source.evidenceSourceKinds || []).length
-        && (source.evidenceOwnerIds || []).length
-        && substantiveMarkdown(instructions)
-        && openPlaceholderCount(instructions) === 0
-      ) {
+      const checks = {
+        active: source.status === "active",
+        sourceRole: matchesRole && (source.evidenceSourceKinds || []).length > 0,
+        accessOwners: (source.evidenceOwnerIds || []).length > 0,
+        retrievalInstructions: substantiveMarkdown(instructions) && openPlaceholderCount(instructions) === 0
+      };
+      const complete = Object.values(checks).every(Boolean);
+      sourceSystemChecks.push({
+        sourceSystemId: source.id,
+        complete,
+        checks
+      });
+      if (complete) {
         completeSources.push(source);
       }
     }
-    const coveredControls = family.controls.filter((control) => (
-      (control.evidenceSourceIds || []).some((id) => completeSources.some((source) => source.id === id))
-    ));
+    const controlMappings = family.controls.map((control) => {
+      const sourceSystemIds = (control.evidenceSourceIds || []).filter((id) => selectedSources.some((source) => source.id === id));
+      const completeSourceSystemIds = sourceSystemIds.filter((id) => completeSources.some((source) => source.id === id));
+      return {
+        controlId: control.id,
+        sourceSystemIds,
+        completeSourceSystemIds,
+        mapped: sourceSystemIds.length > 0,
+        complete: completeSourceSystemIds.length > 0
+      };
+    });
+    const coveredControls = controlMappings.filter(({ complete }) => complete);
     const complete = completeSources.length > 0 && coveredControls.length === family.controls.length;
+    const commands = [
+      ...(selectedSources.length
+        ? sourceSystemChecks.filter(({ complete: sourceComplete }) => !sourceComplete).flatMap(({ sourceSystemId }) => [
+            `npx filegrc get ${shellArgument(sourceSystemId)} --mutation > /tmp/${shellArgument(sourceSystemId)}.json`,
+            `npx filegrc update system ${shellArgument(sourceSystemId)} /tmp/${shellArgument(sourceSystemId)}.json --json`
+          ])
+        : [
+            "npx filegrc list system --json",
+            'npx filegrc scaffold system --title "SYSTEM NAME" > /tmp/filegrc-system.json',
+            "npx filegrc create /tmp/filegrc-system.json --json"
+          ]),
+      ...controlMappings.filter(({ mapped }) => !mapped).flatMap(({ controlId }) => [
+        `npx filegrc get ${shellArgument(controlId)} --mutation > /tmp/${shellArgument(controlId)}.json`,
+        `npx filegrc update control ${shellArgument(controlId)} /tmp/${shellArgument(controlId)}.json --json`
+      ]),
+      "npx filegrc evidence-map --json"
+    ];
     items.push(item(
       `source-family-${family.id}`,
       complete ? "complete" : "action",
@@ -429,61 +477,24 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
         ? `${completeSources.map((source) => source.title).join(", ")} cover all ${family.controls.length} selected controls and record access owners and extraction instructions.`
         : `${coveredControls.length} of ${family.controls.length} selected controls have an active authoritative system with the required source role, access owners, and extraction instructions.`,
       completeSources[0] || selectedSources[0] || { type: "system" },
-      { controlIds: family.controls.map((control) => control.id), sourceSystemIds: selectedSources.map((source) => source.id) }
-    ));
-  }
-  return stage("sources", "Configure Evidence Sources", "Catalog the authoritative systems, name who can export from them, and write repeatable extraction instructions.", items);
-}
-
-function evidenceCollectionStage(scope, records, byId, model) {
-  const families = selectedControlFamilies(scope.controls, model).filter(requiresCollectionTest);
-  const captures = records.filter((record) => (
-    record.type === "evidence"
-    && TEST_EVIDENCE_KINDS.has(record.evidenceKind)
-  ));
-  const items = families.map((family) => {
-    const configuredSourceIds = new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []));
-    const controlIds = new Set(family.controls.map((control) => control.id));
-    const capture = captures.find((record) => record.collectionTestFamilyId === family.id)
-      || captures.find((record) => (
-        [...controlIdsForRecord(record, byId)].some((id) => controlIds.has(id))
-      ));
-    const sourceIds = new Set([
-      ...configuredSourceIds,
-      ...(capture?.sourceSystemId ? [capture.sourceSystemId] : [])
-    ]);
-    const verified = capture?.status === "verified";
-    return item(
-      `test-family-${family.id}`,
-      verified ? "complete" : "action",
-      family.title,
-      verified
-        ? `${capture.title} proves that management successfully captured and verified evidence from ${byId.get(capture.sourceSystemId)?.title || "the authoritative source"}.`
-        : capture?.status === "draft"
-          ? `${capture.title} is a draft. Open it, select the authoritative source System, collect the named artifact, and have another person verify it.`
-          : capture
-            ? `${capture.title} is ${capture.status} but must be verified before this family is ready.`
-          : "Preview the missing External Evidence drafts with `npx filegrc evidence-test-drafts --preview --json`, then create them with `npx filegrc evidence-test-drafts`. Complete and verify the resulting test export or capture from an authoritative source System.",
-      capture || { type: "evidence" },
       {
         familyId: family.id,
-        controlIds: [...controlIds],
-        sourceSystemIds: [...sourceIds],
-        evidenceId: capture?.id || null,
-        evidenceStatus: capture?.status || null,
-        testEvidenceKind: family.testEvidenceKind,
-        testPrompt: family.testPrompt,
-        ...(!capture ? {
-          commands: [
-            "npx filegrc evidence-test-drafts --preview --json",
-            "npx filegrc evidence-test-drafts",
-            "npx filegrc program-readiness --json"
-          ]
-        } : {})
+        sourceKinds: family.sourceKinds,
+        controlIds: family.controls.map((control) => control.id),
+        sourceSystemIds: selectedSources.map((source) => source.id),
+        completeSourceSystemIds: completeSources.map((source) => source.id),
+        sourceSystemChecks,
+        controlMappings,
+        evidenceKind: family.evidenceKind,
+        evidencePrompt: family.evidencePrompt,
+        description: family.description,
+        timing: family.timing,
+        operationRecordTypes: family.operationRecordTypes,
+        commands
       }
-    );
-  });
-  return stage("collection", "Test Evidence Collection", "A verified test export or capture is required for each external evidence family that does not already have a dedicated Step 5 operating record.", items);
+    ));
+  }
+  return stage("sources", "Map Evidence", "Catalog authoritative Systems, map every selected control, name who can retrieve evidence, and write repeatable extraction instructions.", items);
 }
 
 function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
@@ -494,7 +505,7 @@ function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
         "operation-later",
         "later",
         "Begin reliable evidence collection",
-        "Finish scope, policy adoption, control implementation, source configuration, and test captures before recording the candidate period.",
+        "Finish scope, policy adoption, control implementation, and evidence mapping before recording the candidate period.",
         workspace || { type: "workspace" }
       )
     ]);
@@ -585,9 +596,10 @@ export function selectedControlFamilies(controls, model) {
       id: definition.id,
       title: definition.title,
       sourceKinds: definition.sourceKinds || [],
-      testEvidenceKind: definition.testEvidenceKind || "test-capture",
-      testPrompt: definition.testPrompt || `Capture usable evidence for ${definition.title.toLowerCase()}.`,
-      collectionTestRequired: definition.collectionTestRequired !== false,
+      evidenceKind: definition.evidenceKind || "capture",
+      evidencePrompt: definition.evidencePrompt || `Retain usable evidence for ${definition.title.toLowerCase()}.`,
+      description: definition.description || "",
+      timing: definition.timing || "",
       operationRecordTypes: definition.operationRecordTypes || [],
       controls: selected
     });
@@ -609,18 +621,15 @@ export function selectedControlFamilies(controls, model) {
       id: `control-${prefix}`,
       title,
       sourceKinds: [],
-      testEvidenceKind: "test-capture",
-      testPrompt: `Capture usable evidence for the selected ${title.toLowerCase()} controls.`,
-      collectionTestRequired: true,
+      evidenceKind: "capture",
+      evidencePrompt: `Retain usable evidence for the selected ${title.toLowerCase()} controls.`,
+      description: `Record the authoritative Systems that produce evidence for the selected ${title.toLowerCase()} controls.`,
+      timing: "Map the source and document repeatable retrieval before program operation begins.",
       operationRecordTypes: [],
       controls: selected
     });
   }
   return families;
-}
-
-function requiresCollectionTest(family) {
-  return family.collectionTestRequired !== false;
 }
 
 async function primaryMarkdown(loaded, record) {

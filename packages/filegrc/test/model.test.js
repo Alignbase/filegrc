@@ -18,7 +18,7 @@ test("v1 model exposes the complete resource registry", () => {
     "Define Scope",
     "Approve Policies",
     "Implement Controls",
-    "Test Evidence Collection",
+    "Map Evidence",
     "Operate the Program",
     "Audit"
   ]);
@@ -82,8 +82,10 @@ test("v1 model exposes the complete resource registry", () => {
     assert.ok(document.minimumWords >= 75);
   }
   assert.ok(model.auditReadiness.populationTemplates.every((item) => item.sourceKind && item.timing && item.controlCodes.length));
-  assert.ok(model.evidenceSourceFamilies.every((item) => item.id && item.sourceKinds.length && item.testEvidenceKind && item.testPrompt && item.timing));
-  const managedEvidenceFamilies = model.evidenceSourceFamilies.filter((item) => item.collectionTestRequired === false);
+  assert.ok(model.evidenceSourceFamilies.every((item) => item.id && item.sourceKinds.length && item.evidenceKind && item.evidencePrompt && item.timing));
+  assert.ok(model.resources.system.formFields.includes("evidenceSourceKinds"));
+  assert.ok(model.resources.system.formFields.includes("evidenceOwnerIds"));
+  const managedEvidenceFamilies = model.evidenceSourceFamilies.filter((item) => item.filegrcManaged === true);
   assert.deepEqual(
     managedEvidenceFamilies.map(({ id }) => id),
     [
@@ -170,6 +172,7 @@ test("v1 model exposes the complete resource registry", () => {
     evidenceKind: ["population-export", "test-export", "test-capture"],
     status: ["collected", "verified", "expired", "withdrawn"]
   });
+  assert.equal(model.resources.evidence.fields.sourceSystemId.showWhenInactive, true);
   assert.deepEqual(model.resources["obligation-event"].fields.completedOn.requiredWhen, { status: "complete" });
   assert.equal(model.resources["renderer-settings"].fields.completedStagePageIds.items, "string");
   assert.deepEqual(model.resources["renderer-settings"].fields.repositoryMode.values, ["trunk", "manual"]);

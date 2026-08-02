@@ -11,7 +11,7 @@ export const RESOURCE_INSTRUCTIONS = {
   document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
   control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, evidence source, and implementation date.",
   "complementary-control": "Record anything customers or carved-out providers must do for your controls to work as intended.",
-  evidence: "After confirming applicable Controls and authoritative source Systems, preview and explicitly create the missing collection-test drafts. Complete each test for external evidence that has no dedicated Step 5 record, link the result to its Control and source System, then have another person verify it. When a Step 5 operating record exists, link the artifact’s External Evidence record there instead.",
+  evidence: "Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, retain the fixed artifact or reference, and have another person verify it before audit use.",
   "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
   risk: "Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.",
   obligation: "Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.",
@@ -113,18 +113,28 @@ export const PROGRAM_PATH = [
   {
     id: "evidence",
     number: 4,
-    title: "Test Evidence Collection",
-    description: "Verify sources before the period starts",
-    summary: "After confirming the applicable controls and authoritative source Systems, preview the proposed External Evidence tests and explicitly create the missing drafts. Complete and verify each test before starting the candidate period. When Step 5 already records the work, attach or reference the external artifact there instead of creating a separate test.",
+    title: "Map Evidence",
+    description: "Connect controls to authoritative sources",
+    summary: "Before starting the candidate period, map every selected control to the authoritative Systems that produce its evidence. Name current evidence access owners and write repeatable retrieval instructions for each source.",
     sections: [
-      { id: "collection", title: "Collection Test", description: "Preview and create the missing drafts, then test external evidence collection only where no dedicated Step 5 operating record exists.", steps: ["Confirm that each externally evidenced control names an authoritative source System.", "Preview the proposed drafts and review each family, evidence kind, collection prompt, and linked controls.", "Explicitly create the missing drafts after the controls and source Systems are correct.", "Complete and verify each generated test export or capture.", "When a Step 5 operating record exists, link the artifact’s External Evidence record there instead."], relatedLinks: [{ label: "Source Systems", href: "#/resources/system" }, { label: "Controls", href: "#/resources/control" }], types: ["evidence"], defaultOpen: true }
+      { id: "mapping", title: "Evidence Map", description: "Review the evidence expected for every selected control family and resolve missing or incomplete source mappings.", steps: ["Review each evidence family and the Controls it supports.", "Map each Control to the exact authoritative source Systems.", "Assign current evidence access owners and record repeatable retrieval instructions in each source System’s Record Markdown.", "Resolve every incomplete mapping before starting the candidate period."], relatedLinks: [{ type: "system", label: "Source Systems", href: "#/resources/system?stage=evidence" }, { type: "control", label: "Controls", href: "#/resources/control?stage=evidence" }], types: [], defaultOpen: true }
     ],
-    resourceTypes: ["evidence"],
+    resourceTypes: [],
+    utilities: [
+      {
+        id: "evidence-map",
+        title: "Evidence Map",
+        instructions: "Review every selected control family, its expected evidence, authoritative source Systems, access owners, and retrieval instructions. Fix the source System and Control records rather than creating placeholder Evidence.",
+        use: "Confirm where evidence will come from before operation begins. The map is derived from authoritative program records and creates no evidence.",
+        policyBasis: "Management needs repeatable access to records that show how each selected Control operates. Actual External Evidence is created during program operation or audit work when a real artifact exists.",
+        commands: ["filegrc evidence-map --json", "filegrc program-readiness --json"]
+      }
+    ],
     commands: [
-      "filegrc evidence-test-drafts --preview --json",
-      "filegrc evidence-test-drafts",
-      "filegrc guide evidence --json",
-      "filegrc list evidence --json",
+      "filegrc evidence-map --json",
+      "filegrc guide system --json",
+      "filegrc list system --json",
+      "filegrc guide control --json",
       "filegrc program-readiness --json"
     ]
   },
@@ -137,6 +147,7 @@ export const PROGRAM_PATH = [
     sections: [
       { id: "risk", title: "Risk", description: "Maintain the program’s risk assessments and risk register as the service, threats, suppliers, and control needs change.", steps: ["Complete and approve risk assessments on schedule and after material changes.", "Record risks that need treatment, acceptance, or ongoing tracking.", "Add or update controls when the assessment identifies a new or changed response."], types: ["risk-assessment", "risk"], defaultOpen: true },
       { id: "queue", title: "Work Queue", description: "Complete recurring work, Policy Event tasks, and assigned follow-up within their required windows.", steps: ["Review proposed work while policies are drafts.", "Complete due work within its allowed window and link dated proof.", "Start Policy Events when hiring, departures, incidents, or material changes occur; every other open Action Item appears here automatically."], types: ["obligation", "obligation-event", "data-request"], utility: "obligation-board", defaultOpen: true },
+      { id: "evidence", title: "External Evidence", description: "Create records only for real exports, reports, screenshots, signed files, or approved external references collected during operation.", steps: ["Create External Evidence when the artifact exists or an operating record needs fixed supporting proof.", "Select the authoritative source System, link the Controls and source operating record, and retain the fixed attachment or approved reference.", "Record the collector and classification, then have another person verify the evidence before audit use."], types: ["evidence"], defaultOpen: true },
       { id: "governance", title: "Governance", description: "Record formal reviews, oversight meetings, and approved policy or control exceptions.", steps: ["Complete scheduled policy reviews and oversight meetings.", "Record decisions, attendees, follow-up work, and evidence.", "Approve time-bound exceptions before the departure begins."], types: ["policy-review", "meeting", "exception"], defaultOpen: false },
       { id: "inventories", title: "Assets and Vendors", description: "Maintain the asset inventory and recurring reviews of supplier relationships during operation.", steps: ["Keep ownership, custody, status, and lifecycle current for important assets.", "Perform vendor reviews on schedule and after material supplier changes.", "Link fixed reports and review evidence to the operating records."], types: ["asset", "vendor-review"], defaultOpen: false },
       { id: "access-training", title: "Access and Training", description: "Inventory service accounts before recording access decisions, periodic reviews, assignments, and acknowledgements.", steps: ["Catalog service accounts that need separate tracking.", "Preserve access approvals and removals as they occur, then complete periodic access reviews and resolve exceptions.", "Assign training and retain acknowledgement evidence for the exact content revision."], types: ["service-account", "access-grant", "access-review", "training", "attestation"], defaultOpen: false },
@@ -150,6 +161,7 @@ export const PROGRAM_PATH = [
       "obligation",
       "obligation-event",
       "data-request",
+      "evidence",
       "policy-review",
       "meeting",
       "exception",

@@ -164,6 +164,24 @@ filegrc will not delete an evidence record that still has local attachments.
 
 Never invent evidence, dates, approvals, results, people, or source-system details. If a required fact is unavailable, leave the record in a non-final state and report the missing input.
 
+## Map Evidence
+
+Run the Step 4 map after confirming the applicable Controls:
+
+```sh
+npx filegrc evidence-map --json
+```
+
+Each family reports its required `sourceKinds`, `controlMappings`, `sourceSystemChecks`, and exact edit commands. Resolve it through the source records:
+
+1. Choose an existing System or scaffold the System that is authoritative for the family.
+2. Set the System to `active`, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
+3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the System’s Record Markdown.
+4. Add the System ID to `evidenceSourceIds` on every Control in the family that it supports.
+5. Run `evidence-map --json` again and resolve every failed check before starting the candidate period.
+
+Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. Do not create an Evidence record during mapping. Create External Evidence during Step 5 only when the real export, report, screenshot, signed file, or approved external reference exists.
+
 ## Scheduled and event work
 
 ```sh
@@ -185,7 +203,7 @@ npx filegrc audit-readiness AUDIT_ID --json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 ```
 
-Run Program Readiness before creating the normal audit engagement. It checks scope, effective policies, implemented controls, evidence sources, and test captures without an audit ID. Fix readiness errors in source records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
+Run Program Readiness before creating the normal audit engagement. It checks scope, effective policies, implemented controls, and evidence mapping without an audit ID. Fix readiness errors in the Control and System records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
 
 ## Finish every change
 

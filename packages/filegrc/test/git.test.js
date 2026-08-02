@@ -255,8 +255,8 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
   assert.equal((await git(fixture.root, ["rev-list", "--count", "HEAD"])).stdout.trim(), "3");
 });
 
-test("trunk-mode evidence draft creation commits once and repeated creation is unchanged", async (context) => {
-  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-evidence-drafts-");
+test("the evidence map is read-only in trunk mode", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-evidence-map-");
   await createResources(fixture.root, [
     {
       schemaVersion: 1,
@@ -294,27 +294,17 @@ test("trunk-mode evidence draft creation commits once and repeated creation is u
   await git(fixture.root, ["commit", "-m", "Add access control"]);
   await git(fixture.root, ["push"]);
 
+  const committed = (await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim();
   const running = await serveWorkspace(fixture.root, { port: 0 });
   context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
-  const firstResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
-  assert.equal(firstResponse.status, 201);
-  const first = await firstResponse.json();
-  assert.equal(first.created.length, 1);
-  assert.equal(first.created[0].collectionTestFamilyId, "identity-access");
-  assert.equal(first.synchronization.status, "synced");
-  assert.equal((await git(fixture.root, ["log", "-1", "--format=%s"])).stdout.trim(), "Create evidence collection test drafts");
-  assert.match(
-    (await git(fixture.remote, ["show", `main:data/evidence/${first.created[0].id}/evidence.json`])).stdout,
-    /"collectionTestFamilyId": "identity-access"/
-  );
-
-  const committed = (await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim();
-  const repeatedResponse = await fetch(`${running.url}/api/evidence-test-drafts`, { method: "POST" });
-  assert.equal(repeatedResponse.status, 201);
-  const repeated = await repeatedResponse.json();
-  assert.equal(repeated.created.length, 0);
-  assert.equal(repeated.existing.length, 1);
-  assert.equal(repeated.synchronization.status, "unchanged");
+  const response = await fetch(`${running.url}/api/state`);
+  assert.equal(response.status, 200);
+  const state = await response.json();
+  const evidence = state.programReadiness.stages.find(({ id }) => id === "evidence");
+  assert.equal(evidence.items.length, 1);
+  assert.equal(evidence.items[0].id, "source-family-identity-access");
+  assert.equal(evidence.items[0].status, "action");
+  assert.equal(state.resources.some(({ record }) => record.type === "evidence"), false);
   assert.equal((await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim(), committed);
   assert.equal((await git(fixture.root, ["status", "--porcelain"])).stdout, "");
 });

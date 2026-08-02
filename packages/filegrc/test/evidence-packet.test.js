@@ -274,11 +274,11 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   });
   await createResource(root, {
     schemaVersion: 1,
-    id: "evidence-risk-review-test-capture",
+    id: "evidence-risk-review-export",
     type: "evidence",
     title: "Risk review evidence test capture",
     status: "verified",
-    evidenceKind: "test-export",
+    evidenceKind: "configuration-export",
     source: "Governance review register",
     collectedOn: "2025-12-22",
     classification: "Internal",

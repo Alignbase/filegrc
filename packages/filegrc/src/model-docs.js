@@ -53,7 +53,7 @@ export function generateModelDocumentation(model) {
     "",
     "## Program and audit readiness defaults",
     "",
-    "Program Readiness checks management scope, policy adoption, control implementation, authoritative source configuration, and verified test captures without requiring an audit record. Audit Readiness starts after a CPA firm is engaged and uses the defaults below to prepare Type 1 and Type 2 fieldwork.",
+    "Program Readiness checks management scope, policy adoption, control implementation, and authoritative evidence mapping without requiring an audit record. Audit Readiness starts after a CPA firm is engaged and uses the defaults below to prepare Type 1 and Type 2 fieldwork.",
     "",
     "Management documents:",
     "",
@@ -66,9 +66,9 @@ export function generateModelDocumentation(model) {
     "Authoritative systems of record:",
     "",
     ...model.evidenceSourceFamilies.map((item) => (
-      item.collectionTestRequired === false
-        ? `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} filegrc operating records: ${item.operationRecordTypes.map((type) => `\`${type}\``).join(", ")}. No separate collection test is required. ${item.timing}`
-        : `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} Test external collection: ${item.testPrompt} ${item.timing}`
+      item.filegrcManaged === true
+        ? `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} FileGRC operating records: ${item.operationRecordTypes.map((type) => `\`${type}\``).join(", ")}. Expected evidence: ${item.evidencePrompt} ${item.timing}`
+        : `- **${item.title}** (${item.sourceKinds.map((kind) => `\`${kind}\``).join(", ")}): ${item.description} Expected evidence: ${item.evidencePrompt} ${item.timing}`
     )),
     "",
     "## Resource groups",

@@ -1247,7 +1247,7 @@ function controlNeedsExternalEvidence(control, model) {
   const families = (model.evidenceSourceFamilies || []).filter((family) => (
     (family.controlCodes || []).includes(control?.code)
   ));
-  return !families.length || families.some((family) => family.collectionTestRequired !== false);
+  return !families.length || families.some((family) => family.filegrcManaged !== true);
 }
 
 function auditGaps(gaps, audit, byId, records, start, end) {

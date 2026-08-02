@@ -45,7 +45,6 @@ let navigationScrollTop = readNavigationScrollTop();
 let latestPacketResult = null;
 let latestPacketState = null;
 let policyEventFeedback = null;
-let evidenceTestDraftFeedback = null;
 const SHARED_PROGRAM_STAGES = ${JSON.stringify(PROGRAM_PATH)};
 const READINESS_STAGES = SHARED_PROGRAM_STAGES.map((stage) => ({
   ...stage,
@@ -122,7 +121,7 @@ function render() {
   else if (route.name === "obligations") renderObligations(main, route.params);
   else if (route.name === "audit-packet") renderAuditPacket(main, route.params);
   else if (route.name === "list") renderList(main, route.type, route.params);
-  else if (route.name === "detail") renderDetail(main, route.type, route.id);
+  else if (route.name === "detail") renderDetail(main, route.type, route.id, route.params);
   else if (route.name === "organization") renderOrganization(main);
   else if (route.name === "repository") renderRepository(main);
   else renderNotFound(main);
@@ -142,7 +141,7 @@ function parseRoute() {
   if (parts.length === 1 && parts[0] === "obligations") return { name: "obligations", params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "audit-packet") return { name: "audit-packet", params: new URLSearchParams(query) };
   if (parts.length === 2 && parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
-  if (parts.length === 3 && parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2] };
+  if (parts.length === 3 && parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2], params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "organization") return { name: "organization" };
   if (parts.length === 1 && parts[0] === "repository") return { name: "repository" };
   return { name: "missing" };
@@ -150,13 +149,15 @@ function parseRoute() {
 
 function buildNavigation(route) {
   const currentStage = readinessStageForRoute(route);
+  const contextualStageId = route.params?.get("stage");
   const stages = READINESS_STAGES.map((stage) => {
     const stagePageCurrent = (route.name === "stage" && route.stageId === stage.id)
       || (stage.id === "run" && route.name === "obligations");
     const stageOpen = navigationGroupState[stage.id] ?? currentStage?.id === stage.id;
     const sections = stage.sections.map((section) => {
       const sectionKey = stage.id + ":" + section.id;
-      const sectionCurrent = (route.type && section.types.includes(route.type))
+      const sectionCurrent = (route.type && section.types.includes(route.type) && (!contextualStageId || contextualStageId === stage.id))
+        || (section.relatedLinks || []).some((link) => route.type === link.type && contextualStageId === stage.id)
         || (section.utility === "obligation-board" && route.name === "obligations")
         || (section.utility === "audit-packet" && route.name === "audit-packet");
       const sectionOpen = navigationGroupState[sectionKey] ?? (sectionCurrent || section.defaultOpen);
@@ -165,7 +166,11 @@ function buildNavigation(route) {
         .filter(([, definition]) => definition);
       const direct = stage.sections.length === 1 || sectionDestinations(section).length === 1;
       const links = resources.map(([type, definition]) => {
-        return '<a class="' + (direct ? "nav-direct " : "") + (route.type === type ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+        const current = route.type === type && (!contextualStageId || contextualStageId === stage.id);
+        return '<a class="' + (direct ? "nav-direct " : "") + (current ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+      }).join("") + (section.relatedLinks || []).map((link) => {
+        const current = route.type === link.type && contextualStageId === stage.id;
+        return '<a class="' + (direct ? "nav-direct " : "") + (current ? "current" : "") + '" href="' + esc(link.href) + '"><span>' + esc(link.label) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
       }).join("") + renderSidebarUtility(section.utility, route, direct);
       if (direct) return links;
       return '<section class="nav-group nav-subgroup ' + (sectionOpen ? "open" : "") + '" data-group="' + esc(sectionKey) + '"><button class="nav-subheading-row nav-subgroup-toggle" type="button" aria-label="' + (sectionOpen ? "Collapse " : "Expand ") + esc(section.title) + '" aria-expanded="' + sectionOpen + '" aria-controls="nav-group-' + esc(sectionKey) + '"><span class="nav-subheading">' + esc(section.title) + '</span><svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5"></path></svg></button><div class="nav-items" id="nav-group-' + esc(sectionKey) + '">' + links + '</div></section>';
@@ -180,6 +185,12 @@ function buildNavigation(route) {
 
 function readinessStageForRoute(route) {
   if (route.name === "stage") return READINESS_STAGES.find((stage) => stage.id === route.stageId);
+  const contextualStageId = route.params?.get("stage");
+  const contextualStage = contextualStageId && READINESS_STAGES.find((stage) => (
+    stage.id === contextualStageId
+    && stage.sections.some((section) => (section.relatedLinks || []).some((link) => link.type === route.type))
+  ));
+  if (contextualStage) return contextualStage;
   return READINESS_STAGES.find((stage) => (
     (stage.supportingResourceTypes || []).includes(route.type)
     || stage.sections.some((section) => section.types.includes(route.type)
@@ -288,7 +299,7 @@ function readinessOverview() {
     programStage("scope", "Confirm program ownership, criteria, and commitments, then describe the service, supporting systems, and dependencies.", "#/stage/scope"),
     programStage("policies", "Tailor the policy set, obtain independent management approval, and establish effective dates.", "#/stage/policies"),
     programStage("controls", "Finish the internal control set with actual procedures, owners, scope, and evidence sources, then record any complementary controls.", "#/stage/controls"),
-    programStage("evidence", "For each control family, finish the source-system instructions and verify a real test export or capture.", "#/stage/evidence"),
+    programStage("evidence", "Map every control family to its authoritative Systems, evidence access owners, and repeatable retrieval instructions.", "#/stage/evidence"),
     programStage("run", "Begin the candidate period, maintain risk assessments, work the filegrc queue, run the remaining controls, and retain dated evidence.", "#/stage/run"),
     programStage("audit", "Engage the CPA firm, confirm the formal period, complete fieldwork, and generate the final evidence packet.", "#/stage/audit")
   ];
@@ -311,64 +322,50 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 6</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    (stage.id === "evidence" ? renderEvidenceTestDraftCallout() : "") +
-    renderStagePageIndex(stage) + '</div>';
-  if (stage.id === "evidence") bindEvidenceTestDraftCallout(main);
+    (stage.id === "evidence" ? renderEvidenceMap() : renderStagePageIndex(stage)) + '</div>';
 }
 
-function renderEvidenceTestDraftCallout() {
-  if (evidenceTestDraftFeedback) {
-    const created = evidenceTestDraftFeedback.created;
-    const ids = created.map((record) => '<a href="#/resource/evidence/' + encodeURIComponent(record.id) + '"><code>' + esc(record.id) + '</code></a>').join(", ");
-    const message = created.length
-      ? "Created " + created.length + " " + pluralize("test draft", created.length) + ": " + ids + "."
-      : "Created 0 test drafts. Every required family already has an External Evidence record.";
-    return '<section class="evidence-draft-callout success" role="status" aria-live="polite"><div><p class="kicker">Draft creation complete</p><h3>External Evidence tests are ready to complete</h3><p>' + message + ' Open each draft, select its authoritative source System, collect the named artifact, and have another person verify it.</p></div><a class="button" href="#/resources/evidence">Review test drafts</a></section>';
-  }
-  const missing = state.evidenceTestDrafts?.create || [];
-  if (!missing.length) return "";
-  const proposed = missing.map((item) => (
-    '<article class="evidence-draft-preview-item"><div><span class="badge status-draft">' + esc(properCase(item.testEvidenceKind)) + '</span><h4>' + esc(item.title) + '</h4><p>' + esc(item.testPrompt) + '</p></div><div><small>Linked controls</small><div class="evidence-draft-controls">' + item.controlIds.map(formatReference).join("") + '</div></div></article>'
-  )).join("");
-  const createControl = state.readOnly
-    ? '<p class="evidence-draft-read-only">Open the authoritative writable workspace to create these drafts.</p>'
-    : '<button class="button primary" type="button" data-create-evidence-test-drafts>Create test drafts</button>';
-  return '<section class="evidence-draft-callout"><div class="evidence-draft-callout-head"><div><p class="kicker">Missing collection tests</p><h3>Create the Step 4 test records when the source plan is correct</h3><p>These drafts turn each required external evidence family into a record that management can collect and verify. FileGRC omits families that already use dedicated Step 5 operating records.</p></div><button class="button" type="button" data-preview-evidence-test-drafts aria-expanded="false" aria-controls="evidence-test-draft-preview">Preview ' + missing.length + " proposed " + pluralize("draft", missing.length) + '</button></div><div class="evidence-draft-preview" id="evidence-test-draft-preview" hidden>' + proposed + '<div class="evidence-draft-actions"><p>Review the family, evidence kind, collection prompt, and linked controls. Create the drafts only after the applicable controls and authoritative source Systems are confirmed.</p>' + createControl + '</div><p class="dialog-error" data-evidence-test-draft-error role="alert"></p></div></section>';
+function renderEvidenceMap() {
+  const evidence = state.programReadiness?.stages?.find((stage) => stage.id === "evidence");
+  const items = evidence?.items || [];
+  const cards = items.map((item) => {
+    const sources = (item.sourceSystemIds || []).map((id) => {
+      const source = state.resources.find(({ record }) => record.type === "system" && record.id === id)?.record;
+      const sourceCheck = (item.sourceSystemChecks || []).find(({ sourceSystemId }) => sourceSystemId === id);
+      const complete = sourceCheck?.complete ?? (item.completeSourceSystemIds || []).includes(id);
+      const status = complete
+        ? "Ready"
+        : Object.entries(sourceCheck?.checks || {})
+            .filter(([, passed]) => !passed)
+            .map(([name]) => evidenceSourceCheckLabel(name))
+            .join(", ") || "Needs details";
+      return source
+        ? '<a class="evidence-map-source ' + (complete ? "complete" : "incomplete") + '" href="#/resource/system/' + encodeURIComponent(id) + '?stage=evidence">' + esc(source.title) + '<small>' + esc(status) + '</small></a>'
+        : "";
+    }).join("");
+    const sourceAction = sources
+      ? sources
+      : '<a class="button" href="#/resources/system?new=1&amp;stage=evidence">Add source System</a>';
+    const method = item.operationRecordTypes?.length
+      ? "FileGRC records: " + item.operationRecordTypes.map(properCase).join(", ")
+      : properCase(item.evidenceKind || "External evidence");
+    return '<article class="evidence-map-card ' + esc(item.status) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (item.status === "complete" ? "good" : "warn") + '">' + (item.status === "complete" ? "Mapped" : "Needs mapping") + '</span><h3>' + esc(item.title) + '</h3></div><small>' + esc(method) + '</small></div><p>' + esc(item.description || item.message) + '</p>' +
+      (item.sourceKinds?.length ? '<div class="evidence-map-expectation"><strong>Source role</strong><span>' + item.sourceKinds.map((kind) => '<code>' + esc(kind) + '</code>').join(" or ") + '</span></div>' : "") +
+      (item.evidencePrompt ? '<div class="evidence-map-expectation"><strong>Expected evidence</strong><span>' + esc(item.evidencePrompt) + '</span></div>' : "") +
+      (item.timing ? '<div class="evidence-map-expectation"><strong>When</strong><span>' + esc(item.timing) + '</span></div>' : "") +
+      '<div class="evidence-map-links"><div><small>Controls</small><div class="evidence-map-references">' + (item.controlIds || []).map((id) => formatReference(id, "evidence")).join("") + '</div></div><div><small>Authoritative sources</small><div class="evidence-map-sources">' + sourceAction + '</div></div></div><p class="evidence-map-status">' + esc(item.message) + '</p></article>';
+  }).join("");
+  const empty = '<section class="evidence-map-empty"><p class="kicker">Evidence map</p><h3>Select the program controls first</h3><p>The map is generated from the selected controls and their authoritative evidence sources.</p><a class="button primary" href="#/resources/control">Review controls</a></section>';
+  return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Evidence map</p><h2>' + (evidence?.counts?.complete || 0) + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' mapped</h2><p>Map each control to the System where its evidence originates. Each source needs a current access owner and repeatable retrieval instructions in Record Markdown.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/system?stage=evidence">Source Systems</a><a class="button primary" href="#/resources/control?stage=evidence">Map Controls</a></div></div>' + (cards || empty) + '</section>';
 }
 
-function bindEvidenceTestDraftCallout(main) {
-  const previewButton = main.querySelector("[data-preview-evidence-test-drafts]");
-  const preview = main.querySelector("#evidence-test-draft-preview");
-  previewButton?.addEventListener("click", () => {
-    const expanded = previewButton.getAttribute("aria-expanded") === "true";
-    const count = state.evidenceTestDrafts?.create.length || 0;
-    previewButton.setAttribute("aria-expanded", String(!expanded));
-    previewButton.textContent = expanded ? "Preview " + count + " proposed " + pluralize("draft", count) : "Hide draft preview";
-    if (preview) preview.hidden = expanded;
-  });
-  main.querySelector("[data-create-evidence-test-drafts]")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    const error = main.querySelector("[data-evidence-test-draft-error]");
-    button.disabled = true;
-    button.textContent = "Creating drafts…";
-    if (error) error.textContent = "";
-    try {
-      const response = await localFetch("/api/evidence-test-drafts", { method: "POST" });
-      if (!response.ok) throw new Error(await responseMessage(response));
-      const result = await response.json();
-      evidenceTestDraftFeedback = {
-        created: result.created || [],
-        existing: result.existing || [],
-        total: result.total || 0
-      };
-      state = await fetchJson("/api/state");
-      render();
-    } catch (caught) {
-      button.disabled = false;
-      button.textContent = "Create test drafts";
-      if (error) error.textContent = caught.message;
-    }
-  });
+function evidenceSourceCheckLabel(name) {
+  return ({
+    active: "activate source",
+    sourceRole: "add source role",
+    accessOwners: "add access owner",
+    retrievalInstructions: "add retrieval instructions"
+  })[name] || humanize(name);
 }
 
 function renderStagePageIndex(stage) {
@@ -414,9 +411,20 @@ function stagePageCard(stage, destination, index) {
 
 function stageProgress(stage) {
   if (stage.id === "run") return operationProgress();
+  if (stage.id === "evidence") return evidenceMapProgress();
   const pages = stagePageDestinations(stage);
   const complete = pages.filter((destination) => stagePageComplete(stagePageId(stage, destination))).length;
   return progressFromCounts(complete, pages.length, "page");
+}
+
+function evidenceMapProgress() {
+  const evidence = state.programReadiness?.stages?.find((stage) => stage.id === "evidence");
+  const total = evidence?.items?.length || 0;
+  const complete = evidence?.counts?.complete || 0;
+  if (!total) return { percent: 0, complete: 0, total: 1, status: "No controls mapped", tone: "warn", detail: "Select the program controls before mapping their evidence sources." };
+  const percent = Math.round((complete / total) * 100);
+  if (complete === total) return { percent: 100, complete, total, status: "Evidence mapped", tone: "good", detail: "Every selected control family has configured authoritative evidence sources." };
+  return { percent, complete, total, status: "Needs mapping", tone: "warn", detail: complete + " of " + total + " evidence " + pluralize("family", total) + " mapped." };
 }
 
 function operationProgress() {
@@ -534,6 +542,22 @@ function auditEngagementPrompt(audit = null) {
   return '<div class="audit-engagement"><div><strong>' + heading + '</strong><p>The program can keep operating while management selects a firm. Engage early when a customer deadline, unusual scope, or other timing risk needs CPA input.</p></div><ul><li>Share the program boundary, goal, and evidence-source plan.</li><li>Keep management candidate dates separate from the firm-agreed report period.</li><li>Create or update the audit record only for a real engagement.</li></ul>' + (!audit ? '<a class="button" href="#/resources/audit?new=1">Create engagement</a>' : "") + '</div>';
 }
 
+function renderExternalEvidenceSection() {
+  const records = resourcesOfType("evidence").map(({ record }) => record);
+  const recent = records.slice(0, 6).map((record) => (
+    '<a href="#/resource/evidence/' + encodeURIComponent(record.id) + '"><span><strong>' + esc(record.title) + '</strong><small>' +
+    esc(properCase(record.evidenceKind || "Evidence")) + (record.collectedOn ? " · " + esc(formatLocalDate(record.collectedOn)) : "") +
+    '</small></span><span class="badge status-' + esc(record.status || "draft") + '">' + esc(properCase(record.status || "draft")) + '</span></a>'
+  )).join("");
+  const createButton = state.readOnly
+    ? ""
+    : '<button class="button primary" type="button" data-new-external-evidence>New external evidence</button>';
+  return '<section class="workflow-section external-evidence-section"><div class="section-head"><div><p class="kicker">Fixed artifacts and approved references</p><h2>External Evidence</h2><p>Create a record when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, then record collection and verification facts.</p></div><div class="page-actions">' +
+    createButton + '<a class="button" href="#/resources/evidence">View all</a></div></div><div class="external-evidence-list">' +
+    (recent || empty("No External Evidence has been collected yet. Step 4 maps where evidence will come from without creating placeholders.")) +
+    '</div></section>';
+}
+
 function renderObligations(main, params = new URLSearchParams()) {
   const stage = READINESS_STAGES.find((candidate) => candidate.id === "run");
   const plan = state.obligations;
@@ -560,7 +584,7 @@ function renderObligations(main, params = new URLSearchParams()) {
     '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
     '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring, event, and assigned work</p><h2>Work Queue</h2><p>This board schedules work linked to ' + scheduledControls + ' of ' + controls.length + ' controls and includes ' + assignedFollowUp + ' open ' + pluralize("Action Item", assignedFollowUp) + '. Triggered Policy Event actions appear here as individual tasks in Upcoming, Due, or Overdue. Other controls operate continuously or per transaction in their source systems and are documented through evidence records. Starter work remains a proposal until its governing policies are effective and at least one linked control is implemented.</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div>' +
     '<div class="obligation-board">' + sections + '</div>' +
-    '</section></div>';
+    '</section>' + renderExternalEvidenceSection() + '</div>';
   main.querySelectorAll("[data-start-event]").forEach((button) => button.addEventListener("click", () => {
     const trigger = plan.triggers.find((item) => item.eventType === button.dataset.startEvent);
     if (trigger) openObligationEventDialog(trigger);
@@ -570,6 +594,7 @@ function renderObligations(main, params = new URLSearchParams()) {
     policyEventFeedback = null;
     event.currentTarget.closest(".policy-event-feedback")?.remove();
   });
+  main.querySelector("[data-new-external-evidence]")?.addEventListener("click", () => openEditor("evidence"));
   main.querySelectorAll("[data-expand-obligations]").forEach((button) => button.addEventListener("click", () => {
     const column = button.closest("[data-obligation-column]");
     const expanded = button.getAttribute("aria-expanded") === "true";
@@ -772,7 +797,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
   const audits = resourcesOfType("audit");
   const evidence = resourcesOfType("evidence");
   const filegrcRecordTypes = new Set((state.model.evidenceSourceFamilies || [])
-    .filter((family) => family.collectionTestRequired === false)
+    .filter((family) => family.filegrcManaged === true)
     .flatMap((family) => family.operationRecordTypes || []));
   const filegrcRecords = state.resources.filter(({ record }) => filegrcRecordTypes.has(record.type));
   const requestedAudit = params.get("auditId");
@@ -973,12 +998,19 @@ function eventStepSummary(step) {
 function renderList(main, type, params = new URLSearchParams()) {
   const definition = state.model.resources[type];
   if (!definition) return renderNotFound(main);
+  const contextStage = params.get("stage");
+  const contextQuery = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
+  const listStage = contextStage
+    ? READINESS_STAGES.find((stage) => stage.id === contextStage)
+    : readinessStageForType(type);
   const entries = resourcesOfType(type);
   const requestedPage = Number(params.get("page"));
   let pageNumber = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const fields = [...new Set([
     "title",
     ...(definition.listFields || []),
+    ...(contextStage === "evidence" && type === "system" ? ["evidenceSourceKinds", "evidenceOwnerIds"] : []),
+    ...(contextStage === "evidence" && type === "control" ? ["evidenceSourceIds"] : []),
     ...(type === "control" ? ["$operationTracking"] : []),
     ...(type === "obligation" ? ["$workQueueStatus"] : [])
   ])].filter((name) => name !== "title");
@@ -992,7 +1024,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + createButton + '</div>';
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(readinessStageForType(type)?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + contextualListGuide(type, contextStage) + resourceGuide(type) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
   resourceGuideCleanup = setupResourceGuide(main);
@@ -1009,7 +1041,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + contextQuery + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -1021,6 +1053,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   main.querySelectorAll(".field-filter").forEach((select) => { select.value = params.get(select.dataset.field) || ""; });
   const syncRoute = (mode = "replace") => {
     const next = new URLSearchParams();
+    if (contextStage) next.set("stage", contextStage);
     const query = main.querySelector("#list-search").value.trim();
     if (query) next.set("q", query);
     main.querySelectorAll(".field-filter").forEach((select) => { if (select.value) next.set(select.dataset.field, select.value); });
@@ -1048,14 +1081,30 @@ function renderList(main, type, params = new URLSearchParams()) {
   });
   renderRows();
   syncRoute();
-  main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type));
-  if (params.get("new") === "1" && !state.readOnly && !definition.singleton) queueMicrotask(() => openEditor(type));
+  main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type, null, { contextStage }));
+  if (params.get("new") === "1" && !state.readOnly && !definition.singleton) queueMicrotask(() => openEditor(type, null, { contextStage }));
 }
 
-function renderDetail(main, type, id) {
+function contextualListGuide(type, stageId) {
+  if (stageId !== "evidence" || !["system", "control"].includes(type)) return "";
+  const copy = type === "system"
+    ? {
+        title: "Complete each authoritative source",
+        body: "Set the System to Active, add the evidence source role shown on the map, name the people or teams who can retrieve it, and write repeatable retrieval instructions in Record Markdown."
+      }
+    : {
+        title: "Connect every selected Control",
+        body: "Set Authoritative evidence sources to the exact Systems that produce this Control’s evidence. A family is ready only when every selected Control has a complete source."
+      };
+  return '<section class="context-workflow"><div><p class="kicker">Step 4 task</p><h3>' + esc(copy.title) + '</h3><p>' + esc(copy.body) + '</p></div><a class="button" href="#/stage/evidence">Back to Evidence Map</a></section>';
+}
+
+function renderDetail(main, type, id, params = new URLSearchParams()) {
   const entry = resourcesOfType(type).find(({ record }) => record.id === id);
   const definition = state.model.resources[type];
   if (!entry || !definition) return renderNotFound(main);
+  const contextStage = params.get("stage");
+  const contextQuery = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
   const fields = { ...state.model.commonFields, ...definition.fields };
   const recordContent = recordContentDefinition(type);
   const narrative = recordNarrative(entry.record, fields);
@@ -1086,9 +1135,9 @@ function renderDetail(main, type, id) {
   const detailMain = hasRecordBody
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + contextQuery + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
     '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div>' + legacyNotice + '<dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
-  main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
+  main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry, { contextStage }));
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
     description: "Record only a confirmed gap that needs separate remediation tracking. Keep the report details in this source record’s Markdown."
@@ -1105,7 +1154,7 @@ function renderDetail(main, type, id) {
       const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
       if (!response.ok) return showError(await responseMessage(response));
       state = await fetchJson("/api/state");
-      location.hash = "#/resources/" + encodeURIComponent(type);
+      location.hash = "#/resources/" + encodeURIComponent(type) + contextQuery;
     } catch (error) {
       showError(error.message);
     }
@@ -1955,6 +2004,7 @@ function openEditor(type, entry = null, options = {}) {
   const fields = { ...state.model.commonFields, ...definition.fields };
   const record = structuredClone(entry?.record || seedRecord(type, definition));
   const legacyNotice = legacyFieldNotice(record, fields);
+  const contextStage = options.contextStage || parseRoute().params?.get("stage");
   const markdownDefinitions = dedicatedMarkdownDefinitions(type);
   if (!entry && options.seed) {
     Object.assign(record, options.seed);
@@ -1987,7 +2037,10 @@ function openEditor(type, entry = null, options = {}) {
   ));
   const recordContent = recordContentDefinition(type);
   const recordContentItem = recordContent ? entry?.content?.[recordContent.slot] : null;
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p>' + legacyNotice + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
+  const editorDescription = options.description
+    || evidenceMappingEditorDescription(type, contextStage)
+    || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + legacyNotice + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -2075,12 +2128,23 @@ function openEditor(type, entry = null, options = {}) {
       if (!response.ok) throw new Error(await responseMessage(response));
       state = await fetchJson("/api/state");
       dialog.close();
-      location.hash = "#/resource/" + encodeURIComponent(updated.type) + "/" + encodeURIComponent(updated.id);
+      location.hash = "#/resource/" + encodeURIComponent(updated.type) + "/" + encodeURIComponent(updated.id) + (contextStage ? "?stage=" + encodeURIComponent(contextStage) : "");
       render();
     } catch (error) {
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });
+}
+
+function evidenceMappingEditorDescription(type, stageId) {
+  if (stageId !== "evidence") return "";
+  if (type === "system") {
+    return "Complete the source role and access owners, then write the exact report, filters, date range, timezone, export format, and reconciliation steps in Record Markdown.";
+  }
+  if (type === "control") {
+    return "Select every authoritative System that produces evidence for this Control. Return to the Evidence Map after saving to verify family coverage.";
+  }
+  return "";
 }
 
 function seedRecord(type, definition) {
@@ -2188,7 +2252,10 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   }
   if (field.type === "array") {
     control = '<textarea placeholder="One value per line">' + esc((value || []).join("\n")) + '</textarea>';
-    return fieldWrap(name, "array", label, requiredMark, control, "One value per line", required);
+    const arrayHelp = name === "evidenceSourceKinds"
+      ? "One role per line. Use a role shown on the Step 4 evidence family, such as " + evidenceSourceRoleOptions().join(", ") + "."
+      : "One value per line";
+    return fieldWrap(name, "array", label, requiredMark, control, arrayHelp, required);
   }
   if (["description", "statement", "scope", "rationale", "purpose"].some((part) => name.toLowerCase().includes(part))) {
     control = '<textarea>' + esc(value ?? "") + '</textarea>';
@@ -2200,6 +2267,10 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     control = '<input type="' + inputType + '" value="' + esc(value ?? "") + '"' + placeholder + minimum + maximum + '>';
   }
   return fieldWrap(name, field.type, label, requiredMark, control, help, required);
+}
+
+function evidenceSourceRoleOptions() {
+  return [...new Set((state.model.evidenceSourceFamilies || []).flatMap(({ sourceKinds }) => sourceKinds || []))].sort();
 }
 
 function fieldWrap(name, kind, label, requiredMark, control, help, required) {
@@ -2249,7 +2320,7 @@ function wireEditorRequirements(dialog, base, fields, oneOfGroups, markdownDefin
       const applicable = Object.entries(field.requiredWhen)
         .filter(([conditionName]) => conditionName !== "status")
         .every(([conditionName, expected]) => conditionValueMatches(currentValue(conditionName), expected));
-      group.hidden = !visible || !applicable;
+      group.hidden = !visible || (!applicable && field.showWhenInactive !== true);
       const required = visible && applicable && conditionMatchesValues(field.requiredWhen, currentValue);
       refreshGroup(group, required);
     }
@@ -2331,7 +2402,11 @@ function relationCandidates(field) {
 }
 
 function relationHelp(field) {
-  return "References " + (field.relation.includes("*") ? "any resource" : field.relation.map((type) => state.model.resources[type]?.pluralTitle || type).join(" or "));
+  if (field.relation.includes("*")) return "References any resource";
+  const labels = field.relation.map((type) => state.model.resources[type]?.pluralTitle || type);
+  if (labels.length < 2) return "References " + labels.join("");
+  if (labels.length === 2) return "References " + labels.join(" or ");
+  return "References " + labels.slice(0, -1).join(", ") + ", or " + labels.at(-1);
 }
 
 function openContentEditor(entry, name) {
@@ -2699,9 +2774,10 @@ function obligationWorkQueueStatus(obligation) {
   if (status === "paused") return '<span class="operation-tracking paused"><strong>Paused</strong><small>Schedule disabled</small></span>';
   return '<span class="operation-tracking"><strong>' + esc(properCase(status)) + '</strong></span>';
 }
-function formatReference(value) {
+function formatReference(value, contextStage = null) {
   const reference = state.resources.find(({ record }) => record.id === value);
-  return reference ? '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + '">' + esc(reference.record.title) + '</a>' : '<span class="tag">' + esc(value) + '</span>';
+  const context = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
+  return reference ? '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + context + '">' + esc(reference.record.title) + '</a>' : '<span class="tag">' + esc(value) + '</span>';
 }
 function safeExternalUrl(value) {
   try {
@@ -2722,7 +2798,11 @@ ${nextCalendarOccurrence.toString()}
 ${formatCalendarDate.toString()}
 ${formatLocalDateTime.toString()}
 function empty(message) { return '<div class="empty">' + esc(message) + '</div>'; }
-function pluralize(noun, count) { return count === 1 ? noun : noun + "s"; }
+function pluralize(noun, count) {
+  if (count === 1) return noun;
+  if (/[^aeiou]y$/i.test(noun)) return noun.slice(0, -1) + "ies";
+  return noun + "s";
+}
 function renderNotFound(main) { main.innerHTML = '<div class="page">' + empty("That resource does not exist.") + '</div>'; }
 function showError(message) {
   const dialog = document.createElement("dialog");
@@ -2787,8 +2867,9 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .nav-stage>.nav-items>a.nav-direct{display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;width:100%;padding:6px 6px 6px 7px;font-size:13.2px}
 .nav-heading-row{display:grid;grid-template-columns:minmax(0,1fr) 24px;gap:2px;align-items:stretch}.nav-heading-row>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr);gap:6px;align-items:center;width:100%;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0;text-decoration:none}.nav-heading-row>.nav-heading:hover,.nav-heading-row>.nav-heading.current{background:rgba(255,255,255,.1);color:#fff}.nav-toggle{display:grid;place-items:center;width:24px;height:auto;min-height:100%;padding:0;border:0;border-radius:6px;background:none;color:#aeb6d8;cursor:pointer}.nav-toggle:hover{background:rgba(255,255,255,.1);color:#fff}.nav-chevron{display:block;width:12px;height:12px;place-self:center;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}.nav-subheading-row{display:grid;grid-template-columns:minmax(0,1fr) 22px;gap:2px;align-items:center;width:100%;padding:0;border:0;border-radius:6px;background:none;color:#919bc4;cursor:pointer}.nav-subheading-row:hover{background:rgba(255,255,255,.1);color:#fff}.nav-subheading-row>.nav-subheading{display:flex;align-items:center;min-width:0;padding:7px;color:inherit;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780}.nav-group.open>.nav-heading-row .nav-chevron,.nav-group.open>.nav-subheading-row .nav-chevron{transform:rotate(90deg)}
 .stage-overview-hero{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;align-items:center;padding:26px 28px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.stage-overview-hero h2,.group-overview-head h2{font:500 37.2px Georgia,serif;margin:7px 0}.stage-overview-hero>div>p:not(.kicker),.group-overview-head>div>p:not(.kicker){max-width:760px;color:var(--muted);font-size:14.4px;line-height:1.55;margin:0}.stage-progress-card{padding:15px 17px;background:var(--paper);border:1px solid var(--line);border-radius:9px}.stage-progress-card>div:first-child{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}.stage-progress-card>div:first-child>strong{font:500 33.6px Georgia,serif}.stage-progress-card p{color:var(--muted);font-size:10.8px;line-height:1.45;margin:9px 0 0}.badge.neutral{background:#e5e8f2;color:#555e73}.stage-overview-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:15px;margin-top:15px;align-items:start}.stage-plan ol,.group-plan ol{display:grid;gap:12px;padding-left:20px;margin:0}.stage-plan li,.group-plan li{padding-left:4px;color:var(--ink);font-size:13.2px;line-height:1.5}.stage-groups{min-width:0}.stage-groups>.section-head{margin:4px 0 13px}.stage-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-group-card{position:relative;display:block;min-height:138px;padding:18px 38px 17px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(21,40,33,.025)}.stage-group-card:hover{border-color:var(--accent-light)}.stage-group-card h3{font-size:15.6px;margin:0 0 7px}.stage-group-card p{color:var(--muted);font-size:12px;line-height:1.5;margin:0}.stage-group-card small{display:block;color:var(--accent);font-size:9.6px;font-weight:700;margin-top:12px}.stage-group-arrow{position:absolute;right:16px;top:16px;color:var(--accent);font-size:24px}.group-overview-head{display:flex;justify-content:space-between;align-items:end;gap:25px;margin-bottom:15px}.stage-status-link{display:grid;grid-template-columns:auto auto;align-items:center;gap:4px 12px;min-width:155px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;text-decoration:none}.stage-status-link>strong{font:500 28.8px Georgia,serif;text-align:right}.stage-status-link>small{grid-column:1/-1;color:var(--muted);font-size:9.6px;text-align:right}.relationship-note{display:grid;grid-template-columns:250px minmax(0,1fr);gap:20px;align-items:center;margin-bottom:15px;padding:17px 20px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:10px}.relationship-note h3{font-size:15.6px;margin:5px 0 0}.relationship-note>p{color:var(--muted);font-size:12px;line-height:1.55;margin:0}.relationship-note code{font-size:10.8px}.group-plan{margin-bottom:24px}.group-related-links{display:flex;align-items:center;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.group-related-links>span{color:var(--muted);font-size:10.8px;margin-right:auto}.group-destinations>.section-head{margin-bottom:12px}.group-destination-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.group-destination-card{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:16px;min-height:150px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(21,40,33,.025)}.group-destination-card:hover{border-color:var(--accent-light)}.group-destination-card h3{font-size:15.6px;margin:5px 0 7px}.group-destination-card p:not(.kicker){color:var(--muted);font-size:10.8px;line-height:1.5;margin:0}.destination-rollup{align-self:center;text-align:right}.destination-rollup strong,.destination-rollup small{display:block}.destination-rollup strong{font:500 32.4px Georgia,serif}.destination-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:3px}
-.evidence-draft-callout{margin-top:18px;padding:20px 22px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:11px}.evidence-draft-callout.success{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#edf7f1;border-color:#b9dac6}.evidence-draft-callout h3{font-size:17px;margin:5px 0 7px}.evidence-draft-callout p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.55;margin:0}.evidence-draft-callout-head{display:flex;align-items:center;justify-content:space-between;gap:24px}.evidence-draft-callout-head>div{max-width:760px}.evidence-draft-preview{display:grid;gap:9px;margin-top:17px;padding-top:17px;border-top:1px solid #cbd3ff}.evidence-draft-preview[hidden]{display:none}.evidence-draft-preview-item{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(220px,1fr);gap:20px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px}.evidence-draft-preview-item h4{font-size:14px;margin:7px 0 5px}.evidence-draft-preview-item p{color:var(--muted);font-size:11px;line-height:1.5;margin:0}.evidence-draft-preview-item small{display:block;color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:3px 0 7px}.evidence-draft-controls{display:flex;flex-wrap:wrap;gap:3px}.evidence-draft-actions{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-top:6px}.evidence-draft-actions>p{max-width:720px}.evidence-draft-read-only{font-weight:700}.evidence-draft-callout .dialog-error{color:var(--red);margin-top:0}.stage-pages{margin-top:24px}.stage-page-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-page-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025);transition:border-color .15s,box-shadow .15s}.stage-page-card:hover{border-color:var(--accent-light);box-shadow:0 5px 16px rgba(21,40,33,.07)}.stage-page-card.complete{border-color:#b9dac6}.stage-page-card-link{position:absolute;inset:0;z-index:1;border-radius:10px}.stage-page-card-link:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.stage-page-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px}.stage-page-card-head h3{font-size:15.6px;line-height:1.35;margin:4px 0 0}.stage-page-card-head>div>small{display:block;color:var(--accent);font-size:9.6px;font-weight:700}.stage-page-card>p{color:var(--muted);font-size:12px;line-height:1.5;margin:13px 0 0}.stage-page-rollup{display:flex;flex:0 0 104px;flex-direction:column;justify-content:center;text-align:right}.stage-page-rollup strong,.stage-page-rollup small{display:block}.stage-page-rollup strong{font:500 24px Georgia,serif}.stage-page-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:2px}.stage-page-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:15px}.stage-page-completion{position:relative;z-index:2;color:var(--accent)}.stage-page-completion.complete{color:#176143;border-color:#b9dac6;background:#edf7f1}.stage-page-completion-state{color:var(--muted);font-size:10.8px}.stage-page-completion-state.complete{color:#176143;font-weight:700}.stage-page-open{color:var(--accent);font-size:12px;font-weight:700}.work-queue-section{margin-top:28px}.work-queue-section>.section-head{align-items:end}
+.context-workflow{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:-8px 0 18px;padding:17px 19px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:10px}.context-workflow h3{font-size:16px;margin:4px 0 5px}.context-workflow p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.5;margin:0;max-width:850px}.context-workflow .button{white-space:nowrap}.evidence-map{display:grid;gap:12px;margin-top:18px}.evidence-map-head{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 22px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:11px}.evidence-map-head>div:first-child{max-width:760px}.evidence-map-head h2{font:500 24px Georgia,serif;margin:5px 0 7px}.evidence-map-head p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.55;margin:0}.evidence-map-actions{display:flex;gap:8px}.evidence-map-card{padding:18px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.evidence-map-card.complete{border-color:#b9dac6}.evidence-map-card-head{display:flex;align-items:start;justify-content:space-between;gap:20px}.evidence-map-card-head h3{font-size:16px;margin:7px 0 0}.evidence-map-card-head>small{color:var(--muted);font-size:10px;text-align:right}.evidence-map-card>p{color:var(--muted);font-size:12px;line-height:1.55;margin:12px 0}.evidence-map-expectation{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:11px;line-height:1.5}.evidence-map-expectation strong{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.06em}.evidence-map-expectation code{background:var(--paper);border-radius:4px;padding:2px 5px}.evidence-map-links{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,1.2fr);gap:20px;margin-top:13px;padding-top:13px;border-top:1px solid var(--line)}.evidence-map-links>div>small{display:block;color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}.evidence-map-references,.evidence-map-sources{display:flex;flex-wrap:wrap;gap:5px}.evidence-map-source{display:flex;align-items:center;gap:7px;padding:7px 9px;background:var(--paper);border:1px solid var(--line);border-radius:7px;font-size:11px;text-decoration:none}.evidence-map-source.complete{border-color:#b9dac6;background:#edf7f1}.evidence-map-source small{color:var(--muted);font-size:9px}.evidence-map-status{padding:9px 11px;background:var(--paper);border-radius:7px}.evidence-map-empty{padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:10px}.evidence-map-empty h3{margin:6px 0}.evidence-map-empty p:not(.kicker){color:var(--muted);font-size:12px;margin:0 0 14px}.stage-pages{margin-top:24px}.stage-page-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-page-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025);transition:border-color .15s,box-shadow .15s}.stage-page-card:hover{border-color:var(--accent-light);box-shadow:0 5px 16px rgba(21,40,33,.07)}.stage-page-card.complete{border-color:#b9dac6}.stage-page-card-link{position:absolute;inset:0;z-index:1;border-radius:10px}.stage-page-card-link:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.stage-page-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px}.stage-page-card-head h3{font-size:15.6px;line-height:1.35;margin:4px 0 0}.stage-page-card-head>div>small{display:block;color:var(--accent);font-size:9.6px;font-weight:700}.stage-page-card>p{color:var(--muted);font-size:12px;line-height:1.5;margin:13px 0 0}.stage-page-rollup{display:flex;flex:0 0 104px;flex-direction:column;justify-content:center;text-align:right}.stage-page-rollup strong,.stage-page-rollup small{display:block}.stage-page-rollup strong{font:500 24px Georgia,serif}.stage-page-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:2px}.stage-page-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:15px}.stage-page-completion{position:relative;z-index:2;color:var(--accent)}.stage-page-completion.complete{color:#176143;border-color:#b9dac6;background:#edf7f1}.stage-page-completion-state{color:var(--muted);font-size:10.8px}.stage-page-completion-state.complete{color:#176143;font-weight:700}.stage-page-open{color:var(--accent);font-size:12px;font-weight:700}.work-queue-section{margin-top:28px}.work-queue-section>.section-head{align-items:end}
 .button{text-decoration:none}
+.external-evidence-section{margin-top:28px}.external-evidence-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.external-evidence-list>.empty{grid-column:1/-1}.external-evidence-list>a{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 15px;background:var(--panel);border:1px solid var(--line);border-radius:8px;text-decoration:none}.external-evidence-list>a:hover{border-color:var(--accent-light)}.external-evidence-list>a>span:first-child{min-width:0}.external-evidence-list strong,.external-evidence-list small{display:block}.external-evidence-list strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.external-evidence-list small{color:var(--muted);font-size:9.6px;margin-top:4px}
 .home-page{padding-top:16px;padding-bottom:16px}.overview-hero{min-height:72px;padding:10px 20px;align-items:center}.overview-hero h2{font-size:26.4px;margin:3px 0 2px}.overview-hero p:not(.kicker){font-size:12px}.home-page .readiness-map{padding:12px 15px}.home-page .readiness-map-head{margin-bottom:8px}.home-page .readiness-flow a{padding:7px}
 .overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.overview-grid>.audit-panel{grid-column:1/-1}
 .overview-grid>.panel{padding:15px}.overview-grid .panel-head{margin-bottom:10px}.overview-grid .audit-progress{gap:7px 20px}.overview-grid .progress-number strong{font-size:31.2px}.overview-grid .audit-engagement{padding:8px 11px}
@@ -2805,7 +2886,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}
 @media(max-width:1100px){.search{display:none}.topbar-status{margin-left:auto}.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.organization-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.resource-directory{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:24px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.topbar-status{display:none}.search{display:flex;max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.page-intro>.list-header-tools{justify-content:flex-start;margin:15px 0 0}.list-header-tools label{max-width:none}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
-@media(max-width:760px){.setup-banner,.page-guide,.stage-overview-hero,.relationship-note,.group-destination-card,.stage-page-grid,.evidence-draft-preview-item{grid-template-columns:1fr}.evidence-draft-callout-head,.evidence-draft-callout.success,.evidence-draft-actions{align-items:stretch;flex-direction:column}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.group-overview-head{display:block}.stage-progress-card,.stage-status-link{margin-top:15px}.destination-rollup{text-align:left}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:9.6px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}}
+@media(max-width:760px){.setup-banner,.page-guide,.stage-overview-hero,.relationship-note,.group-destination-card,.stage-page-grid,.evidence-map-expectation,.evidence-map-links,.external-evidence-list{grid-template-columns:1fr}.context-workflow,.evidence-map-head{align-items:stretch;flex-direction:column}.evidence-map-actions{flex-wrap:wrap}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.group-overview-head{display:block}.stage-progress-card,.stage-status-link{margin-top:15px}.destination-rollup{text-align:left}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:9.6px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}}
 @media(max-width:520px){.onboarding-form,.onboarding-sections,.setup-steps{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}.obligation-card-foot{align-items:flex-start;flex-direction:column}.obligation-action{align-self:flex-start}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}
 @media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.detail-grid-structured aside>.panel{align-self:start}}

@@ -2,7 +2,7 @@
 
 filegrc is a zero-dependency Node.js engine for Git-native GRC workspaces. It validates structured JSON records and their Markdown companions, renders a local web app, provides safe CRUD operations, and builds a read-only audit view.
 
-Program Readiness checks management-owned scope, policy adoption, control implementation, authoritative source configuration, and verified test captures without requiring an audit record. Audit Readiness starts after CPA engagement and checks the firm-agreed date or period, engagement-specific management documents, operating evidence, and Type 2 population completeness.
+Program Readiness checks management-owned scope, policy adoption, control implementation, and authoritative evidence mapping without requiring an audit record. Audit Readiness starts after CPA engagement and checks the firm-agreed date or period, engagement-specific management documents, operating evidence, and Type 2 population completeness.
 
 Controls linked to filegrc obligations show whether their Work Queue schedules are waiting for policy approval, ready for implementation, running, paused, or mixed. Marking a fully configured control implemented starts its enabled schedules when their governing policies are effective.
 
@@ -26,8 +26,7 @@ npx filegrc list risk --json
 npx filegrc references risk-example --json
 npx filegrc describe risk
 npx filegrc search "access review"
-npx filegrc evidence-test-drafts --preview --json
-npx filegrc evidence-test-drafts
+npx filegrc evidence-map --json
 npx filegrc program-readiness --summary --json
 npx filegrc program-readiness --require-ready
 npx filegrc audit-readiness audit-id
@@ -43,7 +42,7 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 `filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
 
-`filegrc evidence-test-drafts --preview --json` reports each missing family, evidence kind, collection prompt, and linked controls without writing records. Run `filegrc evidence-test-drafts` after confirming applicable controls and authoritative source Systems. Repeating the apply command preserves existing records. When a Step 5 operating record exists, put the fixed artifact in an External Evidence record and link it from that operating record.
+`filegrc evidence-map --json` reports each selected control family, expected evidence, authoritative source Systems, and mapping gaps without writing records. Fix missing mappings in the Control and System records. During Step 5, create External Evidence only when a real artifact exists, then link it to the supporting operating record when applicable.
 
 `filegrc obligations` shows recurring work and a task-level preview for each Policy Event, including owners, deadlines, and requested proof. `filegrc trigger` adds the event and all of its Action Items to the Work Queue atomically, then prints the created task IDs and deadlines.
 

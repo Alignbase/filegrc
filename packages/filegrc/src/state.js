@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
-import { previewEvidenceTestDrafts } from "./evidence-tests.js";
 import { getBrowserRepositoryState, getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
@@ -86,7 +85,6 @@ export async function createAppState(input = process.cwd(), options = {}) {
       diagnostics: validation.diagnostics
     },
     obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt }),
-    evidenceTestDrafts: previewEvidenceTestDrafts(loaded),
     programReadiness,
     auditPreparations,
     git

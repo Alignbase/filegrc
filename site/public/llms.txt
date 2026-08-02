@@ -35,7 +35,7 @@ continue to manage Git explicitly.
 1. Define the service boundary and criteria.
 2. Review and approve policies.
 3. Tailor and implement controls.
-4. Connect evidence sources and prove collection works.
+4. Map controls to authoritative evidence sources and retrieval instructions.
 5. Operate recurring and event-driven work.
 6. Record the CPA engagement and prepare the audit packet.
 

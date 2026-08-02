@@ -4,7 +4,6 @@ import { extname, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
-import { ensureEvidenceTestDrafts } from "./evidence-tests.js";
 import { FAVICON_PNG, LOGO_MARK_PNG } from "./favicon.js";
 import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
 import {
@@ -101,12 +100,6 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 201, await browserMutation(input, options, {
           message: () => `Prepare audit: ${payload.auditId || "engagement"}`
         }, () => prepareAuditWorkspace(input, payload)));
-      }
-      if (request.method === "POST" && url.pathname === "/api/evidence-test-drafts") {
-        return json(response, 201, await browserMutation(input, options, {
-          message: "Create evidence collection test drafts",
-          allowNoChanges: true
-        }, () => ensureEvidenceTestDrafts(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/setup") {
         const payload = await readJson(request);

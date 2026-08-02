@@ -544,8 +544,8 @@ function evidenceStage(audit, records, byId, model) {
     && (record.evidenceKind !== "rendered-record" || record.sourceCommit)
     && evidenceRelevantToAuditDate(record, audit)
   ));
-  const managedFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.collectionTestRequired === false);
-  const externalFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.collectionTestRequired !== false);
+  const managedFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.filegrcManaged === true);
+  const externalFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.filegrcManaged !== true);
   const evidenceFamiliesFor = (control) => (model.evidenceSourceFamilies || []).filter((family) => (
     (family.controlCodes || []).includes(control.code)
   ));
@@ -598,7 +598,7 @@ function evidenceStage(audit, records, byId, model) {
       ));
       continue;
     }
-    if (source.collectionTestRequired === false) {
+    if (source.filegrcManaged === true) {
       const sourceRecords = filegrcRecords.filter((record) => (
         relevantControls.some((control) => controlIdsForRecord(record, byId).has(control.id))
       ));

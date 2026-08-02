@@ -36,7 +36,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "Define Scope",
     "Approve Policies",
     "Implement Controls",
-    "Test Evidence Collection",
+    "Map Evidence",
     "Operate the Program",
     "Audit"
   ]);
@@ -58,7 +58,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "search",
     "obligations",
     "programReadiness",
-    "evidenceTestDrafts",
+    "evidenceMap",
     "auditReadiness",
     "prepareAudit",
     "trigger",
@@ -81,11 +81,12 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").guide, "npx filegrc guide system --json");
   assert.ok(path.every((stage) => stage.commands.every((command) => command.startsWith("npx filegrc "))));
+  assert.equal(path[3].pages[0].utility, "evidence-map");
   assert.deepEqual(path[3].commands.slice(0, 2), [
-    "npx filegrc evidence-test-drafts --preview --json",
-    "npx filegrc evidence-test-drafts"
+    "npx filegrc evidence-map --json",
+    "npx filegrc guide system --json"
   ]);
-  assert.match(path[3].summary, /preview the proposed External Evidence tests and explicitly create the missing drafts/i);
+  assert.match(path[3].summary, /map every selected control/i);
   assert.deepEqual(path[4].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
   assert.equal(path[4].operatingRecords.length, path[4].resourceTypes.length + path[4].supportingResourceTypes.length);
   assert.equal(path[4].operatingRecords.every(({ order }) => order === null), true);

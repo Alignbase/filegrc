@@ -437,7 +437,7 @@ test("requires configured Markdown and accepts Markdown as an evidence source", 
   assert.match(await readFile(join(root, "data", "evidence", evidence.id, "evidence.md"), "utf8"), /Review notes/);
 });
 
-test("allows evidence collection drafts but requires collection facts before advancing them", async (context) => {
+test("allows External Evidence drafts but requires collection facts before advancing them", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-evidence-draft-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
@@ -445,11 +445,9 @@ test("allows evidence collection drafts but requires collection facts before adv
     schemaVersion: 1,
     id: "evidence-access-collection-test",
     type: "evidence",
-    title: "Access Evidence Collection Test",
+    title: "Access report export",
     status: "draft",
-    evidenceKind: "test-export",
-    collectionTestFamilyId: "identity-access",
-    collectionTestPrompt: "Export users and roles."
+    evidenceKind: "access-export"
   };
   await createResource(root, draft);
   assert.equal((await validateWorkspace(root)).ok, true);
