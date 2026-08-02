@@ -967,6 +967,8 @@ function printAgentGuide(result) {
   }
   console.log("\nWorkflow:");
   result.workflow.forEach((step, index) => console.log(`${index + 1}. ${step}`));
+  console.log("\nCompletion checks:");
+  result.completionChecks.forEach((check) => console.log(`- ${check}`));
 }
 
 function buildProgramPathResult(model, readiness, auditReadiness) {
@@ -1196,7 +1198,8 @@ function formatGuideField(field) {
   const details = [
     field.values?.length ? `one of ${field.values.join("|")}` : field.type,
     field.requiredWhen ? `required when ${JSON.stringify(field.requiredWhen)}` : null,
-    field.disjointFrom ? `must not overlap ${field.disjointFrom}` : null
+    field.disjointFrom ? `must not overlap ${field.disjointFrom}` : null,
+    field.authoritativeFields?.length ? `use ${field.authoritativeFields.join("|")}` : null
   ].filter(Boolean).join("; ");
   return `${field.name}\t${details}`;
 }

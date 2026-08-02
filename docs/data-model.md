@@ -14,11 +14,11 @@ The renderer, CLI, generated agent instructions, and this reference use the same
 
 ### Step 1. Define Scope
 
-Confirm the people and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.
+Confirm the people, dated appointments, and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.
 
 - **People** (`person`): Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
 - **Appointments** (`appointment`): Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
-- **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.
+- **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative here; Person teamIds is a legacy field.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Review each criterion, decide whether it applies, and record the reason for that decision.
 - **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
@@ -244,7 +244,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `description` | string | No |  |
 | `parentRequirementId` | id | No | References: `requirement` |
 | `applicabilityRationale` | string | No |  |
-| `controlIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy controls (derived from Control requirements) References: `control` |
+| `controlIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `control.requirementIds`. Legacy controls References: `control` |
 
 #### `commitment`
 
@@ -334,9 +334,9 @@ Markdown companions:
 | `frequency` | string | Yes |  |
 | `systemIds` | array of id | Conditional | References: `system` Required when `status` is `implemented` |
 | `evidenceSourceIds` | array of id | Conditional | Authoritative evidence sources References: `system` Required when `status` is `implemented` |
-| `commitmentIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy commitments (derived from Commitment controls) References: `commitment` |
+| `commitmentIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `commitment.controlIds`. Legacy commitments References: `commitment` |
 | `policyIds` | array of id | No | References: `policy` |
-| `riskIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy risks (derived from Risk controls) References: `risk` |
+| `riskIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `risk.controlIds`. Legacy risks References: `risk` |
 | `effectiveOn` | date | Conditional | Required when `status` is `implemented` |
 | `retiredOn` | date | No |  |
 
@@ -414,7 +414,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Groups that share program responsibility, such as security oversight or incident response. Team records are not required for SOC 2 when named People hold the responsibilities directly.
 
-Instructions: Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.
+Instructions: Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative here; Person teamIds is a legacy field.
 
 Policy basis: The information security policy establishes security and risk oversight with independent review, while the continuity plan assigns response and recovery roles. Reviewers may be internal or external.
 
@@ -507,7 +507,7 @@ Markdown companions:
 | `parentPolicyId` | id | No | References: `policy` |
 | `relatedPolicyIds` | array of id | No | References: `policy` |
 | `relatedDocumentIds` | array of id | No | References: `document` |
-| `controlIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy controls (derived from Control policies) References: `control` |
+| `controlIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `control.policyIds`. Legacy controls References: `control` |
 | `requirementIds` | array of id | No | References: `requirement` |
 | `audience` | array of string | No |  |
 | `acknowledgementRequired` | boolean | No |  |
@@ -806,14 +806,14 @@ Record Markdown: available when needed as an implicit companion file.
 | `status` | enum | Yes | Values: `active`, `inactive`, `external` |
 | `email` | string (email) | No |  |
 | `jobTitle` | string | No | Organization job title |
-| `role` | string | No | Legacy role (use jobTitle) |
+| `role` | string | No | Legacy compatibility field. Do not add or update it. Use: `person.jobTitle`, `appointment.appointmentKind`. Legacy role |
 | `department` | string | No |  |
 | `managerId` | id | No | References: `person` |
 | `startDate` | date | No |  |
 | `endDate` | date | No |  |
 | `employmentType` | string | No |  |
 | `organization` | string | No |  |
-| `teamIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy teams (derived from Team membership) References: `team` |
+| `teamIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `team.memberIds`, `team.chairIds`. Legacy teams References: `team` |
 
 #### `service-account`
 
@@ -948,7 +948,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `internetExposed` | boolean | No |  |
 | `inScope` | boolean | No |  |
 | `parentSystemId` | id | No | References: `system` |
-| `commitmentIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy commitments (derived from Commitment systems) References: `commitment` |
+| `commitmentIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `commitment.systemIds`. Legacy commitments References: `commitment` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `evidenceSourceKinds` | array of string | No | Evidence source roles |
 | `evidenceOwnerIds` | array of id | No | Evidence access owners References: `person`, `team`, `appointment` |
@@ -1012,7 +1012,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `criticality` | enum | Yes | Values: `low`, `medium`, `high`, `critical` |
 | `description` | string | No |  |
 | `service` | string | No |  |
-| `systemIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy systems (derived from System vendor) References: `system` |
+| `systemIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `system.vendorId`. Legacy systems References: `system` |
 | `dataClassification` | string | No |  |
 | `dataTypes` | array of string | No |  |
 | `subprocessor` | boolean | No |  |
@@ -1487,10 +1487,10 @@ Record Markdown: available when needed as an implicit companion file.
 | `complementaryControlsConclusion` | enum | No | Complementary controls conclusion Values: `identified`, `not-applicable` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `subserviceMethod` | enum | No | Values: `carve-out`, `inclusive`, `not-applicable` |
-| `controlTestIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy control tests (derived from Control Test audit) References: `control-test` |
+| `controlTestIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `control-test.auditId`. Legacy control tests References: `control-test` |
 | `opinion` | enum | No | Values: `unmodified`, `qualified`, `adverse`, `disclaimer`, `not-issued` |
 | `opinionDate` | date | No |  |
-| `evidenceIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy evidence (derived from External Evidence audits) References: `evidence` |
+| `evidenceIds` | array of id | No | Legacy compatibility field. Do not add or update it. Use: `evidence.auditIds`. Legacy evidence References: `evidence` |
 | `reportEvidenceId` | id | No | References: `evidence` |
 | `managementResponseDocumentId` | id | No | References: `document` |
 | `supplementalDocumentIds` | array of id | No | References: `document` |

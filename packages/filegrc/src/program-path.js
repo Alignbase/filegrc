@@ -1,7 +1,7 @@
 export const RESOURCE_INSTRUCTIONS = {
   person: "Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.",
   appointment: "Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.",
-  team: "Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.",
+  team: "Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative here; Person teamIds is a legacy field.",
   system: "Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived.",
   vendor: "Catalog the companies that provide in-scope software or services. Link each vendor-provided System with the System’s vendorId.",
   framework: "Confirm the criteria framework and version used for the program.",
@@ -63,7 +63,7 @@ export const PROGRAM_PATH = [
     number: 1,
     title: "Define Scope",
     description: "Ownership, criteria, and service boundary",
-    summary: "Confirm the people and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.",
+    summary: "Confirm the people, dated appointments, and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.",
     sections: [
       { id: "ownership", title: "Program Ownership", description: "Confirm the people, appointments, and teams that own, approve, review, and operate the program.", steps: ["Confirm the initial program lead’s actual job title and the separate Policy Owner Appointment.", "Add the organization’s real appointments, reviewers, and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "appointment", "team"], defaultOpen: true },
       { id: "criteria", title: "Criteria", description: "Confirm the criteria used for the program, resolve whether each requirement applies, and record customer commitments that shape the service or control design.", steps: ["Review the included Security criteria references.", "Mark each requirement applicable or not applicable with a rationale.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["framework", "requirement", "commitment"], defaultOpen: true },

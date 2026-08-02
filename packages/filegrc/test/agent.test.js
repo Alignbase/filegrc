@@ -95,7 +95,27 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.deepEqual(auditGuide.legacyFields.map(({ name }) => name), ["controlTestIds", "evidenceIds"]);
   const personGuide = buildAgentGuide(loaded, "person");
   assert.equal(personGuide.optionalFields.some(({ name }) => name === "teamIds"), false);
-  assert.deepEqual(personGuide.legacyFields.map(({ name }) => name), ["teamIds"]);
+  assert.equal(personGuide.optionalFields.some(({ name }) => name === "role"), false);
+  assert.deepEqual(personGuide.legacyFields.map(({ name }) => name), ["role", "teamIds"]);
+  assert.deepEqual(personGuide.legacyFields[0].authoritativeFields, [
+    "person.jobTitle",
+    "appointment.appointmentKind"
+  ]);
+  assert.deepEqual(personGuide.legacyFields[1].authoritativeFields, [
+    "team.memberIds",
+    "team.chairIds"
+  ]);
+  assert.equal(Object.hasOwn(personGuide.requiredAtCreation[0], "authoritativeFields"), false);
+  assert.match(personGuide.workflow[2], /current facts and lifecycle state in JSON/);
+  assert.ok(personGuide.completionChecks.some((item) => /No legacy compatibility field/.test(item)));
+  const policyGuide = buildAgentGuide(loaded, "policy");
+  assert.match(policyGuide.workflow[2], /recommended Markdown companion/);
+  const workspaceGuide = buildAgentGuide(loaded, "workspace");
+  assert.match(workspaceGuide.workflow[1], /Open the existing singleton record/);
+  const personGuideText = await execute(process.execPath, [cli, "guide", "person", "--root", root]);
+  assert.match(personGuideText.stdout, /role\tstring; use person\.jobTitle\|appointment\.appointmentKind/);
+  assert.match(personGuideText.stdout, /teamIds\tarray; use team\.memberIds\|team\.chairIds/);
+  assert.match(personGuideText.stdout, /Completion checks:\n- Required and status-dependent fields are complete/);
   const pathCommand = await execute(process.execPath, [cli, "program-path", "--root", root, "--json"]);
   const parsedPath = JSON.parse(pathCommand.stdout);
   assert.equal(parsedPath.currentStep.number, 1);

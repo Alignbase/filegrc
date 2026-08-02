@@ -106,6 +106,7 @@ test("v1 model exposes the complete resource registry", () => {
         .map(([name]) => `${type}.${name}`)
     )),
     [
+      "person.role",
       "person.teamIds",
       "system.commitmentIds",
       "requirement.controlIds",
@@ -117,6 +118,33 @@ test("v1 model exposes the complete resource registry", () => {
       "audit.evidenceIds"
     ]
   );
+  assert.deepEqual(model.resources.person.fields.role.authoritativeFields, [
+    "person.jobTitle",
+    "appointment.appointmentKind"
+  ]);
+  assert.deepEqual(model.resources.person.fields.teamIds.authoritativeFields, [
+    "team.memberIds",
+    "team.chairIds"
+  ]);
+  assert.ok(Object.values(model.resources).every((resource) => (
+    Object.values(resource.fields ?? {}).every((field) => !field.legacy || field.authoritativeFields?.length)
+  )));
+  for (const resource of Object.values(model.resources)) {
+    for (const field of Object.values(resource.fields ?? {})) {
+      for (const authoritative of field.authoritativeFields ?? []) {
+        const separator = authoritative.indexOf(".");
+        const type = authoritative.slice(0, separator);
+        const name = authoritative.slice(separator + 1);
+        const target = model.resources[type];
+        assert.ok(target?.fields?.[name], `${authoritative} is a modeled field`);
+        const guided = (target.required ?? []).includes(name)
+          || (target.listFields ?? []).includes(name)
+          || (target.formFields ?? []).includes(name)
+          || Boolean(target.fields[name].requiredWhen);
+        assert.equal(guided, true, `${authoritative} is available in the guided editor`);
+      }
+    }
+  }
   assert.equal(model.resources.commitment.fields.systemIds.legacy, undefined);
   assert.equal(model.resources.commitment.fields.controlIds.legacy, undefined);
   assert.equal(model.resources.control.fields.policyIds.legacy, undefined);

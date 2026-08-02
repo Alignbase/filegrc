@@ -559,9 +559,16 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /Optional: Engage a CPA Firm Early/);
   assert.match(APP_SCRIPT, /function recordNarrative\(record, fields\)/);
   assert.match(APP_SCRIPT, /function resourceConnections\(entry\)/);
+  assert.match(APP_SCRIPT, /\.\.\.\(definition\.formFields \|\| \[\]\)/);
   assert.match(APP_SCRIPT, /Linked from /);
   assert.match(APP_SCRIPT, /Linked by /);
   assert.match(APP_SCRIPT, /if \(!definition\.relation \|\| definition\.legacy\) return/);
+  assert.match(APP_SCRIPT, /const relatedPeopleOnly = entry\.record\.type === "person"/);
+  assert.match(APP_SCRIPT, /relatedPeopleOnly && connectedEntry\.record\.type !== "person"/);
+  assert.match(APP_SCRIPT, /relatedPeopleOnly \? "Related people" : "Connections"/);
+  assert.match(APP_SCRIPT, /Appointments and teams/);
+  assert.match(APP_SCRIPT, /Assigned records/);
+  assert.match(APP_SCRIPT, /Legacy fields need migration/);
   assert.match(APP_SCRIPT, /field === "sourceReference"/);
   assert.match(APP_SCRIPT, /function safeExternalUrl\(value\)/);
   assert.match(APP_SCRIPT, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
@@ -750,7 +757,7 @@ test("renders six navigable stage pages with instructions, links, and honest pro
   assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 6/);
   assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
   assert.doesNotMatch(APP_SCRIPT, /stage\.steps\.map/);
-  assert.match(PROGRAM_PATH[0].summary, /Confirm the people and teams responsible for the program, set the management goal/);
+  assert.match(PROGRAM_PATH[0].summary, /Confirm the people, dated appointments, and teams responsible for the program, set the management goal/);
   assert.match(APP_SCRIPT, /Record supplemental customer promises and service requirements/);
   assert.match(PROGRAM_PATH[2].summary, /Mark it implemented only after the procedure is operating/);
   assert.match(PROGRAM_PATH[4].summary, /Maintain current risk assessments and risks, updating the control set when needed/);
@@ -877,7 +884,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /onboarding-after-sections/);
   assert.match(APP_SCRIPT, /class="onboarding-sections"/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
-  assert.match(APP_SCRIPT, /Scope starts with the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems/);
+  assert.match(APP_SCRIPT, /Scope starts with people, dated appointments, oversight teams, applicable criteria, commitments, material vendors, and in-scope systems/);
   assert.match(APP_SCRIPT, /Program operation includes current risk assessments and risks/);
   assert.match(APP_SCRIPT, /Work the policy queue/);
   assert.match(APP_SCRIPT, /Complete a checklist when key events occur/);

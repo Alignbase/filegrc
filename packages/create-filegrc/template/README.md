@@ -37,7 +37,7 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 
 ![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
-1. **Define scope.** Confirm owners, criteria, commitments, vendors, and in-scope systems.
+1. **Define scope.** Confirm people, dated appointments, teams, criteria, commitments, vendors, and in-scope systems.
 2. **Approve policies.** Tailor the proposals and record separate owners and reviewers.
 3. **Implement controls.** Add the real procedure, scope, cadence, and evidence source.
 4. **Test evidence collection.** Collect and verify evidence from each authoritative system.

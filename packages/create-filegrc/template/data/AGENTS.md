@@ -25,7 +25,7 @@ Use `program-path --next --json` to find the current lifecycle step and first ac
 - A dated instance of work belongs in its activity type, such as `meeting`, `risk-assessment`, `access-review`, `vulnerability-scan`, `backup-test`, or `exercise`.
 - A fact that may change over time belongs in an inventory record, such as `person`, `system`, `asset`, `vendor`, or `access-grant`.
 - A Person’s `jobTitle` is their actual position in the organization. A named authority they hold, such as CISO, DPO, Policy Owner, or team chair, belongs in a dated `appointment` scoped to the workspace, team, or governed records.
-- Team membership is authoritative on `team.memberIds`. Do not add the legacy `person.teamIds` field.
+- Team membership and chairs are authoritative on `team.memberIds` and `team.chairIds`. Do not add the legacy `person.teamIds` field.
 - A dated Step 5 operating record proves that filegrc-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
 - Follow-up work belongs in `action-item`. A gap belongs in `finding`, a known threat belongs in `risk`, and an approved temporary departure belongs in `exception`.
 - An auditor request belongs in `audit-request`; the engagement itself belongs in `audit`.

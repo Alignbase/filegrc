@@ -61,13 +61,17 @@ export function buildAgentGuide(loaded, type, options = {}) {
       relation,
       disjointFrom: field.disjointFrom ?? null,
       format: field.format ?? null,
-      legacy: Boolean(field.legacy)
+      ...(field.legacy ? {
+        legacy: true,
+        authoritativeFields: field.authoritativeFields ?? []
+      } : {})
     };
   });
   const requiredAtCreation = fieldList.filter(({ required: isRequired }) => isRequired);
   const conditionalRequirements = fieldList.filter(({ requiredWhen, required: isRequired }) => requiredWhen && !isRequired);
   const optionalFields = fieldList.filter(({ required, requiredWhen, legacy }) => !required && !requiredWhen && !legacy);
   const legacyFields = fieldList.filter(({ legacy }) => legacy);
+  const recommendedMarkdown = markdown.filter(({ recommended }) => recommended);
   const location = definition.singleton
     ? `data/${definition.singleton}`
     : `data/${definition.collection}/${(definition.recordPath ?? "{id}.json").replaceAll("{id}", options.id || "{id}")}`;
@@ -94,15 +98,24 @@ export function buildAgentGuide(loaded, type, options = {}) {
     markdown,
     workflow: [
       "Inspect existing records and relation candidates before writing.",
-      "Create a scaffold, then replace every null value and empty required array with facts from an authoritative source.",
-      "Keep stable metadata in JSON and put the work performed, inputs, results, decisions, exceptions, and follow-up in the recommended Markdown companion.",
+      definition.singleton
+        ? "Open the existing singleton record, then replace every null value and empty required array with facts from an authoritative source."
+        : "Create a scaffold, then replace every null value and empty required array with facts from an authoritative source.",
+      recommendedMarkdown.length
+        ? "Keep model fields in JSON and use the recommended Markdown companion for the detailed work, decisions, results, exceptions, and follow-up that apply to this record."
+        : "Keep the current facts and lifecycle state in JSON. Add optional Record Markdown only when the model fields cannot explain the record clearly.",
       "Run npx filegrc validate, review the full Git diff, and commit the JSON, Markdown, and attachments together with a message that explains why the record changed."
     ],
     completionChecks: [
-      "The record describes work that actually occurred; planned work is not marked complete.",
+      "Required and status-dependent fields are complete, and the lifecycle status matches the facts.",
       "Every relationship resolves to the intended existing record.",
       "Dates describe the business event in the workspace time zone, not the file edit time.",
-      "Results, exceptions, decisions, evidence, and follow-up records are linked where applicable.",
+      ...(recommendedMarkdown.length
+        ? ["Required or recommended Markdown explains the work, decisions, results, exceptions, and follow-up that apply."]
+        : ["The structured fields state the current fact clearly; optional Record Markdown is added only when needed."]),
+      ...(legacyFields.length
+        ? ["No legacy compatibility field is added or updated; use the listed authoritative fields instead."]
+        : []),
       "No secrets or personal data that may need erasure were added to Git."
     ]
   };

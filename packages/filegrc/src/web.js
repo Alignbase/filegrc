@@ -1066,6 +1066,7 @@ function renderDetail(main, type, id) {
     && !narrativeNames.has(name)
   ));
   const content = Object.entries(entry.content);
+  const legacyNotice = legacyFieldNotice(entry.record, fields);
   const sourceMetadata = '<div><dt>Source file</dt><dd><code>' + esc(entry.relativePath) + '</code></dd></div><div><dt>Workspace revision</dt><dd>' + (state.git.available ? '<code>' + esc(state.git.shortCommit) + '</code>' : "Unavailable until the workspace is committed.") + '</dd></div>';
   const narrativeContent = narrative.length
     ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(titleCase(fields[name]?.label || humanize(name))) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
@@ -1086,7 +1087,7 @@ function renderDetail(main, type, id) {
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
   main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
-    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
+    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div>' + legacyNotice + '<dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
@@ -1149,6 +1150,20 @@ function recordContentDefinition(type) {
   };
 }
 
+function legacyFieldNotice(record, fields) {
+  const legacy = Object.entries(fields).filter(([name, field]) => (
+    field.legacy && Object.hasOwn(record, name)
+  ));
+  if (!legacy.length) return "";
+  const names = legacy.map(([name]) => name);
+  const authoritativeFields = [...new Set(legacy.flatMap(([, field]) => field.authoritativeFields || []))];
+  return '<div class="legacy-notice"><strong>Legacy fields need migration</strong><p>This record still contains <code>'
+    + names.map(esc).join("</code>, <code>")
+    + '</code>. Current workflows use '
+    + authoritativeFields.map((name) => '<code>' + esc(name) + '</code>').join(", ")
+    + ". Update the current fields, then remove the legacy keys in Advanced JSON.</p></div>";
+}
+
 function personParticipation(entry) {
   if (entry.record.type !== "person") return "";
   const personId = entry.record.id;
@@ -1156,18 +1171,19 @@ function personParticipation(entry) {
     .map(({ record }) => record)
     .filter(({ holderId }) => holderId === personId);
   const appointmentIds = new Set(appointments.map(({ id }) => id));
-  const rows = appointments.map((record) => ({
+  const affiliations = appointments.map((record) => ({
     record,
     detail: "Appointment · " + properCase(record.status)
   }));
   for (const { record } of resourcesOfType("team")) {
     const member = (record.memberIds || []).includes(personId);
     const chair = (record.chairIds || []).some((id) => id === personId || appointmentIds.has(id));
-    if (member || chair) rows.push({
+    if (member || chair) affiliations.push({
       record,
       detail: "Team · " + (chair ? "Chair" : "Member")
     });
   }
+  const assignments = [];
   for (const candidate of state.resources) {
     if (["person", "appointment", "team"].includes(candidate.record.type)) continue;
     const fields = { ...state.model.commonFields, ...state.model.resources[candidate.record.type].fields };
@@ -1180,21 +1196,35 @@ function personParticipation(entry) {
         if (values.includes(appointment.id)) reasons.push(fieldLabel(candidate.record.type, name) + " via " + appointment.title);
       }
     }
-    if (reasons.length) rows.push({
+    if (reasons.length) assignments.push({
       record: candidate.record,
       detail: [...new Set(reasons)].join(" · ")
     });
   }
+  const count = affiliations.length + assignments.length;
+  if (!count) return "";
+  return '<section class="panel connections-panel"><div class="panel-head"><h3>Participation</h3><span>' + count + '</span></div>'
+    + personParticipationGroup("Appointments and teams", affiliations, 8, "more appointments or teams")
+    + personParticipationGroup("Assigned records", assignments, 10, "more assigned records")
+    + '</section>';
+}
+
+function personParticipationGroup(title, rows, limit, moreLabel) {
   if (!rows.length) return "";
-  const visible = rows.slice(0, 14);
-  return '<section class="panel connections-panel"><div class="panel-head"><h3>Participation</h3><span>' + rows.length + '</span></div><div class="connections">' + visible.map(({ record, detail }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(detail) + '</small></a>').join("") + '</div>' + (rows.length > visible.length ? '<p class="connections-more">' + (rows.length - visible.length) + ' more assignments are available through connected records.</p>' : "") + '</section>';
+  const visible = rows.slice(0, limit);
+  return '<div class="connection-group"><h4>' + esc(title) + '</h4><div class="connections">'
+    + visible.map(({ record, detail }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(detail) + '</small></a>').join("")
+    + '</div>' + (rows.length > visible.length ? '<p class="connections-more">' + (rows.length - visible.length) + ' ' + esc(moreLabel) + ' are available through connected records.</p>' : "")
+    + '</div>';
 }
 
 function resourceConnections(entry) {
+  const relatedPeopleOnly = entry.record.type === "person";
   const connections = new Map();
   const entriesById = new Map(state.resources.map((item) => [item.record.id, item]));
   const add = (connectedEntry, reason) => {
     if (!connectedEntry || connectedEntry.record.id === entry.record.id) return;
+    if (relatedPeopleOnly && connectedEntry.record.type !== "person") return;
     const existing = connections.get(connectedEntry.record.id) || { entry: connectedEntry, reasons: new Set() };
     existing.reasons.add(reason);
     connections.set(connectedEntry.record.id, existing);
@@ -1224,7 +1254,7 @@ function resourceConnections(entry) {
   });
   if (!sorted.length) return "";
   const visible = sorted.slice(0, 14);
-  return '<section class="panel connections-panel"><div class="panel-head"><h3>Connections</h3><span>' + sorted.length + '</span></div><div class="connections">' + visible.map(({ entry: connected, reasons }) => '<a href="#/resource/' + encodeURIComponent(connected.record.type) + '/' + encodeURIComponent(connected.record.id) + '"><strong>' + esc(connected.record.title) + '</strong><small>' + esc([...reasons].join(" · ")) + '</small></a>').join("") + '</div>' + (sorted.length > visible.length ? '<p class="connections-more">' + (sorted.length - visible.length) + ' more connections are available through the linked records.</p>' : "") + '</section>';
+  return '<section class="panel connections-panel"><div class="panel-head"><h3>' + (relatedPeopleOnly ? "Related people" : "Connections") + '</h3><span>' + sorted.length + '</span></div><div class="connections">' + visible.map(({ entry: connected, reasons }) => '<a href="#/resource/' + encodeURIComponent(connected.record.type) + '/' + encodeURIComponent(connected.record.id) + '"><strong>' + esc(connected.record.title) + '</strong><small>' + esc([...reasons].join(" · ")) + '</small></a>').join("") + '</div>' + (sorted.length > visible.length ? '<p class="connections-more">' + (sorted.length - visible.length) + ' more connections are available through the linked records.</p>' : "") + '</section>';
 }
 
 function navigationResourceTypes() {
@@ -1568,7 +1598,7 @@ function onboardingSteps() {
     title: "Follow the audit chain",
     body: "The shortest dependable path is to define scope, approve policies, implement controls, prepare the evidence process, and operate the program before audit fieldwork begins.",
     points: [
-      "Scope starts with the people and oversight team, applicable criteria, commitments, material vendors, and in-scope systems.",
+      "Scope starts with people, dated appointments, oversight teams, applicable criteria, commitments, material vendors, and in-scope systems.",
       "Program operation includes current risk assessments and risks, which may add or change controls as conditions change.",
       "Evidence preparation means cataloging authoritative systems, documenting extraction, and testing captures before the candidate period.",
       "The CPA firm, formal report period, fieldwork, and final report are the last stage. Engage earlier only when timing or scope needs outside input."
@@ -1589,7 +1619,7 @@ function onboardingSteps() {
     target: ".event-reminder-panel",
     kicker: "Triggered work",
     title: "Complete a checklist when key events occur",
-    body: "Use an event reminder for a new worker, role change, departure, personal device, vendor change or incident, material system or data-use change, or security incident. One action item is created for every policy requirement, with its own owner, evidence, due range, and cutoff.",
+    body: "Use an event reminder for a new worker, job or responsibility change, departure, personal device, vendor change or incident, material system or data-use change, or security incident. One action item is created for every policy requirement, with its own owner, evidence, due range, and cutoff.",
     points: [
       "The checklist stays open until every action is done and has the requested completion record or evidence.",
       "Hour-based rules keep the event time and exact cutoff; day-based rules keep the policy date range.",
@@ -1924,6 +1954,7 @@ function openEditor(type, entry = null, options = {}) {
   const definition = state.model.resources[type];
   const fields = { ...state.model.commonFields, ...definition.fields };
   const record = structuredClone(entry?.record || seedRecord(type, definition));
+  const legacyNotice = legacyFieldNotice(record, fields);
   const markdownDefinitions = dedicatedMarkdownDefinitions(type);
   if (!entry && options.seed) {
     Object.assign(record, options.seed);
@@ -1944,6 +1975,7 @@ function openEditor(type, entry = null, options = {}) {
     "title",
     ...required,
     ...(definition.listFields || []),
+    ...(definition.formFields || []),
     ...Object.entries(fields).filter(([, field]) => field.requiredWhen).map(([name]) => name),
     ...oneOf
   ])].filter((name) => !["schemaVersion", "id", "type"].includes(name) && fields[name]);
@@ -1955,7 +1987,7 @@ function openEditor(type, entry = null, options = {}) {
   ));
   const recordContent = recordContentDefinition(type);
   const recordContentItem = recordContent ? entry?.content?.[recordContent.slot] : null;
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(options.description || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.") + '</p>' + legacyNotice + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -2780,6 +2812,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:24px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 @media(max-width:760px){.topbar{height:56px}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
 
+.legacy-notice{margin:14px 0;padding:11px 12px;border:1px solid #e9c888;border-radius:8px;background:#fff8e8;color:#5f4719;font-size:12px;line-height:1.5}.legacy-notice strong{display:block;margin-bottom:3px}.legacy-notice p{margin:0!important;color:inherit!important;font-size:inherit!important}.legacy-notice code{overflow-wrap:anywhere}.connection-group+.connection-group{margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}.connection-group h4{margin:0 0 8px;color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.08em}
 body,button,input,select,textarea,dialog{color:var(--ink)}
 button,input,select,textarea{accent-color:var(--accent)}
 :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
