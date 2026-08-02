@@ -1,0 +1,329 @@
+---
+title: "SOC 2 Compliance Checklist for Startups: A Start-to-Report Plan"
+description: "A practical SOC 2 compliance checklist for startups, with the decisions, records, evidence, and CPA handoffs needed at each stage."
+publishedDate: "2026-08-02"
+lastMod: "2026-08-02"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 compliance checklist for startups",
+    "SOC 2 for startups",
+    "SOC 2 audit readiness checklist",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc turns a startup SOC 2 checklist into connected records, due work, evidence, and audit preparation."
+faqs:
+  - question: "What is the first step in a SOC 2 compliance checklist for startups?"
+    answer: "Confirm what a customer or partner needs, then define the service, report type, target date or period, and criteria with management and a CPA firm. Do not write controls before you know the scope they must address."
+  - question: "Does every startup need the same SOC 2 controls?"
+    answer: "No. The controls depend on the scoped service, risks, commitments, selected Trust Services Criteria, vendors, systems, and report type. A generic control list can help with discovery but cannot make those decisions for management."
+  - question: "When should a startup hire a CPA firm for SOC 2?"
+    answer: "Engage a qualified CPA firm early enough to confirm the intended report, scope, dates, and fieldwork plan before management relies on an evidence period. The firm performs the examination and decides whether evidence is sufficient and appropriate."
+  - question: "What is the difference between Type 1 and Type 2 checklist work?"
+    answer: "Type 1 preparation supports control design and implementation as of a specified date. Type 2 preparation also needs dated operating records, complete populations, and evidence across the specified period so the CPA firm can test operating effectiveness."
+  - question: "Can a startup complete SOC 2 without compliance software?"
+    answer: "A startup may manage program records with files, spreadsheets, or other tools, but it still needs clear ownership, validation, due dates, source evidence, review, and a reliable change history. Software does not operate controls or replace the CPA examination."
+  - question: "What should a startup keep out of a Git-based SOC 2 workspace?"
+    answer: "Keep secrets, credentials, session data, regulated personal data, and personal data that may need erasure out of Git. Leave live identity, cloud, endpoint, monitoring, backup, and workforce data in their source systems, then store or reference approved fixed evidence."
+furtherReading:
+  - text: "What open source SOC 2 software can and cannot replace"
+    url: "/blogs/open-source-soc-2-compliance"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Build complete SOC 2 audit populations"
+    url: "/blogs/soc-2-audit-populations"
+  - text: "Prepare a SOC 2 audit evidence packet"
+    url: "/blogs/soc-2-audit-evidence-packet"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+A useful SOC 2 compliance checklist for startups is a sequence of decisions and
+records, not a universal list of controls. Define the service and report goal,
+approve policies, implement controls, test evidence collection, operate the
+program, and prepare the CPA firm's fieldwork. Each step should have an owner,
+a dated result, and a clear test for moving forward.
+
+## TL;DR
+
+- Ask the customer what report and timing it will accept before setting a plan.
+- Define the service, systems, vendors, data, commitments, criteria, and people
+  in scope.
+- Treat policy and control templates as proposals. Match them to what the
+  company actually does, then record approval and implementation.
+- Test how you will collect evidence from each authoritative system before
+  starting a candidate Type 2 period.
+- Keep recurring and event-driven work current throughout the period.
+- Let the CPA firm confirm the formal scope and dates, choose its tests and
+  samples, evaluate exceptions, and issue the report.
+
+## What a SOC 2 compliance checklist for startups must produce
+
+The AICPA describes a
+[SOC 2 engagement as an assertion-based examination](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy)
+of a service organization's system description and controls relevant to
+security, availability, processing integrity, confidentiality, or privacy. Its
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide criteria for evaluating those controls.
+
+That structure matters because a startup cannot finish SOC 2 by checking off
+tool settings. Management must describe a scoped system, state which criteria
+apply, design controls for its risks and commitments, operate those controls,
+and support its assertion. An independent CPA firm performs the examination.
+
+Use this checklist as an operating plan:
+
+| Stage                         | Work product                                                                             | Move forward when                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1. Confirm the request        | Customer need, report goal, target timing, decision owner                                | The team knows what business request it is answering               |
+| 2. Define scope               | Service boundary, criteria, commitments, systems, vendors, people, and data              | Every planned control has a clear boundary                         |
+| 3. Assign ownership           | Program lead, control owners, policy owners, separate approvers, and evidence collectors | Each task and decision has a named person                          |
+| 4. Approve policies           | Tailored policy text, approval, effective date, and review cadence                       | Policies describe real practice and have management approval       |
+| 5. Implement controls         | Control statements, procedures, owners, cadence, and evidence sources                    | Each control is in use, not merely drafted                         |
+| 6. Test evidence collection   | Source catalog, export steps, test captures, and verification                            | The team can collect readable proof from every external source     |
+| 7. Start operation            | Candidate date or period, recurring work, event work, risks, and evidence                | Readiness checks pass and management begins dated operation        |
+| 8. Prepare Type 2 populations | Complete source exports, queries, counts, and reconciliations                            | Management can explain the full set before sampling                |
+| 9. Confirm the examination    | CPA engagement, formal scope, date or period, and request workflow                       | Management and the CPA firm agree on the work                      |
+| 10. Support fieldwork         | System description, assertion, evidence indexes, requested samples, and secure handoff   | The CPA firm has the requested material and open items are tracked |
+
+The order is intentional, but it is not a promise about elapsed time. Teams
+often talk with CPA firms while they work on scope and controls. The gate is
+whether the prior decisions and evidence are reliable enough to support the
+next stage.
+
+## 1. Confirm what the customer is asking for
+
+Start with the request that caused the project. Ask the customer, procurement
+team, or partner:
+
+- Does it require a SOC 2 report, or will another security review work for now?
+- Does it require Type 1, Type 2, or a report covering specific criteria?
+- Must the report cover a named product, service, region, or legal entity?
+- What delivery date affects the deal?
+- Will it accept a bridge letter after an existing report period ends?
+
+Record the answer and its source. A sales note that says "needs SOC 2" is too
+vague to drive scope or spend.
+
+Management should then choose an assurance goal. A Type 1 report addresses
+control design and implementation as of a specified date. A Type 2 report also
+addresses operating effectiveness over a specified period. Ask a qualified CPA
+firm to confirm which route fits the request and whether the target timing is
+workable.
+
+## 2. Define the service and criteria in scope
+
+Write the system boundary before writing the control set. List:
+
+- the product or service covered by the planned report;
+- production systems and supporting services;
+- people and teams who operate or govern the service;
+- customer and company data handled by the service;
+- vendors and subservice organizations that affect the service;
+- contractual, privacy, security, and availability commitments;
+- locations and environments involved;
+- any customer responsibilities the control design assumes.
+
+Then select the applicable Trust Services Criteria with management and the CPA
+firm. Do not add criteria because a template includes them. Each added area
+changes the system description, risks, controls, and evidence the team must
+maintain.
+
+The result should be inspectable. Keep a scope record, system inventory, vendor
+inventory, commitments, data classifications, and relationship links. A diagram
+can help people understand the service, but it does not replace those decisions.
+
+## 3. Name the people who own each decision and task
+
+A founder-led program still needs separation where the work calls for review.
+Assign:
+
+- one person who coordinates the program;
+- an owner for each policy and control;
+- a separate approver for each policy or governed document;
+- people who can collect evidence from each source system;
+- people who verify evidence and review exceptions;
+- management owners for risks and follow-up work;
+- a contact for the CPA firm.
+
+Do not assign every item to a team name when a specific person must act. A small
+company may use an external person as a policy reviewer when no second internal
+person has enough independence to challenge the owner.
+
+## 4. Tailor and approve policies
+
+Policy templates are prompts. Replace placeholders, remove claims the company
+cannot support, and write the rule the team will actually follow.
+
+For each policy, record:
+
+- scope and audience;
+- owner and separate approver;
+- linked controls;
+- approval and effective dates;
+- review cadence;
+- scheduled work and event triggers;
+- exceptions and escalation paths.
+
+Approval should bind to the exact text that management reviewed. In a Git-based
+program, that means keeping the Markdown and approval record tied to the
+relevant revision. A later commit timestamp does not replace the explicit
+approval date.
+
+## 5. Implement controls and their evidence plan
+
+Turn policy rules into control records that explain who does what, for which
+systems, when it happens, and what proves the result.
+
+A usable control record answers:
+
+1. What risk or commitment does this control address?
+2. Which systems, people, events, or data does it cover?
+3. Who performs and reviews it?
+4. Does it run continuously, per event, or on a schedule?
+5. Which record shows the decision or result?
+6. Which authoritative system produces external evidence?
+7. How are failures, exceptions, and corrective work handled?
+
+Technical settings still belong in the systems that enforce them. The GRC
+record describes the control and points to its source. For example, the identity
+system controls authentication and produces user and role exports. The program
+record describes access approval, removal, and review, then links the dated
+exports and review results.
+
+The [SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) maps common
+control activities to their source artifacts and management records.
+
+## 6. Test evidence collection before relying on a period
+
+Catalog every system that will produce audit evidence. For each source, record:
+
+- the evidence kinds it can produce;
+- who can access the report or export;
+- the exact extraction steps;
+- report names, queries, filters, timestamps, and timezones;
+- expected fields and counts;
+- how management will check completeness and accuracy;
+- storage, classification, access, and retention rules.
+
+Run a test capture. Make sure the file opens, covers the intended scope, has
+enough context to identify its source and date, and can be linked to the control
+work it supports. Fix missing access or weak exports before management depends
+on the process.
+
+filegrc calls this the Evidence Ready gate. It requires scope, selected
+criteria, approved policies, implemented controls, source-system records, and
+verified test captures where external collection is required. A dashboard
+percentage without those records should not start the period.
+
+## 7. Start the candidate period and operate the program
+
+Management can record its candidate Type 1 date or Type 2 period after the
+evidence process is reliable. Do not backdate it. Keep this management planning
+date separate from the formal date or period later agreed with the CPA firm.
+
+During operation:
+
+- complete recurring access, vendor, risk, policy, training, recovery, and
+  other scheduled work;
+- create event checklists for hires, departures, incidents, vendor changes, and
+  other policy triggers;
+- collect and verify evidence when each control runs;
+- record exceptions, owners, due dates, approvals, and corrective work;
+- review risks and changes that affect scope or control design;
+- preserve exact occurrence, approval, completion, and verification dates.
+
+Git history can show which file changed, who committed it, and the diff. It
+cannot tell you when an incident occurred or when management approved a risk
+decision unless the record contains that date.
+
+For one recurring workflow, see
+[what to save for SOC 2 access review evidence](/blogs/soc-2-access-review-evidence).
+
+## 8. Build complete Type 2 populations
+
+Type 2 fieldwork may include samples from complete sets of changes, access
+events, departures, incidents, vendor reviews, or other control-relevant items.
+Management should preserve the full source set before the CPA firm selects
+samples.
+
+For each population, keep:
+
+- the exact period and control scope;
+- one authoritative source system;
+- the query, report, filters, and exclusions;
+- generation timestamp and timezone;
+- fixed source export and row count;
+- completeness and accuracy checks;
+- reconciliation result and exceptions.
+
+A zero count still needs a source, query, period, export, and check. Split a
+population when different systems or queries produced its items.
+
+The CPA firm chooses samples and its testing method. Management prepares and
+reconciles the complete source. The
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) gives the full
+workflow.
+
+## 9. Confirm the formal examination with the CPA firm
+
+Record the engaged CPA firm, report type, scoped service, selected criteria,
+formal Type 1 date or Type 2 period, contacts, fieldwork dates, and request
+workflow.
+
+Keep the firm's formal dates separate from management's earlier candidate
+dates. If they differ, preserve both and explain the change. Do not rewrite
+historical operating records to make the period look cleaner.
+
+The CPA firm remains responsible for its examination plan, sample selection,
+testing, exception evaluation, and report. Management remains responsible for
+the system description, assertion, controls, records, evidence, and responses
+it supplies.
+
+## 10. Prepare fieldwork and the evidence handoff
+
+Before fieldwork, assemble:
+
+- management's system description and assertion;
+- the control matrix and approved policies;
+- current risk and vendor work;
+- source-system and evidence indexes;
+- dated control-operation records;
+- Type 2 population exports and reconciliations;
+- requested sample evidence;
+- open exceptions and corrective actions;
+- relevant source history and file checksums.
+
+Review every exported file for secrets, personal data, customer data, and
+out-of-scope material. Use the CPA firm's approved secure transfer method.
+Checksums can detect changed files after export, but they do not encrypt data or
+show that the CPA firm accepted the evidence.
+
+The [SOC 2 audit evidence packet guide](/blogs/soc-2-audit-evidence-packet)
+explains how to check the final scope, indexes, history, external references,
+and transfer package.
+
+## Run the checklist as files in Git
+
+[filegrc](/) stores structured SOC 2 records in JSON, long-form work in
+Markdown, and change history in Git. Its browser and CLI use the same validation
+and domain logic, so an engineer or agent can inspect the program path, prepare
+validated changes, work the queue, and run readiness checks without a separate
+application database.
+
+```sh
+npx create-filegrc@latest company-grc
+cd company-grc
+npm run validate
+
+npx filegrc program-path --next --json
+npx filegrc program-readiness --summary --json
+npx filegrc obligations --json
+```
+
+filegrc manages program records and audit evidence. It does not log in to
+external systems, operate infrastructure controls, perform the CPA examination,
+or decide whether evidence is sufficient. Read
+[what open source SOC 2 software can and cannot replace](/blogs/open-source-soc-2-compliance)
+for the full boundary.
