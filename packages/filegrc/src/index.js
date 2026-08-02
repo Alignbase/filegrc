@@ -6,6 +6,7 @@ export { generateEvidencePacket, prepareEvidencePacket, writeEvidencePacket } fr
 export { ensureEvidenceTestDrafts, planEvidenceTestDrafts, previewEvidenceTestDrafts } from "./evidence-tests.js";
 export {
   addEvidenceAttachment,
+  applyResourceBatch,
   createResource,
   createResourceAndLink,
   createResources,
@@ -29,6 +30,7 @@ export {
 } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";
+export { migrateLegacyRoles, planRoleMigration } from "./role-migration.js";
 export {
   completeObligationAction,
   completeObligationEvent,

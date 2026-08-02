@@ -172,15 +172,16 @@ The registry may expose a JSON Schema projection for editors and outside tools, 
 
 The generator resolves the current `filegrc` release and records a normal semver range. This keeps initial output current while the lockfile makes installs repeatable.
 
-The generator reads `packages/create-filegrc/template-parameters.json` and asks for three values:
+The generator reads `packages/create-filegrc/template-parameters.json` and asks for four values:
 
 - Company name
-- Policy owner name, shown to the user as "Your name"
+- Initial program lead name
+- Initial program lead organization job title
 - Security contact email
 
-It generates the initial effective date from the current date. These four values replace tokens such as `{{company_name}}` in the template. Creation fails if the template contains an undeclared token or if any token remains after rendering.
+It defaults the program lead email from the security contact, defaults the timezone from the local environment, and generates the initial effective date from the current date. These values replace tokens such as `{{company_name}}` in the template. Creation fails if the template contains an undeclared token or if any token remains after rendering.
 
-This is the smallest useful initial prompt set. The company name identifies the program and appears in policy text. The policy owner gives the seed records an accountable person. The security email gives people one report and escalation route. Timezone defaults to UTC, and users can edit it later. Jurisdiction, industry, risk scoring, retention periods, control owners, system scope, and audit plans do not need create-time prompts.
+This is the smallest useful initial prompt set. The company name identifies the program and appears in policy text. The lead name and job title create an accurate Person record, while a separate dated Policy Owner Appointment gives the starter records an accountable party. The security email gives people one report and escalation route. Timezone defaults to UTC, and users can edit it later. Jurisdiction, industry, risk scoring, retention periods, other control owners, system scope, and audit plans do not need create-time prompts.
 
 ## Starter SOC 2 baseline
 
@@ -192,6 +193,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - All nine Description Criteria reference IDs from DC1 through DC9
 - A planned control catalog mapped to the Common Criteria and starter policies
 - A security and risk oversight team chaired by a reviewer who is separate from the policy owner. The reviewer may be internal or external.
+- A Person with their actual organization job title and a separate dated Policy Owner Appointment scoped to the program.
 - Recurring obligations derived from the fixed review, scan, test, training, and meeting cadences in the starter policies
 - Event obligations for workforce starts, role changes, departures, personal devices, vendor access and reassessment, material system or data-use changes, and incidents
 - General and role-based training, including conditional secure-development, privileged-role, and anti-bribery modules
@@ -410,7 +412,7 @@ Implemented:
 - Overview, list, detail, repository, search, and filter views
 - Guided live JSON and Markdown CRUD, safe related-content deletion, stale-write detection, and a read-only static build
 - Prompt-driven repository creation, sentence-safe template substitution, registry or local-package dependency resolution, lockfile creation, and Git initialization
-- A five-record foundation profile and the default SOC 2 Security starter layer, with optional combined noninteractive service setup
+- A six-record foundation profile and the default SOC 2 Security starter layer, with optional combined noninteractive service setup
 - Full resource fixtures and unit and end-to-end tests using Node.js built-ins
 - Browser journey checks and reviewed desktop, mobile, light, and dark screenshots for the main user flows
 - SOC 2 Security Common Criteria and Description Criteria references, planned controls, oversight ownership, recurring obligations, risk defaults, and classification defaults in newly generated workspaces

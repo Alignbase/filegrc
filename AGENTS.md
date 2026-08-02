@@ -75,6 +75,8 @@ The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 i
 - Treat IDs as immutable after a record is committed.
 - Keep attachments behind evidence records. Do not scatter unexplained files through `data/`.
 - Keep each policy and governed document approver separate from its owner. The reviewer may be another person in the organization or an external person. Most organizations use an internal reviewer with enough authority and separation to challenge the owner. A one-person organization needs an external reviewer because no second internal person is available.
+- Keep identity separate from assigned authority. A Person records the individual’s actual organization job title. A dated Appointment records named authority such as CISO, DPO, Policy Owner, or team chair and may be used by accountable-party fields. Fields that prove who performed, reviewed, collected, verified, attended, or attested to work must continue to name the actual Person.
+- Keep Team membership authoritative on the Team record. Do not add new uses of the legacy `person.teamIds` inverse field.
 - Bind rendered-page evidence to the route, filters, audit period, and Git commit used to create it.
 - Bind signed attestations to the exact Git revisions of the acknowledged policies, training, or other content.
 - Do not commit secrets, credentials, session material, regulated personal data, or confidential reports unless the repository's access and retention rules explicitly permit them.

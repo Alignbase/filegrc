@@ -4,7 +4,7 @@
   "type": "policy",
   "title": "Employee Handbook",
   "status": "draft",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "policyKind": "workforce-conduct",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",

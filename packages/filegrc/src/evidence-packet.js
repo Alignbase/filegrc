@@ -12,6 +12,7 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { validateWorkspace } from "./validate.js";
 
 const NON_EVIDENCE_RECORD_TYPES = new Set([
+  "appointment",
   "audit",
   "audit-population",
   "audit-request",

@@ -118,6 +118,7 @@ function parseArgs(argv) {
     else if (name === "config") options.config = next();
     else if (name === "company-name") options.companyName = next();
     else if (name === "policy-owner-name") options.policyOwnerName = next();
+    else if (name === "policy-owner-job-title") options.policyOwnerJobTitle = next();
     else if (name === "policy-owner-email") options.policyOwnerEmail = next();
     else if (name === "security-contact-email") options.securityContactEmail = next();
     else if (name === "timezone") options.timezone = next();
@@ -148,7 +149,8 @@ Create a filegrc workspace for a SOC 2 program.
 Options:
   --config <json-file|->            Read creation and optional setup values
   --company-name <legal-name>       Legal organization name
-  --policy-owner-name <name>        Initial policy owner
+  --policy-owner-name <name>        Initial program lead
+  --policy-owner-job-title <title>  Program lead's organization job title
   --policy-owner-email <email>      Policy owner's email address
   --security-contact-email <email>  Security reporting address
   --timezone <iana-timezone>        Program timezone, such as America/Chicago
@@ -160,7 +162,7 @@ Options:
   --repository-remote <name>        Browser sync remote, defaults to origin
   --service-name <name>             Complete service setup after creation
   --boundary <description>          Initial service boundary
-  --service-owner <person-id>       Defaults to person-policy-owner
+  --service-owner <person-id>       Defaults to person-program-lead
   --criticality <level>             low, medium, high, or critical
   --classification <name>           Initial data classification
   --internet-exposed <bool>         true or false

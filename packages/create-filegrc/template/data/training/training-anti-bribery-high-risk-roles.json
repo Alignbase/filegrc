@@ -4,7 +4,7 @@
   "type": "training",
   "title": "Anti-Bribery Training for Higher-Risk Roles",
   "status": "draft",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "audience": ["sales", "finance", "procurement", "government-interaction", "third-party-agents"],
   "assignmentTrigger": "covered-role-start-or-change",
   "completionWindowDays": 30,

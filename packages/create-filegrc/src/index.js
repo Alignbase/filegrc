@@ -172,6 +172,7 @@ async function resolvePromptValues(parameters, options) {
   const mapped = {
     company_name: options.companyName,
     policy_owner_name: options.policyOwnerName,
+    policy_owner_job_title: options.policyOwnerJobTitle,
     policy_owner_email: options.policyOwnerEmail,
     security_contact_email: options.securityContactEmail,
     timezone: options.timezone
@@ -179,6 +180,7 @@ async function resolvePromptValues(parameters, options) {
   if (options.yes) {
     mapped.company_name ??= "Example Company";
     mapped.policy_owner_name ??= "Security Owner";
+    mapped.policy_owner_job_title ??= "Chief Executive Officer";
     mapped.security_contact_email ??= "security@example.com";
   }
   for (const key of Object.keys(mapped)) {
@@ -208,7 +210,7 @@ async function resolvePromptValues(parameters, options) {
   if (missing.length) {
     throw new Error(`Missing required values: ${missing.map(({ key }) => key).join(", ")}`);
   }
-  for (const key of ["company_name", "policy_owner_name"]) {
+  for (const key of ["company_name", "policy_owner_name", "policy_owner_job_title"]) {
     if (/[\u0000-\u001f\u007f]/.test(mapped[key])) {
       throw new Error(`${key} must be a single line without control characters.`);
     }
@@ -481,7 +483,7 @@ function validateCombinedSetup(setup) {
 }
 
 async function runCombinedSetup(target, input) {
-  const setup = { programGoal: "none", ownerId: "person-policy-owner", ...input };
+  const setup = { programGoal: "none", ownerId: "person-program-lead", ...input };
   const args = [
     join(target, "node_modules", "filegrc", "bin", "filegrc.js"),
     "setup",

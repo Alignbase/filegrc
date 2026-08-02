@@ -8,6 +8,7 @@ const TITLES = {
   workspace: "Example Engineering SOC 2 Program",
   "renderer-settings": "Renderer settings",
   person: "Jordan Lee",
+  appointment: "Chief Information Security Officer",
   "service-account": "Deployment automation",
   team: "Risk and Security Committee",
   system: "Production application",
@@ -48,6 +49,7 @@ const TITLES = {
 
 const STATUS_OVERRIDES = {
   person: "active",
+  appointment: "active",
   "service-account": "active",
   team: "active",
   system: "active",
@@ -172,6 +174,7 @@ function sampleValue(name, field, ids, model, type) {
   if (name === "organizationName") return "Example Engineering";
   if (name === "timezone") return "America/Chicago";
   if (name === "version") return "2026";
+  if (name === "appointmentKind") return "policy-owner";
   if (name === "email") return "security@example.test";
   if (name === "source") return "Repository workflow";
   if (name === "scope") return "Production application and supporting operations";
@@ -189,6 +192,7 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
   };
   set("tags", ["example", "security"]);
   set("description", `A realistic example ${humanize(type).toLowerCase()} used to exercise the complete workspace.`);
+  if (type === "person") set("jobTitle", "Chief Executive Officer");
   set("code", "SEC-01");
   set("dueOn", "2026-08-15");
   set("completedOn", "2026-06-30");

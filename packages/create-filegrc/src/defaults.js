@@ -3,7 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 
 const FRAMEWORK_ID = "framework-aicpa-trust-services-criteria";
 const DESCRIPTION_FRAMEWORK_ID = "framework-aicpa-soc2-description-criteria";
-const OWNER_ID = "person-policy-owner";
+const PROGRAM_LEAD_ID = "person-program-lead";
+const POLICY_OWNER_APPOINTMENT_ID = "appointment-policy-owner";
 const OVERSIGHT_TEAM_ID = "team-security-risk-oversight";
 const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
 const DATA_POLICY_ID = "policy-data-protection-handling";
@@ -435,7 +436,7 @@ const obligations = [
     title: "Annual policy and governed-plan review",
     activityType: "policy-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: [
       "policy-anti-bribery-corruption",
       "policy-clear-desk-screen",
@@ -463,7 +464,7 @@ const obligations = [
     title: "Annual security awareness training",
     activityType: "training",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ["training-security-awareness"],
     templateResourceId: "training-security-awareness",
     controlIds: ["control-security-training"],
@@ -474,7 +475,7 @@ const obligations = [
     title: "Annual workforce performance review",
     activityType: "performance-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-performance-review"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -483,7 +484,7 @@ const obligations = [
     title: "Quarterly privileged and production access review",
     activityType: "access-review",
     recurrence: calendar("month", 3),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -492,7 +493,7 @@ const obligations = [
     title: "Annual important-system access review",
     activityType: "access-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -501,7 +502,7 @@ const obligations = [
     title: "Annual system, company and personal device, vendor, and data inventory review",
     activityType: "inventory-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration", "control-data-classification-inventory"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -510,7 +511,7 @@ const obligations = [
     title: "Monthly endpoint malware scan",
     activityType: "security-scan",
     recurrence: calendar("month", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-endpoint-protection"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -519,7 +520,7 @@ const obligations = [
     title: "Annual firewall and network access review",
     activityType: "network-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-network-security"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -528,7 +529,7 @@ const obligations = [
     title: "Quarterly vulnerability scan",
     activityType: "vulnerability-scan",
     recurrence: calendar("month", 3),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vulnerability-management"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -537,7 +538,7 @@ const obligations = [
     title: "Annual independent penetration test",
     activityType: "penetration-test",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-penetration-testing"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -546,7 +547,7 @@ const obligations = [
     title: "Quarterly security log and log-access review",
     activityType: "log-review",
     recurrence: calendar("month", 3),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-logging-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -555,7 +556,7 @@ const obligations = [
     title: "Annual incident response and alert-path exercise",
     activityType: "exercise",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ["document-incident-response-plan"],
     templateResourceId: "document-incident-response-plan",
     controlIds: ["control-incident-exercise", "control-logging-monitoring"],
@@ -566,7 +567,7 @@ const obligations = [
     title: "Annual backup restoration test",
     activityType: "backup-test",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-backup-restoration"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -586,7 +587,7 @@ const obligations = [
     title: "Annual critical and high-risk vendor review",
     activityType: "vendor-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -595,7 +596,7 @@ const obligations = [
     title: "Annual emergency contact review",
     activityType: "continuity-review",
     recurrence: calendar("year", 1),
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ["document-business-continuity-disaster-recovery"],
     controlIds: ["control-continuity-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -608,7 +609,7 @@ const obligations = [
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(0),
     completionResourceTypes: ["attestation", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-workforce-expectations"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -620,7 +621,7 @@ const obligations = [
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(0),
     completionResourceTypes: ["access-grant", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -632,7 +633,7 @@ const obligations = [
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(0),
     completionResourceTypes: ["asset"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -644,7 +645,7 @@ const obligations = [
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(30),
     completionResourceTypes: ["attestation", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ["training-security-awareness"],
     templateResourceId: "training-security-awareness",
     controlIds: ["control-security-training"],
@@ -658,7 +659,7 @@ const obligations = [
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(30),
     completionResourceTypes: ["attestation", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ROLE_TRAINING_IDS,
     controlIds: ["control-security-training"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
@@ -671,7 +672,7 @@ const obligations = [
     triggerPrompt: "Employee or contractor departing?",
     window: eventWindowHours(24),
     completionResourceTypes: ["access-grant", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -683,7 +684,7 @@ const obligations = [
     triggerPrompt: "Employee or contractor departing?",
     window: eventWindow(7),
     completionResourceTypes: ["asset", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding", "control-inventory-configuration"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -695,7 +696,7 @@ const obligations = [
     triggerPrompt: "Involuntary or high-risk departure?",
     window: eventWindowHours(0),
     completionResourceTypes: ["access-grant", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -707,7 +708,7 @@ const obligations = [
     triggerPrompt: "Worker role changed?",
     window: eventWindow(3),
     completionResourceTypes: ["access-grant", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization", "control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -719,7 +720,7 @@ const obligations = [
     triggerPrompt: "Worker role changed?",
     window: eventWindow(30),
     completionResourceTypes: ["attestation", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ROLE_TRAINING_IDS,
     controlIds: ["control-security-training"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
@@ -732,7 +733,7 @@ const obligations = [
     triggerPrompt: "Personal device needs company access?",
     window: eventWindow(0),
     completionResourceTypes: ["evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization", "control-endpoint-protection"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
   },
@@ -744,7 +745,7 @@ const obligations = [
     triggerPrompt: "Personal device needs company access?",
     window: eventWindow(0),
     completionResourceTypes: ["asset", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration", "control-endpoint-protection"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
   },
@@ -756,7 +757,7 @@ const obligations = [
     triggerPrompt: "New vendor access or data use?",
     window: eventWindow(0),
     completionResourceTypes: ["vendor-review", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -768,7 +769,7 @@ const obligations = [
     triggerPrompt: "New vendor access or data use?",
     window: eventWindow(0),
     completionResourceTypes: ["document", "vendor"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -780,7 +781,7 @@ const obligations = [
     triggerPrompt: "Vendor changed materially or had an incident?",
     window: eventWindow(30),
     completionResourceTypes: ["vendor-review", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -792,7 +793,7 @@ const obligations = [
     triggerPrompt: "Vendor changed materially or had an incident?",
     window: eventWindow(30),
     completionResourceTypes: ["vendor", "risk", "document", "action-item", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring", "control-data-classification-inventory"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
@@ -816,7 +817,7 @@ const obligations = [
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
     completionResourceTypes: ["vulnerability-scan", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vulnerability-management"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -840,7 +841,7 @@ const obligations = [
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
     completionResourceTypes: ["document", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: [RETENTION_SCHEDULE_ID],
     templateResourceId: RETENTION_SCHEDULE_ID,
     controlIds: ["control-data-retention-disposal", "control-data-classification-inventory"],
@@ -854,7 +855,7 @@ const obligations = [
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
     completionResourceTypes: ["control-test", "exercise", "evidence"],
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-logging-monitoring", "control-incident-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -948,7 +949,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: control.title,
     status: "planned",
     statement: control.statement,
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     requirementIds: control.requirements.map(requirementId),
     code: control.code,
     activity: control.activity,
@@ -964,7 +965,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: "Security and Risk Oversight",
     status: "inactive",
     purpose: "Provide independent oversight of the security program, risk register, incidents, findings, vendor and access reviews, policy changes, exercises, and overdue work. The chair must be separate from the policy owner and people who operate the controls under review.",
-    memberIds: [OWNER_ID],
+    memberIds: [PROGRAM_LEAD_ID],
     chairIds: [],
     meetingCadence: calendar("month", 3, effectiveDate)
   };
@@ -975,7 +976,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: "filegrc Program Repository",
     status: "active",
     criticality: "high",
-    ownerIds: [OWNER_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     description: "The Git repository that is authoritative for filegrc governance records, approvals, exceptions, findings, acknowledgements, evidence indexes, and their revision history.",
     systemKind: "governance-system-of-record",
     environment: "Git repository",
@@ -983,7 +984,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     internetExposed: false,
     inScope: false,
     evidenceSourceKinds: ["training-acknowledgement", "exception-finding"],
-    evidenceOwnerIds: [OWNER_ID]
+    evidenceOwnerIds: [POLICY_OWNER_APPOINTMENT_ID]
   };
   const obligationRecords = obligations.map((obligation) => ({
     schemaVersion: 1,

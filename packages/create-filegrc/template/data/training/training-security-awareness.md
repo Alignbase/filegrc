@@ -162,7 +162,7 @@ Report any event that could affect the confidentiality, integrity, or availabili
 ## Reporting and first actions
 
 1. Stop the unsafe action. Do not continue entering credentials, sending data, or following the request.
-2. Report the event immediately to {{security_contact_email}}. If that route is unavailable, contact {{policy_owner_name}} through an approved alternate method.
+2. Report the event immediately to {{security_contact_email}}. If that route is unavailable, contact the current Policy Owner through an approved alternate method.
 3. State what happened, when it happened, the affected account, device, system, or data, and any action already taken.
 4. Preserve the message, file, screen, device, or other evidence. Take a screenshot only when it is safe and does not expose more sensitive data.
 5. Follow response-team instructions. Remain available for questions.

@@ -198,6 +198,77 @@ export async function createResources(input, records) {
   return serializeWorkspaceMutation(input, (root) => createResourcesUnlocked(root, records));
 }
 
+export async function applyResourceBatch(input, changes) {
+  return serializeWorkspaceMutation(input, (root) => applyResourceBatchUnlocked(root, changes));
+}
+
+async function applyResourceBatchUnlocked(input, changes = {}) {
+  const creates = changes.create || [];
+  const updates = changes.update || [];
+  const expectedRevisions = changes.expectedRevisions || {};
+  if (!Array.isArray(creates) || !Array.isArray(updates) || (!creates.length && !updates.length)) {
+    throw new Error("A resource batch needs at least one create or update.");
+  }
+  if (Array.isArray(expectedRevisions) || typeof expectedRevisions !== "object") {
+    throw new Error("Batch expected revisions must be keyed by resource ID.");
+  }
+  const loaded = await loadWorkspace(input);
+  const before = await validateWorkspace(loaded);
+  const existingById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
+  const ids = new Set();
+  const writes = [];
+  for (const record of creates) {
+    validateBatchRecord(record, ids);
+    if (existingById.has(record.id)) throw new Error(`Resource "${record.id}" already exists.`);
+    const path = resourcePath(loaded.root, loaded.model, record);
+    writes.push({ mode: "create", path, record, previous: null });
+  }
+  for (const record of updates) {
+    validateBatchRecord(record, ids);
+    const existing = existingById.get(record.id);
+    if (!existing) throw new Error(`Resource "${record.id}" was not found.`);
+    if (existing.record.type !== record.type) {
+      throw new Error(`Resource "${record.id}" cannot change type.`);
+    }
+    const path = resourcePath(loaded.root, loaded.model, record);
+    const previous = await readFile(path, "utf8");
+    assertRevision(
+      previous,
+      expectedRevisions[record.id] || existing.revision,
+      `Resource "${record.id}"`
+    );
+    writes.push({ mode: "update", path, record, previous });
+  }
+  const written = [];
+  try {
+    for (const item of writes) {
+      await writeAtomic(item.path, item.record, { exclusive: item.mode === "create" });
+      written.push(item);
+    }
+    const result = await validateWorkspace(loaded.root);
+    const introduced = newErrors(result, before);
+    if (introduced.length) throw new Error(formatWriteFailure(introduced, "resource batch"));
+  } catch (error) {
+    for (const item of written.reverse()) {
+      if (item.mode === "create") await rm(item.path, { force: true });
+      else await writeTextAtomic(item.path, item.previous);
+    }
+    throw error;
+  }
+  return {
+    created: creates,
+    updated: updates
+  };
+}
+
+function validateBatchRecord(record, ids) {
+  if (!record || Array.isArray(record) || typeof record !== "object") {
+    throw new Error("Every resource in a batch must be a JSON object.");
+  }
+  if (ids.has(record.id)) throw new Error(`Resource "${record.id}" appears more than once in the batch.`);
+  ids.add(record.id);
+}
+
 export async function createResourceAndLink(input, record, linkTarget, options = {}) {
   return serializeWorkspaceMutation(input, (root) => createResourceAndLinkUnlocked(root, record, linkTarget, options));
 }
@@ -505,7 +576,7 @@ function assertRevision(source, expected, label) {
   }
 }
 
-function contentRevision(source) {
+export function contentRevision(source) {
   return createHash("sha256").update(source).digest("hex");
 }
 

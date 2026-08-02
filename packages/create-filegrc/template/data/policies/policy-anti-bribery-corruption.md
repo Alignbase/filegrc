@@ -70,7 +70,7 @@ Transactions must be recorded promptly, accurately, and with enough detail to ex
 
 ## Reporting
 
-Report questions, suspected violations, requests for improper payments, or inaccurate records to {{policy_owner_name}} at {{security_contact_email}}. Reports may be made without first notifying a manager.
+Report questions, suspected violations, requests for improper payments, or inaccurate records to the current Policy Owner at {{security_contact_email}}. Reports may be made without first notifying a manager.
 
 {{company_name}} prohibits retaliation against anyone who reports a concern or participates in an investigation in good faith.
 

@@ -18,7 +18,8 @@ export async function makeWorkspace(root) {
     type: "person",
     title: "Program Owner",
     status: "active",
-    email: "security@example.com"
+    email: "security@example.com",
+    jobTitle: "Chief Executive Officer"
   });
   await writeJson(join(root, "data", "people", "person-approver.json"), {
     schemaVersion: 1,
@@ -26,7 +27,8 @@ export async function makeWorkspace(root) {
     type: "person",
     title: "Internal Reviewer",
     status: "active",
-    email: "approver@example.com"
+    email: "approver@example.com",
+    jobTitle: "Chief Operating Officer"
   });
 }
 

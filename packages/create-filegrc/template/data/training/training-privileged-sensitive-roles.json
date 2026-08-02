@@ -4,7 +4,7 @@
   "type": "training",
   "title": "Privileged and Sensitive Role Training",
   "status": "draft",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "audience": ["privileged-administrators", "security", "finance", "privacy", "people-operations"],
   "assignmentTrigger": "covered-role-start-or-change",
   "completionWindowDays": 30,

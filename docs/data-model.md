@@ -16,8 +16,9 @@ The renderer, CLI, generated agent instructions, and this reference use the same
 
 Confirm the people and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.
 
-- **People** (`person`): Confirm the policy owner created during setup, then add the actual people who will approve, review, or operate the program.
-- **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Add another team only when the organization assigns shared responsibility to it.
+- **People** (`person`): Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
+- **Appointments** (`appointment`): Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
+- **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Review each criterion, decide whether it applies, and record the reason for that decision.
 - **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design.
@@ -28,6 +29,7 @@ Headless commands:
 
 - `npx filegrc setup`
 - `npx filegrc guide person --json`
+- `npx filegrc guide appointment --json`
 - `npx filegrc guide system --json`
 - `npx filegrc list system --json`
 
@@ -138,7 +140,7 @@ Headless commands:
 | `id` | string (id) | Yes | ID |
 | `type` | string | Yes | Type |
 | `title` | string | Yes | Title |
-| `ownerIds` | array of id | No | Owners References: `person`, `team` |
+| `ownerIds` | array of id | No | Owners References: `person`, `team`, `appointment` |
 | `tags` | array of string | No | Tags |
 | `relatedResourceIds` | array of id | No | Related resources References: `*` |
 | `extensions` | object | No | Extensions |
@@ -380,11 +382,39 @@ Record Markdown: shown by default as an implicit companion file.
 
 ### Governance
 
+#### `appointment`
+
+One person’s dated appointment to a named organizational or program responsibility, such as CISO, DPO, Policy Owner, or team chair. Use the Person job title for the person’s ordinary organizational position.
+
+Instructions: Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
+
+Policy basis: The information security policy assigns named authority and accountability, while workforce procedures require responsibility changes and departures to be reviewed and transferred.
+
+Timing: Create when management assigns a named responsibility. End the Appointment and create a new one when the holder changes. Reassign every linked responsibility before a holder departs.
+
+Default sources: `policy-information-security`, `policy-employee-handbook`
+
+Path: `data/appointments/<id>.json`
+
+Record Markdown: available when needed as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `planned`, `active`, `ended` |
+| `appointmentKind` | string (id) | Yes | Appointment kind |
+| `holderId` | id | Yes | Holder References: `person` |
+| `scopeResourceIds` | array of id | Yes | Scope References: `*` |
+| `startsOn` | date | Conditional | Required when `status` is `active,ended` |
+| `endsOn` | date | Conditional | Required when `status` is `ended` |
+| `appointedByIds` | array of id | No | Appointed by References: `person`, `team` |
+| `responsibilities` | string | No |  |
+| `evidenceIds` | array of id | No | References: `evidence` |
+
 #### `team`
 
 Groups that share program responsibility, such as security oversight or incident response. Team records are not required for SOC 2 when named People hold the responsibilities directly.
 
-Instructions: Review the starter Security and Risk Oversight team, including its members and chair. Add another team only when the organization assigns shared responsibility to it.
+Instructions: Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.
 
 Policy basis: The information security policy establishes security and risk oversight with independent review, while the continuity plan assigns response and recovery roles. Reviewers may be internal or external.
 
@@ -403,7 +433,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `status` | enum | Yes | Values: `active`, `inactive` |
 | `purpose` | string | Yes |  |
 | `memberIds` | array of id | Yes | References: `person` |
-| `chairIds` | array of id | No | References: `person` |
+| `chairIds` | array of id | No | References: `person`, `appointment` |
 | `charterDocumentId` | id | No | References: `document` |
 | `meetingCadence` | object | No |  |
 
@@ -755,13 +785,13 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `person`
 
-People who own, approve, review, or perform program work, or receive access and training. Keep detailed personnel records in the HR system.
+People who own, approve, review, or perform program work, or receive access and training. Record each person’s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.
 
-Instructions: Confirm the policy owner created during setup, then add the actual people who will approve, review, or operate the program.
+Instructions: Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
 
 Policy basis: The information security policy and employee handbook assign work to named people and require onboarding, training, role-change, and offboarding records.
 
-Timing: Create before assigning work or access, update after role changes, and mark inactive at departure. Training is due within 30 days of starting and annually.
+Timing: Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training is due within 30 days of starting and annually.
 
 Default sources: `policy-information-security`, `policy-employee-handbook`
 
@@ -775,13 +805,15 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `active`, `inactive`, `external` |
 | `email` | string (email) | No |  |
-| `role` | string | No |  |
+| `jobTitle` | string | No | Organization job title |
+| `role` | string | No | Legacy role (use jobTitle) |
 | `department` | string | No |  |
 | `managerId` | id | No | References: `person` |
 | `startDate` | date | No |  |
 | `endDate` | date | No |  |
 | `employmentType` | string | No |  |
-| `teamIds` | array of id | No | References: `team` |
+| `organization` | string | No |  |
+| `teamIds` | array of id | No | Legacy teams (derived from Team membership) References: `team` |
 
 #### `service-account`
 
@@ -919,7 +951,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `commitmentIds` | array of id | No | References: `commitment` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `evidenceSourceKinds` | array of string | No | Evidence source roles |
-| `evidenceOwnerIds` | array of id | No | Evidence access owners References: `person`, `team` |
+| `evidenceOwnerIds` | array of id | No | Evidence access owners References: `person`, `team`, `appointment` |
 | `continuityObjectives` | object | No |  |
 
 #### `asset`
@@ -945,7 +977,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `status` | enum | Yes | Values: `active`, `lost`, `retired`, `disposed` |
 | `assetKind` | string | Yes |  |
 | `criticality` | enum | Yes | Values: `low`, `medium`, `high`, `critical` |
-| `custodianIds` | array of id | Yes | References: `person`, `team` |
+| `custodianIds` | array of id | Yes | References: `person`, `team`, `appointment` |
 | `businessPurpose` | string | No |  |
 | `serialOrAssetTag` | string | No |  |
 | `systemIds` | array of id | No | References: `system` |
@@ -1391,7 +1423,7 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `in-progress`, `blocked`, `done`, `canceled` |
-| `assigneeIds` | array of id | Yes | References: `person`, `team` |
+| `assigneeIds` | array of id | Yes | References: `person`, `team`, `appointment` |
 | `sourceResourceId` | id | Yes | References: `*` |
 | `description` | string | No |  |
 | `priority` | rating | No |  |

@@ -63,7 +63,7 @@ The policy owner reviews authorized mobile devices, personal-device approvals, a
 
 ## Loss, theft, or compromise
 
-Report a lost, stolen, or suspected compromised device immediately to {{policy_owner_name}} at {{security_contact_email}}. Do not delay reporting while attempting to recover or investigate the device.
+Report a lost, stolen, or suspected compromised device immediately to the current Policy Owner at {{security_contact_email}}. Do not delay reporting while attempting to recover or investigate the device.
 
 ## Return and disposal
 

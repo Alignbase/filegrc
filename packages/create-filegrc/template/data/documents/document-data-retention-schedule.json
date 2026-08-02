@@ -5,7 +5,7 @@
   "title": "Data Retention Schedule",
   "status": "draft",
   "documentKind": "schedule",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
   "reviewCadence": {

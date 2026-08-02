@@ -48,7 +48,7 @@
     "id": {"type":"string","format":"id","required":true,"label":"ID"},
     "type": {"type":"string","required":true,"label":"Type"},
     "title": {"type":"string","required":true,"label":"Title","search":true},
-    "ownerIds": {"type":"array","items":"id","relation":["person","team"],"label":"Owners","filter":true},
+    "ownerIds": {"type":"array","items":"id","relation":["person","team","appointment"],"label":"Owners","filter":true},
     "tags": {"type":"array","items":"string","label":"Tags","filter":true,"search":true},
     "relatedResourceIds": {"type":"array","items":"id","relation":["*"],"label":"Related resources"},
     "extensions": {"type":"object","label":"Extensions"}
@@ -125,10 +125,10 @@
       "pluralTitle": "People",
       "group": "people-access",
       "collection": "people",
-      "description": "People who own, approve, review, or perform program work, or receive access and training. Keep detailed personnel records in the HR system.",
+      "description": "People who own, approve, review, or perform program work, or receive access and training. Record each person’s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.",
       "guidance": {
         "policyBasis": "The information security policy and employee handbook assign work to named people and require onboarding, training, role-change, and offboarding records.",
-        "cadence": "Create before assigning work or access, update after role changes, and mark inactive at departure. Training is due within 30 days of starting and annually.",
+        "cadence": "Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training is due within 30 days of starting and annually.",
         "sourceResourceIds": ["policy-information-security","policy-employee-handbook"],
         "obligationActivityTypes": ["training","performance-review"]
       },
@@ -136,15 +136,42 @@
       "fields": {
         "status": {"type":"enum","values":["active","inactive","external"],"filter":true},
         "email": {"type":"string","format":"email","search":true},
-        "role": {"type":"string","search":true},
+        "jobTitle": {"type":"string","label":"Organization job title","search":true},
+        "role": {"type":"string","label":"Legacy role (use jobTitle)","search":true},
         "department": {"type":"string","filter":true},
         "managerId": {"type":"id","relation":["person"]},
         "startDate": {"type":"date"},
         "endDate": {"type":"date"},
         "employmentType": {"type":"string","filter":true},
-        "teamIds": {"type":"array","items":"id","relation":["team"]}
+        "organization": {"type":"string","search":true},
+        "teamIds": {"type":"array","items":"id","relation":["team"],"label":"Legacy teams (derived from Team membership)"}
       },
-      "listFields": ["title","status","role","department"]
+      "listFields": ["title","status","jobTitle","department"]
+    },
+    "appointment": {
+      "title": "Appointment",
+      "pluralTitle": "Appointments",
+      "group": "governance",
+      "collection": "appointments",
+      "description": "One person’s dated appointment to a named organizational or program responsibility, such as CISO, DPO, Policy Owner, or team chair. Use the Person job title for the person’s ordinary organizational position.",
+      "guidance": {
+        "policyBasis": "The information security policy assigns named authority and accountability, while workforce procedures require responsibility changes and departures to be reviewed and transferred.",
+        "cadence": "Create when management assigns a named responsibility. End the Appointment and create a new one when the holder changes. Reassign every linked responsibility before a holder departs.",
+        "sourceResourceIds": ["policy-information-security","policy-employee-handbook"]
+      },
+      "required": ["status","appointmentKind","holderId","scopeResourceIds"],
+      "fields": {
+        "status": {"type":"enum","values":["planned","active","ended"],"filter":true},
+        "appointmentKind": {"type":"string","format":"id","label":"Appointment kind","filter":true,"search":true},
+        "holderId": {"type":"id","relation":["person"],"label":"Holder"},
+        "scopeResourceIds": {"type":"array","items":"id","relation":["*"],"label":"Scope"},
+        "startsOn": {"type":"date","requiredWhen":{"status":["active","ended"]}},
+        "endsOn": {"type":"date","requiredWhen":{"status":"ended"}},
+        "appointedByIds": {"type":"array","items":"id","relation":["person","team"],"label":"Appointed by"},
+        "responsibilities": {"type":"string","search":true},
+        "evidenceIds": {"type":"array","items":"id","relation":["evidence"]}
+      },
+      "listFields": ["title","status","appointmentKind","holderId","startsOn","endsOn"]
     },
     "service-account": {
       "title": "Service account",
@@ -190,7 +217,7 @@
         "status": {"type":"enum","values":["active","inactive"],"filter":true},
         "purpose": {"type":"string","search":true},
         "memberIds": {"type":"array","items":"id","relation":["person"]},
-        "chairIds": {"type":"array","items":"id","relation":["person"]},
+        "chairIds": {"type":"array","items":"id","relation":["person","appointment"]},
         "charterDocumentId": {"type":"id","relation":["document"]},
         "meetingCadence": {"type":"object"}
       },
@@ -225,7 +252,7 @@
         "commitmentIds": {"type":"array","items":"id","relation":["commitment"]},
         "subserviceVendorIds": {"type":"array","items":"id","relation":["vendor"]},
         "evidenceSourceKinds": {"type":"array","items":"string","label":"Evidence source roles","filter":true,"search":true},
-        "evidenceOwnerIds": {"type":"array","items":"id","relation":["person","team"],"label":"Evidence access owners"},
+        "evidenceOwnerIds": {"type":"array","items":"id","relation":["person","team","appointment"],"label":"Evidence access owners"},
         "continuityObjectives": {"type":"object"}
       },
       "listFields": ["title","status","criticality","environment","inScope"]
@@ -248,7 +275,7 @@
         "status": {"type":"enum","values":["active","lost","retired","disposed"],"filter":true},
         "assetKind": {"type":"string","filter":true},
         "criticality": {"type":"enum","values":["low","medium","high","critical"],"filter":true},
-        "custodianIds": {"type":"array","items":"id","relation":["person","team"]},
+        "custodianIds": {"type":"array","items":"id","relation":["person","team","appointment"]},
         "businessPurpose": {"type":"string","search":true},
         "serialOrAssetTag": {"type":"string","search":true},
         "systemIds": {"type":"array","items":"id","relation":["system"]},
@@ -647,7 +674,7 @@
       "required": ["status","assigneeIds","sourceResourceId"],
       "fields": {
         "status": {"type":"enum","values":["open","in-progress","blocked","done","canceled"],"filter":true},
-        "assigneeIds": {"type":"array","items":"id","relation":["person","team"]},
+        "assigneeIds": {"type":"array","items":"id","relation":["person","team","appointment"]},
         "sourceResourceId": {"type":"id","relation":["*"]},
         "description": {"type":"string","search":true},
         "priority": {"type":"rating","filter":true},

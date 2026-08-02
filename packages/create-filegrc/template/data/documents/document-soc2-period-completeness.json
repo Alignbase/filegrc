@@ -7,7 +7,7 @@
   "documentKind": "soc2-period-completeness",
   "template": true,
   "ownerIds": [
-    "person-policy-owner"
+    "appointment-policy-owner"
   ],
   "version": "0.1",
   "classification": "Confidential"

@@ -22,8 +22,8 @@ test("v1 model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 41);
-  for (const type of ["workspace", "renderer-settings", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit", "audit-population"]) {
+  assert.equal(Object.keys(model.resources).length, 42);
+  for (const type of ["workspace", "renderer-settings", "person", "appointment", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit", "audit-population"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }
   for (const [type, resource] of Object.entries(model.resources)) {
@@ -45,6 +45,25 @@ test("v1 model exposes the complete resource registry", () => {
     );
   }
   assert.equal(model.resources.person.titleLabel, "Name");
+  assert.equal(model.resources.person.fields.jobTitle.label, "Organization job title");
+  assert.deepEqual(model.commonFields.ownerIds.relation, ["person", "team", "appointment"]);
+  assert.deepEqual(model.resources.appointment.required, ["status", "appointmentKind", "holderId", "scopeResourceIds"]);
+  assert.deepEqual(model.resources.appointment.fields.startsOn.requiredWhen, { status: ["active", "ended"] });
+  assert.deepEqual(model.resources.appointment.fields.endsOn.requiredWhen, { status: "ended" });
+  assert.deepEqual(model.resources.team.fields.chairIds.relation, ["person", "appointment"]);
+  for (const [type, field] of [
+    ["document", "approverIds"],
+    ["exception", "approvedByIds"],
+    ["policy", "approverIds"],
+    ["policy-review", "approverIds"],
+    ["risk", "acceptedByIds"]
+  ]) {
+    assert.equal(
+      model.resources[type].fields[field].relation.includes("appointment"),
+      false,
+      `${type}.${field} must identify the decision actor rather than an Appointment`
+    );
+  }
   assert.equal(model.resources.policy.titleLabel, undefined);
   assert.equal(model.resources.evidence.title, "External Evidence");
   assert.equal(model.resources.evidence.pluralTitle, "External Evidence");

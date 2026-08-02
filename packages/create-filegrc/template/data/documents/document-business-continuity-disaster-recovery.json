@@ -5,7 +5,7 @@
   "title": "Business Continuity and Disaster Recovery Plan",
   "status": "draft",
   "documentKind": "plan",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
   "reviewCadence": {

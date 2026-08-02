@@ -33,7 +33,7 @@ During a disruption, {{company_name}} will:
 
 ### Policy owner
 
-{{policy_owner_name}} owns this plan and keeps it current. The policy owner may delegate response duties but remains accountable for the plan.
+The current Policy Owner owns this plan and keeps it current. The Policy Owner may delegate response duties but remains accountable for the plan.
 
 ### Security and risk oversight
 

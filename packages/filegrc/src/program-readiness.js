@@ -188,6 +188,9 @@ function programOwnershipItem(records, byId) {
   ));
   const unresolved = ownedRecords.filter((record) => currentPartyPeople(record.ownerIds, byId).size === 0);
   const currentOwners = new Set(ownedRecords.flatMap((record) => [...currentPartyPeople(record.ownerIds, byId)]));
+  const missingJobTitles = [...currentOwners]
+    .map((id) => byId.get(id))
+    .filter((record) => record?.type === "person" && record.status === "active" && !String(record.jobTitle || "").trim());
   const oversight = byId.get("team-security-risk-oversight");
   const policyOwnerIds = new Set(records
     .filter((record) => record.type === "policy" && !["retired", "superseded"].includes(record.status))
@@ -202,7 +205,10 @@ function programOwnershipItem(records, byId) {
     && oversightChairs.size > 0
     && ![...oversightChairs].some((id) => policyOwnerIds.has(id))
   );
-  const complete = currentOwners.size > 0 && unresolved.length === 0 && oversightComplete;
+  const complete = currentOwners.size > 0
+    && unresolved.length === 0
+    && missingJobTitles.length === 0
+    && oversightComplete;
   const unresolvedAssignments = unresolved.map((record) => ({
     resourceType: record.type,
     resourceId: record.id,
@@ -214,6 +220,9 @@ function programOwnershipItem(records, byId) {
   if (!currentOwners.size) detail.push("No current person owns the program records.");
   if (unresolved.length) {
     detail.push(`${unresolved.length} ${unresolved.length === 1 ? "record has" : "records have"} no current person owner.`);
+  }
+  if (missingJobTitles.length) {
+    detail.push(`${missingJobTitles.length} active ${missingJobTitles.length === 1 ? "owner needs" : "owners need"} an organizational job title.`);
   }
   if (!oversightComplete) detail.push("Finish and activate Security and Risk Oversight with a current chair who is separate from policy ownership.");
   const oversightId = oversight?.id ? shellArgument(oversight.id) : null;
@@ -227,9 +236,11 @@ function programOwnershipItem(records, byId) {
     !oversightComplete ? oversight : unresolved[0] || { type: "person" },
     {
       unresolvedAssignments,
+      missingJobTitleIds: missingJobTitles.map(({ id }) => id),
       ...(!oversightComplete && oversight ? {
         commands: [
           "npx filegrc guide person --json",
+          "npx filegrc guide appointment --json",
           "npx filegrc list person --json",
           'npx filegrc scaffold person --title "REVIEWER NAME" | npx filegrc create - --json',
           `npx filegrc get ${oversightId} --mutation`,
@@ -251,8 +262,13 @@ function ownershipResolutionReasons(ownerIds, byId) {
     if (owner.type === "team" && owner.status !== "active") {
       return [{ ownerId, reason: "inactive-team" }];
     }
+    if (owner.type === "appointment" && owner.status !== "active") {
+      return [{ ownerId, reason: "inactive-appointment" }];
+    }
     if (currentPartyPeople([ownerId], byId).size === 0) {
-      return [{ ownerId, reason: owner.type === "team" ? "team-has-no-current-members" : "no-current-person" }];
+      if (owner.type === "team") return [{ ownerId, reason: "team-has-no-current-members" }];
+      if (owner.type === "appointment") return [{ ownerId, reason: "appointment-has-no-current-holder" }];
+      return [{ ownerId, reason: "no-current-person" }];
     }
     return [];
   });

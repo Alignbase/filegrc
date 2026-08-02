@@ -1,6 +1,7 @@
 export const RESOURCE_INSTRUCTIONS = {
-  person: "Confirm the policy owner created during setup, then add the actual people who will approve, review, or operate the program.",
-  team: "Review the starter Security and Risk Oversight team, including its members and chair. Add another team only when the organization assigns shared responsibility to it.",
+  person: "Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.",
+  appointment: "Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.",
+  team: "Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.",
   system: "Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software).",
   vendor: "Catalog the companies that provide in-scope software or services. Link each vendor-provided System to the company that provides it.",
   framework: "Confirm the criteria framework and version used for the program.",
@@ -44,7 +45,7 @@ export const POLICY_EVENT_NAMES = {
   "person-started": "New Worker",
   "person-ended": "Worker Departure",
   "high-risk-person-ended": "High-Risk Departure",
-  "person-role-changed": "Role Change",
+  "person-role-changed": "Job or Responsibility Change",
   "personal-device-access-planned": "Personal Device Access",
   "vendor-access-planned": "Vendor Access",
   "vendor-reassessment-needed": "Vendor Reassessment",
@@ -64,14 +65,15 @@ export const PROGRAM_PATH = [
     description: "Ownership, criteria, and service boundary",
     summary: "Confirm the people and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.",
     sections: [
-      { id: "ownership", title: "Program Ownership", description: "Confirm the people and teams that own, approve, review, and operate the program.", steps: ["Confirm the policy owner created during setup, then add the organization’s actual reviewers and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "team"], defaultOpen: true },
+      { id: "ownership", title: "Program Ownership", description: "Confirm the people, appointments, and teams that own, approve, review, and operate the program.", steps: ["Confirm the initial program lead’s actual job title and the separate Policy Owner Appointment.", "Add the organization’s real appointments, reviewers, and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "appointment", "team"], defaultOpen: true },
       { id: "criteria", title: "Criteria", description: "Confirm the criteria used for the program, resolve whether each requirement applies, and record customer commitments that shape the service or control design.", steps: ["Review the included Security criteria references.", "Mark each requirement applicable or not applicable with a rationale.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["framework", "requirement", "commitment"], defaultOpen: true },
       { id: "boundary", title: "Service Boundary", description: "Record the service and its supporting technology and providers. An application or platform is a System because it operates controls or produces evidence; the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship.", steps: ["Create a Vendor record for each material provider.", "Create System records for the customer-facing service and each supporting application, platform, or internal system that is in scope or produces evidence, then connect vendor-provided Systems to their providers.", "Assign owners, classification, dependencies, and a clear in-scope decision to each System, and keep supplier reviews with the Vendor."], types: ["vendor", "system"], defaultOpen: false }
     ],
-    resourceTypes: ["person", "team", "framework", "requirement", "commitment", "vendor", "system"],
+    resourceTypes: ["person", "appointment", "team", "framework", "requirement", "commitment", "vendor", "system"],
     commands: [
       "filegrc setup",
       "filegrc guide person --json",
+      "filegrc guide appointment --json",
       "filegrc guide system --json",
       "filegrc list system --json"
     ]

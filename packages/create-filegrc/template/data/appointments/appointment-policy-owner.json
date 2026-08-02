@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "appointment-policy-owner",
+  "type": "appointment",
+  "title": "Policy Owner",
+  "status": "active",
+  "appointmentKind": "policy-owner",
+  "holderId": "person-program-lead",
+  "scopeResourceIds": ["workspace"],
+  "startsOn": "{{effective_date}}",
+  "responsibilities": "Own the information security program and the starter policies, controls, documents, training, and scheduled work until management assigns more specific accountable parties."
+}

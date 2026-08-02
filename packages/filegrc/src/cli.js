@@ -26,6 +26,7 @@ import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { buildAgentProgramPath, policyEventName } from "./program-path.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { migrateLegacyRoles, planRoleMigration } from "./role-migration.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
 import { planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
@@ -143,6 +144,38 @@ export async function runCli(argv = process.argv.slice(2)) {
     } else if (flags.json) console.log(JSON.stringify(model, null, 2));
     else console.log(source);
     return;
+  }
+  if (command === "migrate-roles") {
+    const options = {
+      jobTitle: flags["job-title"],
+      startsOn: flags["starts-on"]
+    };
+    const plan = await planRoleMigration(root, options);
+    if (!flags.preview && plan.candidates.length && !flags.yes) {
+      throw new Error("Review migrate-roles --preview, then pass --yes to apply the migration.");
+    }
+    const result = flags.preview
+      ? plan
+      : plan.candidates.length
+        ? await migrateLegacyRoles(root, options)
+        : { ...plan, applied: false };
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (!result.candidates.length) {
+      console.log("No exact legacy Policy Owner person roles were found.");
+      if (result.review.length) console.log(`${result.review.length} other Person role value${result.review.length === 1 ? " needs" : "s need"} manual review.`);
+    }
+    else if (flags.preview) {
+      console.log(`Role migration preview: ${result.candidates.length} person record${result.candidates.length === 1 ? "" : "s"}, ${result.changes.create.length} Appointment${result.changes.create.length === 1 ? "" : "s"}, ${result.changes.update.length} record update${result.changes.update.length === 1 ? "" : "s"}.`);
+      if (result.missing.length) {
+        console.log(`Required before apply: ${result.missing.map(({ personId, field }) => `${personId}.${field}`).join(", ")}.`);
+      }
+      if (result.review.length) {
+        console.log(`${result.review.length} other Person role value${result.review.length === 1 ? " needs" : "s need"} manual review.`);
+      }
+    } else {
+      console.log(`Migrated ${result.candidates.length} legacy Policy Owner person role${result.candidates.length === 1 ? "" : "s"} into dated Appointments.`);
+    }
+    return result;
   }
   if (command === "describe") {
     const loaded = await loadWorkspace(root);
@@ -674,6 +707,7 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
+  filegrc migrate-roles [--preview] --job-title text --starts-on YYYY-MM-DD [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--json]
@@ -746,6 +780,26 @@ Options:
   --help                      Show this help`);
     return;
   }
+  if (command === "migrate-roles") {
+    console.log(`Usage:
+  filegrc migrate-roles [options]
+
+Convert the exact legacy Person role "Policy Owner" into a dated Policy Owner
+Appointment. The migration removes the legacy role, records the actual
+organizational job title, and changes accountable owner references to the
+Appointment. Team membership and fields that record an actual actor stay linked
+to the Person.
+
+Options:
+  --preview             Show the complete record plan without writing
+  --job-title <title>   Actual organization job title for the legacy seed person
+  --starts-on <date>    Effective date of the Policy Owner Appointment
+  --yes                 Apply the reviewed migration
+  --json                Print the plan or result as JSON
+  --root <path>         Workspace path
+  --help                Show this help`);
+    return;
+  }
   if (command === "program-readiness") {
     console.log(`Usage:
   filegrc program-readiness [options]
@@ -812,6 +866,7 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
+    migrateRoles: "filegrc migrate-roles --preview --json",
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",

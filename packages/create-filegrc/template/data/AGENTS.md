@@ -24,11 +24,21 @@ Use `program-path --next --json` to find the current lifecycle step and first ac
 - Work required on a schedule or event belongs in `obligation`.
 - A dated instance of work belongs in its activity type, such as `meeting`, `risk-assessment`, `access-review`, `vulnerability-scan`, `backup-test`, or `exercise`.
 - A fact that may change over time belongs in an inventory record, such as `person`, `system`, `asset`, `vendor`, or `access-grant`.
+- A Person’s `jobTitle` is their actual position in the organization. A named authority they hold, such as CISO, DPO, Policy Owner, or team chair, belongs in a dated `appointment` scoped to the workspace, team, or governed records.
+- Team membership is authoritative on `team.memberIds`. Do not add the legacy `person.teamIds` field.
 - A dated Step 5 operating record proves that filegrc-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
 - Follow-up work belongs in `action-item`. A gap belongs in `finding`, a known threat belongs in `risk`, and an approved temporary departure belongs in `exception`.
 - An auditor request belongs in `audit-request`; the engagement itself belongs in `audit`.
 
 When more than one type seems plausible, run `guide` for each and choose the one whose purpose matches the requested action. Do not create a new type or field.
+
+Existing workspaces with a Person whose exact legacy `role` is `Policy Owner` can preview the model-driven conversion:
+
+```sh
+npx filegrc migrate-roles --preview --job-title "ACTUAL JOB TITLE" --starts-on YYYY-MM-DD --json
+```
+
+Review the complete plan, then rerun it with `--yes`. The command creates the dated Appointment, updates accountable owner references atomically, removes the legacy role, and preserves direct Person references for membership and work actually performed.
 
 ## Create
 

@@ -17,7 +17,7 @@ More specific standards and procedures may set stricter requirements.
 
 ## Governance and responsibilities
 
-{{policy_owner_name}} owns the information security program and this policy. Questions and incident reports should be sent to {{security_contact_email}}.
+The current Policy Owner owns the information security program and this policy. Questions and incident reports should be sent to {{security_contact_email}}.
 
 The policy owner:
 
@@ -224,7 +224,7 @@ An exception to this policy requires:
 - Compensating controls
 - An accountable owner
 - An expiration or review date
-- Approval from {{policy_owner_name}} or a person with greater authority
+- Approval from the current Policy Owner or a person with greater authority
 
 Violations may result in access removal, corrective action, contract remedies, or other action allowed by law and agreement.
 

@@ -55,6 +55,7 @@ export async function validateWorkspace(input = process.cwd()) {
     validateLocation(record, definition, entry.relativePath, diagnostics);
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
     validateDateRanges(record, displayPath, diagnostics);
+    if (record.type === "appointment") validateAppointment(record, byId, displayPath, diagnostics);
     if (record.type === "obligation") validateObligation(record, displayPath, diagnostics);
     if (record.type === "evidence") validateEvidencePaths(record, displayPath, diagnostics);
 
@@ -149,6 +150,7 @@ function validateImplementedControlSchedules(record, obligationsByControl, byId,
 function validateDateRanges(record, path, diagnostics) {
   for (const [startField, endField] of [
     ["startDate", "endDate"],
+    ["startsOn", "endsOn"],
     ["periodStart", "periodEnd"],
     ["candidatePeriodStart", "candidatePeriodEnd"],
     ["dueWindowStart", "dueWindowEnd"]
@@ -163,6 +165,24 @@ function validateDateRanges(record, path, diagnostics) {
       ));
     }
   }
+}
+
+function validateAppointment(record, byId, path, diagnostics) {
+  if ((record.scopeResourceIds || []).includes(record.id)) {
+    diagnostics.push(error(
+      "invalid-appointment-scope",
+      path,
+      "An Appointment cannot include itself in scopeResourceIds."
+    ));
+  }
+  if (record.status !== "active") return;
+  const holder = byId.get(record.holderId);
+  if (holder?.type === "person" && ["active", "external"].includes(holder.status)) return;
+  diagnostics.push(error(
+    "inactive-appointment-holder",
+    path,
+    "An active Appointment must have an active or external Person as its holder."
+  ));
 }
 
 function validateCompletedObligationEvent(record, byId, path, diagnostics) {

@@ -1086,7 +1086,7 @@ function renderDetail(main, type, id) {
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
   main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
-    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
+    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
@@ -1147,6 +1147,47 @@ function recordContentDefinition(type) {
     label: config.label,
     mode: config.defaultResourceTypes.includes(type) ? "default" : "optional"
   };
+}
+
+function personParticipation(entry) {
+  if (entry.record.type !== "person") return "";
+  const personId = entry.record.id;
+  const appointments = resourcesOfType("appointment")
+    .map(({ record }) => record)
+    .filter(({ holderId }) => holderId === personId);
+  const appointmentIds = new Set(appointments.map(({ id }) => id));
+  const rows = appointments.map((record) => ({
+    record,
+    detail: "Appointment · " + properCase(record.status)
+  }));
+  for (const { record } of resourcesOfType("team")) {
+    const member = (record.memberIds || []).includes(personId);
+    const chair = (record.chairIds || []).some((id) => id === personId || appointmentIds.has(id));
+    if (member || chair) rows.push({
+      record,
+      detail: "Team · " + (chair ? "Chair" : "Member")
+    });
+  }
+  for (const candidate of state.resources) {
+    if (["person", "appointment", "team"].includes(candidate.record.type)) continue;
+    const fields = { ...state.model.commonFields, ...state.model.resources[candidate.record.type].fields };
+    const reasons = [];
+    for (const [name, field] of Object.entries(fields)) {
+      if (!field.relation) continue;
+      const values = Array.isArray(candidate.record[name]) ? candidate.record[name] : [candidate.record[name]];
+      if (values.includes(personId)) reasons.push(fieldLabel(candidate.record.type, name));
+      for (const appointment of appointments) {
+        if (values.includes(appointment.id)) reasons.push(fieldLabel(candidate.record.type, name) + " via " + appointment.title);
+      }
+    }
+    if (reasons.length) rows.push({
+      record: candidate.record,
+      detail: [...new Set(reasons)].join(" · ")
+    });
+  }
+  if (!rows.length) return "";
+  const visible = rows.slice(0, 14);
+  return '<section class="panel connections-panel"><div class="panel-head"><h3>Participation</h3><span>' + rows.length + '</span></div><div class="connections">' + visible.map(({ record, detail }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(detail) + '</small></a>').join("") + '</div>' + (rows.length > visible.length ? '<p class="connections-more">' + (rows.length - visible.length) + ' more assignments are available through connected records.</p>' : "") + '</section>';
 }
 
 function resourceConnections(entry) {
@@ -2089,14 +2130,14 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   if (field.relation && field.type === "array") {
     const candidates = relationCandidates(field);
     control = candidates.length
-      ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(record.id) + '</small></span></label>').join("") + '</div>'
+      ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(state.model.resources[record.type].title + " · " + record.id) + '</small></span></label>').join("") + '</div>'
       : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
     return fieldWrap(name, "relation-array", label, requiredMark, control, help, required);
   }
   if (field.relation) {
     const candidates = relationCandidates(field);
     control = candidates.length
-      ? '<select><option value="">Select a Resource</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(record.id) + '</option>').join("") + '</select>'
+      ? '<select><option value="">Select a Resource</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + ' · ' + esc(record.id) + '</option>').join("") + '</select>'
       : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
     return fieldWrap(name, "relation", label, requiredMark, control, help, required);
   }
@@ -2453,6 +2494,9 @@ function currentPeopleForParties(ids = [], seen = new Set()) {
     if (party?.type === "person" && ["active", "external"].includes(party.status)) people.push(party.id);
     if (party?.type === "team" && party.status === "active") {
       people.push(...currentPeopleForParties([...(party.memberIds || []), ...(party.chairIds || [])], seen));
+    }
+    if (party?.type === "appointment" && party.status === "active") {
+      people.push(...currentPeopleForParties([party.holderId], seen));
     }
   }
   return [...new Set(people)];

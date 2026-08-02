@@ -8,7 +8,7 @@ This plan defines how {{company_name}} identifies, declares, contains, investiga
 
 This plan applies to suspected or confirmed events affecting company or customer systems, data, identities, devices, facilities, vendors, or business operations. Availability disruptions may also activate the Business Continuity and Disaster Recovery Plan.
 
-Questions and incident reports should be sent immediately to {{security_contact_email}}. If that route is unavailable or may be compromised, contact {{policy_owner_name}} through a known alternate channel.
+Questions and incident reports should be sent immediately to {{security_contact_email}}. If that route is unavailable or may be compromised, contact the current Policy Owner through a known alternate channel.
 
 ## Definitions
 
@@ -47,7 +47,7 @@ Anyone may report a suspected incident. Reporters preserve available evidence, s
 
 ### Incident lead
 
-The incident lead declares the incident, assigns severity, coordinates work, maintains the incident record, approves status changes, and decides when the incident is contained and closed. {{policy_owner_name}} acts as incident lead until another qualified person is assigned.
+The incident lead declares the incident, assigns severity, coordinates work, maintains the incident record, approves status changes, and decides when the incident is contained and closed. The current Policy Owner acts as incident lead until another qualified person is assigned.
 
 ### Technical responders
 

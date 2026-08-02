@@ -544,7 +544,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
   assert.match(APP_SCRIPT, /class="organization-nav /);
   assert.doesNotMatch(APP_SCRIPT, /<h3>People and Teams<\/h3>/);
-  assert.deepEqual(section(scopeStage, "Program Ownership").types, ["person", "team"]);
+  assert.deepEqual(section(scopeStage, "Program Ownership").types, ["person", "appointment", "team"]);
   assert.match(section(scopeStage, "Program Ownership").steps.join(" "), /Review the starter Security and Risk Oversight team/);
   assert.match(APP_SCRIPT, /Renderer and Repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
@@ -753,7 +753,7 @@ test("renders six navigable stage pages with instructions, links, and honest pro
   assert.match(APP_SCRIPT, /Record supplemental customer promises and service requirements/);
   assert.match(PROGRAM_PATH[2].summary, /Mark it implemented only after the procedure is operating/);
   assert.match(PROGRAM_PATH[4].summary, /Maintain current risk assessments and risks, updating the control set when needed/);
-  assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "team"]);
+  assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team"]);
   assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["framework", "requirement", "commitment"]);
   assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control"]);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);

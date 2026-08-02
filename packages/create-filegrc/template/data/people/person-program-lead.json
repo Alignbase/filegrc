@@ -1,10 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "person-policy-owner",
+  "id": "person-program-lead",
   "type": "person",
   "title": "{{policy_owner_name}}",
   "status": "active",
   "email": "{{policy_owner_email}}",
-  "role": "Policy Owner",
-  "teamIds": ["team-security-risk-oversight"]
+  "jobTitle": "{{policy_owner_job_title}}"
 }

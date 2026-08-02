@@ -16,6 +16,7 @@ test("creates a complete generic repository with one dependency", async (context
     target,
     companyName: "  Example \"Engineering\"  ",
     policyOwnerName: "  Example Owner  ",
+    policyOwnerJobTitle: "Chief Executive Officer",
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "America/Chicago",
@@ -25,11 +26,12 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 141,
+    total: 142,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
       person: 1,
+      appointment: 1,
       team: 1,
       policy: 6,
       document: 12,
@@ -74,10 +76,20 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(renderer.authoritativeBranch, "main");
   assert.equal(renderer.repositoryRemote, "origin");
   assert.deepEqual(renderer.completedStagePageIds, []);
-  const owner = JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8"));
+  const owner = JSON.parse(await readFile(join(target, "data", "people", "person-program-lead.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
   assert.equal(owner.email, "owner@example.test");
-  assert.deepEqual(owner.teamIds, ["team-security-risk-oversight"]);
+  assert.equal(owner.jobTitle, "Chief Executive Officer");
+  assert.equal(owner.role, undefined);
+  assert.equal(owner.teamIds, undefined);
+  const policyOwnerAppointment = JSON.parse(await readFile(
+    join(target, "data", "appointments", "appointment-policy-owner.json"),
+    "utf8"
+  ));
+  assert.equal(policyOwnerAppointment.title, "Policy Owner");
+  assert.equal(policyOwnerAppointment.holderId, owner.id);
+  assert.deepEqual(policyOwnerAppointment.scopeResourceIds, ["workspace"]);
+  assert.equal(policyOwnerAppointment.startsOn, "2026-07-25");
   await assert.rejects(
     access(join(target, "data", "people", "person-independent-approver.json")),
     /ENOENT/
@@ -164,6 +176,7 @@ test("creates a complete generic repository with one dependency", async (context
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
+  assert.equal(controls.every((control) => control.ownerIds.includes(policyOwnerAppointment.id)), true);
   assert.equal(
     obligations
       .filter((obligation) => obligation.recurrence.mode === "event")
@@ -221,7 +234,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 141, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
 
   await writeFile(
     join(target, "data", "policies", "policy-information-security.json"),
@@ -234,7 +247,7 @@ test("creates a complete generic repository with one dependency", async (context
   )));
 });
 
-test("creates a five-record foundation without selecting a framework", async (context) => {
+test("creates a six-record foundation without selecting a framework", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-foundation-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   const target = join(parent, "program");
@@ -251,11 +264,12 @@ test("creates a five-record foundation without selecting a framework", async (co
     { id: "soc2-security", status: "skipped", records: 0 }
   ]);
   assert.deepEqual(result.resourceCounts, {
-    total: 5,
+    total: 6,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
       person: 1,
+      appointment: 1,
       system: 1,
       team: 1
     }
@@ -284,6 +298,7 @@ test("preserves legal-name punctuation without generating doubled sentence punct
     target,
     companyName: "Example Systems, Inc.",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "America/Chicago",
@@ -407,6 +422,7 @@ test("rejects invalid identity, email, and timezone values before writing the ta
     target,
     companyName: "Example Company\nInjected heading",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     securityContactEmail: "security@example.test",
     filegrcVersion: "1.2.3",
     install: false
@@ -416,6 +432,7 @@ test("rejects invalid identity, email, and timezone values before writing the ta
     target: tokenTarget,
     companyName: "{{policy_owner_name}}",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     securityContactEmail: "security@example.test",
     filegrcVersion: "1.2.3",
     install: false
@@ -425,6 +442,7 @@ test("rejects invalid identity, email, and timezone values before writing the ta
     target: ownerEmailTarget,
     companyName: "Example Company",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     policyOwnerEmail: "not-an-email",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
@@ -436,6 +454,7 @@ test("rejects invalid identity, email, and timezone values before writing the ta
     target: securityEmailTarget,
     companyName: "Example Company",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "not-an-email",
     timezone: "UTC",
@@ -447,6 +466,7 @@ test("rejects invalid identity, email, and timezone values before writing the ta
     target: timezoneTarget,
     companyName: "Example Company",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "Central Time",
@@ -484,6 +504,8 @@ test("reports the resolved version, install result, and existing Git worktree", 
     "Example Company",
     "--policy-owner-name",
     "Example Owner",
+    "--policy-owner-job-title",
+    "Chief Executive Officer",
     "--security-contact-email",
     "security@example.test",
     "--timezone",
@@ -499,13 +521,13 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 141 records, including 42 requirements, 29 controls, and 41 obligations/);
+  assert.match(output, /Program baseline: 142 records, including 42 requirements, 29 controls, and 41 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
   assert.match(output, /Appoint an independent reviewer who is separate from the policy owner/);
   assert.equal(
-    JSON.parse(await readFile(join(target, "data", "people", "person-policy-owner.json"), "utf8")).email,
+    JSON.parse(await readFile(join(target, "data", "people", "person-program-lead.json"), "utf8")).email,
     "security@example.test"
   );
   assert.equal(await access(join(target, ".git")).then(() => true, () => false), false);
@@ -535,6 +557,8 @@ test("warns when creation joins a detached Git worktree", async (context) => {
     "Example Company",
     "--policy-owner-name",
     "Example Owner",
+    "--policy-owner-job-title",
+    "Chief Executive Officer",
     "--security-contact-email",
     "security@example.test",
     "--timezone",
@@ -555,6 +579,8 @@ test("warns when creation joins a detached Git worktree", async (context) => {
     "Example Company",
     "--policy-owner-name",
     "Example Owner",
+    "--policy-owner-job-title",
+    "Chief Executive Officer",
     "--security-contact-email",
     "security@example.test",
     "--timezone",
@@ -569,12 +595,14 @@ test("warns when creation joins a detached Git worktree", async (context) => {
   assert.doesNotMatch(manualOutput, /browser will open in read-only mode/);
 });
 
-test("documents legal organization, owner email, reporting address, and timezone options", () => {
+test("documents legal organization, program lead, reporting address, and timezone options", () => {
   const output = execFileSync(process.execPath, [
     fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
     "--help"
   ], { encoding: "utf8" });
   assert.match(output, /--company-name <legal-name>\s+Legal organization name/);
+  assert.match(output, /--policy-owner-name <name>\s+Initial program lead/);
+  assert.match(output, /--policy-owner-job-title <title>\s+Program lead's organization job title/);
   assert.match(output, /--policy-owner-email <email>\s+Policy owner's email address/);
   assert.match(output, /--security-contact-email <email>\s+Security reporting address/);
   assert.match(output, /--timezone <iana-timezone>\s+Program timezone/);
@@ -597,6 +625,8 @@ test("standalone CLI creation starts on main without a monorepo warning", async 
     "Example Company",
     "--policy-owner-name",
     "Example Owner",
+    "--policy-owner-job-title",
+    "Chief Executive Officer",
     "--security-contact-email",
     "security@example.test",
     "--timezone",
@@ -621,6 +651,7 @@ test("creates and configures a service from one JSON config", async (context) =>
   await writeFile(configPath, `${JSON.stringify({
     companyName: "Example Company",
     policyOwnerName: "Example Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "America/Chicago",
@@ -642,12 +673,12 @@ test("creates and configures a service from one JSON config", async (context) =>
     configPath
   ], { encoding: "utf8" });
   assert.match(output, /Stage foundation: created \(5 records\)/);
-  assert.match(output, /Stage soc2-security: created \(136 records\)/);
+  assert.match(output, /Stage soc2-security: created \(137 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 143, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.deepEqual(workspace.systemIds, ["system-example-service"]);
   const control = JSON.parse(await readFile(join(target, "data", "controls", "control-security-governance.json"), "utf8"));

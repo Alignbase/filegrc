@@ -7,7 +7,12 @@
     },
     {
       "key": "policy_owner_name",
-      "prompt": "Policy owner name",
+      "prompt": "Initial program lead name",
+      "required": true
+    },
+    {
+      "key": "policy_owner_job_title",
+      "prompt": "Initial program lead organization job title",
       "required": true
     },
     {

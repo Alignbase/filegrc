@@ -232,7 +232,7 @@ Link a control test to its `audit-population` record when sampling applies. Link
 
 ## Content and approvals
 
-The seed policy owner is {{policy_owner_name}} at {{policy_owner_email}}, and the security reporting address is {{security_contact_email}}. Replace ownership or contacts when responsibilities change.
+The initial program lead is {{policy_owner_name}}, {{policy_owner_job_title}}, at {{policy_owner_email}}. The separate Policy Owner Appointment records this person’s starting program authority, and the security reporting address is {{security_contact_email}}. Update the Person when their organizational position changes. End and replace Appointments when named authority moves to someone else.
 
 Appoint an independent management reviewer during policy review, not as a condition of defining the service boundary. The reviewer must be separate from the policy owner and able to challenge the owner’s decisions. Most organizations assign another internal leader or manager. An external reviewer is also allowed, and a one-person company needs one because no second internal person is available. The reviewer chairs Security and Risk Oversight and approves policies and governed documents.
 

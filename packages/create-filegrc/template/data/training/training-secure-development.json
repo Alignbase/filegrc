@@ -4,7 +4,7 @@
   "type": "training",
   "title": "Secure Development Training",
   "status": "draft",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "audience": ["engineering", "security", "software-development", "infrastructure"],
   "assignmentTrigger": "covered-role-start-or-change",
   "completionWindowDays": 30,

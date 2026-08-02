@@ -4,7 +4,7 @@
   "type": "training",
   "title": "Security Awareness and Incident Response Training",
   "status": "draft",
-  "ownerIds": ["person-policy-owner"],
+  "ownerIds": ["appointment-policy-owner"],
   "audience": ["employees", "contractors"],
   "assignmentTrigger": "onboarding",
   "recurrence": {

@@ -9,9 +9,9 @@ npm run validate
 npm run serve
 ```
 
-Setup asks for the legal organization name, the initial policy owner and their email, a security reporting address, and the program timezone. The generated private project includes a starter Security program, Program Readiness, a policy-driven Work Queue, Policy Events that add linked tasks, later audit preparation, evidence packets, and one dependency: `filegrc`.
+Setup asks for the legal organization name, the initial program lead and their organization job title and email, a security reporting address, and the program timezone. The generated Person records the lead’s actual position, while a separate dated Policy Owner Appointment owns the starter work. The generated private project includes a starter Security program, Program Readiness, a policy-driven Work Queue, Policy Events that add linked tasks, later audit preparation, evidence packets, and one dependency: `filegrc`.
 
-Creation has two layers. The five-record foundation contains workspace settings, the initial owner, the oversight team, renderer settings, and the filegrc system of record. The default `security` starter adds the framework references, proposed policies, controls, obligations, documents, and training records. Pass `--starter foundation` when you want to stop before selecting a framework.
+Creation has two layers. The six-record foundation contains workspace settings, the initial program lead, the Policy Owner Appointment, the oversight team, renderer settings, and the filegrc system of record. The default `security` starter adds the framework references, proposed policies, controls, obligations, documents, and training records. Pass `--starter foundation` when you want to stop before selecting a framework.
 
 For one noninteractive run, pass company and service fields together or use `--config setup.json`. The optional `setup` object defines the service boundary and management goal after installation. Use `--filegrc-package <directory>` to exercise unpublished local engine changes instead of installing the registry release. This writes a machine-local `file:` dependency, so replace it with a released version before sharing the generated workspace.
 
@@ -19,6 +19,7 @@ For one noninteractive run, pass company and service fields together or use `--c
 {
   "companyName": "Example Company",
   "policyOwnerName": "Security Owner",
+  "policyOwnerJobTitle": "Chief Executive Officer",
   "policyOwnerEmail": "owner@example.com",
   "securityContactEmail": "security@example.com",
   "timezone": "America/Chicago",

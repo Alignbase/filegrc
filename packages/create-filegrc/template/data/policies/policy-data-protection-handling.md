@@ -10,7 +10,7 @@ This policy applies to employees, contractors, vendors, systems, devices, and re
 
 ## Responsibilities
 
-{{policy_owner_name}} owns this policy. System and data owners decide which data a system may process, assign classifications, approve access, and set retention requirements. Everyone in scope must handle data according to its classification and report suspected loss or misuse.
+The current Policy Owner owns this policy. System and data owners decide which data a system may process, assign classifications, approve access, and set retention requirements. Everyone in scope must handle data according to its classification and report suspected loss or misuse.
 
 Questions and reports should be sent to {{security_contact_email}}.
 
@@ -121,7 +121,7 @@ People who develop or materially change applications complete secure-development
 
 Violations may result in access removal, corrective action, contract remedies, or other action allowed by law and agreement.
 
-Exceptions require a documented business reason, owner, risk assessment, compensating controls, expiration date, and approval from {{policy_owner_name}}.
+Exceptions require a documented business reason, owner, risk assessment, compensating controls, expiration date, and approval from the current Policy Owner.
 
 ## Review
 

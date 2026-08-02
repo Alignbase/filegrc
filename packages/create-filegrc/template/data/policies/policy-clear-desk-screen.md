@@ -42,7 +42,7 @@ Visitors must remain in authorized areas and be supervised where confidential in
 
 ## Lost material or suspected exposure
 
-Report lost papers, devices, badges, removable media, or suspected unauthorized viewing immediately to {{policy_owner_name}} at {{security_contact_email}}.
+Report lost papers, devices, badges, removable media, or suspected unauthorized viewing immediately to the current Policy Owner at {{security_contact_email}}.
 
 ## Enforcement and review
 

@@ -75,6 +75,7 @@ test("requires the starter oversight team to be activated with a separate curren
   assert.match(pendingOwnership.message, /Finish and activate Security and Risk Oversight/);
   assert.deepEqual(pendingOwnership.commands, [
     "npx filegrc guide person --json",
+    "npx filegrc guide appointment --json",
     "npx filegrc list person --json",
     'npx filegrc scaffold person --title "REVIEWER NAME" | npx filegrc create - --json',
     "npx filegrc get team-security-risk-oversight --mutation",
@@ -111,6 +112,18 @@ test("requires the starter oversight team to be activated with a separate curren
     memberIds: ["person-owner", "person-approver"],
     chairIds: ["person-approver"]
   });
+  const owner = loaded.resources.find(({ id }) => id === "person-owner");
+  const ownerWithoutJobTitle = { ...owner };
+  delete ownerWithoutJobTitle.jobTitle;
+  await updateResource(root, "person", owner.id, ownerWithoutJobTitle);
+  const missingTitle = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  const missingTitleOwnership = missingTitle.stages
+    .find(({ id }) => id === "scope")
+    .items.find(({ id }) => id === "program-ownership");
+  assert.equal(missingTitleOwnership.status, "action");
+  assert.deepEqual(missingTitleOwnership.missingJobTitleIds, ["person-owner"]);
+  assert.match(missingTitleOwnership.message, /owner needs an organizational job title/);
+  await updateResource(root, "person", owner.id, owner);
   const ready = await assessProgramReadiness(root, { asOf: "2026-07-01" });
   const readyOwnership = ready.stages
     .find(({ id }) => id === "scope")
