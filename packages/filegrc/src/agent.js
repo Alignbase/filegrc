@@ -60,12 +60,14 @@ export function buildAgentGuide(loaded, type, options = {}) {
       values: allowedValues(loaded.model, field),
       relation,
       disjointFrom: field.disjointFrom ?? null,
-      format: field.format ?? null
+      format: field.format ?? null,
+      legacy: Boolean(field.legacy)
     };
   });
   const requiredAtCreation = fieldList.filter(({ required: isRequired }) => isRequired);
   const conditionalRequirements = fieldList.filter(({ requiredWhen, required: isRequired }) => requiredWhen && !isRequired);
-  const optionalFields = fieldList.filter(({ required, requiredWhen }) => !required && !requiredWhen);
+  const optionalFields = fieldList.filter(({ required, requiredWhen, legacy }) => !required && !requiredWhen && !legacy);
+  const legacyFields = fieldList.filter(({ legacy }) => legacy);
   const location = definition.singleton
     ? `data/${definition.singleton}`
     : `data/${definition.collection}/${(definition.recordPath ?? "{id}.json").replaceAll("{id}", options.id || "{id}")}`;
@@ -87,6 +89,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
     requiredAtCreation,
     conditionalRequirements,
     optionalFields,
+    legacyFields,
     oneOf: definition.oneOf ?? [],
     markdown,
     workflow: [
@@ -165,7 +168,7 @@ export function findResourceReferences(loaded, id) {
     if (!definition) continue;
     const fields = { ...loaded.model.commonFields, ...definition.fields };
     for (const [fieldName, field] of Object.entries(fields)) {
-      if (!field.relation) continue;
+      if (!field.relation || field.legacy) continue;
       const values = Array.isArray(record[fieldName]) ? record[fieldName] : [record[fieldName]];
       if (values.includes(id)) {
         references.push({

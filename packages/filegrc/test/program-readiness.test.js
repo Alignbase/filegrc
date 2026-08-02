@@ -246,8 +246,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     status: "active",
     approverIds: ["person-approver"],
     approvedOn: "2026-05-25",
-    effectiveOn: "2026-06-01",
-    controlIds: ["control-access"]
+    effectiveOn: "2026-06-01"
   });
   const control = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-access");
   await updateResource(root, "control", control.id, {

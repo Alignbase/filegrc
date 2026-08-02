@@ -16,18 +16,5 @@
   },
   "audience": ["employees", "contractors", "vendors"],
   "acknowledgementRequired": true,
-  "relatedDocumentIds": ["document-data-retention-schedule"],
-  "controlIds": [
-    "control-policy-management",
-    "control-risk-assessment",
-    "control-access-authorization",
-    "control-access-review-offboarding",
-    "control-data-classification-inventory",
-    "control-encryption-transmission",
-    "control-data-retention-disposal",
-    "control-incident-response",
-    "control-vendor-due-diligence",
-    "control-vendor-monitoring",
-    "control-security-exceptions"
-  ]
+  "relatedDocumentIds": ["document-data-retention-schedule"]
 }

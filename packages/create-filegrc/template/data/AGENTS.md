@@ -103,6 +103,8 @@ JSON is for stable metadata used by validation, relationships, filters, schedule
 
 If `guide` marks a Markdown slot recommended, fill it before treating the deliverable as complete. Keep observations and report details in the source record’s Markdown. Create a Finding only for a confirmed gap that needs its own remediation lifecycle. Create an Action Item only when follow-up needs a separate assignee, deadline, and completion proof. Set each child record’s `sourceResourceId` to the record that produced it; do not maintain reverse Finding or Action Item arrays on the source. Do not put a report’s entire variable structure into new JSON fields.
 
+Store a relationship only on its authoritative record. Control Tests store `auditId`; External Evidence stores `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds` and `requirementIds`; Risks store `controlIds`; Systems store their direct `vendorId`. Use `references` to inspect derived inbound links. Do not add the legacy reverse fields reported by `guide`.
+
 Use explicit business dates. Git records when a file changed, but it does not replace `occurredOn`, `assessmentDate`, `reviewedOn`, `completedOn`, or similar fields.
 
 ## Status changes

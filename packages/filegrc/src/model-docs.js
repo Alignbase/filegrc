@@ -149,6 +149,7 @@ function fieldType(field) {
 
 function fieldNotes(field) {
   return [
+    field.legacy ? "Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label." : "",
     field.label,
     field.values ? `Values: ${field.values.map((item) => `\`${item}\``).join(", ")}` : "",
     field.relation ? `References: ${field.relation.map((item) => `\`${item}\``).join(", ")}` : "",

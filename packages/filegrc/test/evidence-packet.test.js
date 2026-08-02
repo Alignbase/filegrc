@@ -178,8 +178,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       description: "Production customer service boundary.",
       dataClassification: "Confidential",
       evidenceSourceKinds: ["risk-management"],
-      evidenceOwnerIds: ["person-owner"],
-      commitmentIds: ["commitment-protect-service"]
+      evidenceOwnerIds: ["person-owner"]
     },
     {
       schemaVersion: 1,
@@ -210,9 +209,26 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       frequency: "Quarterly",
       systemIds: ["system-customer-service"],
       evidenceSourceIds: ["system-customer-service"],
-      commitmentIds: ["commitment-protect-service"],
       policyIds: ["policy-risk-governance"],
       effectiveOn: "2026-01-01"
+    },
+    {
+      schemaVersion: 1,
+      id: "risk-service-availability",
+      type: "risk",
+      title: "Service availability risk",
+      status: "open",
+      description: "Governance work could miss material service risks.",
+      ownerIds: ["person-owner"],
+      categories: ["availability"],
+      response: "mitigate",
+      inherentRating: {
+        likelihood: "possible",
+        impact: "high",
+        rating: "high"
+      },
+      systemIds: ["system-customer-service"],
+      controlIds: ["control-quarterly-risk-review"]
     },
     {
       schemaVersion: 1,
@@ -230,11 +246,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       systemIds: ["system-customer-service"]
     }
   ]);
-  const riskPolicy = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-risk-governance");
-  await updateResource(root, "policy", riskPolicy.id, {
-    ...riskPolicy,
-    controlIds: ["control-quarterly-risk-review"]
-  });
   await writeFile(
     join(root, "data", "systems", "system-customer-service.md"),
     "# Customer service evidence\n\nExport the complete governance review register with dates, owners, decisions, and linked follow-up work. Verify the export against the committed review records.\n",
@@ -515,11 +526,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       completedOn: "2026-04-01"
     }
   ]);
-  const audit = (await loadWorkspace(root)).resources.find(({ id }) => id === "audit-2026-type-2");
-  await updateResource(root, "audit", audit.id, {
-    ...audit,
-    controlTestIds: ["control-test-quarterly-risk-review"]
-  });
   const obligation = (await loadWorkspace(root)).resources.find(({ id }) => id === "obligation-quarterly-risk-meeting");
   await updateResource(root, "obligation", "obligation-quarterly-risk-meeting", {
     ...obligation,
@@ -565,6 +571,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.equal(packet.records.some(({ id }) => id === "action-item-risk-review-documentation"), true);
   assert.equal(packet.readiness.status, "delivery-ready");
   assert.equal(packet.controlCoverage[0].evidenceIds.includes("evidence-q1-risk-review"), true);
+  assert.deepEqual(packet.controlCoverage[0].riskIds, ["risk-service-availability"]);
   assert.equal(packet.populations.length, 11);
   assert.equal(packet.controlCoverage[0].tests[0].populationEvidenceId, "evidence-risk-review-population");
   assert.deepEqual(packet.gaps, []);

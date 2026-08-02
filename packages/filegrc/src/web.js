@@ -1173,7 +1173,7 @@ function personParticipation(entry) {
     const fields = { ...state.model.commonFields, ...state.model.resources[candidate.record.type].fields };
     const reasons = [];
     for (const [name, field] of Object.entries(fields)) {
-      if (!field.relation) continue;
+      if (!field.relation || field.legacy) continue;
       const values = Array.isArray(candidate.record[name]) ? candidate.record[name] : [candidate.record[name]];
       if (values.includes(personId)) reasons.push(fieldLabel(candidate.record.type, name));
       for (const appointment of appointments) {
@@ -1201,7 +1201,7 @@ function resourceConnections(entry) {
   };
   const currentFields = { ...state.model.commonFields, ...state.model.resources[entry.record.type].fields };
   Object.entries(currentFields).forEach(([name, definition]) => {
-    if (!definition.relation) return;
+    if (!definition.relation || definition.legacy) return;
     const values = Array.isArray(entry.record[name]) ? entry.record[name] : [entry.record[name]];
     values.filter((value) => typeof value === "string").forEach((id) => add(entriesById.get(id), "Linked from " + fieldLabel(entry.record.type, name)));
   });
@@ -1209,7 +1209,7 @@ function resourceConnections(entry) {
     if (candidate.record.id === entry.record.id) return;
     const fields = { ...state.model.commonFields, ...state.model.resources[candidate.record.type].fields };
     Object.entries(fields).forEach(([name, definition]) => {
-      if (!definition.relation) return;
+      if (!definition.relation || definition.legacy) return;
       const values = Array.isArray(candidate.record[name]) ? candidate.record[name] : [candidate.record[name]];
       if (values.includes(entry.record.id)) add(candidate, "Linked by " + state.model.resources[candidate.record.type].title + " · " + fieldLabel(candidate.record.type, name));
     });

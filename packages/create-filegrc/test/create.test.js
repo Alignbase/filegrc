@@ -103,6 +103,9 @@ test("creates a complete generic repository with one dependency", async (context
     for (const file of files) {
       const record = JSON.parse(await readFile(join(target, "data", collection, file), "utf8"));
       assert.equal("approverIds" in record, false, `${record.id} should wait for a real approver`);
+      if (collection === "policies") {
+        assert.equal("controlIds" in record, false, `${record.id} derives linked controls from Control policyIds`);
+      }
     }
   }
   const informationSecurityPolicy = JSON.parse(await readFile(join(target, "data", "policies", "policy-information-security.json"), "utf8"));

@@ -144,7 +144,7 @@
         "endDate": {"type":"date"},
         "employmentType": {"type":"string","filter":true},
         "organization": {"type":"string","search":true},
-        "teamIds": {"type":"array","items":"id","relation":["team"],"label":"Legacy teams (derived from Team membership)"}
+        "teamIds": {"type":"array","items":"id","relation":["team"],"label":"Legacy teams (derived from Team membership)","legacy":true}
       },
       "listFields": ["title","status","jobTitle","department"]
     },
@@ -249,7 +249,7 @@
         "internetExposed": {"type":"boolean","filter":true},
         "inScope": {"type":"boolean","filter":true},
         "parentSystemId": {"type":"id","relation":["system"]},
-        "commitmentIds": {"type":"array","items":"id","relation":["commitment"]},
+        "commitmentIds": {"type":"array","items":"id","relation":["commitment"],"label":"Legacy commitments (derived from Commitment systems)","legacy":true},
         "subserviceVendorIds": {"type":"array","items":"id","relation":["vendor"]},
         "evidenceSourceKinds": {"type":"array","items":"string","label":"Evidence source roles","filter":true,"search":true},
         "evidenceOwnerIds": {"type":"array","items":"id","relation":["person","team","appointment"],"label":"Evidence access owners"},
@@ -469,7 +469,7 @@
         "description": {"type":"string","search":true},
         "parentRequirementId": {"type":"id","relation":["requirement"]},
         "applicabilityRationale": {"type":"string"},
-        "controlIds": {"type":"array","items":"id","relation":["control"]}
+        "controlIds": {"type":"array","items":"id","relation":["control"],"label":"Legacy controls (derived from Control requirements)","legacy":true}
       },
       "listFields": ["description","applicability","frameworkId"]
     },
@@ -552,9 +552,9 @@
         "frequency": {"type":"string","filter":true},
         "systemIds": {"type":"array","items":"id","relation":["system"],"requiredWhen":{"status":"implemented"}},
         "evidenceSourceIds": {"type":"array","items":"id","relation":["system"],"label":"Authoritative evidence sources","requiredWhen":{"status":"implemented"}},
-        "commitmentIds": {"type":"array","items":"id","relation":["commitment"]},
+        "commitmentIds": {"type":"array","items":"id","relation":["commitment"],"label":"Legacy commitments (derived from Commitment controls)","legacy":true},
         "policyIds": {"type":"array","items":"id","relation":["policy"]},
-        "riskIds": {"type":"array","items":"id","relation":["risk"]},
+        "riskIds": {"type":"array","items":"id","relation":["risk"],"label":"Legacy risks (derived from Risk controls)","legacy":true},
         "effectiveOn": {"type":"date","requiredWhen":{"status":"implemented"}},
         "retiredOn": {"type":"date"}
       },
@@ -723,7 +723,7 @@
         "parentPolicyId": {"type":"id","relation":["policy"]},
         "relatedPolicyIds": {"type":"array","items":"id","relation":["policy"]},
         "relatedDocumentIds": {"type":"array","items":"id","relation":["document"]},
-        "controlIds": {"type":"array","items":"id","relation":["control"]},
+        "controlIds": {"type":"array","items":"id","relation":["control"],"label":"Legacy controls (derived from Control policies)","legacy":true},
         "requirementIds": {"type":"array","items":"id","relation":["requirement"]},
         "audience": {"type":"array","items":"string","filter":true},
         "acknowledgementRequired": {"type":"boolean","filter":true}
@@ -950,7 +950,7 @@
         "criticality": {"type":"enum","values":["low","medium","high","critical"],"filter":true},
         "description": {"type":"string","search":true},
         "service": {"type":"string","search":true},
-        "systemIds": {"type":"array","items":"id","relation":["system"]},
+        "systemIds": {"type":"array","items":"id","relation":["system"],"label":"Legacy systems (derived from System vendor)","legacy":true},
         "dataClassification": {"type":"string","filter":true},
         "dataTypes": {"type":"array","items":"string","search":true},
         "subprocessor": {"type":"boolean","filter":true},
@@ -1327,10 +1327,10 @@
         "complementaryControlsConclusion": {"type":"enum","values":["identified","not-applicable"],"label":"Complementary controls conclusion"},
         "subserviceVendorIds": {"type":"array","items":"id","relation":["vendor"]},
         "subserviceMethod": {"type":"enum","values":["carve-out","inclusive","not-applicable"]},
-        "controlTestIds": {"type":"array","items":"id","relation":["control-test"]},
+        "controlTestIds": {"type":"array","items":"id","relation":["control-test"],"label":"Legacy control tests (derived from Control Test audit)","legacy":true},
         "opinion": {"type":"enum","values":["unmodified","qualified","adverse","disclaimer","not-issued"],"filter":true},
         "opinionDate": {"type":"date"},
-        "evidenceIds": {"type":"array","items":"id","relation":["evidence"]},
+        "evidenceIds": {"type":"array","items":"id","relation":["evidence"],"label":"Legacy evidence (derived from External Evidence audits)","legacy":true},
         "reportEvidenceId": {"type":"id","relation":["evidence"]},
         "managementResponseDocumentId": {"type":"id","relation":["document"]},
         "supplementalDocumentIds": {"type":"array","items":"id","relation":["document"]}

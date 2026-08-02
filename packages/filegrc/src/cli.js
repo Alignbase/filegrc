@@ -935,6 +935,10 @@ function printAgentGuide(result) {
     console.log("\nOptional fields:");
     for (const field of result.optionalFields) console.log(formatGuideField(field));
   }
+  if (result.legacyFields.length) {
+    console.log("\nLegacy compatibility fields (do not add or update):");
+    for (const field of result.legacyFields) console.log(formatGuideField(field));
+  }
   if (result.markdown.length) {
     console.log("\nMarkdown:");
     for (const slot of result.markdown) {

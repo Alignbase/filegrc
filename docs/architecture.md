@@ -148,6 +148,8 @@ The registry structures only values needed for validation, filters, relationship
 
 The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
 
+Each relationship has one stored authority. Inbound references and reverse lists are derived by scanning the current records. Teams store their membership and chairs, Control Tests store their Audit, External Evidence stores applicable Audits, Commitments store their Systems and Controls, Controls store governing Policies and Requirements, Risks store treating Controls, and Systems store their direct Vendor. Role-specific links such as an Audit’s final report Evidence, a System’s subservice Vendors, and a Team’s charter Document remain on the record that gives the link its meaning. Model v1 still accepts the former reverse fields as legacy compatibility inputs, but guides and product calculations do not treat them as authoritative.
+
 `packages/filegrc/model/index.js` loads the registry and exposes a stable Node.js API.
 
 Generated repositories contain only their records and a `dataModelVersion` in `data/workspace.json`. They do not receive copied schema files.

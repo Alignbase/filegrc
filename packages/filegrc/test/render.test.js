@@ -561,6 +561,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /function resourceConnections\(entry\)/);
   assert.match(APP_SCRIPT, /Linked from /);
   assert.match(APP_SCRIPT, /Linked by /);
+  assert.match(APP_SCRIPT, /if \(!definition\.relation \|\| definition\.legacy\) return/);
   assert.match(APP_SCRIPT, /field === "sourceReference"/);
   assert.match(APP_SCRIPT, /function safeExternalUrl\(value\)/);
   assert.match(APP_SCRIPT, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
@@ -767,7 +768,7 @@ test("renders six navigable stage pages with instructions, links, and honest pro
   assert.doesNotMatch(cardSource, /guidance\?\.cadence/);
   assert.doesNotMatch(cardSource, /stage-page-actions?/);
   assert.match(summarySource, /Catalog all in-scope systems for the program\. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor \(like HR software\)\./);
-  assert.match(summarySource, /Catalog the companies that provide in-scope software or services\. Link each vendor-provided System to the company that provides it\./);
+  assert.match(summarySource, /Catalog the companies that provide in-scope software or services\. Link each vendor-provided System with the System’s vendorId\./);
   assert.doesNotMatch(summarySource, /manage contracts, due diligence, supplier risk, and reviews/);
   const boundary = PROGRAM_PATH[0].sections.find(({ id }) => id === "boundary");
   assert.match(boundary.description, /An application or platform is a System because it operates controls or produces evidence/);

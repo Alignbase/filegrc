@@ -99,6 +99,32 @@ test("v1 model exposes the complete resource registry", () => {
   assert.ok(managedEvidenceFamilies.every((item) => item.operationRecordTypes.length));
   assert.deepEqual(model.resources.control.fields.evidenceSourceIds.requiredWhen, { status: "implemented" });
   assert.deepEqual(model.resources.control.fields.systemIds.requiredWhen, { status: "implemented" });
+  assert.deepEqual(
+    Object.entries(model.resources).flatMap(([type, resource]) => (
+      Object.entries(resource.fields ?? {})
+        .filter(([, field]) => field.legacy)
+        .map(([name]) => `${type}.${name}`)
+    )),
+    [
+      "person.teamIds",
+      "system.commitmentIds",
+      "requirement.controlIds",
+      "control.commitmentIds",
+      "control.riskIds",
+      "policy.controlIds",
+      "vendor.systemIds",
+      "audit.controlTestIds",
+      "audit.evidenceIds"
+    ]
+  );
+  assert.equal(model.resources.commitment.fields.systemIds.legacy, undefined);
+  assert.equal(model.resources.commitment.fields.controlIds.legacy, undefined);
+  assert.equal(model.resources.control.fields.policyIds.legacy, undefined);
+  assert.equal(model.resources.control.fields.requirementIds.legacy, undefined);
+  assert.equal(model.resources.risk.fields.controlIds.legacy, undefined);
+  assert.equal(model.resources.system.fields.vendorId.legacy, undefined);
+  assert.equal(model.resources.evidence.fields.auditIds.legacy, undefined);
+  assert.equal(model.resources["control-test"].fields.auditId.legacy, undefined);
   assert.deepEqual(model.resources.control.markdown.record.requiredWhen, { status: "implemented" });
   assert.deepEqual(model.resources.policy.fields.approverIds.requiredWhen, {
     status: ["in-review", "approved", "active"]

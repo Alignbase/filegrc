@@ -89,6 +89,13 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.deepEqual(path[4].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
   assert.equal(path[4].operatingRecords.length, path[4].resourceTypes.length + path[4].supportingResourceTypes.length);
   assert.equal(path[4].operatingRecords.every(({ order }) => order === null), true);
+  const auditGuide = buildAgentGuide(loaded, "audit");
+  assert.equal(auditGuide.optionalFields.some(({ name }) => name === "controlTestIds"), false);
+  assert.equal(auditGuide.optionalFields.some(({ name }) => name === "evidenceIds"), false);
+  assert.deepEqual(auditGuide.legacyFields.map(({ name }) => name), ["controlTestIds", "evidenceIds"]);
+  const personGuide = buildAgentGuide(loaded, "person");
+  assert.equal(personGuide.optionalFields.some(({ name }) => name === "teamIds"), false);
+  assert.deepEqual(personGuide.legacyFields.map(({ name }) => name), ["teamIds"]);
   const pathCommand = await execute(process.execPath, [cli, "program-path", "--root", root, "--json"]);
   const parsedPath = JSON.parse(pathCommand.stdout);
   assert.equal(parsedPath.currentStep.number, 1);
@@ -296,6 +303,21 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
   const loaded = await loadWorkspace(root);
   const references = findResourceReferences(loaded, "person-owner");
   assert.ok(references.references.some(({ id, field }) => id === mutation.record.id && field === "assessorIds"));
+  loaded.resources.push({
+    schemaVersion: 1,
+    id: "team-security-risk-oversight",
+    type: "team",
+    title: "Security and Risk Oversight",
+    status: "active",
+    memberIds: ["person-owner"],
+    chairIds: ["person-approver"]
+  });
+  loaded.resources.find(({ id }) => id === "person-owner").teamIds = ["team-security-risk-oversight"];
+  const teamReferences = findResourceReferences(loaded, "team-security-risk-oversight");
+  assert.equal(
+    teamReferences.references.some(({ id, field }) => id === "person-owner" && field === "teamIds"),
+    false
+  );
 
   const evidenceMutation = scaffoldResourceMutation(loaded, "evidence", "Risk Assessment Notes");
   Object.assign(evidenceMutation.record, {

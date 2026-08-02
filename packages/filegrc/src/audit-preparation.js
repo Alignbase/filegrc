@@ -275,9 +275,7 @@ function scopeStage(audit, records, byId, programReadiness) {
   const engagementStart = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodStart;
   const commitments = records.filter((record) => record.type === "commitment"
     && record.status === "active"
-    && systems.some((system) => (
-      (system.commitmentIds || []).includes(record.id) || (record.systemIds || []).includes(system.id)
-    )));
+    && systems.some((system) => (record.systemIds || []).includes(system.id)));
   const completeCommitments = commitments.filter((commitment) => (
     commitment.statement
     && (commitment.ownerIds || []).length
@@ -287,7 +285,7 @@ function scopeStage(audit, records, byId, programReadiness) {
     && (commitment.controlIds || []).length
   ));
   const systemsWithoutCommitments = systems.filter((system) => !completeCommitments.some((commitment) => (
-    (system.commitmentIds || []).includes(commitment.id) || (commitment.systemIds || []).includes(system.id)
+    (commitment.systemIds || []).includes(system.id)
   )));
   items.push(item(
     "commitments",

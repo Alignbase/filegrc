@@ -89,8 +89,6 @@ export async function prepareEvidencePacket(input, options = {}) {
       ...(audit.systemIds || []),
       ...(audit.requirementIds || []),
       ...(audit.controlIds || []),
-      ...(audit.controlTestIds || []),
-      ...(audit.evidenceIds || []),
       ...(audit.contactIds || []),
       ...(audit.complementaryControlIds || []),
       ...(audit.subserviceVendorIds || []),
@@ -104,6 +102,11 @@ export async function prepareEvidencePacket(input, options = {}) {
     ]);
     for (const request of records.filter((record) => record.type === "audit-request" && record.auditId === audit.id)) {
       selectedIds.add(request.id);
+    }
+    for (const record of records.filter((candidate) => (
+      candidate.auditId === audit.id || (candidate.auditIds || []).includes(audit.id)
+    ))) {
+      selectedIds.add(record.id);
     }
     for (const record of records.filter((candidate) => ["finding", "action-item"].includes(candidate.type))) {
       if (recordRelevantToAudit(record, audit, byId)) selectedIds.add(record.id);
@@ -158,8 +161,20 @@ export async function prepareEvidencePacket(input, options = {}) {
   for (const controlId of controlIds) {
     const control = byId.get(controlId);
     addIds(selectedIds, control?.systemIds);
-    addIds(selectedIds, control?.commitmentIds);
-    addIds(selectedIds, control?.riskIds);
+  }
+  for (const record of records) {
+    if (
+      record.type === "commitment"
+      && (record.controlIds || []).some((id) => controlIds.has(id))
+    ) {
+      selectedIds.add(record.id);
+    }
+    if (
+      record.type === "risk"
+      && (record.controlIds || []).some((id) => controlIds.has(id))
+    ) {
+      selectedIds.add(record.id);
+    }
   }
   for (const complementaryControl of records.filter((record) => record.type === "complementary-control")) {
     if ((complementaryControl.relatedControlIds || []).some((id) => controlIds.has(id))) {
@@ -168,8 +183,12 @@ export async function prepareEvidencePacket(input, options = {}) {
   }
   for (const systemId of audit?.systemIds || []) {
     const system = byId.get(systemId);
-    addIds(selectedIds, system?.commitmentIds);
     addIds(selectedIds, system?.subserviceVendorIds);
+    for (const commitment of records.filter((record) => (
+      record.type === "commitment" && (record.systemIds || []).includes(systemId)
+    ))) {
+      selectedIds.add(commitment.id);
+    }
   }
 
   const policyIds = new Set(audit
@@ -372,8 +391,6 @@ function recordRelevantToAudit(record, audit, byId, seen = new Set()) {
     ...(audit.systemIds || []),
     ...(audit.requirementIds || []),
     ...(audit.controlIds || []),
-    ...(audit.controlTestIds || []),
-    ...(audit.evidenceIds || []),
     ...(audit.contactIds || []),
     ...(audit.complementaryControlIds || []),
     ...(audit.subserviceVendorIds || []),
@@ -396,8 +413,14 @@ function recordRelevantToAudit(record, audit, byId, seen = new Set()) {
   if ((record.requirementIds || []).some((id) => auditRequirements.has(id))) return true;
   const auditControlRecords = [...auditControls].map((id) => byId.get(id)).filter(Boolean);
   const policyIds = new Set(auditControlRecords.flatMap((control) => control.policyIds || []));
-  const commitmentIds = new Set(auditControlRecords.flatMap((control) => control.commitmentIds || []));
-  const riskIds = new Set(auditControlRecords.flatMap((control) => control.riskIds || []));
+  const commitmentIds = new Set([...byId.values()]
+    .filter((candidate) => candidate.type === "commitment"
+      && (candidate.controlIds || []).some((id) => auditControls.has(id)))
+    .map(({ id }) => id));
+  const riskIds = new Set([...byId.values()]
+    .filter((candidate) => candidate.type === "risk"
+      && (candidate.controlIds || []).some((id) => auditControls.has(id)))
+    .map(({ id }) => id));
   if ((record.type === "policy" && policyIds.has(record.id)) || (record.policyIds || []).some((id) => policyIds.has(id))) return true;
   if ((record.type === "commitment" && commitmentIds.has(record.id)) || (record.commitmentIds || []).some((id) => commitmentIds.has(id))) return true;
   if ((record.type === "risk" && riskIds.has(record.id)) || (record.riskIds || []).some((id) => riskIds.has(id))) return true;
@@ -877,7 +900,10 @@ function buildControlCoverage({ audit, byId, controlIds, evidenceIds, model, rec
       requirementIds: control?.requirementIds || [],
       policyIds: control?.policyIds || [],
       systemIds: control?.systemIds || [],
-      riskIds: control?.riskIds || [],
+      riskIds: [...byId.values()]
+        .filter((record) => record.type === "risk" && (record.controlIds || []).includes(controlId))
+        .map(({ id }) => id)
+        .sort(),
       evidenceIds: [...linkedEvidenceIds].sort(),
       operatingRecordIds: operatingRecords.map(({ id }) => id).sort(),
       tests: tests.map((test) => ({
@@ -1033,10 +1059,13 @@ function packetGaps({
     for (const systemId of audit.systemIds || []) {
       const system = byId.get(systemId);
       if (!system) continue;
-      const commitmentIds = new Set(system.commitmentIds || []);
-      for (const record of records) {
-        if (record.type === "commitment" && (record.systemIds || []).includes(systemId) && record.status === "active") commitmentIds.add(record.id);
-      }
+      const commitmentIds = new Set(records
+        .filter((record) => (
+          record.type === "commitment"
+          && record.status === "active"
+          && (record.systemIds || []).includes(systemId)
+        ))
+        .map(({ id }) => id));
       if (!commitmentIds.size) {
         gaps.push(gap("error", "system-missing-commitments", `${system.title} has no active service commitment or system requirement.`, system.id));
       }

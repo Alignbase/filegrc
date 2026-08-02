@@ -328,7 +328,7 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
         && policy.approvedOn
         && partiesIndependent(policy.ownerIds, policy.approverIds, byId),
       effective: policy.status === "active" && policy.effectiveOn && policy.effectiveOn <= asOf,
-      linkedControls: (policy.controlIds || []).some((id) => scope.controls.some((control) => control.id === id)),
+      linkedControls: scope.controls.some((control) => (control.policyIds || []).includes(policy.id)),
       contentComplete: Boolean(source.trim()) && placeholderCount === 0
     };
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => policyCheckLabel(name));

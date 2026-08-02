@@ -188,7 +188,7 @@ function sampleValue(name, field, ids, model, type) {
 
 function addUsefulOptionalFields(record, fields, ids, model, type) {
   const set = (name, value) => {
-    if (fields[name] && record[name] === undefined) record[name] = value;
+    if (fields[name] && !fields[name].legacy && record[name] === undefined) record[name] = value;
   };
   set("tags", ["example", "security"]);
   set("description", `A realistic example ${humanize(type).toLowerCase()} used to exercise the complete workspace.`);

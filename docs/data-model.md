@@ -21,9 +21,9 @@ Confirm the people and teams responsible for the program, set the management goa
 - **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Team membership is authoritative here; Person teamIds is a legacy field.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Review each criterion, decide whether it applies, and record the reason for that decision.
-- **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design.
-- **Vendors** (`vendor`): Catalog the companies that provide in-scope software or services. Link each vendor-provided System to the company that provides it.
-- **Systems** (`system`): Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software).
+- **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
+- **Vendors** (`vendor`): Catalog the companies that provide in-scope software or services. Link each vendor-provided System with the System’s vendorId.
+- **Systems** (`system`): Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived.
 
 Headless commands:
 
@@ -35,9 +35,9 @@ Headless commands:
 
 ### Step 2. Approve Policies
 
-Turn every applicable policy and governed plan into the organization’s actual rules, remove placeholders, link governed controls, and establish approval and effective dates before scheduled work begins. The reviewer must be separate from the owner, is usually internal, and may be external.
+Turn every applicable policy and governed plan into the organization’s actual rules, remove placeholders, confirm that Controls link to their governing Policies, and establish approval and effective dates before scheduled work begins. The reviewer must be separate from the owner, is usually internal, and may be external.
 
-- **Policies** (`policy`): Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates.
+- **Policies** (`policy`): Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.
 - **Documents** (`document`): Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
 
 Headless commands:
@@ -50,7 +50,7 @@ Headless commands:
 
 Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, cadence, policy and criteria mappings, authoritative evidence source, and implementation date. Mark it implemented only after the procedure is operating, then record any controls that customers or carved-out providers must perform.
 
-- **Controls** (`control`): Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, evidence source, and implementation date.
+- **Controls** (`control`): Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, evidence source, and implementation date.
 - **Complementary controls** (`complementary-control`): Record anything customers or carved-out providers must do for your controls to work as intended.
 
 Headless commands:
@@ -83,7 +83,7 @@ Record the management candidate start date when reliable evidence collection beg
 Operating record guides:
 
 - **Risk assessments** (`risk-assessment`): Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.
-- **Risks** (`risk`): Record each risk identified by an assessment or operating activity. Assign an owner, rate it, and document the chosen response.
+- **Risks** (`risk`): Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.
 - **Obligations** (`obligation`): Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
 - **Policy Events** (`obligation-event`): When a policy-triggering event occurs, record it here and complete the actions filegrc creates for it.
 - **Data requests** (`data-request`): Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.
@@ -119,7 +119,7 @@ Headless commands:
 
 After the program is collecting reliable evidence, create an Audit record for the real CPA engagement, keep the firm-agreed report period separate from management’s candidate dates, complete management documents, populations, requests, evidence delivery, and fieldwork, then preserve the findings, responses, opinion, and final report.
 
-- **Audits** (`audit`): Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period.
+- **Audits** (`audit`): Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period. Control Tests and External Evidence link back with auditId or auditIds.
 - **Audit requests** (`audit-request`): Record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
 - **Audit populations** (`audit-population`): Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation.
 - **Control tests** (`control-test`): Record how an in-scope control was tested, what was sampled, the result, and any exceptions.
@@ -244,13 +244,13 @@ Record Markdown: available when needed as an implicit companion file.
 | `description` | string | No |  |
 | `parentRequirementId` | id | No | References: `requirement` |
 | `applicabilityRationale` | string | No |  |
-| `controlIds` | array of id | No | References: `control` |
+| `controlIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy controls (derived from Control requirements) References: `control` |
 
 #### `commitment`
 
 Customer promises, service requirements, and approved business objectives beyond the baseline Framework and Policies. Link them to the Systems and Controls that fulfill them.
 
-Instructions: Record supplemental customer promises and service requirements that shape the scope or control design.
+Instructions: Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
 
 Policy basis: Contracts, service descriptions, and approved management decisions can create commitments that the system description and control design must address.
 
@@ -308,7 +308,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Management’s actual safeguards and procedures, mapped to Policies, Requirements, Systems, and evidence sources. The Work Queue schedules recurring operation where configured; Evidence shows that operation occurred.
 
-Instructions: Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, evidence source, and implementation date.
+Instructions: Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, evidence source, and implementation date.
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. Policy text alone does not show implementation.
 
@@ -334,9 +334,9 @@ Markdown companions:
 | `frequency` | string | Yes |  |
 | `systemIds` | array of id | Conditional | References: `system` Required when `status` is `implemented` |
 | `evidenceSourceIds` | array of id | Conditional | Authoritative evidence sources References: `system` Required when `status` is `implemented` |
-| `commitmentIds` | array of id | No | References: `commitment` |
+| `commitmentIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy commitments (derived from Commitment controls) References: `commitment` |
 | `policyIds` | array of id | No | References: `policy` |
-| `riskIds` | array of id | No | References: `risk` |
+| `riskIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy risks (derived from Risk controls) References: `risk` |
 | `effectiveOn` | date | Conditional | Required when `status` is `implemented` |
 | `retiredOn` | date | No |  |
 
@@ -478,7 +478,7 @@ Markdown companions:
 
 Management-approved rules for the program. Store the policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.
 
-Instructions: Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates.
+Instructions: Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.
 
 Policy basis: Policies state management’s required behavior. Controls, Obligations, Documents, Training, and Attestations put that behavior into operation and preserve proof.
 
@@ -507,7 +507,7 @@ Markdown companions:
 | `parentPolicyId` | id | No | References: `policy` |
 | `relatedPolicyIds` | array of id | No | References: `policy` |
 | `relatedDocumentIds` | array of id | No | References: `document` |
-| `controlIds` | array of id | No | References: `control` |
+| `controlIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy controls (derived from Control policies) References: `control` |
 | `requirementIds` | array of id | No | References: `requirement` |
 | `audience` | array of string | No |  |
 | `acknowledgementRequired` | boolean | No |  |
@@ -712,7 +712,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One identified threat or business impact that needs treatment or ongoing tracking. Record its owner, ratings, response, affected scope, Controls, acceptance, and follow-up.
 
-Instructions: Record each risk identified by an assessment or operating activity. Assign an owner, rate it, and document the chosen response.
+Instructions: Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.
 
 Policy basis: The information security and data handling policies require identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.
 
@@ -813,7 +813,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `endDate` | date | No |  |
 | `employmentType` | string | No |  |
 | `organization` | string | No |  |
-| `teamIds` | array of id | No | Legacy teams (derived from Team membership) References: `team` |
+| `teamIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy teams (derived from Team membership) References: `team` |
 
 #### `service-account`
 
@@ -921,7 +921,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 Applications, services, and platforms that support the scoped service, operate controls, or produce evidence. Record vendor-provided software as a System and link it to its Vendor.
 
-Instructions: Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software).
+Instructions: Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived.
 
 Policy basis: The information security, data handling, and continuity policies require management to know which Systems are in scope, who owns them, what data they handle, how critical they are, and where evidence comes from.
 
@@ -948,7 +948,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `internetExposed` | boolean | No |  |
 | `inScope` | boolean | No |  |
 | `parentSystemId` | id | No | References: `system` |
-| `commitmentIds` | array of id | No | References: `commitment` |
+| `commitmentIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy commitments (derived from Commitment systems) References: `commitment` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `evidenceSourceKinds` | array of string | No | Evidence source roles |
 | `evidenceOwnerIds` | array of id | No | Evidence access owners References: `person`, `team`, `appointment` |
@@ -991,7 +991,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Provider companies and supplier relationships. Keep contracts, due diligence, subprocessors, continuity, and supplier risk here; record vendor software separately as Systems so Controls and Evidence can link to it.
 
-Instructions: Catalog the companies that provide in-scope software or services. Link each vendor-provided System to the company that provides it.
+Instructions: Catalog the companies that provide in-scope software or services. Link each vendor-provided System with the System’s vendorId.
 
 Policy basis: The information security and data handling policies require an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.
 
@@ -1012,7 +1012,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `criticality` | enum | Yes | Values: `low`, `medium`, `high`, `critical` |
 | `description` | string | No |  |
 | `service` | string | No |  |
-| `systemIds` | array of id | No | References: `system` |
+| `systemIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy systems (derived from System vendor) References: `system` |
 | `dataClassification` | string | No |  |
 | `dataTypes` | array of string | No |  |
 | `subprocessor` | boolean | No |  |
@@ -1448,7 +1448,7 @@ At least one of `dueOn`, `dueWindowEndAt` is required when `status` is one of `o
 
 One real SOC 2 engagement with a CPA firm, including the auditor-agreed scope and period, requests, fieldwork, Findings, opinion, and final report. Management’s candidate dates remain on the Workspace.
 
-Instructions: Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period.
+Instructions: Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period. Control Tests and External Evidence link back with auditId or auditIds.
 
 Policy basis: A CPA firm independently examines the scoped service against the selected Framework. Management supplies the system description, Controls, operating records, and Evidence.
 
@@ -1487,10 +1487,10 @@ Record Markdown: available when needed as an implicit companion file.
 | `complementaryControlsConclusion` | enum | No | Complementary controls conclusion Values: `identified`, `not-applicable` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `subserviceMethod` | enum | No | Values: `carve-out`, `inclusive`, `not-applicable` |
-| `controlTestIds` | array of id | No | References: `control-test` |
+| `controlTestIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy control tests (derived from Control Test audit) References: `control-test` |
 | `opinion` | enum | No | Values: `unmodified`, `qualified`, `adverse`, `disclaimer`, `not-issued` |
 | `opinionDate` | date | No |  |
-| `evidenceIds` | array of id | No | References: `evidence` |
+| `evidenceIds` | array of id | No | Legacy compatibility field. Do not add or update it; derive this relationship from the authoritative field named in its label. Legacy evidence (derived from External Evidence audits) References: `evidence` |
 | `reportEvidenceId` | id | No | References: `evidence` |
 | `managementResponseDocumentId` | id | No | References: `document` |
 | `supplementalDocumentIds` | array of id | No | References: `document` |
