@@ -241,7 +241,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.deepEqual(retrievalPending.items[0].commands, [
     "npx filegrc get system-identity --mutation > /tmp/system-identity.json",
     "npx filegrc update system system-identity /tmp/system-identity.json --json",
-    "npx filegrc evidence-map --json"
+    "npx filegrc program-readiness --json"
   ]);
   const retrievalPendingCli = await execute(process.execPath, [
     cli,
@@ -302,7 +302,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(ready.evidenceReady, true);
   assert.equal(ready.canStartCandidatePeriod, true);
   assert.equal(ready.operating, false);
-  assert.equal(ready.stages.map(({ id }) => id).join(","), "scope,policies,controls,evidence,operation");
+  assert.equal(ready.stages.map(({ id }) => id).join(","), "scope,policies,controls,operation");
   assert.equal(ready.stages.find(({ id }) => id === "scope").items.some(({ id }) => id === "risk-assessment"), false);
   assert.equal(ready.stages.find(({ id }) => id === "operation").items.find(({ id }) => id === "risk-assessment").status, "action");
   const readyWorkspace = await loadWorkspace(root);
@@ -348,7 +348,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   ])).stdout);
   assert.equal(evidenceMapCli.status, "complete");
   assert.deepEqual(evidenceMapCli.items[0].controlIds, ["control-access"]);
-  assert.deepEqual(evidenceMapCli.items[0].commands, ["npx filegrc evidence-map --json"]);
+  assert.deepEqual(evidenceMapCli.items[0].commands, ["npx filegrc program-readiness --json"]);
 
   const auditReadiness = await assessAuditPreparation(root, { programReadiness: ready });
   assert.equal(auditReadiness.status, "not-started");
@@ -380,7 +380,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   const compact = JSON.parse(compactCliResult.stdout);
   assert.equal(compact.canStartCandidatePeriod, true);
   assert.equal(compact.scopeCounts.system, 1);
-  assert.equal(compact.stages.length, 5);
+  assert.equal(compact.stages.length, 4);
   assert.equal(Object.hasOwn(compact.stages[0], "items"), false);
   assert.ok(compactCliResult.stdout.length < cliResult.stdout.length / 2);
 

@@ -18,7 +18,7 @@ npx filegrc list person --json
 npx filegrc program-readiness --summary --json
 ```
 
-`program-path --next --json` gives agents the current step and first action. Use `--summary` for all six step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
+`program-path --next --json` gives agents the current step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
 
 For a new record, generate a mutation envelope:
 
@@ -135,7 +135,7 @@ npx filegrc complete obligation-id completion-record.json
 
 Keep prior completion links because the planner matches each dated record to its own period.
 
-Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Use Trigger Work on Step 5 or run:
+Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Use Trigger Work on Step 4 or run:
 
 ```sh
 npx filegrc trigger person-started --occurred-on 2026-07-25 --subject person-new-worker --json
@@ -177,11 +177,10 @@ The Evidence Ready gate requires:
 
 1. A management goal, selected systems, criteria, and controls.
 2. Active policies with completed text, separate management approval, real approval and effective dates, and linked controls.
-3. Implemented controls with an owner, actual procedure, scope, cadence, evidence source, mappings, implementation date, and every eligible linked Work Queue schedule running.
-4. Active authoritative systems with evidence source roles, access owners, and repeatable extraction instructions in Record Markdown.
-5. Every selected control family mapped to active authoritative Systems with current evidence access owners and repeatable retrieval instructions.
+3. Implemented Controls with an owner, actual procedure, scope, cadence, mappings, implementation date, and every eligible linked Work Queue schedule running.
+4. Every selected Control mapped to active authoritative Systems with the required evidence source roles, current access owners, and repeatable extraction instructions in Record Markdown.
 
-Onboarding does not create External Evidence records. Run `npx filegrc evidence-map --json` after confirming the applicable controls. Each family reports the required source roles, per-Control mappings, per-System checks, and exact edit commands. For every incomplete family, update the Control with its authoritative evidence source Systems, then give each source an evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. During Step 5, create External Evidence only when a real artifact exists. Select its source System, attach or reference the result, link the Controls and operating record it supports, record its collector and classification, then have another person verify it before audit use.
+Onboarding does not create External Evidence records. Complete authoritative source Systems as part of Control implementation. For every incomplete family in Program Readiness, update the Control with its authoritative evidence source Systems, then give each source the required evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. Use `npx filegrc evidence-map --json` when you want only those source checks. During Step 4, create External Evidence only when a real artifact exists. Select its source System, attach or reference the result, link the Controls and operating record it supports, record its collector and classification, then have another person verify it before audit use.
 
 When the gate passes, set `workspace.candidatePeriodStart` to the date reliable evidence collection begins. Do not backdate it. `candidatePeriodStart` and `candidatePeriodEnd` express management’s target. They do not establish the final report period.
 
@@ -205,7 +204,7 @@ The audit record’s `typeOneAsOf`, `periodStart`, and `periodEnd` are the dates
 
 Review both evidence paths against the exact firm-agreed date or period:
 
-1. filegrc Evidence consists of dated Step 5 operating records. Complete each applicable record, link it to the Controls it supports, record the result in structured fields or Markdown, and link any external artifact needed to support that result.
+1. filegrc Evidence consists of dated Step 4 operating records. Complete each applicable record, link it to the Controls it supports, record the result in structured fields or Markdown, and link any external artifact needed to support that result.
 2. External Evidence consists of verified `evidence` records from authoritative Systems. Confirm the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
 
 Audit Readiness reports coverage for both paths. The packet includes the matching filegrc records and Markdown with Git history, plus External Evidence records, retained attachments, delivery indexes, and checksums.

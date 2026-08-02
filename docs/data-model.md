@@ -10,7 +10,7 @@ Each structured resource is one UTF-8 JSON file. Long-form work is an implicit M
 
 ## Program path
 
-The renderer, CLI, generated agent instructions, and this reference use the same six-step lifecycle:
+The renderer, CLI, generated agent instructions, and this reference use the same five-step lifecycle:
 
 ### Step 1. Define Scope
 
@@ -23,7 +23,7 @@ Confirm the people, dated appointments, and teams responsible for the program, s
 - **Requirements** (`requirement`): Review each criterion, decide whether it applies, and record the reason for that decision.
 - **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
 - **Vendors** (`vendor`): Catalog the companies that provide in-scope software or services. Link each vendor-provided System with the System’s vendorId.
-- **Systems** (`system`): Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived.
+- **Systems** (`system`): Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived. For every authoritative evidence source, set its source roles, name current access owners, and write repeatable retrieval instructions in Record Markdown before implementing the linked Controls.
 
 Headless commands:
 
@@ -48,9 +48,9 @@ Headless commands:
 
 ### Step 3. Implement Controls
 
-Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, cadence, policy and criteria mappings, authoritative evidence source, and implementation date. Mark it implemented only after the procedure is operating, then record any controls that customers or carved-out providers must perform.
+Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, cadence, policy and criteria mappings, and implementation date. Connect it to the exact authoritative Systems that produce its evidence, and complete each source’s role, access ownership, and retrieval instructions before marking the Control implemented. Then record any controls that customers or carved-out providers must perform.
 
-- **Controls** (`control`): Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, evidence source, and implementation date.
+- **Controls** (`control`): Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.
 - **Complementary controls** (`complementary-control`): Record anything customers or carved-out providers must do for your controls to work as intended.
 
 Headless commands:
@@ -58,22 +58,10 @@ Headless commands:
 - `npx filegrc guide control --json`
 - `npx filegrc list control --json`
 - `npx filegrc get CONTROL_ID --mutation`
-
-### Step 4. Map Evidence
-
-Before starting the candidate period, map every selected control to the authoritative Systems that produce its evidence. Name current evidence access owners and write repeatable retrieval instructions for each source.
-
-- **Evidence Map** (`utility:evidence-map`): Review every selected control family, its expected evidence, authoritative source Systems, access owners, and retrieval instructions. Fix the source System and Control records rather than creating placeholder Evidence.
-
-Headless commands:
-
 - `npx filegrc evidence-map --json`
-- `npx filegrc guide system --json`
-- `npx filegrc list system --json`
-- `npx filegrc guide control --json`
 - `npx filegrc program-readiness --json`
 
-### Step 5. Operate the Program
+### Step 4. Operate the Program
 
 Record the management candidate start date when reliable evidence collection begins. Maintain current risk assessments and risks, updating the control set when needed. Complete recurring and event-driven work, run continuous and per-transaction controls, and keep dated evidence current throughout the period.
 
@@ -116,7 +104,7 @@ Headless commands:
 - `npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --json`
 - `npx filegrc program-readiness --json`
 
-### Step 6. Audit
+### Step 5. Audit
 
 After the program is collecting reliable evidence, create an Audit record for the real CPA engagement, keep the firm-agreed report period separate from management’s candidate dates, complete management documents, populations, requests, evidence delivery, and fieldwork, then preserve the findings, responses, opinion, and final report.
 
@@ -179,19 +167,19 @@ Standard populations, including zero-event populations:
 Authoritative systems of record:
 
 - **Workforce System** (`workforce`): Catalog the HR or workforce system that is authoritative for starts, role changes, and departures. Bring the complete workforce-change population and source reports used to reconcile access and responsibilities. Expected evidence: Export a workforce-change report from the HR or workforce system containing starters, role changes, and departures. Identify the source during scoping. Preserve event records as changes occur and export the complete Type 2 population after the period closes.
-- **Training and Acknowledgements** (`training-acknowledgement`): filegrc records training assignments, content revisions, completions, acknowledgements, exceptions, and overdue follow-up during Step 5. FileGRC operating records: `training`, `attestation`. Expected evidence: Export assignments and completions tied to a specific training or policy revision. Set up training and acknowledgement records before assignments begin. Preserve completion proof as work occurs, then reconcile the complete Type 2 population to the workforce population after close.
+- **Training and Acknowledgements** (`training-acknowledgement`): filegrc records training assignments, content revisions, completions, acknowledgements, exceptions, and overdue follow-up during Step 4. FileGRC operating records: `training`, `attestation`. Expected evidence: Export assignments and completions tied to a specific training or policy revision. Set up training and acknowledgement records before assignments begin. Preserve completion proof as work occurs, then reconcile the complete Type 2 population to the workforce population after close.
 - **Identity and Access Systems** (`identity-access`): Catalog the identity provider and each important application that enforces access. Bring identity, role, privileged-access, authentication-setting, review, and removal exports. Expected evidence: Export users, roles, privileged access, or authentication settings from the identity provider or an in-scope application. Identify sources during scoping. Capture configuration near the Type 1 date or at the start and end of a Type 2 period; export complete change and review populations after the Type 2 period closes.
 - **Production Change Systems** (`production-change`): Catalog source control, deployment, and infrastructure-change systems. Bring protection settings, reviews, test and approval records, deployments, emergency changes, and rollback evidence. Expected evidence: Capture a change from the source control or deployment system showing review, testing, approval, deployment, and rollback information. Identify sources before the audit period. Preserve per-change evidence as changes occur and export the complete period population after a Type 2 period closes.
-- **Security Monitoring Systems** (`security-monitoring`): Catalog logging and alerting systems. Bring configuration, coverage, alert delivery tests, alerts, investigations, and zero-event proof. filegrc records qualifying incidents and their response during Step 5. Expected evidence: Capture logging or alert configuration and a delivered test alert from the monitoring system. Capture configuration and coverage at the Type 1 date or across the Type 2 period. Preserve cases as they occur and export complete alert and incident populations after close.
-- **Vulnerability Management** (`vulnerability-management`): filegrc records vulnerability scans and penetration tests during Step 5. Put the scanner output or independent report in an External Evidence record and link it from the operating record when fixed supporting proof is needed. FileGRC operating records: `vulnerability-scan`, `penetration-test`. Expected evidence: Export a result from the vulnerability or dependency scanner showing scope, coverage, findings, and severity. Confirm coverage before the audit period. Preserve scan and remediation evidence when generated and export the complete Type 2 population after close.
-- **Endpoint Management Systems** (`endpoint-asset`): Catalog device-management and endpoint-compliance systems. Bring the complete device population, security configuration, compliance status, and exceptions. filegrc records asset ownership, custody, loss, return, and disposal during Step 5. Expected evidence: Export devices, security configuration, and compliance status from the endpoint-management system. Identify sources before devices receive access. Capture configuration near the Type 1 date or across the Type 2 period and export the complete Type 2 population after close.
-- **Backup and Recovery** (`backup-recovery`): filegrc records restoration tests and continuity exercises during Step 5. Put backup-system output in an External Evidence record and link it from the operating record when fixed supporting proof is needed. FileGRC operating records: `backup-test`, `exercise`. Expected evidence: Export job history from the backup system showing scheduled runs, successes, failures, and follow-up. Capture configuration at the Type 1 date or across the Type 2 period. Preserve restoration and exercise results when performed and export complete job and failure history after period close.
-- **Vendors** (`vendor-management`): filegrc records vendor reviews, risk decisions, supporting reports, exceptions, and follow-up during Step 5. FileGRC operating records: `vendor-review`. Expected evidence: Capture a completed vendor review with its contract, assurance report, risk decision, and follow-up. Identify relevant subservice organizations during scoping. Complete reviews during operation, obtain current assurance reports before fieldwork, and document bridge coverage when a report ends before the report period.
-- **Exceptions and Findings** (`exception-finding`): filegrc records control exceptions, findings, risk acceptance, remediation, verification, and overdue work during Step 5. FileGRC operating records: `exception`, `finding`, `action-item`. Expected evidence: Export open and closed exceptions or findings with owners, status, dates, and remediation verification. Record items as they arise. Keep their status and follow-up current, then include the complete period population in fieldwork.
-- **Data Protection Configuration** (`data-handling`): Catalog the systems authoritative for encryption settings and retention rules. Bring current configuration and approved schedules. Preserve completed disposal actions, exceptions, and verification during Step 5. Expected evidence: Capture encryption and retention settings from an in-scope System. Confirm configuration and retention rules before the audit period. Preserve disposal evidence when work occurs and capture configuration near the Type 1 date or across the Type 2 period.
+- **Security Monitoring Systems** (`security-monitoring`): Catalog logging and alerting systems. Bring configuration, coverage, alert delivery tests, alerts, investigations, and zero-event proof. filegrc records qualifying incidents and their response during Step 4. Expected evidence: Capture logging or alert configuration and a delivered test alert from the monitoring system. Capture configuration and coverage at the Type 1 date or across the Type 2 period. Preserve cases as they occur and export complete alert and incident populations after close.
+- **Vulnerability Management** (`vulnerability-management`): filegrc records vulnerability scans and penetration tests during Step 4. Put the scanner output or independent report in an External Evidence record and link it from the operating record when fixed supporting proof is needed. FileGRC operating records: `vulnerability-scan`, `penetration-test`. Expected evidence: Export a result from the vulnerability or dependency scanner showing scope, coverage, findings, and severity. Confirm coverage before the audit period. Preserve scan and remediation evidence when generated and export the complete Type 2 population after close.
+- **Endpoint Management Systems** (`endpoint-asset`): Catalog device-management and endpoint-compliance systems. Bring the complete device population, security configuration, compliance status, and exceptions. filegrc records asset ownership, custody, loss, return, and disposal during Step 4. Expected evidence: Export devices, security configuration, and compliance status from the endpoint-management system. Identify sources before devices receive access. Capture configuration near the Type 1 date or across the Type 2 period and export the complete Type 2 population after close.
+- **Backup and Recovery** (`backup-recovery`): filegrc records restoration tests and continuity exercises during Step 4. Put backup-system output in an External Evidence record and link it from the operating record when fixed supporting proof is needed. FileGRC operating records: `backup-test`, `exercise`. Expected evidence: Export job history from the backup system showing scheduled runs, successes, failures, and follow-up. Capture configuration at the Type 1 date or across the Type 2 period. Preserve restoration and exercise results when performed and export complete job and failure history after period close.
+- **Vendors** (`vendor-management`): filegrc records vendor reviews, risk decisions, supporting reports, exceptions, and follow-up during Step 4. FileGRC operating records: `vendor-review`. Expected evidence: Capture a completed vendor review with its contract, assurance report, risk decision, and follow-up. Identify relevant subservice organizations during scoping. Complete reviews during operation, obtain current assurance reports before fieldwork, and document bridge coverage when a report ends before the report period.
+- **Exceptions and Findings** (`exception-finding`): filegrc records control exceptions, findings, risk acceptance, remediation, verification, and overdue work during Step 4. FileGRC operating records: `exception`, `finding`, `action-item`. Expected evidence: Export open and closed exceptions or findings with owners, status, dates, and remediation verification. Record items as they arise. Keep their status and follow-up current, then include the complete period population in fieldwork.
+- **Data Protection Configuration** (`data-handling`): Catalog the systems authoritative for encryption settings and retention rules. Bring current configuration and approved schedules. Preserve completed disposal actions, exceptions, and verification during Step 4. Expected evidence: Capture encryption and retention settings from an in-scope System. Confirm configuration and retention rules before the audit period. Preserve disposal evidence when work occurs and capture configuration near the Type 1 date or across the Type 2 period.
 - **Network Security Systems** (`network-security`): Catalog the systems authoritative for network boundaries, firewall rules, and remote access. Bring current configuration, rule reviews, approvals, changes, and exceptions. Expected evidence: Capture current firewall or network-access rules from the network system and confirm that remote and production access paths appear. Confirm boundary and remote-access configuration before the audit period. Preserve rule changes as they occur and capture current configuration near the Type 1 date or across the Type 2 period.
-- **Governance** (`governance`): filegrc records policy approvals, oversight reviews, meetings, decisions, assigned actions, and completion proof in Steps 2 and 5. FileGRC operating records: `policy-review`, `meeting`. Expected evidence: Capture one completed oversight review or policy approval with the participants, decisions, dates, and follow-up work. Approve policies before they take effect. Preserve oversight records and decisions when the work occurs.
-- **Risk Management** (`risk-management`): filegrc records risk assessments, risks, treatment decisions, reviews, and follow-up during Step 5. FileGRC operating records: `risk-assessment`, `risk`. Expected evidence: Export the risk register with owners, ratings, treatment decisions, review dates, and open actions. Complete the initial assessment while operating the program. Preserve risk changes and reviews as they occur, then include the current register in fieldwork.
+- **Governance** (`governance`): filegrc records policy approvals, oversight reviews, meetings, decisions, assigned actions, and completion proof in Steps 2 and 4. FileGRC operating records: `policy-review`, `meeting`. Expected evidence: Capture one completed oversight review or policy approval with the participants, decisions, dates, and follow-up work. Approve policies before they take effect. Preserve oversight records and decisions when the work occurs.
+- **Risk Management** (`risk-management`): filegrc records risk assessments, risks, treatment decisions, reviews, and follow-up during Step 4. FileGRC operating records: `risk-assessment`, `risk`. Expected evidence: Export the risk register with owners, ratings, treatment decisions, review dates, and open actions. Complete the initial assessment while operating the program. Preserve risk changes and reviews as they occur, then include the current register in fieldwork.
 
 ## Resource groups
 
@@ -307,13 +295,13 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `control`
 
-Management’s actual safeguards and procedures, mapped to Policies, Requirements, Systems, and evidence sources. The Work Queue schedules recurring operation where configured; Evidence shows that operation occurred.
+Management’s actual safeguards and procedures, mapped to Policies, Requirements, Systems, and authoritative evidence sources. The Work Queue schedules recurring operation where configured; Evidence shows that operation occurred. A Control is ready for implementation only when each source System is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions.
 
-Instructions: Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, evidence source, and implementation date.
+Instructions: Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. Policy text alone does not show implementation.
 
-Timing: Before marking a control implemented, record its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, and implementation date. filegrc-managed controls also require enabled schedules with effective governing policies. Marking the control implemented starts eligible schedules.
+Timing: Before marking a Control implemented, record its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence source Systems, and implementation date. Confirm each source System is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. filegrc-managed Controls also require enabled schedules with effective governing policies. Marking the Control implemented starts eligible schedules.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -920,13 +908,13 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `system`
 
-Applications, services, and platforms that support the scoped service, operate controls, or produce evidence. Record vendor-provided software as a System and link it to its Vendor.
+Applications, services, and platforms that support the scoped service, operate controls, or produce evidence. Record vendor-provided software as a System and link it to its Vendor. Before implementing a Control that relies on a System for evidence, add the System’s evidence source roles and access owners and document repeatable retrieval instructions in Record Markdown.
 
-Instructions: Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived.
+Instructions: Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived. For every authoritative evidence source, set its source roles, name current access owners, and write repeatable retrieval instructions in Record Markdown before implementing the linked Controls.
 
 Policy basis: The information security, data handling, and continuity policies require management to know which Systems are in scope, who owns them, what data they handle, how critical they are, and where evidence comes from.
 
-Timing: Complete the in-scope inventory before policy approval and control implementation. Review it at least annually and after material architecture, data, vendor, service, recovery, or evidence-source changes. Test report access and extraction before the candidate period begins.
+Timing: Complete the in-scope inventory before policy approval and control implementation. For each authoritative evidence source, assign its source roles and current access owners, document the exact report, filters, date range, timezone, export format, and reconciliation steps in Record Markdown, and test retrieval before implementing the linked Controls. Review the inventory at least annually and after material architecture, data, vendor, service, recovery, or evidence-source changes.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
 
@@ -1266,7 +1254,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `evidence`
 
-External Evidence holds exports, reports, screenshots, signed files, and approved external references collected from other Systems. Step 5 records created in filegrc do not need a separate record here. Step 6 reviews and packages both evidence paths for the CPA firm.
+External Evidence holds exports, reports, screenshots, signed files, and approved external references collected from other Systems. Step 4 records created in filegrc do not need a separate record here. Step 5 reviews and packages both evidence paths for the CPA firm.
 
 Instructions: Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, retain the fixed artifact or reference, and have another person verify it before audit use.
 

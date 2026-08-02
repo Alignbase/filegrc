@@ -2,7 +2,7 @@
 
 An evidence record explains what a proof item is, where it came from, what period it supports, who collected it, and which records or controls it supports. The attachment alone is not enough.
 
-Do not create placeholder or collection-test Evidence. Step 4 maps Controls to authoritative Systems with `npx filegrc evidence-map --json`. Create External Evidence during Step 5 only when a real export, report, screenshot, signed file, or approved external reference exists. When an operating record needs fixed supporting proof, create or update an External Evidence record and link its ID from that record. Keep new evidence as `draft` until the artifact exists. Set it to `collected` only after selecting the source System, attaching or referencing the result, and recording the source, date, classification, and collector. Set it to `verified` only after another named person checks it.
+Do not create placeholder or collection-test Evidence. Control implementation maps Controls to complete authoritative Systems; `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create External Evidence during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists. When an operating record needs fixed supporting proof, create or update an External Evidence record and link its ID from that record. Keep new evidence as `draft` until the artifact exists. Set it to `collected` only after selecting the source System, attaching or referencing the result, and recording the source, date, classification, and collector. Set it to `verified` only after another named person checks it.
 
 ## Create evidence
 

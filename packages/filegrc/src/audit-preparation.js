@@ -572,7 +572,7 @@ function evidenceStage(audit, records, byId, model) {
       managedControls.length && controlsWithFilegrcRecords.length === managedControls.length ? "complete" : managedControls.length ? "action" : "info",
       "Review filegrc Evidence",
       managedControls.length
-        ? `${controlsWithFilegrcRecords.length} of ${managedControls.length} selected controls that use filegrc workflows have a dated operating record for the formal period. Complete each Step 5 record, link it to the control, and add results in its structured fields or Markdown.`
+        ? `${controlsWithFilegrcRecords.length} of ${managedControls.length} selected controls that use filegrc workflows have a dated operating record for the formal period. Complete each Step 4 record, link it to the control, and add results in its structured fields or Markdown.`
         : "No selected controls use a dedicated filegrc operating record.",
       filegrcRecords[0] || { type: managedFamilies[0]?.operationRecordTypes?.[0] || "control" }
     ),
@@ -611,7 +611,7 @@ function evidenceStage(audit, records, byId, model) {
         source.title,
         coveredControls.length === relevantControls.length
           ? `${sourceRecords.length} dated filegrc ${sourceRecords.length === 1 ? "record" : "records"} cover ${relevantControls.length} mapped controls. External artifacts needed to support those results are linked from the operating records.`
-          : `${coveredControls.length} of ${relevantControls.length} mapped controls have a dated ${source.operationRecordTypes.map(displayValue).join(" or ")} record for the formal period. Complete the Step 5 work and attach or reference any supporting external artifact on that record.`,
+          : `${coveredControls.length} of ${relevantControls.length} mapped controls have a dated ${source.operationRecordTypes.map(displayValue).join(" or ")} record for the formal period. Complete the Step 4 work and attach or reference any supporting external artifact on that record.`,
         sourceRecords[0] || { type: source.operationRecordTypes[0] }
       ));
       continue;

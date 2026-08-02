@@ -15,7 +15,7 @@ npx filegrc list RESOURCE_TYPE --json
 npx filegrc search "TERM" --json
 ```
 
-Use `program-path --next --json` to find the current lifecycle step and first action. Use `--summary` for all six step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. Use `guide` before any unfamiliar create or status transition. It repeats the page guidance and reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
+Use `program-path --next --json` to find the current lifecycle step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. Use `guide` before any unfamiliar create or status transition. It repeats the page guidance and reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
 
 ## Choose the right record
 
@@ -26,7 +26,7 @@ Use `program-path --next --json` to find the current lifecycle step and first ac
 - A fact that may change over time belongs in an inventory record, such as `person`, `system`, `asset`, `vendor`, or `access-grant`.
 - A Person’s `jobTitle` is their actual position in the organization. A named authority they hold, such as CISO, DPO, Policy Owner, or team chair, belongs in a dated `appointment` scoped to the workspace, team, or governed records.
 - Team membership and chairs are authoritative on `team.memberIds` and `team.chairIds`. Do not add the legacy `person.teamIds` field.
-- A dated Step 5 operating record proves that filegrc-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
+- A dated Step 4 operating record proves that filegrc-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
 - Follow-up work belongs in `action-item`. A gap belongs in `finding`, a known threat belongs in `risk`, and an approved temporary departure belongs in `exception`.
 - An auditor request belongs in `audit-request`; the engagement itself belongs in `audit`.
 
@@ -164,23 +164,24 @@ filegrc will not delete an evidence record that still has local attachments.
 
 Never invent evidence, dates, approvals, results, people, or source-system details. If a required fact is unavailable, leave the record in a non-final state and report the missing input.
 
-## Map Evidence
+## Implement Controls and Their Evidence Sources
 
-Run the Step 4 map after confirming the applicable Controls:
+Finish each applicable Control and its authoritative source Systems together. Use Program Readiness as the completion check:
 
 ```sh
-npx filegrc evidence-map --json
+npx filegrc program-readiness --json
 ```
 
-Each family reports its required `sourceKinds`, `controlMappings`, `sourceSystemChecks`, and exact edit commands. Resolve it through the source records:
+The Control stage reports both Control implementation items and evidence-family source checks. Resolve them through the source records:
 
 1. Choose an existing System or scaffold the System that is authoritative for the family.
 2. Set the System to `active`, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
 3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the System’s Record Markdown.
 4. Add the System ID to `evidenceSourceIds` on every Control in the family that it supports.
-5. Run `evidence-map --json` again and resolve every failed check before starting the candidate period.
+5. Finish the Control’s owner, procedure, scope, cadence, mappings, and implementation date.
+6. Run `program-readiness --json` again and resolve every failed Control or source check before marking the Controls implemented or starting the candidate period.
 
-Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. Do not create an Evidence record during mapping. Create External Evidence during Step 5 only when the real export, report, screenshot, signed file, or approved external reference exists.
+Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. `evidence-map --json` remains available when you want only the evidence-family checks. Do not create an Evidence record while designing or implementing a Control. Create External Evidence during Step 4 only when the real export, report, screenshot, signed file, or approved external reference exists.
 
 ## Scheduled and event work
 

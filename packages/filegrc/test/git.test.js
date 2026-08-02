@@ -409,10 +409,12 @@ test("the evidence map is read-only in trunk mode", async (context) => {
   const response = await fetch(`${running.url}/api/state`);
   assert.equal(response.status, 200);
   const state = await response.json();
-  const evidence = state.programReadiness.stages.find(({ id }) => id === "evidence");
-  assert.equal(evidence.items.length, 1);
-  assert.equal(evidence.items[0].id, "source-family-identity-access");
-  assert.equal(evidence.items[0].status, "action");
+  const evidence = state.programReadiness.stages
+    .find(({ id }) => id === "controls")
+    .items.filter(({ id }) => id.startsWith("source-family-"));
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].id, "source-family-identity-access");
+  assert.equal(evidence[0].status, "action");
   assert.equal(state.resources.some(({ record }) => record.type === "evidence"), false);
   assert.equal((await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim(), committed);
   assert.equal((await git(fixture.root, ["status", "--porcelain"])).stdout, "");

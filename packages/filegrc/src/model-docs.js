@@ -15,7 +15,7 @@ export function generateModelDocumentation(model) {
     "",
     "## Program path",
     "",
-    "The renderer, CLI, generated agent instructions, and this reference use the same six-step lifecycle:",
+    "The renderer, CLI, generated agent instructions, and this reference use the same five-step lifecycle:",
     "",
     ...programPath.flatMap((stage) => [
       `### Step ${stage.number}. ${stage.title}`,

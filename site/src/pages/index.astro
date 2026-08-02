@@ -37,7 +37,7 @@ const steps = [
   {
     number: "1",
     title: "Define scope",
-    body: "Confirm program owners, criteria, commitments, vendors, and in-scope systems.",
+    body: "Confirm program owners, criteria, commitments, vendors, and in-scope systems, including evidence roles and access owners.",
   },
   {
     number: "2",
@@ -47,20 +47,15 @@ const steps = [
   {
     number: "3",
     title: "Implement controls",
-    body: "Replace prompts with the procedure, scope, cadence, and evidence source.",
+    body: "Replace prompts with the procedure, scope, cadence, and complete authoritative evidence sources.",
   },
   {
     number: "4",
-    title: "Map evidence",
-    body: "Connect every control to its authoritative evidence Systems, access owners, and retrieval instructions.",
-  },
-  {
-    number: "5",
     title: "Operate the program",
     body: "Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.",
   },
   {
-    number: "6",
+    number: "5",
     title: "Audit",
     body: "Engage the CPA firm, record its agreed period, support fieldwork, and build the packet.",
   },
@@ -69,7 +64,7 @@ const steps = [
 const commands = [
   [
     "program-path --json",
-    "Follow the same six-step path, instructions, and current status shown in the browser.",
+    "Follow the same five-step path, instructions, and current status shown in the browser.",
   ],
   [
     "guide risk-assessment --json",
@@ -311,7 +306,7 @@ const structuredData = {
         <div class="workflow-product__viewport">
           <img
             src="/filegrc-home.png"
-            alt="filegrc program overview showing the six-step SOC 2 path"
+            alt="filegrc program overview showing the five-step SOC 2 path"
             width="1440"
             height="1000"
             loading="lazy"
@@ -330,9 +325,9 @@ const structuredData = {
         <h2>The browser is helpful. <em>It is not required.</em></h2>
         <p>
           An agent with no filegrc context can discover the model, inspect valid
-          relationships, follow the same six steps and page instructions, create
-          records, complete scheduled work, trigger Policy Events, and check the
-          result without opening the renderer.
+          relationships, follow the same five steps and page instructions,
+          create records, complete scheduled work, trigger Policy Events, and
+          check the result without opening the renderer.
         </p>
         <p>
           The browser and CLI call the same domain functions, so headless work

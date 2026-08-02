@@ -23,18 +23,14 @@ export async function assessProgramReadiness(input, options = {}) {
     return markdown.get(record.id);
   };
 
+  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf);
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
-  const evidenceStage = stage(
-    "evidence",
-    "Map Evidence",
-    "Map every selected control to an authoritative System, name who can retrieve its evidence, and document repeatable extraction before operation begins.",
-    sourceStage.items
-  );
+  controlStage.items.push(...sourceStage.items);
+  controlStage.description = "Each implemented control needs an owner, actual procedure, scope, cadence, mappings, an implementation date, and complete authoritative source Systems with the required evidence roles, access owners, and retrieval instructions.";
   const evidenceGateStages = [
     scopeStage(workspace, scope, records, byId),
     await policiesStage(scope, byId, readMarkdown, asOf),
-    await controlsStage(scope, byId, readMarkdown, asOf),
-    evidenceStage
+    controlStage
   ];
   for (const current of evidenceGateStages) finalizeStage(current);
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
@@ -95,20 +91,23 @@ export async function assessProgramReadiness(input, options = {}) {
 
 export async function assessEvidenceMap(input, options = {}) {
   const readiness = await assessProgramReadiness(input, options);
-  const evidence = readiness.stages.find((stage) => stage.id === "evidence");
+  const evidenceItems = readiness.stages
+    .find((stage) => stage.id === "controls")
+    ?.items.filter((current) => current.id.startsWith("source-family-")) || [];
+  const counts = countStatuses(evidenceItems);
   return {
     schemaVersion: 1,
     generatedAt: readiness.generatedAt,
     asOf: readiness.asOf,
-    status: evidence.status,
-    counts: evidence.counts,
+    status: counts.action ? "action" : "complete",
+    counts,
     workflow: [
       "Choose an existing System or create the System that is authoritative for each evidence family.",
       "On every source System, set an evidence source role, name current evidence access owners, and write repeatable retrieval instructions in Record Markdown.",
       "Set each selected Control's evidenceSourceIds to the authoritative Systems that produce its evidence.",
-      "Run evidence-map again and resolve every incomplete source check and control mapping before starting the candidate period."
+      "Run program-readiness again and resolve every incomplete source check and control mapping before marking the Controls implemented."
     ],
-    items: evidence.items
+    items: evidenceItems
   };
 }
 
@@ -467,7 +466,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
         `npx filegrc get ${shellArgument(controlId)} --mutation > /tmp/${shellArgument(controlId)}.json`,
         `npx filegrc update control ${shellArgument(controlId)} /tmp/${shellArgument(controlId)}.json --json`
       ]),
-      "npx filegrc evidence-map --json"
+      "npx filegrc program-readiness --json"
     ];
     items.push(item(
       `source-family-${family.id}`,
@@ -494,7 +493,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       }
     ));
   }
-  return stage("sources", "Map Evidence", "Catalog authoritative Systems, map every selected control, name who can retrieve evidence, and write repeatable extraction instructions.", items);
+  return stage("sources", "Control Evidence Sources", "Complete the authoritative Systems for every selected control family before marking the Controls implemented.", items);
 }
 
 function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
@@ -505,7 +504,7 @@ function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
         "operation-later",
         "later",
         "Begin reliable evidence collection",
-        "Finish scope, policy adoption, control implementation, and evidence mapping before recording the candidate period.",
+        "Finish scope, policy adoption, and control implementation, including complete authoritative evidence sources, before recording the candidate period.",
         workspace || { type: "workspace" }
       )
     ]);

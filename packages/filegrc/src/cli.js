@@ -828,14 +828,14 @@ Options:
     console.log(`Usage:
   filegrc program-path [audit-id] [options]
 
-Show the same six-step SOC 2 lifecycle used by the renderer. Each step includes
+Show the same five-step SOC 2 lifecycle used by the renderer. Each step includes
 its exact page instructions, Use and Policy Basis context, resource commands,
-and current readiness state. Pass an audit ID to include Step 6 status.
+and current readiness state. Pass an audit ID to include Step 5 status.
 
 Options:
-  --audit <id>       Audit record to use for Step 6
+  --audit <id>       Audit record to use for Step 5
   --as-of <date>     Evaluate readiness on YYYY-MM-DD
-  --summary          Print compact status and the first action for all six steps
+  --summary          Print compact status and the first action for all five steps
   --next             Print only the current step and its first action
   --current          Print the full guide for the current step only
   --json             Print the selected path view as JSON
@@ -847,9 +847,9 @@ Options:
     console.log(`Usage:
   filegrc evidence-map [options]
 
-Show the Step 4 evidence map for every selected control family. Each item reports
-the required source roles, linked controls, authoritative source Systems,
-per-record checks, and exact edit commands. The map itself is read-only.
+Inspect the evidence-source checks included in Control implementation. Each item
+reports the required source roles, linked Controls, authoritative source Systems,
+per-record checks, and exact edit commands. This diagnostic is read-only.
 
 Options:
   --as-of <date>  Evaluate the map on YYYY-MM-DD

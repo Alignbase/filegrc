@@ -37,14 +37,13 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 
 ![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
-1. **Define scope.** Confirm people, dated appointments, teams, criteria, commitments, vendors, and in-scope systems.
+1. **Define scope.** Confirm people, dated appointments, teams, criteria, commitments, vendors, and in-scope systems. For Systems that produce evidence, add their source roles, access owners, and retrieval instructions.
 2. **Approve policies.** Tailor the proposals and record separate owners and reviewers.
-3. **Implement controls.** Add the real procedure, scope, cadence, and evidence source.
-4. **Map evidence.** Connect every control to its authoritative evidence systems, access owners, and retrieval instructions.
-5. **Operate the program.** Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.
-6. **Audit.** Record the CPA engagement and agreed period, support fieldwork, and build the packet.
+3. **Implement controls.** Add the real procedure, scope, cadence, and authoritative evidence Systems. Confirm every source is active and has the required role, access owners, and repeatable retrieval instructions before marking the Control implemented.
+4. **Operate the program.** Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.
+5. **Audit.** Record the CPA engagement and agreed period, support fieldwork, and build the packet.
 
-Step 4 is a read-only evidence map. Review it with `npx filegrc evidence-map --json`, then fix missing mappings in the Control and System records. Create External Evidence during Step 5 only when a real export, report, screenshot, signed file, or approved external reference exists.
+Control implementation includes evidence-source readiness. Use `npx filegrc program-readiness --json` to find incomplete Control or System records. `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create External Evidence during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists.
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 

@@ -177,8 +177,8 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(loaded.resources.find(({ id }) => id === "control-access").systemIds, undefined);
 
   const browserState = await (await fetch(`${running.url}/api/state`)).json();
-  const browserEvidenceMap = browserState.programReadiness.stages.find(({ id }) => id === "evidence");
-  const browserIdentityMap = browserEvidenceMap.items.find(({ familyId }) => familyId === "identity-access");
+  const browserControlStage = browserState.programReadiness.stages.find(({ id }) => id === "controls");
+  const browserIdentityMap = browserControlStage.items.find(({ familyId }) => familyId === "identity-access");
   assert.ok(browserIdentityMap);
   assert.equal(browserIdentityMap.evidenceKind, "export");
   assert.match(browserIdentityMap.evidencePrompt, /users, roles, privileged access/);

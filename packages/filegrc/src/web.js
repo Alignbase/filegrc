@@ -313,8 +313,7 @@ function readinessOverview() {
   const stages = [
     programStage("scope", "Confirm program ownership, criteria, and commitments, then describe the service, supporting systems, and dependencies.", "#/stage/scope"),
     programStage("policies", "Tailor the policy set, obtain independent management approval, and establish effective dates.", "#/stage/policies"),
-    programStage("controls", "Finish the internal control set with actual procedures, owners, scope, and evidence sources, then record any complementary controls.", "#/stage/controls"),
-    programStage("evidence", "Map every control family to its authoritative Systems, evidence access owners, and repeatable retrieval instructions.", "#/stage/evidence"),
+    programStage("controls", "Finish the internal control set and every authoritative evidence source, then record any complementary controls.", "#/stage/controls"),
     programStage("run", "Begin the candidate period, maintain risk assessments, work the filegrc queue, run the remaining controls, and retain dated evidence.", "#/stage/run"),
     programStage("audit", "Engage the CPA firm, confirm the formal period, complete fieldwork, and generate the final evidence packet.", "#/stage/audit")
   ];
@@ -336,13 +335,15 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   if (stage.id === "run") return renderObligations(main, params);
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
-    '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 6</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    (stage.id === "evidence" ? renderEvidenceMap() : renderStagePageIndex(stage)) + '</div>';
+    '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
+    renderStagePageIndex(stage) + (stage.id === "controls" ? renderEvidenceReadiness() : "") + '</div>';
 }
 
-function renderEvidenceMap() {
-  const evidence = state.programReadiness?.stages?.find((stage) => stage.id === "evidence");
-  const items = evidence?.items || [];
+function renderEvidenceReadiness() {
+  const items = state.programReadiness?.stages
+    ?.find((stage) => stage.id === "controls")
+    ?.items.filter((item) => item.id.startsWith("source-family-")) || [];
+  const completeCount = items.filter((item) => item.status === "complete").length;
   const cards = items.map((item) => {
     const sources = (item.sourceSystemIds || []).map((id) => {
       const source = state.resources.find(({ record }) => record.type === "system" && record.id === id)?.record;
@@ -355,12 +356,12 @@ function renderEvidenceMap() {
             .map(([name]) => evidenceSourceCheckLabel(name))
             .join(", ") || "Needs details";
       return source
-        ? '<a class="evidence-map-source ' + (complete ? "complete" : "incomplete") + '" href="#/resource/system/' + encodeURIComponent(id) + '?stage=evidence">' + esc(source.title) + '<small>' + esc(status) + '</small></a>'
+        ? '<a class="evidence-map-source ' + (complete ? "complete" : "incomplete") + '" href="#/resource/system/' + encodeURIComponent(id) + '">' + esc(source.title) + '<small>' + esc(status) + '</small></a>'
         : "";
     }).join("");
     const sourceAction = sources
       ? sources
-      : '<a class="button" href="#/resources/system?new=1&amp;stage=evidence">Add source System</a>';
+      : '<a class="button" href="#/resources/system?new=1">Add source System</a>';
     const method = item.operationRecordTypes?.length
       ? "FileGRC records: " + item.operationRecordTypes.map(properCase).join(", ")
       : properCase(item.evidenceKind || "External evidence");
@@ -368,10 +369,10 @@ function renderEvidenceMap() {
       (item.sourceKinds?.length ? '<div class="evidence-map-expectation"><strong>Source role</strong><span>' + item.sourceKinds.map((kind) => '<code>' + esc(kind) + '</code>').join(" or ") + '</span></div>' : "") +
       (item.evidencePrompt ? '<div class="evidence-map-expectation"><strong>Expected evidence</strong><span>' + esc(item.evidencePrompt) + '</span></div>' : "") +
       (item.timing ? '<div class="evidence-map-expectation"><strong>When</strong><span>' + esc(item.timing) + '</span></div>' : "") +
-      '<div class="evidence-map-links"><div><small>Controls</small><div class="evidence-map-references">' + (item.controlIds || []).map((id) => formatReference(id, "evidence")).join("") + '</div></div><div><small>Authoritative sources</small><div class="evidence-map-sources">' + sourceAction + '</div></div></div><p class="evidence-map-status">' + esc(item.message) + '</p></article>';
+      '<div class="evidence-map-links"><div><small>Controls</small><div class="evidence-map-references">' + (item.controlIds || []).map((id) => formatReference(id)).join("") + '</div></div><div><small>Authoritative sources</small><div class="evidence-map-sources">' + sourceAction + '</div></div></div><p class="evidence-map-status">' + esc(item.message) + '</p></article>';
   }).join("");
-  const empty = '<section class="evidence-map-empty"><p class="kicker">Evidence map</p><h3>Select the program controls first</h3><p>The map is generated from the selected controls and their authoritative evidence sources.</p><a class="button primary" href="#/resources/control">Review controls</a></section>';
-  return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Evidence map</p><h2>' + (evidence?.counts?.complete || 0) + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' mapped</h2><p>Map each control to the System where its evidence originates. Each source needs a current access owner and repeatable retrieval instructions in Record Markdown.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/system?stage=evidence">Source Systems</a><a class="button primary" href="#/resources/control?stage=evidence">Map Controls</a></div></div>' + (cards || empty) + '</section>';
+  const empty = '<section class="evidence-map-empty"><p class="kicker">Evidence readiness</p><h3>Select the program controls first</h3><p>Control implementation checks are generated from the selected Controls and their authoritative evidence sources.</p><a class="button primary" href="#/resources/control">Review Controls</a></section>';
+  return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Control implementation</p><h2>' + completeCount + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' ready</h2><p>Before marking Controls implemented, connect them to the Systems where their evidence originates. Each source must be active, have the required source role and current access owners, and include repeatable retrieval instructions in Record Markdown.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/system">Review Systems</a><a class="button primary" href="#/resources/control">Review Controls</a></div></div>' + (cards || empty) + '</section>';
 }
 
 function evidenceSourceCheckLabel(name) {
@@ -426,20 +427,9 @@ function stagePageCard(stage, destination, index) {
 
 function stageProgress(stage) {
   if (stage.id === "run") return operationProgress();
-  if (stage.id === "evidence") return evidenceMapProgress();
   const pages = stagePageDestinations(stage);
   const complete = pages.filter((destination) => stagePageComplete(stagePageId(stage, destination))).length;
   return progressFromCounts(complete, pages.length, "page");
-}
-
-function evidenceMapProgress() {
-  const evidence = state.programReadiness?.stages?.find((stage) => stage.id === "evidence");
-  const total = evidence?.items?.length || 0;
-  const complete = evidence?.counts?.complete || 0;
-  if (!total) return { percent: 0, complete: 0, total: 1, status: "No controls mapped", tone: "warn", detail: "Select the program controls before mapping their evidence sources." };
-  const percent = Math.round((complete / total) * 100);
-  if (complete === total) return { percent: 100, complete, total, status: "Evidence mapped", tone: "good", detail: "Every selected control family has configured authoritative evidence sources." };
-  return { percent, complete, total, status: "Needs mapping", tone: "warn", detail: complete + " of " + total + " evidence " + pluralize("family", total) + " mapped." };
 }
 
 function operationProgress() {
@@ -569,7 +559,7 @@ function renderExternalEvidenceSection() {
     : '<button class="button primary" type="button" data-new-external-evidence>New external evidence</button>';
   return '<section class="workflow-section external-evidence-section"><div class="section-head"><div><p class="kicker">Fixed artifacts and approved references</p><h2>External Evidence</h2><p>Create a record when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, then record collection and verification facts.</p></div><div class="page-actions">' +
     createButton + '<a class="button" href="#/resources/evidence">View all</a></div></div><div class="external-evidence-list">' +
-    (recent || empty("No External Evidence has been collected yet. Step 4 maps where evidence will come from without creating placeholders.")) +
+    (recent || empty("No External Evidence has been collected yet. Create it during operation only when a real artifact or approved external reference exists.")) +
     '</div></section>';
 }
 
@@ -594,7 +584,7 @@ function renderObligations(main, params = new URLSearchParams()) {
     ? '<section class="policy-event-feedback" role="status" aria-live="polite"><span class="status-dot good"></span><div><strong>Work added to the Work Queue</strong><p>' + esc(policyEventFeedback.name + " created " + policyEventFeedback.taskCount + " " + pluralize("task", policyEventFeedback.taskCount) + ".") + '</p></div><button class="button" type="button" data-view-added-work>View Work Queue</button><button class="icon-button" type="button" data-dismiss-policy-event-feedback aria-label="Dismiss confirmation">×</button></section>'
     : "";
   main.innerHTML = '<div class="page obligation-board-page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
-    '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 6</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
+    '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
     feedback +
     '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div></section>' +
     '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring, event, and assigned work</p><h2>Work Queue</h2><p>This board schedules work linked to ' + scheduledControls + ' of ' + controls.length + ' controls and includes ' + assignedFollowUp + ' open ' + pluralize("Action Item", assignedFollowUp) + '. Triggered Policy Event actions appear here as individual tasks in Upcoming, Due, or Overdue. Other controls operate continuously or per transaction in their source systems and are documented through evidence records. Starter work remains a proposal until its governing policies are effective and at least one linked control is implemented.</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div>' +
@@ -830,7 +820,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["External Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
     ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/stage/run", state.obligations.counts.overdue ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
   ];
-  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Complete the applicable Step 5 records, link them to their Controls, and record results in their fields or Markdown. Link any external artifact needed to support the result. The packet includes the records, Markdown, Git history, and linked artifacts.</p></a><a href="#/resources/evidence"><span class="step-label">External Evidence</span><h4>Review imported or referenced proof</h4><p>Verify the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference. The packet includes the records, retained files, delivery index, and checksums.</p></a></div></section>';
+  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Complete the applicable Step 4 records, link them to their Controls, and record results in their fields or Markdown. Link any external artifact needed to support the result. The packet includes the records, Markdown, Git history, and linked artifacts.</p></a><a href="#/resources/evidence"><span class="step-label">External Evidence</span><h4>Review imported or referenced proof</h4><p>Verify the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference. The packet includes the records, retained files, delivery index, and checksums.</p></a></div></section>';
   const dateFields = typeOne
     ? '<label><span>As-of date</span><input type="date" name="start" required value="' + esc(start) + '"></label>'
     : '<label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label>';
@@ -1013,19 +1003,13 @@ function eventStepSummary(step) {
 function renderList(main, type, params = new URLSearchParams()) {
   const definition = state.model.resources[type];
   if (!definition) return renderNotFound(main);
-  const contextStage = params.get("stage");
-  const contextQuery = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
-  const listStage = contextStage
-    ? READINESS_STAGES.find((stage) => stage.id === contextStage)
-    : readinessStageForType(type);
+  const listStage = readinessStageForType(type);
   const entries = resourcesOfType(type);
   const requestedPage = Number(params.get("page"));
   let pageNumber = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const fields = [...new Set([
     "title",
     ...(definition.listFields || []),
-    ...(contextStage === "evidence" && type === "system" ? ["evidenceSourceKinds", "evidenceOwnerIds"] : []),
-    ...(contextStage === "evidence" && type === "control" ? ["evidenceSourceIds"] : []),
     ...(type === "control" ? ["$operationTracking"] : []),
     ...(type === "obligation" ? ["$workQueueStatus"] : [])
   ])].filter((name) => name !== "title");
@@ -1039,7 +1023,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + createButton + '</div>';
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + contextualListGuide(type, contextStage) + resourceGuide(type) +
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
   resourceGuideCleanup = setupResourceGuide(main);
@@ -1056,7 +1040,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + contextQuery + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -1068,7 +1052,6 @@ function renderList(main, type, params = new URLSearchParams()) {
   main.querySelectorAll(".field-filter").forEach((select) => { select.value = params.get(select.dataset.field) || ""; });
   const syncRoute = (mode = "replace") => {
     const next = new URLSearchParams();
-    if (contextStage) next.set("stage", contextStage);
     const query = main.querySelector("#list-search").value.trim();
     if (query) next.set("q", query);
     main.querySelectorAll(".field-filter").forEach((select) => { if (select.value) next.set(select.dataset.field, select.value); });
@@ -1096,30 +1079,14 @@ function renderList(main, type, params = new URLSearchParams()) {
   });
   renderRows();
   syncRoute();
-  main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type, null, { contextStage }));
-  if (params.get("new") === "1" && !state.readOnly && !definition.singleton) queueMicrotask(() => openEditor(type, null, { contextStage }));
+  main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type));
+  if (params.get("new") === "1" && !state.readOnly && !definition.singleton) queueMicrotask(() => openEditor(type));
 }
 
-function contextualListGuide(type, stageId) {
-  if (stageId !== "evidence" || !["system", "control"].includes(type)) return "";
-  const copy = type === "system"
-    ? {
-        title: "Complete each authoritative source",
-        body: "Set the System to Active, add the evidence source role shown on the map, name the people or teams who can retrieve it, and write repeatable retrieval instructions in Record Markdown."
-      }
-    : {
-        title: "Connect every selected Control",
-        body: "Set Authoritative evidence sources to the exact Systems that produce this Control’s evidence. A family is ready only when every selected Control has a complete source."
-      };
-  return '<section class="context-workflow"><div><p class="kicker">Step 4 task</p><h3>' + esc(copy.title) + '</h3><p>' + esc(copy.body) + '</p></div><a class="button" href="#/stage/evidence">Back to Evidence Map</a></section>';
-}
-
-function renderDetail(main, type, id, params = new URLSearchParams()) {
+function renderDetail(main, type, id) {
   const entry = resourcesOfType(type).find(({ record }) => record.id === id);
   const definition = state.model.resources[type];
   if (!entry || !definition) return renderNotFound(main);
-  const contextStage = params.get("stage");
-  const contextQuery = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
   if (entry.detailsLoaded === false) {
     main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading" role="status">Loading record content and file history…</section></div>';
     loadResourceDetail(type, id);
@@ -1155,9 +1122,9 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const detailMain = hasRecordBody
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + contextQuery + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
     '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div>' + legacyNotice + '<dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
-  main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry, { contextStage }));
+  main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
     description: "Record only a confirmed gap that needs separate remediation tracking. Keep the report details in this source record’s Markdown."
@@ -1174,7 +1141,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
       const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
       if (!response.ok) return showError(await responseMessage(response));
       applyMutationState(await response.json());
-      location.hash = "#/resources/" + encodeURIComponent(type) + contextQuery;
+      location.hash = "#/resources/" + encodeURIComponent(type);
     } catch (error) {
       showError(error.message);
     }
@@ -2101,7 +2068,6 @@ function openEditor(type, entry = null, options = {}) {
   const fields = { ...state.model.commonFields, ...definition.fields };
   const record = structuredClone(entry?.record || seedRecord(type, definition));
   const legacyNotice = legacyFieldNotice(record, fields);
-  const contextStage = options.contextStage || parseRoute().params?.get("stage");
   const markdownDefinitions = dedicatedMarkdownDefinitions(type);
   if (!entry && options.seed) {
     Object.assign(record, options.seed);
@@ -2135,7 +2101,7 @@ function openEditor(type, entry = null, options = {}) {
   const recordContent = recordContentDefinition(type);
   const recordContentItem = recordContent ? entry?.content?.[recordContent.slot] : null;
   const editorDescription = options.description
-    || evidenceMappingEditorDescription(type, contextStage)
+    || implementationEditorDescription(type)
     || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
   dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + legacyNotice + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
@@ -2227,7 +2193,7 @@ function openEditor(type, entry = null, options = {}) {
       if (!response.ok) throw new Error(await responseMessage(response));
       applyMutationState(await response.json());
       dialog.close();
-      location.hash = "#/resource/" + encodeURIComponent(updated.type) + "/" + encodeURIComponent(updated.id) + (contextStage ? "?stage=" + encodeURIComponent(contextStage) : "");
+      location.hash = "#/resource/" + encodeURIComponent(updated.type) + "/" + encodeURIComponent(updated.id);
       render();
     } catch (error) {
       setMutationBusy(dialog, false, "", options.saveLabel || "Save file");
@@ -2236,13 +2202,12 @@ function openEditor(type, entry = null, options = {}) {
   });
 }
 
-function evidenceMappingEditorDescription(type, stageId) {
-  if (stageId !== "evidence") return "";
+function implementationEditorDescription(type) {
   if (type === "system") {
-    return "Complete the source role and access owners, then write the exact report, filters, date range, timezone, export format, and reconciliation steps in Record Markdown.";
+    return "Complete the System inventory fields. If this System produces control evidence, add its evidence source roles and current access owners, then write the exact report, filters, date range, timezone, export format, and reconciliation steps in Record Markdown.";
   }
   if (type === "control") {
-    return "Select every authoritative System that produces evidence for this Control. Return to the Evidence Map after saving to verify family coverage.";
+    return "Document the actual procedure and select every authoritative System that produces evidence for this Control. Before marking it implemented, confirm each source is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown.";
   }
   return "";
 }
@@ -2353,7 +2318,7 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   if (field.type === "array") {
     control = '<textarea placeholder="One value per line">' + esc((value || []).join("\n")) + '</textarea>';
     const arrayHelp = name === "evidenceSourceKinds"
-      ? "One role per line. Use a role shown on the Step 4 evidence family, such as " + evidenceSourceRoleOptions().join(", ") + "."
+      ? "One role per line. Use the roles required by the Controls this System supports, such as " + evidenceSourceRoleOptions().join(", ") + "."
       : "One value per line";
     return fieldWrap(name, "array", label, requiredMark, control, arrayHelp, required);
   }
@@ -2877,10 +2842,9 @@ function obligationWorkQueueStatus(obligation) {
   if (status === "paused") return '<span class="operation-tracking paused"><strong>Paused</strong><small>Schedule disabled</small></span>';
   return '<span class="operation-tracking"><strong>' + esc(properCase(status)) + '</strong></span>';
 }
-function formatReference(value, contextStage = null) {
+function formatReference(value) {
   const reference = state.resources.find(({ record }) => record.id === value);
-  const context = contextStage ? "?stage=" + encodeURIComponent(contextStage) : "";
-  return reference ? '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + context + '">' + esc(reference.record.title) + '</a>' : '<span class="tag">' + esc(value) + '</span>';
+  return reference ? '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + '">' + esc(reference.record.title) + '</a>' : '<span class="tag">' + esc(value) + '</span>';
 }
 function safeExternalUrl(value) {
   try {

@@ -467,10 +467,9 @@ The starter policies, controls, and obligations are proposals. They do not state
 
 1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding. Then finish Step 1 by adding the real reviewers and operators, finishing the oversight team, and confirming applicable criteria, commitments, material vendors, and in-scope systems.
 2. Review the starter policies, appoint a reviewer who is separate from the policy owner, and activate only the policies that match current practice. The reviewer will usually be another person in the organization, but may be external.
-3. Review the starter control set, implement each applicable control with its actual procedure, scope, cadence, evidence sources, and implementation date, and confirm any linked Work Queue schedules are enabled. Marking a control implemented starts eligible schedules. Then record any complementary customer or subservice controls.
-4. Run \`npx filegrc evidence-map --json\`, then map every selected control family to active authoritative source Systems with current evidence access owners and repeatable retrieval instructions.
-5. Run \`npx filegrc program-readiness --require-ready\`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions.
-6. Engage a CPA firm, record the separate firm-agreed period in an audit record, review filegrc Evidence and External Evidence, and prepare fieldwork.`
+3. Review the starter control set and implement each applicable Control with its actual procedure, scope, cadence, and authoritative evidence source Systems. Confirm every source is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown. Add the implementation date, confirm any linked Work Queue schedules are enabled, then record any complementary customer or subservice controls.
+4. Run \`npx filegrc program-readiness --require-ready\`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions.
+5. Engage a CPA firm, record the separate firm-agreed period in an audit record, review filegrc Evidence and External Evidence, and prepare fieldwork.`
   };
 }
 

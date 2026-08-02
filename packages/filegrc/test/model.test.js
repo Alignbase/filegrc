@@ -12,13 +12,12 @@ import {
 test("v1 model exposes the complete resource registry", () => {
   const model = loadModel("1");
   assert.equal(model.modelVersion, "1");
-  assert.equal(PROGRAM_PATH.length, 6);
+  assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(POLICY_EVENT_NAMES["person-started"], "New Worker");
   assert.deepEqual(PROGRAM_PATH.map(({ title }) => title), [
     "Define Scope",
     "Approve Policies",
     "Implement Controls",
-    "Map Evidence",
     "Operate the Program",
     "Audit"
   ]);
@@ -48,6 +47,8 @@ test("v1 model exposes the complete resource registry", () => {
   assert.equal(model.resources.person.fields.jobTitle.label, "Organization job title");
   assert.deepEqual(model.commonFields.ownerIds.relation, ["person", "team", "appointment"]);
   assert.deepEqual(model.resources.appointment.required, ["status", "appointmentKind", "holderId", "scopeResourceIds"]);
+  assert.deepEqual(model.resources.system.listFields.slice(-2), ["evidenceSourceKinds", "evidenceOwnerIds"]);
+  assert.equal(model.resources.control.listFields.at(-1), "evidenceSourceIds");
   assert.deepEqual(model.resources.appointment.fields.startsOn.requiredWhen, { status: ["active", "ended"] });
   assert.deepEqual(model.resources.appointment.fields.endsOn.requiredWhen, { status: "ended" });
   assert.deepEqual(model.resources.team.fields.chairIds.relation, ["person", "appointment"]);

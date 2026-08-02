@@ -39,7 +39,7 @@ For one noninteractive run, pass company and service fields together or use `--c
 npx create-filegrc@latest company-grc --config setup.json
 ```
 
-Generated workspaces also include layered `AGENTS.md` instructions and model-driven headless commands. `filegrc program-path` gives agents the same six steps, exact page guidance, current status, and next actions shown in the renderer. Agents can define program scope, approve policies, implement controls, test External Evidence, complete policy work, trigger event tasks, and prepare later audit packets through the same domain functions used by the renderer.
+Generated workspaces also include layered `AGENTS.md` instructions and model-driven headless commands. `filegrc program-path` gives agents the same five steps, exact page guidance, current status, and next actions shown in the renderer. Agents can define program scope, approve policies, implement controls and their evidence sources, complete policy work, trigger event tasks, and prepare later audit packets through the same domain functions used by the renderer.
 
 Git is initialized on `main` when needed. New workspaces use trunk mode with `main` and `origin`. Browser editing becomes available after that branch has an upstream; each save fast-forwards, validates, commits, and pushes automatically. Existing parent repositories are supported and never receive a nested Git repository.
 

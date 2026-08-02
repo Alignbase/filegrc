@@ -31,12 +31,11 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(types.length, Object.keys(loaded.model.resources).length);
   const overview = await execute(process.execPath, [cli, "guide", "--root", root, "--json"]);
   const parsedOverview = JSON.parse(overview.stdout);
-  assert.equal(parsedOverview.programPath.length, 6);
+  assert.equal(parsedOverview.programPath.length, 5);
   assert.deepEqual(parsedOverview.programPath.map(({ title }) => title), [
     "Define Scope",
     "Approve Policies",
     "Implement Controls",
-    "Map Evidence",
     "Operate the Program",
     "Audit"
   ]);
@@ -77,19 +76,18 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "commit"
   ]);
   const path = buildAgentProgramPath(loaded.model);
-  assert.equal(path.length, 6);
+  assert.equal(path.length, 5);
   assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").guide, "npx filegrc guide system --json");
   assert.ok(path.every((stage) => stage.commands.every((command) => command.startsWith("npx filegrc "))));
-  assert.equal(path[3].pages[0].utility, "evidence-map");
-  assert.deepEqual(path[3].commands.slice(0, 2), [
+  assert.deepEqual(path[2].commands.slice(-2), [
     "npx filegrc evidence-map --json",
-    "npx filegrc guide system --json"
+    "npx filegrc program-readiness --json"
   ]);
-  assert.match(path[3].summary, /map every selected control/i);
-  assert.deepEqual(path[4].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
-  assert.equal(path[4].operatingRecords.length, path[4].resourceTypes.length + path[4].supportingResourceTypes.length);
-  assert.equal(path[4].operatingRecords.every(({ order }) => order === null), true);
+  assert.match(path[2].summary, /authoritative Systems that produce its evidence/i);
+  assert.deepEqual(path[3].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
+  assert.equal(path[3].operatingRecords.length, path[3].resourceTypes.length + path[3].supportingResourceTypes.length);
+  assert.equal(path[3].operatingRecords.every(({ order }) => order === null), true);
   const auditGuide = buildAgentGuide(loaded, "audit");
   assert.equal(auditGuide.optionalFields.some(({ name }) => name === "controlTestIds"), false);
   assert.equal(auditGuide.optionalFields.some(({ name }) => name === "evidenceIds"), false);
@@ -120,7 +118,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   const pathCommand = await execute(process.execPath, [cli, "program-path", "--root", root, "--json"]);
   const parsedPath = JSON.parse(pathCommand.stdout);
   assert.equal(parsedPath.currentStep.number, 1);
-  assert.equal(parsedPath.stages.length, 6);
+  assert.equal(parsedPath.stages.length, 5);
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   const pathSummaryCommand = await execute(process.execPath, [
     cli,
@@ -131,7 +129,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "--json"
   ]);
   const parsedPathSummary = JSON.parse(pathSummaryCommand.stdout);
-  assert.equal(parsedPathSummary.stages.length, 6);
+  assert.equal(parsedPathSummary.stages.length, 5);
   assert.equal(parsedPathSummary.stages[0].pages, undefined);
   assert.equal(parsedPathSummary.stages[0].nextAction?.checks, undefined);
   assert.ok(pathSummaryCommand.stdout.length < pathCommand.stdout.length / 4);
