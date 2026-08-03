@@ -1,0 +1,274 @@
+---
+title: "SOC 2 Type 1 vs Type 2: How Startups Should Choose"
+description: "Compare SOC 2 Type 1 and Type 2 reports, then choose based on the customer request, control operation, evidence, and CPA-agreed dates."
+publishedDate: "2026-08-03"
+lastMod: "2026-08-03"
+author: "Abe Wheeler"
+tags: ["SOC 2 Type 1 vs Type 2", "SOC 2 for startups", "SOC 2 audit planning"]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc keeps a startup's report choice, formal coverage, controls, evidence, and audit work connected."
+faqs:
+  - question: "What is the main difference between SOC 2 Type 1 and Type 2?"
+    answer: "A Type 1 examination addresses control design and implementation as of a specified date. A Type 2 examination also addresses whether controls operated effectively over a specified period."
+  - question: "Should a startup get SOC 2 Type 1 or Type 2?"
+    answer: "Ask the customer what it will accept, then confirm the report type, scope, and dates with a qualified CPA firm. Type 1 may fit a point-in-time request, while Type 2 requires evidence that supports control operation across an agreed period."
+  - question: "Does a SOC 2 Type 2 report require a six-month period?"
+    answer: "Do not assume one universal period length. Management and the CPA firm should agree on a period that fits the engagement and can be supported by complete, reliable operating evidence. The requesting customer may also have timing requirements."
+  - question: "Is SOC 2 Type 1 always faster than Type 2?"
+    answer: "Type 1 does not require period-wide operating effectiveness testing, but the total schedule still depends on scope, control gaps, evidence, management review, CPA availability, and fieldwork. Ask the CPA firm to assess the actual plan."
+  - question: "Can a startup move from SOC 2 Type 1 to Type 2?"
+    answer: "Yes. A startup can use the same scoped program as the basis for later Type 2 work, but it must operate the controls, preserve dated evidence, maintain complete populations when sampling applies, and agree on the Type 2 period with its CPA firm."
+  - question: "Who decides whether SOC 2 evidence is enough?"
+    answer: "Management prepares records and evidence, while the independent CPA firm selects its procedures and samples, evaluates exceptions, decides whether evidence is sufficient and appropriate, and issues the report."
+furtherReading:
+  - text: "Follow the SOC 2 compliance checklist for startups"
+    url: "/blogs/soc-2-compliance-checklist-startups"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Build complete Type 2 audit populations"
+    url: "/blogs/soc-2-audit-populations"
+  - text: "Prepare a SOC 2 audit evidence packet"
+    url: "/blogs/soc-2-audit-evidence-packet"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+SOC 2 Type 1 addresses control design and implementation as of a specified
+date. SOC 2 Type 2 also addresses operating effectiveness over a specified
+period. A startup should choose based on what the requesting customer will
+accept, what the scoped controls and evidence can support, and the formal plan
+agreed with a qualified CPA firm.
+
+## TL;DR
+
+- Ask the customer whether it needs Type 1, Type 2, or another security review.
+- Use Type 1 only when a point-in-time report answers the request and the
+  controls can be supported as of the agreed date.
+- Use Type 2 when the request calls for operating effectiveness over a period
+  and the team can preserve complete, dated evidence throughout that period.
+- Do not assume a universal Type 2 period, price, or schedule.
+- Keep management's candidate dates separate from the CPA-agreed formal date or
+  period.
+- Let the CPA firm set its procedures, select samples, evaluate evidence and
+  exceptions, and issue the report.
+
+## SOC 2 Type 1 vs Type 2 at a glance
+
+The
+[AICPA's SOC 2 guide](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy-OPL)
+describes SOC 2 as an examination of a service organization's system and
+controls relevant to security, availability, processing integrity,
+confidentiality, or privacy. The AICPA also explains that a Type 1 service
+auditor evaluates controls
+[as of a specific date](https://www.aicpa-cima.com/professional-insights/video/maintaining-high-standards-for-soc-engagements).
+Type 2 adds testing of operating effectiveness across the report period.
+
+| Decision point       | SOC 2 Type 1                                        | SOC 2 Type 2                                                     |
+| -------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
+| Timing basis         | A specified date                                    | A specified period                                               |
+| Control question     | Were controls suitably designed and implemented?    | Were controls suitably designed and operating effectively?       |
+| Operating evidence   | Supports the control state at the as-of date        | Supports control operation throughout the period                 |
+| Recurring work       | Provides current control context                    | Needs dated coverage across the period                           |
+| Complete populations | Usually not period-based                            | Needed when the CPA firm selects samples from period activity    |
+| Best business fit    | The requesting party accepts point-in-time coverage | The requesting party expects period-wide operating effectiveness |
+| CPA firm's role      | Confirms scope and date, tests, and reports         | Confirms scope and period, tests operation, samples, and reports |
+
+The report type does not pick the scope for you. Both routes still require a
+defined service, selected Trust Services Criteria, a system description,
+management's assertion, relevant controls, and evidence. The difference changes
+the timing question that the engagement must answer.
+
+## Ask the customer before choosing a report
+
+Start with the person or company asking for SOC 2. A sales note that says
+"customer needs compliance" leaves too much open.
+
+Ask these questions:
+
+1. Does the customer require a SOC 2 report, or will another security review
+   meet its current need?
+2. Will it accept Type 1, or does it require Type 2?
+3. Must the report cover a named product, legal entity, region, or Trust
+   Services Criteria?
+4. What delivery date affects the purchase or renewal decision?
+5. Does the customer have rules for report age, period end, or bridge coverage?
+
+Save the answer and its source. That business requirement is an input to the
+plan, not a substitute for CPA advice. A qualified CPA firm should confirm the
+report type, scope, and dates before management relies on them.
+
+If the customer cannot explain what it accepts, ask its security or procurement
+team. Do not spend months building evidence for a report that will not answer
+the request.
+
+## Choose Type 1 when point-in-time coverage answers the request
+
+Type 1 may fit when the requesting party accepts it and management can support
+the control environment as of the agreed date.
+
+Before committing to Type 1, confirm that:
+
+- the product, systems, people, vendors, and criteria in scope are defined;
+- policies are tailored, reviewed, approved, and effective;
+- controls are designed for the scoped risks and commitments;
+- the controls are implemented in the systems and workflows described;
+- source systems and evidence owners are known;
+- management can support the control state at the proposed date;
+- a CPA firm agrees that the scope and date are workable.
+
+Type 1 still requires evidence. A policy template, planned configuration, or
+future task does not show that a control was implemented at the as-of date. For
+example, an access control may need approved policy text, the identity-system
+configuration, current user and role data, and records showing how access is
+approved and removed.
+
+Do not describe Type 1 as automatically fast or easy. A small scope with
+implemented controls is different from a broad scope with unfinished policies,
+missing source records, and no management review. The CPA firm's availability
+and fieldwork also affect the schedule.
+
+## Choose Type 2 when the request needs operating effectiveness
+
+Type 2 may fit when the requesting party expects period-wide operating
+effectiveness and the team can preserve reliable evidence across the formal
+period.
+
+The startup needs the Type 1 foundation plus ongoing work:
+
+- run scheduled controls within their defined windows;
+- complete event work for hires, departures, incidents, vendor changes, and
+  other triggers;
+- keep dated records of who performed and reviewed each activity;
+- preserve fixed external evidence from the authoritative source;
+- record exceptions, decisions, owners, due dates, and follow-up;
+- maintain complete source populations when the CPA firm may sample activity;
+- keep changes to scope, controls, systems, and vendors reviewable.
+
+There is no sound universal period length for every startup and engagement.
+Management may have a candidate period for planning, but the formal period
+belongs in the real engagement record after the CPA firm agrees to it. The
+customer's needs, the control design, and available evidence also affect the
+choice.
+
+If a startup wants Type 2 but cannot retrieve complete access changes, code
+changes, incidents, or other sampled activity, it has an evidence-source
+problem. Fix that before relying on the candidate period.
+
+## Compare the evidence each report needs
+
+Suppose a startup has a quarterly access-review control.
+
+For a Type 1 date, management may need to support the current control design and
+implementation. That can include the approved policy, control definition,
+review scope, identity-system configuration, current user and role export, and
+the review process in place at the date.
+
+For a Type 2 period, the CPA firm may also ask for evidence that the control
+operated across the period. Management should preserve each scheduled review,
+the full user and role population used, per-account decisions, reviewer
+approval, exceptions, and follow-up. If the firm samples access grants or
+terminations, management also needs complete populations from the authoritative
+systems.
+
+The same timing difference appears across other controls:
+
+| Control activity    | Point-in-time support                              | Period-wide support                                                       |
+| ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
+| Access management   | Current configuration, users, roles, and process   | Access grants, changes, removals, reviews, exceptions, and source sets    |
+| Change management   | Current repository protections and approval design | Complete change population, selected changes, approvals, tests, releases  |
+| Vendor management   | Current inventory, risk tiers, and review process  | Reviews due and completed during the period, exceptions, and follow-up    |
+| Incident response   | Approved plan, roles, tooling, and current process | Complete incident population, including support for a recorded zero count |
+| Backup and recovery | Backup configuration and recovery procedure        | Job history, failures, follow-up, restoration tests, and exercises        |
+
+The [SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) gives more
+examples of source artifacts and the management records that explain them.
+
+## Keep candidate dates separate from the formal engagement
+
+A startup may choose a candidate Type 1 date or Type 2 period so the team knows
+when to preserve evidence. Label it as management planning.
+
+Once a CPA firm is engaged, record the firm-agreed coverage on the audit:
+
+```json
+{
+  "id": "audit-2026-type-2",
+  "type": "audit",
+  "title": "2026 SOC 2 Type 2 examination",
+  "status": "in-progress",
+  "auditKind": "soc-2-type-2",
+  "frameworkIds": ["framework-soc-2"],
+  "scope": "Hosted production service and supporting operations",
+  "ownerIds": ["person-program-owner"],
+  "auditorVendorId": "vendor-cpa-firm",
+  "coverage": {
+    "kind": "range",
+    "startsOn": "2026-01-01",
+    "endsOn": "2026-06-30"
+  }
+}
+```
+
+Use the dates only as an example of the record shape, not as a recommended
+period. A Type 1 record would use `auditKind: "soc-2-type-1"` with coverage
+`{ "kind": "as-of", "on": "YYYY-MM-DD" }`.
+
+Keeping these dates explicit prevents a common recordkeeping error. Git can
+show when a file changed, but a commit timestamp does not define the report
+date, evidence period, policy approval date, or control occurrence date.
+
+## Plan the route from the report choice to fieldwork
+
+Use this sequence after the customer request is clear:
+
+1. **Write the assurance goal.** Name the requesting party, report it accepts,
+   intended service scope, criteria, and delivery need.
+2. **Ask a CPA firm to review the plan.** Confirm the report type, formal scope,
+   candidate timing, management responsibilities, and fieldwork approach.
+3. **Define the system.** Record the service boundary, data, systems, vendors,
+   people, commitments, and customer responsibilities.
+4. **Approve and implement controls.** Replace template claims with the work
+   the company actually performs.
+5. **Map evidence sources.** Name each authoritative system, access owner,
+   retrieval method, expected output, and completeness check.
+6. **Operate and review.** For Type 2, keep scheduled and event work current
+   throughout the period and preserve complete populations where sampling may
+   apply.
+7. **Prepare the engagement records.** Build management documents, respond to
+   requests, reconcile populations, and review evidence before fieldwork.
+8. **Send approved material securely.** Follow the CPA firm's request tracker
+   and transfer process, then retain only the copies allowed by company policy.
+
+The [SOC 2 compliance checklist for startups](/blogs/soc-2-compliance-checklist-startups)
+expands this into a start-to-report operating plan.
+
+## Record the choice and evidence in Git
+
+FileGRC keeps the assurance goal, scope, controls, source systems, operating
+records, evidence, and formal audit as connected JSON and Markdown files. It
+validates the model and relationships, calculates management-readiness checks,
+and builds a reviewable evidence packet from a clean Git revision.
+
+For a real engagement:
+
+```sh
+npx filegrc guide audit --json
+npx filegrc scaffold audit --title "2026 SOC 2 Type 2 examination" --json
+npx filegrc prepare-audit audit-2026-type-2 --json
+npx filegrc audit-readiness audit-2026-type-2 --json
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --json
+```
+
+The [SOC 2 audit populations guide](/blogs/soc-2-audit-populations) explains the
+complete source sets needed for Type 2 sampling. The
+[SOC 2 audit evidence packet guide](/blogs/soc-2-audit-evidence-packet) shows
+how to prepare the final management handoff.
+
+FileGRC does not operate infrastructure controls, collect evidence
+automatically from external systems, perform the CPA examination, or decide
+whether evidence is sufficient and appropriate. The startup owns its controls
+and records. The CPA firm owns its independent procedures and report.
+
+You can [run FileGRC as a local, open source SOC 2 workspace](/) when you want
+the report decision and supporting work to stay inspectable in Git.
