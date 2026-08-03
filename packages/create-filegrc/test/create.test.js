@@ -65,11 +65,15 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "1");
+  assert.equal(workspace.dataModelVersion, "2");
+  const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
+  for (const path of generatedJson) {
+    assert.equal(Object.hasOwn(JSON.parse(await readFile(path, "utf8")), "schemaVersion"), false, path);
+  }
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.timezone, "America/Chicago");
   assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
-  assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["Public", "Internal", "Confidential", "Restricted"]);
+  assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["public", "internal", "confidential", "restricted"]);
   const renderer = JSON.parse(await readFile(join(target, "data", "renderer.json"), "utf8"));
   assert.equal(renderer.showOnboarding, true);
   assert.equal(renderer.repositoryMode, "trunk");
@@ -95,7 +99,7 @@ test("creates a complete generic repository with one dependency", async (context
     /ENOENT/
   );
   const oversightTeam = JSON.parse(await readFile(join(target, "data", "teams", "team-security-risk-oversight.json"), "utf8"));
-  assert.equal(oversightTeam.status, "inactive");
+  assert.equal(oversightTeam.status, "planned");
   assert.deepEqual(oversightTeam.memberIds, [owner.id]);
   assert.deepEqual(oversightTeam.chairIds, []);
   for (const collection of ["policies", "documents"]) {
@@ -174,7 +178,8 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(obligationFiles.length, 41);
   const programRepository = JSON.parse(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.json"), "utf8"));
   assert.deepEqual(programRepository.evidenceSourceKinds, ["training-acknowledgement", "exception-finding"]);
-  assert.equal(programRepository.inScope, false);
+  assert.equal(Object.hasOwn(programRepository, "inScope"), false);
+  assert.equal((workspace.systemIds || []).includes(programRepository.id), false);
   assert.match(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.md"), "utf8"), /system of record for filegrc governance records/);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
@@ -183,7 +188,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(
     obligations
       .filter((obligation) => obligation.recurrence.mode === "event")
-      .every((obligation) => Number.isInteger(obligation.window?.endOffsetDays) || Number.isInteger(obligation.window?.endOffsetHours)),
+      .every((obligation) => ["date", "timestamp"].includes(obligation.window?.precision) && Number.isInteger(obligation.window?.dueAfter)),
     true
   );
   const obligationsById = new Map(obligations.map((obligation) => [obligation.id, obligation]));
@@ -203,13 +208,14 @@ test("creates a complete generic repository with one dependency", async (context
     "training-privileged-sensitive-roles",
     "training-anti-bribery-high-risk-roles"
   ]);
-  assert.equal(obligationsById.get("obligation-worker-role-change-training").window.endOffsetDays, 30);
-  assert.equal(obligationsById.get("obligation-personal-device-approval").window.endOffsetDays, 0);
-  assert.equal(obligationsById.get("obligation-personal-device-registration").window.endOffsetDays, 0);
-  assert.equal(obligationsById.get("obligation-vendor-material-change-review").window.endOffsetDays, 30);
-  assert.equal(obligationsById.get("obligation-vendor-material-change-records").window.endOffsetDays, 30);
+  assert.equal(obligationsById.get("obligation-worker-role-change-training").window.dueAfter, 30);
+  assert.equal(obligationsById.get("obligation-personal-device-approval").window.dueAfter, 0);
+  assert.equal(obligationsById.get("obligation-personal-device-registration").window.dueAfter, 0);
+  assert.equal(obligationsById.get("obligation-vendor-material-change-review").window.dueAfter, 30);
+  assert.equal(obligationsById.get("obligation-vendor-material-change-records").window.dueAfter, 30);
   assert.deepEqual(obligationsById.get("obligation-system-change-retention").scopeResourceIds, ["document-data-retention-schedule"]);
-  assert.ok(obligationsById.get("obligation-system-change-alert-path").completionResourceTypes.includes("control-test"));
+  assert.equal(obligationsById.get("obligation-system-change-alert-path").activityType, "alert-path-test");
+  assert.equal(obligationsById.get("obligation-system-change-alert-path").completionResourceTypes, undefined);
   assert.deepEqual(obligationsById.get("obligation-annual-incident-exercise").controlIds, [
     "control-incident-exercise",
     "control-logging-monitoring"
@@ -664,7 +670,7 @@ test("creates and configures a service from one JSON config", async (context) =>
       serviceName: "Example Service",
       boundary: "The production service and supporting infrastructure.",
       criticality: "high",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       internetExposed: true,
       programGoal: "type-2"
     }

@@ -3,6 +3,13 @@ import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { assessAuditPreparation } from "./audit-preparation.js";
+import {
+  coverageContains,
+  coverageEnd,
+  coverageMatches,
+  coverageOverlaps,
+  coverageStart
+} from "./coverage.js";
 import { getFileAtRevision, getGitSummary, getWorkspaceHistories, hasGitRevision } from "./git.js";
 import { planObligations } from "./obligations.js";
 import { isWithin, resolveDataPath, resolveWorkspacePath } from "./paths.js";
@@ -61,7 +68,8 @@ export async function prepareEvidencePacket(input, options = {}) {
     asOf: end,
     from: start,
     through: end,
-    includeComplete: true
+    includeComplete: true,
+    model: loaded.model
   });
   const obligations = (typeOne ? [] : plan.calendarItems).filter((item) => (
     item.dueWindowStart <= end
@@ -312,9 +320,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       kind: audit.auditKind,
       status: audit.status,
       scope: audit.scope,
-      periodStart: audit.periodStart,
-      periodEnd: audit.periodEnd,
-      typeOneAsOf: audit.typeOneAsOf,
+      coverage: audit.coverage,
       systemIds: audit.systemIds || [],
       requirementIds: audit.requirementIds || [],
       controlIds: audit.controlIds || [],
@@ -333,7 +339,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       dataDigest
     },
     handling: {
-      classifications: [...new Set(evidence.map(({ classification }) => classification).filter(Boolean))].sort(),
+      classifications: [...new Set(evidence.map(({ classificationId }) => classificationId).filter(Boolean))].sort(),
       containsExternalReferences: evidence.some(({ externalReference }) => Boolean(externalReference)),
       encrypted: false
     },
@@ -581,7 +587,7 @@ async function writeChecksums(output, files) {
 
 function controlMatrixCsv(packet) {
   return csv([
-    ["Control ID", "Code", "Control", "Control Statement", "Operating Activity", "Status", "Effective On", "Frequency", "Operation Mode", "System IDs", "Requirement IDs", "Policy IDs", "Risk IDs", "filegrc Evidence IDs", "External Evidence IDs", "Control Test IDs", "Test Outcomes", "Population IDs", "Population Counts", "Sample Sizes", "Exception Counts", "Population Evidence IDs", "Sample Evidence IDs"],
+    ["Control ID", "Code", "Control", "Control Statement", "Operating Activity", "Status", "Effective On", "Operation Pattern", "Operation Mode", "System IDs", "Requirement IDs", "Policy IDs", "Risk IDs", "filegrc Evidence IDs", "External Evidence IDs", "Control Test IDs", "Test Outcomes", "Population IDs", "Population Counts", "Sample Sizes", "Exception Counts", "Population Evidence IDs", "Sample Evidence IDs"],
     ...packet.controlCoverage.map((control) => [
       control.id,
       control.code,
@@ -590,7 +596,7 @@ function controlMatrixCsv(packet) {
       control.activity,
       control.status,
       control.effectiveOn,
-      control.frequency,
+      control.operationPattern,
       control.operationMode,
       control.systemIds.join("\n"),
       control.requirementIds.join("\n"),
@@ -636,8 +642,8 @@ function evidenceIndexCsv(packet) {
       item.id,
       item.title,
       item.status,
-      item.evidenceKind,
-      item.source,
+      item.artifactKind,
+      item.sourceDescription,
       item.sourceSystemId,
       item.sourceSystem,
       item.collectedOn,
@@ -709,7 +715,7 @@ function populationIndexCsv(packet) {
       item.periodEnd,
       item.sourceSystemId,
       item.sourceSystem,
-      item.source,
+      item.sourceDescription,
       item.queryDescription,
       item.timezone,
       item.generatedAt,
@@ -823,19 +829,18 @@ function packetRecord(record, model, start, end, timezone) {
       if (date && date >= start && date <= end) dates.push({ field: name, value, date });
     }
   }
-  const overlaps = parseCalendarDate(record.periodStart)
-    && parseCalendarDate(record.periodEnd)
-    && record.periodStart <= end
-    && record.periodEnd >= start;
+  const overlaps = coverageOverlaps(record.coverage, start, end);
+  const coverageStartDate = coverageStart(record.coverage);
+  const coverageEndDate = coverageEnd(record.coverage);
   if (!dates.length && !overlaps) return null;
   dates.sort((a, b) => (a.date || a.value).localeCompare(b.date || b.value) || a.field.localeCompare(b.field));
   return {
     id: record.id,
     type: record.type,
     title: record.title,
-    primaryDate: dates[0]?.date || dates[0]?.value || record.periodStart,
+    primaryDate: dates[0]?.date || dates[0]?.value || coverageStartDate,
     dates,
-    ...(overlaps ? { period: { start: record.periodStart, end: record.periodEnd } } : {})
+    ...(overlaps ? { period: { start: coverageStartDate, end: coverageEndDate } } : {})
   };
 }
 
@@ -872,8 +877,7 @@ function buildControlCoverage({ audit, byId, controlIds, evidenceIds, model, rec
       .filter((record) => record.type === "control-test" && record.controlId === controlId)
       .filter((record) => (
         record.auditId === audit?.id
-        || (!record.auditId && record.periodStart && record.periodEnd && record.periodStart <= end && record.periodEnd >= start)
-        || (!record.auditId && record.asOfDate >= start && record.asOfDate <= end)
+        || (!record.auditId && coverageOverlaps(record.coverage, start, end))
       ));
     const operatingRecords = records.filter((record) => (
       !NON_EVIDENCE_RECORD_TYPES.has(record.type)
@@ -895,7 +899,7 @@ function buildControlCoverage({ audit, byId, controlIds, evidenceIds, model, rec
       activity: control?.activity || "",
       status: control?.status || "missing",
       effectiveOn: control?.effectiveOn || null,
-      frequency: control?.frequency || "",
+      operationPattern: control?.operationPattern || "",
       operationMode: control?.operationMode || "",
       requirementIds: control?.requirementIds || [],
       policyIds: control?.policyIds || [],
@@ -911,9 +915,7 @@ function buildControlCoverage({ audit, byId, controlIds, evidenceIds, model, rec
         id: test.id,
         status: test.status,
         outcome: test.outcome || null,
-        periodStart: test.periodStart || null,
-        periodEnd: test.periodEnd || null,
-        asOfDate: test.asOfDate || null,
+        coverage: test.coverage || null,
         sampleSize: test.sampleSize ?? null,
         sampleEvidenceIds: test.sampleEvidenceIds || [],
         exceptionCount: test.exceptionCount ?? null
@@ -1073,8 +1075,8 @@ function packetGaps({
     const recentAssessment = records.some((record) => (
       record.type === "risk-assessment"
       && record.status === "complete"
-      && record.assessmentDate <= end
-      && record.assessmentDate >= shiftYear(end, -1)
+      && record.completedOn <= end
+      && record.completedOn >= shiftYear(end, -1)
       && (!(audit.systemIds || []).length || !(record.systemIds || []).length || record.systemIds.some((id) => audit.systemIds.includes(id)))
     ));
     if (!recentAssessment) {
@@ -1088,10 +1090,10 @@ function packetGaps({
       }
       const reviews = records.filter((record) => (
         record.type === "vendor-review"
-        && (record.vendorIds || []).includes(vendorId)
-        && ["approved", "conditional", "complete"].includes(record.status)
-        && record.reviewedOn <= end
-        && record.reviewedOn >= shiftYear(end, -1)
+        && record.vendorId === vendorId
+        && record.status === "complete"
+        && record.completedOn <= end
+        && record.completedOn >= shiftYear(end, -1)
       ));
       if (!reviews.length) {
         gaps.push(gap("error", "missing-subservice-review", `${vendor.title} has no completed review in the year ending ${end}.`, vendor.id));
@@ -1103,7 +1105,10 @@ function packetGaps({
       if (!vendorEvidence.length) {
         gaps.push(gap("error", "missing-subservice-evidence", `${vendor.title} has no linked assurance evidence, such as its report and applicable bridge coverage.`, vendor.id));
       } else {
-        const assuranceReports = vendorEvidence.filter((item) => /soc|assurance|vendor-report/i.test(item.evidenceKind));
+        const assuranceReports = vendorEvidence.filter((item) => (
+          item.artifactKind === "third-party-report"
+          || /soc|assurance|vendor-report/i.test(item.artifactSubtype || "")
+        ));
         if (!assuranceReports.length) {
           gaps.push(gap("error", "missing-subservice-assurance-report", `${vendor.title} has linked evidence but no item identified as a SOC or other assurance report.`, vendor.id));
         } else if (assuranceReports.every((item) => !item.periodEnd)) {
@@ -1111,7 +1116,7 @@ function packetGaps({
         } else {
           const latestCoverage = assuranceReports.map((item) => item.periodEnd).filter(Boolean).sort().at(-1);
           const bridgeEvidence = vendorEvidence.some((item) => (
-            /bridge/i.test(item.evidenceKind)
+            /bridge/i.test(item.artifactSubtype || "")
             && ((item.periodEnd && item.periodEnd >= end) || item.collectedOn >= end)
           ));
           if (latestCoverage && latestCoverage < end && !bridgeEvidence) {
@@ -1160,7 +1165,7 @@ function packetGaps({
     }
   }
   for (const item of evidence) {
-    if (item.evidenceKind === "rendered-record" && !item.sourceCommit) {
+    if (item.artifactKind === "rendered-page" && !item.sourceCommit) {
       gaps.push(gap("error", "unbound-rendered-evidence", `${item.title} does not name the Git revision that was rendered.`, item.id));
     } else if (item.sourceCommit && !item.sourceCommitValid) {
       gaps.push(gap("error", "invalid-evidence-revision", `${item.title} names a source Git revision that is not available in this repository.`, item.id));
@@ -1194,21 +1199,21 @@ function packetGaps({
           gaps.push(gap("warning", "evidence-source-role-missing", `${sourceSystem.title} has no evidence source role. Record what authoritative reports or records it supplies and keep extraction instructions in its Record Markdown.`, sourceSystem.id));
         }
       }
-    } else if (["population-export", "system-export", "configuration-export"].includes(item.evidenceKind)) {
+    } else if (["population-export", "system-export", "configuration-export"].includes(item.artifactKind)) {
       gaps.push(gap("error", "evidence-source-system-unrecorded", `${item.title} is a source-system export but does not link the cataloged system of record.`, item.id));
     }
     if (item.externalReference && !item.filePaths.length) {
       gaps.push(gap("warning", "external-only-evidence", `${item.title} relies on an external reference and is not self-contained in the packet.`, item.id));
     }
-    if (item.evidenceKind === "rendered-record") {
+    if (item.artifactKind === "rendered-page") {
       const captureComplete = item.capture
         && typeof item.capture.route === "string"
         && item.capture.route.trim()
         && item.capture.filters
         && typeof item.capture.filters === "object"
         && !Array.isArray(item.capture.filters)
-        && typeof item.capture.periodStart === "string"
-        && typeof item.capture.periodEnd === "string"
+        && coverageStart(item.capture.coverage)
+        && coverageEnd(item.capture.coverage)
         && typeof item.capture.capturedAt === "string"
         && typeof item.capture.method === "string"
         && item.capture.method.trim();
@@ -1216,7 +1221,7 @@ function packetGaps({
         gaps.push(gap("error", "missing-render-capture-context", `${item.title} does not record its route, filters, period, capture time, and method.`, item.id));
       }
     }
-    if (item.evidenceKind === "population-export") {
+    if (item.artifactKind === "population-export") {
       for (const [field, label] of [
         ["generatedAt", "generation time"],
         ["timezone", "report timezone"],
@@ -1254,15 +1259,16 @@ function auditGaps(gaps, audit, byId, records, start, end) {
   if (!["soc-2-type-1", "soc-2-type-2"].includes(audit.auditKind)) {
     gaps.push(gap("error", "not-soc2-examination", `${audit.title} is ${audit.auditKind}; a delivery packet requires a SOC 2 Type 1 or Type 2 engagement.`, audit.id));
   } else if (audit.auditKind === "soc-2-type-1") {
-    if (!audit.typeOneAsOf) {
+    const asOf = coverageStart(audit.coverage);
+    if (audit.coverage?.kind !== "as-of" || !asOf) {
       gaps.push(gap("error", "audit-as-of-date-missing", `${audit.title} does not define a Type 1 as-of date.`, audit.id));
-    } else if (start !== audit.typeOneAsOf || end !== audit.typeOneAsOf) {
-      gaps.push(gap("error", "packet-date-mismatch", `Packet date ${start}${end !== start ? ` through ${end}` : ""} does not match the selected Type 1 as-of date ${audit.typeOneAsOf}.`, audit.id));
+    } else if (start !== asOf || end !== asOf) {
+      gaps.push(gap("error", "packet-date-mismatch", `Packet date ${start}${end !== start ? ` through ${end}` : ""} does not match the selected Type 1 as-of date ${asOf}.`, audit.id));
     }
-  } else if (!audit.periodStart || !audit.periodEnd) {
+  } else if (audit.coverage?.kind !== "range") {
     gaps.push(gap("error", "audit-period-missing", `${audit.title} does not define a Type 2 examination period.`, audit.id));
-  } else if (audit.periodStart !== start || audit.periodEnd !== end) {
-    gaps.push(gap("error", "packet-period-mismatch", `Packet dates ${start} through ${end} do not match the selected audit period ${audit.periodStart} through ${audit.periodEnd}.`, audit.id));
+  } else if (!coverageMatches(audit.coverage, start, end)) {
+    gaps.push(gap("error", "packet-period-mismatch", `Packet dates ${start} through ${end} do not match the selected audit period ${coverageStart(audit.coverage)} through ${coverageEnd(audit.coverage)}.`, audit.id));
   }
   if (!(audit.systemIds || []).length) gaps.push(gap("error", "audit-systems-missing", `${audit.title} has no in-scope systems.`, audit.id));
   if (!(audit.requirementIds || []).length) gaps.push(gap("error", "audit-requirements-missing", `${audit.title} has no selected criteria.`, audit.id));
@@ -1276,7 +1282,7 @@ function auditGaps(gaps, audit, byId, records, start, end) {
       gaps.push(gap("error", "audit-criteria-scope-conflict", `${requirement.reference || requirement.title} is selected but is not an applicable member of the selected frameworks.`, requirement.id));
     }
   }
-  if (!audit.auditor && !audit.auditorVendorId) gaps.push(gap("error", "auditor-missing", `${audit.title} does not identify the independent CPA firm.`, audit.id));
+  if (!audit.auditorVendorId) gaps.push(gap("error", "auditor-missing", `${audit.title} does not identify the independent CPA firm.`, audit.id));
   if (!audit.subserviceMethod) gaps.push(gap("error", "subservice-method-missing", `${audit.title} does not state whether subservice organizations use the carve-out or inclusive method, or are not applicable.`, audit.id));
   if ((audit.subserviceVendorIds || []).length && audit.subserviceMethod === "not-applicable") {
     gaps.push(gap("error", "subservice-scope-conflict", `${audit.title} names subservice organizations but marks their treatment not applicable.`, audit.id));
@@ -1377,12 +1383,15 @@ function evidenceSummary(record, byId, revisionIsValid) {
     id: record.id,
     title: record.title,
     status: record.status,
-    evidenceKind: record.evidenceKind,
-    source: record.source,
+    artifactKind: record.artifactKind,
+    artifactSubtype: record.artifactSubtype || null,
+    sourceKind: record.sourceKind,
+    sourceDescription: record.sourceDescription,
     collectedOn: record.collectedOn,
-    periodStart: record.periodStart,
-    periodEnd: record.periodEnd,
-    classification: record.classification,
+    coverage: record.coverage || null,
+    periodStart: coverageStart(record.coverage),
+    periodEnd: coverageEnd(record.coverage),
+    classificationId: record.classificationId,
     generatedAt: record.generatedAt || null,
     timezone: record.timezone || null,
     queryDescription: record.queryDescription || null,
@@ -1414,13 +1423,14 @@ function populationSummary(record, byId) {
     status: record.status,
     auditId: record.auditId,
     populationKind: record.populationKind,
-    periodStart: record.periodStart,
-    periodEnd: record.periodEnd,
+    coverage: record.coverage || null,
+    periodStart: coverageStart(record.coverage),
+    periodEnd: coverageEnd(record.coverage),
     controlIds: record.controlIds || [],
     sourceSystemId,
     sourceSystem: byId.get(sourceSystemId)?.title || null,
     sourceEvidenceId: record.sourceEvidenceId || null,
-    source: evidence?.source || null,
+    source: evidence?.sourceDescription || null,
     populationCount: evidence?.populationCount ?? null,
     queryDescription: evidence?.queryDescription || null,
     timezone: evidence?.timezone || null,
@@ -1469,7 +1479,7 @@ function populationGaps(gaps, audit, populations, byId, model) {
     }
   }
   for (const population of populations) {
-    if (population.periodStart !== audit.periodStart || population.periodEnd !== audit.periodEnd) {
+    if (!coverageMatches(population.coverage, coverageStart(audit.coverage), coverageEnd(audit.coverage))) {
       gaps.push(gap("error", "population-period-mismatch", `${population.title} does not match the exact audit period.`, population.id));
     }
     if (population.status === "not-applicable") {
@@ -1492,11 +1502,11 @@ function populationGaps(gaps, audit, populations, byId, model) {
       gaps.push(gap("error", "population-exceptions-undocumented", `${population.title} concludes with exceptions but does not describe them in the reconciliation summary.`, population.id));
     }
     const evidence = byId.get(population.sourceEvidenceId);
-    if (!evidence || evidence.type !== "evidence" || evidence.evidenceKind !== "population-export") {
+    if (!evidence || evidence.type !== "evidence" || evidence.artifactKind !== "population-export") {
       gaps.push(gap("error", "population-export-missing", `${population.title} does not link a population-export evidence record.`, population.id));
       continue;
     }
-    if (evidence.periodStart !== audit.periodStart || evidence.periodEnd !== audit.periodEnd) {
+    if (!coverageMatches(evidence.coverage, coverageStart(audit.coverage), coverageEnd(audit.coverage))) {
       gaps.push(gap("error", "population-evidence-period-mismatch", `${evidence.title} does not cover the exact audit period.`, evidence.id));
     }
     const generatedOn = timestampDate(evidence.generatedAt, evidence.timezone);
@@ -1518,10 +1528,10 @@ function populationGaps(gaps, audit, populations, byId, model) {
 
 function evidenceCoversPacketDate(item, audit, start, end) {
   if (audit?.auditKind === "soc-2-type-1") {
-    return (item.periodStart && item.periodEnd && item.periodStart <= start && item.periodEnd >= start)
+    return coverageContains(item.coverage, start)
       || item.collectedOn === start;
   }
-  return (item.periodStart && item.periodEnd && item.periodStart <= end && item.periodEnd >= start)
+  return coverageOverlaps(item.coverage, start, end)
     || (item.collectedOn >= start && item.collectedOn <= end);
 }
 
@@ -1532,7 +1542,7 @@ function displaySourceKind(value) {
 function overlapsEvidencePeriod(record, start, end) {
   return record.type === "evidence" && (
     (record.collectedOn >= start && record.collectedOn <= end)
-    || (record.periodStart && record.periodEnd && record.periodStart <= end && record.periodEnd >= start)
+    || coverageOverlaps(record.coverage, start, end)
   );
 }
 
@@ -1610,7 +1620,7 @@ function packetHtml(packet) {
     ? `<table><thead><tr><th>Obligation</th><th>Allowed window</th><th>Status</th></tr></thead><tbody>${packet.obligations.map((item) => `<tr><td>${escapeHtml(item.title)}</td><td>${item.dueWindowStart} through ${item.dueWindowEnd}<br><small>Overdue ${item.overdueOn}</small></td><td>${escapeHtml(item.status)}</td></tr>`).join("")}</tbody></table>`
     : "<p>No recurring occurrences intersect this period.</p>";
   const evidence = packet.evidence.length
-    ? `<table><thead><tr><th>External Evidence</th><th>Source and period</th><th>Controls</th><th>Files</th></tr></thead><tbody>${packet.evidence.map((item) => `<tr><td><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.evidenceKind)}</small></td><td>${escapeHtml(item.source)}<small>${escapeHtml(item.periodStart || item.collectedOn)}${item.periodEnd ? ` through ${escapeHtml(item.periodEnd)}` : ""}</small></td><td>${item.controlIds.map(escapeHtml).join("<br>") || "None"}</td><td>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("") || "No fixed attachment"}</td></tr>`).join("")}</tbody></table>`
+    ? `<table><thead><tr><th>External Evidence</th><th>Source and period</th><th>Controls</th><th>Files</th></tr></thead><tbody>${packet.evidence.map((item) => `<tr><td><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.artifactKind)}</small></td><td>${escapeHtml(item.sourceDescription)}<small>${escapeHtml(item.periodStart || item.collectedOn)}${item.periodEnd ? ` through ${escapeHtml(item.periodEnd)}` : ""}</small></td><td>${item.controlIds.map(escapeHtml).join("<br>") || "None"}</td><td>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("") || "No fixed attachment"}</td></tr>`).join("")}</tbody></table>`
     : "<p>No External Evidence records were selected.</p>";
   const sourceSystems = packet.sourceSystems.length
     ? `<p><a href="source-system-index.csv">Download source system index CSV</a></p><table><thead><tr><th>System of record</th><th>Evidence roles</th><th>Audit relationship</th><th>Evidence</th></tr></thead><tbody>${packet.sourceSystems.map((item) => `<tr><td><a href="records/system/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)}</small></td><td>${item.evidenceSourceKinds.map(escapeHtml).join("<br>") || "No evidence role recorded"}</td><td>${item.inAuditScope ? "In-scope system" : "Evidence source"}</td><td>${item.evidenceIds.length}</td></tr>`).join("")}</tbody></table><p><a href="external-evidence-index.csv">Download external evidence delivery index CSV</a></p>`
@@ -1699,11 +1709,11 @@ function requireDate(value, label) {
 function resolvePacketPeriod(options, audit) {
   const typeOne = audit?.auditKind === "soc-2-type-1";
   const start = requireDate(
-    options.start || (typeOne ? audit?.typeOneAsOf : audit?.periodStart),
+    options.start || coverageStart(audit?.coverage),
     typeOne ? "Type 1 as-of date" : "packet start date"
   );
   const end = requireDate(
-    options.end || (typeOne ? audit?.typeOneAsOf : audit?.periodEnd),
+    options.end || coverageEnd(audit?.coverage),
     typeOne ? "Type 1 as-of date" : "packet end date"
   );
   if (end < start) throw new Error("The packet end date must not be before its start date.");

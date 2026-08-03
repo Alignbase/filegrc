@@ -17,7 +17,7 @@ import {
   retryBrowserSync,
   runBrowserMutation
 } from "./git.js";
-import { serializeWorkspaceMutation } from "./mutation.js";
+import { normalizeResourceMutation, serializeWorkspaceMutation } from "./mutation.js";
 import { completeObligationOccurrence, createObligationEvent, planObligations } from "./obligations.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { createAppState, createResourceDetail } from "./state.js";
@@ -62,7 +62,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           from: url.searchParams.get("from") || undefined,
           through: url.searchParams.get("through") || undefined,
           now: url.searchParams.get("now") || undefined,
-          includeComplete: url.searchParams.get("includeComplete") === "true"
+          includeComplete: url.searchParams.get("includeComplete") === "true",
+          model: loaded.model
         }));
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-events") {
@@ -80,7 +81,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           obligationId: payload.obligationId,
           record: payload.record,
           content: payload.content,
-          expectedRevision: payload.revision
+          expectedRevision: requireRevision(payload.revision, `obligation/${payload.obligationId}`)
         }));
         return json(response, 201, result);
       }
@@ -124,11 +125,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 200, await completeSetup());
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
-        const payload = await readJson(request);
-        const record = payload.record ?? payload;
+        const payload = normalizeResourceMutation(await readJson(request));
+        const { record } = payload;
         const result = await browserMutation(input, options, {
           message: () => `Create ${resourceTypeLabel(record.type)}: ${record.title || record.id}`
-        }, () => createResource(input, record, { content: payload.record ? payload.content : undefined }));
+        }, () => createResource(input, record, { content: payload.content }));
         return json(response, 201, { record: result.record, synchronization: result.synchronization, state: result.state });
       }
       if (request.method === "POST" && url.pathname === "/api/commit") {
@@ -170,7 +171,9 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const payload = await readJson(request);
         const result = await browserMutation(input, options, {
           message: () => `Update content: ${payload.path}`
-        }, () => updateContent(input, payload.path, payload.source, { expectedRevision: payload.revision }));
+        }, () => updateContent(input, payload.path, payload.source, {
+          expectedRevision: requireRevision(payload.revision, `content/${payload.path}`)
+        }));
         return json(response, 200, { path: result.dataRelativePath, synchronization: result.synchronization, state: result.state });
       }
       const match = /^\/api\/resource\/([^/]+)\/([^/]+)$/.exec(url.pathname);
@@ -183,21 +186,23 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           return entry ? json(response, 200, entry) : json(response, 404, { error: "Resource not found." });
         }
         if (request.method === "PUT") {
-          const payload = await readJson(request);
-          const record = payload.record ?? payload;
+          const payload = normalizeResourceMutation(await readJson(request), { requireRevision: true });
+          const { record } = payload;
           const result = await browserMutation(input, options, {
             message: () => `Update ${resourceTypeLabel(type)}: ${record.title || id}`
           }, () => updateResource(input, type, id, record, {
-            content: payload.record ? payload.content : undefined,
+            content: payload.content,
             expectedRevision: payload.revision,
-            expectedContentRevisions: payload.contentRevisions
+            expectedContentRevisions: payload.contentRevisions,
+            requireExpectedContentRevisions: true
           }));
           return json(response, 200, { record: result.record, synchronization: result.synchronization, state: result.state });
         }
         if (request.method === "DELETE") {
+          const revision = requireRevision(url.searchParams.get("revision"), `${type}/${id}`);
           const result = await browserMutation(input, options, {
             message: () => `Delete ${resourceTypeLabel(type)}: ${id}`
-          }, () => deleteResource(input, type, id, { expectedRevision: url.searchParams.get("revision") }));
+          }, () => deleteResource(input, type, id, { expectedRevision: revision }));
           return json(response, 200, {
             deleted: true,
             type,
@@ -376,6 +381,13 @@ function packetContentType(path, isPacketIndex = false) {
 
 function safeSegment(value) {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+function requireRevision(value, target) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`A revision is required when changing ${target}. Reload the resource and try again.`);
+  }
+  return value;
 }
 
 function sameOrigin(request) {

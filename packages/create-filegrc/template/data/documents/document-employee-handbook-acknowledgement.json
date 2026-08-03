@@ -1,20 +1,19 @@
 {
-  "schemaVersion": 1,
   "id": "document-employee-handbook-acknowledgement",
   "type": "document",
   "title": "Employee Handbook Acknowledgement",
   "status": "draft",
   "documentKind": "attestation-template",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "classification": "internal",
-  "audience": ["employees"],
-  "controlIds": ["control-workforce-expectations"]
+  "audience": [
+    "employees"
+  ],
+  "controlIds": [
+    "control-workforce-expectations"
+  ],
+  "classificationId": "internal"
 }

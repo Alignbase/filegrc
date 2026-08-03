@@ -8,7 +8,7 @@ import {
   utcCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
-import { POLICY_EVENT_NAMES, PROGRAM_PATH, RESOURCE_INSTRUCTIONS } from "./program-path.js";
+import { PROGRAM_PATH, RESOURCE_INSTRUCTIONS } from "./program-path.js";
 import { formatCalendarDate, formatLocalDateTime } from "./time.js";
 
 export function renderIndex(state = null) {
@@ -54,29 +54,7 @@ const STAGE_PAGE_SUMMARIES = ${JSON.stringify({
   ...RESOURCE_INSTRUCTIONS,
   "utility:audit-packet": "Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet."
 })};
-const POLICY_EVENT_NAMES = ${JSON.stringify(POLICY_EVENT_NAMES)};
-const STAGE_PAGE_ID_ALIASES = {
-  "controls:complementary-control": ["scope:complementary-control"]
-};
-const OBLIGATION_COMPLETION_TYPES = {
-  "access-review": "access-review",
-  "backup-test": "backup-test",
-  "continuity-review": "evidence",
-  exercise: "exercise",
-  "inventory-review": "evidence",
-  "log-review": "evidence",
-  meeting: "meeting",
-  "network-review": "evidence",
-  "penetration-test": "penetration-test",
-  "performance-review": "evidence",
-  "policy-review": "policy-review",
-  "risk-assessment": "risk-assessment",
-  "security-scan": "evidence",
-  training: "attestation",
-  "vendor-review": "vendor-review",
-  "vulnerability-scan": "vulnerability-scan"
-};
-const RECORD_TEXT_FIELDS = new Set(["description", "statement", "activity", "purpose", "scope", "objective", "applicabilityRationale", "summary", "rationale", "acceptanceRationale", "businessPurpose", "changeSummary", "decisionSummary", "decisionRationale", "recommendation", "remediationPlan", "auditorNotes", "notPerformedReason"]);
+const RECORD_TEXT_FIELDS = new Set(["description", "statement", "activity", "purpose", "scope", "objective", "applicabilityRationale", "summary", "rationale", "businessPurpose", "changeSummary", "decisionSummary", "decisionRationale", "recommendation", "remediationPlan", "auditorNotes", "notPerformedReason"]);
 const FINDING_SOURCE_TYPES = new Set(["control-test", "policy-review", "meeting", "risk", "risk-assessment", "vendor-review", "access-review", "incident", "exercise", "backup-test", "penetration-test", "audit"]);
 const ACTION_ITEM_SOURCE_TYPES = new Set(["finding", "exception", "policy-review", "meeting", "risk", "risk-assessment", "vendor-review", "access-review", "vulnerability", "incident", "exercise", "backup-test", "data-request", "audit-request"]);
 const TITLE_CASE_MINOR_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "per", "the", "to", "via", "vs"]);
@@ -262,7 +240,7 @@ function repositorySyncAlert() {
 function renderHome(main) {
   const activeAudit = resourcesOfType("audit").find((item) => !["complete", "closed", "cancelled"].includes(item.record.status));
   const program = state.programReadiness;
-  const activeFirm = activeAudit && (activeAudit.record.auditorVendorId || (activeAudit.record.auditor && Object.keys(activeAudit.record.auditor).length));
+  const activeFirm = activeAudit?.record.auditorVendorId;
   const setupPending = rendererSettingsEntry()?.record.showOnboarding === true;
   const acceptedEventTriggers = state.obligations.triggers.filter(({ programStatus }) => programStatus !== "proposed");
   const openObligations = state.obligations.items.filter((item) => item.status !== "complete");
@@ -281,7 +259,7 @@ function renderHome(main) {
 }
 
 function initialSetupBanner() {
-  const system = resourcesOfType("system").find(({ record }) => record.inScope && record.status !== "retired")?.record;
+  const system = resourcesOfType("system").find(({ record }) => (state.workspace.systemIds || []).includes(record.id) && record.status !== "retired")?.record;
   if (!system) {
     return '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Define the initial service boundary</h3><p>Record the management program goal and the systems that should enter policy and control review.</p></div><ol><li>Describe the service boundary.</li><li>Choose the program goal.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>';
   }
@@ -364,7 +342,7 @@ function renderEvidenceReadiness() {
       : '<a class="button" href="#/resources/system?new=1">Add source System</a>';
     const method = item.operationRecordTypes?.length
       ? "FileGRC records: " + item.operationRecordTypes.map(properCase).join(", ")
-      : properCase(item.evidenceKind || "External evidence");
+      : properCase(item.evidenceForm || "External evidence");
     return '<article class="evidence-map-card ' + esc(item.status) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (item.status === "complete" ? "good" : "warn") + '">' + (item.status === "complete" ? "Mapped" : "Needs mapping") + '</span><h3>' + esc(item.title) + '</h3></div><small>' + esc(method) + '</small></div><p>' + esc(item.description || item.message) + '</p>' +
       (item.sourceKinds?.length ? '<div class="evidence-map-expectation"><strong>Source role</strong><span>' + item.sourceKinds.map((kind) => '<code>' + esc(kind) + '</code>').join(" or ") + '</span></div>' : "") +
       (item.evidencePrompt ? '<div class="evidence-map-expectation"><strong>Expected evidence</strong><span>' + esc(item.evidencePrompt) + '</span></div>' : "") +
@@ -402,7 +380,7 @@ function stagePageId(stage, destination) {
 
 function stagePageComplete(pageId) {
   const completedPageIds = rendererSettingsEntry()?.record.completedStagePageIds || [];
-  return [pageId, ...(STAGE_PAGE_ID_ALIASES[pageId] || [])].some((id) => completedPageIds.includes(id));
+  return completedPageIds.includes(pageId);
 }
 
 function stagePageSummary(destination) {
@@ -437,9 +415,9 @@ function operationProgress() {
   const goal = program?.target?.goal || state.workspace.assuranceGoal || "none";
   const asOf = program?.asOf || currentDate();
   const candidateStarted = goal === "soc-2-type-2"
-    ? Boolean(program?.target?.candidatePeriodStart && program.target.candidatePeriodStart <= asOf)
+    ? Boolean(program?.target?.candidateCoverage?.kind === "range" && program.target.candidateCoverage.startsOn <= asOf)
     : goal === "soc-2-type-1"
-      ? Boolean(program?.target?.candidateTypeOneAsOf)
+      ? Boolean(program?.target?.candidateCoverage?.kind === "as-of")
       : Boolean(program?.evidenceReady);
   const overdue = state.obligations.counts.overdue || 0;
   const complete = Boolean(program?.evidenceReady && candidateStarted && overdue === 0);
@@ -522,7 +500,8 @@ function resourceRollup(type) {
   if (!records.length) return { value: "0", label: "No records yet" };
   const statuses = new Map();
   records.forEach((record) => {
-    if (record.status) statuses.set(record.status, (statuses.get(record.status) || 0) + 1);
+    const status = displayStatus(record);
+    if (status) statuses.set(status, (statuses.get(status) || 0) + 1);
   });
   const statusText = [...statuses.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([status, count]) => count + " " + humanize(status).toLowerCase()).join(" · ");
   return { value: String(records.length), label: statusText || pluralize("record", records.length) };
@@ -541,7 +520,7 @@ function utilityRollup(utility) {
 }
 
 function auditEngagementPrompt(audit = null) {
-  const hasAuditor = audit?.auditorVendorId || (audit?.auditor && Object.keys(audit.auditor).length);
+  const hasAuditor = audit?.auditorVendorId;
   if (hasAuditor) return "";
   const heading = audit ? "CPA Firm Not Recorded" : "Optional: Engage a CPA Firm Early";
   return '<div class="audit-engagement"><div><strong>' + heading + '</strong><p>The program can keep operating while management selects a firm. Engage early when a customer deadline, unusual scope, or other timing risk needs CPA input.</p></div><ul><li>Share the program boundary, goal, and evidence-source plan.</li><li>Keep management candidate dates separate from the firm-agreed report period.</li><li>Create or update the audit record only for a real engagement.</li></ul>' + (!audit ? '<a class="button" href="#/resources/audit?new=1">Create engagement</a>' : "") + '</div>';
@@ -551,7 +530,7 @@ function renderExternalEvidenceSection() {
   const records = resourcesOfType("evidence").map(({ record }) => record);
   const recent = records.slice(0, 6).map((record) => (
     '<a href="#/resource/evidence/' + encodeURIComponent(record.id) + '"><span><strong>' + esc(record.title) + '</strong><small>' +
-    esc(properCase(record.evidenceKind || "Evidence")) + (record.collectedOn ? " · " + esc(formatLocalDate(record.collectedOn)) : "") +
+    esc(properCase(record.artifactKind || "Evidence")) + (record.collectedOn ? " · " + esc(formatCalendarDate(record.collectedOn)) : "") +
     '</small></span><span class="badge status-' + esc(record.status || "draft") + '">' + esc(properCase(record.status || "draft")) + '</span></a>'
   )).join("");
   const createButton = state.readOnly
@@ -637,7 +616,24 @@ function policyEventTrigger(trigger, index) {
 }
 
 function policyEventName(eventType) {
-  return POLICY_EVENT_NAMES[eventType] || titleCase(humanize(eventType));
+  return state.model.policyEvents?.[eventType]?.title || titleCase(humanize(eventType));
+}
+
+function rangeCoverage(startsOn, endsOn) {
+  return { kind: "range", startsOn, endsOn };
+}
+
+function coverageStart(coverage) {
+  return coverage?.kind === "as-of" ? coverage.on : coverage?.startsOn;
+}
+
+function coverageEnd(coverage) {
+  return coverage?.kind === "as-of" ? coverage.on : coverage?.endsOn;
+}
+
+function defaultClassificationId() {
+  const definitions = state.workspace.classificationDefinitions || {};
+  return Object.hasOwn(definitions, "internal") ? "internal" : Object.keys(definitions)[0] || "";
 }
 
 function obligationCard(item, collapsed = false) {
@@ -656,11 +652,11 @@ function obligationCard(item, collapsed = false) {
 }
 
 function obligationCompletionPlan(item) {
-  const type = OBLIGATION_COMPLETION_TYPES[item.activityType] || "evidence";
+  const type = state.model.obligationActivities?.[item.activityType]?.completionType || "evidence";
   if (!currentPeopleForParties(item.ownerIds || []).length) {
     return { type, blocked: "Assign current owner", href: "#/resource/obligation/" + encodeURIComponent(item.obligationId) };
   }
-  if (["access-review", "backup-test"].includes(type) && !resourcesOfType("system").some(({ record }) => record.inScope && record.status !== "retired")) {
+  if (["access-review", "backup-test"].includes(type) && !(state.workspace.systemIds || []).some((id) => state.resources.some(({ record }) => record.id === id && record.status !== "retired"))) {
     return { type, blocked: "Add system first", href: "#/resources/system?new=1" };
   }
   if (type === "vendor-review" && !resourcesOfType("vendor").some(({ record }) => record.status !== "terminated")) {
@@ -692,63 +688,64 @@ function obligationCompletionSeed(type, item, obligation) {
   const date = currentDate();
   const timestamp = new Date().toISOString();
   const responsiblePeople = currentPeopleForParties(item.ownerIds || []);
-  const inScopeSystems = resourcesOfType("system").filter(({ record }) => record.inScope && record.status !== "retired").map(({ record }) => record.id);
+  const inScopeSystems = resourcesOfType("system").filter(({ record }) => (state.workspace.systemIds || []).includes(record.id) && record.status !== "retired").map(({ record }) => record.id);
   const activeVendors = resourcesOfType("vendor").filter(({ record }) => record.status !== "terminated").map(({ record }) => record.id);
   const title = item.title + " · " + formatCalendarDate(item.dueWindowStart);
   const common = { title };
   if (type === "meeting") {
     const team = completionTeam(item);
-    return { ...common, status: "complete", teamId: team.id, chairIds: currentPeopleForParties(team.chairIds || []), scheduledOn: date };
+    return { ...common, status: "complete", teamId: team.id, chairIds: currentPeopleForParties(team.chairIds || []), scheduledFor: date, startedAt: timestamp, endedAt: timestamp, attendeeIds: responsiblePeople };
   }
   if (type === "policy-review") {
-    return { ...common, status: "complete", scopeResourceIds: obligation.scopeResourceIds || [], reviewerIds: responsiblePeople, reviewedOn: date, outcome: "passed", changesRequired: false, periodStart: item.dueWindowStart, periodEnd: item.dueWindowEnd };
+    return { ...common, status: "complete", scopeResourceIds: obligation.scopeResourceIds || [], reviewerIds: responsiblePeople, completedOn: date, outcome: "passed", changesRequired: false, coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
   }
   if (type === "risk-assessment") {
-    return { ...common, status: "complete", assessmentDate: date, assessmentKind: "enterprise-risk", scope: "In-scope SOC 2 systems and dependencies", assessorIds: responsiblePeople, reviewerIds: responsiblePeople, methodology: state.workspace.riskMethodology?.method || "Documented risk methodology", approvedOn: date };
+    return { ...common, status: "complete", completedOn: date, assessmentKind: "enterprise-risk", scope: "In-scope SOC 2 systems and dependencies", assessorIds: responsiblePeople, reviewerIds: responsiblePeople, methodology: state.workspace.riskMethodology?.method || "Documented risk methodology", summary: "Assessment completed; link the supporting evidence and resulting risks.", approvedOn: date };
   }
   if (type === "attestation") {
     return { ...common, status: "completed", subjectResourceIds: [obligation.templateResourceId, ...(obligation.scopeResourceIds || [])].filter(Boolean), personId: responsiblePeople[0], attestationKind: item.activityType || "completion", assignedOn: item.dueWindowStart, dueOn: item.dueWindowEnd, completedOn: date, attestationMethod: "git-approval" };
   }
   if (type === "access-review") {
-    return { ...common, status: "complete", reviewDate: date, reviewerIds: responsiblePeople, systemIds: inScopeSystems, scope: "Privileged, production, and important-system access", outcome: "passed", periodStart: item.dueWindowStart, periodEnd: item.dueWindowEnd };
+    return { ...common, status: "complete", completedOn: date, reviewerIds: responsiblePeople, systemIds: inScopeSystems, scope: "Privileged, production, and important-system access", outcome: "passed", approvedByIds: responsiblePeople, approvedOn: date, coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
   }
   if (type === "vulnerability-scan") {
-    return { ...common, status: "complete", scanKind: "vulnerability", scope: "In-scope systems", operatorIds: responsiblePeople, scheduledOn: date, completedAt: timestamp, systemIds: inScopeSystems, resultSummary: "Document the scan result and link findings or evidence." };
+    return { ...common, status: "complete", scanKind: "vulnerability", scope: "In-scope systems", operatorIds: responsiblePeople, scheduledFor: date, completedAt: timestamp, systemIds: inScopeSystems, resultSummary: "Document the scan result and link findings or evidence." };
   }
   if (type === "penetration-test") {
-    return { ...common, status: "complete", testKind: "independent", scope: "In-scope systems and service boundary", periodStart: date, periodEnd: date, ownerIds: responsiblePeople, outcome: "passed", systemIds: inScopeSystems };
+    return { ...common, status: "complete", testKind: "independent", scope: "In-scope systems and service boundary", coverage: rangeCoverage(date, date), ownerIds: responsiblePeople, outcome: "passed", systemIds: inScopeSystems, completedOn: date, reviewerIds: responsiblePeople, reviewedOn: date };
+  }
+  if (type === "control-test") {
+    return { ...common, status: "complete", controlId: obligation.controlIds?.[0] || "", testKinds: [item.activityType || "control-operation"], performedBy: "management", testerIds: responsiblePeople, reviewerIds: responsiblePeople, completedOn: date, reviewedOn: date, outcome: "passed", coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
   }
   if (type === "exercise") {
-    return { ...common, status: "complete", exerciseKind: item.title.toLowerCase().includes("continuity") ? "business-continuity" : "incident-response", scheduledOn: date, facilitatorIds: responsiblePeople, objective: item.title, outcome: "passed", systemIds: inScopeSystems, completedAt: timestamp };
+    return { ...common, status: "complete", exerciseKind: item.title.toLowerCase().includes("continuity") ? "business-continuity" : "incident-response", scheduledFor: date, facilitatorIds: responsiblePeople, objective: item.title, outcome: "passed", systemIds: inScopeSystems, completedAt: timestamp };
   }
   if (type === "backup-test") {
-    return { ...common, status: "passed", systemIds: inScopeSystems, testDate: date, operatorIds: responsiblePeople, outcome: "passed", completedAt: timestamp };
+    return { ...common, status: "complete", systemIds: inScopeSystems, scheduledFor: date, operatorIds: responsiblePeople, reviewerIds: responsiblePeople, outcome: "passed", completedAt: timestamp };
   }
   if (type === "vendor-review") {
-    return { ...common, status: "complete", vendorIds: activeVendors, reviewerIds: responsiblePeople, reviewedOn: date, outcome: "passed", periodStart: item.dueWindowStart, periodEnd: item.dueWindowEnd };
+    const eventVendorId = (item.subjectResourceIds || []).find((id) => state.resources.some(({ record }) => record.id === id && record.type === "vendor"));
+    return { ...common, status: "complete", vendorId: eventVendorId || activeVendors[0] || "", reviewerIds: responsiblePeople, completedOn: date, decision: "approved", coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
   }
   return {
     ...common,
     status: "collected",
-    evidenceKind: item.activityType || "control-operation",
-    source: "Internal control operation",
+    artifactKind: "business-record",
+    artifactSubtype: item.activityType || "control-operation",
+    sourceKind: "authored-record",
+    sourceDescription: "Internal control operation",
     collectedOn: date,
-    classification: "Internal",
-    periodStart: item.dueWindowStart,
-    periodEnd: item.dueWindowEnd,
+    classificationId: defaultClassificationId(),
+    coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd),
     controlIds: item.controlIds || [],
     sourceResourceIds: [item.obligationId]
   };
 }
 
 function openObligationEventDialog(trigger) {
-  const subjectType = trigger.eventType.startsWith("person") || trigger.eventType.includes("person-") ? "person"
-    : trigger.eventType.startsWith("vendor") ? "vendor"
-      : trigger.eventType.startsWith("system") ? "system"
-        : trigger.eventType.includes("incident") ? "incident"
-          : null;
-  const subjects = subjectType ? resourcesOfType(subjectType) : [];
-  const needsTimestamp = trigger.steps.some((step) => Number.isInteger(step.window?.endOffsetHours));
+  const subjectTypes = (state.model.policyEvents?.[trigger.eventType]?.subjectRules || []).map(({ resourceType }) => resourceType);
+  const subjects = subjectTypes.flatMap((type) => resourcesOfType(type));
+  const needsTimestamp = trigger.steps.some((step) => step.window?.precision === "timestamp");
   const eventField = needsTimestamp
     ? '<label><span>Event time <small>your local time</small></span><input name="occurredAt" type="datetime-local" required value="' + esc(currentLocalDateTime()) + '"></label>'
     : '<label><span>Event date</span><input name="occurredOn" type="date" required value="' + esc(currentDate()) + '"></label>';
@@ -756,7 +753,7 @@ function openObligationEventDialog(trigger) {
   dialog.className = "commit-dialog event-dialog";
   dialog.setAttribute("aria-labelledby", "event-dialog-title");
   dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Policy event</p><h2 id="event-dialog-title">' + esc(policyEventName(trigger.eventType)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>This creates one event record and adds ' + trigger.steps.length + ' linked tasks to the Work Queue.</p>' + eventField +
-    (subjects.length ? '<label><span>Subject</span><select name="subject"><option value="">Select</option>' + subjects.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' : "") +
+    (subjects.length ? '<label><span>Subject <small>required</small></span><select name="subject" required><option value="">Select</option>' + subjects.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + '</option>').join("") + '</select></label>' : "") +
     '<label><span>Workflow name <small>optional</small></span><input name="title" maxlength="200" placeholder="' + esc(policyEventName(trigger.eventType)) + '"></label><div class="event-dialog-steps">' + trigger.steps.map((step) => '<div><strong>' + esc(step.title) + '</strong><small>' + esc(eventStepSummary(step)) + '</small></div>').join("") + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Add Tasks to Work Queue</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
@@ -808,8 +805,8 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
   const requestedAudit = params.get("auditId");
   const selected = audits.find(({ record }) => record.id === requestedAudit)?.record || audits.find(({ record }) => record.status !== "complete")?.record || null;
   const today = currentDate();
-  const start = selected?.periodStart || selected?.typeOneAsOf || today.slice(0, 4) + "-01-01";
-  const end = selected?.periodEnd || selected?.typeOneAsOf || today;
+  const start = coverageStart(selected?.coverage) || today.slice(0, 4) + "-01-01";
+  const end = coverageEnd(selected?.coverage) || today;
   const typeOne = selected?.auditKind === "soc-2-type-1";
   const draft = !state.git.clean || !selected;
   const preparation = state.auditPreparations?.[selected?.id || "none"] || state.auditPreparations?.none;
@@ -924,7 +921,7 @@ function renderPacketResults(container, result) {
     metric("External Evidence", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
     metric("Review items", packet.summary.gaps, packet.summary.errors + " errors · " + packet.summary.warnings + " warnings", packet.summary.errors ? "bad" : packet.summary.warnings ? "warn" : "good") +
     '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">' + (ready ? "filegrc management checks passed" : "Draft packet") + '</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. ' + (ready ? "Verify the checksums, reconcile external deliveries, and let the engagement team confirm evidence sufficiency." : "Do not deliver it until every error is resolved and each warning has been reviewed.") + '</p></section>' +
-    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included External Evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.evidenceKind)) + '</small></a>').join("") + '</div>' : empty("No External Evidence matched.")) + '</section></div>';
+    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included External Evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.artifactKind)) + '</small></a>').join("") + '</div>' : empty("No External Evidence matched.")) + '</section></div>';
 }
 
 function obligationPreview(items) {
@@ -981,13 +978,11 @@ function timingText(item) {
 }
 
 function relativeEventWindow(window) {
-  if (Number.isInteger(window?.endOffsetHours)) {
-    return window.endOffsetHours === 0 ? "Due at the event time" : "Due within " + window.endOffsetHours + " hours";
-  }
-  if (Number.isInteger(window?.endOffsetDays)) {
-    return window.endOffsetDays === 0 ? "Due on the event date" : "Due within " + window.endOffsetDays + " days";
-  }
-  return "Due within 30 days";
+  if (!Number.isInteger(window?.dueAfter)) return "Deadline not configured";
+  const unit = window.precision === "timestamp" ? "hour" : "day";
+  return window.dueAfter === 0
+    ? (window.precision === "timestamp" ? "Due at the event time" : "Due on the event date")
+    : "Due within " + window.dueAfter + " " + unit + (window.dueAfter === 1 ? "" : "s");
 }
 
 function eventStepSummary(step) {
@@ -1040,7 +1035,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 2) + '">' + empty("No records match this filter.") + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -1097,12 +1092,11 @@ function renderDetail(main, type, id) {
   const narrative = recordNarrative(entry.record, fields);
   const narrativeNames = new Set(narrative.map(([name]) => name));
   const visible = Object.entries(entry.record).filter(([name]) => (
-    !["schemaVersion", "id", "type", "title"].includes(name)
+    !["id", "type", "title"].includes(name)
     && !fields[name]?.content
     && !narrativeNames.has(name)
   ));
   const content = Object.entries(entry.content);
-  const legacyNotice = legacyFieldNotice(entry.record, fields);
   const sourceMetadata = '<div><dt>Source file</dt><dd><code>' + esc(entry.relativePath) + '</code></dd></div><div><dt>Workspace revision</dt><dd>' + (state.git.available ? '<code>' + esc(state.git.shortCommit) + '</code>' : "Unavailable until the workspace is committed.") + '</dd></div>';
   const narrativeContent = narrative.length
     ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(titleCase(fields[name]?.label || humanize(name))) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
@@ -1123,7 +1117,7 @@ function renderDetail(main, type, id) {
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
   main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
-    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div>' + legacyNotice + '<dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
+    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>' + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
@@ -1212,20 +1206,6 @@ function recordContentDefinition(type) {
   };
 }
 
-function legacyFieldNotice(record, fields) {
-  const legacy = Object.entries(fields).filter(([name, field]) => (
-    field.legacy && Object.hasOwn(record, name)
-  ));
-  if (!legacy.length) return "";
-  const names = legacy.map(([name]) => name);
-  const authoritativeFields = [...new Set(legacy.flatMap(([, field]) => field.authoritativeFields || []))];
-  return '<div class="legacy-notice"><strong>Legacy fields need migration</strong><p>This record still contains <code>'
-    + names.map(esc).join("</code>, <code>")
-    + '</code>. Current workflows use '
-    + authoritativeFields.map((name) => '<code>' + esc(name) + '</code>').join(", ")
-    + ". Update the current fields, then remove the legacy keys in Advanced JSON.</p></div>";
-}
-
 function personParticipation(entry) {
   if (entry.record.type !== "person") return "";
   const personId = entry.record.id;
@@ -1251,7 +1231,7 @@ function personParticipation(entry) {
     const fields = { ...state.model.commonFields, ...state.model.resources[candidate.record.type].fields };
     const reasons = [];
     for (const [name, field] of Object.entries(fields)) {
-      if (!field.relation || field.legacy) continue;
+      if (!field.relation) continue;
       const values = Array.isArray(candidate.record[name]) ? candidate.record[name] : [candidate.record[name]];
       if (values.includes(personId)) reasons.push(fieldLabel(candidate.record.type, name));
       for (const appointment of appointments) {
@@ -1293,7 +1273,7 @@ function resourceConnections(entry) {
   };
   const currentFields = { ...state.model.commonFields, ...state.model.resources[entry.record.type].fields };
   Object.entries(currentFields).forEach(([name, definition]) => {
-    if (!definition.relation || definition.legacy) return;
+    if (!definition.relation) return;
     const values = Array.isArray(entry.record[name]) ? entry.record[name] : [entry.record[name]];
     values.filter((value) => typeof value === "string").forEach((id) => add(entriesById.get(id), "Linked from " + fieldLabel(entry.record.type, name)));
   });
@@ -1301,7 +1281,7 @@ function resourceConnections(entry) {
     if (candidate.record.id === entry.record.id) return;
     const fields = { ...state.model.commonFields, ...state.model.resources[candidate.record.type].fields };
     Object.entries(fields).forEach(([name, definition]) => {
-      if (!definition.relation || definition.legacy) return;
+      if (!definition.relation) return;
       const values = Array.isArray(candidate.record[name]) ? candidate.record[name] : [candidate.record[name]];
       if (values.includes(entry.record.id)) add(candidate, "Linked by " + state.model.resources[candidate.record.type].title + " · " + fieldLabel(candidate.record.type, name));
     });
@@ -1626,7 +1606,7 @@ function requestOnboarding() {
 }
 
 function initialOnboardingDraft() {
-  const systemEntry = resourcesOfType("system").find(({ record }) => record.inScope && record.status !== "retired");
+  const systemEntry = resourcesOfType("system").find(({ record }) => (state.workspace.systemIds || []).includes(record.id) && record.status !== "retired");
   const owner = resourcesOfType("person").find(({ record }) => record.status === "active")?.record;
   return {
     systemId: systemEntry?.record.id || "",
@@ -1634,7 +1614,7 @@ function initialOnboardingDraft() {
     scope: systemEntry?.record.description || "",
     ownerId: systemEntry?.record.ownerIds?.[0] || owner?.id || "",
     criticality: systemEntry?.record.criticality || "high",
-    dataClassification: systemEntry?.record.dataClassification || "Confidential",
+    classificationId: systemEntry?.record.classificationId || defaultClassificationId(),
     internetExposed: systemEntry?.record.internetExposed === false ? "false" : "true",
     programGoal: programGoalFromKind(state.workspace.assuranceGoal)
   };
@@ -1791,8 +1771,8 @@ function renderOnboardingStep() {
 function onboardingSetupForm() {
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
   const classifications = Object.keys(state.workspace.classificationDefinitions || {});
-  if (onboardingDraft.dataClassification && !classifications.includes(onboardingDraft.dataClassification)) {
-    classifications.push(onboardingDraft.dataClassification);
+  if (onboardingDraft.classificationId && !classifications.includes(onboardingDraft.classificationId)) {
+    classifications.push(onboardingDraft.classificationId);
   }
   const currentSystem = onboardingDraft.systemId ? state.resources.find(({ record }) => record.id === onboardingDraft.systemId)?.record : null;
   const existing = [
@@ -1804,14 +1784,14 @@ function onboardingSetupForm() {
     : state.git.available && state.git.branch
       ? '<div class="onboarding-git-status"><span class="status-dot good"></span><span><strong>Manual repository mode</strong><small>Setup changes will stay local until you commit and synchronize them.</small></span></div>'
       : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Manual-mode writes still work, but Git history is unavailable until the repository is configured.</small></span></div>';
-  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="dataClassification" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.dataClassification ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Program goal</span><select name="programGoal" required><option value="none" ' + (onboardingDraft.programGoal === "none" ? "selected" : "") + '>No Assurance Goal Yet</option><option value="readiness" ' + (onboardingDraft.programGoal === "readiness" ? "selected" : "") + '>Program Readiness</option><option value="type-1" ' + (onboardingDraft.programGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.programGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>This records management intent only. It does not create an engagement or establish the formal report period.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Save draft marks the service Planned and In scope. It is selected for scope review, but it is not approved or active. ' + (state.repository?.mode === "trunk" ? "The browser saves and synchronizes the related files together." : "Manual mode leaves the files for you to commit.") + ' Complete the remaining Step 1 pages next.</p>';
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="classificationId" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.classificationId ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Program goal</span><select name="programGoal" required><option value="none" ' + (onboardingDraft.programGoal === "none" ? "selected" : "") + '>No Assurance Goal Yet</option><option value="readiness" ' + (onboardingDraft.programGoal === "readiness" ? "selected" : "") + '>Program Readiness</option><option value="type-1" ' + (onboardingDraft.programGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.programGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>This records management intent only. It does not create an engagement or establish the formal report period.</small></label></form><p class="onboarding-write-note">' + esc(existing) + ' Save draft marks the service Planned and selects it in Workspace program scope. It is ready for scope review, but it is not approved or active. ' + (state.repository?.mode === "trunk" ? "The browser saves and synchronizes the related files together." : "Manual mode leaves the files for you to commit.") + ' Complete the remaining Step 1 pages next.</p>';
 }
 
 function captureOnboardingForm() {
   const form = onboardingDialog?.querySelector("#onboarding-setup");
   if (!form) return;
   const data = new FormData(form);
-  for (const name of ["serviceName", "scope", "ownerId", "criticality", "dataClassification", "internetExposed", "programGoal"]) {
+  for (const name of ["serviceName", "scope", "ownerId", "criticality", "classificationId", "internetExposed", "programGoal"]) {
     onboardingDraft[name] = String(data.get(name) || "").trim();
   }
 }
@@ -1831,7 +1811,7 @@ async function saveOnboarding(draft = false) {
         boundary: onboardingDraft.scope,
         ownerId: onboardingDraft.ownerId,
         criticality: onboardingDraft.criticality,
-        dataClassification: onboardingDraft.dataClassification,
+        classificationId: onboardingDraft.classificationId,
         internetExposed: onboardingDraft.internetExposed === "true",
         programGoal: onboardingDraft.programGoal,
         systemId: onboardingDraft.systemId,
@@ -1931,7 +1911,6 @@ async function toggleStagePageCompletion(button) {
   const pageId = button.dataset.stagePageCompletion;
   if (button.dataset.complete === "true") {
     completed.delete(pageId);
-    (STAGE_PAGE_ID_ALIASES[pageId] || []).forEach((id) => completed.delete(id));
   } else {
     completed.add(pageId);
   }
@@ -2067,7 +2046,6 @@ function openEditor(type, entry = null, options = {}) {
   const definition = state.model.resources[type];
   const fields = { ...state.model.commonFields, ...definition.fields };
   const record = structuredClone(entry?.record || seedRecord(type, definition));
-  const legacyNotice = legacyFieldNotice(record, fields);
   const markdownDefinitions = dedicatedMarkdownDefinitions(type);
   if (!entry && options.seed) {
     Object.assign(record, options.seed);
@@ -2091,7 +2069,7 @@ function openEditor(type, entry = null, options = {}) {
     ...(definition.formFields || []),
     ...Object.entries(fields).filter(([, field]) => field.requiredWhen).map(([name]) => name),
     ...oneOf
-  ])].filter((name) => !["schemaVersion", "id", "type"].includes(name) && fields[name]);
+  ])].filter((name) => !["id", "type"].includes(name) && fields[name]);
   const dialog = document.createElement("dialog");
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
@@ -2103,7 +2081,7 @@ function openEditor(type, entry = null, options = {}) {
   const editorDescription = options.description
     || implementationEditorDescription(type)
     || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + legacyNotice + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p><div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -2213,7 +2191,7 @@ function implementationEditorDescription(type) {
 }
 
 function seedRecord(type, definition) {
-  const record = { schemaVersion: 1, id: createResourceId(type, "new", state.resources.map(({ record }) => record.id)), type, title: "" };
+  const record = { id: createResourceId(type, "new", state.resources.map(({ record }) => record.id)), type, title: "" };
   const fields = { ...state.model.commonFields, ...definition.fields };
   for (const name of definition.required || []) {
     const field = fields[name];
@@ -2288,6 +2266,10 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     : field.relation ? relationHelp(field)
     : "";
   let control;
+  if (field.managed) {
+    control = '<textarea readonly spellcheck="false" placeholder="Filled when approval is saved">' + esc(value === undefined ? "" : JSON.stringify(value, null, 2)) + '</textarea>';
+    return fieldWrap(name, "object", label, requiredMark, control, "Managed by filegrc from the exact companion Markdown revisions", false);
+  }
   if (field.relation && field.type === "array") {
     const candidates = relationCandidates(field);
     control = candidates.length
@@ -2301,6 +2283,11 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
       ? '<select><option value="">Select a Resource</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + ' · ' + esc(record.id) + '</option>').join("") + '</select>'
       : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
     return fieldWrap(name, "relation", label, requiredMark, control, help, required);
+  }
+  if (name === "classificationId") {
+    const values = Object.keys(state.workspace.classificationDefinitions || {});
+    control = '<select><option value="">Select</option>' + values.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
+    return fieldWrap(name, "string", label, requiredMark, control, "Defined by Workspace classificationDefinitions", required);
   }
   if (field.type === "enum" || field.type === "rating" || field.type === "outcome") {
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
@@ -2378,9 +2365,23 @@ function wireEditorRequirements(dialog, base, fields, oneOfGroups, markdownDefin
   };
   const refresh = () => {
     for (const [name, field] of Object.entries(fields)) {
-      if (!field.requiredWhen) continue;
       const group = dialog.querySelector('[data-field-group="' + CSS.escape(name) + '"]');
       if (!group) continue;
+      if (field.managed) {
+        const visible = !field.allowedWhen || conditionMatchesValues(field.allowedWhen, currentValue);
+        group.hidden = !visible;
+        refreshGroup(group, false);
+        continue;
+      }
+      if (field.allowedWhen && !conditionMatchesValues(field.allowedWhen, currentValue)) {
+        group.hidden = true;
+        refreshGroup(group, false);
+        continue;
+      }
+      if (!field.requiredWhen) {
+        group.hidden = false;
+        continue;
+      }
       const visible = !field.visibleWhen || conditionMatchesValues(field.visibleWhen, currentValue);
       const applicable = Object.entries(field.requiredWhen)
         .filter(([conditionName]) => conditionName !== "status")
@@ -2443,6 +2444,10 @@ function readGuidedRecord(dialog, base, fields) {
   const record = structuredClone(base);
   for (const group of dialog.querySelectorAll("[data-field-group]")) {
     const name = group.dataset.fieldGroup;
+    if (group.hidden) {
+      delete record[name];
+      continue;
+    }
     const kind = group.dataset.kind;
     let value;
     if (kind === "relation-array") value = [...group.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
@@ -2630,7 +2635,11 @@ function metric(label, value, note, tone) {
 }
 function countOverdue(entries) { const today = currentDate(); return entries.filter(({ record }) => dueDate(record) && dueDate(record) < today).length; }
 function dueDate(record) {
-  const explicit = record.dueOn || record.nextDueOn || record.reviewDueOn || record.expiresOn || record.acceptanceExpiresOn || record.scheduledOn;
+  const explicit = record.completionWindow?.dueOn
+    || record.completionWindow?.dueAt?.slice(0, 10)
+    || record.dueOn
+    || record.expiresOn
+    || record.scheduledFor;
   if (explicit) return explicit;
   if (record.type !== "obligation" || record.status !== "active") return null;
   const recurrence = record.recurrence?.anchorDate
@@ -2740,6 +2749,19 @@ function fieldLabel(type, name) {
 function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || properCase(value); }
 function humanize(value) { return String(value).replace(/[-_]+/g, " ").replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
 function properCase(value) { return humanize(value).replace(/\b[a-z]/g, (letter) => letter.toUpperCase()).replace(/\bSoc 2\b/g, "SOC 2"); }
+function displayStatus(record) {
+  if (record?.type === "attestation"
+    && record.status === "pending"
+    && record.dueOn
+    && state.asOf
+    && record.dueOn < state.asOf) return "overdue";
+  if (record?.type === "evidence"
+    && ["collected", "verified"].includes(record.status)
+    && record.expiresOn
+    && state.asOf
+    && record.expiresOn < state.asOf) return "expired";
+  return record?.status;
+}
 function titleCase(value) {
   const words = String(value).split(/\s+/);
   return words.map((word, index) => {
@@ -3032,7 +3054,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:24px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 @media(max-width:760px){.topbar{height:56px}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
 
-.legacy-notice{margin:14px 0;padding:11px 12px;border:1px solid #e9c888;border-radius:8px;background:#fff8e8;color:#5f4719;font-size:12px;line-height:1.5}.legacy-notice strong{display:block;margin-bottom:3px}.legacy-notice p{margin:0!important;color:inherit!important;font-size:inherit!important}.legacy-notice code{overflow-wrap:anywhere}.connection-group+.connection-group{margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}.connection-group h4{margin:0 0 8px;color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.08em}
+.connection-group+.connection-group{margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}.connection-group h4{margin:0 0 8px;color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.08em}
 body,button,input,select,textarea,dialog{color:var(--ink)}
 button,input,select,textarea{accent-color:var(--accent)}
 :focus-visible{outline:3px solid var(--focus);outline-offset:2px}

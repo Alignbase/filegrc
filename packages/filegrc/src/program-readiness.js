@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
 import { obligationIsRunning } from "./program-lifecycle.js";
@@ -26,7 +27,7 @@ export async function assessProgramReadiness(input, options = {}) {
   const controlStage = await controlsStage(scope, byId, readMarkdown, asOf);
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
-  controlStage.description = "Each implemented control needs an owner, actual procedure, scope, cadence, mappings, an implementation date, and complete authoritative source Systems with the required evidence roles, access owners, and retrieval instructions.";
+  controlStage.description = "Each implemented control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, and complete authoritative source Systems with the required evidence roles, access owners, and retrieval instructions.";
   const evidenceGateStages = [
     scopeStage(workspace, scope, records, byId),
     await policiesStage(scope, byId, readMarkdown, asOf),
@@ -36,20 +37,20 @@ export async function assessProgramReadiness(input, options = {}) {
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
     ...evidenceGateStages,
-    operationStage(workspace, scope, records, byId, asOf, evidenceReady)
+    operationStage(workspace, scope, records, byId, asOf, evidenceReady, loaded.model)
   ];
   finalizeStage(stages.at(-1));
   const candidateStarted = Boolean(
     workspace?.assuranceGoal === "soc-2-type-2"
-    && workspace.candidatePeriodStart
-    && workspace.candidatePeriodStart <= asOf
+    && workspace.candidateCoverage?.kind === "range"
+    && coverageStart(workspace.candidateCoverage) <= asOf
   );
-  const obligations = planObligations(records, { asOf, through: asOf });
+  const obligations = planObligations(records, { asOf, through: asOf, model: loaded.model });
   const operating = evidenceReady && candidateStarted && obligations.counts.overdue === 0;
   const canStartCandidatePeriod = Boolean(
     evidenceReady
     && workspace?.assuranceGoal === "soc-2-type-2"
-    && !workspace.candidatePeriodStart
+    && !workspace.candidateCoverage
   );
   const items = stages.flatMap((current) => current.items);
   const managedItems = items.filter((current) => !["info", "later"].includes(current.status));
@@ -63,9 +64,7 @@ export async function assessProgramReadiness(input, options = {}) {
     target: {
       goal: workspace?.assuranceGoal || "none",
       label: assuranceGoalLabel(workspace?.assuranceGoal),
-      candidateTypeOneAsOf: workspace?.candidateTypeOneAsOf || null,
-      candidatePeriodStart: workspace?.candidatePeriodStart || null,
-      candidatePeriodEnd: workspace?.candidatePeriodEnd || null
+      candidateCoverage: workspace?.candidateCoverage || null
     },
     status: operating ? "operating" : evidenceReady ? "evidence-ready" : "needs-work",
     evidenceReady,
@@ -117,9 +116,9 @@ function programScope(workspace, records, byId) {
     return records.filter(fallback);
   };
   return {
-    systems: select(workspace?.systemIds, "system", (record) => (
-      record.type === "system" && record.inScope === true && record.status !== "retired"
-    )),
+    systems: (workspace?.systemIds || [])
+      .map((id) => byId.get(id))
+      .filter((record) => record?.type === "system" && record.status !== "retired"),
     frameworks: select(workspace?.frameworkIds, "framework", (record) => (
       record.type === "framework" && record.status === "active"
     )),
@@ -149,9 +148,8 @@ function scopeStage(workspace, scope, records, byId) {
 
   const completeSystems = scope.systems.filter((system) => (
     system.status === "active"
-    && system.inScope === true
     && system.description
-    && system.dataClassification
+    && system.classificationId
     && (system.ownerIds || []).length
   ));
   items.push(item(
@@ -379,13 +377,14 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
       owner: (control.ownerIds || []).length > 0,
       procedure: substantiveMarkdown(source) && openPlaceholderCount(source) === 0,
       scope: (control.systemIds || []).some((id) => scope.systems.some((system) => system.id === id)),
-      cadence: Boolean(control.frequency),
+      operationPattern: Boolean(control.operationPattern),
       evidenceSource: sourceSystems.length > 0,
       implementationDate: Boolean(control.effectiveOn && control.effectiveOn <= asOf),
       policyMapping: (control.policyIds || []).length > 0,
       criteriaMapping: (control.requirementIds || []).length > 0,
-      ...(queueSchedules.length ? {
-        workQueue: queueSchedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))
+      ...(["scheduled", "event-driven", "mixed"].includes(control.operationPattern) ? {
+        workQueue: queueSchedules.length > 0
+          && queueSchedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))
       } : {})
     };
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
@@ -406,7 +405,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
       }
     ));
   }
-  return stage("controls", "Implement Controls", "Each implemented control needs an owner, actual procedure, scope, cadence, evidence source, mappings, an implementation date, and any linked Work Queue schedules running.", items);
+  return stage("controls", "Implement Controls", "Each implemented control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Work Queue schedules running.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
@@ -484,7 +483,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
         completeSourceSystemIds: completeSources.map((source) => source.id),
         sourceSystemChecks,
         controlMappings,
-        evidenceKind: family.evidenceKind,
+        evidenceForm: family.evidenceForm,
         evidencePrompt: family.evidencePrompt,
         description: family.description,
         timing: family.timing,
@@ -496,7 +495,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   return stage("sources", "Control Evidence Sources", "Complete the authoritative Systems for every selected control family before marking the Controls implemented.", items);
 }
 
-function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
+function operationStage(workspace, scope, records, byId, asOf, evidenceReady, model) {
   const goal = workspace?.assuranceGoal || "none";
   if (!evidenceReady) {
     return stage("operation", "Operate the Program", "Run the controls and preserve dated evidence after the Evidence Ready gate passes.", [
@@ -510,7 +509,9 @@ function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
     ]);
   }
   if (goal !== "soc-2-type-2") {
-    const date = workspace?.candidateTypeOneAsOf;
+    const date = workspace?.candidateCoverage?.kind === "as-of"
+      ? workspace.candidateCoverage.on
+      : null;
     return stage("operation", "Operate the Program", "Run the controls and preserve dated evidence before engaging the CPA firm.", [
       item(
         "candidate-type-one-date",
@@ -525,9 +526,13 @@ function operationStage(workspace, scope, records, byId, asOf, evidenceReady) {
     ]);
   }
 
-  const obligations = planObligations(records, { asOf, through: asOf });
-  const start = workspace.candidatePeriodStart;
-  const end = workspace.candidatePeriodEnd;
+  const obligations = planObligations(records, { asOf, through: asOf, model });
+  const start = workspace.candidateCoverage?.kind === "range"
+    ? coverageStart(workspace.candidateCoverage)
+    : null;
+  const end = workspace.candidateCoverage?.kind === "range"
+    ? coverageEnd(workspace.candidateCoverage)
+    : null;
   const startStatus = !start ? "action" : start <= asOf ? "complete" : "later";
   return stage("operation", "Operate the Program", "Start the management candidate Type 2 period only after the Evidence Ready gate, then keep collection running.", [
     item(
@@ -569,7 +574,7 @@ function riskAssessmentItem(scope, records, byId, asOf) {
     && record.status === "complete"
     && record.methodology
     && record.approvedOn
-    && record.assessmentDate >= shiftYear(asOf, -1)
+    && record.completedOn >= shiftYear(asOf, -1)
     && partiesIndependent(record.assessorIds, record.reviewerIds, byId)
     && (!scope.systems.length || !(record.systemIds || []).length || record.systemIds.some((id) => scope.systems.some((system) => system.id === id)))
   ));
@@ -595,7 +600,7 @@ export function selectedControlFamilies(controls, model) {
       id: definition.id,
       title: definition.title,
       sourceKinds: definition.sourceKinds || [],
-      evidenceKind: definition.evidenceKind || "capture",
+      evidenceForm: definition.evidenceForm || "capture",
       evidencePrompt: definition.evidencePrompt || `Retain usable evidence for ${definition.title.toLowerCase()}.`,
       description: definition.description || "",
       timing: definition.timing || "",
@@ -620,7 +625,7 @@ export function selectedControlFamilies(controls, model) {
       id: `control-${prefix}`,
       title,
       sourceKinds: [],
-      evidenceKind: "capture",
+      evidenceForm: "capture",
       evidencePrompt: `Retain usable evidence for the selected ${title.toLowerCase()} controls.`,
       description: `Record the authoritative Systems that produce evidence for the selected ${title.toLowerCase()} controls.`,
       timing: "Map the source and document repeatable retrieval before program operation begins.",
@@ -688,7 +693,7 @@ function controlCheckLabel(name) {
     owner: "owner",
     procedure: "actual procedure in Record Markdown",
     scope: "in-scope systems",
-    cadence: "cadence",
+    operationPattern: "operation pattern",
     evidenceSource: "authoritative evidence source",
     implementationDate: "implementation date",
     policyMapping: "policy mapping",

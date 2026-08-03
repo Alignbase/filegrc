@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   buildAgentProgramPath,
   buildAgentGuide,
+  createAppState,
   findResourceReferences,
   listResourceTypes,
   loadWorkspace,
@@ -47,7 +48,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "build",
     "validate",
     "model",
-    "migrateRoles",
+    "migrate",
     "describe",
     "types",
     "guide",
@@ -91,29 +92,16 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   const auditGuide = buildAgentGuide(loaded, "audit");
   assert.equal(auditGuide.optionalFields.some(({ name }) => name === "controlTestIds"), false);
   assert.equal(auditGuide.optionalFields.some(({ name }) => name === "evidenceIds"), false);
-  assert.deepEqual(auditGuide.legacyFields.map(({ name }) => name), ["controlTestIds", "evidenceIds"]);
   const personGuide = buildAgentGuide(loaded, "person");
   assert.equal(personGuide.optionalFields.some(({ name }) => name === "teamIds"), false);
   assert.equal(personGuide.optionalFields.some(({ name }) => name === "role"), false);
-  assert.deepEqual(personGuide.legacyFields.map(({ name }) => name), ["role", "teamIds"]);
-  assert.deepEqual(personGuide.legacyFields[0].authoritativeFields, [
-    "person.jobTitle",
-    "appointment.appointmentKind"
-  ]);
-  assert.deepEqual(personGuide.legacyFields[1].authoritativeFields, [
-    "team.memberIds",
-    "team.chairIds"
-  ]);
-  assert.equal(Object.hasOwn(personGuide.requiredAtCreation[0], "authoritativeFields"), false);
   assert.match(personGuide.workflow[2], /current facts and lifecycle state in JSON/);
-  assert.ok(personGuide.completionChecks.some((item) => /No legacy compatibility field/.test(item)));
   const policyGuide = buildAgentGuide(loaded, "policy");
   assert.match(policyGuide.workflow[2], /recommended Markdown companion/);
   const workspaceGuide = buildAgentGuide(loaded, "workspace");
   assert.match(workspaceGuide.workflow[1], /Open the existing singleton record/);
   const personGuideText = await execute(process.execPath, [cli, "guide", "person", "--root", root]);
-  assert.match(personGuideText.stdout, /role\tstring; use person\.jobTitle\|appointment\.appointmentKind/);
-  assert.match(personGuideText.stdout, /teamIds\tarray; use team\.memberIds\|team\.chairIds/);
+  assert.doesNotMatch(personGuideText.stdout, /\nrole\t|\nteamIds\t/);
   assert.match(personGuideText.stdout, /Completion checks:\n- Required and status-dependent fields are complete/);
   const pathCommand = await execute(process.execPath, [cli, "program-path", "--root", root, "--json"]);
   const parsedPath = JSON.parse(pathCommand.stdout);
@@ -222,9 +210,9 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
     "--root",
     root
   ]);
-  const mutation = JSON.parse(scaffolded.stdout);
+  let mutation = JSON.parse(scaffolded.stdout);
   Object.assign(mutation.record, {
-    assessmentDate: "2026-07-26",
+    scheduledFor: "2026-07-26",
     assessmentKind: "enterprise-risk",
     scope: "Production service and supporting business operations",
     assessorIds: ["person-owner"],
@@ -236,6 +224,12 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
   );
   const mutationPath = join(root, "risk-assessment-mutation.json");
   await writeFile(mutationPath, `${JSON.stringify(mutation, null, 2)}\n`, "utf8");
+  const rawRecordPath = join(root, "risk-assessment-record.json");
+  await writeFile(rawRecordPath, `${JSON.stringify(mutation.record, null, 2)}\n`, "utf8");
+  await assert.rejects(
+    execute(process.execPath, [cli, "create", rawRecordPath, "--root", root, "--json"]),
+    /mutation envelope/
+  );
 
   const created = await execute(process.execPath, [cli, "create", mutationPath, "--root", root, "--json"]);
   assert.equal(JSON.parse(created.stdout).record.id, mutation.record.id);
@@ -253,6 +247,45 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
   ]);
   assert.equal(JSON.parse(content.stdout).exists, true);
 
+  const updateMutation = await execute(process.execPath, [
+    cli,
+    "get",
+    mutation.record.id,
+    "--mutation",
+    "--root",
+    root
+  ]);
+  mutation = JSON.parse(updateMutation.stdout);
+  const missingRevision = structuredClone(mutation);
+  delete missingRevision.revision;
+  await writeFile(mutationPath, `${JSON.stringify(missingRevision, null, 2)}\n`, "utf8");
+  await assert.rejects(
+    execute(process.execPath, [
+      cli,
+      "update",
+      mutation.record.type,
+      mutation.record.id,
+      mutationPath,
+      "--root",
+      root
+    ]),
+    /revision is required/
+  );
+  const missingContentRevisions = structuredClone(mutation);
+  delete missingContentRevisions.contentRevisions;
+  await writeFile(mutationPath, `${JSON.stringify(missingContentRevisions, null, 2)}\n`, "utf8");
+  await assert.rejects(
+    execute(process.execPath, [
+      cli,
+      "update",
+      mutation.record.type,
+      mutation.record.id,
+      mutationPath,
+      "--root",
+      root
+    ]),
+    /content revision is required/
+  );
   mutation.record.summary = "Annual assessment of the in-scope service and operations.";
   mutation.content.record = "# 2026 Annual Risk Assessment\n\nUpdated through one mutation envelope.\n";
   await writeFile(mutationPath, `${JSON.stringify(mutation, null, 2)}\n`, "utf8");
@@ -323,7 +356,6 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
   const references = findResourceReferences(loaded, "person-owner");
   assert.ok(references.references.some(({ id, field }) => id === mutation.record.id && field === "assessorIds"));
   loaded.resources.push({
-    schemaVersion: 1,
     id: "team-security-risk-oversight",
     type: "team",
     title: "Security and Risk Oversight",
@@ -340,10 +372,12 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
 
   const evidenceMutation = scaffoldResourceMutation(loaded, "evidence", "Risk Assessment Notes");
   Object.assign(evidenceMutation.record, {
-    evidenceKind: "review",
-    source: "Risk assessment session",
+    artifactKind: "business-record",
+    artifactSubtype: "review",
+    sourceKind: "authored-record",
+    sourceDescription: "Risk assessment session",
     collectedOn: "2026-07-26",
-    classification: "Internal",
+    classificationId: "internal",
     collectorIds: ["person-owner"]
   });
   const evidenceMutationPath = join(root, "evidence-mutation.json");
@@ -351,6 +385,9 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
   await execute(process.execPath, [cli, "create", evidenceMutationPath, "--root", root]);
   const attachmentSource = join(root, "risk-notes.txt");
   await writeFile(attachmentSource, "Fixed review notes.\n", "utf8");
+  let evidenceRevision = (await createAppState(root)).resources.find(
+    ({ record }) => record.id === evidenceMutation.record.id
+  ).revision;
   const attached = await execute(process.execPath, [
     cli,
     "attach",
@@ -358,6 +395,8 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
     attachmentSource,
     "--name",
     "risk-notes.txt",
+    "--expected-revision",
+    evidenceRevision,
     "--root",
     root,
     "--json"
@@ -368,8 +407,21 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
     await readFile(join(root, attachmentResult.path), "utf8"),
     "Fixed review notes.\n"
   );
+  evidenceRevision = (await createAppState(root)).resources.find(
+    ({ record }) => record.id === evidenceMutation.record.id
+  ).revision;
   await assert.rejects(
-    execute(process.execPath, [cli, "delete", "evidence", evidenceMutation.record.id, "--yes", "--root", root]),
+    execute(process.execPath, [
+      cli,
+      "delete",
+      "evidence",
+      evidenceMutation.record.id,
+      "--yes",
+      "--expected-revision",
+      evidenceRevision,
+      "--root",
+      root
+    ]),
     /still has local attachments/
   );
   const detached = await execute(process.execPath, [
@@ -378,18 +430,25 @@ test("headless CRUD uses one mutation envelope for JSON and Markdown", async (co
     evidenceMutation.record.id,
     "risk-notes.txt",
     "--yes",
+    "--expected-revision",
+    evidenceRevision,
     "--root",
     root,
     "--json"
   ]);
   assert.deepEqual(JSON.parse(detached.stdout).filePaths, []);
   await assert.rejects(readFile(join(root, attachmentResult.path), "utf8"), /ENOENT/);
+  evidenceRevision = (await createAppState(root)).resources.find(
+    ({ record }) => record.id === evidenceMutation.record.id
+  ).revision;
   await execute(process.execPath, [
     cli,
     "delete",
     "evidence",
     evidenceMutation.record.id,
     "--yes",
+    "--expected-revision",
+    evidenceRevision,
     "--root",
     root
   ]);
@@ -416,7 +475,7 @@ test("headless document flows require a separate approver before activation", as
   const guide = JSON.parse(guideResult.stdout);
   assert.deepEqual(
     guide.conditionalRequirements.find(({ name }) => name === "approverIds")?.requiredWhen,
-    { status: "active" }
+    { status: ["active", "superseded", "retired"] }
   );
 
   const scaffoldResult = await execute(process.execPath, [
@@ -428,7 +487,7 @@ test("headless document flows require a separate approver before activation", as
     "--root",
     root
   ]);
-  const mutation = JSON.parse(scaffoldResult.stdout);
+  let mutation = JSON.parse(scaffoldResult.stdout);
   assert.equal(mutation.record.status, "draft");
   assert.equal(mutation.record.approverIds, undefined);
   Object.assign(mutation.record, {
@@ -439,6 +498,15 @@ test("headless document flows require a separate approver before activation", as
   await writeFile(mutationPath, `${JSON.stringify(mutation, null, 2)}\n`, "utf8");
   await execute(process.execPath, [cli, "create", mutationPath, "--root", root, "--json"]);
 
+  const editableResult = await execute(process.execPath, [
+    cli,
+    "get",
+    mutation.record.id,
+    "--mutation",
+    "--root",
+    root
+  ]);
+  mutation = JSON.parse(editableResult.stdout);
   Object.assign(mutation.record, {
     status: "active",
     effectiveOn: "2026-07-01",

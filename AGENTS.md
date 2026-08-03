@@ -60,7 +60,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 
 ## Data rules
 
-The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 is published. Before changing it, decide whether existing v1 workspaces remain valid. Keep compatible v1 changes, starter data, generated docs, and tests in sync. Add a new model version and an explicit migration path when a change would make existing v1 workspaces invalid.
+The active authoritative model registry is the standalone `packages/filegrc/model/v2.json`. Model v1 is published and frozen in `packages/filegrc/model/v1.json` only for migration tests and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
@@ -75,8 +75,9 @@ The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 i
 - Treat IDs as immutable after a record is committed.
 - Keep attachments behind evidence records. Do not scatter unexplained files through `data/`.
 - Keep each policy and governed document approver separate from its owner. The reviewer may be another person in the organization or an external person. Most organizations use an internal reviewer with enough authority and separation to challenge the owner. A one-person organization needs an external reviewer because no second internal person is available.
+- Bind Policy and governed Document approvals to the exact companion Markdown revisions reviewed. Move changed approved content back through review before recording a new approval.
 - Keep identity separate from assigned authority. A Person records the individual’s actual organization job title. A dated Appointment records named authority such as CISO, DPO, Policy Owner, or team chair and may be used by accountable-party fields. Fields that prove who performed, reviewed, collected, verified, attended, or attested to work must continue to name the actual Person.
-- Keep Team membership authoritative on the Team record. Do not add new uses of the legacy `person.teamIds` inverse field.
+- Keep Team membership authoritative on the Team record.
 - Bind rendered-page evidence to the route, filters, audit period, and Git commit used to create it.
 - Bind signed attestations to the exact Git revisions of the acknowledged policies, training, or other content.
 - Do not commit secrets, credentials, session material, regulated personal data, or confidential reports unless the repository's access and retention rules explicitly permit them.
@@ -84,6 +85,9 @@ The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 i
 - Preserve closed and retired audit records when they explain historical control operation. Use deletion for mistakes and uncommitted drafts.
 - Model recurring policy work as reusable obligations with an explicit allowed completion range and first overdue cutoff. Every actionable obligation needs a deadline; use the end of its policy period or a reasonable policy-aligned event window when the source does not name one.
 - Model policy-triggering changes as one event record plus normal linked action items. Create the full checklist atomically and preserve exact timestamps when a policy uses hour-based deadlines.
+- Enforce each Policy Event’s model-defined subject types and cardinality, and each Obligation activity’s allowed recurrence modes and scope resource types.
+- Keep scheduled dates separate from actual completion dates. Completed operating records must name their actors, result, supporting evidence, review, coverage, and completion time when the model requires them.
+- Use one Vendor Review per Vendor so its decision, coverage, evidence, and follow-up are unambiguous.
 - Build audit packets from an explicit Type 1 or Type 2 engagement, its exact date or period and scope, model-defined dates, policy and control context, and linked evidence. Add obligation coverage, event checklists, populations, and samples for Type 2. Keep packet output under `.filegrc/` and bind delivery-ready output to a clean Git revision.
 - Never report filegrc management checks as passed when the required scope, management documents, approved policy coverage, implemented control coverage, source systems, evidence, or Type 2 population work is missing. Do not imply that filegrc decides whether evidence is sufficient or appropriate; the engagement team makes that judgment.
 - Export auditor control, population, and evidence indexes, committed historical source versions, and per-file checksums with every packet. External references remain warnings because the packet is not self-contained.
@@ -93,7 +97,8 @@ The authoritative model registry is `packages/filegrc/model/v1.json`. Model v1 i
 - Define fields, types, enums, relationships, conditional requirements, and default UI metadata once in the model registry. Validators, CRUD forms, filters, search indexing, CLI help, and generated model documentation must consume that registry.
 - Do not hand-copy model definitions into validators, templates, generated repositories, or documentation.
 - Generate `docs/data-model.md` from the registry. Do not edit generated model documentation by hand.
-- Generated repositories declare `dataModelVersion` but do not contain a copy of the model.
+- Generated repositories declare one required workspace `dataModelVersion`, do not repeat schema versions on individual records, and do not contain a copy of the model.
+- Reject unknown top-level record fields. Organization-specific values belong under the common `extensions` object.
 
 ## Private reference material
 
@@ -118,7 +123,9 @@ Private exports may be inspected to understand generic workflows, but they are n
 
 Use semantic versioning for published releases. Keep package versions unchanged during normal development, then update the coordinated package, template, and lockfile versions as part of a release.
 
-Choose the release level from the highest-impact published change. `filegrc` includes `bin/`, `src/`, and `model/`. `create-filegrc` includes its CLI, prompts, dependency resolution, template, starter records, policies, and generated lockfile behavior. Root-only documentation, tests, and development scripts do not need a release.
+Before 1.0, increment the minor version for any release with a breaking change and increment the patch version when every published change is backward compatible. Choose the release level from the highest-impact published change. `filegrc` includes `bin/`, `src/`, and `model/`. `create-filegrc` includes its CLI, prompts, dependency resolution, template, starter records, policies, and generated lockfile behavior. Root-only documentation, tests, and development scripts do not need a release.
+
+Treat a data-model change as breaking when an existing workspace would become invalid or when a published workflow, command, API, or model field stops working. Give breaking data-model changes a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance. A documented migration makes the break manageable, but it does not make the release backward compatible.
 
 Publish `filegrc` before any `create-filegrc` release that depends on it. A package update must never rewrite a consumer's policies or compliance records without an explicit command and reviewable Git diff.
 

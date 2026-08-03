@@ -36,17 +36,25 @@ export async function loadWorkspace(input = process.cwd()) {
     });
   }
 
-  let model;
-  try {
-    model = loadModel(String(workspaceEntry?.record?.dataModelVersion ?? "1"));
-  } catch (error) {
+  let model = loadModel();
+  if (workspaceEntry && !Object.hasOwn(workspaceEntry.record, "dataModelVersion")) {
     diagnostics.push({
       severity: "error",
-      code: "unsupported-model",
+      code: "missing-model-version",
       path: "data/workspace.json",
-      message: error.message
+      message: "The Workspace record must declare dataModelVersion."
     });
-    model = loadModel("1");
+  } else if (workspaceEntry) {
+    try {
+      model = loadModel(String(workspaceEntry.record.dataModelVersion));
+    } catch (error) {
+      diagnostics.push({
+        severity: "error",
+        code: "unsupported-model",
+        path: "data/workspace.json",
+        message: error.message
+      });
+    }
   }
 
   return {

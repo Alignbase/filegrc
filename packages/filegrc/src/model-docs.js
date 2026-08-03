@@ -35,6 +35,52 @@ export function generateModelDocumentation(model) {
       ...stage.commands.map((command) => `- \`${command}\``),
       ""
     ]),
+    "## Relation groups",
+    "",
+    "Relationship fields use the named groups below. The registry expands each group to explicit resource types, so no relationship accepts an unrestricted wildcard.",
+    "",
+    "| Group | Resource types |",
+    "| --- | --- |",
+    ...Object.entries(model.relationGroups || {}).map(([name, types]) => (
+      `| \`${name}\` | ${types.map((type) => `\`${type}\``).join(", ")} |`
+    )),
+    "",
+    "## Relationship constraints",
+    "",
+    "Relationship constraints prevent cycles and duplicate active authority or access records.",
+    "",
+    ...((model.relationshipConstraints?.acyclic || []).map((constraint) => (
+      `- \`${constraint.resourceType}.${constraint.field}\` must be acyclic.`
+    ))),
+    ...((model.relationshipConstraints?.unique || []).map((constraint) => (
+      `- \`${constraint.resourceType}\` records in ${constraint.statuses.map((status) => `\`${status}\``).join(", ")} must be unique by ${constraint.fields.map((field) => `\`${field}\``).join(", ")}.`
+    ))),
+    "",
+    "## Obligation activities",
+    "",
+    "The model owns each activity name, allowed recurrence modes and scope types, its default completion record, and every record type that can prove completion.",
+    "",
+    "| Activity | Title | Recurrence | Scope resource types | Default completion | Accepted completion records |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...Object.entries(model.obligationActivities || {}).map(([name, activity]) => (
+      `| \`${name}\` | ${escapeCell(activity.title)} | ${activity.recurrenceModes.map((mode) => `\`${mode}\``).join(", ")} | ${activity.scopeResourceTypes.map((type) => `\`${type}\``).join(", ")} | \`${activity.completionType}\` | ${activity.completionResourceTypes.map((type) => `\`${type}\``).join(", ")} |`
+    )),
+    "",
+    "## Policy events",
+    "",
+    "The model owns each event title and the minimum and maximum count for each subject resource type.",
+    "",
+    "| Event | Title | Subject rules |",
+    "| --- | --- | --- |",
+    ...Object.entries(model.policyEvents || {}).map(([name, event]) => (
+      `| \`${name}\` | ${escapeCell(event.title)} | ${event.subjectRules.map(({ resourceType, minimum = 0, maximum }) => `\`${resourceType}\` ${minimum}..${Number.isInteger(maximum) ? maximum : "*"}`).join(", ")} |`
+    )),
+    "",
+    "## Nested object schemas",
+    "",
+    "Named object schemas reject unknown keys unless the schema explicitly allows a typed map or arbitrary JSON. Conditional properties are valid only for the selected discriminator.",
+    "",
+    ...Object.entries(model.objectTypes || {}).flatMap(([name, schema]) => objectTypeDocumentation(name, schema)),
     "## Common fields",
     "",
     "| Field | Type | Required | Meaning |",
@@ -143,22 +189,55 @@ function choiceLabel(name) {
 }
 
 function fieldType(field) {
-  if (field.type === "array") return `array of ${field.items ?? "values"}`;
+  if (field.type === "array") {
+    return field.itemObjectType
+      ? `array of object (\`${field.itemObjectType}\`)`
+      : `array of ${field.items ?? "values"}`;
+  }
+  if (field.type === "object" && field.objectType) return `object (\`${field.objectType}\`)`;
   return field.format && field.format !== field.type ? `${field.type} (${field.format})` : field.type;
 }
 
 function fieldNotes(field) {
   return [
-    field.legacy ? "Legacy compatibility field. Do not add or update it." : "",
-    field.authoritativeFields?.length ? `Use: ${field.authoritativeFields.map((item) => `\`${item}\``).join(", ")}.` : "",
     field.label,
     field.values ? `Values: ${field.values.map((item) => `\`${item}\``).join(", ")}` : "",
+    field.registry ? `Values come from the \`${field.registry}\` registry.` : "",
+    field.relationGroup ? `Relation group: \`${field.relationGroup}\`.` : "",
     field.relation ? `References: ${field.relation.map((item) => `\`${item}\``).join(", ")}` : "",
     field.minimum !== undefined ? `Minimum: \`${field.minimum}\`.` : "",
     field.maximum !== undefined ? `Maximum: \`${field.maximum}\`.` : "",
+    field.managed ? "Managed by filegrc." : "",
     field.disjointFrom ? `Must not overlap \`${field.disjointFrom}\`.` : "",
-    field.requiredWhen ? `Required when ${Object.entries(field.requiredWhen).map(([key, value]) => `\`${key}\` is \`${value}\``).join(" and ")}` : ""
+    field.requiredWhen ? `Required when ${conditionText(field.requiredWhen)}.` : "",
+    field.allowedWhen ? `Allowed when ${conditionText(field.allowedWhen)}.` : ""
   ].filter(Boolean).join(" ");
+}
+
+function objectTypeDocumentation(name, schema) {
+  const lines = [`### \`${name}\``, ""];
+  const properties = Object.entries(schema.properties || {});
+  if (properties.length) {
+    const required = new Set(schema.required || []);
+    lines.push("| Property | Type | Required | Notes |", "| --- | --- | --- | --- |");
+    for (const [propertyName, property] of properties) {
+      const requiredLabel = required.has(propertyName)
+        ? "Yes"
+        : property.requiredWhen
+          ? "Conditional"
+          : "No";
+      lines.push(`| \`${propertyName}\` | ${fieldType(property)} | ${requiredLabel} | ${escapeCell(fieldNotes(property))} |`);
+    }
+  } else if (schema.additionalProperties === true) {
+    lines.push("Allows arbitrary JSON properties.");
+  } else if (schema.additionalProperties) {
+    lines.push(`Allows dynamic keys whose values are ${fieldType(schema.additionalProperties)}.`);
+  } else {
+    lines.push("Does not allow properties.");
+  }
+  if (schema.keyFormat) lines.push("", `Key format: \`${schema.keyFormat}\`.`);
+  lines.push("");
+  return lines;
 }
 
 function escapeCell(value) {

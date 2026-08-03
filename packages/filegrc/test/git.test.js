@@ -41,12 +41,12 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   await writeFile(join(root, "data", "people", "person-owner.json"), "{}\n", "utf8");
   await assert.rejects(commitWorkspace(root, "Commit invalid workspace"), /validation error/);
   await writeFile(join(root, "data", "people", "person-owner.json"), `${JSON.stringify({
-    schemaVersion: 1,
     id: "person-owner",
     type: "person",
+    affiliation: "internal",
     title: "Program Owner",
     status: "active",
-    role: "Reviewer"
+    department: "Security"
   }, null, 2)}\n`, "utf8");
   const summary = getGitSummary(root);
   assert.equal(summary.clean, false);
@@ -56,23 +56,23 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   assert.equal(histories.get("data/people/person-owner.json").length, 1);
 
   await assert.rejects(commitWorkspace(root, "Invalid\nmessage"), /one line/);
-  const committed = await commitWorkspace(root, "Record program owner role");
-  assert.equal(committed.subject, "Record program owner role");
+  const committed = await commitWorkspace(root, "Record program owner department");
+  assert.equal(committed.subject, "Record program owner department");
   assert.equal(committed.shortCommit.length, 8);
   assert.equal(getGitSummary(root).clean, true);
 
   await writeFile(join(root, "data", "people", "person-owner.json"), `${JSON.stringify({
-    schemaVersion: 1,
     id: "person-owner",
     type: "person",
+    affiliation: "internal",
     title: "Program Owner",
     status: "active",
-    role: "Control reviewer"
+    department: "Controls"
   }, null, 2)}\n`, "utf8");
   await writeFile(join(root, "data", "people", "person-secondary.json"), `${JSON.stringify({
-    schemaVersion: 1,
     id: "person-secondary",
     type: "person",
+    affiliation: "internal",
     title: "Secondary Reviewer",
     status: "active"
   }, null, 2)}\n`, "utf8");
@@ -87,11 +87,11 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
     const response = await fetch(`${running.url}/api/commit`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: "Refine program owner role" })
+      body: JSON.stringify({ message: "Refine program owner department" })
     });
     assert.equal(response.status, 201);
     const commitResult = await response.json();
-    assert.equal(commitResult.subject, "Refine program owner role");
+    assert.equal(commitResult.subject, "Refine program owner department");
     assert.equal(commitResult.pushed, false);
     assert.equal(commitResult.pushSkipped, true);
     assert.equal(commitResult.pushError, undefined);
@@ -210,7 +210,7 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
   assert.equal(initialState.repository.status, "synced");
   assert.equal(initialState.repository.authoritativeBranch, "main");
   const owner = initialState.resources.find(({ record }) => record.id === "person-owner");
-  const updated = { ...owner.record, role: "Control owner" };
+  const updated = { ...owner.record, department: "Controls" };
   const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -224,7 +224,7 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
   assert.equal((await git(fixture.root, ["log", "-1", "--format=%s"])).stdout.trim(), "Update person: Program Owner");
   assert.match(
     (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
-    /Control owner/
+    /Controls/
   );
 
   const staleState = await fetchJson(`${running.url}/api/state`);
@@ -232,7 +232,7 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
   await git(peer, ["pull", "--ff-only"]);
   await writeJson(join(peer, "data", "people", "person-owner.json"), {
     ...staleOwner.record,
-    role: "Remote reviewer"
+    department: "Remote review"
   });
   await git(peer, ["add", "."]);
   await git(peer, ["commit", "-m", "Update owner remotely"]);
@@ -247,15 +247,15 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...staleOwner.record, role: "Stale local edit" },
+      record: { ...staleOwner.record, department: "Stale local edit" },
       revision: staleOwner.revision
     })
   });
   assert.equal(staleResponse.status, 409);
   assert.match((await staleResponse.json()).error, /changed after you opened/i);
   assert.equal(
-    JSON.parse(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8")).role,
-    "Remote reviewer"
+    JSON.parse(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8")).department,
+    "Remote review"
   );
   assert.equal((await git(fixture.root, ["rev-list", "--count", "HEAD"])).stdout.trim(), "3");
 });
@@ -271,7 +271,7 @@ test("trunk-mode browser saves return after the local commit while push continue
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...owner.record, role: "Background sync owner" },
+      record: { ...owner.record, department: "Background sync" },
       revision: owner.revision
     })
   });
@@ -280,10 +280,10 @@ test("trunk-mode browser saves return after the local commit while push continue
   assert.equal(result.synchronization.status, "syncing");
   assert.equal(result.state.repository.status, "syncing");
   assert.equal(result.state.readOnly, true);
-  assert.match(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8"), /Background sync owner/);
+  assert.match(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8"), /Background sync/);
   assert.doesNotMatch(
     (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
-    /Background sync owner/
+    /Background sync/
   );
 
   const statusStarted = Date.now();
@@ -295,7 +295,7 @@ test("trunk-mode browser saves return after the local commit while push continue
   assert.equal(synchronized.ahead, 0);
   assert.match(
     (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
-    /Background sync owner/
+    /Background sync/
   );
 });
 
@@ -313,7 +313,7 @@ test("remote commits that arrive before a background push are never overwritten"
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...owner.record, role: "Pending local owner" },
+      record: { ...owner.record, department: "Pending local sync" },
       revision: owner.revision
     })
   });
@@ -330,7 +330,7 @@ test("remote commits that arrive before a background push are never overwritten"
   assert.match((await git(fixture.remote, ["show", "main:remote-note.txt"])).stdout, /remote change during background sync/);
   assert.doesNotMatch(
     (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
-    /Pending local owner/
+    /Pending local sync/
   );
   const retry = await fetch(`${running.url}/api/git/retry-sync`, { method: "POST" });
   assert.equal(retry.status, 409);
@@ -347,7 +347,7 @@ test("a trunk browser record save validates once and reuses that proof for curre
       message: "Update owner once"
     }, () => updateResource(fixture.root, "person", owner.record.id, {
       ...owner.record,
-      role: "Validation count owner"
+      department: "Validation count"
     }, {
       expectedRevision: owner.revision
     }));
@@ -359,7 +359,7 @@ test("a trunk browser record save validates once and reuses that proof for curre
   });
 
   assert.equal(timings.validation.count, 1);
-  assert.equal(result.state.resources.find(({ record }) => record.id === owner.record.id).record.role, "Validation count owner");
+  assert.equal(result.state.resources.find(({ record }) => record.id === owner.record.id).record.department, "Validation count");
   assert.equal(result.mutation.synchronization.status, "syncing");
   assert.equal((await waitForRepository(fixture.root)).status, "synced");
 });
@@ -368,7 +368,6 @@ test("the evidence map is read-only in trunk mode", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-evidence-map-");
   await createResources(fixture.root, [
     {
-      schemaVersion: 1,
       id: "framework-security",
       type: "framework",
       title: "Security criteria",
@@ -376,7 +375,6 @@ test("the evidence map is read-only in trunk mode", async (context) => {
       version: "1"
     },
     {
-      schemaVersion: 1,
       id: "requirement-access",
       type: "requirement",
       title: "Access requirement",
@@ -385,7 +383,6 @@ test("the evidence map is read-only in trunk mode", async (context) => {
       applicability: "applicable"
     },
     {
-      schemaVersion: 1,
       id: "control-access",
       type: "control",
       title: "Access control",
@@ -396,7 +393,7 @@ test("the evidence map is read-only in trunk mode", async (context) => {
       code: "IAM-01",
       activity: "Approve and provision access.",
       operationMode: "manual",
-      frequency: "Per event"
+      operationPattern: "event-driven"
     }
   ]);
   await git(fixture.root, ["add", "."]);
@@ -439,7 +436,7 @@ test("trunk mode makes detached and non-authoritative checkouts read-only unless
   const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ record: { ...owner.record, role: "Local task edit" }, revision: owner.revision })
+    body: JSON.stringify({ record: { ...owner.record, department: "Local task edit" }, revision: owner.revision })
   });
   assert.equal(response.status, 200);
   assert.equal((await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim(), beforeCommit);
@@ -493,14 +490,14 @@ test("trunk mode blocks missing Git setup and unrelated monorepo changes", async
   const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ record: { ...owner.record, role: "Blocked edit" }, revision: owner.revision })
+    body: JSON.stringify({ record: { ...owner.record, department: "Blocked edit" }, revision: owner.revision })
   });
   assert.equal(response.status, 409);
   assert.match((await response.json()).error, /worktree has uncommitted changes/i);
   assert.equal((await git(repositoryRoot, ["status", "--porcelain", "--", "application.txt"])).stdout.trim(), "M  application.txt");
   assert.equal((await git(remote, ["show", "main:application.txt"])).stdout, "application\n");
   assert.equal(
-    JSON.parse(await readFile(join(root, "data", "people", "person-owner.json"), "utf8")).role,
+    JSON.parse(await readFile(join(root, "data", "people", "person-owner.json"), "utf8")).department,
     undefined
   );
   await new Promise((resolve) => running.server.close(resolve));
@@ -509,7 +506,6 @@ test("trunk mode blocks missing Git setup and unrelated monorepo changes", async
 test("trunk mode rejects unsafe configured Git names before synchronization", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-unsafe-config-");
   await writeJson(join(fixture.root, "data", "renderer.json"), {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",
@@ -533,7 +529,7 @@ test("trunk mode rejects unsafe configured Git names before synchronization", as
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...owner.record, role: "Blocked unsafe configuration" },
+      record: { ...owner.record, department: "Blocked unsafe configuration" },
       revision: owner.revision
     })
   });
@@ -541,7 +537,6 @@ test("trunk mode rejects unsafe configured Git names before synchronization", as
   assert.match((await response.json()).error, /not a safe Git branch name/);
 
   await writeJson(join(fixture.root, "data", "renderer.json"), {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",
@@ -562,7 +557,7 @@ test("trunk mode rejects unsafe configured Git names before synchronization", as
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...remoteOwner.record, role: "Blocked unsafe remote" },
+      record: { ...remoteOwner.record, department: "Blocked unsafe remote" },
       revision: remoteOwner.revision
     })
   });
@@ -583,7 +578,7 @@ test("failed trunk pushes remain visible and retry only FileGRC commits", async 
       boundary: "The production service and supporting infrastructure.",
       ownerId: "person-owner",
       criticality: "high",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       internetExposed: true,
       programGoal: "readiness",
       draft: false
@@ -662,7 +657,7 @@ test("two trunk-mode servers cannot overwrite a concurrent browser save", async 
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...firstOwner.record, role: "First server edit" },
+      record: { ...firstOwner.record, department: "First server edit" },
       revision: firstOwner.revision
     })
   });
@@ -672,14 +667,14 @@ test("two trunk-mode servers cannot overwrite a concurrent browser save", async 
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...secondOwner.record, role: "Second server stale edit" },
+      record: { ...secondOwner.record, department: "Second server stale edit" },
       revision: secondOwner.revision
     })
   });
   assert.equal(secondResponse.status, 409);
   assert.match((await secondResponse.json()).error, /changed after you opened/i);
   assert.equal(
-    JSON.parse(await readFile(join(peer, "data", "people", "person-owner.json"), "utf8")).role,
+    JSON.parse(await readFile(join(peer, "data", "people", "person-owner.json"), "utf8")).department,
     "First server edit"
   );
 });
@@ -703,7 +698,7 @@ test("trunk-mode onboarding writes and synchronizes its related files in one com
       boundary: "The production service and supporting infrastructure.",
       ownerId: "person-owner",
       criticality: "high",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       internetExposed: true,
       programGoal: "readiness",
       draft: false
@@ -744,7 +739,7 @@ test("invalid final onboarding state rolls back every file and creates no commit
       boundary: "The production service and supporting infrastructure.",
       ownerId: "person-owner",
       criticality: "high",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       internetExposed: true,
       programGoal: "readiness",
       draft: false
@@ -792,13 +787,13 @@ test("retry sync refuses diverged history and commits that include files outside
   await git(repositoryRoot, ["reset", "--soft", "HEAD~1"]);
   await git(repositoryRoot, ["restore", "--staged", "--worktree", "--source=HEAD", "--", "application.txt"]);
   await writeJson(join(root, "data", "people", "person-owner.json"), {
-    schemaVersion: 1,
     id: "person-owner",
     type: "person",
+    affiliation: "internal",
     title: "Program Owner",
     status: "active",
     email: "security@example.com",
-    role: "Local FileGRC commit"
+    department: "Local FileGRC commit"
   });
   await git(repositoryRoot, ["add", "compliance"]);
   await git(repositoryRoot, ["commit", "-m", "Local FileGRC commit"]);
@@ -834,7 +829,6 @@ async function makeTrunkGitFixture(context, prefix) {
 
 async function writeTrunkSettings(root) {
   await writeJson(join(root, "data", "renderer.json"), {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",

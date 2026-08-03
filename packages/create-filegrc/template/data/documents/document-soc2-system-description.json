@@ -1,5 +1,4 @@
 {
-  "schemaVersion": 1,
   "id": "document-soc2-system-description",
   "type": "document",
   "title": "SOC 2 System Description",
@@ -10,5 +9,5 @@
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classification": "Internal"
+  "classificationId": "internal"
 }

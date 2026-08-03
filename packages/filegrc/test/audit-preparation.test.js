@@ -23,7 +23,6 @@ test("initializes model-owned Type 2 populations and management document links",
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "framework-security",
     type: "framework",
     title: "Security criteria",
@@ -32,7 +31,6 @@ test("initializes model-owned Type 2 populations and management document links",
   });
   for (const definition of loadModel().auditReadiness.managementDocuments) {
     await createResource(root, {
-      schemaVersion: 1,
       id: `document-${definition.kind}`,
       type: "document",
       title: definition.title,
@@ -46,7 +44,6 @@ test("initializes model-owned Type 2 populations and management document links",
     });
   }
   await createResource(root, {
-    schemaVersion: 1,
     id: "audit-type-2",
     type: "audit",
     title: "Type 2 engagement",
@@ -55,8 +52,7 @@ test("initializes model-owned Type 2 populations and management document links",
     frameworkIds: ["framework-security"],
     scope: "Production service",
     ownerIds: ["person-owner"],
-    periodStart: "2026-01-01",
-    periodEnd: "2026-06-30"
+    coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" },
   });
 
   const before = await assessAuditPreparation(root, { auditId: "audit-type-2" });
@@ -124,7 +120,6 @@ test("initializes model-owned Type 2 populations and management document links",
   );
 
   await createResource(root, {
-    schemaVersion: 1,
     id: "audit-type-1",
     type: "audit",
     title: "Type 1 engagement",
@@ -133,7 +128,7 @@ test("initializes model-owned Type 2 populations and management document links",
     frameworkIds: ["framework-security"],
     scope: "Production service",
     ownerIds: ["person-owner"],
-    typeOneAsOf: "2026-07-31"
+    coverage: { kind: "as-of", on: "2026-07-31" }
   });
   const typeOneBefore = await assessAuditPreparation(root, { auditId: "audit-type-1" });
   assert.equal(

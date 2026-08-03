@@ -1,19 +1,18 @@
 {
-  "schemaVersion": 1,
   "id": "policy-anti-bribery-corruption",
   "type": "policy",
   "title": "Anti-Bribery and Corruption Policy",
   "status": "draft",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "policyKind": "corporate-conduct",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "audience": ["employees", "contractors", "agents"],
+  "audience": [
+    "employees",
+    "contractors",
+    "agents"
+  ],
   "acknowledgementRequired": true
 }

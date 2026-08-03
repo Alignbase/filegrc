@@ -60,17 +60,12 @@ export function buildAgentGuide(loaded, type, options = {}) {
       values: allowedValues(loaded.model, field),
       relation,
       disjointFrom: field.disjointFrom ?? null,
-      format: field.format ?? null,
-      ...(field.legacy ? {
-        legacy: true,
-        authoritativeFields: field.authoritativeFields ?? []
-      } : {})
+      format: field.format ?? null
     };
   });
   const requiredAtCreation = fieldList.filter(({ required: isRequired }) => isRequired);
   const conditionalRequirements = fieldList.filter(({ requiredWhen, required: isRequired }) => requiredWhen && !isRequired);
-  const optionalFields = fieldList.filter(({ required, requiredWhen, legacy }) => !required && !requiredWhen && !legacy);
-  const legacyFields = fieldList.filter(({ legacy }) => legacy);
+  const optionalFields = fieldList.filter(({ required, requiredWhen }) => !required && !requiredWhen);
   const recommendedMarkdown = markdown.filter(({ recommended }) => recommended);
   const location = definition.singleton
     ? `data/${definition.singleton}`
@@ -93,7 +88,6 @@ export function buildAgentGuide(loaded, type, options = {}) {
     requiredAtCreation,
     conditionalRequirements,
     optionalFields,
-    legacyFields,
     oneOf: definition.oneOf ?? [],
     markdown,
     workflow: [
@@ -113,9 +107,6 @@ export function buildAgentGuide(loaded, type, options = {}) {
       ...(recommendedMarkdown.length
         ? ["Required or recommended Markdown explains the work, decisions, results, exceptions, and follow-up that apply."]
         : ["The structured fields state the current fact clearly; optional Record Markdown is added only when needed."]),
-      ...(legacyFields.length
-        ? ["No legacy compatibility field is added or updated; use the listed authoritative fields instead."]
-        : []),
       "No secrets or personal data that may need erasure were added to Git."
     ]
   };
@@ -147,14 +138,22 @@ export function scaffoldResourceMutation(loaded, type, title, options = {}) {
     ...(definition.required ?? [])
   ]);
   const record = {
-    schemaVersion: 1,
     id,
     type,
     title: normalizedTitle
   };
   for (const name of required) {
     if (record[name] !== undefined) continue;
-    record[name] = scaffoldValue(name, fields[name]);
+    record[name] = scaffoldValue(name, fields[name], loaded.model);
+  }
+  for (const [name, field] of Object.entries(fields)) {
+    if (
+      record[name] === undefined
+      && field.requiredWhen
+      && conditionMatches(record, field.requiredWhen)
+    ) {
+      record[name] = scaffoldValue(name, field, loaded.model);
+    }
   }
 
   const slots = markdownEntries(loaded.model, record).filter((slot) => (
@@ -181,7 +180,7 @@ export function findResourceReferences(loaded, id) {
     if (!definition) continue;
     const fields = { ...loaded.model.commonFields, ...definition.fields };
     for (const [fieldName, field] of Object.entries(fields)) {
-      if (!field.relation || field.legacy) continue;
+      if (!field.relation) continue;
       const values = Array.isArray(record[fieldName]) ? record[fieldName] : [record[fieldName]];
       if (values.includes(id)) {
         references.push({
@@ -226,15 +225,28 @@ function allowedValues(model, field) {
   return null;
 }
 
-function scaffoldValue(name, field = {}) {
+function scaffoldValue(name, field = {}, model) {
   if (field.const !== undefined) return field.const;
   if (name === "status" && field.values) {
     return STARTING_STATUS_ORDER.find((value) => field.values.includes(value)) ?? field.values[0] ?? null;
   }
   if (field.type === "array") return [];
-  if (field.type === "object") return {};
+  if (field.type === "object") {
+    const schema = model?.objectTypes?.[field.objectType];
+    if (!schema) return {};
+    return Object.fromEntries((schema.required || []).map((propertyName) => [
+      propertyName,
+      scaffoldValue(propertyName, schema.properties?.[propertyName], model)
+    ]));
+  }
   if (field.type === "boolean") return false;
   return null;
+}
+
+function conditionMatches(record, condition) {
+  return Object.entries(condition || {}).every(([name, expected]) => (
+    Array.isArray(expected) ? expected.includes(record[name]) : record[name] === expected
+  ));
 }
 
 function markdownScaffold(title, type, slot) {

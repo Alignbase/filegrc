@@ -73,7 +73,7 @@ const controls = [
     activity: "Assign an independent reviewer who is separate from program ownership and record quarterly oversight decisions, approvals, and actions.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Quarterly",
+    operationPattern: "scheduled",
     policies: [INFORMATION_SECURITY_POLICY_ID, "policy-anti-bribery-corruption"]
   },
   {
@@ -85,7 +85,7 @@ const controls = [
     activity: "Review, approve, communicate, and version policies and plans.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Annually and after material changes",
+    operationPattern: "mixed",
     policies: [
       "policy-anti-bribery-corruption",
       "policy-clear-desk-screen",
@@ -103,7 +103,7 @@ const controls = [
     activity: "Maintain reporting routes and communicate policies, changes, and security information.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Ongoing and after material changes",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -115,7 +115,7 @@ const controls = [
     activity: "Complete screening when appropriate, agreements, policy acknowledgement, and corrective action.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Before access and on material change",
+    operationPattern: "event-driven",
     policies: [INFORMATION_SECURITY_POLICY_ID, "policy-anti-bribery-corruption"]
   },
   {
@@ -127,7 +127,7 @@ const controls = [
     activity: "Assign general and role-based training, document non-applicability where needed, collect completion attestations, and follow up on overdue assignments.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Onboarding and annually",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
   },
   {
@@ -139,7 +139,7 @@ const controls = [
     activity: "Complete and retain annual performance reviews and resulting corrective work.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Annually",
+    operationPattern: "scheduled",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -151,7 +151,7 @@ const controls = [
     activity: "Identify threats and changes, score risk, select treatment, and track review dates.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Annually, quarterly for high risks, and after material changes",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -163,7 +163,7 @@ const controls = [
     activity: "Review control evidence and track deficiencies, owners, due dates, and verification.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Quarterly and as issues arise",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -175,7 +175,7 @@ const controls = [
     activity: "Request, approve, provision, change, and record access.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Per access event",
+    operationPattern: "event-driven",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -187,7 +187,7 @@ const controls = [
     activity: "Configure and monitor authentication, credential storage, and privileged roles.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Continuous",
+    operationPattern: "continuous",
     policies: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
   },
   {
@@ -199,7 +199,7 @@ const controls = [
     activity: "Review access populations, record decisions, and remove dormant, expired, or unneeded access.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Quarterly, annually, and per workforce event",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -211,7 +211,7 @@ const controls = [
     activity: "Control visitors and facilities, secure workspaces, and report loss or exposure.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Continuous",
+    operationPattern: "continuous",
     policies: [INFORMATION_SECURITY_POLICY_ID, "policy-clear-desk-screen", "policy-mobile-computing-communications"]
   },
   {
@@ -223,7 +223,7 @@ const controls = [
     activity: "Maintain classification, ownership, system, vendor, and processing records.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Annually and after material changes",
+    operationPattern: "mixed",
     policies: [DATA_POLICY_ID, INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -235,7 +235,7 @@ const controls = [
     activity: "Configure encryption and approved transfer methods based on classification.",
     controlType: "preventive",
     operationMode: "automated",
-    frequency: "Continuous",
+    operationPattern: "continuous",
     policies: [DATA_POLICY_ID, INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
   },
   {
@@ -247,7 +247,7 @@ const controls = [
     activity: "Apply approved retention and disposal methods to active, local, backup, and vendor-held copies.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Per retention event",
+    operationPattern: "event-driven",
     policies: [DATA_POLICY_ID, INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -259,7 +259,7 @@ const controls = [
     activity: "Maintain inventories, baselines, ownership, classification, and approved deviations.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Ongoing with annual review",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -271,7 +271,7 @@ const controls = [
     activity: "Manage endpoint safeguards and perform a full or equivalent malware scan at least monthly.",
     controlType: "preventive",
     operationMode: "automated",
-    frequency: "Continuous with monthly scanning",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
   },
   {
@@ -283,7 +283,7 @@ const controls = [
     activity: "Manage boundaries, firewall rules, wireless safeguards, and remote production access.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Continuous with annual review",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
   },
   {
@@ -295,7 +295,7 @@ const controls = [
     activity: "Record the reason, author, reviewer, test result, deployment, and rollback method.",
     controlType: "preventive",
     operationMode: "hybrid",
-    frequency: "Per change",
+    operationPattern: "event-driven",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -307,7 +307,7 @@ const controls = [
     activity: "Identify, validate, prioritize, remediate, or approve time-bound exceptions for vulnerabilities.",
     controlType: "detective",
     operationMode: "hybrid",
-    frequency: "Quarterly and after material changes",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -319,7 +319,7 @@ const controls = [
     activity: "Define scope, perform independent testing, review results, and track findings.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Annually",
+    operationPattern: "scheduled",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -331,7 +331,7 @@ const controls = [
     activity: "Collect, protect, alert on, test, and review important log output and access.",
     controlType: "detective",
     operationMode: "hybrid",
-    frequency: "Continuous with quarterly review",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -343,7 +343,7 @@ const controls = [
     activity: "Triage events, preserve evidence, coordinate response and notification review, and complete retrospectives.",
     controlType: "corrective",
     operationMode: "hybrid",
-    frequency: "Per event",
+    operationPattern: "event-driven",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -355,7 +355,7 @@ const controls = [
     activity: "Plan, conduct, review, and document an incident response and alert-path exercise.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Annually",
+    operationPattern: "scheduled",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -367,7 +367,7 @@ const controls = [
     activity: "Protect and monitor backups, then test retrieval and use of restored data.",
     controlType: "corrective",
     operationMode: "hybrid",
-    frequency: "Daily with annual restoration test",
+    operationPattern: "scheduled",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -379,7 +379,7 @@ const controls = [
     activity: "Maintain the plan, contacts, recovery objectives, exercises, results, and follow-up work.",
     controlType: "corrective",
     operationMode: "manual",
-    frequency: "Annually and after material disruption",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -391,7 +391,7 @@ const controls = [
     activity: "Assess service, data, access, assurance, recovery, incidents, and contract terms before access.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Before access and after material changes",
+    operationPattern: "event-driven",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -403,7 +403,7 @@ const controls = [
     activity: "Review vendor performance, assurance, recovery, access, incidents, and contract obligations.",
     controlType: "detective",
     operationMode: "manual",
-    frequency: "Annually and after material changes or incidents",
+    operationPattern: "mixed",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -415,7 +415,7 @@ const controls = [
     activity: "Request, assess, approve, monitor, and close time-bound exceptions.",
     controlType: "preventive",
     operationMode: "manual",
-    frequency: "Per exception",
+    operationPattern: "event-driven",
     policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   }
 ];
@@ -608,7 +608,6 @@ const obligations = [
     recurrence: event("person-started"),
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(0),
-    completionResourceTypes: ["attestation", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-workforce-expectations"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -620,7 +619,6 @@ const obligations = [
     recurrence: event("person-started"),
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(0),
-    completionResourceTypes: ["access-grant", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -632,7 +630,6 @@ const obligations = [
     recurrence: event("person-started"),
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(0),
-    completionResourceTypes: ["asset"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -644,7 +641,6 @@ const obligations = [
     recurrence: event("person-started"),
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(30),
-    completionResourceTypes: ["attestation", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ["training-security-awareness"],
     templateResourceId: "training-security-awareness",
@@ -658,7 +654,6 @@ const obligations = [
     recurrence: event("person-started"),
     triggerPrompt: "New employee or contractor?",
     window: eventWindow(30),
-    completionResourceTypes: ["attestation", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ROLE_TRAINING_IDS,
     controlIds: ["control-security-training"],
@@ -671,7 +666,6 @@ const obligations = [
     recurrence: event("person-ended"),
     triggerPrompt: "Employee or contractor departing?",
     window: eventWindowHours(24),
-    completionResourceTypes: ["access-grant", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -683,7 +677,6 @@ const obligations = [
     recurrence: event("person-ended"),
     triggerPrompt: "Employee or contractor departing?",
     window: eventWindow(7),
-    completionResourceTypes: ["asset", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding", "control-inventory-configuration"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -695,7 +688,6 @@ const obligations = [
     recurrence: event("high-risk-person-ended"),
     triggerPrompt: "Involuntary or high-risk departure?",
     window: eventWindowHours(0),
-    completionResourceTypes: ["access-grant", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -707,7 +699,6 @@ const obligations = [
     recurrence: event("person-role-changed"),
     triggerPrompt: "Worker role changed?",
     window: eventWindow(3),
-    completionResourceTypes: ["access-grant", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization", "control-access-review-offboarding"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -719,7 +710,6 @@ const obligations = [
     recurrence: event("person-role-changed"),
     triggerPrompt: "Worker role changed?",
     window: eventWindow(30),
-    completionResourceTypes: ["attestation", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ROLE_TRAINING_IDS,
     controlIds: ["control-security-training"],
@@ -732,7 +722,6 @@ const obligations = [
     recurrence: event("personal-device-access-planned"),
     triggerPrompt: "Personal device needs company access?",
     window: eventWindow(0),
-    completionResourceTypes: ["evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization", "control-endpoint-protection"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
@@ -744,7 +733,6 @@ const obligations = [
     recurrence: event("personal-device-access-planned"),
     triggerPrompt: "Personal device needs company access?",
     window: eventWindow(0),
-    completionResourceTypes: ["asset", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration", "control-endpoint-protection"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
@@ -756,7 +744,6 @@ const obligations = [
     recurrence: event("vendor-access-planned"),
     triggerPrompt: "New vendor access or data use?",
     window: eventWindow(0),
-    completionResourceTypes: ["vendor-review", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -768,7 +755,6 @@ const obligations = [
     recurrence: event("vendor-access-planned"),
     triggerPrompt: "New vendor access or data use?",
     window: eventWindow(0),
-    completionResourceTypes: ["document", "vendor"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -780,7 +766,6 @@ const obligations = [
     recurrence: event("vendor-reassessment-needed"),
     triggerPrompt: "Vendor changed materially or had an incident?",
     window: eventWindow(30),
-    completionResourceTypes: ["vendor-review", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -792,7 +777,6 @@ const obligations = [
     recurrence: event("vendor-reassessment-needed"),
     triggerPrompt: "Vendor changed materially or had an incident?",
     window: eventWindow(30),
-    completionResourceTypes: ["vendor", "risk", "document", "action-item", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring", "control-data-classification-inventory"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -804,7 +788,6 @@ const obligations = [
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
-    completionResourceTypes: ["risk-assessment", "risk", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-risk-assessment"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -816,7 +799,6 @@ const obligations = [
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
-    completionResourceTypes: ["vulnerability-scan", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vulnerability-management"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -828,7 +810,6 @@ const obligations = [
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
-    completionResourceTypes: ["meeting", "policy", "control", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-policy-management", "control-security-communication"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
@@ -840,7 +821,6 @@ const obligations = [
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
-    completionResourceTypes: ["document", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: [RETENTION_SCHEDULE_ID],
     templateResourceId: RETENTION_SCHEDULE_ID,
@@ -854,7 +834,6 @@ const obligations = [
     recurrence: event("system-material-change"),
     triggerPrompt: "Material system, service, or data-use change?",
     window: eventWindow(30),
-    completionResourceTypes: ["control-test", "exercise", "evidence"],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-logging-monitoring", "control-incident-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -866,7 +845,6 @@ const obligations = [
     recurrence: event("material-incident"),
     triggerPrompt: "Material security incident?",
     window: eventWindow(7),
-    completionResourceTypes: ["incident", "document", "evidence"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-incident-response"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -878,7 +856,6 @@ const obligations = [
     recurrence: event("material-incident"),
     triggerPrompt: "Material security incident?",
     window: eventWindow(7),
-    completionResourceTypes: ["action-item", "finding"],
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-monitoring-remediation"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
@@ -891,7 +868,6 @@ export function baselineRecordPaths(starter = "security") {
 
 export function baselineRecordFiles(effectiveDate, starter = "security") {
   const framework = {
-    schemaVersion: 1,
     id: FRAMEWORK_ID,
     type: "framework",
     title: "AICPA Trust Services Criteria",
@@ -905,7 +881,6 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     }
   };
   const descriptionFramework = {
-    schemaVersion: 1,
     id: DESCRIPTION_FRAMEWORK_ID,
     type: "framework",
     title: "AICPA SOC 2 Description Criteria",
@@ -919,7 +894,6 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     }
   };
   const commonRequirements = commonCriteria.map(([reference, name, description]) => ({
-    schemaVersion: 1,
     id: requirementId(reference),
     type: "requirement",
     title: `${reference}: ${name}`,
@@ -931,7 +905,6 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     tags: ["security", "common-criteria"]
   }));
   const descriptionRequirements = descriptionCriteria.map(([reference, name, description]) => ({
-    schemaVersion: 1,
     id: requirementId(reference),
     type: "requirement",
     title: `${reference}: ${name}`,
@@ -943,7 +916,6 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     tags: ["description-criteria"]
   }));
   const controlRecords = controls.map((control) => ({
-    schemaVersion: 1,
     id: control.id,
     type: "control",
     title: control.title,
@@ -955,22 +927,19 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     activity: control.activity,
     controlType: control.controlType,
     operationMode: control.operationMode,
-    frequency: control.frequency,
+    operationPattern: control.operationPattern,
     policyIds: control.policies
   }));
   const team = {
-    schemaVersion: 1,
     id: OVERSIGHT_TEAM_ID,
     type: "team",
     title: "Security and Risk Oversight",
-    status: "inactive",
+    status: "planned",
     purpose: "Provide independent oversight of the security program, risk register, incidents, findings, vendor and access reviews, policy changes, exercises, and overdue work. The chair must be separate from the policy owner and people who operate the controls under review.",
     memberIds: [PROGRAM_LEAD_ID],
-    chairIds: [],
-    meetingCadence: calendar("month", 3, effectiveDate)
+    chairIds: []
   };
   const programRepository = {
-    schemaVersion: 1,
     id: "system-filegrc-program-repository",
     type: "system",
     title: "filegrc Program Repository",
@@ -980,14 +949,12 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     description: "The Git repository that is authoritative for filegrc governance records, approvals, exceptions, findings, acknowledgements, evidence indexes, and their revision history.",
     systemKind: "governance-system-of-record",
     environment: "Git repository",
-    dataClassification: "Confidential",
+    classificationId: "confidential",
     internetExposed: false,
-    inScope: false,
     evidenceSourceKinds: ["training-acknowledgement", "exception-finding"],
     evidenceOwnerIds: [POLICY_OWNER_APPOINTMENT_ID]
   };
   const obligationRecords = obligations.map((obligation) => ({
-    schemaVersion: 1,
     id: obligation.id,
     type: "obligation",
     title: obligation.title,
@@ -1000,7 +967,6 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     startsOn: effectiveDate,
     ...(obligation.triggerPrompt ? { triggerPrompt: obligation.triggerPrompt } : {}),
     ...(obligation.window ? { window: obligation.window } : {}),
-    ...(obligation.completionResourceTypes ? { completionResourceTypes: obligation.completionResourceTypes } : {}),
     ...(obligation.scopeResourceIds ? { scopeResourceIds: obligation.scopeResourceIds } : {}),
     ...(obligation.templateResourceId ? { templateResourceId: obligation.templateResourceId } : {}),
     controlIds: obligation.controlIds,
@@ -1045,17 +1011,19 @@ function event(eventType) {
   return { mode: "event", eventType };
 }
 
-function eventWindow(endOffsetDays = 30) {
+function eventWindow(dueAfter = 30) {
   return {
-    startOffsetDays: 0,
-    endOffsetDays
+    precision: "date",
+    startsAfter: 0,
+    dueAfter
   };
 }
 
-function eventWindowHours(endOffsetHours) {
+function eventWindowHours(dueAfter) {
   return {
-    startOffsetHours: 0,
-    endOffsetHours
+    precision: "timestamp",
+    startsAfter: 0,
+    dueAfter
   };
 }
 

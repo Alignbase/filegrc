@@ -1,5 +1,4 @@
 {
-  "schemaVersion": 1,
   "id": "document-soc2-management-representation",
   "type": "document",
   "title": "SOC 2 Management Representation Letter",
@@ -10,5 +9,5 @@
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classification": "Confidential"
+  "classificationId": "confidential"
 }

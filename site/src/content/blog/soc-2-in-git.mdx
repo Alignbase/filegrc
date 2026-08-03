@@ -216,10 +216,12 @@ npx filegrc trigger person-started \
 
 npx filegrc complete-action action-item-id \
   completion-record.json \
-  --completed-on 2026-07-25
+  --completed-on 2026-07-25 \
+  --expected-revision REVISION
 ```
 
-The browser and CLI call the same domain functions. An agent receives the same
+Read `REVISION` from `npx filegrc get action-item-id --mutation`. The browser
+and CLI call the same domain functions. An agent receives the same
 validation, due-date calculations, and readiness checks as a person using the
 local web app.
 

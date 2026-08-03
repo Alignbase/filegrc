@@ -514,14 +514,16 @@ function syncReadySummary(root, action) {
 async function getRepositoryConfig(root) {
   const loaded = await loadWorkspace(root);
   const renderer = loaded.resources.find(({ type, id }) => type === "renderer-settings" && id === "renderer-settings");
-  const mode = renderer?.repositoryMode === "trunk" ? "trunk" : "manual";
-  const authoritativeBranch = cleanGitName(renderer?.authoritativeBranch, "main");
-  const remote = cleanGitName(renderer?.repositoryRemote, "origin");
+  const mode = renderer?.repositoryMode;
+  const authoritativeBranch = cleanGitName(renderer?.authoritativeBranch);
+  const remote = cleanGitName(renderer?.repositoryRemote);
   return {
     mode,
     authoritativeBranch,
     remote,
-    configurationError: !isSafeGitName(authoritativeBranch)
+    configurationError: !["trunk", "manual"].includes(mode)
+      ? "Repository mode is missing or invalid. Run the model migration or update renderer settings."
+      : !isSafeGitName(authoritativeBranch)
       ? "The configured authoritative branch is not a safe Git branch name. Update renderer settings before using browser writes."
       : !isSafeGitName(remote)
         ? "The configured repository remote is not a safe Git remote name. Update renderer settings before using browser writes."

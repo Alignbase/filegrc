@@ -374,7 +374,7 @@ async function summarizeResources(target) {
   for (const path of await collectFiles(join(target, "data"))) {
     if (extname(path) !== ".json") continue;
     const record = JSON.parse(await readFile(path, "utf8"));
-    if (!record?.id || !record?.type || !record?.schemaVersion) continue;
+    if (!record?.id || !record?.type) continue;
     total += 1;
     counts[record.type] = (counts[record.type] || 0) + 1;
   }
@@ -424,7 +424,7 @@ The generated workspace starts with five structural records:
 
 - Workspace and renderer settings
 - The initial active owner
-- An inactive security and risk oversight team that still needs an independent chair
+- A planned security and risk oversight team that still needs an independent chair
 - The filegrc Git repository as a governance system of record
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
@@ -476,7 +476,7 @@ The starter policies, controls, and obligations are proposals. They do not state
 function validateCombinedSetup(setup) {
   if (!setup) return;
   if (Array.isArray(setup) || typeof setup !== "object") throw new Error("setup must be a JSON object.");
-  const required = ["serviceName", "boundary", "criticality", "dataClassification", "internetExposed"];
+  const required = ["serviceName", "boundary", "criticality", "classificationId", "internetExposed"];
   const missing = required.filter((name) => setup[name] === undefined || setup[name] === "");
   if (missing.length) throw new Error(`Combined setup is missing: ${missing.join(", ")}.`);
 }
@@ -490,7 +490,7 @@ async function runCombinedSetup(target, input) {
     "--boundary", String(setup.boundary),
     "--owner", String(setup.ownerId),
     "--criticality", String(setup.criticality),
-    "--classification", String(setup.dataClassification),
+    "--classification", String(setup.classificationId),
     "--internet-exposed", String(setup.internetExposed),
     "--program-goal", String(setup.programGoal),
     "--summary",
@@ -504,13 +504,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.3.4",
+    version: "0.4.0",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.3.4",
+        version: "0.4.0",
         dependencies: { filegrc: versionRange }
       }
     }

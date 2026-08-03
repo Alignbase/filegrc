@@ -1,21 +1,22 @@
 {
-  "schemaVersion": 1,
   "id": "document-employee-training-acknowledgement",
   "type": "document",
   "title": "Employee Training Acknowledgement",
   "status": "draft",
   "documentKind": "attestation-template",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "classification": "internal",
-  "audience": ["employees"],
-  "controlIds": ["control-security-training"],
-  "relatedResourceIds": ["training-security-awareness"]
+  "audience": [
+    "employees"
+  ],
+  "controlIds": [
+    "control-security-training"
+  ],
+  "trainingIds": [
+    "training-security-awareness"
+  ],
+  "classificationId": "internal"
 }

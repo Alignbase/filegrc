@@ -1,21 +1,18 @@
 {
-  "schemaVersion": 1,
   "id": "document-business-continuity-disaster-recovery",
   "type": "document",
   "title": "Business Continuity and Disaster Recovery Plan",
   "status": "draft",
   "documentKind": "plan",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "classification": "internal",
-  "audience": ["employees", "contractors"],
+  "audience": [
+    "employees",
+    "contractors"
+  ],
   "acknowledgementRequired": true,
   "controlIds": [
     "control-policy-management",
@@ -23,6 +20,9 @@
     "control-backup-restoration",
     "control-continuity-exercise"
   ],
-  "relatedDocumentIds": ["document-incident-response-plan"],
-  "evidenceIds": []
+  "relatedDocumentIds": [
+    "document-incident-response-plan"
+  ],
+  "evidenceIds": [],
+  "classificationId": "internal"
 }

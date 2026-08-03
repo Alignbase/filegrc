@@ -83,7 +83,7 @@ export function normalizeSetupPayload(payload = {}) {
     boundary: cleanMultilineText(payload.boundary ?? payload.scope, "boundary"),
     ownerId: cleanText(payload.ownerId ?? payload.owner, "ownerId"),
     criticality: cleanText(payload.criticality, "criticality"),
-    dataClassification: cleanText(payload.dataClassification ?? payload.classification, "dataClassification"),
+    classificationId: cleanText(payload.classificationId, "classificationId"),
     internetExposed: booleanValue(payload.internetExposed, "internetExposed"),
     programGoal: cleanText(payload.programGoal ?? "none", "programGoal"),
     draft,
@@ -97,7 +97,7 @@ function validateSetup(loaded, setup) {
     ["boundary", setup.boundary],
     ["ownerId", setup.ownerId],
     ["criticality", setup.criticality],
-    ["dataClassification", setup.dataClassification]
+    ["classificationId", setup.classificationId]
   ]) {
     if (!value) throw new Error(`Setup field "${name}" is required.`);
   }
@@ -119,23 +119,24 @@ function validateSetup(loaded, setup) {
     }
   }
   const classifications = Object.keys(loaded.workspace.classificationDefinitions || {});
-  if (classifications.length && !classifications.includes(setup.dataClassification)) {
-    throw new Error(`dataClassification must be one of ${classifications.join(", ")}.`);
+  if (classifications.length && !classifications.includes(setup.classificationId)) {
+    throw new Error(`classificationId must be one of ${classifications.join(", ")}.`);
   }
 }
 
-function findSetupSystem(resources, setup) {
+function findSetupSystem(resources, workspace, setup) {
+  const scopedSystemIds = new Set(workspace.systemIds || []);
   return (setup.systemId && resources.find(({ type, id }) => type === "system" && id === setup.systemId))
-    || resources.find(({ type, title, inScope, status }) => (
+    || resources.find(({ type, id, title, status }) => (
       type === "system"
-      && inScope === true
+      && scopedSystemIds.has(id)
       && status !== "retired"
       && title.trim().toLowerCase() === setup.serviceName.toLowerCase()
     ));
 }
 
 function buildSetupRecords(loaded, setup) {
-  const existingSystem = findSetupSystem(loaded.resources, setup);
+  const existingSystem = findSetupSystem(loaded.resources, loaded.workspace, setup);
   const systemId = existingSystem?.id || createResourceId(
     "system",
     setup.serviceName,
@@ -143,7 +144,6 @@ function buildSetupRecords(loaded, setup) {
   );
   const system = {
     ...(existingSystem || {}),
-    schemaVersion: 1,
     id: systemId,
     type: "system",
     title: setup.serviceName,
@@ -156,9 +156,8 @@ function buildSetupRecords(loaded, setup) {
     ownerIds: [setup.ownerId],
     description: setup.boundary,
     systemKind: existingSystem?.systemKind || "service",
-    dataClassification: setup.dataClassification,
-    internetExposed: setup.internetExposed,
-    inScope: true
+    classificationId: setup.classificationId,
+    internetExposed: setup.internetExposed
   };
   const existingWorkspace = loaded.resources.find(({ type }) => type === "workspace");
   if (!existingWorkspace) throw new Error("The workspace settings record was not found.");

@@ -1,7 +1,7 @@
 export const RESOURCE_INSTRUCTIONS = {
   person: "Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.",
   appointment: "Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.",
-  team: "Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative here; Person teamIds is a legacy field.",
+  team: "Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.",
   system: "Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived. For every authoritative evidence source, set its source roles, name current access owners, and write repeatable retrieval instructions in Record Markdown before implementing the linked Controls.",
   vendor: "Catalog the companies that provide in-scope software or services. Link each vendor-provided System with the System’s vendorId.",
   framework: "Confirm the criteria framework and version used for the program.",
@@ -9,7 +9,7 @@ export const RESOURCE_INSTRUCTIONS = {
   commitment: "Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.",
   policy: "Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.",
   document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
-  control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, cadence, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.",
+  control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, operation pattern, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Put calendar and event schedules in Obligations. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.",
   "complementary-control": "Record anything customers or carved-out providers must do for your controls to work as intended.",
   evidence: "Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, retain the fixed artifact or reference, and have another person verify it before audit use.",
   "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
@@ -41,22 +41,6 @@ export const RESOURCE_INSTRUCTIONS = {
   "audit-population": "Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation."
 };
 
-export const POLICY_EVENT_NAMES = {
-  "person-started": "New Worker",
-  "person-ended": "Worker Departure",
-  "high-risk-person-ended": "High-Risk Departure",
-  "person-role-changed": "Job or Responsibility Change",
-  "personal-device-access-planned": "Personal Device Access",
-  "vendor-access-planned": "Vendor Access",
-  "vendor-reassessment-needed": "Vendor Reassessment",
-  "system-material-change": "Material System Change",
-  "material-incident": "Material Incident"
-};
-
-export function policyEventName(eventType) {
-  return POLICY_EVENT_NAMES[eventType] || humanize(eventType);
-}
-
 export const PROGRAM_PATH = [
   {
     id: "scope",
@@ -67,7 +51,7 @@ export const PROGRAM_PATH = [
     sections: [
       { id: "ownership", title: "Program Ownership", description: "Confirm the people, appointments, and teams that own, approve, review, and operate the program.", steps: ["Confirm the initial program lead’s actual job title and the separate Policy Owner Appointment.", "Add the organization’s real appointments, reviewers, and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "appointment", "team"], defaultOpen: true },
       { id: "criteria", title: "Criteria", description: "Confirm the criteria used for the program, resolve whether each requirement applies, and record customer commitments that shape the service or control design.", steps: ["Review the included Security criteria references.", "Mark each requirement applicable or not applicable with a rationale.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["framework", "requirement", "commitment"], defaultOpen: true },
-      { id: "boundary", title: "Service Boundary", description: "Record the service and its supporting technology and providers. An application or platform is a System because it operates controls or produces evidence; the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship.", steps: ["Create a Vendor record for each material provider.", "Create System records for the customer-facing service and each supporting application, platform, or internal system that is in scope or produces evidence, then connect vendor-provided Systems to their providers.", "Assign owners, classification, dependencies, and a clear in-scope decision to each System.", "For Systems that produce control evidence, add their evidence source roles and access owners, then write the exact retrieval procedure in Record Markdown before implementing the linked Controls."], types: ["vendor", "system"], defaultOpen: false }
+      { id: "boundary", title: "Service Boundary", description: "Record the service and its supporting technology and providers. An application or platform is a System because it operates controls or produces evidence; the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship.", steps: ["Create a Vendor record for each material provider.", "Create System records for the customer-facing service and each supporting application, platform, or internal system that is in scope or produces evidence, then connect vendor-provided Systems to their providers.", "Assign owners, classification, and dependencies, then select the program-scope Systems on the Workspace.", "For Systems that produce control evidence, add their evidence source roles and access owners, then write the exact retrieval procedure in Record Markdown before implementing the linked Controls."], types: ["vendor", "system"], defaultOpen: false }
     ],
     resourceTypes: ["person", "appointment", "team", "framework", "requirement", "commitment", "vendor", "system"],
     commands: [
@@ -85,7 +69,7 @@ export const PROGRAM_PATH = [
     description: "Tailor, review, approve, and adopt",
     summary: "Turn every applicable policy and governed plan into the organization’s actual rules, remove placeholders, confirm that Controls link to their governing Policies, and establish approval and effective dates before scheduled work begins. The reviewer must be separate from the owner, is usually internal, and may be external.",
     sections: [
-      { id: "library", title: "Policy Library", description: "Review, approve, and activate policies and governed plans without treating starter text as adopted practice.", steps: ["Review policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review cadence, and Controls that point to the Policy.", "Record approval and effective dates before changing the status to active."], types: ["policy", "document"], defaultOpen: true }
+      { id: "library", title: "Policy Library", description: "Review, approve, and activate policies and governed plans without treating starter text as adopted practice.", steps: ["Review policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval and effective dates before changing the status to active."], types: ["policy", "document"], defaultOpen: true }
     ],
     resourceTypes: ["policy", "document"],
     commands: [
@@ -99,9 +83,9 @@ export const PROGRAM_PATH = [
     number: 3,
     title: "Implement Controls",
     description: "Finish controls and their evidence sources",
-    summary: "Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, cadence, policy and criteria mappings, and implementation date. Connect it to the exact authoritative Systems that produce its evidence, and complete each source’s role, access ownership, and retrieval instructions before marking the Control implemented. Then record any controls that customers or carved-out providers must perform.",
+    summary: "Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, operation pattern, policy and criteria mappings, and implementation date. Put calendar and event schedules in Obligations. Connect the Control to the exact authoritative Systems that produce its evidence, and complete each source’s role, access ownership, and retrieval instructions before marking the Control implemented. Then record any controls that customers or carved-out providers must perform.",
     sections: [
-      { id: "catalog", title: "Control Catalog", description: "Finish the starter controls and their authoritative evidence sources, record applicable complementary controls, and see whether filegrc tracks operation through Work Queue or evidence records.", steps: ["Open every planned Control and confirm its mappings and suggested frequency.", "Write the real procedure in Record Markdown, add system scope, and map the exact authoritative evidence source Systems.", "Confirm each source System is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Resolve every incomplete evidence-family check before marking the Controls implemented.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
+      { id: "catalog", title: "Control Catalog", description: "Finish the starter controls and their authoritative evidence sources, record applicable complementary controls, and see whether filegrc tracks operation through Work Queue or evidence records.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add system scope, and map the exact authoritative evidence source Systems.", "Create or confirm every calendar and event schedule as an Obligation.", "Confirm each source System is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Resolve every incomplete evidence-family check before marking the Controls implemented.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
     ],
     resourceTypes: ["control", "complementary-control"],
     commands: [
@@ -170,15 +154,15 @@ export const PROGRAM_PATH = [
         instructions: "Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.",
         use: "See proposed, upcoming, due, and overdue policy work together with every open Action Item. Continuous and per-transaction controls still operate in their source Systems and need dated operating records or evidence.",
         policyBasis: "Effective policies and implemented linked controls activate reusable obligations. Policy Events and source records create owned Action Items. Each occurrence or task retains its own deadline, completion record, and evidence.",
-        commands: ["filegrc obligations --json", "filegrc complete OBLIGATION_ID completion-mutation.json --json"]
+        commands: ["filegrc obligations --json", "filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION --json"]
       }
     ],
     commands: [
       "filegrc obligations --json",
       "filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json",
-      "filegrc complete OBLIGATION_ID completion-mutation.json --json",
-      "filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --json",
-      "filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --json",
+      "filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION --json",
+      "filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --expected-revision REVISION --json",
+      "filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION --json",
       "filegrc program-readiness --json"
     ]
   },

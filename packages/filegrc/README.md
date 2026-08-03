@@ -34,6 +34,16 @@ npx filegrc prepare-audit audit-id
 npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 ```
 
+## Upgrade a model v1 workspace
+
+The normal runtime uses data model v2. A model v1 workspace must be migrated before other commands can change it. Start with a read-only preview:
+
+```sh
+npx filegrc migrate --to-model 2 --preview --json
+```
+
+Resolve every item in `missing`, `conflicts`, and `manualActions`. Then rerun the same command with `--yes`. The migration writes one atomic batch, validates model v2, changes no Git history, and is safe to rerun. The [model v2 upgrade guide](https://github.com/Sunpeak-AI/filegrc/blob/main/docs/upgrading-to-model-v2.md) lists every field mapping and review step.
+
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
 `filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Add `--preview` to validate and inspect the planned service and workspace writes without saving. Add `--summary --json` for compact agent output. Selecting Type 1 or Type 2 updates the workspace goal and selected systems. Setup does not select framework records, link controls, create evidence, or create an audit record.
@@ -48,13 +58,13 @@ Control implementation includes each selected Control family’s expected eviden
 
 Long-form Markdown lives beside its JSON record. filegrc derives the Markdown path, so records do not store it.
 
-Headless creates and updates accept either a record or `{ "record": {...}, "content": {...} }`, the same mutation shape used by the web app. Run `filegrc get <id> --mutation` before an update to include JSON and Markdown revision hashes; stale writes are rejected. Use `filegrc content <type> <id>` to read a companion and `--write <file|->` to replace it. `filegrc guide --json` is the compact action and resource index for agents.
+Headless creates and updates require the `{ "record": {...}, "content": {...}, "revision": "...", "contentRevisions": {...} }` mutation envelope used by the web app. Run `filegrc scaffold` for a new mutation or `filegrc get <id> --mutation` before an update; stale record and Markdown writes are rejected. Use `filegrc content <type> <id>` to read a companion and `--write <file|->` to replace it. `filegrc guide --json` is the compact action and resource index for agents.
 
 Use `filegrc attach <evidence-id> <source-file>` to copy a fixed evidence file under its record and update `filePaths` without overwriting an existing attachment.
 
 Use `filegrc detach <evidence-id> <attachment-name> --yes` for explicit removal. Evidence records with linked local attachments cannot be deleted.
 
-The package requires Node.js 20 or newer. It uses Git for authors, commit timestamps, messages, diffs, and revisions. New workspaces use trunk mode, which fetches and fast-forwards before each browser mutation, validates and commits the saved change, then pushes. Existing settings without `repositoryMode` keep manual browser Git behavior. Agents and terminal users use Git directly; the filegrc CLI does not wrap pull, commit, or push.
+The package requires Node.js 20 or newer. It uses Git for authors, commit timestamps, messages, diffs, and revisions. New workspaces use trunk mode, which fetches and fast-forwards before each browser mutation, validates and commits the saved change, then pushes. Agents and terminal users use Git directly; the filegrc CLI does not wrap pull, commit, or push.
 
 The editable server has no authentication and binds to loopback by default. Put it behind trusted authentication before exposing it on a network, or publish the read-only static build.
 

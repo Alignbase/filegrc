@@ -16,12 +16,12 @@ Do not create placeholder or collection-test Evidence. Control implementation ma
 Copy a local fixed file and update the record atomically:
 
 ```sh
-npx filegrc attach EVIDENCE_ID /path/to/source-file --name auditor-facing-name.csv
+npx filegrc attach EVIDENCE_ID /path/to/source-file --name auditor-facing-name.csv --expected-revision REVISION
 ```
 
 The command never overwrites an existing attachment.
 
-Use `npx filegrc detach EVIDENCE_ID FILE_NAME --yes` when removing a mistaken attachment. filegrc will not delete an evidence record while local attachments remain.
+Read `REVISION` from `npx filegrc get EVIDENCE_ID --mutation`. Use `npx filegrc detach EVIDENCE_ID FILE_NAME --yes --expected-revision REVISION` when removing a mistaken attachment. filegrc will not delete an evidence record while local attachments remain.
 
 For a rendered page capture, record the route, filters, audit period, exact Git commit, capture time and method, source resource IDs, and screenshot. A current screenshot cannot prove an earlier state unless it is rendered from or bound to that revision.
 

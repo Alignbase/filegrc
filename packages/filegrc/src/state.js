@@ -49,7 +49,6 @@ async function createAppStateUnlocked(input, options) {
     allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
   });
   const workspace = loaded.workspace ?? {
-    schemaVersion: 1,
     dataModelVersion: loaded.model.modelVersion,
     id: "workspace",
     type: "workspace",
@@ -76,6 +75,7 @@ async function createAppStateUnlocked(input, options) {
   ));
   return {
     generatedAt,
+    asOf,
     readOnly: Boolean(options.readOnly || (repository.mode === "trunk" && !repository.writesAllowed)),
     repository,
     workspace,
@@ -86,7 +86,7 @@ async function createAppStateUnlocked(input, options) {
       counts: validation.counts,
       diagnostics: validation.diagnostics
     },
-    obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt }),
+    obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt, model: loaded.model }),
     programReadiness,
     auditPreparations,
     git

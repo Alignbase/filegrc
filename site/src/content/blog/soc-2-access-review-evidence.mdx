@@ -177,14 +177,16 @@ The IDs and values are fictional:
 
 ```json
 {
-  "schemaVersion": 1,
   "id": "access-review-2026-q3-production",
   "type": "access-review",
   "title": "Q3 2026 Production Access Review",
   "status": "complete",
-  "reviewDate": "2026-09-25",
-  "periodStart": "2026-07-01",
-  "periodEnd": "2026-09-30",
+  "completedOn": "2026-09-25",
+  "coverage": {
+    "kind": "range",
+    "startsOn": "2026-07-01",
+    "endsOn": "2026-09-30"
+  },
   "reviewerIds": ["person-system-owner"],
   "systemIds": ["system-identity", "system-production"],
   "scope": "Privileged and production access, including service accounts",
@@ -219,7 +221,8 @@ For scheduled work, fill the scaffold with real facts and complete the matching
 obligation:
 
 ```sh
-npx filegrc complete OBLIGATION_ID /tmp/access-review.json
+npx filegrc get OBLIGATION_ID --mutation
+npx filegrc complete OBLIGATION_ID /tmp/access-review.json --expected-revision REVISION
 npx filegrc validate --json
 git diff --check
 git diff

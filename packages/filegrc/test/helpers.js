@@ -4,29 +4,34 @@ import { join } from "node:path";
 export async function makeWorkspace(root) {
   await mkdir(join(root, "data", "people"), { recursive: true });
   await writeJson(join(root, "data", "workspace.json"), {
-    schemaVersion: 1,
-    dataModelVersion: "1",
+    dataModelVersion: "2",
     id: "workspace",
     type: "workspace",
     title: "Test SOC 2 Program",
     organizationName: "Test Organization",
-    timezone: "UTC"
+    timezone: "UTC",
+    classificationDefinitions: {
+      public: "Approved for public release.",
+      internal: "Internal business information.",
+      confidential: "Sensitive business or customer information.",
+      restricted: "Highly sensitive information."
+    }
   });
   await writeJson(join(root, "data", "people", "person-owner.json"), {
-    schemaVersion: 1,
     id: "person-owner",
     type: "person",
     title: "Program Owner",
     status: "active",
+    affiliation: "internal",
     email: "security@example.com",
     jobTitle: "Chief Executive Officer"
   });
   await writeJson(join(root, "data", "people", "person-approver.json"), {
-    schemaVersion: 1,
     id: "person-approver",
     type: "person",
     title: "Internal Reviewer",
     status: "active",
+    affiliation: "internal",
     email: "approver@example.com",
     jobTitle: "Chief Operating Officer"
   });

@@ -1,20 +1,19 @@
 {
-  "schemaVersion": 1,
   "id": "document-contractor-policy-acknowledgement",
   "type": "document",
   "title": "Contractor Policy Acknowledgement",
   "status": "draft",
   "documentKind": "attestation-template",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "classification": "internal",
-  "audience": ["contractors"],
-  "controlIds": ["control-workforce-expectations"]
+  "audience": [
+    "contractors"
+  ],
+  "controlIds": [
+    "control-workforce-expectations"
+  ],
+  "classificationId": "internal"
 }

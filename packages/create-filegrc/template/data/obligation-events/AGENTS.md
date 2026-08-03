@@ -12,7 +12,7 @@ The obligations output lists every task the trigger will add, with its owner, de
 Complete each action with the requested resource type and proof. Then close the workflow:
 
 ```sh
-npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD
+npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION
 ```
 
-filegrc refuses to close an event with unfinished or unproved actions. Cancel an event only when the triggering event itself was entered in error or did not occur; explain the reason in related records or the commit message.
+Read `REVISION` from `npx filegrc get OBLIGATION_EVENT_ID --mutation`. filegrc refuses to close an event with unfinished or unproved actions. Cancel an event only when the triggering event itself was entered in error or did not occur; explain the reason in related records or the commit message.

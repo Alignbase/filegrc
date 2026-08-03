@@ -1,0 +1,313 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { applyResourceBatch, createResource } from "../src/files.js";
+import { migrateModel, planModelMigration } from "../src/model-migration.js";
+import { loadWorkspace } from "../src/workspace.js";
+import { validateWorkspace } from "../src/validate.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { makeWorkspace, writeJson } from "./helpers.js";
+
+const execute = promisify(execFile);
+const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+test("previews and atomically migrates every model v1 compatibility field", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-migration-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  const byId = new Map(loaded.resources.map((record) => [record.id, structuredClone(record)]));
+
+  for (const record of byId.values()) record.schemaVersion = 1;
+  const legacyWorkspace = byId.get("workspace");
+  legacyWorkspace.dataModelVersion = "1";
+  legacyWorkspace.repositoryUrl = "https://example.test/repository.git";
+  legacyWorkspace.classificationDefinitions = {
+    Public: "Public information",
+    Internal: "Internal information",
+    Confidential: "Confidential information",
+    Restricted: "Restricted information"
+  };
+  legacyWorkspace.systemIds = [];
+  legacyWorkspace.candidatePeriodStart = "2026-01-01";
+  legacyWorkspace.candidatePeriodEnd = "2026-06-30";
+  delete legacyWorkspace.candidateCoverage;
+  const legacySystem = byId.get("system-example");
+  legacySystem.inScope = true;
+  legacySystem.dataClassification = "Confidential";
+  delete legacySystem.classificationId;
+  const externalApprover = byId.get("person-independent-approver-example");
+  externalApprover.status = "external";
+  delete externalApprover.affiliation;
+  for (const record of byId.values()) {
+    if (record.id !== externalApprover.id && record.type === "person") delete record.affiliation;
+    delete record.approvedContentRevisions;
+    const legacyDateField = {
+      "policy-review": "reviewedOn",
+      "vendor-review": "reviewedOn",
+      "access-review": "reviewDate",
+      "risk-assessment": "assessmentDate",
+      "backup-test": "testDate"
+    }[record.type];
+    if (legacyDateField && record.completedOn) {
+      record[legacyDateField] = record.completedOn;
+      delete record.completedOn;
+    }
+    if (record.type === "vendor-review" && record.vendorId) {
+      record.vendorIds = [record.vendorId];
+      delete record.vendorId;
+    }
+    const oldClassificationField = ["system", "asset", "vendor", "incident"].includes(record.type)
+      ? "dataClassification"
+      : ["document", "evidence"].includes(record.type)
+        ? "classification"
+        : null;
+    if (oldClassificationField && record.classificationId) {
+      record[oldClassificationField] = "Confidential";
+      delete record.classificationId;
+    }
+    if (!record.coverage) continue;
+    if (record.coverage.kind === "as-of") {
+      record[record.type === "audit" ? "typeOneAsOf" : "asOfDate"] = record.coverage.on;
+    } else {
+      record.periodStart = record.coverage.startsOn;
+      record.periodEnd = record.coverage.endsOn;
+    }
+    delete record.coverage;
+  }
+  const legacyObligation = byId.get("obligation-example");
+  legacyObligation.activityType = "access-provisioning";
+  legacyObligation.recurrence = { mode: "event", eventType: "person-started" };
+  legacyObligation.window = { startOffsetDays: 0, endOffsetDays: 3 };
+  legacyObligation.completionResourceTypes = ["access-grant", "evidence"];
+  const legacyVendorReview = byId.get("vendor-review-example");
+  legacyVendorReview.status = "approved";
+  legacyVendorReview.outcome = "passed";
+  delete legacyVendorReview.decision;
+  const legacyBackupTest = byId.get("backup-test-example");
+  legacyBackupTest.status = "passed";
+  const renderer = byId.get("renderer-settings-example");
+  delete renderer.repositoryMode;
+  delete renderer.authoritativeBranch;
+  delete renderer.repositoryRemote;
+  renderer.completedStagePageIds = ["scope:complementary-control", "scope:system"];
+  const person = byId.get("person-example");
+  person.role = "Policy Owner";
+  person.teamIds = ["team-example"];
+  byId.get("appointment-example").appointmentKind = "ciso";
+  byId.get("team-example").memberIds = [];
+  byId.get("system-example").commitmentIds = ["commitment-example"];
+  delete byId.get("commitment-example").systemIds;
+  byId.get("requirement-example").controlIds = ["control-example"];
+  byId.get("control-example").requirementIds = [];
+  byId.get("control-example").commitmentIds = ["commitment-example"];
+  delete byId.get("commitment-example").controlIds;
+  byId.get("control-example").riskIds = ["risk-example"];
+  delete byId.get("risk-example").controlIds;
+  byId.get("policy-example").controlIds = ["control-example"];
+  delete byId.get("control-example").policyIds;
+  byId.get("vendor-example").systemIds = ["system-example"];
+  delete byId.get("system-example").vendorId;
+  byId.get("audit-example").controlTestIds = ["control-test-example"];
+  delete byId.get("control-test-example").auditId;
+  byId.get("audit-example").evidenceIds = ["evidence-example"];
+  delete byId.get("evidence-example").auditIds;
+  const legacyEvidence = byId.get("evidence-example");
+  legacyEvidence.status = "expired";
+  legacyEvidence.expiresOn = "2026-07-31";
+  legacyEvidence.evidenceKind = "configuration-export";
+  legacyEvidence.source = legacyEvidence.sourceDescription || "System configuration";
+  delete legacyEvidence.artifactKind;
+  delete legacyEvidence.artifactSubtype;
+  delete legacyEvidence.sourceKind;
+  delete legacyEvidence.sourceDescription;
+  legacyEvidence.collectionTestFamilyId = "identity-access";
+  legacyEvidence.collectionTestPrompt = "Export a test report.";
+  Object.assign(byId.get("audit-population-example"), {
+    status: "incomplete",
+    sourceSystemId: "system-example",
+    sourceEvidenceId: "evidence-example",
+    reconciledByIds: ["person-example"],
+    reconciledOn: "2026-06-30"
+  });
+  const legacyAction = byId.get("action-item-example");
+  legacyAction.dueOn = "2026-08-15";
+  delete legacyAction.completionWindow;
+  const legacyControl = byId.get("control-example");
+  legacyControl.frequency = "Continuous";
+  delete legacyControl.operationPattern;
+  byId.get("policy-example").reviewCadence = {
+    mode: "calendar",
+    unit: "year",
+    interval: 1,
+    anchorDate: "2026-01-01"
+  };
+  byId.get("document-example").relatedResourceIds = ["training-example"];
+  const accountableReferences = [...byId.values()].flatMap((record) => (
+    ["ownerIds", "evidenceOwnerIds"].flatMap((field) => (
+      Array.isArray(record[field]) && record[field].includes("person-example")
+        ? [{ id: record.id, field }]
+        : []
+    ))
+  ));
+  assert.ok(accountableReferences.length);
+
+  for (const [id, record] of byId) {
+    const entry = loaded.entries.find(({ record: candidate }) => candidate.id === id);
+    await writeJson(entry.path, record);
+  }
+
+  const cliPreview = await execute(process.execPath, [
+    cli,
+    "migrate",
+    "--to-model",
+    "2",
+    "--preview",
+    "--starts-on",
+    "2026-08-02",
+    "--root",
+    root,
+    "--json"
+  ]);
+  const parsedCliPreview = JSON.parse(cliPreview.stdout);
+  assert.equal(parsedCliPreview.ready, true, JSON.stringify({
+    missing: parsedCliPreview.missing,
+    conflicts: parsedCliPreview.conflicts,
+    manualActions: parsedCliPreview.manualActions
+  }));
+
+  const preview = await planModelMigration(root, { startsOn: "2026-08-02" });
+  assert.equal(preview.ready, true);
+  assert.equal(preview.summary.create, 2);
+  assert.ok(preview.summary.update >= 12);
+  assert.equal(preview.changes.create[0].type, "appointment");
+  assert.equal(preview.changes.create[0].startsOn, "2026-08-02");
+  assert.equal(preview.changes.update.at(-1).id, "workspace");
+  assert.ok(preview.notes.some(({ resourceId }) => resourceId === "evidence-example"));
+
+  const changedPerson = {
+    ...byId.get("person-example"),
+    department: "Operations"
+  };
+  const personPath = loaded.entries.find(({ record }) => record.id === "person-example").path;
+  await writeJson(personPath, changedPerson);
+  await assert.rejects(
+    applyResourceBatch(root, preview.changes),
+    /Resource "person-example" changed after you opened it/
+  );
+
+  const result = await migrateModel(root, { startsOn: "2026-08-02" });
+  assert.equal(result.applied, true);
+  const migrated = await loadWorkspace(root);
+  const records = new Map(migrated.resources.map((record) => [record.id, record]));
+  assert.equal(records.get("workspace").dataModelVersion, "2");
+  assert.equal(records.get("workspace").repositoryUrl, undefined);
+  assert.deepEqual(records.get("workspace").systemIds, ["system-example"]);
+  assert.deepEqual(records.get("workspace").classificationDefinitions, {
+    public: "Public information",
+    internal: "Internal information",
+    confidential: "Confidential information",
+    restricted: "Restricted information"
+  });
+  assert.equal(records.get("system-example").inScope, undefined);
+  assert.equal(records.get("system-example").classificationId, "confidential");
+  assert.equal(records.get("person-independent-approver-example").status, "active");
+  assert.equal(records.get("person-independent-approver-example").affiliation, "external");
+  assert.deepEqual(records.get("obligation-example").window, {
+    precision: "date",
+    startsAfter: 0,
+    dueAfter: 3
+  });
+  assert.equal(records.get("obligation-example").completionResourceTypes, undefined);
+  assert.equal(records.get("vendor-review-example").status, "complete");
+  assert.equal(records.get("vendor-review-example").decision, "approved");
+  assert.equal(records.get("vendor-review-example").vendorId, "vendor-example");
+  assert.equal(records.get("vendor-review-example").completedOn, "2026-06-30");
+  assert.equal(records.get("vendor-review-example").outcome, undefined);
+  assert.equal(records.get("backup-test-example").status, "complete");
+  assert.equal(records.get("backup-test-example").outcome, "passed");
+  assert.equal(records.get("backup-test-example").completedAt, "2026-06-15T15:30:00Z");
+  assert.equal(records.get("backup-test-example").completedOn, undefined);
+  assert.equal(records.get("person-example").role, undefined);
+  assert.equal(records.get("person-example").teamIds, undefined);
+  assert.deepEqual(records.get("team-example").memberIds, ["person-example"]);
+  assert.deepEqual(records.get("commitment-example").systemIds, ["system-example"]);
+  assert.deepEqual(records.get("commitment-example").controlIds, ["control-example"]);
+  assert.deepEqual(records.get("control-example").requirementIds, ["requirement-example"]);
+  assert.deepEqual(records.get("control-example").policyIds, ["policy-example"]);
+  assert.deepEqual(records.get("risk-example").controlIds, ["control-example"]);
+  assert.equal(records.get("system-example").vendorId, "vendor-example");
+  assert.equal(records.get("control-test-example").auditId, "audit-example");
+  assert.deepEqual(records.get("evidence-example").auditIds, ["audit-example"]);
+  assert.equal(records.get("evidence-example").collectionTestFamilyId, undefined);
+  assert.equal(records.get("evidence-example").collectionTestPrompt, undefined);
+  assert.equal(records.get("evidence-example").artifactKind, "configuration-export");
+  assert.equal(records.get("evidence-example").sourceKind, "system");
+  assert.equal(records.get("evidence-example").status, "verified");
+  assert.equal(records.get("evidence-example").expiresOn, "2026-07-31");
+  assert.equal(records.get("evidence-example").evidenceKind, undefined);
+  assert.equal(records.get("audit-population-example").status, "reconciled");
+  assert.equal(records.get("audit-population-example").conclusion, "incomplete");
+  assert.deepEqual(records.get("action-item-example").completionWindow, {
+    precision: "date",
+    startsOn: "2026-08-15",
+    dueOn: "2026-08-15",
+    overdueOn: "2026-08-16"
+  });
+  assert.equal(records.get("control-example").operationPattern, "continuous");
+  assert.equal(records.get("control-example").frequency, undefined);
+  assert.deepEqual(records.get("document-example").trainingIds, ["training-example"]);
+  assert.equal(records.get("policy-example").reviewCadence, undefined);
+  assert.match(records.get("policy-example").approvedContentRevisions["policies/policy-example.md"], /^[a-f0-9]{64}$/);
+  assert.ok([...records.values()].some((record) => (
+    record.type === "obligation"
+    && record.templateResourceId === "policy-example"
+    && record.activityType === "policy-review"
+  )));
+  assert.equal(records.get("renderer-settings-example").repositoryMode, "manual");
+  assert.deepEqual(records.get("renderer-settings-example").completedStagePageIds, [
+    "controls:complementary-control",
+    "scope:system"
+  ]);
+  assert.equal([...records.values()].some((record) => Object.hasOwn(record, "schemaVersion")), false);
+  for (const { id, field } of accountableReferences) {
+    assert.ok(records.get(id)[field].includes(preview.changes.create[0].id));
+    assert.ok(!records.get(id)[field].includes("person-example"));
+  }
+  assert.deepEqual((await validateWorkspace(root)).counts, { resources: 45, errors: 0, warnings: 0 });
+
+  const noop = await migrateModel(root);
+  assert.equal(noop.applied, false);
+});
+
+test("blocks ambiguous Person roles for manual review", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-migration-review-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  const workspaceEntry = loaded.entries.find(({ record }) => record.type === "workspace");
+  await writeJson(workspaceEntry.path, { ...workspaceEntry.record, dataModelVersion: "1" });
+  const personEntry = loaded.entries.find(({ record }) => record.id === "person-owner");
+  await writeJson(personEntry.path, { ...personEntry.record, role: "Security Lead" });
+
+  const plan = await planModelMigration(root);
+  assert.equal(plan.ready, false);
+  assert.equal(plan.manualActions[0].resourceId, "person-owner");
+  await assert.rejects(
+    createResource(root, {
+      id: "team-blocked-before-migration",
+      type: "team",
+      title: "Blocked before migration",
+      status: "active",
+      purpose: "Prove that normal model v2 writes cannot change a model v1 workspace.",
+      memberIds: ["person-owner"]
+    }),
+    /migrate --to-model 2/
+  );
+  await assert.rejects(migrateModel(root), /needs review/);
+  assert.match(await readFile(personEntry.path, "utf8"), /"role": "Security Lead"/);
+});

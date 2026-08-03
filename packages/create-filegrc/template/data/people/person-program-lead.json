@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 1,
   "id": "person-program-lead",
   "type": "person",
   "title": "{{policy_owner_name}}",
   "status": "active",
   "email": "{{policy_owner_email}}",
-  "jobTitle": "{{policy_owner_job_title}}"
+  "jobTitle": "{{policy_owner_job_title}}",
+  "affiliation": "internal"
 }

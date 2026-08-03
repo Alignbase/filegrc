@@ -29,7 +29,7 @@ export {
 } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";
-export { migrateLegacyRoles, planRoleMigration } from "./role-migration.js";
+export { migrateModel, planModelMigration } from "./model-migration.js";
 export {
   completeObligationAction,
   completeObligationEvent,
@@ -40,8 +40,6 @@ export {
 export { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 export {
   buildAgentProgramPath,
-  policyEventName,
-  POLICY_EVENT_NAMES,
   PROGRAM_PATH,
   RESOURCE_INSTRUCTIONS,
   resourceProgramContext
@@ -54,6 +52,7 @@ export {
   nextCalendarOccurrence
 } from "./recurrence.js";
 export { searchResources, searchableValues } from "./search.js";
+export { effectiveResourceStatus } from "./resource-status.js";
 export { createFilegrcServer, serveWorkspace } from "./server.js";
 export { normalizeSetupPayload, planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
 export { createAppState, createResourceDetail } from "./state.js";

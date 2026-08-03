@@ -13,6 +13,7 @@ import { recordTiming } from "./timing.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_OBLIGATION_OFFSET_DAYS = 36_600;
@@ -32,6 +33,10 @@ async function validateWorkspaceUnmeasured(input) {
   const diagnostics = [...loaded.diagnostics];
   const { byId } = indexResources(loaded.resources);
   const seen = new Map();
+  const pathById = new Map(loaded.entries.map((entry) => [
+    entry.record?.id,
+    `data/${entry.relativePath}`
+  ]));
   const asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC");
   const obligationsByControl = new Map();
   for (const obligation of loaded.resources.filter((record) => record.type === "obligation" && record.status !== "retired")) {
@@ -68,8 +73,13 @@ async function validateWorkspaceUnmeasured(input) {
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
     validateDateRanges(record, displayPath, diagnostics);
     if (record.type === "appointment") validateAppointment(record, byId, displayPath, diagnostics);
-    if (record.type === "obligation") validateObligation(record, displayPath, diagnostics);
+    if (record.type === "obligation") validateObligation(record, loaded.model, byId, displayPath, diagnostics);
+    if (record.type === "obligation-event") validatePolicyEvent(record, loaded.model, byId, displayPath, diagnostics);
     if (record.type === "evidence") validateEvidencePaths(record, displayPath, diagnostics);
+    validateCoverage(record, displayPath, diagnostics);
+    validateClassification(record, loaded.workspace, displayPath, diagnostics);
+    validateCompletionDates(record, displayPath, diagnostics);
+    await validateAttestationBinding(record, loaded.model, loaded.root, byId, displayPath, diagnostics);
 
     const fields = { ...loaded.model.commonFields, ...definition.fields };
     for (const [fieldName, field] of Object.entries(fields)) {
@@ -109,12 +119,21 @@ async function validateWorkspaceUnmeasured(input) {
           }
         }
       }
+      validateNestedRelations(fieldName, value, field, loaded.model, byId, displayPath, diagnostics);
     }
     validateIndependentApproval(record, byId, displayPath, diagnostics);
-    validateCompletedObligationEvent(record, byId, displayPath, diagnostics);
+    validateCompletedObligationEvent(record, byId, loaded.model, displayPath, diagnostics);
     validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, displayPath, diagnostics);
     await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
+    await validateApprovalBinding(record, loaded.model, loaded.root, displayPath, diagnostics);
   }
+  validateRelationshipConstraints(
+    loaded.resources,
+    loaded.model,
+    byId,
+    pathById,
+    diagnostics
+  );
 
   diagnostics.sort((a, b) => `${a.severity}:${a.path}:${a.code}`.localeCompare(`${b.severity}:${b.path}:${b.code}`));
   return {
@@ -166,7 +185,16 @@ export async function fingerprintWorkspace(input = process.cwd()) {
 function validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, path, diagnostics) {
   if (record.type !== "control" || record.status !== "implemented") return;
   const schedules = obligationsByControl.get(record.id) || [];
-  if (!schedules.length || schedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))) return;
+  if (!schedules.length) {
+    if (record.operationPattern === "continuous") return;
+    diagnostics.push(error(
+      "control-work-queue-missing",
+      path,
+      "An implemented scheduled, event-driven, or mixed Control must link at least one active Obligation."
+    ));
+    return;
+  }
+  if (schedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))) return;
   const stopped = schedules.filter((obligation) => !obligationIsRunning(obligation, byId, asOf));
   const paused = stopped.filter((obligation) => obligation.status === "paused");
   const waiting = stopped.filter((obligation) => obligation.status === "active");
@@ -196,10 +224,7 @@ function validateImplementedControlSchedules(record, obligationsByControl, byId,
 function validateDateRanges(record, path, diagnostics) {
   for (const [startField, endField] of [
     ["startDate", "endDate"],
-    ["startsOn", "endsOn"],
-    ["periodStart", "periodEnd"],
-    ["candidatePeriodStart", "candidatePeriodEnd"],
-    ["dueWindowStart", "dueWindowEnd"]
+    ["startsOn", "endsOn"]
   ]) {
     const start = record[startField];
     const end = record[endField];
@@ -223,15 +248,15 @@ function validateAppointment(record, byId, path, diagnostics) {
   }
   if (record.status !== "active") return;
   const holder = byId.get(record.holderId);
-  if (holder?.type === "person" && ["active", "external"].includes(holder.status)) return;
+  if (holder?.type === "person" && holder.status === "active") return;
   diagnostics.push(error(
     "inactive-appointment-holder",
     path,
-    "An active Appointment must have an active or external Person as its holder."
+    "An active Appointment must have an active Person as its holder."
   ));
 }
 
-function validateCompletedObligationEvent(record, byId, path, diagnostics) {
+function validateCompletedObligationEvent(record, byId, model, path, diagnostics) {
   if (record.type !== "obligation-event" || record.status !== "complete") return;
   if (record.completedOn && record.occurredOn && record.completedOn < record.occurredOn) {
     diagnostics.push(error(
@@ -259,7 +284,9 @@ function validateCompletedObligationEvent(record, byId, path, diagnostics) {
       continue;
     }
     const obligation = byId.get(action.obligationId);
-    const expectedTypes = obligation?.type === "obligation" ? obligation.completionResourceTypes || [] : [];
+    const expectedTypes = obligation?.type === "obligation"
+      ? model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || []
+      : [];
     if (!expectedTypes.length) continue;
     const linked = [...new Set([...(action.completionResourceIds || []), ...(action.evidenceIds || [])])]
       .map((id) => byId.get(id))
@@ -305,9 +332,38 @@ function validateIndependentApproval(record, byId, path, diagnostics) {
   }
 }
 
-function validateObligation(record, path, diagnostics) {
+function validateObligation(record, model, byId, path, diagnostics) {
   const recurrence = record.recurrence;
   if (!recurrence || Array.isArray(recurrence) || typeof recurrence !== "object") return;
+  const activity = model.obligationActivities?.[record.activityType];
+  if (
+    activity
+    && Array.isArray(activity.recurrenceModes)
+    && !activity.recurrenceModes.includes(recurrence.mode)
+  ) {
+    diagnostics.push(error(
+      "invalid-obligation-activity",
+      path,
+      `${record.activityType} obligations require ${activity.recurrenceModes.join(" or ")} recurrence.`
+    ));
+  }
+  if (activity) {
+    const allowedScopeTypes = new Set(activity.scopeResourceTypes || []);
+    for (const [field, ids] of [
+      ["scopeResourceIds", record.scopeResourceIds || []],
+      ["templateResourceId", record.templateResourceId ? [record.templateResourceId] : []]
+    ]) {
+      for (const id of ids) {
+        const target = byId.get(id);
+        if (!target || allowedScopeTypes.has(target.type)) continue;
+        diagnostics.push(error(
+          "invalid-obligation-scope",
+          path,
+          `${field} references ${target.type} "${id}", but ${record.activityType} allows ${[...allowedScopeTypes].join(" or ")} scope.`
+        ));
+      }
+    }
+  }
   if (recurrence.mode === "calendar") {
     const normalized = { ...recurrence, anchorDate: recurrence.anchorDate || record.startsOn };
     if (!validCalendarRecurrence(normalized)) {
@@ -318,11 +374,11 @@ function validateObligation(record, path, diagnostics) {
       ));
     }
   } else if (recurrence.mode === "event") {
-    if (typeof recurrence.eventType !== "string" || !ID_PATTERN.test(recurrence.eventType)) {
+    if (!model.policyEvents?.[recurrence.eventType]) {
       diagnostics.push(error(
         "invalid-obligation-recurrence",
         path,
-        "Event recurrence requires a lowercase kebab-case eventType."
+        "Event recurrence must use a policy event defined by the model."
       ));
     }
   } else {
@@ -334,53 +390,287 @@ function validateObligation(record, path, diagnostics) {
   }
 
   const window = record.window;
-  if (!window || Array.isArray(window) || typeof window !== "object") return;
-  const dayFields = ["startOffsetDays", "endOffsetDays"].filter((name) => window[name] !== undefined);
-  const hourFields = ["startOffsetHours", "endOffsetHours"].filter((name) => window[name] !== undefined);
-  for (const name of [...dayFields, ...hourFields]) {
+  if (!window || Array.isArray(window) || typeof window !== "object") {
+    if (recurrence.mode === "event") {
+      diagnostics.push(error("invalid-obligation-window", path, "Event obligations require an explicit deadline window."));
+    }
+    return;
+  }
+  for (const name of ["startsAfter", "dueAfter"]) {
+    if (window[name] === undefined) continue;
     if (!Number.isInteger(window[name])) {
       diagnostics.push(error("invalid-obligation-window", path, `window.${name} must be an integer.`));
     }
   }
-  for (const name of dayFields) {
-    if (Number.isInteger(window[name]) && Math.abs(window[name]) > MAX_OBLIGATION_OFFSET_DAYS) {
-      diagnostics.push(error("invalid-obligation-window", path, `window.${name} must stay within ${MAX_OBLIGATION_OFFSET_DAYS.toLocaleString("en-US")} days of the policy event.`));
+  const limit = window.precision === "timestamp" ? MAX_OBLIGATION_OFFSET_HOURS : MAX_OBLIGATION_OFFSET_DAYS;
+  const unit = window.precision === "timestamp" ? "hours" : "days";
+  for (const name of ["startsAfter", "dueAfter"]) {
+    if (Number.isInteger(window[name]) && Math.abs(window[name]) > limit) {
+      diagnostics.push(error("invalid-obligation-window", path, `window.${name} must stay within ${limit.toLocaleString("en-US")} ${unit} of the policy event.`));
     }
   }
-  for (const name of hourFields) {
-    if (Number.isInteger(window[name]) && Math.abs(window[name]) > MAX_OBLIGATION_OFFSET_HOURS) {
-      diagnostics.push(error("invalid-obligation-window", path, `window.${name} must stay within ${MAX_OBLIGATION_OFFSET_HOURS.toLocaleString("en-US")} hours of the policy event.`));
-    }
-  }
-  if (dayFields.length && hourFields.length) {
-    diagnostics.push(error("invalid-obligation-window", path, "An obligation window cannot mix day and hour offsets."));
-  }
-  if (recurrence.mode === "calendar" && hourFields.length) {
-    diagnostics.push(error("invalid-obligation-window", path, "Calendar obligations use day offsets; hour offsets are only valid for event obligations."));
+  if (recurrence.mode === "calendar" && window.precision !== "date") {
+    diagnostics.push(error("invalid-obligation-window", path, "Calendar obligations require a date-precision window."));
   }
   if (
-    recurrence.mode === "calendar"
-    && Number.isInteger(window.startOffsetDays)
-    && window.startOffsetDays > 0
-    && window.endOffsetDays === undefined
+    Number.isInteger(window.dueAfter)
+    && window.dueAfter < (Number.isInteger(window.startsAfter) ? window.startsAfter : 0)
   ) {
+    diagnostics.push(error("invalid-obligation-window", path, "window.dueAfter must be on or after window.startsAfter."));
+  }
+}
+
+function validatePolicyEvent(record, model, byId, path, diagnostics) {
+  const event = model.policyEvents?.[record.eventType];
+  if (!event) return;
+  const rules = event.subjectRules || [];
+  const allowedTypes = new Set(rules.map(({ resourceType }) => resourceType));
+  const counts = new Map();
+  for (const id of new Set(record.subjectResourceIds || [])) {
+    const target = byId.get(id);
+    if (!target) continue;
+    counts.set(target.type, (counts.get(target.type) || 0) + 1);
+    if (!allowedTypes.has(target.type)) {
+      diagnostics.push(error(
+        "invalid-policy-event-subject",
+        path,
+        `${record.eventType} cannot use ${target.type} "${id}" as a subject.`
+      ));
+    }
+  }
+  for (const { resourceType, minimum = 0, maximum } of rules) {
+    const count = counts.get(resourceType) || 0;
+    if (count < minimum) {
+      diagnostics.push(error(
+        "invalid-policy-event-subject",
+        path,
+        `${record.eventType} requires at least ${minimum} ${resourceType} subject${minimum === 1 ? "" : "s"}.`
+      ));
+    }
+    if (Number.isInteger(maximum) && count > maximum) {
+      diagnostics.push(error(
+        "invalid-policy-event-subject",
+        path,
+        `${record.eventType} allows at most ${maximum} ${resourceType} subject${maximum === 1 ? "" : "s"}.`
+      ));
+    }
+  }
+}
+
+function validateCompletionDates(record, path, diagnostics) {
+  if (record.startedAt && record.completedAt && record.completedAt < record.startedAt) {
+    diagnostics.push(error("invalid-completion-order", path, "completedAt cannot be before startedAt."));
+  }
+  if (record.completedOn && record.reviewedOn && record.reviewedOn < record.completedOn) {
+    diagnostics.push(error("invalid-completion-order", path, "reviewedOn cannot be before completedOn."));
+  }
+  if (record.completedOn && record.approvedOn && record.approvedOn < record.completedOn) {
+    diagnostics.push(error("invalid-completion-order", path, "approvedOn cannot be before completedOn."));
+  }
+  validateOrderedDates(record, path, diagnostics, [
+    "requestedOn",
+    "approvedOn",
+    "provisionedOn",
+    "deprovisionedOn"
+  ]);
+  validateOrderedDates(record, path, diagnostics, [
+    "detectedAt",
+    "declaredAt",
+    "containedAt",
+    "eradicatedAt",
+    "recoveredAt",
+    "closedAt"
+  ]);
+  validateOrderedDates(record, path, diagnostics, ["startedAt", "endedAt"]);
+  validateOrderedDates(record, path, diagnostics, ["fieldworkStart", "fieldworkEnd", "reportDate"]);
+  if (record.acceptance) {
+    validateOrderedDates(record.acceptance, path, diagnostics, ["acceptedOn", "expiresOn"], "acceptance.");
+  }
+  if (record.approval) {
+    validateOrderedDates(record.approval, path, diagnostics, ["approvedOn", "expiresOn"], "approval.");
+    if (
+      record.resolution?.resolvedOn
+      && record.approval.approvedOn
+      && record.resolution.resolvedOn < record.approval.approvedOn
+    ) {
+      diagnostics.push(error(
+        "invalid-completion-order",
+        path,
+        "resolution.resolvedOn cannot be before approval.approvedOn."
+      ));
+    }
+  }
+}
+
+function validateOrderedDates(record, path, diagnostics, fields, prefix = "") {
+  let previous = null;
+  for (const field of fields) {
+    const value = record[field];
+    if (!value) continue;
+    if (previous && value < previous.value) {
+      diagnostics.push(error(
+        "invalid-completion-order",
+        path,
+        `${prefix}${field} cannot be before ${prefix}${previous.field}.`
+      ));
+    }
+    previous = { field, value };
+  }
+}
+
+async function validateAttestationBinding(record, model, root, byId, path, diagnostics) {
+  if (
+    record.type !== "attestation"
+    || record.status !== "completed"
+    || record.attestationMethod !== "git-approval"
+    || !record.contentRevisions
+  ) return;
+  const expectedPaths = new Set();
+  const subjectPaths = new Map();
+  for (const id of record.subjectResourceIds || []) {
+    const subject = byId.get(id);
+    if (!subject) continue;
+    const paths = [];
+    for (const item of markdownEntries(model, subject)) {
+      try {
+        if ((await stat(resolveDataPath(root, item.path))).isFile()) paths.push(item.path);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    subjectPaths.set(id, paths);
+    for (const item of paths) expectedPaths.add(item);
+  }
+  const actualPaths = Object.keys(record.contentRevisions);
+  if (!expectedPaths.size) {
     diagnostics.push(error(
-      "invalid-obligation-window",
+      "invalid-attestation-binding",
       path,
-      "Calendar obligations with a positive window.startOffsetDays must set window.endOffsetDays."
+      "A git-approval Attestation must reference authored Policy, Document, or Training content."
+    ));
+    return;
+  }
+  if (!actualPaths.length) {
+    diagnostics.push(error(
+      "invalid-attestation-binding",
+      path,
+      "A git-approval Attestation must bind at least one subject Markdown file."
+    ));
+    return;
+  }
+  const invalid = actualPaths.filter((item) => (
+    !expectedPaths.has(item)
+    || !/^[a-f0-9]{64}$/.test(String(record.contentRevisions[item] || ""))
+  ));
+  const unboundSubjects = [...subjectPaths].filter(([, paths]) => (
+    paths.length && !paths.some((item) => actualPaths.includes(item))
+  )).map(([id]) => id);
+  if (invalid.length || unboundSubjects.length) {
+    diagnostics.push(error(
+      "invalid-attestation-binding",
+      path,
+      unboundSubjects.length
+        ? `Attestation contentRevisions must bind authored Markdown for every subject; missing ${unboundSubjects.join(", ")}.`
+        : "Attestation contentRevisions must contain valid SHA-256 hashes for subject Markdown paths and no unrelated paths."
     ));
   }
-  if (
-    Number.isInteger(window.endOffsetDays)
-    && window.endOffsetDays < (Number.isInteger(window.startOffsetDays) ? window.startOffsetDays : 0)
-  ) {
-    diagnostics.push(error("invalid-obligation-window", path, "window.endOffsetDays must be on or after window.startOffsetDays."));
+}
+
+async function validateApprovalBinding(record, model, root, path, diagnostics) {
+  if (!approvalBound(record) || !record.approvedContentRevisions) return;
+  const actual = {};
+  for (const item of markdownEntries(model, record)) {
+    try {
+      const source = await readFile(resolveDataPath(root, item.path), "utf8");
+      actual[item.path] = createHash("sha256").update(source).digest("hex");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  const expected = record.approvedContentRevisions;
+  const paths = [...new Set([...Object.keys(actual), ...Object.keys(expected)])].sort();
+  const invalid = paths.filter((item) => (
+    !/^[a-f0-9]{64}$/.test(String(expected[item] || ""))
+    || expected[item] !== actual[item]
+  ));
+  if (invalid.length) {
+    diagnostics.push(error(
+      "approval-content-changed",
+      path,
+      `Approved content no longer matches ${invalid.map((item) => `data/${item}`).join(", ")}. Move the record to draft or in-review, review the change, then approve it again.`
+    ));
+  }
+}
+
+function approvalBound(record) {
+  if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
+  if (record.type === "document") return ["active", "superseded", "retired"].includes(record.status);
+  return false;
+}
+
+function validateCoverage(record, path, diagnostics) {
+  const coverage = record.type === "workspace" ? record.candidateCoverage : record.coverage;
+  if (!coverage) return;
+  if (coverage.kind === "range" && coverage.startsOn && coverage.endsOn && coverage.endsOn < coverage.startsOn) {
+    diagnostics.push(error("invalid-date-range", path, "coverage.endsOn cannot be before coverage.startsOn."));
   }
   if (
-    Number.isInteger(window.endOffsetHours)
-    && window.endOffsetHours < (Number.isInteger(window.startOffsetHours) ? window.startOffsetHours : 0)
+    record.type === "audit"
+    && record.auditKind === "soc-2-type-1"
+    && coverage.kind !== "as-of"
   ) {
-    diagnostics.push(error("invalid-obligation-window", path, "window.endOffsetHours must be on or after window.startOffsetHours."));
+    diagnostics.push(error("invalid-audit-coverage", path, "A SOC 2 Type 1 Audit requires as-of coverage."));
+  }
+  if (
+    record.type === "audit"
+    && record.auditKind === "soc-2-type-2"
+    && coverage.kind !== "range"
+  ) {
+    diagnostics.push(error("invalid-audit-coverage", path, "A SOC 2 Type 2 Audit requires range coverage."));
+  }
+  if (
+    record.type === "workspace"
+    && record.assuranceGoal === "soc-2-type-1"
+    && coverage.kind !== "as-of"
+  ) {
+    diagnostics.push(error("invalid-candidate-coverage", path, "A Type 1 management goal requires as-of candidate coverage."));
+  }
+  if (
+    record.type === "workspace"
+    && record.assuranceGoal === "soc-2-type-2"
+    && coverage.kind !== "range"
+  ) {
+    diagnostics.push(error("invalid-candidate-coverage", path, "A Type 2 management goal requires range candidate coverage."));
+  }
+  if (
+    ["audit-population", "penetration-test"].includes(record.type)
+    && coverage.kind !== "range"
+  ) {
+    diagnostics.push(error("invalid-coverage", path, `${record.type} requires range coverage.`));
+  }
+  if (
+    record.type === "evidence"
+    && record.artifactKind === "population-export"
+    && coverage.kind !== "range"
+  ) {
+    diagnostics.push(error("invalid-coverage", path, "Population Export Evidence requires range coverage."));
+  }
+}
+
+function validateClassification(record, workspace, path, diagnostics) {
+  if (!record.classificationId) return;
+  const definitions = workspace?.classificationDefinitions;
+  if (
+    !definitions
+    || Array.isArray(definitions)
+    || typeof definitions !== "object"
+    || !Object.hasOwn(definitions, record.classificationId)
+  ) {
+    diagnostics.push(error(
+      "unknown-classification",
+      path,
+      `classificationId references undefined Workspace classification "${record.classificationId}".`
+    ));
   }
 }
 
@@ -406,6 +696,13 @@ function validateRecord(record, definition, model, path, diagnostics) {
   ]);
   for (const [name, field] of Object.entries(fields)) {
     if (field.requiredWhen && conditionMatches(record, field.requiredWhen)) required.add(name);
+    if (!isMissing(record[name]) && field.allowedWhen && !conditionMatches(record, field.allowedWhen)) {
+      diagnostics.push(error(
+        "invalid-field",
+        path,
+        `${name} is not allowed for the selected ${Object.keys(field.allowedWhen).join(" and ")}.`
+      ));
+    }
     if (field.disjointFrom) {
       const values = normalizedValues(record[name]);
       const otherValues = new Set(normalizedValues(record[field.disjointFrom]));
@@ -431,7 +728,11 @@ function validateRecord(record, definition, model, path, diagnostics) {
   for (const [name, value] of Object.entries(record)) {
     const field = fields[name];
     if (!field) {
-      diagnostics.push(warning("unknown-field", path, `Field "${name}" is not defined by model v${model.modelVersion}.`));
+      diagnostics.push(error(
+        "unknown-field",
+        path,
+        `Field "${name}" is not defined by model v${model.modelVersion}. Put organization-specific data under extensions.`
+      ));
       continue;
     }
     validateValue(name, value, field, model, path, diagnostics);
@@ -442,6 +743,109 @@ function validateRecord(record, definition, model, path, diagnostics) {
 function normalizedValues(value) {
   if (Array.isArray(value)) return value.filter((item) => typeof item === "string");
   return typeof value === "string" ? [value] : [];
+}
+
+function validateNestedRelations(name, value, field, model, byId, path, diagnostics) {
+  if (
+    field.type === "object"
+    && field.objectType
+    && value
+    && !Array.isArray(value)
+    && typeof value === "object"
+  ) {
+    validateObjectRelations(name, value, model.objectTypes?.[field.objectType], model, byId, path, diagnostics);
+  }
+  if (field.type === "array" && field.itemObjectType && Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      if (!item || Array.isArray(item) || typeof item !== "object") continue;
+      validateObjectRelations(
+        `${name}[${index}]`,
+        item,
+        model.objectTypes?.[field.itemObjectType],
+        model,
+        byId,
+        path,
+        diagnostics
+      );
+    }
+  }
+}
+
+function validateObjectRelations(name, value, schema, model, byId, path, diagnostics) {
+  if (!schema) return;
+  for (const [propertyName, property] of Object.entries(schema.properties || {})) {
+    const nested = value[propertyName];
+    if (nested === undefined || nested === null) continue;
+    if (property.relation) {
+      const ids = Array.isArray(nested) ? nested : [nested];
+      for (const id of ids) {
+        const target = byId.get(id);
+        if (!target) {
+          diagnostics.push(error(
+            "missing-reference",
+            path,
+            `${name}.${propertyName} references unknown ID "${id}".`
+          ));
+        } else if (!property.relation.includes("*") && !property.relation.includes(target.type)) {
+          diagnostics.push(error(
+            "wrong-reference-type",
+            path,
+            `${name}.${propertyName} references ${target.type} "${id}", expected ${property.relation.join(" or ")}.`
+          ));
+        }
+      }
+    }
+    validateNestedRelations(`${name}.${propertyName}`, nested, property, model, byId, path, diagnostics);
+  }
+}
+
+function validateRelationshipConstraints(resources, model, byId, pathById, diagnostics) {
+  for (const constraint of model.relationshipConstraints?.acyclic || []) {
+    const candidates = resources.filter(({ type }) => type === constraint.resourceType);
+    const visited = new Set();
+    for (const record of candidates) {
+      if (visited.has(record.id)) continue;
+      const chain = [];
+      const positions = new Map();
+      let current = record;
+      while (current?.type === constraint.resourceType && !visited.has(current.id)) {
+        if (positions.has(current.id)) {
+          const cycle = [...chain.slice(positions.get(current.id)), current.id];
+          const cycleRecord = chain[positions.get(current.id)];
+          diagnostics.push(error(
+            "cyclic-relationship",
+            pathById.get(cycleRecord) || `data/${cycleRecord}`,
+            `${constraint.field} forms a cycle: ${cycle.join(" -> ")}.`
+          ));
+          break;
+        }
+        positions.set(current.id, chain.length);
+        chain.push(current.id);
+        current = byId.get(current[constraint.field]);
+      }
+      for (const id of chain) visited.add(id);
+    }
+  }
+
+  for (const constraint of model.relationshipConstraints?.unique || []) {
+    const keys = new Map();
+    for (const record of resources) {
+      if (record.type !== constraint.resourceType) continue;
+      if (constraint.statuses && !constraint.statuses.includes(record.status)) continue;
+      const key = JSON.stringify((constraint.fields || []).map((field) => {
+        const value = record[field];
+        return Array.isArray(value) ? [...value].sort() : value ?? null;
+      }));
+      const previous = keys.get(key);
+      if (previous) {
+        diagnostics.push(error(
+          "duplicate-active-relationship",
+          pathById.get(record.id) || `data/${record.id}`,
+          `${record.title} duplicates ${previous.title} for ${constraint.fields.join(", ")} while both are ${record.status}.`
+        ));
+      } else keys.set(key, record);
+    }
+  }
 }
 
 async function validateMarkdown(record, definition, model, root, path, diagnostics) {
@@ -518,14 +922,28 @@ function validateValue(name, value, field, model, path, diagnostics) {
       if (typeof value !== "boolean") fail("must be a boolean.");
       return;
     case "object":
-      if (!value || Array.isArray(value) || typeof value !== "object") fail("must be an object.");
+      if (!value || Array.isArray(value) || typeof value !== "object") {
+        fail("must be an object.");
+        return;
+      }
+      if (field.objectType) {
+        validateObjectValue(name, value, field.objectType, model, path, diagnostics);
+      }
       return;
     case "array":
       if (!Array.isArray(value)) {
         fail("must be an array.");
         return;
       }
-      for (const item of value) validateArrayItem(name, item, field.items, path, diagnostics);
+      if (
+        ["id", "string", "data-path"].includes(field.items)
+        && new Set(value).size !== value.length
+      ) {
+        fail("must not contain duplicate values.");
+      }
+      for (const [index, item] of value.entries()) {
+        validateArrayItem(name, item, field, model, path, diagnostics, index);
+      }
       return;
     default:
       fail(`uses unsupported model type "${field.type}".`);
@@ -555,13 +973,95 @@ function validateNumericRange(value, field, fail) {
   }
 }
 
-function validateArrayItem(name, value, type, path, diagnostics) {
+function validateArrayItem(name, value, field, model, path, diagnostics, index) {
+  const type = field.items;
   if (type === "object" && (!value || Array.isArray(value) || typeof value !== "object")) {
     diagnostics.push(error("invalid-field", path, `${name} items must be objects.`));
+  } else if (type === "object" && field.itemObjectType) {
+    validateObjectValue(`${name}[${index}]`, value, field.itemObjectType, model, path, diagnostics);
   } else if ((type === "string" || type === "data-path") && typeof value !== "string") {
     diagnostics.push(error("invalid-field", path, `${name} items must be strings.`));
   } else if (type === "id" && (typeof value !== "string" || !ID_PATTERN.test(value))) {
     diagnostics.push(error("invalid-field", path, `${name} items must be lowercase kebab-case IDs.`));
+  }
+}
+
+function validateObjectValue(name, value, objectType, model, path, diagnostics) {
+  const schema = model.objectTypes?.[objectType];
+  if (!schema) {
+    diagnostics.push(error("invalid-field", path, `${name}: uses unknown object type "${objectType}".`));
+    return;
+  }
+  const properties = schema.properties || {};
+  const required = new Set(schema.required || []);
+  for (const [propertyName, property] of Object.entries(properties)) {
+    if (property.requiredWhen && conditionMatches(value, property.requiredWhen)) required.add(propertyName);
+    if (!isMissing(value[propertyName]) && property.allowedWhen && !conditionMatches(value, property.allowedWhen)) {
+      diagnostics.push(error(
+        "invalid-field",
+        path,
+        `${name}.${propertyName} is not allowed for the selected ${Object.keys(property.allowedWhen).join(" and ")}.`
+      ));
+    }
+  }
+  for (const propertyName of required) {
+    if (isMissing(value[propertyName])) {
+      diagnostics.push(error("missing-field", path, `Required field "${name}.${propertyName}" is missing.`));
+    }
+  }
+  for (const [propertyName, propertyValue] of Object.entries(value)) {
+    const property = properties[propertyName];
+    if (property) {
+      validateValue(`${name}.${propertyName}`, propertyValue, property, model, path, diagnostics);
+      continue;
+    }
+    if (schema.additionalProperties === true) continue;
+    if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+      validateValue(`${name}.${propertyName}`, propertyValue, schema.additionalProperties, model, path, diagnostics);
+      continue;
+    }
+    diagnostics.push(error(
+      "unknown-field",
+      path,
+      `Field "${name}.${propertyName}" is not defined by object type "${objectType}".`
+    ));
+  }
+  for (const propertyName of Object.keys(value)) {
+    if (schema.keyFormat === "namespace" && !NAMESPACE_PATTERN.test(propertyName)) {
+      diagnostics.push(error(
+        "invalid-field",
+        path,
+        `${name}.${propertyName}: extension namespaces must use lowercase dot-separated names.`
+      ));
+    }
+    if (schema.keyFormat === "data-path" && !isCanonicalDataPath(propertyName)) {
+      diagnostics.push(error("invalid-field", path, `${name}.${propertyName}: must be a canonical data-relative path.`));
+    }
+  }
+  validateObjectDateRanges(name, value, path, diagnostics);
+}
+
+function validateObjectDateRanges(name, value, path, diagnostics) {
+  for (const [startField, endField] of [
+    ["startsOn", "dueOn"],
+    ["dueOn", "overdueOn"],
+    ["startsAt", "dueAt"],
+    ["dueAt", "overdueAt"],
+    ["startsOn", "endsOn"]
+  ]) {
+    const start = value[startField];
+    const end = value[endField];
+    if (!start || !end) continue;
+    const invalid = startField.endsWith("At")
+      ? new Date(end) < new Date(start)
+      : parseCalendarDate(start) && parseCalendarDate(end) && end < start;
+    if (invalid) {
+      diagnostics.push(error(
+        "invalid-date-range",
+        path,
+        `${name}.${endField} cannot be before ${name}.${startField}.`
+      ));
+    }
   }
 }
 

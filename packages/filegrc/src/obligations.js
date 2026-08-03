@@ -1,5 +1,7 @@
 import { createResourceId } from "./id.js";
 import { createResourceAndLink, createResources, updateResource } from "./files.js";
+import { loadModel } from "../model/index.js";
+import { coverageEnd } from "./coverage.js";
 import {
   addCalendarDays,
   calendarDayDifference,
@@ -16,22 +18,25 @@ const COMPLETION_DATE_FIELDS = [
   "completedOn",
   "performedOn",
   "reviewedOn",
-  "assessmentDate",
-  "meetingDate",
-  "scheduledOn",
   "occurredOn",
   "collectedOn",
   "verifiedOn",
   "approvedOn",
   "submittedOn",
   "closedOn",
-  "reportDate",
-  "periodEnd"
+  "reportDate"
+];
+const COMPLETION_TIMESTAMP_FIELDS = [
+  "completedAt",
+  "endedAt",
+  "closedAt",
+  "provisionedOn",
+  "deprovisionedOn"
 ];
 const MAX_PLANNED_ITEMS = 10_000;
-const DEFAULT_EVENT_DEADLINE_DAYS = 30;
 
 export function planObligations(resources, options = {}) {
+  const model = options.model || loadModel("2");
   const asOf = requireDate(options.asOf ?? new Date().toISOString().slice(0, 10), "as-of date");
   const defaultNow = options.asOf ? `${asOf}T23:59:59Z` : new Date().toISOString();
   const now = requireTimestamp(options.now ?? defaultNow, "current timestamp");
@@ -56,12 +61,15 @@ export function planObligations(resources, options = {}) {
   };
 
   for (const obligation of obligations) {
+    const activity = obligationActivity(model, obligation.activityType);
+    const expectedCompletionTypes = activity.completionResourceTypes;
     const programStatus = obligationProgramStatus(obligation, byId, asOf);
     if (obligation.recurrence?.mode === "event" && obligation.recurrence.eventType) {
       const eventType = obligation.recurrence.eventType;
       const group = triggerGroups.get(eventType) ?? {
         eventType,
-        prompt: obligation.triggerPrompt || humanize(eventType),
+        title: model.policyEvents?.[eventType]?.title || humanize(eventType),
+        prompt: obligation.triggerPrompt || model.policyEvents?.[eventType]?.title || humanize(eventType),
         policyIds: [],
         obligationIds: [],
         programStatus,
@@ -79,7 +87,8 @@ export function planObligations(resources, options = {}) {
         controlIds: obligation.controlIds || [],
         scopeResourceIds: obligation.scopeResourceIds || [],
         templateResourceId: obligation.templateResourceId || null,
-        completionResourceTypes: obligation.completionResourceTypes || [],
+        completionResourceTypes: expectedCompletionTypes,
+        completionType: activity.completionType,
         programStatus,
         window: normalizedEventWindow(obligation.window)
       });
@@ -113,7 +122,7 @@ export function planObligations(resources, options = {}) {
         .filter((record) => (
           record
           && completionFallsInWindow(record, window)
-          && completionTypeMatches(record, obligation.completionResourceTypes)
+          && completionTypeMatches(record, expectedCompletionTypes)
         ));
       const timingStatus = occurrenceStatus(window, asOf, completions.length > 0);
       const status = timingStatus === "complete" || programStatus === "accepted" ? timingStatus : "proposed";
@@ -131,6 +140,8 @@ export function planObligations(resources, options = {}) {
         policyIds: obligation.policyIds || [],
         controlIds: obligation.controlIds || [],
         scopeResourceIds: obligation.scopeResourceIds || [],
+        completionResourceTypes: expectedCompletionTypes,
+        completionType: activity.completionType,
         completionResourceIds: completions.map((record) => record.id),
         status,
         timingStatus,
@@ -156,7 +167,14 @@ export function planObligations(resources, options = {}) {
     if (!actionsBySource.has(record.sourceResourceId)) actionsBySource.set(record.sourceResourceId, []);
     actionsBySource.get(record.sourceResourceId).push(record);
   }
-  const eventRuns = events.map((event) => planEventRun(event, actionsBySource.get(event.id) || [], byId, asOf, now));
+  const eventRuns = events.map((event) => planEventRun(
+    event,
+    actionsBySource.get(event.id) || [],
+    byId,
+    asOf,
+    now,
+    model
+  ));
   const eventItems = eventRuns
     .filter((run) => run.status !== "canceled")
     .flatMap((run) => run.actions)
@@ -216,7 +234,7 @@ export async function createObligationEvent(input, options) {
   if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn) === "proposed")) {
     throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing policy effective and implement at least one linked control before starting this workflow.`);
   }
-  if (templates.some((record) => Number.isInteger(normalizedEventWindow(record.window).endOffsetHours)) && !occurredAt) {
+  if (templates.some((record) => normalizedEventWindow(record.window).precision === "timestamp") && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
   }
   const subjectResourceIds = [...new Set((options.subjectResourceIds || []).map(String).filter(Boolean))];
@@ -230,7 +248,6 @@ export async function createObligationEvent(input, options) {
     existingIds.push(id);
     const window = eventWindow(obligation, occurredOn, occurredAt, loaded.workspace.timezone);
     return {
-      schemaVersion: 1,
       id,
       type: "action-item",
       title: obligation.title,
@@ -238,16 +255,11 @@ export async function createObligationEvent(input, options) {
       assigneeIds: obligation.ownerIds || [],
       sourceResourceId: eventId,
       obligationId: obligation.id,
-      description: eventActionDescription(obligation, eventType),
-      dueWindowStart: window.dueWindowStart,
-      ...(window.dueWindowEnd ? { dueWindowEnd: window.dueWindowEnd, dueOn: window.dueWindowEnd } : {}),
-      ...(window.overdueOn ? { overdueOn: window.overdueOn } : {}),
-      ...(window.dueWindowStartAt ? { dueWindowStartAt: window.dueWindowStartAt } : {}),
-      ...(window.dueWindowEndAt ? { dueWindowEndAt: window.dueWindowEndAt, overdueAt: window.dueWindowEndAt } : {})
+      description: eventActionDescription(obligation, eventType, loaded.model),
+      completionWindow: storedCompletionWindow(window, loaded.workspace.timezone)
     };
   });
   const event = {
-    schemaVersion: 1,
     id: eventId,
     type: "obligation-event",
     title,
@@ -269,7 +281,7 @@ export async function completeObligationOccurrence(input, options) {
     record.type === "obligation" && record.id === options?.obligationId
   ));
   if (!obligation) throw new Error(`Obligation "${options?.obligationId ?? ""}" was not found.`);
-  assertExpectedCompletionType(obligation, options?.record);
+  assertExpectedCompletionType(obligation, options?.record, loaded.model);
   return createResourceAndLink(loaded.root, options.record, {
     type: "obligation",
     id: obligation.id,
@@ -289,7 +301,7 @@ export async function completeObligationAction(input, options) {
     record.type === "obligation" && record.id === action.obligationId
   ));
   if (!obligation) throw new Error(`Obligation "${action.obligationId}" was not found.`);
-  assertExpectedCompletionType(obligation, options?.record);
+  assertExpectedCompletionType(obligation, options?.record, loaded.model);
   const completedOn = requireDate(options?.completedOn, "completion date");
   const event = loaded.resources.find((record) => record.type === "obligation-event" && record.id === action.sourceResourceId);
   if (event?.occurredOn && completedOn < event.occurredOn) {
@@ -320,7 +332,8 @@ export async function completeObligationEvent(input, options) {
   const plan = planObligations(loaded.resources, {
     asOf: completedOn,
     through: completedOn,
-    includeComplete: true
+    includeComplete: true,
+    model: loaded.model
   });
   const run = plan.eventRuns.find((item) => item.id === event.id);
   if (!run || run.actions.length === 0) {
@@ -341,11 +354,11 @@ export async function completeObligationEvent(input, options) {
   });
 }
 
-function assertExpectedCompletionType(obligation, record) {
+function assertExpectedCompletionType(obligation, record, model) {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     throw new Error("A completion resource record is required.");
   }
-  const expected = obligation.completionResourceTypes ?? [];
+  const expected = obligationActivity(model, obligation.activityType).completionResourceTypes;
   if (expected.length && !expected.includes(record.type)) {
     throw new Error(
       `Obligation "${obligation.id}" expects a completion resource of type ${expected.join(" or ")}, not "${record.type ?? ""}".`
@@ -357,10 +370,12 @@ function calendarWindow(recurrence, configuredWindow, index) {
   const occurrence = calendarOccurrence(recurrence, index);
   const next = calendarOccurrence(recurrence, index + 1);
   if (!occurrence || !next) return null;
-  const startOffset = Number.isInteger(configuredWindow?.startOffsetDays) ? configuredWindow.startOffsetDays : 0;
+  const startOffset = configuredWindow?.precision === "date" && Number.isInteger(configuredWindow.startsAfter)
+    ? configuredWindow.startsAfter
+    : 0;
   const dueWindowStart = addCalendarDays(occurrence, startOffset);
-  const dueWindowEnd = Number.isInteger(configuredWindow?.endOffsetDays)
-    ? addCalendarDays(occurrence, configuredWindow.endOffsetDays)
+  const dueWindowEnd = configuredWindow?.precision === "date" && Number.isInteger(configuredWindow.dueAfter)
+    ? addCalendarDays(occurrence, configuredWindow.dueAfter)
     : addCalendarDays(next, -1);
   const overdueOn = dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null;
   if (!dueWindowStart || !dueWindowEnd || !overdueOn) return null;
@@ -373,10 +388,10 @@ function calendarWindow(recurrence, configuredWindow, index) {
 
 function eventWindow(obligation, occurredOn, occurredAt, timezone) {
   const configuredWindow = normalizedEventWindow(obligation.window);
-  if (Number.isInteger(configuredWindow.endOffsetHours) && occurredAt) {
-    const startOffset = Number.isInteger(configuredWindow.startOffsetHours) ? configuredWindow.startOffsetHours : 0;
+  if (configuredWindow.precision === "timestamp" && occurredAt) {
+    const startOffset = Number.isInteger(configuredWindow.startsAfter) ? configuredWindow.startsAfter : 0;
     const dueWindowStartAt = addHours(occurredAt, startOffset);
-    const dueWindowEndAt = addHours(occurredAt, configuredWindow.endOffsetHours);
+    const dueWindowEndAt = addHours(occurredAt, configuredWindow.dueAfter);
     return {
       dueWindowStart: timestampCalendarDate(dueWindowStartAt, timezone),
       dueWindowEnd: timestampCalendarDate(dueWindowEndAt, timezone),
@@ -386,9 +401,9 @@ function eventWindow(obligation, occurredOn, occurredAt, timezone) {
       overdueAt: dueWindowEndAt
     };
   }
-  const startOffset = Number.isInteger(configuredWindow.startOffsetDays) ? configuredWindow.startOffsetDays : 0;
+  const startOffset = Number.isInteger(configuredWindow.startsAfter) ? configuredWindow.startsAfter : 0;
   const dueWindowStart = addCalendarDays(occurredOn, startOffset);
-  const dueWindowEnd = addCalendarDays(occurredOn, configuredWindow.endOffsetDays);
+  const dueWindowEnd = addCalendarDays(occurredOn, configuredWindow.dueAfter);
   const overdueOn = dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null;
   if (!dueWindowStart || !dueWindowEnd || !overdueOn) {
     throw new Error("Event deadline dates must fall within the supported calendar range.");
@@ -400,11 +415,13 @@ function eventWindow(obligation, occurredOn, occurredAt, timezone) {
   };
 }
 
-function planEventRun(event, actionItems, byId, asOf, now) {
+function planEventRun(event, actionItems, byId, asOf, now, model = loadModel("2")) {
   const actions = actionItems
     .map((record) => {
       const obligation = byId.get(record.obligationId);
-      const expectedCompletionTypes = obligation?.completionResourceTypes || [];
+      const expectedCompletionTypes = obligation?.type === "obligation"
+        ? obligationActivity(model, obligation.activityType).completionResourceTypes
+        : [];
       const linkedCompletionIds = [...new Set([
         ...(record.completionResourceIds || []),
         ...(record.evidenceIds || [])
@@ -413,28 +430,7 @@ function planEventRun(event, actionItems, byId, asOf, now) {
       const completionSatisfied = expectedCompletionTypes.length === 0
         || matchingCompletionIds.length > 0;
       const complete = record.status === "done" && completionSatisfied;
-      const configuredWindow = normalizedEventWindow(obligation?.window);
-      const fallbackEndOffsetDays = Number.isInteger(configuredWindow.endOffsetDays)
-        ? configuredWindow.endOffsetDays
-        : Math.ceil(configuredWindow.endOffsetHours / 24);
-      const dueWindowStart = record.dueWindowStart || event.occurredOn;
-      const dueWindowEnd = record.dueWindowEnd || record.dueOn || addCalendarDays(event.occurredOn, fallbackEndOffsetDays);
-      const dueWindowStartAt = record.dueWindowStartAt
-        || (event.occurredAt && Number.isInteger(configuredWindow.startOffsetHours)
-          ? addHours(event.occurredAt, configuredWindow.startOffsetHours)
-          : null);
-      const dueWindowEndAt = record.dueWindowEndAt
-        || (event.occurredAt && Number.isInteger(configuredWindow.endOffsetHours)
-          ? addHours(event.occurredAt, configuredWindow.endOffsetHours)
-          : null);
-      const window = {
-        dueWindowStart,
-        dueWindowEnd,
-        overdueOn: record.overdueOn || (dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null),
-        dueWindowStartAt,
-        dueWindowEndAt,
-        overdueAt: record.overdueAt || dueWindowEndAt
-      };
+      const window = plannedCompletionWindow(record.completionWindow);
       const status = complete
         ? "complete"
         : window.overdueAt && new Date(now) > new Date(window.overdueAt)
@@ -498,18 +494,7 @@ function planEventRun(event, actionItems, byId, asOf, now) {
 
 function planStandaloneAction(record, byId, asOf, now) {
   const source = byId.get(record.sourceResourceId);
-  const dueWindowEnd = record.dueWindowEnd || record.dueOn || null;
-  const dueWindowStart = record.dueWindowStart || dueWindowEnd;
-  const dueWindowEndAt = record.dueWindowEndAt || null;
-  const dueWindowStartAt = record.dueWindowStartAt || dueWindowEndAt;
-  const window = {
-    dueWindowStart,
-    dueWindowEnd,
-    overdueOn: record.overdueOn || (dueWindowEnd ? addCalendarDays(dueWindowEnd, 1) : null),
-    dueWindowStartAt,
-    dueWindowEndAt,
-    overdueAt: record.overdueAt || dueWindowEndAt
-  };
+  const window = plannedCompletionWindow(record.completionWindow);
   const complete = ["done", "canceled"].includes(record.status);
   const status = complete
     ? "complete"
@@ -543,27 +528,54 @@ function planStandaloneAction(record, byId, asOf, now) {
   };
 }
 
+function storedCompletionWindow(window, timezone) {
+  if (window.dueWindowEndAt) {
+    return {
+      precision: "timestamp",
+      startsAt: window.dueWindowStartAt,
+      dueAt: window.dueWindowEndAt,
+      overdueAt: window.overdueAt || window.dueWindowEndAt,
+      timezone
+    };
+  }
+  return {
+    precision: "date",
+    startsOn: window.dueWindowStart,
+    dueOn: window.dueWindowEnd,
+    overdueOn: window.overdueOn
+  };
+}
+
+function plannedCompletionWindow(window) {
+  if (window?.precision === "timestamp") {
+    return {
+      dueWindowStart: timestampCalendarDate(window.startsAt, window.timezone),
+      dueWindowEnd: timestampCalendarDate(window.dueAt, window.timezone),
+      overdueOn: timestampCalendarDate(window.overdueAt, window.timezone),
+      dueWindowStartAt: window.startsAt,
+      dueWindowEndAt: window.dueAt,
+      overdueAt: window.overdueAt
+    };
+  }
+  return {
+    dueWindowStart: window?.startsOn || null,
+    dueWindowEnd: window?.dueOn || null,
+    overdueOn: window?.overdueOn || null,
+    dueWindowStartAt: null,
+    dueWindowEndAt: null,
+    overdueAt: null
+  };
+}
+
 function completionFallsInWindow(record, window) {
   const date = completionDate(record);
   return Boolean(date && date >= window.dueWindowStart && date <= window.dueWindowEnd);
 }
 
 function normalizedEventWindow(configuredWindow) {
-  const window = configuredWindow && !Array.isArray(configuredWindow) && typeof configuredWindow === "object"
+  return configuredWindow && !Array.isArray(configuredWindow) && typeof configuredWindow === "object"
     ? configuredWindow
     : {};
-  if (Number.isInteger(window.endOffsetDays) || Number.isInteger(window.endOffsetHours)) return window;
-  if (Number.isInteger(window.startOffsetHours)) {
-    return {
-      ...window,
-      endOffsetHours: window.startOffsetHours + (DEFAULT_EVENT_DEADLINE_DAYS * 24)
-    };
-  }
-  return {
-    ...window,
-    startOffsetDays: Number.isInteger(window.startOffsetDays) ? window.startOffsetDays : 0,
-    endOffsetDays: DEFAULT_EVENT_DEADLINE_DAYS
-  };
 }
 
 function completionTypeMatches(record, expectedTypes = []) {
@@ -571,6 +583,11 @@ function completionTypeMatches(record, expectedTypes = []) {
 }
 
 function completionDate(record) {
+  const coverageDate = coverageEnd(record.coverage);
+  if (parseCalendarDate(coverageDate)) return coverageDate;
+  for (const field of COMPLETION_TIMESTAMP_FIELDS) {
+    if (isRfc3339Timestamp(record[field])) return record[field].slice(0, 10);
+  }
   for (const field of COMPLETION_DATE_FIELDS) {
     if (parseCalendarDate(record[field])) return record[field];
   }
@@ -625,13 +642,20 @@ function comparePlannedItems(a, b) {
     || a.title.localeCompare(b.title);
 }
 
-function eventActionDescription(obligation, eventType) {
+function eventActionDescription(obligation, eventType, model) {
   const policy = obligation.policyIds?.length ? ` Policy sources: ${obligation.policyIds.join(", ")}.` : "";
   const scope = obligation.scopeResourceIds?.length ? ` Review scoped resources: ${obligation.scopeResourceIds.join(", ")}.` : "";
-  const completion = obligation.completionResourceTypes?.length
-    ? ` Link completion records of type ${obligation.completionResourceTypes.join(", ")} and any evidence before marking this done.`
+  const expected = obligationActivity(model, obligation.activityType).completionResourceTypes;
+  const completion = expected.length
+    ? ` Link completion records of type ${expected.join(", ")} and any evidence before marking this done.`
     : " Link the completion record and evidence before marking this done.";
   return `Triggered by ${eventType}.${policy}${scope}${completion}`;
+}
+
+function obligationActivity(model, activityType) {
+  const activity = model.obligationActivities?.[activityType];
+  if (!activity) throw new Error(`Unknown obligation activity type "${activityType ?? ""}".`);
+  return activity;
 }
 
 function requireDate(value, label) {

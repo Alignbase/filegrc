@@ -30,7 +30,6 @@ test("requires the starter oversight team to be activated with a separate curren
     assuranceGoal: "readiness"
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "policy-security",
     type: "policy",
     title: "Security policy",
@@ -40,17 +39,20 @@ test("requires the starter oversight team to be activated with a separate curren
     content: { content: "# Security policy" }
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "team-security-risk-oversight",
     type: "team",
     title: "Security and Risk Oversight",
     status: "inactive",
     purpose: "Review security and risk decisions.",
     memberIds: ["person-owner"],
-    chairIds: []
+    chairIds: [],
+    statusTransition: {
+      changedByIds: ["person-owner"],
+      changedOn: "2026-08-02",
+      reason: "The oversight team has not been activated."
+    }
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-quarterly-oversight",
     type: "obligation",
     title: "Quarterly oversight meeting",
@@ -106,8 +108,9 @@ test("requires the starter oversight team to be activated with a separate curren
 
   const loaded = await loadWorkspace(root);
   const team = loaded.resources.find(({ id }) => id === "team-security-risk-oversight");
+  const { statusTransition: _statusTransition, ...activeTeam } = team;
   await updateResource(root, "team", team.id, {
-    ...team,
+    ...activeTeam,
     status: "active",
     memberIds: ["person-owner", "person-approver"],
     chairIds: ["person-approver"]
@@ -136,7 +139,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "policy-access",
     type: "policy",
     title: "Access policy",
@@ -149,7 +151,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   });
   await createResources(root, [
     {
-      schemaVersion: 1,
       id: "team-security-risk-oversight",
       type: "team",
       title: "Security and Risk Oversight",
@@ -159,7 +160,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       chairIds: ["person-approver"]
     },
     {
-      schemaVersion: 1,
       id: "framework-security",
       type: "framework",
       title: "Security criteria",
@@ -167,7 +167,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       version: "1"
     },
     {
-      schemaVersion: 1,
       id: "requirement-access",
       type: "requirement",
       title: "Access requirement",
@@ -176,7 +175,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       applicability: "applicable"
     },
     {
-      schemaVersion: 1,
       id: "system-service",
       type: "system",
       title: "Customer service",
@@ -184,11 +182,9 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       criticality: "high",
       ownerIds: ["person-owner"],
       description: "Production customer service and its supporting identity boundary.",
-      dataClassification: "Confidential",
-      inScope: true
+      classificationId: "confidential",
     },
     {
-      schemaVersion: 1,
       id: "system-identity",
       type: "system",
       title: "Identity system",
@@ -196,13 +192,11 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       criticality: "high",
       ownerIds: ["person-owner"],
       description: "Authoritative identity, role, and access-reporting system.",
-      dataClassification: "Confidential",
-      inScope: false,
+      classificationId: "confidential",
       evidenceSourceKinds: ["identity-access"],
       evidenceOwnerIds: ["person-owner"]
     },
     {
-      schemaVersion: 1,
       id: "control-access",
       type: "control",
       title: "Access approval",
@@ -213,13 +207,18 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       code: "IAM-01",
       activity: "Approve and record every access grant.",
       operationMode: "manual",
-      frequency: "Per request",
+      operationPattern: "event-driven",
       systemIds: ["system-service"],
       evidenceSourceIds: ["system-identity"],
       policyIds: ["policy-access"],
       effectiveOn: "2026-06-01"
     }
   ]);
+  const scopedWorkspace = (await loadWorkspace(root)).workspace;
+  await updateResource(root, "workspace", scopedWorkspace.id, {
+    ...scopedWorkspace,
+    systemIds: ["system-service", "system-identity"]
+  });
   const retrievalPending = await assessEvidenceMap(root, { asOf: "2026-07-01" });
   assert.deepEqual(retrievalPending.items[0].sourceSystemChecks, [{
     sourceSystemId: "system-identity",
@@ -282,6 +281,18 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     approvedOn: "2026-05-25",
     effectiveOn: "2026-06-01"
   });
+  await createResource(root, {
+    id: "obligation-access-request",
+    type: "obligation",
+    title: "Approve each access request",
+    status: "active",
+    activityType: "access-provisioning",
+    recurrence: { mode: "event", eventType: "person-started" },
+    window: { precision: "date", startsAfter: 0, dueAfter: 1 },
+    ownerIds: ["person-owner"],
+    controlIds: ["control-access"],
+    policyIds: ["policy-access"]
+  });
   const control = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-access");
   await updateResource(root, "control", control.id, {
     ...control,
@@ -313,7 +324,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(evidenceMap.status, "complete");
   assert.equal(evidenceMap.items.length, 1);
   assert.equal(evidenceMap.items[0].id, "source-family-identity-access");
-  assert.equal(evidenceMap.items[0].evidenceKind, "export");
+  assert.equal(evidenceMap.items[0].evidenceForm, "export");
   assert.match(evidenceMap.items[0].evidencePrompt, /users, roles, privileged access/);
   assert.deepEqual(evidenceMap.items[0].sourceKinds, ["identity-access"]);
   assert.deepEqual(evidenceMap.items[0].sourceSystemIds, ["system-identity"]);
@@ -387,29 +398,46 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   const current = await loadWorkspace(root);
   await updateResource(root, "workspace", current.workspace.id, {
     ...current.workspace,
-    candidatePeriodStart: "2026-07-01",
-    candidatePeriodEnd: "2026-12-31"
+    candidateCoverage: { kind: "range", startsOn: "2026-07-01", endsOn: "2026-12-31" },
   });
   const operating = await assessProgramReadiness(root, { asOf: "2026-07-02" });
   assert.equal(operating.status, "operating");
   assert.equal(operating.canStartCandidatePeriod, false);
   assert.equal(operating.suggestedCandidatePeriodStart, null);
-  assert.equal(operating.target.candidatePeriodStart, "2026-07-01");
-  assert.equal(operating.target.candidatePeriodEnd, "2026-12-31");
+  assert.deepEqual(operating.target.candidateCoverage, {
+    kind: "range",
+    startsOn: "2026-07-01",
+    endsOn: "2026-12-31"
+  });
   assert.equal(operating.stages.find(({ id }) => id === "operation").items.find(({ id }) => id === "risk-assessment").status, "action");
 
   await createResource(root, {
-    schemaVersion: 1,
+    id: "evidence-risk-assessment-2026",
+    type: "evidence",
+    title: "2026 risk assessment support",
+    status: "collected",
+    artifactKind: "business-record",
+    sourceKind: "authored-record",
+    sourceDescription: "Internal risk assessment records",
+    collectedOn: "2026-07-02",
+    collectorIds: ["person-owner"],
+    classificationId: "internal"
+  }, {
+    content: { content: "# Risk assessment support\n\nThe assessment inputs and review notes are retained here." }
+  });
+  await createResource(root, {
     id: "risk-assessment-2026",
     type: "risk-assessment",
     title: "2026 service risk assessment",
     status: "complete",
-    assessmentDate: "2026-07-02",
+    completedOn: "2026-07-02",
     assessmentKind: "system-risk",
     scope: "Customer service",
     assessorIds: ["person-owner"],
     reviewerIds: ["person-approver"],
     methodology: "Identify threats, rate likelihood and impact, evaluate controls, and assign treatment owners.",
+    summary: "The current risks and treatment plans were reviewed and approved.",
+    evidenceIds: ["evidence-risk-assessment-2026"],
     approvedOn: "2026-07-02",
     systemIds: ["system-service"]
   });

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   completeObligationOccurrence,
+  createAppState,
   createObligationEvent,
   createResource,
   loadWorkspace,
@@ -74,7 +75,12 @@ test("puts standalone Action Items in Work Queue without a reverse source link",
     status: "in-progress",
     assigneeIds: ["person-owner"],
     sourceResourceId: source.id,
-    dueOn: "2026-03-20"
+    completionWindow: {
+      precision: "date",
+      startsOn: "2026-03-20",
+      dueOn: "2026-03-20",
+      overdueOn: "2026-03-21"
+    }
   };
   const plan = planObligations([source, action], {
     asOf: "2026-03-15",
@@ -84,7 +90,7 @@ test("puts standalone Action Items in Work Queue without a reverse source link",
   assert.equal(plan.items[0].kind, "action");
   assert.equal(plan.items[0].actionItemId, action.id);
   assert.equal(plan.items[0].status, "upcoming");
-  assert.equal(plan.items[0].dueWindowStart, action.dueOn);
+  assert.equal(plan.items[0].dueWindowStart, action.completionWindow.dueOn);
   assert.equal(plan.items[0].overdueOn, "2026-03-21");
   assert.deepEqual(plan.counts, { overdue: 0, due: 0, upcoming: 1, proposed: 0, complete: 0 });
 });
@@ -101,6 +107,7 @@ test("keeps work linked only to draft policies as starter proposals", () => {
     type: "obligation",
     title: "Quarterly review",
     status: "active",
+    activityType: "inventory-review",
     recurrence: {
       mode: "calendar",
       unit: "month",
@@ -155,6 +162,7 @@ test("starts an enabled schedule when a linked control becomes implemented", () 
     type: "obligation",
     title: "Quarterly review",
     status: "active",
+    activityType: "inventory-review",
     recurrence: {
       mode: "calendar",
       unit: "month",
@@ -194,7 +202,7 @@ test("keeps team-owned work proposed until the team resolves to a current person
     type: "obligation",
     title: "Monthly review",
     status: "active",
-    activityType: "review",
+    activityType: "inventory-review",
     recurrence: {
       mode: "calendar",
       unit: "month",
@@ -221,7 +229,6 @@ test("does not start a partial event workflow while any step is still proposed",
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "policy-worker-security",
     type: "policy",
     title: "Worker security policy",
@@ -246,11 +253,11 @@ test("does not start a partial event workflow while any step is still proposed",
     }
   ]) {
     await createResource(root, {
-      schemaVersion: 1,
       type: "obligation",
       status: "active",
-      activityType: "onboarding",
+      activityType: "access-provisioning",
       recurrence: { mode: "event", eventType: "person-started" },
+      window: { precision: "date", startsAfter: 0, dueAfter: 30 },
       ownerIds: ["person-owner"],
       ...obligation
     });
@@ -296,8 +303,10 @@ test("matches linked completion records to the calendar period they satisfy", ()
     id: "meeting-q1",
     type: "meeting",
     title: "Q1 risk meeting",
-    status: "held",
-    meetingDate: "2026-03-20"
+    status: "complete",
+    scheduledFor: "2026-03-20",
+    startedAt: "2026-03-20T15:00:00Z",
+    endedAt: "2026-03-20T16:00:00Z"
   };
   const plan = planObligations([ACTIVE_OWNER, obligation, meeting], {
     asOf: "2026-04-02",
@@ -308,6 +317,24 @@ test("matches linked completion records to the calendar period they satisfy", ()
   assert.equal(plan.calendarItems[0].status, "complete");
   assert.deepEqual(plan.calendarItems[0].completionResourceIds, ["meeting-q1"]);
   assert.equal(plan.calendarItems[1].status, "due");
+
+  const scheduledOnly = planObligations([
+    ACTIVE_OWNER,
+    { ...obligation, completionResourceIds: ["meeting-planned"] },
+    {
+      id: "meeting-planned",
+      type: "meeting",
+      title: "Planned meeting",
+      status: "planned",
+      scheduledFor: "2026-03-20"
+    }
+  ], {
+    asOf: "2026-04-02",
+    from: "2026-01-01",
+    through: "2026-04-02",
+    includeComplete: true
+  });
+  assert.equal(scheduledOnly.calendarItems[0].status, "overdue");
 });
 
 test("creates an event run and its policy checklist as one valid batch", async (context) => {
@@ -315,7 +342,6 @@ test("creates an event run and its policy checklist as one valid batch", async (
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-new-worker-assets",
     type: "obligation",
     title: "Register issued device",
@@ -323,12 +349,11 @@ test("creates an event run and its policy checklist as one valid batch", async (
     activityType: "asset-registration",
     recurrence: { mode: "event", eventType: "person-started" },
     triggerPrompt: "New worker?",
-    window: { startOffsetDays: 0, endOffsetDays: 2 },
-    completionResourceTypes: ["asset"],
+    window: { precision: "date",
+      startsAfter: 0, dueAfter: 2 },
     ownerIds: ["person-owner"]
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-new-worker-training",
     type: "obligation",
     title: "Complete security training",
@@ -336,22 +361,21 @@ test("creates an event run and its policy checklist as one valid batch", async (
     activityType: "training",
     recurrence: { mode: "event", eventType: "person-started" },
     triggerPrompt: "New worker?",
-    window: { startOffsetDays: 0, endOffsetDays: 30 },
-    completionResourceTypes: ["attestation", "evidence"],
+    window: { precision: "date",
+      startsAfter: 0, dueAfter: 30 },
     scopeResourceIds: ["person-owner"],
     templateResourceId: "person-owner",
     ownerIds: ["person-owner"]
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-new-worker-review",
     type: "obligation",
     title: "Review onboarding completion",
     status: "active",
-    activityType: "onboarding-review",
+    activityType: "access-provisioning",
     recurrence: { mode: "event", eventType: "person-started" },
     triggerPrompt: "New worker?",
-    completionResourceTypes: ["evidence"],
+    window: { precision: "date", startsAfter: 0, dueAfter: 30 },
     ownerIds: ["person-owner"]
   });
 
@@ -367,8 +391,8 @@ test("creates an event run and its policy checklist as one valid batch", async (
   const trainingAction = created.actions.find(({ title }) => title === "Complete security training");
   assert.match(trainingAction.description, /Review scoped resources: person-owner/);
   const defaultDeadlineAction = created.actions.find(({ title }) => title === "Review onboarding completion");
-  assert.equal(defaultDeadlineAction.dueWindowEnd, "2026-07-31");
-  assert.equal(defaultDeadlineAction.overdueOn, "2026-08-01");
+  assert.equal(defaultDeadlineAction.completionWindow.dueOn, "2026-07-31");
+  assert.equal(defaultDeadlineAction.completionWindow.overdueOn, "2026-08-01");
   assert.equal((await validateWorkspace(root)).ok, true);
 
   const loaded = await loadWorkspace(root);
@@ -380,7 +404,7 @@ test("creates an event run and its policy checklist as one valid batch", async (
   const trainingStep = plan.triggers[0].steps.find(({ title }) => title === "Complete security training");
   assert.deepEqual(trainingStep.scopeResourceIds, ["person-owner"]);
   assert.equal(trainingStep.templateResourceId, "person-owner");
-  assert.equal(plan.triggers[0].steps.find(({ title }) => title === "Review onboarding completion").window.endOffsetDays, 30);
+  assert.equal(plan.triggers[0].steps.find(({ title }) => title === "Review onboarding completion").window.dueAfter, 30);
   assert.equal(plan.eventRuns[0].actions.length, 3);
   assert.deepEqual(
     plan.eventRuns[0].actionItemIds.toSorted(),
@@ -454,23 +478,20 @@ test("headless completion helpers enforce expected types and update links atomic
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-quarterly-review",
     type: "obligation",
     title: "Quarterly access review",
     status: "active",
     activityType: "access-review",
     recurrence: { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-01" },
-    completionResourceTypes: ["access-review"],
     ownerIds: ["person-owner"]
   });
   const completion = {
-    schemaVersion: 1,
     id: "access-review-q1",
     type: "access-review",
     title: "Q1 Access Review",
     status: "planned",
-    reviewDate: "2026-03-20",
+    scheduledFor: "2026-03-20",
     reviewerIds: ["person-owner"],
     systemIds: ["person-owner"]
   };
@@ -484,15 +505,13 @@ test("headless completion helpers enforce expected types and update links atomic
   assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === "evidence-wrong-type"), false);
 
   const eventObligation = {
-    schemaVersion: 1,
     id: "obligation-worker-review",
     type: "obligation",
     title: "Review worker access",
     status: "active",
-    activityType: "access-review",
+    activityType: "inventory-review",
     recurrence: { mode: "event", eventType: "person-started" },
-    window: { endOffsetDays: 30 },
-    completionResourceTypes: ["evidence"],
+    window: { precision: "date", dueAfter: 30 },
     ownerIds: ["person-owner"]
   };
   await createResource(root, eventObligation);
@@ -502,6 +521,9 @@ test("headless completion helpers enforce expected types and update links atomic
     subjectResourceIds: ["person-owner"]
   });
   const action = event.actions[0];
+  const eventState = await createAppState(root);
+  const eventRevision = eventState.resources.find(({ record }) => record.id === event.event.id).revision;
+  const actionRevision = eventState.resources.find(({ record }) => record.id === action.id).revision;
   await assert.rejects(
     execute(process.execPath, [
       fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
@@ -509,6 +531,8 @@ test("headless completion helpers enforce expected types and update links atomic
       event.event.id,
       "--completed-on",
       "2026-07-02",
+      "--expected-revision",
+      eventRevision,
       "--root",
       root
     ]),
@@ -516,15 +540,16 @@ test("headless completion helpers enforce expected types and update links atomic
   );
   const completionMutation = {
     record: {
-      schemaVersion: 1,
       id: "evidence-worker-access-review",
       type: "evidence",
       title: "Worker access review",
       status: "collected",
-      evidenceKind: "review",
-      source: "Access review",
+      artifactKind: "business-record",
+      artifactSubtype: "review",
+      sourceKind: "authored-record",
+      sourceDescription: "Access review",
       collectedOn: "2026-07-02",
-      classification: "Internal",
+      classificationId: "internal",
       collectorIds: ["person-owner"]
     },
     content: {
@@ -540,6 +565,8 @@ test("headless completion helpers enforce expected types and update links atomic
     completionPath,
     "--completed-on",
     "2026-07-02",
+    "--expected-revision",
+    actionRevision,
     "--root",
     root,
     "--json"
@@ -551,6 +578,8 @@ test("headless completion helpers enforce expected types and update links atomic
     event.event.id,
     "--completed-on",
     "2026-07-02",
+    "--expected-revision",
+    eventRevision,
     "--root",
     root,
     "--json"
@@ -568,7 +597,6 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-offboarding-access",
     type: "obligation",
     title: "Remove access",
@@ -576,8 +604,8 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
     activityType: "access-removal",
     recurrence: { mode: "event", eventType: "person-ended" },
     triggerPrompt: "Worker leaving?",
-    window: { startOffsetHours: 0, endOffsetHours: 24 },
-    completionResourceTypes: ["access-review", "evidence"],
+    window: { precision: "timestamp",
+      startsAfter: 0, dueAfter: 24 },
     ownerIds: ["person-owner"]
   });
 
@@ -588,7 +616,7 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
   });
   assert.equal(created.event.occurredOn, "2026-07-01");
   assert.equal(created.event.occurredAt, "2026-07-01T15:30:00-05:00");
-  assert.equal(created.actions[0].dueWindowEndAt, "2026-07-02T20:30:00.000Z");
+  assert.equal(created.actions[0].completionWindow.dueAt, "2026-07-02T20:30:00.000Z");
 
   const resources = (await loadWorkspace(root)).resources;
   const due = planObligations(resources, {
@@ -622,15 +650,15 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
   assert.equal(missingProof.eventItems[0].missingCompletion, true);
 
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-offboarding-access",
     type: "evidence",
     title: "Access removal record",
     status: "verified",
-    evidenceKind: "system-export",
-    source: "Identity system",
+    artifactKind: "system-export",
+    sourceKind: "external-reference",
+    sourceDescription: "Identity system",
     collectedOn: "2026-07-02",
-    classification: "Internal",
+    classificationId: "internal",
     collectorIds: ["person-owner"],
     verifierIds: ["person-approver"],
     verifiedOn: "2026-07-02",
@@ -650,7 +678,16 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
   assert.equal(complete.eventItems[0].status, "complete");
 
   const completedAction = (await loadWorkspace(root)).resources.find(({ id }) => id === action.id);
-  await updateResource(root, "action-item", action.id, { ...completedAction, status: "canceled" });
+  const { completedOn: _completedOn, ...cancelableAction } = completedAction;
+  await updateResource(root, "action-item", action.id, {
+    ...cancelableAction,
+    status: "canceled",
+    cancellation: {
+      canceledByIds: ["person-owner"],
+      canceledOn: "2026-07-02",
+      reason: "Management canceled this duplicate task."
+    }
+  });
   const canceled = planObligations((await loadWorkspace(root)).resources, {
     asOf: "2026-07-02",
     through: "2026-07-03",
@@ -662,7 +699,15 @@ test("preserves exact event timestamps for hour-based policy deadlines", async (
   assert.notEqual(canceled.eventRuns[0].status, "complete");
 
   const event = (await loadWorkspace(root)).resources.find(({ id }) => id === created.event.id);
-  await updateResource(root, "obligation-event", event.id, { ...event, status: "canceled" });
+  await updateResource(root, "obligation-event", event.id, {
+    ...event,
+    status: "canceled",
+    cancellation: {
+      canceledByIds: ["person-owner"],
+      canceledOn: "2026-07-02",
+      reason: "Management canceled the event workflow."
+    }
+  });
   const canceledEvent = planObligations((await loadWorkspace(root)).resources, {
     asOf: "2026-07-02",
     through: "2026-07-03",
@@ -679,14 +724,14 @@ test("rejects malformed obligation recurrence and due windows", async (context) 
   await makeWorkspace(root);
   await assert.rejects(
     createResource(root, {
-      schemaVersion: 1,
       id: "obligation-invalid-event",
       type: "obligation",
       title: "Invalid event",
       status: "active",
-      activityType: "test",
+      activityType: "inventory-review",
       recurrence: { mode: "event" },
-      window: { startOffsetDays: 3, endOffsetDays: 1 },
+      window: { precision: "date",
+      startsAfter: 3, dueAfter: 1 },
       ownerIds: ["person-owner"]
     }),
     /workspace invalid/
@@ -694,35 +739,91 @@ test("rejects malformed obligation recurrence and due windows", async (context) 
   assert.equal((await loadWorkspace(root)).resources.some(({ id }) => id === "obligation-invalid-event"), false);
   await assert.rejects(
     createResource(root, {
-      schemaVersion: 1,
       id: "obligation-ambiguous-window",
       type: "obligation",
       title: "Ambiguous window",
       status: "active",
-      activityType: "test",
+      activityType: "inventory-review",
       recurrence: { mode: "calendar", unit: "month", interval: 1, anchorDate: "2026-01-01" },
-      window: { startOffsetDays: 5 },
+      window: { precision: "date",
+      startsAfter: 5 },
       ownerIds: ["person-owner"]
     }),
     /workspace invalid/
   );
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-calendar-boundary",
     type: "obligation",
     title: "Calendar boundary",
     status: "active",
-    activityType: "test",
-    recurrence: { mode: "event", eventType: "calendar-boundary" },
-    window: { endOffsetDays: 0 },
+    activityType: "inventory-review",
+    recurrence: { mode: "event", eventType: "person-started" },
+    window: { precision: "date", dueAfter: 0 },
     ownerIds: ["person-owner"]
   });
   await assert.rejects(
     createObligationEvent(root, {
-      eventType: "calendar-boundary",
+      eventType: "person-started",
       occurredOn: "9999-12-31"
     }),
     /supported calendar range/
+  );
+});
+
+test("enforces activity recurrence and scope plus Policy Event subject rules", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-obligation-registry-rules-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    id: "system-service",
+    type: "system",
+    title: "Service",
+    status: "active",
+    criticality: "high",
+    ownerIds: ["person-owner"]
+  });
+  await assert.rejects(
+    createResource(root, {
+      id: "obligation-calendar-access-removal",
+      type: "obligation",
+      title: "Calendar access removal",
+      status: "active",
+      activityType: "access-removal",
+      recurrence: { mode: "calendar", unit: "month", interval: 1, anchorDate: "2026-01-01" },
+      ownerIds: ["person-owner"]
+    }),
+    /access-removal obligations require event recurrence/
+  );
+  await assert.rejects(
+    createResource(root, {
+      id: "obligation-invalid-risk-scope",
+      type: "obligation",
+      title: "Invalid risk scope",
+      status: "active",
+      activityType: "risk-assessment",
+      recurrence: { mode: "calendar", unit: "year", interval: 1, anchorDate: "2026-01-01" },
+      scopeResourceIds: ["person-owner"],
+      ownerIds: ["person-owner"]
+    }),
+    /risk-assessment allows .* scope/
+  );
+  await createResource(root, {
+    id: "obligation-worker-access",
+    type: "obligation",
+    title: "Provision worker access",
+    status: "active",
+    activityType: "access-provisioning",
+    recurrence: { mode: "event", eventType: "person-started" },
+    window: { precision: "date", startsAfter: 0, dueAfter: 1 },
+    ownerIds: ["person-owner"]
+  });
+  await assert.rejects(
+    createObligationEvent(root, {
+      eventType: "person-started",
+      occurredOn: "2026-08-02",
+      subjectResourceIds: ["system-service"]
+    }),
+    /person-started cannot use system|person-started requires at least 1 person/
   );
 });
 
@@ -732,7 +833,7 @@ test("bounds unusually large obligation queries", () => {
     type: "obligation",
     title: "Ancient daily task",
     status: "active",
-    activityType: "test",
+    activityType: "inventory-review",
     recurrence: {
       mode: "calendar",
       unit: "day",
@@ -749,7 +850,7 @@ test("bounds unusually large obligation queries", () => {
     type: "obligation",
     title: "Long-window daily task",
     status: "active",
-    activityType: "test",
+    activityType: "inventory-review",
     recurrence: {
       mode: "calendar",
       unit: "day",
@@ -757,8 +858,9 @@ test("bounds unusually large obligation queries", () => {
       anchorDate: "1900-01-01"
     },
     window: {
-      startOffsetDays: 36_599,
-      endOffsetDays: 36_600
+      precision: "date",
+      startsAfter: 36_599,
+      dueAfter: 36_600
     },
     ownerIds: ["person-owner"]
   }], {

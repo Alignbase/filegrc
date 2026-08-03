@@ -1,6 +1,5 @@
 {
-  "schemaVersion": 1,
-  "dataModelVersion": "1",
+  "dataModelVersion": "2",
   "id": "workspace",
   "type": "workspace",
   "title": "{{program_title}}",
@@ -9,8 +8,20 @@
   "description": "{{program_description}}",
   "riskMethodology": {
     "method": "5x5 likelihood and impact",
-    "likelihoodScale": ["Rare", "Unlikely", "Possible", "Likely", "Almost certain"],
-    "impactScale": ["Negligible", "Minor", "Moderate", "Major", "Severe"],
+    "likelihoodScale": [
+      "Rare",
+      "Unlikely",
+      "Possible",
+      "Likely",
+      "Almost certain"
+    ],
+    "impactScale": [
+      "Negligible",
+      "Minor",
+      "Moderate",
+      "Major",
+      "Severe"
+    ],
     "ratingBands": {
       "low": "1-4",
       "medium": "5-9",
@@ -19,9 +30,9 @@
     }
   },
   "classificationDefinitions": {
-    "Public": "Approved for public release.",
-    "Internal": "Intended for the workforce and approved partners.",
-    "Confidential": "Disclosure could harm the organization, a customer, or another person.",
-    "Restricted": "Disclosure or alteration could cause severe harm or trigger legal duties."
+    "public": "Approved for public release.",
+    "internal": "Intended for the workforce and approved partners.",
+    "confidential": "Disclosure could harm the organization, a customer, or another person.",
+    "restricted": "Disclosure or alteration could cause severe harm or trigger legal duties."
   }
 }

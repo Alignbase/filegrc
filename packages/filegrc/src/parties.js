@@ -1,4 +1,4 @@
-const CURRENT_PERSON_STATUSES = new Set(["active", "external"]);
+const CURRENT_PERSON_STATUSES = new Set(["active"]);
 const CURRENT_TEAM_STATUSES = new Set(["active"]);
 const CURRENT_APPOINTMENT_STATUSES = new Set(["active"]);
 

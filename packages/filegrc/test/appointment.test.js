@@ -13,7 +13,6 @@ test("creates and validates a scoped active appointment", async (context) => {
   await makeWorkspace(root);
 
   await createResource(root, {
-    schemaVersion: 1,
     id: "appointment-policy-owner",
     type: "appointment",
     title: "Policy Owner",
@@ -31,8 +30,16 @@ test("creates and validates a scoped active appointment", async (context) => {
   );
   const person = JSON.parse(await readFile(join(root, "data", "people", "person-owner.json"), "utf8"));
   await assert.rejects(
-    updateResource(root, "person", person.id, { ...person, status: "inactive" }),
-    /active Appointment must have an active or external Person/
+    updateResource(root, "person", person.id, {
+      ...person,
+      status: "inactive",
+      statusTransition: {
+        changedByIds: ["person-owner"],
+        changedOn: "2026-08-02",
+        reason: "The person left the organization."
+      }
+    }),
+    /active Appointment must have an active Person/
   );
 });
 
@@ -41,15 +48,19 @@ test("rejects an active appointment held by an inactive person", async (context)
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await writeJson(join(root, "data", "people", "person-owner.json"), {
-    schemaVersion: 1,
     id: "person-owner",
     type: "person",
+    affiliation: "internal",
     title: "Former Program Owner",
-    status: "inactive"
+    status: "inactive",
+    statusTransition: {
+      changedByIds: ["person-owner"],
+      changedOn: "2026-08-02",
+      reason: "The person left the organization."
+    }
   });
   await mkdir(join(root, "data", "appointments"), { recursive: true });
   await writeJson(join(root, "data", "appointments", "appointment-policy-owner.json"), {
-    schemaVersion: 1,
     id: "appointment-policy-owner",
     type: "appointment",
     title: "Policy Owner",

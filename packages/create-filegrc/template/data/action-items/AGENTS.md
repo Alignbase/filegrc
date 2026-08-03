@@ -5,7 +5,7 @@ Create an Action Item only when follow-up needs its own assignee, deadline, and 
 For an event-generated action, do not weaken or extend its policy deadline by hand. Create the requested completion resource and close the action atomically:
 
 ```sh
-npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD
+npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --expected-revision REVISION
 ```
 
-filegrc rejects the wrong completion type. Mark ordinary Action Items `done` only after the work occurred, set `completedOn`, and link the completion record or evidence. Use `blocked` while a named dependency prevents work, and link that dependency with `blockingResourceIds`.
+Read `REVISION` from `npx filegrc get ACTION_ITEM_ID --mutation`. filegrc rejects the wrong completion type. Mark ordinary Action Items `done` only after the work occurred, set `completedOn`, and link the completion record or evidence. Use `blocked` while a named dependency prevents work, and link that dependency with `blockingResourceIds`.

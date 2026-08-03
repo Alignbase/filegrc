@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadModel } from "../model/index.js";
 import { markdownEntries } from "../src/resource-markdown.js";
@@ -80,7 +81,7 @@ const STATUS_OVERRIDES = {
   "vulnerability-scan": "complete",
   incident: "closed",
   exercise: "complete",
-  "backup-test": "passed",
+  "backup-test": "complete",
   "penetration-test": "complete",
   "data-request": "in-progress",
   audit: "fieldwork",
@@ -88,7 +89,7 @@ const STATUS_OVERRIDES = {
 };
 
 export async function makeComprehensiveWorkspace(root) {
-  const model = loadModel("1");
+  const model = loadModel();
   const ids = Object.fromEntries(Object.keys(model.resources).map((type) => [type, type === "workspace" ? "workspace" : `${type}-example`]));
   ids.independentApprover = "person-independent-approver-example";
   await mkdir(join(root, "data", "content"), { recursive: true });
@@ -96,7 +97,6 @@ export async function makeComprehensiveWorkspace(root) {
 
   for (const [type, definition] of Object.entries(model.resources)) {
     const record = {
-      schemaVersion: 1,
       id: ids[type],
       type,
       title: TITLES[type] ?? humanize(type)
@@ -104,7 +104,7 @@ export async function makeComprehensiveWorkspace(root) {
     const fields = { ...model.commonFields, ...definition.fields };
     const required = new Set(definition.required ?? []);
     for (const [name, field] of Object.entries(fields)) {
-      if (name === "schemaVersion" || name === "id" || name === "type" || name === "title") continue;
+      if (name === "id" || name === "type" || name === "title") continue;
       if (name === "status" && STATUS_OVERRIDES[type]) record[name] = STATUS_OVERRIDES[type];
       else if (required.has(name)) record[name] = sampleValue(name, field, ids, model, type);
     }
@@ -128,19 +128,41 @@ export async function makeComprehensiveWorkspace(root) {
     }
 
     addUsefulOptionalFields(record, fields, ids, model, type);
+    if (
+      type === "obligation"
+      && model.obligationActivities[record.activityType]?.recurrenceModes?.length === 1
+      && model.obligationActivities[record.activityType].recurrenceModes[0] === "event"
+    ) {
+      record.recurrence = { mode: "event", eventType: "person-role-changed" };
+      record.window = { precision: "date", startsAfter: 0, dueAfter: 3 };
+    }
     await writeRecord(root, definition, record, model);
     records.push(record);
   }
   const independentApprover = {
-    schemaVersion: 1,
     id: ids.independentApprover,
     type: "person",
     title: "Independent Approver",
-    status: "external",
+    status: "active",
+    affiliation: "external",
     email: "approver@example.test"
   };
   await writeRecord(root, model.resources.person, independentApprover, model);
   records.push(independentApprover);
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+  for (const attestation of records.filter((record) => (
+    record.type === "attestation"
+    && record.status === "completed"
+    && record.attestationMethod === "git-approval"
+  ))) {
+    attestation.contentRevisions = await subjectContentRevisions(
+      root,
+      model,
+      recordsById,
+      attestation.subjectResourceIds
+    );
+    await writeRecord(root, model.resources.attestation, attestation, model);
+  }
   return { model, records };
 }
 
@@ -152,12 +174,17 @@ function sampleValue(name, field, ids, model, type) {
     return field.type === "array" ? [id] : id;
   }
   if (field.format === "data-path") return `${definitionDirectory(type)}/${type}-example.md`;
+  if (field.format === "git-name") return name === "repositoryRemote" ? "origin" : "main";
   if (field.type === "array") {
     if (field.items === "data-path") return [`evidence/${ids.evidence}/access-review.txt`];
+    if (field.items === "object" && field.itemObjectType) {
+      return [sampleObject(field.itemObjectType, ids, model, type)];
+    }
     if (field.items === "object") return [{ name: "External participant", role: "Advisor" }];
     return [sampleText(name)];
   }
   if (field.type === "object") {
+    if (field.objectType) return sampleObject(field.objectType, ids, model, type);
     if (/rating/i.test(name)) return { likelihood: "possible", impact: "high", score: 12, rating: "high" };
     if (/recurrence|cadence/i.test(name)) return { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-15" };
     return { summary: sampleText(name) };
@@ -171,6 +198,7 @@ function sampleValue(name, field, ids, model, type) {
   if (field.type === "enum") return field.values[0];
   if (field.type === "id") return ids.person;
   if (name === "dataModelVersion") return model.modelVersion;
+  if (name === "classificationId") return "example";
   if (name === "organizationName") return "Example Engineering";
   if (name === "timezone") return "America/Chicago";
   if (name === "version") return "2026";
@@ -186,12 +214,43 @@ function sampleValue(name, field, ids, model, type) {
   return sampleText(name);
 }
 
+function sampleObject(objectType, ids, model, type) {
+  const schema = model.objectTypes[objectType];
+  if (objectType === "recurrence") {
+    return { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-15" };
+  }
+  if (objectType === "string-map") return { example: "Example value" };
+  if (objectType === "integer-map") return { example: 1 };
+  if (objectType === "json-map") return { example: "Example value" };
+  if (objectType === "extensions") return { "example.test": { customField: "Example value" } };
+  if (objectType === "content-revisions") return {};
+  if (objectType === "coverage-period") {
+    return { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" };
+  }
+  const value = {};
+  for (const name of schema.required || []) {
+    value[name] = sampleValue(name, schema.properties[name], ids, model, type);
+  }
+  for (const [name, property] of Object.entries(schema.properties || {})) {
+    if (
+      property.requiredWhen
+      && Object.entries(property.requiredWhen).every(([field, expected]) => (
+        Array.isArray(expected) ? expected.includes(value[field]) : value[field] === expected
+      ))
+    ) {
+      value[name] ??= sampleValue(name, property, ids, model, type);
+    }
+  }
+  return value;
+}
+
 function addUsefulOptionalFields(record, fields, ids, model, type) {
   const set = (name, value) => {
-    if (fields[name] && !fields[name].legacy && record[name] === undefined) record[name] = value;
+    if (fields[name] && record[name] === undefined) record[name] = value;
   };
   set("tags", ["example", "security"]);
   set("description", `A realistic example ${humanize(type).toLowerCase()} used to exercise the complete workspace.`);
+  if (type === "workspace") set("classificationDefinitions", { example: "Example classification" });
   if (type === "person") set("jobTitle", "Chief Executive Officer");
   set("code", "SEC-01");
   set("dueOn", "2026-08-15");
@@ -217,6 +276,17 @@ async function writeRecord(root, definition, record, model) {
       await writeMarkdown(root, entry.path, `${record.title} ${entry.label.toLowerCase()}`);
     }
   }
+  if (approvalBound(record)) {
+    record.approvedContentRevisions = {};
+    for (const entry of entries) {
+      try {
+        const source = await readFile(join(root, "data", entry.path), "utf8");
+        record.approvedContentRevisions[entry.path] = createHash("sha256").update(source).digest("hex");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+  }
   if (record.type === "evidence" && record.filePaths) {
     for (const relativePath of record.filePaths) {
       const path = join(root, "data", relativePath);
@@ -230,6 +300,29 @@ async function writeRecord(root, definition, record, model) {
   const path = join(root, "data", relative);
   await mkdir(join(path, ".."), { recursive: true });
   await writeJson(path, record);
+}
+
+async function subjectContentRevisions(root, model, recordsById, subjectResourceIds) {
+  const revisions = {};
+  for (const id of subjectResourceIds || []) {
+    const subject = recordsById.get(id);
+    if (!subject) continue;
+    for (const entry of markdownEntries(model, subject)) {
+      try {
+        const source = await readFile(join(root, "data", entry.path), "utf8");
+        revisions[entry.path] = createHash("sha256").update(source).digest("hex");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+  }
+  return revisions;
+}
+
+function approvalBound(record) {
+  if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
+  if (record.type === "document") return ["active", "superseded", "retired"].includes(record.status);
+  return false;
 }
 
 async function writeMarkdown(root, relativePath, title) {

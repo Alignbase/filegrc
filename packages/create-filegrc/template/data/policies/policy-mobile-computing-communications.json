@@ -1,19 +1,17 @@
 {
-  "schemaVersion": 1,
   "id": "policy-mobile-computing-communications",
   "type": "policy",
   "title": "Mobile Computing and Communications Policy",
   "status": "draft",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "policyKind": "information-security",
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "audience": ["employees", "contractors"],
+  "audience": [
+    "employees",
+    "contractors"
+  ],
   "acknowledgementRequired": true
 }

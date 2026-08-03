@@ -1,21 +1,18 @@
 {
-  "schemaVersion": 1,
   "id": "document-incident-response-plan",
   "type": "document",
   "title": "Incident Response Plan",
   "status": "draft",
   "documentKind": "plan",
-  "ownerIds": ["appointment-policy-owner"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
   "version": "1.0",
   "effectiveOn": "{{effective_date}}",
-  "reviewCadence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
-  "classification": "internal",
-  "audience": ["employees", "contractors"],
+  "audience": [
+    "employees",
+    "contractors"
+  ],
   "acknowledgementRequired": false,
   "controlIds": [
     "control-security-communication",
@@ -23,6 +20,9 @@
     "control-incident-response",
     "control-incident-exercise"
   ],
-  "relatedDocumentIds": ["document-business-continuity-disaster-recovery"],
-  "evidenceIds": []
+  "relatedDocumentIds": [
+    "document-business-continuity-disaster-recovery"
+  ],
+  "evidenceIds": [],
+  "classificationId": "internal"
 }

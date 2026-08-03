@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import {
+  coverageContains,
+  coverageEnd,
+  coverageLabel,
+  coverageMatches,
+  coverageOverlaps,
+  coverageStart
+} from "./coverage.js";
 import { createResource, createResources, deleteResource, updateResource } from "./files.js";
 import { createResourceId } from "./id.js";
 import { partiesIndependent } from "./parties.js";
@@ -85,9 +93,8 @@ export async function assessAuditPreparation(input, options = {}) {
     counts,
     canInitialize: Boolean(audit
       && ["soc-2-type-1", "soc-2-type-2"].includes(audit.auditKind)
-      && (audit.auditKind === "soc-2-type-1"
-        ? audit.typeOneAsOf
-        : audit.periodStart && audit.periodEnd)
+      && coverageStart(audit.coverage)
+      && coverageEnd(audit.coverage)
       && initializationNeeded(audit, records, loaded.model)),
     stages
   };
@@ -100,10 +107,10 @@ export async function prepareAuditWorkspace(input, options = {}) {
   if (!["soc-2-type-1", "soc-2-type-2"].includes(audit.auditKind)) {
     throw new Error("Audit preparation requires a SOC 2 Type 1 or Type 2 engagement.");
   }
-  if (audit.auditKind === "soc-2-type-2" && (!audit.periodStart || !audit.periodEnd)) {
+  if (audit.auditKind === "soc-2-type-2" && audit.coverage?.kind !== "range") {
     throw new Error("Set the Type 2 audit period before initializing audit preparation.");
   }
-  if (audit.auditKind === "soc-2-type-1" && !audit.typeOneAsOf) {
+  if (audit.auditKind === "soc-2-type-1" && audit.coverage?.kind !== "as-of") {
     throw new Error("Set the Type 1 as-of date before initializing audit preparation.");
   }
 
@@ -167,15 +174,13 @@ export async function prepareAuditWorkspace(input, options = {}) {
         (system.evidenceSourceKinds || []).includes(template.sourceKind)
       ));
       return {
-        schemaVersion: 1,
         id,
         type: "audit-population",
         title: template.title,
         status: "planned",
         auditId: audit.id,
         populationKind: template.kind,
-        periodStart: audit.periodStart,
-        periodEnd: audit.periodEnd,
+        coverage: structuredClone(audit.coverage),
         ownerIds: [...audit.ownerIds],
         ...(controlIds.length ? { controlIds } : {}),
         ...(matchingSources.length === 1 ? { sourceSystemId: matchingSources[0].id } : {}),
@@ -219,9 +224,9 @@ function scopeStage(audit, records, byId, programReadiness) {
   }
 
   const periodComplete = audit.auditKind === "soc-2-type-2"
-    ? audit.periodStart && audit.periodEnd
+    ? audit.coverage?.kind === "range"
     : audit.auditKind === "soc-2-type-1"
-      ? audit.typeOneAsOf
+      ? audit.coverage?.kind === "as-of"
       : false;
   items.push(item(
     "period",
@@ -229,8 +234,8 @@ function scopeStage(audit, records, byId, programReadiness) {
     "Set the auditor-agreed report type and date",
     periodComplete
       ? audit.auditKind === "soc-2-type-2"
-        ? `Auditor-agreed Type 2 period: ${audit.periodStart} through ${audit.periodEnd}.`
-        : `Auditor-agreed Type 1 as-of date: ${audit.typeOneAsOf}.`
+        ? `Auditor-agreed Type 2 period: ${coverageLabel(audit.coverage)}.`
+        : `Auditor-agreed Type 1 as-of date: ${coverageLabel(audit.coverage)}.`
       : audit.auditKind === "soc-2-type-1"
         ? "Set the Type 1 as-of date."
         : audit.auditKind === "soc-2-type-2"
@@ -238,11 +243,9 @@ function scopeStage(audit, records, byId, programReadiness) {
           : "Change this readiness record to a Type 1 or Type 2 engagement before planning the report.",
     audit
   ));
-  if (audit.auditKind === "soc-2-type-2" && programReadiness.target.candidatePeriodStart) {
-    const candidate = [programReadiness.target.candidatePeriodStart, programReadiness.target.candidatePeriodEnd]
-      .filter(Boolean)
-      .join(" through ");
-    const agreed = [audit.periodStart, audit.periodEnd].filter(Boolean).join(" through ");
+  if (audit.auditKind === "soc-2-type-2" && programReadiness.target.candidateCoverage) {
+    const candidate = coverageLabel(programReadiness.target.candidateCoverage);
+    const agreed = coverageLabel(audit.coverage);
     items.push(item(
       "candidate-period-comparison",
       "info",
@@ -257,9 +260,8 @@ function scopeStage(audit, records, byId, programReadiness) {
   const systems = (audit.systemIds || []).map((id) => byId.get(id)).filter(Boolean);
   const completeSystems = systems.filter((system) => (
     system.status === "active"
-    && system.inScope === true
     && system.description
-    && system.dataClassification
+    && system.classificationId
     && (system.ownerIds || []).length
   ));
   items.push(item(
@@ -272,7 +274,7 @@ function scopeStage(audit, records, byId, programReadiness) {
     systems[0] || { type: "system" }
   ));
 
-  const engagementStart = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodStart;
+  const engagementStart = coverageStart(audit.coverage);
   const commitments = records.filter((record) => record.type === "commitment"
     && record.status === "active"
     && systems.some((system) => (record.systemIds || []).includes(system.id)));
@@ -430,7 +432,7 @@ function engagementStage(audit, byId, programReadiness) {
     ]);
   }
   const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
-  const named = Boolean(auditor || hasMeaningfulValue(audit.auditor));
+  const named = Boolean(auditor);
   return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and engagement contacts before treating the audit as active.", [
     item(
       "engagement-record",
@@ -444,7 +446,7 @@ function engagementStage(audit, byId, programReadiness) {
       named ? "complete" : "action",
       "Record the independent CPA firm",
       named
-        ? `${auditor?.title || audit.auditor?.firm || "The independent CPA firm"} is recorded for the engagement.`
+        ? `${auditor.title} is recorded for the engagement.`
         : "Select the CPA firm and record it here. The independent management policy reviewer is a different role.",
       audit
     )
@@ -477,7 +479,7 @@ async function documentsStage(loaded, audit, byId) {
     const document = audit?.[definition.field] ? byId.get(audit[definition.field]) : null;
     const source = document ? await primaryMarkdown(loaded, document) : "";
     const contentIssues = managementDocumentContentIssues(source, definition, audit);
-    const engagementEnd = audit?.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit?.periodEnd;
+    const engagementEnd = coverageEnd(audit?.coverage);
     if (document?.approvedOn && engagementEnd && document.approvedOn < engagementEnd) {
       contentIssues.push(`Approve the final document on or after the engagement ${audit.auditKind === "soc-2-type-1" ? "date" : "period end"}.`);
     }
@@ -541,7 +543,7 @@ function evidenceStage(audit, records, byId, model) {
   const evidence = records.filter((record) => record.type === "evidence");
   const externalEvidence = evidence.filter((record) => (
     record.status === "verified"
-    && (record.evidenceKind !== "rendered-record" || record.sourceCommit)
+    && (record.artifactKind !== "rendered-page" || record.sourceCommit)
     && evidenceRelevantToAuditDate(record, audit)
   ));
   const managedFamilies = (model.evidenceSourceFamilies || []).filter((family) => family.filegrcManaged === true);
@@ -685,7 +687,11 @@ function auditorStage() {
 
 function populationResult(population, audit, byId) {
   if (!population) return { status: "action", message: "Initialize this population for the engagement." };
-  if (population.periodStart !== audit?.periodStart || population.periodEnd !== audit?.periodEnd) {
+  if (!coverageMatches(
+    population.coverage,
+    coverageStart(audit?.coverage),
+    coverageEnd(audit?.coverage)
+  )) {
     return { status: "action", message: "The population period does not match the exact audit period." };
   }
   if (population.status === "not-applicable") {
@@ -710,12 +716,15 @@ function populationResult(population, audit, byId) {
   ];
   const evidenceComplete = evidence
     && evidence.type === "evidence"
-    && evidence.evidenceKind === "population-export"
+    && evidence.artifactKind === "population-export"
     && evidence.status === "verified"
     && population.sourceSystemId
     && evidence.sourceSystemId === population.sourceSystemId
-    && evidence.periodStart === audit.periodStart
-    && evidence.periodEnd === audit.periodEnd
+    && coverageMatches(
+      evidence.coverage,
+      coverageStart(audit.coverage),
+      coverageEnd(audit.coverage)
+    )
     && requiredEvidence.every((field) => evidence[field] !== undefined && evidence[field] !== null && evidence[field] !== "");
   const reconciliationComplete = (population.reconciledByIds || []).length
     && population.reconciledOn
@@ -724,14 +733,14 @@ function populationResult(population, audit, byId) {
   const generatedOn = timestampDate(evidence?.generatedAt, evidence?.timezone);
   const sequenceComplete = Number.isInteger(evidence?.populationCount)
     && evidence.populationCount >= 0
-    && generatedOn > audit.periodEnd
+    && generatedOn > coverageEnd(audit.coverage)
     && population.reconciledOn >= generatedOn;
   if (!evidenceComplete || !reconciliationComplete || !sequenceComplete) {
     return { status: "action", message: "Finish the reconciliation and link a verified population export with its exact query, timezone, count, completeness check, and accuracy check." };
   }
   return {
     status: "complete",
-    message: `${evidence.populationCount} items reconciled from ${evidence.source || "the authoritative source"}${population.conclusion === "complete-with-exceptions" ? " with documented exceptions" : ""}.`
+    message: `${evidence.populationCount} items reconciled from ${evidence.sourceDescription || "the authoritative source"}${population.conclusion === "complete-with-exceptions" ? " with documented exceptions" : ""}.`
   };
 }
 
@@ -790,31 +799,30 @@ function applicableManagementDocuments(audit, readiness) {
 }
 
 function evidenceOverlaps(record, start, end) {
-  return (record.periodStart && record.periodEnd && record.periodStart <= end && record.periodEnd >= start)
+  return coverageOverlaps(record.coverage, start, end)
     || (record.collectedOn && record.collectedOn >= start && record.collectedOn <= end);
 }
 
 function evidenceRelevantToAuditDate(record, audit) {
   if (!audit) return false;
   if (audit.auditKind === "soc-2-type-1") {
-    const date = audit.typeOneAsOf;
+    const date = coverageStart(audit.coverage);
     return Boolean(date) && (
-      (record.periodStart && record.periodEnd && record.periodStart <= date && record.periodEnd >= date)
+      coverageContains(record.coverage, date)
       || record.collectedOn === date
     );
   }
-  return Boolean(audit.periodStart && audit.periodEnd)
-    && evidenceOverlaps(record, audit.periodStart, audit.periodEnd);
+  const start = coverageStart(audit.coverage);
+  const end = coverageEnd(audit.coverage);
+  return Boolean(start && end) && evidenceOverlaps(record, start, end);
 }
 
 function recordRelevantToAuditDate(record, audit, model) {
   if (!audit) return false;
-  const start = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodStart;
-  const end = audit.auditKind === "soc-2-type-1" ? audit.typeOneAsOf : audit.periodEnd;
+  const start = coverageStart(audit.coverage);
+  const end = coverageEnd(audit.coverage);
   if (!start || !end) return false;
-  if (record.periodStart && record.periodEnd && record.periodStart <= end && record.periodEnd >= start) {
-    return true;
-  }
+  if (coverageOverlaps(record.coverage, start, end)) return true;
   const definition = model.resources[record.type];
   const fields = { ...model.commonFields, ...(definition?.fields || {}) };
   return Object.entries(fields).some(([name, field]) => {
@@ -870,9 +878,7 @@ function managementDocumentContentIssues(source, definition, audit) {
   ));
   if (missingHeadings.length) return [`Add the missing description sections: ${missingHeadings.join(", ")}.`];
   if (definition.dateBinding === "engagement" && audit) {
-    const dates = audit.auditKind === "soc-2-type-1"
-      ? [audit.typeOneAsOf]
-      : [audit.periodStart, audit.periodEnd];
+    const dates = [coverageStart(audit.coverage), coverageEnd(audit.coverage)];
     if (dates.some((date) => date && !source.includes(date))) {
       return ["Name the exact engagement date or period in the document."];
     }
@@ -921,16 +927,16 @@ function materializeManagementMarkdown(source, audit, records) {
     .map(displayValue))]
     .join(", ");
   const period = audit.auditKind === "soc-2-type-1"
-    ? audit.typeOneAsOf || "[as-of date]"
-    : audit.periodStart && audit.periodEnd
-      ? `${audit.periodStart} through ${audit.periodEnd}`
+    ? coverageStart(audit.coverage) || "[as-of date]"
+    : coverageStart(audit.coverage) && coverageEnd(audit.coverage)
+      ? coverageLabel(audit.coverage)
       : "[start date] through [end date]";
   return withoutDiscarded
     .replaceAll(`<!-- ${keep}:start -->`, "")
     .replaceAll(`<!-- ${keep}:end -->`, "")
-    .replaceAll("[as-of date]", audit.typeOneAsOf || "[as-of date]")
-    .replaceAll("[start date]", audit.periodStart || "[start date]")
-    .replaceAll("[end date]", audit.periodEnd || "[end date]")
+    .replaceAll("[as-of date]", coverageStart(audit.coverage) || "[as-of date]")
+    .replaceAll("[start date]", coverageStart(audit.coverage) || "[start date]")
+    .replaceAll("[end date]", coverageEnd(audit.coverage) || "[end date]")
     .replaceAll("[engagement date or period]", period)
     .replaceAll("[engagement scope]", audit.scope || "[engagement scope]")
     .replaceAll("[in-scope systems]", systems || "[in-scope systems]")
@@ -951,8 +957,7 @@ function auditSummary(audit) {
     title: audit.title,
     status: audit.status,
     kind: audit.auditKind,
-    periodStart: audit.periodStart || null,
-    periodEnd: audit.periodEnd || null
+    coverage: audit.coverage || null
   };
 }
 

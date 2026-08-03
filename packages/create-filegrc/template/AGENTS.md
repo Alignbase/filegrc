@@ -56,7 +56,7 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 
 Git supplies file authors, commit timestamps, messages, diffs, and revisions. Do not add fields such as `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, or a second change log.
 
-Domain events still need explicit dates. Keep values such as `occurredOn`, `approvedOn`, `reviewedOn`, `completedOn`, and audit-period dates in their records.
+Domain events still need explicit dates. Keep values such as `occurredOn`, `scheduledFor`, `approvedOn`, `completedOn`, and audit-period dates in their records.
 
 Use a dedicated private repository for your FileGRC workspace. The browser commits and pushes each saved program change, so a standalone repository keeps the compliance audit trail separate from application development history.
 
@@ -73,7 +73,7 @@ The Repository page reports `Synced`, `Syncing`, `Not synced`, `Read-only checko
 
 Record lifecycle fields are the approval source. Draft, proposed, approved, and retired records may all live on the authoritative branch. Do not use Git branches to represent policy approval.
 
-Existing workspaces without `repositoryMode` remain in manual mode. In manual mode, review the workspace diff and use the Repository controls or Git CLI. Agents and terminal users always own their Git synchronization and should pull, commit, and push directly. FileGRC does not replace repository authentication, authorization, branch protection, or review controls.
+Manual mode requires an explicit `repositoryMode` in `data/renderer.json`. In manual mode, review the workspace diff and use the Repository controls or Git CLI. Agents and terminal users always own their Git synchronization and should pull, commit, and push directly. FileGRC does not replace repository authentication, authorization, branch protection, or review controls.
 
 Use `npx filegrc serve --allow-non-authoritative-writes` only for local development in a task worktree. The override is visible in the UI and never commits or pushes.
 
@@ -82,6 +82,14 @@ Do not rewrite or remove committed records that explain prior audit periods. Clo
 ## Data model
 
 `data/workspace.json` selects the model through `dataModelVersion`. The installed `filegrc` package owns the authoritative model. Do not copy or invent a local schema.
+
+If the installed CLI reports that this workspace uses an unsupported model, start with:
+
+```sh
+npx filegrc migrate --to-model 2 --preview --json
+```
+
+Resolve every missing value, conflict, and manual action in the preview before applying the migration with the same options and `--yes`.
 
 Run these commands when working with records:
 
@@ -108,7 +116,7 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 ## Renderer settings and onboarding
 
-`data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`, `authoritativeBranch` to `main`, and `repositoryRemote` to `origin`. In trunk mode, completing or skipping onboarding commits the related change and starts its background push. Existing settings without `repositoryMode` keep manual behavior.
+`data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`, `authoritativeBranch` to `main`, and `repositoryRemote` to `origin`. In trunk mode, completing or skipping onboarding commits the related change and starts its background push.
 
 Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates one `system` record and stores that selected system and the management goal on `workspace`. It does not select framework records, link controls to the service, or create evidence. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies.
 
@@ -130,7 +138,7 @@ Work Queue includes recurring obligations, Policy Event tasks, and every other o
 A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Use **Record work** in Work Queue, or create and link a completion atomically with:
 
 ```sh
-npx filegrc complete obligation-id completion-record.json
+npx filegrc complete obligation-id completion-record.json --expected-revision REVISION
 ```
 
 Keep prior completion links because the planner matches each dated record to its own period.
@@ -147,11 +155,11 @@ Run `npx filegrc obligations` first to preview every task, owner, deadline, and 
 Complete an event action and link its new proof in one validated write:
 
 ```sh
-npx filegrc complete-action action-item-id completion-record.json --completed-on 2026-07-25
-npx filegrc complete-event obligation-event-id --completed-on 2026-07-25
+npx filegrc complete-action action-item-id completion-record.json --completed-on 2026-07-25 --expected-revision REVISION
+npx filegrc complete-event obligation-event-id --completed-on 2026-07-25 --expected-revision REVISION
 ```
 
-filegrc rejects a completion resource whose type does not match the obligation. It will close the event only after every action has its requested proof.
+Read `REVISION` from `npx filegrc get RESOURCE_ID --mutation`. filegrc rejects a completion resource whose type does not match the obligation. It will close the event only after every action has its requested proof.
 
 ## Headless Markdown
 
@@ -177,7 +185,7 @@ The Evidence Ready gate requires:
 
 1. A management goal, selected systems, criteria, and controls.
 2. Active policies with completed text, separate management approval, real approval and effective dates, and linked controls.
-3. Implemented Controls with an owner, actual procedure, scope, cadence, mappings, implementation date, and every eligible linked Work Queue schedule running.
+3. Implemented Controls with an owner, actual procedure, scope, operation pattern, mappings, implementation date, and every required linked Work Queue schedule running.
 4. Every selected Control mapped to active authoritative Systems with the required evidence source roles, current access owners, and repeatable extraction instructions in Record Markdown.
 
 Onboarding does not create External Evidence records. Complete authoritative source Systems as part of Control implementation. For every incomplete family in Program Readiness, update the Control with its authoritative evidence source Systems, then give each source the required evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. Use `npx filegrc evidence-map --json` when you want only those source checks. During Step 4, create External Evidence only when a real artifact exists. Select its source System, attach or reference the result, link the Controls and operating record it supports, record its collector and classification, then have another person verify it before audit use.

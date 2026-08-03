@@ -47,7 +47,8 @@ The project does not replace operational security systems. Organizations still n
     │   ├── bin/
     │   ├── model/
     │   │   ├── index.js
-    │   │   └── v1.json
+    │   │   ├── v1.json
+    │   │   └── v2.json
     │   ├── src/
     │   └── test/
     └── create-filegrc/
@@ -107,7 +108,7 @@ Verification: validate
 
 FileGRC recommends one dedicated private repository per organization. Browser editing creates frequent focused commits for records, onboarding, approvals, evidence, recurring work, and renderer settings. A standalone repository keeps that compliance history separate from application development commits. Monorepos remain supported, and the scaffolder never creates a nested repository inside an existing worktree or relocates an existing workspace.
 
-New renderer settings use trunk mode with `main` as the authoritative branch and `origin` as the remote. Existing workspaces without `repositoryMode` keep manual behavior. Record lifecycle fields represent draft, proposed, approved, and retired states; Git branches do not represent approval.
+New renderer settings use trunk mode with `main` as the authoritative branch and `origin` as the remote. Model v2 requires every renderer setting to choose trunk or manual mode explicitly. Record lifecycle fields represent draft, proposed, approved, and retired states; Git branches do not represent approval. Approved Policies and governed Documents bind their approval to the SHA-256 revision of each companion Markdown file. Editing bound content requires moving the record back through review and recording a new approval.
 
 Each trunk-mode browser mutation runs under one server-side serialization lock. It checks Git availability, the authoritative checkout, the configured remote and upstream, repository operations, the whole worktree, and ahead commits. It fetches the remote, fast-forwards only, reloads the target, applies optimistic revisions, calls the existing domain mutation, validates, stages only the FileGRC workspace, commits a generated message, and pushes. Onboarding uses the same transaction for its system, workspace, and renderer writes.
 
@@ -119,7 +120,7 @@ Detached and non-authoritative checkouts are read-only. `filegrc serve --allow-n
 
 A generated workspace must be operable by an agent that knows Git and JSON but has no filegrc context. The root `AGENTS.md` explains the program and Git behavior. `data/AGENTS.md` defines the universal record workflow. Collection-level instruction files add compact rules for areas where a wrong action could weaken an audit, lose evidence, or expose data.
 
-`filegrc program-path --next --json` is the compact headless entry point for the renderer’s lifecycle. It reports the current step and first action. `--summary` reports compact status across all five steps, `--current` reports the full current-step guide, and the unfiltered command reports every step with exact page Instructions, Use, Policy Basis, commands, and next actions. `filegrc guide --json` is the compact action and type index. A type-specific guide repeats the matching page guidance and adds current relationship candidates, cadence, storage location, and Markdown slots. The shared definitions in `src/program-path.js` keep renderer and headless instruction text in sync. `filegrc scaffold` produces an incomplete `{ record, content }` mutation with a generated ID and explicit missing values. Scaffolds remain in a non-final lifecycle state and must not contain fabricated compliance facts.
+`filegrc program-path --next --json` is the compact headless entry point for the renderer’s lifecycle. It reports the current step and first action. `--summary` reports compact status across all five steps, `--current` reports the full current-step guide, and the unfiltered command reports every step with exact page Instructions, Use, Policy Basis, commands, and next actions. `filegrc guide --json` is the compact action and type index. A type-specific guide repeats the matching page guidance and adds current relationship candidates, timing guidance, storage location, and Markdown slots. The shared definitions in `src/program-path.js` keep renderer and headless instruction text in sync. `filegrc scaffold` produces an incomplete `{ record, content }` mutation with a generated ID and explicit missing values. Scaffolds remain in a non-final lifecycle state and must not contain fabricated compliance facts.
 
 `filegrc get <id> --mutation` exports the complete record, existing Markdown, and their revisions. `filegrc update` consumes that shape and rejects a stale JSON or Markdown revision. Create and update therefore use the same payload and domain functions as the HTTP and browser paths.
 
@@ -131,6 +132,7 @@ The `filegrc` package is the only source of truth for the data model:
 
 ```text
 packages/filegrc/model/v1.json
+packages/filegrc/model/v2.json
 ```
 
 The registry defines:
@@ -146,15 +148,15 @@ The registry defines:
 
 The registry structures only values needed for validation, filters, relationships, lifecycle rules, due-date calculations, and audit-period completeness. Variable procedures, questionnaires, interviews, per-item analysis, and provider-specific result tables remain Record Markdown in implicit companion files. The model's `recordContent` settings decide which result-bearing resources show this body by default. A source form is evidence for a workflow, not a schema to copy field for field.
 
-The engine loads the registry directly. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
+The engine loads the complete active registry directly. Each published model registry is standalone and frozen after a later model ships, so the active model never inherits behavior from an older registry. Validation, CRUD forms, relationship pickers, list columns, filters, search indexing, CLI descriptions, and generated reference documentation all use the same definitions.
 
-Each relationship has one stored authority. Inbound references and reverse lists are derived by scanning the current records. Teams store their membership and chairs, Control Tests store their Audit, External Evidence stores applicable Audits, Commitments store their Systems and Controls, Controls store governing Policies and Requirements, Risks store treating Controls, and Systems store their direct Vendor. Role-specific links such as an Audit’s final report Evidence, a System’s subservice Vendors, and a Team’s charter Document remain on the record that gives the link its meaning. Model v1 still accepts the former reverse fields as legacy compatibility inputs, but guides and product calculations do not treat them as authoritative.
+Each relationship has one stored authority. Inbound references and reverse lists are derived by scanning the current records. Teams store their membership and chairs, Control Tests store their Audit, External Evidence stores applicable Audits, Commitments store their Systems and Controls, Controls store governing Policies and Requirements, Risks store treating Controls, and Systems store their direct Vendor. Role-specific links such as an Audit’s final report Evidence, a System’s subservice Vendors, and a Team’s charter Document remain on the record that gives the link its meaning.
 
 `packages/filegrc/model/index.js` loads the registry and exposes a stable Node.js API.
 
-Generated repositories contain only their records and a `dataModelVersion` in `data/workspace.json`. They do not receive copied schema files.
+Generated repositories contain only their records and one required `dataModelVersion` in `data/workspace.json`. Individual records do not repeat a schema version. Unknown top-level record fields are errors; organization-specific values belong under `extensions`. Generated repositories do not receive copied schema files.
 
-`docs/data-model.md` is generated from v1. `npm run validate` fails when the generated document differs from the registry.
+`docs/data-model.md` is generated from the active model v2. `npm run validate` fails when the generated document differs from the registry. `docs/upgrading-to-model-v2.md` documents the atomic v1 migration.
 
 The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
 
@@ -196,7 +198,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - A planned control catalog mapped to the Common Criteria and starter policies
 - A security and risk oversight team chaired by a reviewer who is separate from the policy owner. The reviewer may be internal or external.
 - A Person with their actual organization job title and a separate dated Policy Owner Appointment scoped to the program.
-- Recurring obligations derived from the fixed review, scan, test, training, and meeting cadences in the starter policies
+- Recurring and event Obligations that are the sole authority for review, scan, test, training, and meeting schedules
 - Event obligations for workforce starts, role changes, departures, personal devices, vendor access and reassessment, material system or data-use changes, and incidents
 - General and role-based training, including conditional secure-development, privileged-role, and anti-bribery modules
 - A governed data retention schedule plus annual and material-change review work
@@ -206,7 +208,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 
 The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and an optional management goal, then stores them on the workspace. It does not create an audit engagement, appoint the independent management reviewer, add optional trust categories, or claim that the initial scope is complete.
 
-Every starter control is `planned`. A user must confirm the owner, system scope, actual procedure, cadence, evidence source, implementation date, mappings, and any linked Work Queue schedules before marking it implemented. A policy statement alone does not prove that a control operates.
+Every starter control is `planned`. A user must confirm the owner, system scope, actual procedure, operation pattern, evidence source, implementation date, mappings, and every required Work Queue schedule before marking it implemented. A policy statement alone does not prove that a control operates.
 
 ## Storage
 
@@ -270,7 +272,7 @@ Generated or cached data never belongs in these directories.
 
 An `obligation` is a reusable policy rule. It remains a proposal until every governing policy is active and effective and, when it names controls, at least one linked control is implemented. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
 
-Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. filegrc rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. filegrc applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
+Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. The model-owned activity registry limits each activity’s recurrence modes and scope resource types. The Policy Event registry limits subject resource types and their cardinality, such as exactly one Person for a departure or exactly one Vendor for reassessment. filegrc rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. filegrc applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
 
 `planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. Calendar completion uses one validated mutation to create the dated operating record and append it to the obligation's `completionResourceIds`; the obligation board, API, and `filegrc complete` use that same transaction. The planner does not write derived occurrence records for calendar schedules.
 
@@ -301,6 +303,8 @@ Program Readiness answers whether management can begin a candidate Type 2 period
 4. Operate the program.
 
 The Evidence Ready gate requires an assurance goal, selected systems, criteria, controls, effective policies, and implemented controls with complete authoritative evidence sources. Every selected control family must point to active authoritative Systems with the required evidence roles, current evidence access owners, and repeatable retrieval instructions in Record Markdown. These checks are part of Control implementation in `assessProgramReadiness`. The Step 3 browser overview shows the same source-family results beside the Control pages, and `filegrc evidence-map` remains a focused headless diagnostic. Neither creates Evidence. A filegrc-managed control cannot be implemented while a linked non-retired Work Queue schedule is paused or waiting for policy approval. Starter schedules remain enabled but do not run until their governing policies are effective and at least one linked control is implemented. Marking a fully configured control implemented starts its eligible schedules in the same validated state change. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
+
+Scheduled operating records use `scheduledFor` separately from their actual completion date or timestamp. Completed reviews, assessments, scans, tests, and exercises must name the model-defined actors, result, evidence, review, and coverage fields. Validation rejects missing completion proof, terminal-only fields on unfinished work, and completion or review dates in the wrong order. Each Vendor Review covers one Vendor so its decision, evidence, coverage, and follow-up remain unambiguous.
 
 The renderer adds Audit as the fifth and final lifecycle stage. That stage covers the CPA firm, formal period, filegrc Evidence, External Evidence, fieldwork, evidence packet, and report. Criteria remain part of scope because management must decide what applies before adopting policies.
 
@@ -333,7 +337,7 @@ Each `audit-population` records management’s reconciliation state for one comp
 
 People who do not have repository access may acknowledge policies, training, or tasks with a signed PDF or image. The corresponding attestation records the signer, signing date, acknowledgement statement, exact content revisions, and evidence file. Repository collaborators may use a reviewed Git commit as an attestation when the workflow permits it.
 
-Training material is canonical Markdown. A reusable `training` record defines its audience and assignment cadence. One `attestation` per assigned person records completion, the exact training revision, and any signed evidence.
+Training material is canonical Markdown. A reusable `training` record defines its audience and assignment trigger. An Obligation defines recurring or event-driven assignments. One `attestation` per assigned person records completion, the exact training revision, and any signed evidence.
 
 ## Rendering
 
@@ -398,9 +402,9 @@ Audit pages also show:
 
 ## Versioning contract
 
-filegrc currently has one published data model, v1. Compatible additions can update that model with its starter data, generated docs, and tests. A change that would make an existing v1 workspace invalid needs a new model version and an explicit migration path.
+Model v1 is published and frozen. Model v2 is the active model. Compatible additions can update the active model with its starter data, generated docs, and tests. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
 
-Package versions stay unchanged during normal development and move together when both published packages change. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
+Package versions stay unchanged during normal development and move together when both published packages change. Before 1.0, a release with any breaking published change increments the minor version. A release containing only backward-compatible published changes increments the patch version. A migration path helps users adopt a breaking data-model release, but the release still receives a minor version increment. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 
 ## Delivery state
 

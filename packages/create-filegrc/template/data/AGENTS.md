@@ -25,20 +25,12 @@ Use `program-path --next --json` to find the current lifecycle step and first ac
 - A dated instance of work belongs in its activity type, such as `meeting`, `risk-assessment`, `access-review`, `vulnerability-scan`, `backup-test`, or `exercise`.
 - A fact that may change over time belongs in an inventory record, such as `person`, `system`, `asset`, `vendor`, or `access-grant`.
 - A Person’s `jobTitle` is their actual position in the organization. A named authority they hold, such as CISO, DPO, Policy Owner, or team chair, belongs in a dated `appointment` scoped to the workspace, team, or governed records.
-- Team membership and chairs are authoritative on `team.memberIds` and `team.chairIds`. Do not add the legacy `person.teamIds` field.
+- Team membership and chairs are authoritative on `team.memberIds` and `team.chairIds`.
 - A dated Step 4 operating record proves that filegrc-managed work occurred. Put each fixed external artifact in an `evidence` record and link it from the operating record; never add an unexplained attachment.
 - Follow-up work belongs in `action-item`. A gap belongs in `finding`, a known threat belongs in `risk`, and an approved temporary departure belongs in `exception`.
 - An auditor request belongs in `audit-request`; the engagement itself belongs in `audit`.
 
 When more than one type seems plausible, run `guide` for each and choose the one whose purpose matches the requested action. Do not create a new type or field.
-
-Existing workspaces with a Person whose exact legacy `role` is `Policy Owner` can preview the model-driven conversion:
-
-```sh
-npx filegrc migrate-roles --preview --job-title "ACTUAL JOB TITLE" --starts-on YYYY-MM-DD --json
-```
-
-Review the complete plan, then rerun it with `--yes`. The command creates the dated Appointment, updates accountable owner references atomically, removes the legacy role, and preserves direct Person references for membership and work actually performed.
 
 ## Create
 
@@ -53,7 +45,6 @@ The scaffold is a mutation envelope:
 ```json
 {
   "record": {
-    "schemaVersion": 1,
     "id": "resource-type-human-name",
     "type": "resource-type",
     "title": "Human name"
@@ -103,9 +94,9 @@ JSON is for stable metadata used by validation, relationships, filters, schedule
 
 If `guide` marks a Markdown slot recommended, fill it before treating the deliverable as complete. Keep observations and report details in the source record’s Markdown. Create a Finding only for a confirmed gap that needs its own remediation lifecycle. Create an Action Item only when follow-up needs a separate assignee, deadline, and completion proof. Set each child record’s `sourceResourceId` to the record that produced it; do not maintain reverse Finding or Action Item arrays on the source. Do not put a report’s entire variable structure into new JSON fields.
 
-Store a relationship only on its authoritative record. Control Tests store `auditId`; External Evidence stores `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds` and `requirementIds`; Risks store `controlIds`; Systems store their direct `vendorId`. Use `references` to inspect derived inbound links. Do not add the legacy reverse fields reported by `guide`.
+Store a relationship only on its authoritative record. Control Tests store `auditId`; External Evidence stores `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds` and `requirementIds`; Risks store `controlIds`; Systems store their direct `vendorId`. Use `references` to inspect derived inbound links.
 
-Use explicit business dates. Git records when a file changed, but it does not replace `occurredOn`, `assessmentDate`, `reviewedOn`, `completedOn`, or similar fields.
+Use explicit business dates. Git records when a file changed, but it does not replace `occurredOn`, `scheduledFor`, `completedOn`, `approvedOn`, or similar fields.
 
 ## Status changes
 
@@ -130,7 +121,7 @@ npx filegrc references RESOURCE_ID --json
 Delete only an uncommitted draft or a mistake:
 
 ```sh
-npx filegrc delete RESOURCE_TYPE RESOURCE_ID --yes
+npx filegrc delete RESOURCE_TYPE RESOURCE_ID --yes --expected-revision REVISION
 ```
 
 filegrc rejects deletion that breaks references and removes owned Markdown with the JSON. Retire, close, cancel, supersede, or replace committed records that explain historical operation.
@@ -149,7 +140,7 @@ The JSON uses `filePaths: ["evidence/evidence-example/source-export.csv"]`. Comm
 Use the attachment command to copy a fixed file and update `filePaths` in one validated action:
 
 ```sh
-npx filegrc attach EVIDENCE_ID /path/to/source-export.csv
+npx filegrc attach EVIDENCE_ID /path/to/source-export.csv --expected-revision REVISION
 ```
 
 It refuses symlinks, hidden destination names, and existing destination files.
@@ -157,7 +148,7 @@ It refuses symlinks, hidden destination names, and existing destination files.
 Remove a local attachment explicitly before deleting its evidence record:
 
 ```sh
-npx filegrc detach EVIDENCE_ID source-export.csv --yes
+npx filegrc detach EVIDENCE_ID source-export.csv --yes --expected-revision REVISION
 ```
 
 filegrc will not delete an evidence record that still has local attachments.
@@ -178,7 +169,7 @@ The Control stage reports both Control implementation items and evidence-family 
 2. Set the System to `active`, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
 3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the System’s Record Markdown.
 4. Add the System ID to `evidenceSourceIds` on every Control in the family that it supports.
-5. Finish the Control’s owner, procedure, scope, cadence, mappings, and implementation date.
+5. Finish the Control’s owner, procedure, scope, operation pattern, mappings, and implementation date. Put every calendar or event schedule in an Obligation.
 6. Run `program-readiness --json` again and resolve every failed Control or source check before marking the Controls implemented or starting the candidate period.
 
 Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. `evidence-map --json` remains available when you want only the evidence-family checks. Do not create an Evidence record while designing or implementing a Control. Create External Evidence during Step 4 only when the real export, report, screenshot, signed file, or approved external reference exists.
@@ -187,13 +178,13 @@ Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change togeth
 
 ```sh
 npx filegrc obligations --json
-npx filegrc complete OBLIGATION_ID completion-mutation.json
+npx filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION
 npx filegrc trigger EVENT_TYPE --occurred-on YYYY-MM-DD --subject RESOURCE_ID --json
-npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD
-npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD
+npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --expected-revision REVISION
+npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION
 ```
 
-Run `obligations` before `trigger` to preview every Policy Event task, owner, deadline, and requested proof. Triggering creates the event and adds all linked Action Items to the Work Queue atomically. `complete` and `complete-action` validate the expected completion type and link the new record atomically. `complete-event` refuses to close the workflow until every action has its requested proof. For hour-based deadlines use `--occurred-at` with an RFC 3339 timestamp and timezone.
+Read `REVISION` from `npx filegrc get RESOURCE_ID --mutation`. Run `obligations` before `trigger` to preview every Policy Event task, owner, deadline, and requested proof. Triggering creates the event and adds all linked Action Items to the Work Queue atomically. `complete` and `complete-action` validate the expected completion type and link the new record atomically. `complete-event` refuses to close the workflow until every action has its requested proof. For hour-based deadlines use `--occurred-at` with an RFC 3339 timestamp and timezone.
 
 ## Audit work
 

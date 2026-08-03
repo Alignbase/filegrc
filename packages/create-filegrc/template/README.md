@@ -19,6 +19,8 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
+Existing model v1 workspaces must run `npx filegrc migrate --to-model 2 --preview --json` after installing a model v2 package. Resolve every reported item before applying the same migration with `--yes`.
+
 ## How it works
 
 The repository is the program. There is no separate application database.
@@ -31,7 +33,7 @@ Use the same source through the local web app, a text editor, the CLI, or CI. Br
 
 New workspaces use `main` as the authoritative browser branch. Browser saves fetch and fast-forward from `origin`, validate the change, and create a focused local commit. The UI then unlocks for navigation while Git push continues in the background. Other writes remain locked until the Repository status confirms `Synced`; a failed push keeps the local commit and offers Retry sync. Draft, proposed, approved, and retired records all live on that branch because record status, not a Git branch, represents approval.
 
-Detached and feature-branch checkouts are read-only in the browser by default. Developers can run `npx filegrc serve --allow-non-authoritative-writes` for local task-worktree edits; that override never commits or pushes. Existing workspaces without `repositoryMode` keep manual browser Git behavior. CLI and agent workflows continue to manage Git explicitly.
+Detached and feature-branch checkouts are read-only in the browser by default. Developers can run `npx filegrc serve --allow-non-authoritative-writes` for local task-worktree edits; that override never commits or pushes. CLI and agent workflows continue to manage Git explicitly.
 
 ## One path from setup to audit
 
@@ -39,7 +41,7 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 
 1. **Define scope.** Confirm people, dated appointments, teams, criteria, commitments, vendors, and in-scope systems. For Systems that produce evidence, add their source roles, access owners, and retrieval instructions.
 2. **Approve policies.** Tailor the proposals and record separate owners and reviewers.
-3. **Implement controls.** Add the real procedure, scope, cadence, and authoritative evidence Systems. Confirm every source is active and has the required role, access owners, and repeatable retrieval instructions before marking the Control implemented.
+3. **Implement controls.** Add the real procedure, scope, operation pattern, and authoritative evidence Systems. Put calendar and event schedules in Obligations. Confirm every source is active and has the required role, access owners, and repeatable retrieval instructions before marking the Control implemented.
 4. **Operate the program.** Work the queue, trigger Policy Events, maintain risks, and preserve dated evidence.
 5. **Audit.** Record the CPA engagement and agreed period, support fieldwork, and build the packet.
 

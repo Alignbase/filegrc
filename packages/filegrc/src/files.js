@@ -391,6 +391,7 @@ async function createResourceUnlocked(input, record, options) {
     if (error.code !== "ENOENT") throw error;
   }
   const contentWrites = await prepareContentWrites(loaded, record, options.content, { exclusive: true });
+  const nextRecord = await prepareApprovalBinding(loaded, record, contentWrites);
   const written = [];
   let recordWritten = false;
   try {
@@ -398,7 +399,7 @@ async function createResourceUnlocked(input, record, options) {
       await writeTextAtomic(item.path, item.source, { exclusive: true });
       written.push(item);
     }
-    await writeAtomic(path, record, { exclusive: true });
+    await writeAtomic(path, nextRecord, { exclusive: true });
     recordWritten = true;
     if (!deferValidation) {
       const result = await validateWorkspace(loaded.root);
@@ -410,7 +411,7 @@ async function createResourceUnlocked(input, record, options) {
     for (const item of written) await rm(item.path, { force: true });
     throw error;
   }
-  return { record, path };
+  return { record: nextRecord, path };
 }
 
 export async function updateResource(input, type, id, record, options = {}) {
@@ -428,11 +429,14 @@ async function updateResourceUnlocked(input, type, id, record, options) {
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The record");
   const contentWrites = await prepareContentWrites(loaded, record, options.content, {
-    expectedRevisions: options.expectedContentRevisions
+    expectedRevisions: options.expectedContentRevisions,
+    requireExpectedRevisions: options.requireExpectedContentRevisions
   });
+  const existing = loaded.entries.find(({ record: candidate }) => candidate.id === id)?.record;
+  const nextRecord = await prepareApprovalBinding(loaded, record, contentWrites, existing);
   try {
     for (const item of contentWrites) await writeTextAtomic(item.path, item.source);
-    await writeAtomic(path, record);
+    await writeAtomic(path, nextRecord);
     if (!deferValidation) {
       const result = await validateWorkspace(loaded.root);
       const introduced = newErrors(result, before);
@@ -446,7 +450,7 @@ async function updateResourceUnlocked(input, type, id, record, options) {
     }
     throw error;
   }
-  return { record, path };
+  return { record: nextRecord, path };
 }
 
 export async function updateContent(input, dataRelativePath, source, options = {}) {
@@ -467,8 +471,18 @@ async function updateContentUnlocked(input, dataRelativePath, source, options) {
   const path = resolveDataPath(loaded.root, dataRelativePath);
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The Markdown file");
-  await writeTextAtomic(path, source.endsWith("\n") ? source : `${source}\n`);
-  return { path, dataRelativePath };
+  const before = await validateWorkspace(loaded);
+  const nextSource = source.endsWith("\n") ? source : `${source}\n`;
+  await writeTextAtomic(path, nextSource);
+  try {
+    const result = await validateWorkspace(loaded.root);
+    const introduced = newErrors(result, before);
+    if (introduced.length) throw new Error(formatWriteFailure(introduced, dataRelativePath));
+    return { path, dataRelativePath };
+  } catch (error) {
+    await writeTextAtomic(path, previous);
+    throw error;
+  }
 }
 
 export async function deleteResource(input, type, id, options = {}) {
@@ -562,7 +576,9 @@ async function writeTextAtomicUnmeasured(path, source, options = {}) {
 
 function newErrors(after, before) {
   const existing = new Set(before.diagnostics.filter(({ severity }) => severity === "error").map(diagnosticKey));
-  return after.diagnostics.filter(({ severity }) => severity === "error").filter((item) => !existing.has(diagnosticKey(item)));
+  return after.diagnostics
+    .filter(({ severity }) => severity === "error")
+    .filter((item) => item.code === "unsupported-model" || !existing.has(diagnosticKey(item)));
 }
 
 function diagnosticKey(item) {
@@ -598,6 +614,12 @@ async function prepareContentWrites(loaded, record, content, options = {}) {
     try {
       previous = await readFile(path, "utf8");
       if (options.exclusive) throw new Error(`Content already exists at data/${dataRelativePath}.`);
+      if (
+        options.requireExpectedRevisions
+        && !Object.hasOwn(options.expectedRevisions ?? {}, dataRelativePath)
+      ) {
+        throw new Error(`A content revision is required for existing content at data/${dataRelativePath}.`);
+      }
       assertRevision(previous, options.expectedRevisions?.[dataRelativePath], `Content at data/${dataRelativePath}`);
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
@@ -615,6 +637,78 @@ function assertRevision(source, expected, label) {
 
 export function contentRevision(source) {
   return createHash("sha256").update(source).digest("hex");
+}
+
+async function prepareApprovalBinding(loaded, record, contentWrites, previousRecord = null) {
+  if (record.type === "attestation") {
+    return prepareAttestationBinding(loaded, record, previousRecord);
+  }
+  if (!["policy", "document"].includes(record.type)) return record;
+  const nextRecord = structuredClone(record);
+  if (!approvalBound(record)) {
+    delete nextRecord.approvedContentRevisions;
+    return nextRecord;
+  }
+  if (approvalBound(previousRecord) && previousRecord.approvedContentRevisions) {
+    nextRecord.approvedContentRevisions = structuredClone(previousRecord.approvedContentRevisions);
+    return nextRecord;
+  }
+  const proposed = new Map(contentWrites.map((item) => [item.dataRelativePath, item.source]));
+  const revisions = {};
+  for (const item of markdownEntries(loaded.model, nextRecord)) {
+    let source = proposed.get(item.path);
+    if (source === undefined) {
+      try {
+        source = await readFile(resolveDataPath(loaded.root, item.path), "utf8");
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+    }
+    revisions[item.path] = contentRevision(source);
+  }
+  nextRecord.approvedContentRevisions = revisions;
+  return nextRecord;
+}
+
+async function prepareAttestationBinding(loaded, record, previousRecord = null) {
+  const nextRecord = structuredClone(record);
+  const bound = record.status === "completed" && record.attestationMethod === "git-approval";
+  if (!bound) {
+    delete nextRecord.contentRevisions;
+    return nextRecord;
+  }
+  if (
+    previousRecord?.status === "completed"
+    && previousRecord.attestationMethod === "git-approval"
+    && previousRecord.contentRevisions
+  ) {
+    nextRecord.contentRevisions = structuredClone(previousRecord.contentRevisions);
+    return nextRecord;
+  }
+  const revisions = {};
+  for (const id of record.subjectResourceIds || []) {
+    const subject = loaded.resources.find((candidate) => candidate.id === id);
+    if (!subject) continue;
+    for (const item of markdownEntries(loaded.model, subject)) {
+      try {
+        const source = await readFile(resolveDataPath(loaded.root, item.path), "utf8");
+        revisions[item.path] = contentRevision(source);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+  }
+  nextRecord.contentRevisions = revisions;
+  return nextRecord;
+}
+
+function approvalBound(record) {
+  if (!record || !["policy", "document"].includes(record.type)) return false;
+  const statuses = record.type === "policy"
+    ? ["approved", "active", "superseded", "retired"]
+    : ["active", "superseded", "retired"];
+  return statuses.includes(record.status);
 }
 
 async function exclusiveContentFiles(loaded, record) {

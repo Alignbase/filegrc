@@ -14,6 +14,8 @@ import {
   updateResource
 } from "./files.js";
 import { generateModelDocumentation } from "./model-docs.js";
+import { migrateModel, planModelMigration } from "./model-migration.js";
+import { normalizeResourceMutation } from "./mutation.js";
 import {
   completeObligationAction,
   completeObligationEvent,
@@ -22,10 +24,10 @@ import {
   planObligations
 } from "./obligations.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
-import { buildAgentProgramPath, policyEventName } from "./program-path.js";
+import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
-import { migrateLegacyRoles, planRoleMigration } from "./role-migration.js";
+import { effectiveResourceStatus } from "./resource-status.js";
 import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
 import { planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
@@ -89,7 +91,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ...(flags.boundary !== undefined ? { boundary: flags.boundary } : {}),
       ...(flags.owner !== undefined ? { ownerId: flags.owner } : {}),
       ...(flags.criticality !== undefined ? { criticality: flags.criticality } : {}),
-      ...(flags.classification !== undefined ? { dataClassification: flags.classification } : {}),
+      ...(flags.classification !== undefined ? { classificationId: flags.classification } : {}),
       ...(flags["internet-exposed"] !== undefined ? { internetExposed: flags["internet-exposed"] } : {}),
       ...(flags["program-goal"] !== undefined ? { programGoal: flags["program-goal"] } : {}),
       ...(flags.draft ? { draft: true } : {})
@@ -144,35 +146,32 @@ export async function runCli(argv = process.argv.slice(2)) {
     else console.log(source);
     return;
   }
-  if (command === "migrate-roles") {
+  if (command === "migrate") {
+    const targetModel = String(flags["to-model"] || "");
+    if (targetModel !== "2") throw new Error("Pass --to-model 2.");
     const options = {
       jobTitle: flags["job-title"],
       startsOn: flags["starts-on"]
     };
-    const plan = await planRoleMigration(root, options);
-    if (!flags.preview && plan.candidates.length && !flags.yes) {
-      throw new Error("Review migrate-roles --preview, then pass --yes to apply the migration.");
+    const plan = await planModelMigration(root, options);
+    if (!flags.preview && plan.sourceModelVersion !== plan.targetModelVersion && !flags.yes) {
+      throw new Error("Review migrate --to-model 2 --preview --json, then pass --yes to apply the migration.");
     }
     const result = flags.preview
       ? plan
-      : plan.candidates.length
-        ? await migrateLegacyRoles(root, options)
+      : plan.sourceModelVersion !== plan.targetModelVersion
+        ? await migrateModel(root, options)
         : { ...plan, applied: false };
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else if (!result.candidates.length) {
-      console.log("No exact legacy Policy Owner person roles were found.");
-      if (result.review.length) console.log(`${result.review.length} other Person role value${result.review.length === 1 ? " needs" : "s need"} manual review.`);
-    }
-    else if (flags.preview) {
-      console.log(`Role migration preview: ${result.candidates.length} person record${result.candidates.length === 1 ? "" : "s"}, ${result.changes.create.length} Appointment${result.changes.create.length === 1 ? "" : "s"}, ${result.changes.update.length} record update${result.changes.update.length === 1 ? "" : "s"}.`);
-      if (result.missing.length) {
-        console.log(`Required before apply: ${result.missing.map(({ personId, field }) => `${personId}.${field}`).join(", ")}.`);
-      }
-      if (result.review.length) {
-        console.log(`${result.review.length} other Person role value${result.review.length === 1 ? " needs" : "s need"} manual review.`);
-      }
+    else if (result.sourceModelVersion === result.targetModelVersion) {
+      console.log(`Workspace already uses model v${result.targetModelVersion}.`);
+    } else if (flags.preview) {
+      console.log(`Model migration preview: create ${result.summary.create}; update ${result.summary.update}.`);
+      console.log(result.ready
+        ? "Ready to apply. Rerun with --yes."
+        : `Needs review: ${result.missing.length} missing values, ${result.conflicts.length} conflicts, ${result.manualActions.length} manual actions.`);
     } else {
-      console.log(`Migrated ${result.candidates.length} legacy Policy Owner person role${result.candidates.length === 1 ? "" : "s"} into dated Appointments.`);
+      console.log(`Migrated workspace from model v${result.sourceModelVersion} to v${result.targetModelVersion}.`);
     }
     return result;
   }
@@ -227,11 +226,18 @@ export async function runCli(argv = process.argv.slice(2)) {
     const loaded = await loadWorkspace(root);
     const type = positionals[0];
     if (type && !loaded.model.resources[type]) throw new Error(`Unknown resource type "${type}".`);
+    const asOf = currentCalendarDate(loaded.workspace.timezone);
     const records = loaded.resources
       .filter((record) => !type || record.type === type)
-      .sort((left, right) => `${left.type}:${left.title}:${left.id}`.localeCompare(`${right.type}:${right.title}:${right.id}`));
+      .sort((left, right) => `${left.type}:${left.title}:${left.id}`.localeCompare(`${right.type}:${right.title}:${right.id}`))
+      .map((record) => {
+        const effectiveStatus = effectiveResourceStatus(record, asOf);
+        return effectiveStatus && effectiveStatus !== record.status
+          ? { ...record, effectiveStatus }
+          : record;
+      });
     if (flags.json) console.log(JSON.stringify(records, null, 2));
-    else for (const record of records) console.log(`${record.id}\t${record.type}\t${record.status ?? ""}\t${record.title}`);
+    else for (const record of records) console.log(`${record.id}\t${record.type}\t${record.effectiveStatus ?? record.status ?? ""}\t${record.title}`);
     return records;
   }
   if (command === "search") {
@@ -249,7 +255,8 @@ export async function runCli(argv = process.argv.slice(2)) {
       from: flags.from,
       through: flags.through,
       now: flags.now,
-      includeComplete: Boolean(flags.complete)
+      includeComplete: Boolean(flags.complete),
+      model: loaded.model
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
@@ -268,7 +275,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       if (result.triggers.length) {
         console.log("\nPolicy Events:");
         for (const trigger of result.triggers) {
-          console.log(`${trigger.programStatus.toUpperCase()}\t${policyEventName(trigger.eventType)} (${trigger.eventType})\t${trigger.steps.length} Work Queue ${trigger.steps.length === 1 ? "task" : "tasks"}`);
+          console.log(`${trigger.programStatus.toUpperCase()}\t${trigger.title} (${trigger.eventType})\t${trigger.steps.length} Work Queue ${trigger.steps.length === 1 ? "task" : "tasks"}`);
           for (const step of trigger.steps) {
             const owners = step.ownerIds.length ? step.ownerIds.join(",") : "unassigned";
             const proof = step.completionResourceTypes.length ? step.completionResourceTypes.join("|") : "not specified";
@@ -294,7 +301,14 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     else {
       console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} program items complete`);
-      console.log(`${result.target.label}${result.target.candidatePeriodStart ? `, candidate period starts ${result.target.candidatePeriodStart}` : ""}`);
+      console.log(
+        `${result.target.label}`
+        + (result.target.candidateCoverage?.kind === "range"
+          ? `, candidate period starts ${result.target.candidateCoverage.startsOn}`
+          : result.target.candidateCoverage?.kind === "as-of"
+            ? `, candidate as-of date ${result.target.candidateCoverage.on}`
+            : "")
+      );
       for (const stage of result.stages) {
         console.log(`\n${stage.title}`);
         for (const item of stage.items) console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
@@ -363,7 +377,10 @@ export async function runCli(argv = process.argv.slice(2)) {
     else {
       console.log(`Work added to the Work Queue: ${result.actions.length} ${result.actions.length === 1 ? "task" : "tasks"} created for ${result.event.title}.`);
       console.log(`Event: obligation-event/${result.event.id}`);
-      for (const action of result.actions) console.log(`Task: action-item/${action.id}\t${action.title}\t${action.dueWindowEndAt || action.dueWindowEnd || action.overdueAt || action.overdueOn}`);
+      for (const action of result.actions) {
+        const deadline = action.completionWindow?.dueAt || action.completionWindow?.dueOn;
+        console.log(`Task: action-item/${action.id}\t${action.title}\t${deadline}`);
+      }
     }
     return result;
   }
@@ -444,7 +461,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       obligationId,
       record: mutation.record,
       content: mutation.content,
-      expectedRevision: flags["expected-revision"]
+      expectedRevision: requireExpectedRevision(flags, `obligation/${obligationId}`)
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.type}/${result.created.id} and linked it to obligation/${obligationId}`);
@@ -458,7 +475,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       completedOn: flags["completed-on"],
       record: mutation.record,
       content: mutation.content,
-      expectedRevision: flags["expected-revision"]
+      expectedRevision: requireExpectedRevision(flags, `action-item/${actionItemId}`)
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.type}/${result.created.id}, linked it to action-item/${actionItemId}, and marked the action done.`);
@@ -470,7 +487,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const result = await completeObligationEvent(root, {
       eventId,
       completedOn: flags["completed-on"],
-      expectedRevision: flags["expected-revision"]
+      expectedRevision: requireExpectedRevision(flags, `obligation-event/${eventId}`)
     });
     if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
     else console.log(`Marked obligation-event/${eventId} complete.`);
@@ -478,11 +495,12 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "update") {
     const [type, id, file] = positionals;
-    const mutation = await readMutation(file);
+    const mutation = await readMutation(file, { requireRevision: true });
     const result = await updateResource(root, type, id, mutation.record, {
       content: mutation.content,
       expectedRevision: mutation.revision,
-      expectedContentRevisions: mutation.contentRevisions
+      expectedContentRevisions: mutation.contentRevisions,
+      requireExpectedContentRevisions: true
     });
     if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
     else console.log(`Updated ${result.record.type}/${result.record.id}`);
@@ -533,7 +551,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (!evidenceId || !sourcePath) throw new Error("An evidence ID and source file are required.");
     const result = await addEvidenceAttachment(root, evidenceId, sourcePath, {
       name: flags.name,
-      expectedRevision: flags["expected-revision"]
+      expectedRevision: requireExpectedRevision(flags, `evidence/${evidenceId}`)
     });
     const output = {
       evidenceId,
@@ -549,7 +567,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (!evidenceId || !attachment) throw new Error("An evidence ID and attachment name are required.");
     if (!flags.yes) throw new Error("Pass --yes to confirm attachment removal.");
     const result = await removeEvidenceAttachment(root, evidenceId, attachment, {
-      expectedRevision: flags["expected-revision"]
+      expectedRevision: requireExpectedRevision(flags, `evidence/${evidenceId}`)
     });
     const output = {
       evidenceId,
@@ -563,7 +581,9 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "delete") {
     const [type, id] = positionals;
     if (!flags.yes) throw new Error("Pass --yes to confirm deletion. Preserve historical records unless this is a mistake or uncommitted draft.");
-    await deleteResource(root, type, id, { expectedRevision: flags["expected-revision"] });
+    await deleteResource(root, type, id, {
+      expectedRevision: requireExpectedRevision(flags, `${type}/${id}`)
+    });
     console.log(`Deleted ${type}/${id}`);
     return;
   }
@@ -591,37 +611,18 @@ function parseArgs(args) {
   return { positionals, flags };
 }
 
-async function readMutation(path) {
+async function readMutation(path, options = {}) {
   if (!path) throw new Error("A JSON file path or - is required.");
   const source = path === "-" ? await readStdin() : await readFile(resolve(path), "utf8");
-  const parsed = JSON.parse(source);
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error("A resource record or { record, content } mutation object is required.");
+  return normalizeResourceMutation(JSON.parse(source), options);
+}
+
+function requireExpectedRevision(flags, target) {
+  const revision = flags["expected-revision"];
+  if (typeof revision !== "string" || revision.length === 0) {
+    throw new Error(`--expected-revision is required when changing ${target}. Reload the resource and try again.`);
   }
-  if (!Object.hasOwn(parsed, "record")) {
-    return { record: parsed, content: undefined, revision: undefined, contentRevisions: undefined };
-  }
-  if (!parsed.record || Array.isArray(parsed.record) || typeof parsed.record !== "object") {
-    throw new Error("Mutation record must be a JSON object.");
-  }
-  if (parsed.content !== undefined && (Array.isArray(parsed.content) || typeof parsed.content !== "object" || parsed.content === null)) {
-    throw new Error("Mutation content must be an object keyed by Markdown slot.");
-  }
-  if (parsed.revision !== undefined && typeof parsed.revision !== "string") {
-    throw new Error("Mutation revision must be a string.");
-  }
-  if (
-    parsed.contentRevisions !== undefined
-    && (Array.isArray(parsed.contentRevisions) || typeof parsed.contentRevisions !== "object" || parsed.contentRevisions === null)
-  ) {
-    throw new Error("Mutation contentRevisions must be an object keyed by data-relative Markdown path.");
-  }
-  return {
-    record: parsed.record,
-    content: parsed.content,
-    revision: parsed.revision,
-    contentRevisions: parsed.contentRevisions
-  };
+  return revision;
 }
 
 async function readSetupPayload(path) {
@@ -667,11 +668,11 @@ async function completeInteractiveSetup(root, payload) {
       activePeople[0].id
     );
     result.criticality ||= await askChoice("Criticality", ["low", "medium", "high", "critical"], "high");
-    result.dataClassification ||= classifications.length
+    result.classificationId ||= classifications.length
       ? await askChoice(
         "Data classification",
         classifications,
-        classifications.includes("Confidential") ? "Confidential" : classifications[0]
+        classifications.includes("confidential") ? "confidential" : classifications[0]
       )
       : await askRequired("Data classification");
     if (result.internetExposed === undefined) {
@@ -714,7 +715,7 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
-  filegrc migrate-roles [--preview] --job-title text --starts-on YYYY-MM-DD [--yes] [--json]
+  filegrc migrate --to-model 2 [--preview] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--json]
@@ -731,15 +732,15 @@ Usage:
   filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
   filegrc get [resource-type] <id> [--mutation]
   filegrc references <id> [--json]
-  filegrc create <record-or-mutation.json|-> [--json]
-  filegrc complete <obligation-id> <completion-record.json|-> [--expected-revision hash] [--json]
-  filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
-  filegrc complete-event <obligation-event-id> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
-  filegrc update <resource-type> <id> <record-or-mutation.json|-> [--json]
+  filegrc create <mutation.json|-> [--json]
+  filegrc complete <obligation-id> <completion-record.json|-> --expected-revision hash [--json]
+  filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD --expected-revision hash [--json]
+  filegrc complete-event <obligation-event-id> --completed-on YYYY-MM-DD --expected-revision hash [--json]
+  filegrc update <resource-type> <id> <mutation.json|-> [--json]
   filegrc content <resource-type> <id> [slot] [--write markdown-file|-] [--expected-revision hash] [--json]
-  filegrc attach <evidence-id> <source-file> [--name file-name] [--expected-revision hash] [--json]
-  filegrc detach <evidence-id> <attachment-name> --yes [--expected-revision hash] [--json]
-  filegrc delete <resource-type> <id> --yes [--expected-revision hash]
+  filegrc attach <evidence-id> <source-file> --expected-revision hash [--name file-name] [--json]
+  filegrc detach <evidence-id> <attachment-name> --yes --expected-revision hash [--json]
+  filegrc delete <resource-type> <id> --yes --expected-revision hash
 
 All commands accept --root <workspace>. Writes never create Git commits.`);
 }
@@ -776,7 +777,7 @@ Options:
   --boundary <description>    boundary
   --owner <person-id>         ownerId
   --criticality <level>       low, medium, high, or critical
-  --classification <name>     dataClassification
+  --classification <id>       classificationId
   --internet-exposed <bool>   true or false
   --program-goal <goal>       none, readiness, type-1, or type-2
   --draft                     Save the service boundary as planned
@@ -787,24 +788,28 @@ Options:
   --help                      Show this help`);
     return;
   }
-  if (command === "migrate-roles") {
+  if (command === "migrate") {
     console.log(`Usage:
-  filegrc migrate-roles [options]
+  filegrc migrate --to-model 2 [options]
 
-Convert the exact legacy Person role "Policy Owner" into a dated Policy Owner
-Appointment. The migration removes the legacy role, records the actual
-organizational job title, and changes accountable owner references to the
-Appointment. Team membership and fields that record an actual actor stay linked
-to the Person.
+Upgrade a model v1 workspace to model v2. The migration moves reverse
+relationships to their authoritative records, converts the former Policy Owner
+seed role into a dated Appointment, makes repository behavior explicit, rewrites
+the moved program-page ID, removes obsolete collection-test fields and per-record
+schemaVersion keys, and changes dataModelVersion last. It writes no Git commit.
 
 Options:
-  --preview             Show the complete record plan without writing
-  --job-title <title>   Actual organization job title for the legacy seed person
-  --starts-on <date>    Effective date of the Policy Owner Appointment
+  --to-model <version>  Required target model; currently 2
+  --preview             Show the complete atomic record plan without writing
+  --job-title <title>   Actual job title for the former Policy Owner seed person
+  --starts-on <date>    Effective date of a new Policy Owner Appointment
   --yes                 Apply the reviewed migration
   --json                Print the plan or result as JSON
   --root <path>         Workspace path
-  --help                Show this help`);
+  --help                Show this help
+
+Start with:
+  npx filegrc migrate --to-model 2 --preview --json`);
     return;
   }
   if (command === "program-readiness") {
@@ -870,7 +875,7 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
-    migrateRoles: "filegrc migrate-roles --preview --json",
+    migrate: "filegrc migrate --to-model 2 --preview --json",
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",
@@ -887,11 +892,11 @@ function agentOverview(model) {
     evidencePacket: "filegrc evidence-packet --audit <audit-id> --preview --json",
     get: "filegrc get <resource-id> [--mutation]",
     references: "filegrc references <resource-id> --json",
-    create: "filegrc create <record-or-mutation.json>",
+    create: "filegrc create <mutation.json>",
     complete: "filegrc complete <obligation-id> <completion-mutation.json>",
     completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
     completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",
-    update: "filegrc update <resource-type> <id> <record-or-mutation.json>",
+    update: "filegrc update <resource-type> <id> <mutation.json>",
     content: "filegrc content <resource-type> <id> [slot] [--write <markdown-file|->]",
     attach: "filegrc attach <evidence-id> <source-file> [--name <file-name>]",
     detach: "filegrc detach <evidence-id> <attachment-name> --yes",
@@ -938,10 +943,6 @@ function printAgentGuide(result) {
   if (result.optionalFields.length) {
     console.log("\nOptional fields:");
     for (const field of result.optionalFields) console.log(formatGuideField(field));
-  }
-  if (result.legacyFields.length) {
-    console.log("\nLegacy compatibility fields (do not add or update):");
-    for (const field of result.legacyFields) console.log(formatGuideField(field));
   }
   if (result.markdown.length) {
     console.log("\nMarkdown:");
@@ -1198,21 +1199,17 @@ function summarizeProgramReadiness(result) {
 }
 
 function eventWindowText(window) {
-  if (Number.isInteger(window?.endOffsetHours)) {
-    return window.endOffsetHours === 0 ? "due at event time" : `due within ${window.endOffsetHours} hours`;
-  }
-  if (Number.isInteger(window?.endOffsetDays)) {
-    return window.endOffsetDays === 0 ? "due on event date" : `due within ${window.endOffsetDays} days`;
-  }
-  return "due within 30 days";
+  if (!Number.isInteger(window?.dueAfter)) return "deadline not configured";
+  const unit = window.precision === "timestamp" ? "hour" : "day";
+  if (window.dueAfter === 0) return window.precision === "timestamp" ? "due at event time" : "due on event date";
+  return `due within ${window.dueAfter} ${unit}${window.dueAfter === 1 ? "" : "s"}`;
 }
 
 function formatGuideField(field) {
   const details = [
     field.values?.length ? `one of ${field.values.join("|")}` : field.type,
     field.requiredWhen ? `required when ${JSON.stringify(field.requiredWhen)}` : null,
-    field.disjointFrom ? `must not overlap ${field.disjointFrom}` : null,
-    field.authoritativeFields?.length ? `use ${field.authoritativeFields.join("|")}` : null
+    field.disjointFrom ? `must not overlap ${field.disjointFrom}` : null
   ].filter(Boolean).join("; ");
   return `${field.name}\t${details}`;
 }

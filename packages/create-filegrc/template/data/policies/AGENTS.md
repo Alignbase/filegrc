@@ -4,7 +4,7 @@ Policies state required behavior. Controls, obligations, training, attestations,
 
 Use the `content` Markdown slot for the policy text. Keep ownership and approval metadata in JSON. The approver must be separate from the owner, including through team membership. The reviewer will usually be another leader or manager in the organization, but may be external.
 
-Keep a policy `draft` until its text, owner, scope, related requirements and controls, approval, effective date, review cadence, and acknowledgement requirement match actual practice. When activating it:
+Keep a policy `draft` until its text, owner, scope, related requirements and controls, approval, effective date, review Obligation, and acknowledgement requirement match actual practice. When activating it:
 
 1. Record the real approver and approval date.
 2. Set the effective date.

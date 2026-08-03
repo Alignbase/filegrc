@@ -1,18 +1,16 @@
 {
-  "schemaVersion": 1,
   "id": "training-security-awareness",
   "type": "training",
   "title": "Security Awareness and Incident Response Training",
   "status": "draft",
-  "ownerIds": ["appointment-policy-owner"],
-  "audience": ["employees", "contractors"],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
+  "audience": [
+    "employees",
+    "contractors"
+  ],
   "assignmentTrigger": "onboarding",
-  "recurrence": {
-    "mode": "calendar",
-    "unit": "year",
-    "interval": 1,
-    "anchorDate": "{{effective_date}}"
-  },
   "completionWindowDays": 30,
   "policyIds": [
     "policy-clear-desk-screen",

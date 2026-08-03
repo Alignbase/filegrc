@@ -132,7 +132,7 @@ function parseArgs(argv) {
     else if (name === "boundary") setup.boundary = next();
     else if (name === "service-owner") setup.ownerId = next();
     else if (name === "criticality") setup.criticality = next();
-    else if (name === "classification") setup.dataClassification = next();
+    else if (name === "classification") setup.classificationId = next();
     else if (name === "internet-exposed") setup.internetExposed = booleanOption(next(), "internet-exposed");
     else if (name === "program-goal") setup.programGoal = next();
     else if (name === "setup-draft") setup.draft = true;

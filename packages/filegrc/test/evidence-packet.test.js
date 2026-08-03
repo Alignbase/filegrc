@@ -58,7 +58,6 @@ test("derives complementary controls from their related controls", async (contex
   await makeWorkspace(root);
   await createResources(root, [
     {
-      schemaVersion: 1,
       id: "framework-security",
       type: "framework",
       title: "Security criteria",
@@ -66,7 +65,6 @@ test("derives complementary controls from their related controls", async (contex
       version: "1"
     },
     {
-      schemaVersion: 1,
       id: "requirement-security",
       type: "requirement",
       title: "Security requirement",
@@ -75,17 +73,14 @@ test("derives complementary controls from their related controls", async (contex
       applicability: "applicable"
     },
     {
-      schemaVersion: 1,
       id: "system-service",
       type: "system",
       title: "Customer service",
       status: "active",
       criticality: "high",
       ownerIds: ["person-owner"],
-      inScope: true
     },
     {
-      schemaVersion: 1,
       id: "control-customer-access",
       type: "control",
       title: "Customer access administration",
@@ -95,10 +90,9 @@ test("derives complementary controls from their related controls", async (contex
       requirementIds: ["requirement-security"],
       activity: "Restrict customer administration.",
       operationMode: "automated",
-      frequency: "Continuous"
+      operationPattern: "continuous"
     },
     {
-      schemaVersion: 1,
       id: "complementary-control-customer-admin",
       type: "complementary-control",
       title: "Customer administrator access",
@@ -124,7 +118,22 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
+    id: "evidence-risk-assessment-support",
+    type: "evidence",
+    title: "Risk assessment support",
+    status: "verified",
+    artifactKind: "business-record",
+    sourceKind: "authored-record",
+    sourceDescription: "Risk assessment inputs",
+    collectedOn: "2026-01-10",
+    collectorIds: ["person-owner"],
+    verifierIds: ["person-approver"],
+    verifiedOn: "2026-01-10",
+    classificationId: "internal"
+  }, {
+    content: { content: "# Risk assessment support\n\nInputs and review notes for the annual assessment." }
+  });
+  await createResource(root, {
     id: "policy-risk-governance",
     type: "policy",
     title: "Risk governance policy",
@@ -140,7 +149,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   });
   await createResources(root, [
     {
-      schemaVersion: 1,
       id: "framework-test-security",
       type: "framework",
       title: "Test security criteria",
@@ -148,7 +156,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       version: "1"
     },
     {
-      schemaVersion: 1,
       id: "requirement-test-security",
       type: "requirement",
       title: "Test security requirement",
@@ -157,7 +164,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       applicability: "applicable"
     },
     {
-      schemaVersion: 1,
       id: "requirement-test-description",
       type: "requirement",
       title: "Test description criterion",
@@ -167,21 +173,18 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       tags: ["description-criteria"]
     },
     {
-      schemaVersion: 1,
       id: "system-customer-service",
       type: "system",
       title: "Customer service",
       status: "active",
       criticality: "high",
       ownerIds: ["person-owner"],
-      inScope: true,
       description: "Production customer service boundary.",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       evidenceSourceKinds: ["risk-management"],
       evidenceOwnerIds: ["person-owner"]
     },
     {
-      schemaVersion: 1,
       id: "commitment-protect-service",
       type: "commitment",
       title: "Protect the customer service",
@@ -195,7 +198,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       effectiveOn: "2026-01-01"
     },
     {
-      schemaVersion: 1,
       id: "control-quarterly-risk-review",
       type: "control",
       title: "Quarterly risk review",
@@ -206,14 +208,13 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       code: "RSK-01",
       activity: "Review service risks, decisions, and follow-up work.",
       operationMode: "manual",
-      frequency: "Quarterly",
+      operationPattern: "scheduled",
       systemIds: ["system-customer-service"],
       evidenceSourceIds: ["system-customer-service"],
       policyIds: ["policy-risk-governance"],
       effectiveOn: "2026-01-01"
     },
     {
-      schemaVersion: 1,
       id: "risk-service-availability",
       type: "risk",
       title: "Service availability risk",
@@ -231,17 +232,18 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       controlIds: ["control-quarterly-risk-review"]
     },
     {
-      schemaVersion: 1,
       id: "risk-assessment-2026",
       type: "risk-assessment",
       title: "2026 risk assessment",
       status: "complete",
-      assessmentDate: "2026-01-10",
+      completedOn: "2026-01-10",
       assessmentKind: "system-risk",
       scope: "Customer service",
       assessorIds: ["person-owner"],
       reviewerIds: ["person-approver"],
       methodology: "Identify and assess risks to the scoped service using the approved risk method.",
+      summary: "The assessment confirmed the current risks and treatments for the customer service.",
+      evidenceIds: ["evidence-risk-assessment-support"],
       approvedOn: "2026-01-10",
       systemIds: ["system-customer-service"]
     }
@@ -256,10 +258,11 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     "# Quarterly risk review procedure\n\nThe program owner prepares the current risk register, open findings, exceptions, and prior action items. The owner records decisions and assigns follow-up work, then the independent reviewer checks the completed minutes and evidence.\n",
     "utf8"
   );
-  const programControl = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-quarterly-risk-review");
-  await updateResource(root, "control", programControl.id, {
-    ...programControl,
-    status: "implemented"
+  const assessmentEvidence = (await loadWorkspace(root)).resources.find(({ id }) => id === "evidence-risk-assessment-support");
+  await updateResource(root, "evidence", assessmentEvidence.id, {
+    ...assessmentEvidence,
+    controlIds: ["control-quarterly-risk-review"],
+    sourceResourceIds: ["risk-assessment-2026"]
   });
   const programWorkspace = (await loadWorkspace(root)).workspace;
   await updateResource(root, "workspace", programWorkspace.id, {
@@ -269,19 +272,18 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     requirementIds: ["requirement-test-security", "requirement-test-description"],
     controlIds: ["control-quarterly-risk-review"],
     systemIds: ["system-customer-service"],
-    candidatePeriodStart: "2026-01-01",
-    candidatePeriodEnd: "2026-03-31"
+    candidateCoverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-risk-review-export",
     type: "evidence",
     title: "Risk review evidence test capture",
     status: "verified",
-    evidenceKind: "configuration-export",
-    source: "Governance review register",
+    artifactKind: "configuration-export",
+    sourceKind: "system",
+    sourceDescription: "Governance review register",
     collectedOn: "2025-12-22",
-    classification: "Internal",
+    classificationId: "internal",
     sourceSystemId: "system-customer-service",
     controlIds: ["control-quarterly-risk-review"],
     collectorIds: ["person-owner"],
@@ -299,7 +301,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     ["document-management-representation", "Management representation letter", "soc2-management-representation"]
   ]) {
     await createResource(root, {
-      schemaVersion: 1,
       id,
       type: "document",
       title,
@@ -314,7 +315,15 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     });
   }
   await createResource(root, {
-    schemaVersion: 1,
+    id: "vendor-independent-cpa",
+    type: "vendor",
+    title: "Independent CPA firm",
+    status: "active",
+    category: "Professional services",
+    criticality: "medium",
+    ownerIds: ["person-owner"]
+  });
+  await createResource(root, {
     id: "audit-2026-type-2",
     type: "audit",
     title: "2026 SOC 2 Type 2",
@@ -323,9 +332,10 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     frameworkIds: ["framework-test-security"],
     scope: "Customer service",
     ownerIds: ["person-owner"],
-    auditor: { firm: "Independent CPA firm" },
-    periodStart: "2026-01-01",
-    periodEnd: "2026-03-31",
+    auditorVendorId: "vendor-independent-cpa",
+    fieldworkStart: "2026-04-01",
+    fieldworkEnd: "2026-05-15",
+    coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
     systemIds: ["system-customer-service"],
     requirementIds: ["requirement-test-security", "requirement-test-description"],
     controlIds: ["control-quarterly-risk-review"],
@@ -337,12 +347,11 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     managementRepresentationDocumentId: "document-management-representation"
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "obligation-quarterly-risk-meeting",
     type: "obligation",
     title: "Quarterly risk meeting",
     status: "active",
-    activityType: "meeting",
+    activityType: "remediation",
     recurrence: {
       mode: "calendar",
       unit: "month",
@@ -354,22 +363,26 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     controlIds: ["control-quarterly-risk-review"],
     startsOn: "2026-01-01"
   });
+  const programControl = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-quarterly-risk-review");
+  await updateResource(root, "control", programControl.id, {
+    ...programControl,
+    status: "implemented"
+  });
   await mkdir(join(root, "data", "evidence", "evidence-q1-risk-review"), { recursive: true });
   await writeFile(join(root, "data", "evidence", "evidence-q1-risk-review", "evidence.md"), "# Q1 risk review\n\nCompleted and reviewed.\n", "utf8");
   await mkdir(join(root, "data", "evidence", "evidence-signed-management-representation"), { recursive: true });
   await writeFile(join(root, "data", "evidence", "evidence-signed-management-representation", "signed-representation.pdf"), "Fixed test attachment\n", "utf8");
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-risk-review-population",
     type: "evidence",
     title: "Risk review population",
     status: "verified",
-    evidenceKind: "population-export",
-    source: "Governance meeting register",
+    artifactKind: "population-export",
+    sourceKind: "system",
+    sourceDescription: "Governance meeting register",
     collectedOn: "2026-03-31",
-    periodStart: "2026-01-01",
-    periodEnd: "2026-03-31",
-    classification: "Internal",
+    coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
+    classificationId: "internal",
     generatedAt: "2026-04-01T10:00:00Z",
     timezone: "UTC",
     queryDescription: "All quarterly risk meetings scheduled from 2026-01-01 through 2026-03-31 in UTC.",
@@ -385,15 +398,16 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     content: { content: "# Risk review population\n\nOne required quarterly review." }
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-signed-management-representation",
     type: "evidence",
     title: "Signed management representation",
     status: "verified",
-    evidenceKind: "signed-management-representation",
-    source: "Signed management representation letter",
+    artifactKind: "signed-record",
+    artifactSubtype: "signed-management-representation",
+    sourceKind: "file",
+    sourceDescription: "Signed management representation letter",
     collectedOn: "2026-04-01",
-    classification: "Confidential",
+    classificationId: "confidential",
     filePaths: ["evidence/evidence-signed-management-representation/signed-representation.pdf"],
     auditIds: ["audit-2026-type-2"],
     sourceResourceIds: ["document-management-representation"],
@@ -408,15 +422,13 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   });
   await createResources(root, [
     {
-      schemaVersion: 1,
       id: "audit-population-risk-review",
       type: "audit-population",
       title: "Quarterly risk review population",
       status: "reconciled",
       auditId: "audit-2026-type-2",
       populationKind: "risk-governance",
-      periodStart: "2026-01-01",
-      periodEnd: "2026-03-31",
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
       ownerIds: ["person-owner"],
       controlIds: ["control-quarterly-risk-review"],
       sourceSystemId: "system-customer-service",
@@ -427,22 +439,19 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       reconciliationSummary: "Reconciled the quarterly schedule to the meeting register."
     },
     ...loadModel().auditReadiness.populationTemplates.map((template) => ({
-      schemaVersion: 1,
       id: `audit-population-${template.kind}`,
       type: "audit-population",
       title: template.title,
       status: "not-applicable",
       auditId: "audit-2026-type-2",
       populationKind: template.kind,
-      periodStart: "2026-01-01",
-      periodEnd: "2026-03-31",
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
       ownerIds: ["person-owner"],
       notApplicableReason: "This focused test engagement does not exercise this population."
     }))
   ]);
   await createResources(root, [
     {
-      schemaVersion: 1,
       id: "action-item-q1-risk-review",
       type: "action-item",
       title: "Record Q1 risk review",
@@ -454,31 +463,30 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       evidenceIds: ["evidence-q1-risk-review"]
     },
     {
-      schemaVersion: 1,
       id: "evidence-q1-risk-review",
       type: "evidence",
       title: "Q1 risk review evidence",
       status: "verified",
-      evidenceKind: "rendered-record",
-      source: "Risk review action",
+      artifactKind: "rendered-page",
+      sourceKind: "rendered-page",
+      sourceDescription: "Risk review action",
       collectedOn: "2026-03-20",
-      classification: "Internal",
+      classificationId: "internal",
       collectorIds: ["person-owner"],
       verifierIds: ["person-approver"],
       verifiedOn: "2026-03-20",
       sourceResourceIds: ["action-item-q1-risk-review"],
       controlIds: ["control-quarterly-risk-review"],
+      sourceCommit: "0123456789abcdef0123456789abcdef01234567",
       capture: {
         route: "#/resource/meeting/q1-risk-review",
         filters: {},
-        periodStart: "2026-01-01",
-        periodEnd: "2026-03-31",
+        coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
         capturedAt: "2026-03-20T12:00:00Z",
         method: "browser-screenshot"
       }
     },
     {
-      schemaVersion: 1,
       id: "control-test-quarterly-risk-review",
       type: "control-test",
       title: "Q1 quarterly risk review test",
@@ -486,8 +494,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       controlId: "control-quarterly-risk-review",
       testKinds: ["operating-effectiveness"],
       performedBy: "management",
-      periodStart: "2026-01-01",
-      periodEnd: "2026-03-31",
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
       outcome: "passed",
       auditId: "audit-2026-type-2",
       testerIds: ["person-owner"],
@@ -501,7 +508,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       completedOn: "2026-04-01"
     },
     {
-      schemaVersion: 1,
       id: "finding-risk-review-documentation",
       type: "finding",
       title: "Risk review documentation follow-up",
@@ -516,7 +522,6 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       verifiedOn: "2026-04-01"
     },
     {
-      schemaVersion: 1,
       id: "action-item-risk-review-documentation",
       type: "action-item",
       title: "Clarify risk review approval",
@@ -707,6 +712,14 @@ test("never marks an unscoped packet with no evidence delivery-ready", async (co
   const root = await mkdtemp(join(tmpdir(), "filegrc-empty-evidence-packet-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
+  await createResource(root, {
+    id: "system-service",
+    type: "system",
+    title: "Service",
+    status: "active",
+    criticality: "high",
+    ownerIds: ["person-owner"]
+  });
   await git(root, ["init"]);
   await git(root, ["config", "user.name", "Test User"]);
   await git(root, ["config", "user.email", "test@example.test"]);
@@ -744,7 +757,6 @@ test("excludes dated records that are unrelated to the selected engagement", asy
   await makeWorkspace(root);
   await createResources(root, [
     {
-      schemaVersion: 1,
       id: "framework-scoped-security",
       type: "framework",
       title: "Scoped security criteria",
@@ -752,7 +764,6 @@ test("excludes dated records that are unrelated to the selected engagement", asy
       version: "1"
     },
     {
-      schemaVersion: 1,
       id: "audit-scoped",
       type: "audit",
       title: "Scoped Type 2 engagement",
@@ -761,20 +772,19 @@ test("excludes dated records that are unrelated to the selected engagement", asy
       frameworkIds: ["framework-scoped-security"],
       scope: "Selected service only",
       ownerIds: ["person-owner"],
-      periodStart: "2026-01-01",
-      periodEnd: "2026-03-31"
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" },
     }
   ]);
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-unrelated-payroll",
     type: "evidence",
     title: "Unrelated payroll record",
     status: "collected",
-    evidenceKind: "business-record",
-    source: "Unrelated business process",
+    artifactKind: "business-record",
+    sourceKind: "authored-record",
+    sourceDescription: "Unrelated business process",
     collectedOn: "2026-02-15",
-    classification: "Confidential",
+    classificationId: "confidential",
     collectorIds: ["person-owner"]
   }, {
     content: { content: "# Unrelated business record\n\nThis item has no audit, system, control, policy, or source-resource relationship." }
@@ -791,45 +801,63 @@ test("limits event workflow coverage to runs that intersect the audit period", a
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
+    id: "system-service",
+    type: "system",
+    title: "Service",
+    status: "active",
+    criticality: "high",
+    ownerIds: ["person-owner"]
+  });
+  await createResource(root, {
     id: "obligation-material-change-review",
     type: "obligation",
     title: "Review material change",
     status: "active",
     activityType: "change-review",
-    recurrence: { mode: "event", eventType: "material-change" },
-    window: { startOffsetDays: 0, endOffsetDays: 2 },
+    recurrence: { mode: "event", eventType: "system-material-change" },
+    window: { precision: "date",
+      startsAfter: 0, dueAfter: 2 },
     ownerIds: ["person-owner"]
   });
   const completedRun = await createObligationEvent(root, {
-    eventType: "material-change",
+    eventType: "system-material-change",
     occurredOn: "2026-01-01",
-    title: "Completed during period"
+    title: "Completed during period",
+    subjectResourceIds: ["system-service"]
   });
   await createObligationEvent(root, {
-    eventType: "material-change",
+    eventType: "system-material-change",
     occurredOn: "2025-12-01",
-    title: "Outside period"
+    title: "Outside period",
+    subjectResourceIds: ["system-service"]
   });
   const evidencedRun = await createObligationEvent(root, {
-    eventType: "material-change",
+    eventType: "system-material-change",
     occurredOn: "2025-12-15",
-    title: "Evidence during period"
+    title: "Evidence during period",
+    subjectResourceIds: ["system-service"]
   });
   const startedRun = await createObligationEvent(root, {
-    eventType: "material-change",
+    eventType: "system-material-change",
     occurredOn: "2026-02-10",
-    title: "Started during period"
+    title: "Started during period",
+    subjectResourceIds: ["system-service"]
   });
   const canceledRun = await createObligationEvent(root, {
-    eventType: "material-change",
+    eventType: "system-material-change",
     occurredOn: "2026-02-12",
-    title: "Canceled during period"
+    title: "Canceled during period",
+    subjectResourceIds: ["system-service"]
   });
   const canceledEvent = (await loadWorkspace(root)).resources.find(({ id }) => id === canceledRun.event.id);
   await updateResource(root, "obligation-event", canceledEvent.id, {
     ...canceledEvent,
-    status: "canceled"
+    status: "canceled",
+    cancellation: {
+      canceledByIds: ["person-owner"],
+      canceledOn: "2026-02-12",
+      reason: "The planned change did not proceed."
+    }
   });
   const completedAction = (await loadWorkspace(root)).resources.find(({ id }) => id === completedRun.actions[0].id);
   await updateResource(root, "action-item", completedAction.id, {
@@ -840,18 +868,23 @@ test("limits event workflow coverage to runs that intersect the audit period", a
   const canceledAction = (await loadWorkspace(root)).resources.find(({ id }) => id === startedRun.actions[0].id);
   await updateResource(root, "action-item", canceledAction.id, {
     ...canceledAction,
-    status: "canceled"
+    status: "canceled",
+    cancellation: {
+      canceledByIds: ["person-owner"],
+      canceledOn: "2026-02-12",
+      reason: "The source event was canceled."
+    }
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-material-change",
     type: "evidence",
     title: "Material change evidence",
     status: "verified",
-    evidenceKind: "system-export",
-    source: "Change system",
+    artifactKind: "system-export",
+    sourceKind: "external-reference",
+    sourceDescription: "Change system",
     collectedOn: "2026-02-05",
-    classification: "Internal",
+    classificationId: "internal",
     collectorIds: ["person-owner"],
     verifierIds: ["person-approver"],
     verifiedOn: "2026-02-05",

@@ -120,24 +120,33 @@ test("serves state and browser assets", async (context) => {
   assert.deepEqual([...new Uint8Array(await logoMarkResponse.arrayBuffer()).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 
   const person = {
-    schemaVersion: 1,
     id: "person-api-reviewer",
     type: "person",
+    affiliation: "internal",
     title: "API Reviewer",
-    status: "active"
+    status: "active",
+    affiliation: "internal"
   };
   const createResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(person)
+    body: JSON.stringify({ record: person })
   });
   assert.equal(createResponse.status, 201);
+  const createdPerson = await createResponse.json();
   const duplicateResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(person)
+    body: JSON.stringify({ record: person })
   });
   assert.equal(duplicateResponse.status, 409);
+  const rawRecordResponse = await fetch(`${result.url}/api/resources`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...person, id: "person-raw-record" })
+  });
+  assert.equal(rawRecordResponse.status, 400);
+  assert.match((await rawRecordResponse.json()).error, /mutation envelope/);
   const primitiveResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -147,17 +156,30 @@ test("serves state and browser assets", async (context) => {
   const invalidIdResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...person, id: "Invalid ID" })
+    body: JSON.stringify({ record: { ...person, id: "Invalid ID" } })
   });
   assert.equal(invalidIdResponse.status, 400);
-  person.role = "Reviewer";
+  person.department = "Security";
+  const missingRevisionResponse = await fetch(`${result.url}/api/resource/person/person-api-reviewer`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ record: person })
+  });
+  assert.equal(missingRevisionResponse.status, 400);
+  assert.match((await missingRevisionResponse.json()).error, /revision is required/);
+  const personEntry = createdPerson.state.resources.find(({ record }) => record.id === person.id);
   const updateResponse = await fetch(`${result.url}/api/resource/person/person-api-reviewer`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(person)
+    body: JSON.stringify({ record: person, revision: personEntry.revision })
   });
   assert.equal(updateResponse.status, 200);
-  const deleteResponse = await fetch(`${result.url}/api/resource/person/person-api-reviewer`, { method: "DELETE" });
+  const updatedPerson = await updateResponse.json();
+  const updatedPersonEntry = updatedPerson.state.resources.find(({ record }) => record.id === person.id);
+  const deleteResponse = await fetch(
+    `${result.url}/api/resource/person/person-api-reviewer?revision=${encodeURIComponent(updatedPersonEntry.revision)}`,
+    { method: "DELETE" }
+  );
   assert.equal(deleteResponse.status, 200);
 
   const contentPath = "policies/policy-api.md";
@@ -166,7 +188,6 @@ test("serves state and browser assets", async (context) => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       record: {
-        schemaVersion: 1,
         id: "policy-api",
         type: "policy",
         title: "API Policy",
@@ -178,17 +199,29 @@ test("serves state and browser assets", async (context) => {
     })
   });
   assert.equal(policyResponse.status, 201);
+  await policyResponse.json();
+  const policyEntry = await (
+    await fetch(`${result.url}/api/resource/policy/policy-api`)
+  ).json();
   const contentResponse = await fetch(`${result.url}/api/content`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path: contentPath, source: "# API Policy\n\nUpdated." })
+    body: JSON.stringify({
+      path: contentPath,
+      source: "# API Policy\n\nUpdated.",
+      revision: policyEntry.content.content.revision
+    })
   });
   assert.equal(contentResponse.status, 200);
   assert.match(await readFile(join(root, "data", contentPath), "utf8"), /Updated/);
   const missingContentResponse = await fetch(`${result.url}/api/content`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path: "policies/missing.md", source: "# Missing" })
+    body: JSON.stringify({
+      path: "policies/missing.md",
+      source: "# Missing",
+      revision: "0".repeat(64)
+    })
   });
   assert.equal(missingContentResponse.status, 404);
   const missingContentError = (await missingContentResponse.json()).error;
@@ -197,18 +230,18 @@ test("serves state and browser assets", async (context) => {
 
   const ownerEntry = state.resources.find(({ record }) => record.id === "person-owner");
   const ownerPath = join(root, ownerEntry.relativePath);
-  const externallyEditedOwner = { ...ownerEntry.record, role: "Externally edited" };
+  const externallyEditedOwner = { ...ownerEntry.record, department: "Externally edited" };
   await writeFile(ownerPath, `${JSON.stringify(externallyEditedOwner, null, 2)}\n`, "utf8");
   const staleResponse = await fetch(`${result.url}/api/resource/person/person-owner`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      record: { ...ownerEntry.record, role: "Stale browser edit" },
+      record: { ...ownerEntry.record, department: "Stale browser edit" },
       revision: ownerEntry.revision
     })
   });
   assert.equal(staleResponse.status, 409);
-  assert.equal(JSON.parse(await readFile(ownerPath, "utf8")).role, "Externally edited");
+  assert.equal(JSON.parse(await readFile(ownerPath, "utf8")).department, "Externally edited");
 
   const wrongSchemeResponse = await fetch(`${result.url}/api/resources`, {
     method: "POST",
@@ -216,7 +249,7 @@ test("serves state and browser assets", async (context) => {
       "content-type": "application/json",
       origin: result.url.replace("http:", "https:")
     },
-    body: JSON.stringify(person)
+    body: JSON.stringify({ record: person })
   });
   assert.equal(wrongSchemeResponse.status, 403);
 
@@ -238,7 +271,6 @@ test("persists onboarding resources without requiring Git", async (context) => {
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await writeJson(join(root, "data", "renderer.json"), {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",
@@ -255,7 +287,6 @@ test("persists onboarding resources without requiring Git", async (context) => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       record: {
-        schemaVersion: 1,
         id: "system-onboarding-service",
         type: "system",
         title: "Onboarding Service",
@@ -264,9 +295,8 @@ test("persists onboarding resources without requiring Git", async (context) => {
         ownerIds: ["person-owner"],
         description: "Production service boundary.",
         systemKind: "service",
-        dataClassification: "Confidential",
+        classificationId: "confidential",
         internetExposed: true,
-        inScope: true
       }
     })
   });
@@ -282,11 +312,15 @@ test("persists onboarding resources without requiring Git", async (context) => {
   });
   assert.equal(response.status, 200);
   const system = JSON.parse(await readFile(join(root, "data", "systems", "system-onboarding-service.json"), "utf8"));
-  assert.equal(system.inScope, true);
+  const workspace = JSON.parse(await readFile(join(root, "data", "workspace.json"), "utf8"));
+  assert.equal((workspace.systemIds || []).includes(system.id), false);
   const saved = JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8"));
   assert.equal(saved.showOnboarding, false);
   assert.deepEqual(saved.completedStagePageIds, ["scope:system"]);
-  const deleteResponse = await fetch(`${result.url}/api/resource/renderer-settings/renderer-settings`, { method: "DELETE" });
+  const deleteResponse = await fetch(
+    `${result.url}/api/resource/renderer-settings/renderer-settings?revision=${encodeURIComponent(entry.revision)}`,
+    { method: "DELETE" }
+  );
   assert.equal(deleteResponse.status, 400);
   assert.match((await deleteResponse.json()).error, /Singleton records cannot be deleted/);
 });
@@ -297,12 +331,11 @@ test("records and links obligation work through the writable API", async (contex
   await makeWorkspace(root);
   await mkdir(join(root, "data", "obligations"), { recursive: true });
   await writeJson(join(root, "data", "obligations", "obligation-review.json"), {
-    schemaVersion: 1,
     id: "obligation-review",
     type: "obligation",
     title: "Quarterly review",
     status: "active",
-    activityType: "review",
+    activityType: "inventory-review",
     recurrence: { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-01" },
     ownerIds: ["person-owner"]
   });
@@ -317,15 +350,16 @@ test("records and links obligation work through the writable API", async (contex
       obligationId: obligation.record.id,
       revision: obligation.revision,
       record: {
-        schemaVersion: 1,
         id: "evidence-review",
         type: "evidence",
         title: "Quarterly review evidence",
         status: "collected",
-        evidenceKind: "review",
-        source: "Internal review",
+        artifactKind: "business-record",
+        artifactSubtype: "review",
+        sourceKind: "authored-record",
+        sourceDescription: "Internal review",
         collectedOn: "2026-01-20",
-        classification: "Internal",
+        classificationId: "internal",
         collectorIds: ["person-owner"]
       },
       content: { content: "# Quarterly review evidence" }
@@ -569,13 +603,13 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /\.\.\.\(definition\.formFields \|\| \[\]\)/);
   assert.match(APP_SCRIPT, /Linked from /);
   assert.match(APP_SCRIPT, /Linked by /);
-  assert.match(APP_SCRIPT, /if \(!definition\.relation \|\| definition\.legacy\) return/);
+  assert.doesNotMatch(APP_SCRIPT, /definition\.legacy/);
   assert.match(APP_SCRIPT, /const relatedPeopleOnly = entry\.record\.type === "person"/);
   assert.match(APP_SCRIPT, /relatedPeopleOnly && connectedEntry\.record\.type !== "person"/);
   assert.match(APP_SCRIPT, /relatedPeopleOnly \? "Related people" : "Connections"/);
   assert.match(APP_SCRIPT, /Appointments and teams/);
   assert.match(APP_SCRIPT, /Assigned records/);
-  assert.match(APP_SCRIPT, /Legacy fields need migration/);
+  assert.doesNotMatch(APP_SCRIPT, /Legacy fields need migration/);
   assert.match(APP_SCRIPT, /field === "sourceReference"/);
   assert.match(APP_SCRIPT, /function safeExternalUrl\(value\)/);
   assert.match(APP_SCRIPT, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
@@ -602,7 +636,7 @@ test("proper-cases enum displays and uses native required validation", () => {
   assert.match(APP_SCRIPT, /if \(definition\?\.type === "enum"\) return esc\(properCase\(value\)\)/);
   assert.match(APP_SCRIPT, /status-' \+ esc\(String\(value\)\) \+ '">' \+ esc\(properCase\(value\)\)/);
   assert.match(APP_SCRIPT, /status-' \+ status \+ '">' \+ esc\(properCase\(status\)\)/);
-  assert.match(APP_SCRIPT, /esc\(properCase\(item\.status\)\) \+ ' · ' \+ esc\(properCase\(item\.evidenceKind\)\)/);
+  assert.match(APP_SCRIPT, /esc\(properCase\(item\.status\)\) \+ ' · ' \+ esc\(properCase\(item\.artifactKind\)\)/);
   assert.match(APP_SCRIPT, /esc\(properCase\(item\.severity\)\)/);
   assert.match(APP_SCRIPT, /<option value="">Not Set<\/option>/);
   assert.match(APP_SCRIPT, /labelledControl = labelledControl\.replace\([\s\S]*"<\$1 required"/);
@@ -757,7 +791,7 @@ test("handles evidence-source readiness during Control implementation and create
 
 test("renders five navigable stage pages with instructions, links, and honest progress", () => {
   const cardSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function stagePageCard"), APP_SCRIPT.indexOf("function stageProgress"));
-  const summarySource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("const STAGE_PAGE_SUMMARIES"), APP_SCRIPT.indexOf("const STAGE_PAGE_ID_ALIASES"));
+  const summarySource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("const STAGE_PAGE_SUMMARIES"), APP_SCRIPT.indexOf("const OBLIGATION_COMPLETION_TYPES"));
   assert.match(APP_SCRIPT, /parts\.length === 2 && parts\[0\] === "stage"/);
   assert.doesNotMatch(APP_SCRIPT, /parts\.length === 3 && parts\[0\] === "stage"/);
   assert.match(APP_SCRIPT, /function renderStageOverview\(main, stageId, params = new URLSearchParams\(\)\)/);
@@ -942,7 +976,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /history\.replaceState\(null, "", draft \? "#\/" : "#\/stage\/scope"\)/);
   assert.match(APP_SCRIPT, /Complete the remaining Step 1 pages next/);
   assert.match(APP_SCRIPT, /browser saves and synchronizes the related files together/);
-  assert.match(APP_SCRIPT, /selected for scope review, but it is not approved or active/);
+  assert.match(APP_SCRIPT, /selects it in Workspace program scope/);
   assert.match(APP_SCRIPT, /Completing onboarding will save its related workspace, system, and renderer changes in one local commit, then push it in the background/);
   assert.match(APP_SCRIPT, /Manual repository mode/);
   assert.match(APP_SCRIPT, /Git setup needed/);

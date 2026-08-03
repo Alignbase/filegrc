@@ -77,14 +77,15 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await writeJson(join(root, "data", "renderer.json"), {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",
+    repositoryMode: "manual",
+    authoritativeBranch: "main",
+    repositoryRemote: "origin",
     showOnboarding: true
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "framework-security",
     type: "framework",
     title: "Security framework",
@@ -92,7 +93,6 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     version: "1"
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "requirement-access",
     type: "requirement",
     title: "Access requirement",
@@ -101,7 +101,6 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     applicability: "applicable"
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "control-access",
     type: "control",
     title: "Access control",
@@ -112,10 +111,9 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     code: "IAM-01",
     activity: "Approve and provision access.",
     operationMode: "manual",
-    frequency: "Per event"
+    operationPattern: "event-driven"
   });
   await createResource(root, {
-    schemaVersion: 1,
     id: "control-governance",
     type: "control",
     title: "Governance oversight",
@@ -126,7 +124,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     code: "GOV-01",
     activity: "Record oversight reviews and decisions.",
     operationMode: "manual",
-    frequency: "Quarterly"
+    operationPattern: "scheduled"
   });
 
   const draft = await setupWorkspace(root, {
@@ -134,7 +132,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     boundary: "The production application and supporting cloud resources.",
     ownerId: "person-owner",
     criticality: "high",
-    dataClassification: "Confidential",
+    classificationId: "confidential",
     internetExposed: true,
     programGoal: "none",
     draft: true
@@ -153,7 +151,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
       boundary: "The production application and supporting cloud resources.",
       ownerId: "person-owner",
       criticality: "high",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       internetExposed: true,
       programGoal: "type-2",
       draft: false
@@ -171,7 +169,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal(completed.state.resources.find(({ record }) => record.type === "renderer-settings").record.showOnboarding, false);
 
   let loaded = await loadWorkspace(root);
-  assert.equal(loaded.resources.filter(({ type, inScope }) => type === "system" && inScope).length, 1);
+  assert.deepEqual(loaded.workspace.systemIds, [completed.system.id]);
   assert.equal(JSON.parse(await readFile(join(root, "data", "renderer.json"), "utf8")).showOnboarding, false);
   assert.equal(loaded.resources.filter(({ type }) => type === "evidence").length, 0);
   assert.equal(loaded.resources.find(({ id }) => id === "control-access").systemIds, undefined);
@@ -180,7 +178,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   const browserControlStage = browserState.programReadiness.stages.find(({ id }) => id === "controls");
   const browserIdentityMap = browserControlStage.items.find(({ familyId }) => familyId === "identity-access");
   assert.ok(browserIdentityMap);
-  assert.equal(browserIdentityMap.evidenceKind, "export");
+  assert.equal(browserIdentityMap.evidenceForm, "export");
   assert.match(browserIdentityMap.evidencePrompt, /users, roles, privileged access/);
   assert.deepEqual(browserIdentityMap.controlIds, ["control-access"]);
   assert.deepEqual(browserIdentityMap.sourceSystemIds, []);
@@ -200,12 +198,13 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
   assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "evidence").length, 0);
 
   await createResource(root, {
-    schemaVersion: 1,
     id: "evidence-existing-review",
     type: "evidence",
     title: "Existing review evidence",
     status: "draft",
-    evidenceKind: "review"
+    artifactKind: "business-record",
+    artifactSubtype: "review",
+    sourceKind: "authored-record"
   });
   loaded = await loadWorkspace(root);
   assert.equal(loaded.resources.find(({ id }) => id === "evidence-existing-review").title, "Existing review evidence");
@@ -217,7 +216,7 @@ test("setup saves planned scope as a draft and completes through the shared HTTP
     boundary: "The production application and supporting cloud resources.",
     ownerId: "person-owner",
     criticality: "high",
-    dataClassification: "Confidential",
+    classificationId: "confidential",
     internetExposed: true,
     programGoal: "none",
     systemId: completed.system.id,
@@ -231,10 +230,12 @@ test("setup applies its records in one validation pass", async (context) => {
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await writeJson(join(root, "data", "renderer.json"), {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",
+    repositoryMode: "manual",
+    authoritativeBranch: "main",
+    repositoryRemote: "origin",
     showOnboarding: true
   });
 
@@ -243,7 +244,7 @@ test("setup applies its records in one validation pass", async (context) => {
     boundary: "The production service and supporting infrastructure.",
     ownerId: "person-owner",
     criticality: "high",
-    dataClassification: "Confidential",
+    classificationId: "confidential",
     internetExposed: true,
     programGoal: "readiness",
     draft: false
@@ -262,10 +263,12 @@ test("setup restores every affected file when a later batch write fails", async 
   const rendererPath = join(root, "data", "renderer.json");
   const workspacePath = join(root, "data", "workspace.json");
   await writeJson(rendererPath, {
-    schemaVersion: 1,
     id: "renderer-settings",
     type: "renderer-settings",
     title: "Renderer settings",
+    repositoryMode: "manual",
+    authoritativeBranch: "main",
+    repositoryRemote: "origin",
     showOnboarding: true
   });
   const originalWorkspace = await readFile(workspacePath, "utf8");
@@ -277,7 +280,7 @@ test("setup restores every affected file when a later batch write fails", async 
       boundary: "The production service and supporting infrastructure.",
       ownerId: "person-owner",
       criticality: "high",
-      dataClassification: "Confidential",
+      classificationId: "confidential",
       internetExposed: true,
       programGoal: "readiness",
       draft: false
@@ -296,7 +299,6 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "framework-security",
     type: "framework",
     title: "Security framework",
@@ -318,7 +320,7 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
     "--criticality",
     "critical",
     "--classification",
-    "Restricted",
+    "restricted",
     "--internet-exposed",
     "false",
     "--program-goal",
@@ -331,9 +333,9 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   assert.equal(previewResult.system.description, "Production service boundary.");
   assert.deepEqual(previewResult.system.ownerIds, ["person-owner"]);
   assert.equal(previewResult.system.criticality, "critical");
-  assert.equal(previewResult.system.dataClassification, "Restricted");
+  assert.equal(previewResult.system.classificationId, "restricted");
   assert.equal(previewResult.system.internetExposed, false);
-  assert.equal(previewResult.system.inScope, true);
+  assert.deepEqual(previewResult.target.systemIds, [previewResult.system.id]);
   assert.equal(previewResult.target.assuranceGoal, "readiness");
   assert.deepEqual(previewResult.target.systemIds, [previewResult.system.id]);
   assert.equal(previewResult.renderer, null);
@@ -351,7 +353,7 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
   const loaded = await loadWorkspace(root);
   const system = loaded.resources.find(({ id }) => id === parsed.system.id);
   assert.equal(system.internetExposed, false);
-  assert.equal(system.dataClassification, "Restricted");
+  assert.equal(system.classificationId, "restricted");
   assert.deepEqual(system, previewResult.system);
   assert.equal(loaded.workspace.assuranceGoal, previewResult.target.assuranceGoal);
   assert.deepEqual(loaded.workspace.systemIds, previewResult.target.systemIds);
@@ -371,7 +373,6 @@ test("setup rejects explicit retired or missing targets", async (context) => {
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
-    schemaVersion: 1,
     id: "system-retired-service",
     type: "system",
     title: "Retired service",
@@ -380,16 +381,20 @@ test("setup rejects explicit retired or missing targets", async (context) => {
     ownerIds: ["person-owner"],
     description: "No longer used.",
     systemKind: "service",
-    dataClassification: "Internal",
+    classificationId: "internal",
     internetExposed: false,
-    inScope: false
+    statusTransition: {
+      changedByIds: ["person-owner"],
+      changedOn: "2026-08-02",
+      reason: "The service was retired before setup."
+    }
   });
   const payload = {
     serviceName: "Example Service",
     boundary: "Production service boundary.",
     ownerId: "person-owner",
     criticality: "high",
-    dataClassification: "Confidential",
+    classificationId: "confidential",
     internetExposed: true,
     programGoal: "none"
   };
