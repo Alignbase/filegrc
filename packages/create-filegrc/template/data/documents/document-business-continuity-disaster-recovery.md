@@ -31,6 +31,8 @@ During a disruption, {{company_name}} will:
 
 ## Roles
 
+These names describe recovery functions, not required job titles or separate Appointments. The current Policy Owner performs them by default and management delegates a function only when that matches how the organization actually recovers its services.
+
 ### Policy owner
 
 The current Policy Owner owns this plan and keeps it current. The Policy Owner may delegate response duties but remains accountable for the plan.

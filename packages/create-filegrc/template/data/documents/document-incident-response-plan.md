@@ -41,6 +41,8 @@ Severity considers affected data, systems, customers, privileges, duration, spre
 
 ## Roles and authority
 
+These names describe response functions, not required job titles or separate Appointments. The current Policy Owner performs them by default and management delegates a function only when that matches how the organization actually responds.
+
 ### Reporter
 
 Anyone may report a suspected incident. Reporters preserve available evidence, stop unsafe activity when they can do so safely, and follow response instructions. They do not need proof before reporting.

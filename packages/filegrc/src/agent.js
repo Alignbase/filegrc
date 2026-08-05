@@ -1,6 +1,7 @@
 import { createResourceId } from "./id.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { RESOURCE_INSTRUCTIONS, resourceProgramContext } from "./program-path.js";
+import { assessCollectionReview } from "./collection-review.js";
 
 const STARTING_STATUS_ORDER = [
   "draft",
@@ -28,6 +29,7 @@ export function listResourceTypes(model) {
 export function buildAgentGuide(loaded, type, options = {}) {
   const definition = loaded.model.resources[type];
   if (!definition) throw new Error(`Unknown resource type "${type}".`);
+  const collectionReview = assessCollectionReview(loaded, type);
   const fields = { ...loaded.model.commonFields, ...definition.fields };
   const required = new Set([
     ...Object.entries(loaded.model.commonFields)
@@ -81,8 +83,23 @@ export function buildAgentGuide(loaded, type, options = {}) {
     programStep: resourceProgramContext(type),
     policyBasis: definition.guidance.policyBasis,
     cadence: definition.guidance.cadence,
+    emptyState: definition.guidance.emptyState ?? null,
     policySourceIds: definition.guidance.sourceResourceIds ?? [],
     obligationActivityTypes: definition.guidance.obligationActivityTypes ?? [],
+    reviewRequirements: {
+      recordReviewPoints: definition.guidance.reviewPoints ?? [],
+      collectionReview: collectionReview
+        ? {
+            title: collectionReview.configuration.title,
+            description: collectionReview.configuration.description,
+            reviewPoints: collectionReview.configuration.reviewPoints,
+            allowedDecisions: collectionReview.configuration.decisions,
+            status: collectionReview.status,
+            recordCount: collectionReview.recordCount,
+            command: `npx filegrc review-collection ${type} --scaffold`
+          }
+        : null
+    },
     location,
     singleton: Boolean(definition.singleton),
     requiredAtCreation,
@@ -155,6 +172,7 @@ export function scaffoldResourceMutation(loaded, type, title, options = {}) {
       record[name] = scaffoldValue(name, field, loaded.model);
     }
   }
+  applyModelScaffoldDefaults(record, loaded);
 
   const slots = markdownEntries(loaded.model, record).filter((slot) => (
     slot.required
@@ -169,6 +187,41 @@ export function scaffoldResourceMutation(loaded, type, title, options = {}) {
     record,
     ...(Object.keys(content).length ? { content } : {})
   };
+}
+
+function applyModelScaffoldDefaults(record, loaded) {
+  if (record.type === "appointment") {
+    const normalizedTitle = record.title.toLowerCase();
+    const match = Object.entries(loaded.model.appointmentTemplates || {}).find(([kind, template]) => (
+      template.title.toLowerCase() === normalizedTitle
+      || kind === normalizedTitle.replace(/[^a-z0-9]+/g, "-")
+    ));
+    record.appointmentKind = match?.[0] || normalizedTitle.replace(/[^a-z0-9]+/g, "-");
+    if (!record.scopeResourceIds?.length && loaded.workspace?.id) {
+      record.scopeResourceIds = [loaded.workspace.id];
+    }
+    return;
+  }
+  if (record.type === "audit") {
+    const kind = {
+      "soc-2-type-1": "soc-2-type-1",
+      "soc-2-type-2": "soc-2-type-2"
+    }[loaded.workspace?.assuranceGoal];
+    if (kind) record.auditKind = kind;
+    for (const field of ["frameworkIds", "systemIds", "requirementIds", "controlIds"]) {
+      if (loaded.workspace?.[field]?.length) record[field] = [...loaded.workspace[field]];
+    }
+    const programOwner = loaded.resources.find((candidate) => (
+      candidate.type === "appointment"
+      && candidate.appointmentKind === "program-lead"
+      && candidate.status === "active"
+    )) || loaded.resources.find((candidate) => (
+      candidate.type === "appointment"
+      && candidate.appointmentKind === "policy-owner"
+      && candidate.status === "active"
+    ));
+    if (programOwner) record.ownerIds = [programOwner.id];
+  }
 }
 
 export function findResourceReferences(loaded, id) {

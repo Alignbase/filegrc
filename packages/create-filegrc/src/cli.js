@@ -68,6 +68,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   console.log("");
   console.log(`  cd ${shellQuote(result.target)}`);
   if (options.install === false) console.log("  npm install");
+  if (result.gitMode !== "existing-worktree") {
+    console.log("  git add .");
+    console.log('  git commit -m "Initialize FileGRC program"');
+  }
   if (!result.setup) console.log("  npx filegrc setup");
   if (result.setup) console.log("  npx filegrc program-path --next --json");
   console.log("  npm run validate");
@@ -84,7 +88,9 @@ export async function runCli(argv = process.argv.slice(2)) {
     ? `  1. Confirm the selected assurance goal with management: ${assuranceGoalLabel(result.setup.target.assuranceGoal)}.`
     : "  1. Select and confirm the assurance goal.");
   console.log("  2. Appoint an independent reviewer who is separate from the policy owner.");
-  console.log("Review the generated records, then commit the approved baseline.");
+  console.log(result.gitMode === "existing-worktree"
+    ? "Review the generated records and commit only this workspace's approved baseline."
+    : "Connect the dedicated private origin and push main before using browser writes.");
 }
 
 function shellQuote(value) {

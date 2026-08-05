@@ -1,14 +1,18 @@
 import { readFileSync } from "node:fs";
 
-export function loadModel(version = "2") {
+export const ACTIVE_MODEL_VERSION = "3";
+export const SUPPORTED_MODEL_VERSIONS = Object.freeze(["2", ACTIVE_MODEL_VERSION]);
+
+export function loadModel(version = ACTIVE_MODEL_VERSION) {
   const requested = String(version);
-  if (requested !== "2") {
+  if (!SUPPORTED_MODEL_VERSIONS.includes(requested)) {
+    const migrationTarget = requested === "1" ? "2" : "3";
     throw new Error(
-      `Unsupported data model version "${requested}". This filegrc release uses model v2. `
-      + "Run `npx filegrc migrate --to-model 2 --preview --json` from the workspace root."
+      `Unsupported data model version "${requested}". This filegrc release supports models v2 and v3. `
+      + `Run \`npx filegrc migrate --to-model ${migrationTarget} --preview --json\` from the workspace root.`
     );
   }
-  const model = JSON.parse(readFileSync(new URL("./v2.json", import.meta.url), "utf8"));
+  const model = JSON.parse(readFileSync(new URL(`./v${requested}.json`, import.meta.url), "utf8"));
   for (const [type, definition] of Object.entries(model.resources)) {
     for (const [name, field] of Object.entries({ ...model.commonFields, ...definition.fields })) {
       expandRegistryReference(model, field, `${type}.${name}`);

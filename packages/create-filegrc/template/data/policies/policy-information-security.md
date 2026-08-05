@@ -28,7 +28,7 @@ The policy owner:
 
 An independent reviewer chairs the security and risk oversight group. This person must be separate from the policy owner and able to challenge the owner's decisions. The reviewer will usually be another leader or manager in the organization, but may be external. The reviewer approves policies and governed plans, challenges management's assessment of control operation, and records independent decisions.
 
-The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions. A one-person company must appoint a qualified external person to fill the independent reviewer role because no second internal person is available.
+The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions. When no suitable internal independent reviewer is available, the organization appoints a qualified external person to fill the role.
 
 System and process owners classify their systems and data, approve access, maintain safeguards, respond to findings, and keep recovery information current.
 

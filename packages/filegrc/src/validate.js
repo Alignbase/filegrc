@@ -73,7 +73,13 @@ async function validateWorkspaceUnmeasured(input) {
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
     validateDateRanges(record, displayPath, diagnostics);
     if (record.type === "appointment") validateAppointment(record, byId, displayPath, diagnostics);
+    if (record.type === "collection-review") {
+      validateCollectionReview(record, loaded.model, loaded.resources, byId, displayPath, diagnostics);
+    }
     if (record.type === "obligation") validateObligation(record, loaded.model, byId, displayPath, diagnostics);
+    if (record.type === "action-item") {
+      validateCompletedObligationAction(record, byId, loaded.model, displayPath, diagnostics);
+    }
     if (record.type === "obligation-event") validatePolicyEvent(record, loaded.model, byId, displayPath, diagnostics);
     if (record.type === "evidence") validateEvidencePaths(record, displayPath, diagnostics);
     validateCoverage(record, displayPath, diagnostics);
@@ -146,6 +152,46 @@ async function validateWorkspaceUnmeasured(input) {
     },
     loaded
   };
+}
+
+function validateCollectionReview(record, model, resources, byId, path, diagnostics) {
+  if (record.status !== "active") return;
+  const configuration = model.collectionReviews?.[record.resourceType];
+  if (!configuration) return;
+  const allowedDecisions = configuration.decisions || ["complete"];
+  if (!allowedDecisions.includes(record.decision)) {
+    diagnostics.push(error(
+      "invalid-collection-review-decision",
+      path,
+      `${configuration.title} review must use one of: ${allowedDecisions.join(", ")}.`
+    ));
+    return;
+  }
+  const recordCount = resources.filter(({ type }) => type === record.resourceType).length;
+  if (!recordCount && record.decision === "complete") {
+    diagnostics.push(error(
+      "invalid-collection-review-decision",
+      path,
+      `${configuration.title} has no records and cannot use the complete conclusion.`
+    ));
+  }
+  if (recordCount && record.decision === "zero-population") {
+    diagnostics.push(error(
+      "invalid-collection-review-decision",
+      path,
+      `${configuration.title} has ${recordCount} records and cannot use the zero-population conclusion.`
+    ));
+  }
+  if (
+    record.decision === "externally-managed"
+    && byId.get(record.authoritativeSystemId)?.status !== "active"
+  ) {
+    diagnostics.push(error(
+      "inactive-authoritative-system",
+      path,
+      `${configuration.title} must name an active authoritative System for an externally managed conclusion.`
+    ));
+  }
 }
 
 export async function fingerprintWorkspace(input = process.cwd()) {
@@ -288,7 +334,10 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
       ? model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || []
       : [];
     if (!expectedTypes.length) continue;
-    const linked = [...new Set([...(action.completionResourceIds || []), ...(action.evidenceIds || [])])]
+    const completionIds = String(model.modelVersion) === "3"
+      ? action.completionResourceIds || []
+      : [...(action.completionResourceIds || []), ...(action.evidenceIds || [])];
+    const linked = [...new Set(completionIds)]
       .map((id) => byId.get(id))
       .filter(Boolean);
     if (!linked.some((item) => expectedTypes.includes(item.type))) {
@@ -299,6 +348,27 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
       ));
     }
   }
+}
+
+function validateCompletedObligationAction(record, byId, model, path, diagnostics) {
+  if (
+    String(model.modelVersion) !== "3"
+    || record.status !== "done"
+    || !record.obligationId
+  ) return;
+  const obligation = byId.get(record.obligationId);
+  if (obligation?.type !== "obligation") return;
+  const expectedTypes = model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || [];
+  if (!expectedTypes.length) return;
+  const linked = [...new Set(record.completionResourceIds || [])]
+    .map((id) => byId.get(id))
+    .filter(Boolean);
+  if (linked.some((item) => expectedTypes.includes(item.type))) return;
+  diagnostics.push(error(
+    "missing-obligation-completion",
+    path,
+    `A done Action Item linked to "${obligation.id}" needs completionResourceIds containing ${expectedTypes.join(" or ")}.`
+  ));
 }
 
 function validateEvidencePaths(record, path, diagnostics) {
@@ -380,6 +450,23 @@ function validateObligation(record, model, byId, path, diagnostics) {
         path,
         "Event recurrence must use a policy event defined by the model."
       ));
+    }
+    if (record.eventRiskLevels?.length) {
+      if (recurrence.eventType !== "person-ended") {
+        diagnostics.push(error(
+          "invalid-obligation-event-filter",
+          path,
+          "eventRiskLevels may be used only with the person-ended Policy Event."
+        ));
+      }
+      const invalid = record.eventRiskLevels.filter((value) => !["normal", "high"].includes(value));
+      if (invalid.length) {
+        diagnostics.push(error(
+          "invalid-obligation-event-filter",
+          path,
+          `Departure risk filters must be normal or high, not ${invalid.join(", ")}.`
+        ));
+      }
     }
   } else {
     diagnostics.push(error(
@@ -577,7 +664,8 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
 }
 
 async function validateApprovalBinding(record, model, root, path, diagnostics) {
-  if (!approvalBound(record) || !record.approvedContentRevisions) return;
+  const bindingField = approvalBindingField(record, model);
+  if (!bindingField || !approvalBound(record) || !record[bindingField]) return;
   const actual = {};
   for (const item of markdownEntries(model, record)) {
     try {
@@ -587,7 +675,7 @@ async function validateApprovalBinding(record, model, root, path, diagnostics) {
       if (error.code !== "ENOENT") throw error;
     }
   }
-  const expected = record.approvedContentRevisions;
+  const expected = record[bindingField];
   const paths = [...new Set([...Object.keys(actual), ...Object.keys(expected)])].sort();
   const invalid = paths.filter((item) => (
     !/^[a-f0-9]{64}$/.test(String(expected[item] || ""))
@@ -605,7 +693,16 @@ async function validateApprovalBinding(record, model, root, path, diagnostics) {
 function approvalBound(record) {
   if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
   if (record.type === "document") return ["active", "superseded", "retired"].includes(record.status);
+  if (record.type === "training") return ["active", "retired"].includes(record.status);
   return false;
+}
+
+function approvalBindingField(record, model) {
+  if (["policy", "document"].includes(record.type)) return "approvedContentRevisions";
+  if (record.type === "training" && model.resources.training?.fields?.effectiveContentRevisions) {
+    return "effectiveContentRevisions";
+  }
+  return null;
 }
 
 function validateCoverage(record, path, diagnostics) {

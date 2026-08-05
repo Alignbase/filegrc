@@ -884,6 +884,14 @@ function buildControlCoverage({ audit, byId, controlIds, evidenceIds, model, rec
       && controlIdsForRecord(record, byId).has(controlId)
       && packetRecord(record, model, start, end, timezone)
     ));
+    const zeroPopulationRecords = records.filter((record) => (
+      record.type === "audit-population"
+      && record.auditId === audit?.id
+      && record.status === "reconciled"
+      && record.conclusion === "complete"
+      && (record.controlIds || []).includes(controlId)
+      && byId.get(record.sourceEvidenceId)?.populationCount === 0
+    ));
     const linkedEvidenceIds = new Set(evidenceByControl.get(controlId) || []);
     for (const test of tests) {
       addIds(linkedEvidenceIds, test.evidenceIds);
@@ -909,7 +917,7 @@ function buildControlCoverage({ audit, byId, controlIds, evidenceIds, model, rec
         .map(({ id }) => id)
         .sort(),
       evidenceIds: [...linkedEvidenceIds].sort(),
-      operatingRecordIds: operatingRecords.map(({ id }) => id).sort(),
+      operatingRecordIds: [...operatingRecords, ...zeroPopulationRecords].map(({ id }) => id).sort(),
       tests: tests.map((test) => ({
         ...testPopulationSummary(test, byId),
         id: test.id,
@@ -935,6 +943,17 @@ function controlIdsForRecord(record, byId, seen = new Set()) {
   for (const sourceId of record.sourceResourceIds || []) addIds(ids, controlIdsForRecord(byId.get(sourceId), byId, seen));
   if (record.sourceResourceId) addIds(ids, controlIdsForRecord(byId.get(record.sourceResourceId), byId, seen));
   if (record.obligationId) addIds(ids, byId.get(record.obligationId)?.controlIds);
+  for (const candidate of byId.values()) {
+    if (
+      candidate.type === "obligation"
+      && (candidate.completionResourceIds || []).includes(record.id)
+    ) {
+      addIds(ids, candidate.controlIds);
+    }
+  }
+  for (const subjectId of record.subjectResourceIds || []) {
+    addIds(ids, controlIdsForRecord(byId.get(subjectId), byId, seen));
+  }
   return ids;
 }
 
@@ -1003,7 +1022,13 @@ function packetGaps({
     } else if (!controlNeedsExternalEvidence(control, model) && !coverage.operatingRecordIds.length) {
       gaps.push(gap("error", "control-missing-filegrc-evidence", `${coverage.code || coverage.title} has no dated filegrc operating record in the packet.`, coverage.id));
     }
-    if (audit?.auditKind !== "soc-2-type-1" && coverage.status === "implemented" && !coverage.operatingRecordIds.length && coverage.operationMode !== "automated") {
+    if (
+      audit?.auditKind !== "soc-2-type-1"
+      && coverage.status === "implemented"
+      && !coverage.operatingRecordIds.length
+      && !coverage.evidenceIds.length
+      && coverage.operationMode !== "automated"
+    ) {
       gaps.push(gap("warning", "control-missing-operating-record", `${coverage.code || coverage.title} has no dated operating record in the packet period.`, coverage.id));
     }
     for (const test of coverage.tests) {
@@ -1149,6 +1174,13 @@ function packetGaps({
           "error",
           "canceled-event-action",
           `${run.title}: ${action.title} was canceled. Complete the requirement or cancel the event with a documented reason.`,
+          action.actionItemId
+        ));
+      } else if (action.status === "blocked") {
+        gaps.push(gap(
+          "error",
+          "blocked-event-action",
+          `${run.title}: ${action.title} is blocked. ${action.blockingReason || "Open the Action Item and resolve its named blockers."}`,
           action.actionItemId
         ));
       } else if (action.missingCompletion) {

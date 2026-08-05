@@ -8,9 +8,9 @@ import {
   RESOURCE_INSTRUCTIONS
 } from "../src/index.js";
 
-test("v2 model exposes the complete resource registry", () => {
+test("v3 model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "2");
+  assert.equal(model.modelVersion, "3");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -25,7 +25,32 @@ test("v2 model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 42);
+  assert.equal(Object.keys(model.resources).length, 45);
+  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control"]);
+  assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
+  for (const type of ["person", "framework", "vendor", "system", "complementary-control"]) {
+    assert.ok(model.collectionReviews[type].description.length >= 60);
+    assert.ok(model.collectionReviews[type].reviewPoints.length >= 2);
+    assert.ok(model.collectionReviews[type].reviewPoints.length <= 3);
+  }
+  for (const type of [
+    "requirement",
+    "commitment",
+    "complementary-control",
+    "control",
+    "control-test",
+    "policy-review",
+    "risk-assessment",
+    "vendor-review",
+    "access-review",
+    "vulnerability-scan",
+    "backup-test",
+    "penetration-test",
+    "source-coverage",
+    "control-activity"
+  ]) {
+    assert.equal(model.resources[type].guidance.reviewPoints.length, 3);
+  }
   for (const type of ["workspace", "renderer-settings", "person", "appointment", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit", "audit-population"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }
@@ -70,7 +95,8 @@ test("v2 model exposes the complete resource registry", () => {
   assert.ok(["access-grant", "asset", "policy", "risk", "vendor"].every((type) => (
     model.relationGroups["completion-record"].includes(type)
   )));
-  assert.deepEqual(model.resources.appointment.required, ["status", "appointmentKind", "holderId", "scopeResourceIds"]);
+  assert.deepEqual(model.resources.appointment.required, ["status", "appointmentKind", "scopeResourceIds"]);
+  assert.deepEqual(model.resources.appointment.fields.holderId.requiredWhen, { status: ["active", "ended"] });
   assert.deepEqual(model.resources.system.listFields.slice(-3), ["evidenceSourceKinds", "evidenceOwnerIds", "classificationId"]);
   assert.equal(model.resources.control.listFields.at(-1), "evidenceSourceIds");
   assert.deepEqual(model.resources.appointment.fields.startsOn.requiredWhen, { status: ["active", "ended"] });
@@ -185,7 +211,7 @@ test("v2 model exposes the complete resource registry", () => {
   }
   assert.equal(model.recordContent.slot, "record");
   assert.equal(model.recordContent.label, "Record");
-  assert.equal(model.recordContent.defaultResourceTypes.length, 17);
+  assert.equal(model.recordContent.defaultResourceTypes.length, 19);
   assert.equal(model.auditReadiness.managementDocuments.length, 4);
   assert.equal(model.auditReadiness.populationTemplates.length, 10);
   assert.deepEqual(model.resources["audit-population"].fields.status.values, ["planned", "reconciled", "not-applicable"]);
@@ -258,7 +284,7 @@ test("v2 model exposes the complete resource registry", () => {
   });
   assert.equal(model.resources.evidence.fields.sourceSystemId.showWhenInactive, true);
   assert.deepEqual(model.resources["obligation-event"].fields.completedOn.requiredWhen, { status: "complete" });
-  assert.equal(model.resources["renderer-settings"].fields.completedStagePageIds.items, "string");
+  assert.equal(model.resources["renderer-settings"].fields.completedStagePageIds, undefined);
   assert.deepEqual(model.resources["renderer-settings"].fields.repositoryMode.values, ["trunk", "manual"]);
   assert.deepEqual(model.resources["renderer-settings"].required, [
     "showOnboarding",
@@ -266,7 +292,16 @@ test("v2 model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "2");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "3");
+  assert.ok(model.resources["source-coverage"]);
+  assert.ok(model.resources["control-activity"]);
+  assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");
+  assert.deepEqual(Object.keys(model.appointmentTemplates), [
+    "policy-owner",
+    "independent-policy-reviewer"
+  ]);
+  assert.equal(model.appointmentTemplates["independent-policy-reviewer"].requiredness, "core");
+  assert.equal(loadModel("2").resources["source-coverage"], undefined);
   assert.equal(model.resources["renderer-settings"].fields.authoritativeBranch.format, "git-name");
   assert.equal(model.resources["renderer-settings"].fields.repositoryRemote.format, "git-name");
   assert.match(model.resources.finding.description, /Keep observations and report details in the source record’s Markdown/);

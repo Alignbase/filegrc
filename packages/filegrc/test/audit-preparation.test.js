@@ -57,6 +57,11 @@ test("initializes model-owned Type 2 populations and management document links",
 
   const before = await assessAuditPreparation(root, { auditId: "audit-type-2" });
   assert.equal(before.canInitialize, true);
+  const engagementOwner = before.stages
+    .find(({ id }) => id === "engagement")
+    .items.find(({ id }) => id === "engagement-owner");
+  assert.equal(engagementOwner.status, "complete");
+  assert.doesNotMatch(engagementOwner.message, /Executive Sponsor|Evidence and Audit Liaison/);
   assert.equal(
     before.stages.find(({ id }) => id === "fieldwork").items.filter(({ section }) => section === "Population Completeness").length,
     10

@@ -8,10 +8,11 @@
   ],
   "policyKind": "information-security",
   "version": "1.0",
-  "effectiveOn": "{{effective_date}}",
   "audience": [
     "employees",
     "contractors"
   ],
-  "acknowledgementRequired": true
+  "acknowledgementRequired": true,
+  "proposedEffectiveOn": "{{effective_date}}",
+  "programRole": "supporting"
 }

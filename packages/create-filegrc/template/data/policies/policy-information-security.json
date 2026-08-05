@@ -8,7 +8,6 @@
   ],
   "policyKind": "information-security",
   "version": "1.0",
-  "effectiveOn": "{{effective_date}}",
   "audience": [
     "employees",
     "contractors",
@@ -24,5 +23,7 @@
     "document-business-continuity-disaster-recovery",
     "document-incident-response-plan",
     "document-data-retention-schedule"
-  ]
+  ],
+  "proposedEffectiveOn": "{{effective_date}}",
+  "programRole": "required"
 }

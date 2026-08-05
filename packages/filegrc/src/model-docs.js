@@ -45,6 +45,16 @@ export function generateModelDocumentation(model) {
       `| \`${name}\` | ${types.map((type) => `\`${type}\``).join(", ")} |`
     )),
     "",
+    "## Collection review confirmations",
+    "",
+    "FileGRC derives record issues, but it cannot infer that management reviewed an apparently complete or empty collection. Each configured collection review records the conclusion, reviewer, date, current scope revision, and exact collection revision. A record or material scope change makes the confirmation stale.",
+    "",
+    "| Resource type | Review | Allowed conclusions | What to review |",
+    "| --- | --- | --- | --- |",
+    ...Object.entries(model.collectionReviews || {}).map(([type, review]) => (
+      `| \`${type}\` | ${escapeCell(review.title)} | ${review.decisions.map((decision) => `\`${decision}\``).join(", ")} | ${escapeCell(review.reviewPoints.join(" "))} |`
+    )),
+    "",
     "## Relationship constraints",
     "",
     "Relationship constraints prevent cycles and duplicate active authority or access records.",
@@ -130,6 +140,11 @@ export function generateModelDocumentation(model) {
       lines.push(`Instructions: ${RESOURCE_INSTRUCTIONS[type] || resource.description}`, "");
       lines.push(`Policy basis: ${resource.guidance.policyBasis}`, "");
       lines.push(`Timing: ${resource.guidance.cadence}`, "");
+      if (resource.guidance.reviewPoints?.length) {
+        lines.push("When reviewing:", "");
+        for (const point of resource.guidance.reviewPoints) lines.push(`- ${point}`);
+        lines.push("");
+      }
       if (resource.guidance.sourceResourceIds?.length) {
         lines.push(`Default sources: ${resource.guidance.sourceResourceIds.map((id) => `\`${id}\``).join(", ")}`, "");
       }

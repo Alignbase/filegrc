@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
+import { assessCollectionReviews } from "./collection-review.js";
 import { getBrowserRepositoryState, getGitSummary, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
@@ -10,6 +11,7 @@ import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
+import { assessWorkflow } from "./workflow.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -73,6 +75,38 @@ async function createAppStateUnlocked(input, options) {
       return [audit?.id || "none", preparation];
     })
   ));
+  const obligations = planObligations(entries, {
+    asOf,
+    now: options.now ?? generatedAt,
+    model: loaded.model
+  });
+  const workflow = await assessWorkflow(loaded, {
+    asOf,
+    evaluatedAt: generatedAt,
+    programReadiness,
+    auditPreparations: Object.fromEntries(
+      Object.entries(auditPreparations).filter(([id]) => id !== "none")
+    ),
+    obligations,
+    git,
+    validation
+  });
+  const collectionReviews = Object.fromEntries(
+    assessCollectionReviews(loaded).map((assessment) => [
+      assessment.resourceType,
+      {
+        resourceType: assessment.resourceType,
+        configuration: assessment.configuration,
+        recordCount: assessment.recordCount,
+        review: assessment.review,
+        reviewRevision: assessment.reviewRevision,
+        collectionRevision: assessment.collectionRevision,
+        status: assessment.status,
+        complete: assessment.complete,
+        message: assessment.message
+      }
+    ])
+  );
   return {
     generatedAt,
     asOf,
@@ -86,9 +120,11 @@ async function createAppStateUnlocked(input, options) {
       counts: validation.counts,
       diagnostics: validation.diagnostics
     },
-    obligations: planObligations(entries, { asOf, now: options.now ?? generatedAt, model: loaded.model }),
+    obligations,
+    collectionReviews,
     programReadiness,
     auditPreparations,
+    workflow,
     git
   };
 }

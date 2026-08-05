@@ -11,14 +11,21 @@ import {
   createAppState,
   createObligationEvent,
   createResource,
+  loadModel,
   loadWorkspace,
-  planObligations,
+  planObligations as planObligationsWithModel,
+  scaffoldObligationCompletion,
   updateResource,
   validateWorkspace
 } from "../src/index.js";
 import { makeWorkspace } from "./helpers.js";
 
 const execute = promisify(execFile);
+const MODEL_V2 = loadModel("2");
+const planObligations = (resources, options = {}) => planObligationsWithModel(resources, {
+  model: MODEL_V2,
+  ...options
+});
 const ACTIVE_OWNER = {
   id: "person-owner",
   type: "person",
@@ -46,7 +53,14 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
     asOf: "2026-03-15",
     through: "2026-04-01"
   });
-  assert.deepEqual(due.counts, { overdue: 0, due: 1, upcoming: 1, proposed: 0, complete: 0 });
+  assert.deepEqual(due.counts, {
+    overdue: 0,
+    blocked: 0,
+    due: 1,
+    upcoming: 1,
+    proposed: 0,
+    complete: 0
+  });
   assert.equal(due.items[0].status, "due");
   assert.equal(due.items[0].dueWindowStart, "2026-01-01");
   assert.equal(due.items[0].dueWindowEnd, "2026-03-31");
@@ -92,7 +106,71 @@ test("puts standalone Action Items in Work Queue without a reverse source link",
   assert.equal(plan.items[0].status, "upcoming");
   assert.equal(plan.items[0].dueWindowStart, action.completionWindow.dueOn);
   assert.equal(plan.items[0].overdueOn, "2026-03-21");
-  assert.deepEqual(plan.counts, { overdue: 0, due: 0, upcoming: 1, proposed: 0, complete: 0 });
+  assert.deepEqual(plan.counts, {
+    overdue: 0,
+    blocked: 0,
+    due: 0,
+    upcoming: 1,
+    proposed: 0,
+    complete: 0
+  });
+});
+
+test("requires an explicit model unless Workspace declares one", () => {
+  assert.throws(
+    () => planObligationsWithModel([ACTIVE_OWNER], { asOf: "2026-03-15" }),
+    /requires options\.model or a Workspace record/
+  );
+  const inferred = planObligationsWithModel([
+    {
+      id: "workspace",
+      type: "workspace",
+      title: "Workspace",
+      dataModelVersion: "3"
+    },
+    ACTIVE_OWNER
+  ], { asOf: "2026-03-15" });
+  assert.equal(inferred.dataModelVersion, "3");
+});
+
+test("keeps blocked Action Items blocked until their named blockers are resolved", () => {
+  const source = {
+    id: "finding-access-delay",
+    type: "finding",
+    title: "Access removal delay",
+    status: "open"
+  };
+  const blocker = {
+    id: "exception-access-delay",
+    type: "exception",
+    title: "Temporary access exception",
+    status: "approved"
+  };
+  const action = {
+    id: "action-item-remove-access",
+    type: "action-item",
+    title: "Remove remaining access",
+    status: "blocked",
+    assigneeIds: ["person-owner"],
+    sourceResourceId: source.id,
+    blockingResourceIds: [blocker.id],
+    completionWindow: {
+      precision: "date",
+      startsOn: "2026-03-20",
+      dueOn: "2026-03-20",
+      overdueOn: "2026-03-21"
+    }
+  };
+  const plan = planObligations([source, blocker, action], {
+    asOf: "2026-03-22",
+    through: "2026-03-31"
+  });
+  assert.equal(plan.counts.blocked, 1);
+  assert.equal(plan.counts.overdue, 0);
+  assert.equal(plan.items[0].status, "blocked");
+  assert.equal(plan.items[0].timingStatus, "overdue");
+  assert.deepEqual(plan.items[0].blockingResourceIds, [blocker.id]);
+  assert.equal(plan.items[0].blockingReason, "Blocked by Temporary access exception.");
 });
 
 test("keeps work linked only to draft policies as starter proposals", () => {
@@ -140,6 +218,45 @@ test("keeps work linked only to draft policies as starter proposals", () => {
   assert.equal(accepted.counts.due, 1);
   assert.equal(accepted.items[0].status, "due");
   assert.equal(accepted.items[0].dueWindowStart, "2026-02-01");
+});
+
+test("includes proposed obligation records as visible but unavailable starter work", () => {
+  const calendarObligation = {
+    id: "obligation-proposed-calendar",
+    type: "obligation",
+    title: "Review the starter schedule",
+    status: "proposed",
+    activityType: "inventory-review",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 1,
+      anchorDate: "2026-01-01"
+    },
+    ownerIds: ["person-owner"]
+  };
+  const eventObligation = {
+    id: "obligation-proposed-event",
+    type: "obligation",
+    title: "Review starter access",
+    status: "proposed",
+    activityType: "access-provisioning",
+    recurrence: {
+      mode: "event",
+      eventType: "person-started"
+    },
+    ownerIds: ["person-owner"]
+  };
+  const plan = planObligations([ACTIVE_OWNER, calendarObligation, eventObligation], {
+    asOf: "2026-01-15",
+    through: "2026-01-31"
+  });
+  assert.equal(plan.counts.proposed, 1);
+  assert.equal(plan.items[0].obligationId, calendarObligation.id);
+  assert.equal(plan.items[0].status, "proposed");
+  assert.equal(plan.triggers.length, 1);
+  assert.equal(plan.triggers[0].eventType, "person-started");
+  assert.equal(plan.triggers[0].programStatus, "proposed");
 });
 
 test("starts an enabled schedule when a linked control becomes implemented", () => {
@@ -589,6 +706,98 @@ test("headless completion helpers enforce expected types and update links atomic
   assert.equal(completed.status, "done");
   assert.equal(completed.completedOn, "2026-07-02");
   assert.deepEqual(completed.completionResourceIds, ["evidence-worker-access-review"]);
+  assert.equal((await validateWorkspace(root)).ok, true);
+});
+
+test("scaffolds a complete headless Work Queue mutation with its safe write revision", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-obligation-scaffold-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    id: "system-service",
+    type: "system",
+    title: "Service",
+    status: "active",
+    criticality: "high",
+    ownerIds: ["person-owner"]
+  });
+  const workspace = (await loadWorkspace(root)).workspace;
+  await updateResource(root, "workspace", workspace.id, {
+    ...workspace,
+    systemIds: ["system-service"]
+  });
+  await createResource(root, {
+    id: "obligation-quarterly-access-review",
+    type: "obligation",
+    title: "Quarterly access review",
+    status: "active",
+    activityType: "access-review",
+    recurrence: { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-01" },
+    ownerIds: ["person-owner"],
+    scopeResourceIds: ["system-service"]
+  });
+
+  const scaffold = await scaffoldObligationCompletion(root, {
+    obligationId: "obligation-quarterly-access-review",
+    windowStart: "2026-01-01",
+    completedOn: "2026-03-20"
+  });
+  assert.equal(scaffold.record.type, "access-review");
+  assert.equal(scaffold.record.status, "complete");
+  assert.deepEqual(scaffold.record.systemIds, ["system-service"]);
+  assert.deepEqual(scaffold.record.reviewerIds, ["person-owner"]);
+  assert.equal(scaffold.record.completedOn, "2026-03-20");
+  assert.equal(scaffold.scaffold.dueWindowEnd, "2026-03-31");
+  assert.match(scaffold.revision, /^[a-f0-9]{64}$/);
+  assert.deepEqual(scaffold.record.evidenceIds, []);
+
+  await createResource(root, {
+    id: "evidence-quarterly-access-review",
+    type: "evidence",
+    title: "Quarterly access review export",
+    status: "verified",
+    artifactKind: "system-export",
+    sourceKind: "external-reference",
+    sourceDescription: "Fixed access export retained in the identity system.",
+    collectedOn: "2026-03-20",
+    collectorIds: ["person-owner"],
+    verifierIds: ["person-approver"],
+    verifiedOn: "2026-03-20",
+    classificationId: "internal",
+    externalReference: {
+      system: "Identity system",
+      reference: "test-quarterly-access-review"
+    }
+  });
+  scaffold.record.evidenceIds = ["evidence-quarterly-access-review"];
+  const mutationPath = join(root, "completion-scaffold.json");
+  await writeFile(mutationPath, `${JSON.stringify(scaffold, null, 2)}\n`, "utf8");
+  const completed = await execute(process.execPath, [
+    fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
+    "complete",
+    "obligation-quarterly-access-review",
+    mutationPath,
+    "--root",
+    root,
+    "--json"
+  ]);
+  const output = JSON.parse(completed.stdout);
+  assert.equal(output.created.type, "access-review");
+  assert.equal(output.linked.completionResourceIds.includes(scaffold.record.id), true);
+
+  const cliScaffold = await execute(process.execPath, [
+    fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
+    "complete",
+    "obligation-quarterly-access-review",
+    "--scaffold",
+    "--window-start",
+    "2026-04-01",
+    "--completed-on",
+    "2026-06-20",
+    "--root",
+    root
+  ]);
+  assert.equal(JSON.parse(cliScaffold.stdout).scaffold.dueWindowStart, "2026-04-01");
   assert.equal((await validateWorkspace(root)).ok, true);
 });
 

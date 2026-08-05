@@ -10,7 +10,7 @@ import {
 } from "./coverage.js";
 import { createResource, createResources, deleteResource, updateResource } from "./files.js";
 import { createResourceId } from "./id.js";
-import { partiesIndependent } from "./parties.js";
+import { currentPartyPeople, partiesIndependent } from "./parties.js";
 import { resolveDataPath } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -433,7 +433,10 @@ function engagementStage(audit, byId, programReadiness) {
   }
   const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
   const named = Boolean(auditor);
-  return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and engagement contacts before treating the audit as active.", [
+  const currentOwners = [...currentPartyPeople(audit.ownerIds, byId)]
+    .map((id) => byId.get(id))
+    .filter(Boolean);
+  return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and the current management owner who authorizes and coordinates the engagement.", [
     item(
       "engagement-record",
       "complete",
@@ -449,6 +452,21 @@ function engagementStage(audit, byId, programReadiness) {
         ? `${auditor.title} is recorded for the engagement.`
         : "Select the CPA firm and record it here. The independent management policy reviewer is a different role.",
       audit
+    ),
+    item(
+      "engagement-owner",
+      currentOwners.length ? "complete" : "action",
+      "Confirm the management engagement owner",
+      currentOwners.length
+        ? `${currentOwners.map(({ title }) => title).join(" and ")} currently owns management coordination for the engagement.`
+        : "Assign the audit to a current Person, Team, or Appointment. The audit owner may coordinate management and evidence work without a separate audit-specific title.",
+      audit,
+      {
+        commands: [
+          `npx filegrc get ${audit.id} --mutation`,
+          "npx filegrc audit-readiness AUDIT_ID --json"
+        ]
+      }
     )
   ]);
 }
@@ -556,12 +574,21 @@ function evidenceStage(audit, records, byId, model) {
     && controlIdsForRecord(record, byId).size
     && recordRelevantToAuditDate(record, audit, model)
   ));
+  const reconciledZeroPopulationControlIds = new Set(records
+    .filter((record) => (
+      record.type === "audit-population"
+      && record.auditId === audit.id
+      && record.status === "reconciled"
+      && record.conclusion === "complete"
+      && byId.get(record.sourceEvidenceId)?.populationCount === 0
+    ))
+    .flatMap((record) => record.controlIds || []));
   const managedControls = controls.filter((control) => managedFamilies.some((family) => (
     (family.controlCodes || []).includes(control.code)
   )));
   const controlsWithFilegrcRecords = managedControls.filter((control) => filegrcRecords.some((record) => (
     controlIdsForRecord(record, byId).has(control.id)
-  )));
+  )) || reconciledZeroPopulationControlIds.has(control.id));
   const externalControls = controls.filter((control) => externalFamilies.some((family) => (
     (family.controlCodes || []).includes(control.code)
   )) || !evidenceFamiliesFor(control).length);
@@ -574,7 +601,7 @@ function evidenceStage(audit, records, byId, model) {
       managedControls.length && controlsWithFilegrcRecords.length === managedControls.length ? "complete" : managedControls.length ? "action" : "info",
       "Review filegrc Evidence",
       managedControls.length
-        ? `${controlsWithFilegrcRecords.length} of ${managedControls.length} selected controls that use filegrc workflows have a dated operating record for the formal period. Complete each Step 4 record, link it to the control, and add results in its structured fields or Markdown.`
+        ? `${controlsWithFilegrcRecords.length} of ${managedControls.length} selected controls that use filegrc workflows have a dated operating record or reconciled zero-event population for the formal period. Complete each Step 4 record, link it to the control, and add results in its structured fields or Markdown.`
         : "No selected controls use a dedicated filegrc operating record.",
       filegrcRecords[0] || { type: managedFamilies[0]?.operationRecordTypes?.[0] || "control" }
     ),
@@ -606,13 +633,16 @@ function evidenceStage(audit, records, byId, model) {
       ));
       const coveredControls = relevantControls.filter((control) => sourceRecords.some((record) => (
         controlIdsForRecord(record, byId).has(control.id)
-      )));
+      )) || reconciledZeroPopulationControlIds.has(control.id));
+      const zeroPopulationControls = relevantControls.filter((control) => (
+        reconciledZeroPopulationControlIds.has(control.id)
+      ));
       items.push(item(
         `filegrc-${source.id}`,
         coveredControls.length === relevantControls.length ? "complete" : "action",
         source.title,
         coveredControls.length === relevantControls.length
-          ? `${sourceRecords.length} dated filegrc ${sourceRecords.length === 1 ? "record" : "records"} cover ${relevantControls.length} mapped controls. External artifacts needed to support those results are linked from the operating records.`
+          ? `${sourceRecords.length} dated filegrc ${sourceRecords.length === 1 ? "record" : "records"} and ${zeroPopulationControls.length} reconciled zero-population ${zeroPopulationControls.length === 1 ? "conclusion cover" : "conclusions cover"} ${relevantControls.length} mapped controls. Supporting artifacts are linked from the operating records or population export.`
           : `${coveredControls.length} of ${relevantControls.length} mapped controls have a dated ${source.operationRecordTypes.map(displayValue).join(" or ")} record for the formal period. Complete the Step 4 work and attach or reference any supporting external artifact on that record.`,
         sourceRecords[0] || { type: source.operationRecordTypes[0] }
       ));
@@ -845,6 +875,17 @@ function controlIdsForRecord(record, byId, seen = new Set()) {
   if (record.controlId) ids.add(record.controlId);
   if (record.obligationId) {
     for (const id of byId.get(record.obligationId)?.controlIds || []) ids.add(id);
+  }
+  for (const candidate of byId.values()) {
+    if (
+      candidate.type === "obligation"
+      && (candidate.completionResourceIds || []).includes(record.id)
+    ) {
+      for (const id of candidate.controlIds || []) ids.add(id);
+    }
+  }
+  for (const subjectId of record.subjectResourceIds || []) {
+    for (const id of controlIdsForRecord(byId.get(subjectId), byId, seen)) ids.add(id);
   }
   for (const sourceId of record.sourceResourceIds || []) {
     for (const id of controlIdsForRecord(byId.get(sourceId), byId, seen)) ids.add(id);

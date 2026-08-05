@@ -8,12 +8,13 @@
     "appointment-policy-owner"
   ],
   "version": "1.0",
-  "effectiveOn": "{{effective_date}}",
   "audience": [
     "employees"
   ],
   "controlIds": [
     "control-workforce-expectations"
   ],
-  "classificationId": "internal"
+  "classificationId": "internal",
+  "proposedEffectiveOn": "{{effective_date}}",
+  "programRole": "conditional"
 }

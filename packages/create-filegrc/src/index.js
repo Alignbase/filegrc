@@ -10,7 +10,7 @@ const execute = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const textExtensions = new Set(["", ".json", ".md", ".txt", ".yml", ".yaml", ".gitignore"]);
 const STARTER_PROFILES = new Set(["foundation", "security"]);
-const SECURITY_TEMPLATE_COLLECTIONS = new Set(["documents", "policies", "training"]);
+const SECURITY_TEMPLATE_COLLECTIONS = new Set(["collection-reviews", "documents", "policies", "training"]);
 
 export async function createFilegrc(options = {}) {
   const parameterConfig = JSON.parse(await readFile(join(packageRoot, "template-parameters.json"), "utf8"));
@@ -29,7 +29,7 @@ export async function createFilegrc(options = {}) {
   const starterText = starterTemplateText(starter, prompted.company_name);
   const values = {
     ...prompted,
-    effective_date: options.effectiveDate ?? new Date().toISOString().slice(0, 10),
+    effective_date: options.effectiveDate ?? calendarDateInTimezone(prompted.timezone),
     project_name: normalizePackageName(basename(target)),
     filegrc_version: engine.version,
     filegrc_version_range: engine.dependency,
@@ -72,6 +72,16 @@ export async function createFilegrc(options = {}) {
     gitDetached: gitHead.detached,
     repository
   };
+}
+
+function calendarDateInTimezone(timezone, date = new Date()) {
+  const values = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 export function normalizeStarterProfile(value = "security") {
@@ -396,7 +406,7 @@ async function applyStarterScope(target, starter, effectiveDate) {
 }
 
 function starterStages(starter, counts) {
-  const foundationTypes = new Set(["workspace", "renderer-settings", "person", "team", "system"]);
+  const foundationTypes = new Set(["workspace", "renderer-settings", "person", "appointment", "team", "system"]);
   const foundation = Object.entries(counts.byType)
     .filter(([type]) => foundationTypes.has(type))
     .reduce((total, [, count]) => total + count, 0);
@@ -420,10 +430,11 @@ function starterTemplateText(starter, companyName) {
       agent_purpose: `This repository is ${companyName}’s foundation filegrc workspace. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files. No framework or assurance program has been selected yet.`,
       starter_baseline: `## Foundation baseline
 
-The generated workspace starts with five structural records:
+The generated workspace starts with foundational program records:
 
 - Workspace and renderer settings
 - The initial active owner
+- The two core Appointment records: an active Policy Owner plus a planned Independent Policy Reviewer assignment. Create another Appointment only when management actually delegates a named responsibility.
 - A planned security and risk oversight team that still needs an independent chair
 - The filegrc Git repository as a governance system of record
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
@@ -432,7 +443,7 @@ This profile does not include framework requirements, policies, governed documen
       audit_preparation_guidance: "The foundation profile does not include the local SOC 2 management-document templates used by `prepare-audit`. Add reviewed templates and program scope before initializing audit work. Audit preparation must not invent missing policy, control, or evidence facts.",
       starter_setup: `## Start the program
 
-This foundation profile contains the workspace, initial owner, oversight team, renderer settings, and filegrc system of record. It does not select a framework or create proposed policies, controls, obligations, or evidence.
+This foundation profile contains the workspace, initial owner, core Appointments, oversight team, renderer settings, and filegrc system of record. It does not select a framework or create proposed policies, controls, obligations, or evidence.
 
 1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding.
 2. Use \`npx filegrc guide --json\` before creating framework requirements, policies, controls, obligations, and evidence sources.
@@ -453,6 +464,7 @@ The generated workspace starts with the SOC 2 Security category:
 - The 33 Common Criteria reference IDs from CC1.1 through CC9.2, without the licensed criteria text
 - The nine Description Criteria reference IDs from DC1 through DC9, without the licensed criteria text
 - Planned controls mapped to those references and the included policies
+- The two core Appointment records. Policy Owner starts active; Independent Policy Reviewer remains Ready until assigned. Program coordination, incident, recovery, executive, legal, privacy, insurance, communications, and audit-coordination functions stay with the Policy Owner unless management delegates one through a custom Appointment.
 - A security and risk oversight team chaired by an independent reviewer who may be internal or external
 - Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
@@ -504,13 +516,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.4.0",
+    version: "0.5.0",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.4.0",
+        version: "0.5.0",
         dependencies: { filegrc: versionRange }
       }
     }

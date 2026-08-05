@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-system",
+  "type": "collection-review",
+  "title": "Service and system boundary review",
+  "status": "planned",
+  "resourceType": "system",
+  "scopeResourceIds": [
+    "workspace"
+  ]
+}

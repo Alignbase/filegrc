@@ -14,6 +14,41 @@ const ROLE_TRAINING_IDS = [
   "training-privileged-sensitive-roles",
   "training-anti-bribery-high-risk-roles"
 ];
+const FILEGRC_SOURCE_FAMILIES = [
+  "training-acknowledgement",
+  "exception-finding",
+  "governance",
+  "risk-management",
+  "vendor-management"
+];
+const FILEGRC_SOURCE_CONTROL_CODES = new Set([
+  "GOV-01",
+  "GOV-02",
+  "GOV-03",
+  "HR-01",
+  "HR-02",
+  "RSK-01",
+  "MON-01",
+  "EXC-01",
+  "VEN-01",
+  "VEN-02"
+]);
+const SOURCE_FAMILIES = [
+  ["workforce", "Workforce System"],
+  ["training-acknowledgement", "Training and Acknowledgements"],
+  ["identity-access", "Identity and Access Systems"],
+  ["production-change", "Production Change Systems"],
+  ["security-monitoring", "Security Monitoring Systems"],
+  ["vulnerability-management", "Vulnerability Management"],
+  ["endpoint-asset", "Endpoint Management Systems"],
+  ["backup-recovery", "Backup and Recovery"],
+  ["vendor-management", "Vendors"],
+  ["exception-finding", "Exceptions and Findings"],
+  ["data-handling", "Data Protection Configuration"],
+  ["network-security", "Network Security Systems"],
+  ["governance", "Governance"],
+  ["risk-management", "Risk Management"]
+];
 
 const commonCriteria = [
   ["CC1.1", "Integrity and ethical values", "Set, communicate, and enforce standards for integrity and ethical conduct."],
@@ -467,7 +502,11 @@ const obligations = [
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: ["training-security-awareness"],
     templateResourceId: "training-security-awareness",
-    controlIds: ["control-security-training"],
+    controlIds: [
+      "control-security-communication",
+      "control-workforce-expectations",
+      "control-security-training"
+    ],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -588,7 +627,7 @@ const obligations = [
     activityType: "vendor-review",
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    controlIds: ["control-vendor-monitoring"],
+    controlIds: ["control-vendor-due-diligence", "control-vendor-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
   },
   {
@@ -685,7 +724,8 @@ const obligations = [
     id: "obligation-high-risk-departure-access",
     title: "Revoke access at or before departure notice",
     activityType: "access-removal",
-    recurrence: event("high-risk-person-ended"),
+    recurrence: event("person-ended"),
+    eventRiskLevels: ["high"],
     triggerPrompt: "Involuntary or high-risk departure?",
     window: eventWindowHours(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
@@ -857,7 +897,150 @@ const obligations = [
     triggerPrompt: "Material security incident?",
     window: eventWindow(7),
     ownerIds: [OVERSIGHT_TEAM_ID],
-    controlIds: ["control-monitoring-remediation"],
+    controlIds: ["control-monitoring-remediation", "control-security-exceptions"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-vendor-activation-review",
+    title: "Complete vendor activation review",
+    activityType: "vendor-review",
+    recurrence: event("vendor-activated"),
+    triggerPrompt: "Vendor activated?",
+    window: eventWindow(30),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-vendor-due-diligence", "control-vendor-monitoring"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-vendor-termination-closeout",
+    title: "Revoke vendor access and confirm data return or disposal",
+    activityType: "access-removal",
+    recurrence: event("vendor-terminated"),
+    triggerPrompt: "Vendor terminated?",
+    window: eventWindow(7),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-vendor-monitoring", "control-access-review-offboarding"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-data-use-change-assessment",
+    title: "Assess the changed data use and control impact",
+    activityType: "risk-assessment",
+    recurrence: event("material-data-use-change"),
+    triggerPrompt: "Material data-use change?",
+    window: eventWindow(30),
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-risk-assessment", "control-data-classification-inventory"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-incident-closure-review",
+    title: "Complete incident closure and lessons-learned review",
+    activityType: "incident-retrospective",
+    recurrence: event("incident-closed"),
+    triggerPrompt: "Incident closed?",
+    window: eventWindow(7),
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-incident-response", "control-monitoring-remediation"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-policy-revision-approval",
+    title: "Review and approve the revised policy",
+    activityType: "policy-review",
+    recurrence: event("policy-revised"),
+    triggerPrompt: "Policy materially revised?",
+    window: eventWindow(30),
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-policy-management"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-emergency-change-review",
+    title: "Complete emergency-change post-review",
+    activityType: "change-review",
+    recurrence: event("emergency-change"),
+    triggerPrompt: "Emergency change completed?",
+    window: eventWindow(2),
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-change-management"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-exception-expiry-review",
+    title: "Review expired exception and compensating controls",
+    activityType: "exception-review",
+    recurrence: event("exception-expired"),
+    triggerPrompt: "Exception expired?",
+    window: eventWindow(1),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-monitoring-remediation", "control-security-exceptions"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-service-account-creation-review",
+    title: "Authorize and review the new service account",
+    activityType: "access-provisioning",
+    recurrence: event("service-account-created"),
+    triggerPrompt: "Service account created?",
+    window: eventWindow(3),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-access-authorization"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-service-account-expiry",
+    title: "Disable or renew the expired service account",
+    activityType: "access-removal",
+    recurrence: event("service-account-expired"),
+    triggerPrompt: "Service account expired?",
+    window: eventWindow(1),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-access-review-offboarding"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-vulnerability-confirmed-remediation",
+    title: "Assign confirmed vulnerability remediation",
+    activityType: "remediation",
+    recurrence: event("vulnerability-confirmed"),
+    triggerPrompt: "Vulnerability confirmed?",
+    window: eventWindow(3),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-vulnerability-management"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-vulnerability-overdue-escalation",
+    title: "Escalate overdue vulnerability remediation",
+    activityType: "remediation",
+    recurrence: event("vulnerability-overdue"),
+    triggerPrompt: "Vulnerability remediation overdue?",
+    window: eventWindow(1),
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-vulnerability-management", "control-monitoring-remediation"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
+  },
+  {
+    id: "obligation-asset-disposal-proof",
+    title: "Record asset sanitization and disposal proof",
+    activityType: "asset-recovery",
+    recurrence: event("asset-disposed"),
+    triggerPrompt: "Asset disposed?",
+    window: eventWindow(7),
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+    controlIds: ["control-inventory-configuration", "control-data-retention-disposal"],
+    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+  },
+  {
+    id: "obligation-continuity-activation-review",
+    title: "Review continuity activation, recovery, and follow-up",
+    activityType: "continuity-review",
+    recurrence: event("continuity-activated"),
+    triggerPrompt: "Continuity plan activated?",
+    window: eventWindow(7),
+    ownerIds: [OVERSIGHT_TEAM_ID],
+    controlIds: ["control-continuity-exercise", "control-monitoring-remediation"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   }
 ];
@@ -899,9 +1082,9 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: `${reference}: ${name}`,
     frameworkId: FRAMEWORK_ID,
     reference,
-    applicability: "applicable",
+    applicability: "undetermined",
     description,
-    applicabilityRationale: "Included in the default SOC 2 Security baseline. Confirm applicability and exact interpretation with the selected auditor.",
+    applicabilityRationale: "Confirm applicability against the selected service, scope, and auditor guidance before accepting this starter criterion.",
     tags: ["security", "common-criteria"]
   }));
   const descriptionRequirements = descriptionCriteria.map(([reference, name, description]) => ({
@@ -910,9 +1093,9 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: `${reference}: ${name}`,
     frameworkId: DESCRIPTION_FRAMEWORK_ID,
     reference,
-    applicability: "applicable",
+    applicability: "undetermined",
     description,
-    applicabilityRationale: "Included for preparing the system description. Confirm the official criterion and expected presentation with the selected auditor.",
+    applicabilityRationale: "Confirm applicability against the selected service and auditor guidance before accepting this starter description criterion.",
     tags: ["description-criteria"]
   }));
   const controlRecords = controls.map((control) => ({
@@ -928,7 +1111,10 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     controlType: control.controlType,
     operationMode: control.operationMode,
     operationPattern: control.operationPattern,
-    policyIds: control.policies
+    policyIds: control.policies,
+    ...(FILEGRC_SOURCE_CONTROL_CODES.has(control.code)
+      ? { evidenceSourceIds: ["system-filegrc-program-repository"] }
+      : {})
   }));
   const team = {
     id: OVERSIGHT_TEAM_ID,
@@ -951,14 +1137,14 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     environment: "Git repository",
     classificationId: "confidential",
     internetExposed: false,
-    evidenceSourceKinds: ["training-acknowledgement", "exception-finding"],
+    evidenceSourceKinds: FILEGRC_SOURCE_FAMILIES,
     evidenceOwnerIds: [POLICY_OWNER_APPOINTMENT_ID]
   };
   const obligationRecords = obligations.map((obligation) => ({
     id: obligation.id,
     type: "obligation",
     title: obligation.title,
-    status: "active",
+    status: "proposed",
     activityType: obligation.activityType,
     recurrence: obligation.recurrence.mode === "calendar"
       ? { ...obligation.recurrence, anchorDate: effectiveDate }
@@ -966,12 +1152,32 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     ownerIds: obligation.ownerIds,
     startsOn: effectiveDate,
     ...(obligation.triggerPrompt ? { triggerPrompt: obligation.triggerPrompt } : {}),
+    ...(obligation.eventRiskLevels ? { eventRiskLevels: obligation.eventRiskLevels } : {}),
     ...(obligation.window ? { window: obligation.window } : {}),
     ...(obligation.scopeResourceIds ? { scopeResourceIds: obligation.scopeResourceIds } : {}),
     ...(obligation.templateResourceId ? { templateResourceId: obligation.templateResourceId } : {}),
     controlIds: obligation.controlIds,
     policyIds: obligation.policyIds
   }));
+  const sourceCoverageRecords = SOURCE_FAMILIES.map(([sourceFamilyId, title]) => {
+    const filegrcManaged = FILEGRC_SOURCE_FAMILIES.includes(sourceFamilyId);
+    return {
+      id: `source-coverage-${sourceFamilyId}`,
+      type: "source-coverage",
+      title: `${title} coverage`,
+      status: filegrcManaged ? "active" : "planned",
+      sourceFamilyId,
+      coverageKind: filegrcManaged ? "filegrc" : "external-system",
+      scopeResourceIds: ["workspace"],
+      ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
+      ...(filegrcManaged ? {
+        collectionCadence: "Record work when it occurs and export the complete population for the audit period.",
+        retention: "Keep records for the period defined in the approved Data Retention Schedule.",
+        reconciliationMethod: "Export the complete filegrc source-family population, compare it with related in-scope records and Work Queue activity, and investigate omissions or duplicates.",
+        validFrom: effectiveDate
+      } : {})
+    };
+  });
 
   const foundation = [
     recordFile("systems", programRepository),
@@ -986,6 +1192,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     ...descriptionRequirements.map((record) => recordFile("requirements", record)),
     ...controlRecords.map((record) => recordFile("controls", record)),
     ...foundation,
+    ...sourceCoverageRecords.map((record) => recordFile("source-coverage", record)),
     ...obligationRecords.map((record) => recordFile("obligations", record))
   ];
 }

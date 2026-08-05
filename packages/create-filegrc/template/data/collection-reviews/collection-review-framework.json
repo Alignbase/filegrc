@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-framework",
+  "type": "collection-review",
+  "title": "Framework and criteria sources review",
+  "status": "planned",
+  "resourceType": "framework",
+  "scopeResourceIds": [
+    "workspace"
+  ]
+}

@@ -18,7 +18,10 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, entry.revision]));
 
   await applyResourceBatch(loaded.root, {
-    create: plan.existingSystem ? [] : [plan.system],
+    create: [
+      ...(plan.existingSystem ? [] : [plan.system]),
+      ...(plan.commitment ? [plan.commitment] : [])
+    ],
     update: updates,
     expectedRevisions: Object.fromEntries(updates.map((record) => [record.id, revisionById.get(record.id)])),
     validateWholeWorkspace: true
@@ -29,6 +32,7 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
     system: plan.system,
     workspace: plan.workspace,
     renderer: plan.renderer,
+    commitment: plan.commitment,
     linkedControlIds: [],
     onboardingComplete: !setup.draft
   };
@@ -47,11 +51,13 @@ export async function planWorkspaceSetup(input = process.cwd(), payload = {}) {
       system: plan.existingSystem ? "update" : "create",
       workspace: "update",
       renderer: plan.renderer ? "update" : "unchanged",
-      controls: 0
+      controls: 0,
+      commitment: plan.commitment ? "create" : "unchanged"
     },
     system: setupSystemSummary(plan.system),
     target: setupTargetSummary(plan.workspace),
     renderer: plan.renderer ? setupRendererSummary(plan.renderer) : null,
+    commitment: plan.commitment || null,
     onboardingComplete: !setup.draft
   };
 }
@@ -64,11 +70,13 @@ export function summarizeSetupResult(result) {
     changes: {
       system: "saved",
       workspace: "updated",
-      controls: result.linkedControlIds?.length || 0
+      controls: result.linkedControlIds?.length || 0,
+      commitment: result.commitment ? "saved" : "unchanged"
     },
     system: setupSystemSummary(result.system),
     target: setupTargetSummary(result.workspace),
     renderer: result.renderer ? setupRendererSummary(result.renderer) : null,
+    commitment: result.commitment || null,
     onboardingComplete: result.onboardingComplete
   };
 }
@@ -168,7 +176,31 @@ function buildSetupRecords(loaded, setup) {
   };
   const existingRenderer = loaded.resources.find(({ type }) => type === "renderer-settings");
   const renderer = existingRenderer ? { ...existingRenderer, showOnboarding: setup.draft } : null;
-  return { existingSystem, system, workspace, renderer };
+  const existingCommitment = loaded.resources.find((record) => (
+    record.type === "commitment"
+    && !["superseded", "retired"].includes(record.status)
+    && (record.systemIds || []).includes(systemId)
+  ));
+  const commitment = String(loaded.model.modelVersion) === "3" && !existingCommitment
+    ? {
+        id: createResourceId(
+          "commitment",
+          `${setup.serviceName} service commitment`,
+          loaded.resources.map(({ id }) => id)
+        ),
+        type: "commitment",
+        title: `${setup.serviceName} service commitment`,
+        status: "planned",
+        commitmentKind: "service",
+        statement: "Replace this starter with the actual customer promise or approved service requirement before activation.",
+        systemIds: [systemId],
+        ownerIds: [setup.ownerId],
+        customerFacing: true,
+        ...(workspace.requirementIds?.length ? { requirementIds: [...workspace.requirementIds] } : {}),
+        ...(workspace.controlIds?.length ? { controlIds: [...workspace.controlIds] } : {})
+      }
+    : null;
+  return { existingSystem, system, workspace, renderer, commitment };
 }
 
 function assuranceGoalFromSetup(goal) {

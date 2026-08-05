@@ -120,7 +120,7 @@ Detached and non-authoritative checkouts are read-only. `filegrc serve --allow-n
 
 A generated workspace must be operable by an agent that knows Git and JSON but has no filegrc context. The root `AGENTS.md` explains the program and Git behavior. `data/AGENTS.md` defines the universal record workflow. Collection-level instruction files add compact rules for areas where a wrong action could weaken an audit, lose evidence, or expose data.
 
-`filegrc program-path --next --json` is the compact headless entry point for the renderer’s lifecycle. It reports the current step and first action. `--summary` reports compact status across all five steps, `--current` reports the full current-step guide, and the unfiltered command reports every step with exact page Instructions, Use, Policy Basis, commands, and next actions. `filegrc guide --json` is the compact action and type index. A type-specific guide repeats the matching page guidance and adds current relationship candidates, timing guidance, storage location, and Markdown slots. The shared definitions in `src/program-path.js` keep renderer and headless instruction text in sync. `filegrc scaffold` produces an incomplete `{ record, content }` mutation with a generated ID and explicit missing values. Scaffolds remain in a non-final lifecycle state and must not contain fabricated compliance facts.
+`filegrc program-path --next --json` is the compact headless entry point for the renderer’s lifecycle. It reports the current step and first action. `--summary` reports compact status across all five steps, `--current` reports the full current-step data, and the unfiltered command reports every step. Human-readable output shows short stage and page summaries plus links to type guides. Structured output keeps the detailed Instructions, Use, Policy Basis, commands, and next actions for agents that ask for the full contract. `filegrc guide --json` is the compact action and type index. A type-specific guide adds current relationship candidates, timing guidance, storage location, Markdown slots, and the detailed checks needed for that resource. The shared definitions in `src/program-path.js` keep renderer and headless guidance aligned at each level. `filegrc scaffold` produces an incomplete `{ record, content }` mutation with a generated ID and explicit missing values. Scaffolds remain in a non-final lifecycle state and must not contain fabricated compliance facts.
 
 `filegrc get <id> --mutation` exports the complete record, existing Markdown, and their revisions. `filegrc update` consumes that shape and rejects a stale JSON or Markdown revision. Create and update therefore use the same payload and domain functions as the HTTP and browser paths.
 
@@ -156,7 +156,7 @@ Each relationship has one stored authority. Inbound references and reverse lists
 
 Generated repositories contain only their records and one required `dataModelVersion` in `data/workspace.json`. Individual records do not repeat a schema version. Unknown top-level record fields are errors; organization-specific values belong under `extensions`. Generated repositories do not receive copied schema files.
 
-`docs/data-model.md` is generated from the active model v2. `npm run validate` fails when the generated document differs from the registry. `docs/upgrading-to-model-v2.md` documents the atomic v1 migration.
+`docs/data-model.md` is generated from the active model v3. `npm run validate` fails when the generated document differs from the registry. The migration command previews and applies the v1-to-v2 and v2-to-v3 upgrades as separate atomic steps.
 
 The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
 
@@ -196,8 +196,8 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - The AICPA 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
 - All nine Description Criteria reference IDs from DC1 through DC9
 - A planned control catalog mapped to the Common Criteria and starter policies
-- A security and risk oversight team chaired by a reviewer who is separate from the policy owner. The reviewer may be internal or external.
-- A Person with their actual organization job title and a separate dated Policy Owner Appointment scoped to the program.
+- A planned security and risk oversight team that still needs a chair and membership.
+- A Person with their actual organization job title, an active Policy Owner Appointment, and a planned Independent Policy Reviewer Appointment scoped to the program
 - Recurring and event Obligations that are the sole authority for review, scan, test, training, and meeting schedules
 - Event obligations for workforce starts, role changes, departures, personal devices, vendor access and reassessment, material system or data-use changes, and incidents
 - General and role-based training, including conditional secure-development, privileged-role, and anti-bribery modules
@@ -206,7 +206,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - A default 5x5 likelihood-and-impact risk method
 - Public, Internal, Confidential, and Restricted classification definitions
 
-The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, service commitments, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and an optional management goal, then stores them on the workspace. It does not create an audit engagement, appoint the independent management reviewer, add optional trust categories, or claim that the initial scope is complete.
+The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and an optional management goal, stores them on the workspace, and creates one planned service-commitment prompt linked to that system. The prompt does not assert a customer promise and must be replaced with the actual commitment before activation. Onboarding does not create an audit engagement, appoint the independent management reviewer, add optional trust categories, or claim that the initial scope is complete.
 
 Every starter control is `planned`. A user must confirm the owner, system scope, actual procedure, operation pattern, evidence source, implementation date, mappings, and every required Work Queue schedule before marking it implemented. A policy statement alone does not prove that a control operates.
 
@@ -270,11 +270,11 @@ Generated or cached data never belongs in these directories.
 
 ## Policy obligations
 
-An `obligation` is a reusable policy rule. It remains a proposal until every governing policy is active and effective and, when it names controls, at least one linked control is implemented. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date.
+An `obligation` is a reusable policy rule. It remains a proposal until every governing policy is active and effective and, when it names controls, at least one linked control is implemented. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date. An Obligation may be proposed, active, paused, or retired. Blocking is authoritative only on an assigned Action Item, which must name its blocking resources. The shared planner preserves that state and exposes the same blocker titles and resolution action in browser, CLI, HTTP, and agent output.
 
 Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. The model-owned activity registry limits each activity’s recurrence modes and scope resource types. The Policy Event registry limits subject resource types and their cardinality, such as exactly one Person for a departure or exactly one Vendor for reassessment. filegrc rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. filegrc applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
 
-`planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. Calendar completion uses one validated mutation to create the dated operating record and append it to the obligation's `completionResourceIds`; the obligation board, API, and `filegrc complete` use that same transaction. The planner does not write derived occurrence records for calendar schedules.
+`planObligations` is the shared calculation used by the dashboard, obligation board, HTTP API, and `filegrc obligations` CLI command. `createObligationEvent` is the shared write path used by the UI, API, and `filegrc trigger`. Calendar completion uses one validated mutation to create the dated operating record and append it to the obligation's `completionResourceIds`; the obligation board, API, and `filegrc complete` use that same transaction. `filegrc complete --scaffold` and `complete-action --scaffold` select the model-defined completion type, prefill the occurrence, scope, actors, review candidates, dates, and current target revision, and keep missing actual facts visible. The planner does not write derived occurrence records for calendar schedules.
 
 ## Git metadata
 
@@ -302,7 +302,7 @@ Program Readiness answers whether management can begin a candidate Type 2 period
 3. Implement controls and complete their authoritative evidence sources.
 4. Operate the program.
 
-The Evidence Ready gate requires an assurance goal, selected systems, criteria, controls, effective policies, and implemented controls with complete authoritative evidence sources. Every selected control family must point to active authoritative Systems with the required evidence roles, current evidence access owners, and repeatable retrieval instructions in Record Markdown. These checks are part of Control implementation in `assessProgramReadiness`. The Step 3 browser overview shows the same source-family results beside the Control pages, and `filegrc evidence-map` remains a focused headless diagnostic. Neither creates Evidence. A filegrc-managed control cannot be implemented while a linked non-retired Work Queue schedule is paused or waiting for policy approval. Starter schedules remain enabled but do not run until their governing policies are effective and at least one linked control is implemented. Marking a fully configured control implemented starts its eligible schedules in the same validated state change. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
+The Evidence Ready gate requires an assurance goal, selected systems, reviewed criteria and service commitments, effective required policies, governed documents and training needed by the selected controls, and implemented controls with complete authoritative evidence sources. Every selected control family must point to active authoritative Systems with the required evidence roles, current evidence access owners, repeatable retrieval instructions in Record Markdown, and a passed pre-period retrieval dry run for each distinct method. These checks are part of Control implementation in `assessProgramReadiness`. The Step 3 browser overview shows the same source-family results beside the Control pages, and `filegrc evidence-map` remains a focused headless diagnostic. A filegrc-managed control cannot be implemented while a linked non-retired Work Queue schedule is paused or waiting for policy approval. Starter schedules remain enabled but do not run until their governing policies are effective and at least one linked control is implemented. Marking a fully configured control implemented starts its eligible schedules in the same validated state change. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
 
 Scheduled operating records use `scheduledFor` separately from their actual completion date or timestamp. Completed reviews, assessments, scans, tests, and exercises must name the model-defined actors, result, evidence, review, and coverage fields. Validation rejects missing completion proof, terminal-only fields on unfinished work, and completion or review dates in the wrong order. Each Vendor Review covers one Vendor so its decision, evidence, coverage, and follow-up remain unambiguous.
 
@@ -341,7 +341,7 @@ Training material is canonical Markdown. A reusable `training` record defines it
 
 ## Rendering
 
-The homepage includes a program progress tracker and an Evidence Collection Running milestone. Its five-step path is Define Scope, Approve Policies, Implement Controls, Operate the Program, and Audit. Each step links to its overview page rather than a separate readiness checklist. Continue opens the first step page with unfinished work. Page completion tracks the user’s progress through the path for Steps 1 through 3 and Step 5. Program Readiness checks whether Control implementation includes complete authoritative evidence sources before management begins reliable evidence collection. Audit remains last, though the Audit area stays available when a customer deadline needs early CPA input. Validation and Git status remain visible in the top bar.
+The homepage includes a program progress tracker and an Evidence Collection Running milestone. Its five-step path is Define Scope, Approve Policies, Implement Controls, Operate the Program, and Audit. Each step links to its overview page rather than a separate readiness checklist. Continue opens the first step page with unfinished work. Page completion comes from source-record state, explicit reviewed decisions, current collection confirmations, and the shared readiness calculation. Program Readiness checks whether Control implementation includes complete authoritative evidence sources before management begins reliable evidence collection. Audit remains last, though the Audit area stays available when a customer deadline needs early CPA input. Validation and Git status remain visible in the top bar.
 
 The sidebar groups records by their job:
 
@@ -359,7 +359,7 @@ External Evidence belongs in Step 4 because management should create it only whe
 
 Step 5 reviews both evidence paths for the formal audit date or period. filegrc Evidence is the set of dated Step 4 operating records, their Markdown, and Git history. External Evidence is the set of verified `evidence` records, fixed attachments, and approved external references from authoritative Systems. Audit Readiness reports coverage for both. The packet includes matching filegrc records, External Evidence, control links, delivery indexes, historical revisions, and checksums.
 
-Each of the five lifecycle steps has its own overview route. Clicking a step label opens that page, while its separate chevron expands or collapses the step in place. Nested subgroup rows toggle their drawers and do not have separate overview pages. Steps 1 through 3 and Step 5 link each record or working page in order, summarize record counts, and let users mark each page complete or incomplete. Step 3 also shows the derived evidence-source readiness results. Step 4 is an operating board, so it has no manual completion marks. It puts compact Policy Event triggers above the Work Queue. Each trigger shows every resulting task, owner, due window, and required proof in a tooltip, then creates the event and all linked Work Queue tasks atomically. Other open Action Items also appear in Work Queue. Step 4 progress comes from the candidate-period start and overdue Work Queue state.
+Each of the five lifecycle steps has its own overview route. Clicking a step label opens that page, while its separate chevron expands or collapses the step in place. Nested subgroup rows toggle their drawers and do not have separate overview pages. Every step links its records or working pages in order and derives completion from the active model, source records, policy content, and Git state. No page stores a manual completion flag. Step 3 also shows the derived evidence-source readiness results. Step 4 is an operating board. It puts compact Policy Event triggers above the Work Queue. Each trigger shows every resulting task, owner, due window, and required proof in a tooltip, then creates the event and all linked Work Queue tasks atomically. Other open Action Items also appear in Work Queue. Step 4 progress comes from period state and the Work Queue, including named blocked work.
 
 Findings are the global register for confirmed gaps that need their own owner, due date, remediation state, or verified closure. The review, test, assessment, incident, meeting, or audit record keeps the report and observations in Markdown. A Finding points back to that source through `sourceResourceId`; the source does not maintain a reverse list. Straightforward remediation stays on the Finding. Create an Action Item only when part of the follow-up needs a separate assignee, deadline, and completion proof. Action Items point to their source and appear in Work Queue, but do not need a separate sidebar destination.
 
@@ -367,7 +367,7 @@ Third-party software commonly needs both a `system` and a `vendor`. The applicat
 
 For enabled obligations whose governing policies are effective and that have an implemented linked control, the dashboard derives the next calendar occurrence from the recurrence rule and applicable policy effective date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence. Starter obligations remain proposals until policy adoption and control implementation.
 
-Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. List-page guides show Instructions, Use, and Policy Basis. The type-specific CLI guide returns the same text and adds timing, fields, relationships, paths, and Markdown slots. When the workspace contains the referenced policies, documents, or recurring obligations, the renderer links to those current records and schedules. The dashboard reports data validity, Program Readiness, evidence collection, and Audit Readiness separately, so a valid starter schema is not presented as an operating program or active engagement.
+Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Progressive disclosure keeps orientation separate from execution: a stage hero states one outcome, each page card states one purpose, and detailed checks appear only in the current record, action, confirmation, or guide. A list row shows that record’s actionable issue and links to the best place to resolve it. Collection-level To-do panels do not repeat those row actions. For model-defined collections where FileGRC cannot infer that management reviewed the complete or empty set, the page shows one Scope Confirmation with type-specific review criteria, conclusion, reviewer, date, scope revision, and calculated collection revision. The confirmation becomes stale after a reviewed record or material Workspace scope fact changes. List-page guides show Instructions, Use, Policy Basis, and any resource-specific review criteria. The type-specific CLI guide returns the same text and adds timing, fields, relationships, paths, Markdown slots, and collection review state. When the workspace contains the referenced policies, documents, or recurring obligations, the renderer links to those current records and schedules. The dashboard reports data validity, Program Readiness, evidence collection, and Audit Readiness separately, so a valid starter schema is not presented as an operating program or active engagement.
 
 The local app generates guided fields and relationship pickers from the model, with advanced JSON available for optional fields and extensions. Global and list search include authored Markdown. Static builds provide the same browsing, search, and filter flows without write actions.
 
@@ -388,6 +388,285 @@ Audit pages also show:
 - Complementary user-entity and subservice-organization controls
 - Subservice organizations and the method used to include or exclude them
 
+## Guided SOC 2 workflow architecture
+
+The product starts with every known piece of work already represented. A new user does not need to read a policy, infer a record type, and invent a checklist before FileGRC can tell them what to do.
+
+Represent work in three forms:
+
+- Source records hold organization facts and reviewed decisions.
+- Assigned-work records hold real commitments with an owner, deadline, and completion proof, such as an Action Item, Audit Request, or reusable Obligation.
+- Derived checklist items explain what is missing, blocked, scheduled, or next. They are calculated and never become a second source of truth.
+
+Starter source records may be incomplete prompts, and starter Obligations may remain proposals, but they must stay in a non-final state and must not assert organization-specific facts. Do not create an Action Item, Audit Request, or other assignment until its real owner, deadline or due rule, and completion expectation are known. The engine derives checklist items, finalization checks, period coverage, and next actions from the source records, assigned work, model, policy content, and Git history.
+
+A Work Item is the common read model used by queues and search. It may project an assigned-work record, a derived obligation occurrence, or a dated source-record deadline. It has a deterministic key derived from its source, subject, and due window so every interface can refer to the same item. It is never another stored record type.
+
+Assigned work may be canceled or superseded only with an actor, date, and reason. Preserve its history and assess the effect on policy, control, and period coverage. Cancellation removes work from the active queue only after the shared assessment accepts the disposition.
+
+The same derived workflow contract must drive the browser, HTTP API, CLI, direct-file guidance, and agent guidance. A source file does not need to repeat generic audit-readiness instructions. `guide`, `scaffold`, `get`, list and search results, mutation responses, program readiness, audit readiness, and the browser should expose the same calculation. Persist a task only when it is an authoritative assigned record, such as an Action Item or Audit Request.
+
+### Shared workflow contract
+
+Add one model-driven assessment kernel. Record finalization, Program Readiness, Period Health, Audit Readiness, delivery readiness, and closure must be named assessments over the same facts and rules, not separate implementations. Its result returns:
+
+- Separate assessment results for structural validity, program configuration, Evidence Readiness, period health, audit readiness, delivery readiness, and audit closure. Do not collapse them into one green or red lifecycle state.
+- Required, conditional, and optional work for the current record and program stage
+- Explicit applicability decisions, including reviewed `not-applicable` outcomes with reason, reviewer, and date
+- Blocking dependencies in a useful order, including every record and relationship needed to resolve the block
+- Derived checklist items with `blocked`, `ready`, `scheduled`, `waiting-external`, `not-applicable`, `overdue`, and `complete` states
+- `blocked` only when named prerequisite records prevent the item from proceeding; immediately actionable creation, editing, review, and management decisions use `ready` even when they prevent an assessment from passing
+- Fields, Markdown, relationships, actors, dates, evidence, and independent review still needed to finalize a record
+- A stable next action, suggested command or route, candidate relationships, and machine-readable error codes and field paths
+- A mutation preview that shows validation, readiness, due-work, period-continuity, and created-record changes before a write
+- A `workflowDelta` after every write so a browser or agent can continue without calculating the next step again
+- A versioned result-envelope contract that can evolve independently of the data model
+- The input scope, explicit evaluation date or timestamp, timezone, date or period, model version, contract version, and Git revision needed to reproduce the result
+
+The kernel is one public contract over small evaluators owned by the model, resource lifecycle, obligation planner, period coverage, and audit workflow. Each evaluator emits normalized findings with a stable code, subject references, state, severity, dependencies, and resolution actions. One aggregator orders and summarizes them for every interface. Do not build one large function or copy a rule into several readiness commands.
+
+Do not add a UI-only dismiss or completion control for a derived finding. Resolve it by changing its source facts, recording a reviewed applicability decision, accepting an explicit Exception where policy allows one, or completing authoritative assigned work.
+
+Replace manual page-completion flags with derived completion. Global search, resource lists, and `get` include assessment state and derived blockers without writing duplicate TODO files. Resource rows carry record-specific work. Model-defined Collection Reviews preserve the management fact that a complete or empty collection was checked, while the engine calculates and verifies the reviewed collection revision. Applicability batch flows preserve per-record decisions. Derive batch progress from saved source decisions rather than storing a parallel session checklist.
+
+Add scaffold and preview support for multi-record operations, obligation completions, and Policy Events. A suggested next action must describe the full ordered dependency bundle. For example, adding a reviewer to the oversight team may require a Person, a planned Appointment, and Team membership rather than one partial update.
+
+Rank next actions consistently: expired and overdue work first, then work that threatens an active period or external deadline, blocking prerequisites, ready assigned work, and future scheduled work. Show one recommended next action by default and keep the complete backlog available. Explain the rule that placed an item first.
+
+Apply one presentation pattern everywhere:
+
+- A stage overview shows its named assessment, blocking prerequisites, recommended next action, and complete checklist.
+- A list page shows expected coverage, missing or conditional records, reviewed zero or not-applicable decisions, externally managed coverage, and the create or batch action.
+- A detail and edit page shows the record's finalization checks, downstream effect, and allowed next transitions.
+- An empty page explains whether records are required, conditional, externally managed, or reviewed as zero. It never stops at a record count.
+- CLI, HTTP, static, and agent output expose the same information at an appropriate level of detail.
+
+Browser and HTTP mutations must reach parity with CLI operations, including Action Item completion, Policy Event completion, evidence attachment and removal, and every future atomic transition. The CLI and HTTP API should return the same stable JSON result. Generated `AGENTS.md`, collection guidance, model documentation, CLI help, and browser copy need contract tests against the active model so field names and commands cannot drift.
+
+Domain transition commands create their source change, Policy Event, and assigned Action Items in one atomic mutation. A direct file edit cannot provide that transaction. After a file edit, `validate`, `get`, and the shared assessments must identify the incomplete transition and return the same proposed bundle. A `reconcile --preview` path shows the missing records. `reconcile --apply` requires explicit event facts and confirmation before it creates them. It must never infer that a real-world event occurred merely because two field values differ. Static output exposes the same assessment and recovery instructions without write actions.
+
+### Starter work and governance
+
+Create one starter Appointment record for every model-defined authority role. Start Policy Owner active and keep the other records planned:
+
+- Policy Owner
+- Independent Policy Reviewer
+
+Treat Policy Owner and Independent Policy Reviewer as the core Appointments required by the starter control design. SOC 2 does not prescribe these or any other job titles. The default policies assign program coordination, incident, recovery, executive, legal, privacy, insurance, communications, and audit-coordination functions to the Policy Owner unless management delegates them. Let users create custom Appointments for real delegations, but do not create or require separate role records merely because a plan names a function. One Person may hold several compatible Appointments. Enforce separation only where the workflow requires independent challenge, approval, collection, or verification.
+
+Allow an Appointment to remain `planned` without a holder. Require the holder, effective dates, authority scope, and any required independence before it becomes active. Keep the person's actual job title separate from appointed authority. Do not create placeholder Person records for unfilled slots.
+
+Add a guided external-reviewer bundle for any organization without a suitable internal reviewer. It creates the minimum external reviewer identity, Appointment, oversight-chair assignment, Team membership, and independent approval path. The reviewer record should collect only the data needed for the program. Do not infer company size from the number of Person records in FileGRC.
+
+Create first-class initial work for:
+
+- Selecting the assurance goal and candidate dates
+- Reviewing the service boundary and all relevant system components, infrastructure, software, people, procedures, data, locations, vendors, and dependencies
+- Deciding whether Security alone applies or whether Availability, Confidentiality, Processing Integrity, or Privacy applies based on service commitments and system requirements
+- Reviewing all criteria rather than treating every starter requirement as accepted
+- Reviewing the full starter control catalog rather than treating all planned controls as selected
+- Recording legal, contractual, privacy, regulatory, and security duties as Framework, Requirement, or Commitment records, then mapping each applicable duty to an owner and controls
+- Deciding whether commitments, subservice organizations, complementary user-entity controls, and complementary subservice-organization controls exist
+- Completing the initial risk assessment and recording resulting risks, treatments, and control changes
+- Reviewing the model-required source-family coverage for the selected scope and controls
+- Assigning every policy, control, obligation, system, source family, and governed document to a real accountable party
+
+Commitment and complementary-control records need a planned state, or the workflow needs a reviewed applicability decision on an existing source record, so starter prompts do not assert organization-specific facts. Do not add a generic decision record unless several workflows prove that the existing resource types cannot retain the decision cleanly.
+
+Bind each applicability decision to the scope facts and revision it reviewed. When a service, System, policy, Requirement, Commitment, or control changes in a way that affects the decision, mark the decision stale and require re-review rather than silently carrying it forward.
+
+Label starter policies and documents as required, conditional, alternative, or supporting. Anti-bribery and an employee handbook should not appear equally required for every SOC 2 program. Let management use an equivalent policy or control while preserving criterion coverage and recording the decision.
+
+Draft policies and governed documents must not receive a factual `effectiveOn` date before approval. Use no effective date while draft, or model a clearly named proposed date. Approval must bind the exact Markdown revision, use a reviewer separate from the owner, and move changed approved content back through review.
+
+### Authoritative systems and external recordkeeping
+
+Model authoritative recordkeeping once at the model-owned source-family and scoped-System level, then roll it up into controls, operating domains, program stages, and audits. Do not ask for the same source-of-record decision on every page, control, or obligation.
+
+Derive applicable source families from selected controls, policies, systems, and audit scope. Families may cover workforce, access, changes, incidents, vulnerabilities, assets, vendors, training, backups, monitoring, findings, or exceptions. Require coverage only for applicable families. Each applicable family uses FileGRC records, an external authoritative System, or a reviewed not-applicable decision. An external path must name:
+
+- The authoritative System
+- The exact scope it covers and any excluded population
+- The people who can retrieve records
+- Retrieval instructions in Record Markdown
+- Collection cadence and retention
+- Reconciliation method
+- Valid-from and valid-through dates
+- A reviewed reason when the domain does not apply
+
+An empty FileGRC collection must not look complete when the facts live elsewhere. The derived workflow should direct the user to the selected system and require period reconciliation.
+
+Before a candidate Type 2 period begins, require a real evidence-retrieval dry run for every distinct retrieval method used by the selected source families. One dry run may cover several families only when the authoritative System, query or procedure, access path, and retained artifact are the same. Preserve a sample export or report, collection facts, access confirmation, covered families, and verification result. Mark it as a pre-period readiness test so it cannot satisfy audit-period control operation.
+
+Track source-system and evidence-mapping history. A control may change systems, queries, access owners, or retrieval steps during a period, so current mappings alone cannot prove continuous coverage.
+
+### Policies, controls, and training
+
+Add a policy activation flow that creates or resolves:
+
+- Owner and independent reviewer appointments
+- Exact revision approval
+- Effective date
+- Related governed-document approvals
+- Required training and acknowledgement assignments
+- Recurring obligations and Policy Events
+- Material-change and annual-review work
+
+Distinguish whether an Obligation is configured from whether it is proposed, blocked, running, due, overdue, paused, or retired. A source record marked `active` must not imply that work runs while its policy and controls remain incomplete.
+
+Add a control implementation flow for each selected control. It should require owner, in-scope systems, requirement mappings, actual procedure, operation mode and frequency, evidence-source families, authoritative systems, retrieval dry runs, initial applicability decision, implementation date, and Work Queue schedules. A not-applicable control needs a reason, approver, decision date, and a clear statement of the resulting criteria-coverage effect.
+
+Bind a control procedure to an effective Git revision. A material procedure change during a Type 2 period needs a dated change decision, re-review, new effective revision, and a period-impact assessment.
+
+Training content needs the same governed revision lifecycle. Active training should name its effective revision. Each completion or signed attestation must bind the exact revision assigned to that person.
+
+### Operating work and atomic transitions
+
+Define one derived Work Item projection with source type and ID, title, owner, due or scheduled date, state, blocking reason, scope, required completion profile, and next action. Project all open Action Items, Audit Requests, risks, vulnerabilities, exceptions, findings, expiring access, service accounts, vendor artifacts, contracts, insurance, penetration tests, certifications, and other dated work into that shape. The Work Queue, CLI, API, agent output, and search consume the same projection rather than maintaining type-specific queue logic.
+
+Recurring obligations that apply per person, vendor, system, or other scope item must fan out into one derived Work Item per subject. The activity profile defines the eligibility rule and evaluation date. Retain the scope revision or population evidence needed to reconstruct which subjects were expected for the due window. Persist the reusable Obligation and each completed operating record. Create an Action Item only when the occurrence needs an authoritative assignment that is not already supplied by the Obligation. One generic completion cannot cover an unspecified population.
+
+Add first-class scheduled or event work for:
+
+- High and critical risk treatment and review
+- Policy and governed-document material change and reapproval
+- Emergency-change post-review
+- Exception expiry and compensating-control review
+- Vulnerability remediation deadlines by confirmed severity
+- Service-account review, expiry, and non-expiring justification
+- Asset disposal
+- Data-retention disposal
+- Vendor renewal, termination, reassessment, and assurance-report expiry
+- Commitment and system-requirement change
+- Finding remediation and verified closure
+- Lost devices and personal-device approval
+- Business continuity or disaster recovery activation
+
+Use atomic transition workflows when changing a source record should trigger policy work. Cover workforce start, role change, departure, vendor activation or termination, vendor access, material system change, material data-use change, incident closure, high-risk departure, policy revision, emergency change, exception expiry, service-account creation or expiry, vulnerability confirmation or overdue status, asset disposal, and continuity activation.
+
+Use one departure flow with a risk flag and conditional steps rather than separate normal and high-risk events that can be missed or duplicated. A direct file edit, CLI command, API write, or browser form must receive the same required-transition result. Do not block a truthful late or emergency update. Domain mutations create the required event and actions atomically. Direct file edits leave the transition visibly unfinished with an exact reconciliation action.
+
+Several recurring activities currently accept an Evidence record as the completion itself. Define model-owned completion profiles for inventory reviews, log reviews, network reviews, continuity reviews, performance reviews, personal-device approvals, and security scans. Each profile must select an existing operating record type that captures performer, scope, method, result, exceptions, review, completion time, follow-up, and supporting Evidence. When an external system owns the activity facts, support a structured external-activity reference and reconciliation instead of forcing a duplicate local record. Add a generic control-activity resource only if repeated implementation shows that no specific record type can represent a stable shared workflow.
+
+Add missing model facts:
+
+- Risk treatment target and next review dates
+- Vulnerability confirmation, severity-assignment, target-remediation, and severity-change dates and reasons
+- Access Grant business need
+- Service Account privilege, authentication method, review date, expiry, and non-expiring rationale
+- A System finalization profile that checks existing relationships, calculated evidence-source readiness, and required Markdown sections for variable boundary, data, dependency, and recovery detail. Add structured System fields only when validation, filtering, relationships, or readiness calculations need them.
+- Requirement applicability reviewer and review date
+- Evidence provenance that separates business event time, source generation time, collection time, verification time, and first Git entry time
+
+Support a reviewed zero-population conclusion for organizations with no employees, vendors, incidents, vulnerabilities, or another applicable population. Do not require fictional records. Preserve source evidence that supports the zero count.
+
+### Period health and change control
+
+Extend the shared assessment kernel across a date range for policies, controls, procedures, systems, evidence sources, Appointments, obligations, and scoped populations. Program Readiness is the current-state assessment. Period Health applies the same rules across a candidate or formal Type 2 period and reports mid-period changes, pauses, owner gaps, missing occurrences, and source changes.
+
+Once evidence collection begins, a mutation that reduces readiness should preview the period impact. Allow the truthful change, then mark the affected period at risk and require the applicable material-change, exception, incident, or remediation flow. Never silently preserve a green state after a control, source, policy, or accountable role stops being ready.
+
+Add milestone-aware CI checks backed by the same assessment kernel. Structural `validate` should continue to allow honest drafts. A workspace that declares Evidence Ready or starts a candidate period should also run a stage check that fails on readiness regressions, overdue work, or period gaps.
+
+Check contemporaneity without rewriting history. Compare explicit business dates with the first Git commit and flag late-entered events, retroactive approvals, and evidence created after the fact. Preserve a management explanation. Check whether available Git history spans the candidate or audit period, including shallow, replaced, or newly initialized history.
+
+Keep overlapping services, audit scopes, and periods isolated. A completion, evidence record, or population must not satisfy unrelated controls or engagements merely because its date falls inside both periods.
+
+### Audit engagement and fieldwork
+
+Create an engagement wizard only after a real CPA engagement exists, or earlier when a customer deadline requires coordination. Force management to confirm or intentionally carry forward:
+
+- Type 1 or Type 2
+- Firm-agreed date or period
+- Included services, systems, locations, and data
+- Trust Services Categories and criteria
+- Controls and commitments
+- Subservice organizations and inclusive or carve-out method
+- Complementary user-entity and subservice-organization controls
+- Management owners and authorized signatories
+- Auditor and engagement contact
+- Management deadlines and auditor-owned steps
+
+Initialize scope from the current workspace, show the diff, and require a reviewed decision. An audit with no selected controls must not produce a reassuring empty evidence result.
+
+Run a period-feasibility check before fieldwork. Compare the formal period with the candidate-ready date, Git history, policy and control effective dates, source-system coverage, and available external history. Permit a retrospective period only when the source history supports it, and show every gap when it does not.
+
+Derive expected evidence from each control's operation pattern and frequency. One dated operating record per control is not enough when the control operates per event, daily, monthly, quarterly, or continuously. Show expected occurrences, configuration snapshots, population coverage, samples, and missing intervals.
+
+Require zero-event population proof during Period Health, not only after the period ends. Cover workforce changes, incidents, vendors, vulnerabilities, access, changes, and every other selected event family.
+
+Build first-class subservice assurance work for assurance-report coverage dates, bridge letters, current vendor review, report exceptions, complementary subservice controls, complementary user-entity controls, and the inclusive or carve-out conclusion.
+
+Support an external-authority path on Audit Requests when the CPA firm's portal is authoritative. Reuse the normal Audit Request lifecycle and external-reference pattern. FileGRC should retain the request reference, owner, due date, response revision, delivery evidence, status, and reconciliation without duplicating confidential portal contents.
+
+Audit readiness must include open Audit Requests and Findings before an audit can become complete. Management representation and assertion documents must require signers with active authority Appointments. Record the CPA firm's engagement terms and management's acknowledgement while keeping the firm's professional judgments outside FileGRC.
+
+Before report issue, require a subsequent-events and significant-changes review for the period between the Type 2 period end or Type 1 date and the report date. Reconfirm incidents, changes, findings, subservice coverage, management representations, and system-description disclosures.
+
+### Delivery, closure, and the next cycle
+
+The packet-delivery approval flow records:
+
+- Classification and least-disclosure review
+- Redaction decision
+- Approved recipient and delivery system
+- Exact packet revision and checksum manifest
+- Authorized management approval
+- Delivery date and receipt
+
+Generating a packet is preparation, not delivery. A delivery-ready packet should remain separate from a delivered packet.
+
+Audit lifecycle findings guide each transition through planning, fieldwork, report draft, issue, delivery, and closure. A completed audit links the issued report, records the auditor's opinion and report date, resolves or accepts open requests and findings, records retention and distribution, and includes an explicit carry-forward action list, including an empty list when no next-period work remains. Modified opinions and final findings use management responses, remediation, customer communication, and next-period carryover. After report issue, track authorized distribution, retention, approved bridge letters, customer requests, and report expiry.
+
+Audit closure should require resolved or accepted requests and findings, final management documents, issued report details, delivery record, retention decision, and carry-forward work. Then create or propose the next candidate period and audit cycle, reconfirm scope and Trust Services Categories, renew policy and vendor evidence, and preserve the completed report's exact coverage.
+
+Add a Type 1 to Type 2 transition that carries forward approved scope and control design, starts the operating period after the as-of date, and detects later changes rather than rebuilding the program.
+
+Do not require a separate Commitment for every supporting System. Support service-level commitments and system requirements, then require an explicit reviewed decision when a supporting System has no separate customer commitment.
+
+### Model and release boundary
+
+The guided workflow is a breaking model and workflow change. Model v3 is the current model and first ships in coordinated `filegrc` and `create-filegrc` version 0.5.0. A v2 workspace must use the explicit v3 migration before normal writes.
+
+The v2-to-v3 migration must provide preview and explicit apply modes. Classify every proposed change as automatic, review required, or unsupported. Preserve source facts and historical records. Never invent an approval, Appointment holder, applicability decision, evidence-source conclusion, control operation, event, or historical date.
+
+The migration should:
+
+- Add only facts that are mechanically derivable from existing records
+- Leave new decisions unreviewed and expose them through derived checklist items
+- Preserve questionable draft effective dates and other ambiguous facts for human review rather than silently deleting or reinterpreting them
+- Convert compatible existing source mappings, obligations, and audit scope without widening their coverage
+- Stop reading obsolete manual page-completion state. If it exists in committed source, preview its removal before applying the migration.
+- Validate the proposed post-migration workspace with the complete target-model validator before reporting that the migration is ready
+- Apply target-model creates and updates in one whole-workspace batch that names the target model and changes `dataModelVersion`
+- Produce a reviewable file diff and the same post-migration assessments in browser, CLI, and agent output
+- Keep v1-to-v2 migration support separate and deterministic
+
+### Verification plan
+
+Test the roadmap as one contract across domain functions, CLI, HTTP, browser, static output, and direct-file agent guidance:
+
+- Every resource type returns useful guide, scaffold, finalization, and next-action output
+- Every starter assertion has a generated-workspace contract test
+- Every multi-record workflow has atomicity and stale-revision tests
+- Every browser mutation has an equivalent CLI and HTTP path
+- Every derived checklist item, Work Item, and assessment state is identical across interfaces
+- Every stage has empty, partial, complete, not-applicable, external-system, overdue, and regressed fixtures
+- Type 1, Type 2, external-reviewer, no-employee, no-vendor, fully outsourced, multi-service, overlapping-audit, late-entry, shallow-history, and mid-period-change fixtures cover the edge paths
+- Packet tests cover subservice reports, bridge letters, zero populations, external audit portals, subsequent events, delivery approval, modified opinions, and next-cycle carryover
+- Browser journey tests start from a fresh generated repository and prove that a SOC 2 newcomer can follow only surfaced TODOs to each milestone
+- Agent journey tests start with no FileGRC context and reach the same milestones using only structured guide, scaffold, references, mutation preview, write, and verification output
+
+Implement and verify the plan in vertical slices:
+
+1. Assessment foundation. Add the shared assessment kernel, reproducible result envelope, derived checklist items, Work Item projection, mutation preview, and `workflowDelta`. Replace manual page completion. Keep all interfaces on the same read-only calculation.
+2. Model v3 and starter migration. Add reviewed applicability facts, core Appointments, custom Appointment support, completion profiles, missing lifecycle fields, starter prompts, and the v2-to-v3 migration. Generate and validate fresh and migrated workspaces.
+3. Guided program operation. Add batch flows, policy and control finalization, source-coverage dry runs, atomic domain transitions, direct-file reconciliation, obligation fanout, and complete Work Queue mutations across every interface.
+4. Period Health. Apply the assessment kernel across candidate and formal periods, add effective-revision and source-history coverage, detect regressions and contemporaneity gaps, and enforce milestone-aware CI.
+5. Audit lifecycle. Add engagement scope diffing, period feasibility, expected-occurrence coverage, populations, subservice assurance, external Audit Requests, subsequent events, delivery approval, closure, Type 1-to-Type 2 transition, and next-cycle carryover.
+
+A slice is complete only when domain, CLI, HTTP, browser, static, generated guidance, migration, and fixture tests agree. Do not defer headless or browser parity to a later cleanup phase.
+
 ## Safety
 
 - Resolve and validate all paths against the repository root.
@@ -402,7 +681,7 @@ Audit pages also show:
 
 ## Versioning contract
 
-Model v1 is published and frozen. Model v2 is the active model. Compatible additions can update the active model with its starter data, generated docs, and tests. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
+Models v1 and v2 are published and frozen. Model v3 is current. Compatible additions can update the active model with its starter data, generated docs, and tests. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
 
 Package versions stay unchanged during normal development and move together when both published packages change. Before 1.0, a release with any breaking published change increments the minor version. A release containing only backward-compatible published changes increments the patch version. A migration path helps users adopt a breaking data-model release, but the release still receives a minor version increment. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 
@@ -421,7 +700,11 @@ Implemented:
 - A six-record foundation profile and the default SOC 2 Security starter layer, with optional combined noninteractive service setup
 - Full resource fixtures and unit and end-to-end tests using Node.js built-ins
 - Browser journey checks and reviewed desktop, mobile, light, and dark screenshots for the main user flows
-- SOC 2 Security Common Criteria and Description Criteria references, planned controls, oversight ownership, recurring obligations, risk defaults, and classification defaults in newly generated workspaces
+- SOC 2 Security Common Criteria and Description Criteria references, planned controls, core Appointments, recurring and event obligations, risk defaults, source-family coverage, and classification defaults in newly generated workspaces
+- Model v3 with explicit v2-to-v3 migration preview and apply modes
+- One shared workflow contract for browser, HTTP, CLI, static, direct-file, and agent use, including named assessments, deterministic Work Items, finalization checks, ranked next actions, mutation previews, and workflow deltas
+- Guided applicability review, external independent review, event-risk, direct-file reconciliation, milestone, Period Health, audit transition, delivery, and closure flows
+- Browser and HTTP parity for Action Item and Policy Event completion plus evidence attachment and removal
 
 Next:
 

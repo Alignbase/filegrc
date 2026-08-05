@@ -5,6 +5,5 @@
   "showOnboarding": true,
   "repositoryMode": "trunk",
   "authoritativeBranch": "main",
-  "repositoryRemote": "origin",
-  "completedStagePageIds": []
+  "repositoryRemote": "origin"
 }

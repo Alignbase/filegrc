@@ -9,5 +9,6 @@
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classificationId": "internal"
+  "classificationId": "internal",
+  "programRole": "required"
 }

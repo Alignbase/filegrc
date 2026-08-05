@@ -1,10 +1,13 @@
 import { readFile } from "node:fs/promises";
+import { assessRequiredAppointments } from "./appointments.js";
+import { assessCollectionReviews } from "./collection-review.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
 import { obligationIsRunning } from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -17,6 +20,7 @@ export async function assessProgramReadiness(input, options = {}) {
   const workspace = loaded.workspace || records.find((record) => record.type === "workspace");
   const asOf = options.asOf || currentCalendarDate(workspace?.timezone || "UTC");
   const scope = programScope(workspace, records, byId);
+  const collectionReviews = assessCollectionReviews(loaded);
   const markdown = new Map();
   const readMarkdown = async (record) => {
     if (!record) return "";
@@ -24,20 +28,30 @@ export async function assessProgramReadiness(input, options = {}) {
     return markdown.get(record.id);
   };
 
-  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf);
+  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model);
+  controlStage.items.unshift(...collectionReviews
+    .filter(({ resourceType }) => resourceType === "complementary-control")
+    .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
   controlStage.description = "Each implemented control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, and complete authoritative source Systems with the required evidence roles, access owners, and retrieval instructions.";
   const evidenceGateStages = [
-    scopeStage(workspace, scope, records, byId),
-    await policiesStage(scope, byId, readMarkdown, asOf),
+    scopeStage(
+      workspace,
+      scope,
+      records,
+      byId,
+      loaded.model,
+      collectionReviews.filter(({ resourceType }) => resourceType !== "complementary-control")
+    ),
+    await policiesStage(scope, records, byId, readMarkdown, asOf),
     controlStage
   ];
   for (const current of evidenceGateStages) finalizeStage(current);
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
     ...evidenceGateStages,
-    operationStage(workspace, scope, records, byId, asOf, evidenceReady, loaded.model)
+    operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, loaded.model)
   ];
   finalizeStage(stages.at(-1));
   const candidateStarted = Boolean(
@@ -46,7 +60,7 @@ export async function assessProgramReadiness(input, options = {}) {
     && coverageStart(workspace.candidateCoverage) <= asOf
   );
   const obligations = planObligations(records, { asOf, through: asOf, model: loaded.model });
-  const operating = evidenceReady && candidateStarted && obligations.counts.overdue === 0;
+  const operating = evidenceReady && candidateStarted && stages.at(-1).counts.action === 0;
   const canStartCandidatePeriod = Boolean(
     evidenceReady
     && workspace?.assuranceGoal === "soc-2-type-2"
@@ -124,14 +138,14 @@ function programScope(workspace, records, byId) {
     )),
     requirements: select(workspace?.requirementIds, "requirement", (record) => (
       record.type === "requirement" && record.applicability === "applicable"
-    )),
+    )).filter((record) => record.applicability === "applicable"),
     controls: select(workspace?.controlIds, "control", (record) => (
       record.type === "control" && !["not-applicable", "retired"].includes(record.status)
-    ))
+    )).filter((record) => !["not-applicable", "retired"].includes(record.status))
   };
 }
 
-function scopeStage(workspace, scope, records, byId) {
+function scopeStage(workspace, scope, records, byId, model, collectionReviews = []) {
   const items = [];
   const goal = workspace?.assuranceGoal || "none";
   items.push(item(
@@ -141,10 +155,20 @@ function scopeStage(workspace, scope, records, byId) {
     goal !== "none"
       ? `Target: ${assuranceGoalLabel(goal)}. This is a management objective, not an active CPA engagement.`
       : "Choose readiness, SOC 2 Type 1, or SOC 2 Type 2 as the management objective.",
-    workspace || { type: "workspace" }
+    workspace || { type: "workspace" },
+    {
+      commands: [
+        "npx filegrc setup",
+        `npx filegrc get ${shellArgument(workspace?.id || "workspace")} --mutation`
+      ]
+    }
   ));
 
   items.push(programOwnershipItem(records, byId));
+  items.push(requiredAppointmentsItem(records, model));
+  for (const assessment of collectionReviews) {
+    items.push(collectionReviewReadinessItem(assessment));
+  }
 
   const completeSystems = scope.systems.filter((system) => (
     system.status === "active"
@@ -161,6 +185,44 @@ function scopeStage(workspace, scope, records, byId) {
       : "Select and describe every service and supporting system in the program boundary.",
     scope.systems[0] || { type: "system" }
   ));
+
+  if (String(model.modelVersion) === "3") {
+    const commitments = records.filter((record) => (
+      record.type === "commitment"
+      && !["superseded", "retired"].includes(record.status)
+      && (record.systemIds || []).some((id) => scope.systems.some((system) => system.id === id))
+    ));
+    const completeCommitments = commitments.filter((record) => (
+      record.status === "active"
+      && record.statement
+      && record.effectiveOn
+      && record.applicabilityReview?.decision === "applicable"
+      && currentPartyPeople(record.ownerIds, byId).size > 0
+      && (record.requirementIds || []).length > 0
+      && (record.controlIds || []).length > 0
+    ));
+    const uncoveredSystems = scope.systems.filter((system) => !completeCommitments.some((record) => (
+      (record.systemIds || []).includes(system.id)
+    )));
+    items.push(item(
+      "commitments",
+      scope.systems.length && uncoveredSystems.length === 0 ? "complete" : "action",
+      "Record service commitments and system requirements",
+      scope.systems.length
+        ? `${completeCommitments.length} complete active ${completeCommitments.length === 1 ? "commitment covers" : "commitments cover"} ${scope.systems.length - uncoveredSystems.length} of ${scope.systems.length} in-scope systems.`
+        : "Define the service boundary before recording its customer promises and approved system requirements.",
+      commitments[0] || { type: "commitment" },
+      {
+        uncoveredSystemIds: uncoveredSystems.map(({ id }) => id),
+        commands: [
+          "npx filegrc guide commitment --json",
+          "npx filegrc list commitment --workflow --json",
+          'npx filegrc scaffold commitment --title "SERVICE COMMITMENT"',
+          "npx filegrc program-readiness --json"
+        ]
+      }
+    ));
+  }
 
   const selectedRequirementIds = new Set(scope.requirements.map((record) => record.id));
   const applicableRequirements = records.filter((record) => (
@@ -188,10 +250,65 @@ function scopeStage(workspace, scope, records, byId) {
     criteriaComplete
       ? `${scope.requirements.length} applicable criteria and ${scope.controls.length} controls are in the management program scope.`
       : `Resolve the program criteria and controls. ${unresolvedRequirements.length} criteria remain undetermined and ${missingRequirements.length} applicable criteria are not selected.`,
-    workspace || { type: "workspace" }
+    workspace || { type: "workspace" },
+    {
+      commands: [
+        "npx filegrc review-applicability --scaffold --type requirement > decisions.json",
+        "npx filegrc review-applicability decisions.json --preview --json",
+        "npx filegrc review-applicability decisions.json --yes --json",
+        "npx filegrc get workspace --mutation"
+      ]
+    }
   ));
 
   return stage("scope", "Define Scope", "Set program ownership, the management objective, service boundary, criteria, controls, and dependencies.", items);
+}
+
+function collectionReviewReadinessItem(assessment) {
+  return item(
+    `collection-review-${assessment.resourceType}`,
+    assessment.complete ? "complete" : "action",
+    assessment.status === "stale"
+      ? `Review ${assessment.configuration.title.toLowerCase()} again`
+      : `Review ${assessment.configuration.title.toLowerCase()}`,
+    assessment.message,
+    assessment.review || { type: assessment.resourceType },
+    {
+      resourceType: assessment.resourceType,
+      reviewPoints: assessment.configuration.reviewPoints,
+      commands: [
+        `npx filegrc review-collection ${assessment.resourceType} --scaffold`,
+        `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --preview --json`
+      ]
+    }
+  );
+}
+
+function requiredAppointmentsItem(records, model) {
+  const assessments = assessRequiredAppointments(records, model);
+  const incomplete = assessments.filter(({ requiredness, state }) => (
+    ["core", "required"].includes(requiredness) && state !== "complete"
+  ));
+  const complete = incomplete.length === 0;
+  const first = incomplete[0];
+  return item(
+    "required-appointments",
+    complete ? "complete" : "action",
+    "Assign required program authority",
+    complete
+      ? "Every authority required by the current scope has an active dated Appointment."
+      : `${incomplete.length} required ${incomplete.length === 1 ? "Appointment needs" : "Appointments need"} a current holder: ${incomplete.map(({ template }) => template.title).join(", ")}.`,
+    first?.record || { type: "appointment" },
+    {
+      commands: [
+        "npx filegrc guide appointment --json",
+        "npx filegrc list appointment --workflow --json",
+        first?.record
+          ? `npx filegrc get ${first.record.id} --mutation`
+          : `npx filegrc scaffold appointment --title "${first?.template.title || "APPOINTMENT TITLE"}"`
+      ]
+    }
+  );
 }
 
 function programOwnershipItem(records, byId) {
@@ -229,15 +346,32 @@ function programOwnershipItem(records, byId) {
     ownerIds: record.ownerIds || [],
     reasons: ownershipResolutionReasons(record.ownerIds || [], byId)
   }));
+  const oversightDependent = oversight?.id
+    ? unresolvedAssignments.filter(({ reasons }) => (
+        reasons.length > 0
+        && reasons.every(({ ownerId, reason }) => (
+          ownerId === oversight.id
+          && ["inactive-team", "team-has-no-current-members"].includes(reason)
+        ))
+      ))
+    : [];
+  const separatelyUnresolved = unresolved.length - oversightDependent.length;
   const detail = [];
   if (!currentOwners.size) detail.push("No current person owns the program records.");
-  if (unresolved.length) {
-    detail.push(`${unresolved.length} ${unresolved.length === 1 ? "record has" : "records have"} no current person owner.`);
+  if (separatelyUnresolved) {
+    detail.push(`${separatelyUnresolved} ${separatelyUnresolved === 1 ? "record has" : "records have"} no current person owner.`);
   }
   if (missingJobTitles.length) {
     detail.push(`${missingJobTitles.length} active ${missingJobTitles.length === 1 ? "owner needs" : "owners need"} an organizational job title.`);
   }
-  if (!oversightComplete) detail.push("Finish and activate Security and Risk Oversight with a current chair who is separate from policy ownership.");
+  if (!oversightComplete) {
+    detail.push(
+      "Activate Security and Risk Oversight with current members and a chair separate from policy ownership."
+      + (oversightDependent.length
+        ? ` This team owns ${oversightDependent.length} proposed ${oversightDependent.length === 1 ? "obligation" : "obligations"}.`
+        : "")
+    );
+  }
   const oversightId = oversight?.id ? shellArgument(oversight.id) : null;
   return item(
     "program-ownership",
@@ -287,7 +421,7 @@ function ownershipResolutionReasons(ownerIds, byId) {
   });
 }
 
-async function policiesStage(scope, byId, readMarkdown, asOf) {
+async function policiesStage(scope, records, byId, readMarkdown, asOf) {
   const linkedPolicyIds = new Set(scope.controls.flatMap((control) => control.policyIds || []));
   const policies = [...linkedPolicyIds].map((id) => byId.get(id)).filter((record) => (
     record?.type === "policy" && !["superseded", "retired"].includes(record.status)
@@ -320,7 +454,15 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
         : reviewerNeedsAssignment
           ? `${availableReviewer.title} chairs Security and Risk Oversight. Assign this person as approver on each policy after review.`
           : "Appoint a reviewer who is separate from the policy owner. The reviewer may be another person in the organization or an external person, and is separate from the CPA firm that may later perform the audit.",
-      appointedReviewer || (reviewerNeedsAssignment ? policies[0] : { type: "person" })
+      appointedReviewer || (reviewerNeedsAssignment ? policies[0] : { type: "person" }),
+      {
+        commands: [
+          "npx filegrc list appointment --workflow --json",
+          "npx filegrc guide appointment --json",
+          "npx filegrc external-reviewer-setup --scaffold > reviewer.json",
+          "npx filegrc external-reviewer-setup reviewer.json --preview --json"
+        ]
+      }
     )
   ];
   if (!policies.length) {
@@ -329,7 +471,14 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
       "action",
       "Link policies to the selected controls",
       "No applicable policies are linked from the controls in program scope.",
-      { type: "policy" }
+      { type: "policy" },
+      {
+        commands: [
+          "npx filegrc list policy --workflow --json",
+          "npx filegrc list control --workflow --json",
+          "npx filegrc program-readiness --json"
+        ]
+      }
     ));
   }
   for (const policy of policies) {
@@ -353,13 +502,93 @@ async function policiesStage(scope, byId, readMarkdown, asOf) {
         ? `Remaining adoption work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}.`
         : `Reviewed, independently approved, effective ${policy.effectiveOn}, linked to controls, with no open organization placeholders.`,
       policy,
-      { checks, placeholderCount }
+      {
+        checks,
+        placeholderCount,
+        commands: [
+          `npx filegrc get ${shellArgument(policy.id)} --mutation`,
+          `npx filegrc update policy ${shellArgument(policy.id)} MUTATION.json --json`,
+          "npx filegrc program-readiness --json"
+        ]
+      }
     ));
   }
-  return stage("policies", "Approve Policies", "Review the draft, obtain independent management approval, set the effective date, link controls, and clear placeholders.", items);
+  const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
+  const activeObligations = records.filter((record) => (
+    record.type === "obligation" && obligationIsRunning(record, byId, asOf)
+  ));
+  const requiredGovernedIds = new Set(activeObligations.flatMap((record) => [
+    ...(record.scopeResourceIds || []),
+    ...(record.templateResourceId ? [record.templateResourceId] : [])
+  ]));
+  const governedRecords = records.filter((record) => (
+    (
+      record.type === "document"
+      && (
+        requiredGovernedIds.has(record.id)
+        || (
+          record.programRole === "required"
+          && (record.controlIds || []).some((id) => selectedControlIds.has(id))
+        )
+      )
+    )
+    || (record.type === "training" && requiredGovernedIds.has(record.id))
+  ));
+  for (const record of governedRecords) {
+    const source = await readMarkdown(record);
+    const placeholderCount = openPlaceholderCount(source);
+    const checks = record.type === "document"
+      ? {
+          active: record.status === "active",
+          owner: currentPartyPeople(record.ownerIds, byId).size > 0,
+          independentlyApproved: Boolean(
+            record.approvedOn
+            && partiesIndependent(record.ownerIds, record.approverIds, byId)
+          ),
+          effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
+          contentComplete: substantiveMarkdown(source) && placeholderCount === 0
+        }
+      : {
+          active: record.status === "active",
+          owner: currentPartyPeople(record.ownerIds, byId).size > 0,
+          approved: Boolean(record.approvedOn && (record.approvedByIds || []).length),
+          effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
+          effectiveContent: Boolean(record.effectiveContentRevisions),
+          contentComplete: substantiveMarkdown(source) && placeholderCount === 0
+        };
+    const missing = Object.entries(checks)
+      .filter(([, value]) => !value)
+      .map(([name]) => governedContentCheckLabel(name));
+    items.push(item(
+      `${record.type}-${record.id}`,
+      missing.length ? "action" : "complete",
+      record.title,
+      missing.length
+        ? `Remaining governed-content work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}.`
+        : record.type === "document"
+          ? `Active, independently approved, effective ${record.effectiveOn}, and ready for the selected controls or running schedule.`
+          : `Active, approved, effective ${record.effectiveOn}, revision-bound, and ready for the running training schedule.`,
+      record,
+      {
+        checks,
+        placeholderCount,
+        commands: [
+          `npx filegrc get ${shellArgument(record.id)} --mutation`,
+          `npx filegrc update ${record.type} ${shellArgument(record.id)} MUTATION.json --json`,
+          "npx filegrc program-readiness --json"
+        ]
+      }
+    ));
+  }
+  return stage(
+    "policies",
+    "Approve Policies",
+    "Review and approve the policies, governed plans, and training content required by selected controls and running schedules.",
+    items
+  );
 }
 
-async function controlsStage(scope, byId, readMarkdown, asOf) {
+async function controlsStage(scope, byId, readMarkdown, asOf, model) {
   const items = [];
   if (!scope.controls.length) {
     items.push(item("control-scope", "action", "Select the program controls", "No controls are selected for the management program.", { type: "control" }));
@@ -373,6 +602,9 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
       && (record.controlIds || []).includes(control.id)
     ));
     const checks = {
+      ...(model.resources.control?.fields?.applicabilityReview ? {
+        applicability: control.applicabilityReview?.decision === "applicable"
+      } : {}),
       implemented: control.status === "implemented",
       owner: (control.ownerIds || []).length > 0,
       procedure: substantiveMarkdown(source) && openPlaceholderCount(source) === 0,
@@ -380,6 +612,15 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
       operationPattern: Boolean(control.operationPattern),
       evidenceSource: sourceSystems.length > 0,
       implementationDate: Boolean(control.effectiveOn && control.effectiveOn <= asOf),
+      ...(model.resources.control?.fields?.procedureRevision ? {
+        procedureRevision: Boolean(control.procedureRevision),
+        procedureEffective: Boolean(control.procedureEffectiveOn && control.procedureEffectiveOn <= asOf),
+        implementationReview: Boolean(
+          control.implementationReviewedOn
+          && control.implementationReviewedOn <= asOf
+          && partiesIndependent(control.ownerIds, control.implementationReviewedByIds, byId)
+        )
+      } : {}),
       policyMapping: (control.policyIds || []).length > 0,
       criteriaMapping: (control.requirementIds || []).length > 0,
       ...(["scheduled", "event-driven", "mixed"].includes(control.operationPattern) ? {
@@ -393,11 +634,20 @@ async function controlsStage(scope, byId, readMarkdown, asOf) {
       missing.length ? "action" : "complete",
       `${control.code ? `${control.code}: ` : ""}${control.title}`,
       missing.length
-        ? `Before implementation: ${missing.join(", ")}.`
+        ? `Complete ${missing.length} ${missing.length === 1 ? "check" : "checks"} before implementation: ${missing.join(", ")}.`
         : `Implemented ${control.effectiveOn}; owned, scoped, scheduled, documented, mapped, and tied to ${sourceSystems.length} authoritative ${sourceSystems.length === 1 ? "source" : "sources"}.`,
       control,
       {
         checks,
+        commands: [
+          ...(Object.hasOwn(checks, "applicability") && !checks.applicability ? [
+            "npx filegrc review-applicability --scaffold --type control > control-decisions.json",
+            "npx filegrc review-applicability control-decisions.json --preview --json",
+            "npx filegrc review-applicability control-decisions.json --yes --json"
+          ] : []),
+          "npx filegrc evidence-map --json",
+          `npx filegrc get ${shellArgument(control.id)} --mutation`
+        ],
         workQueue: queueSchedules.length ? {
           running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf)).length,
           total: queueSchedules.length
@@ -414,7 +664,13 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   for (const family of families) {
     const selectedSources = [...new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []))]
       .map((id) => byId.get(id))
-      .filter((record) => record?.type === "system");
+      .filter((record) => (
+        record?.type === "system"
+        && (
+          !(record.evidenceSourceKinds || []).length
+          || family.sourceKinds.some((kind) => (record.evidenceSourceKinds || []).includes(kind))
+        )
+      ));
     const completeSources = [];
     const sourceSystemChecks = [];
     for (const source of selectedSources) {
@@ -472,7 +728,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       complete ? "complete" : "action",
       family.title,
       complete
-        ? `${completeSources.map((source) => source.title).join(", ")} cover all ${family.controls.length} selected controls and record access owners and extraction instructions.`
+        ? `${completeSources.map((source) => source.title).join(", ")} ${completeSources.length === 1 ? "covers" : "cover"} all ${family.controls.length} selected controls and record access owners and extraction instructions.`
         : `${coveredControls.length} of ${family.controls.length} selected controls have an active authoritative system with the required source role, access owners, and extraction instructions.`,
       completeSources[0] || selectedSources[0] || { type: "system" },
       {
@@ -495,7 +751,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   return stage("sources", "Control Evidence Sources", "Complete the authoritative Systems for every selected control family before marking the Controls implemented.", items);
 }
 
-function operationStage(workspace, scope, records, byId, asOf, evidenceReady, model) {
+function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model) {
   const goal = workspace?.assuranceGoal || "none";
   if (!evidenceReady) {
     return stage("operation", "Operate the Program", "Run the controls and preserve dated evidence after the Evidence Ready gate passes.", [
@@ -534,6 +790,8 @@ function operationStage(workspace, scope, records, byId, asOf, evidenceReady, mo
     ? coverageEnd(workspace.candidateCoverage)
     : null;
   const startStatus = !start ? "action" : start <= asOf ? "complete" : "later";
+  const sourceCoverage = assessSourceCoverageReadiness(loaded, scope.controls.map(({ id }) => id));
+  const incompleteSourceCoverage = sourceCoverage.filter(({ complete }) => !complete);
   return stage("operation", "Operate the Program", "Start the management candidate Type 2 period only after the Evidence Ready gate, then keep collection running.", [
     item(
       "evidence-running",
@@ -556,13 +814,43 @@ function operationStage(workspace, scope, records, byId, asOf, evidenceReady, mo
       workspace
     ),
     item(
+      "source-readiness-tests",
+      !start ? "later" : incompleteSourceCoverage.length ? "action" : "complete",
+      "Pass the evidence-source retrieval dry runs",
+      !start
+        ? "Set the candidate period before recording the pre-period source retrieval tests."
+        : incompleteSourceCoverage.length
+          ? `${incompleteSourceCoverage.length} source ${incompleteSourceCoverage.length === 1 ? "family needs" : "families need"} a passed retrieval test with confirmed access before the program is operating.`
+          : `${sourceCoverage.length} source ${sourceCoverage.length === 1 ? "family has" : "families have"} passed retrieval tests with confirmed access.`,
+      { type: "source-coverage" },
+      {
+        sourceFamilyIds: incompleteSourceCoverage.map(({ family }) => family.id),
+        resourceIds: incompleteSourceCoverage.map(({ record }) => record?.id).filter(Boolean),
+        commands: [
+          "npx filegrc list source-coverage --workflow --json",
+          "npx filegrc guide evidence --json",
+          "npx filegrc program-readiness --json"
+        ]
+      }
+    ),
+    item(
       "ongoing-obligations",
-      obligations.counts.overdue ? "action" : "complete",
+      obligations.counts.overdue || obligations.counts.blocked ? "action" : "complete",
       "Keep policy work current",
       obligations.counts.overdue
-        ? `${obligations.counts.overdue} policy obligations are overdue. Complete the work and retain its dated proof.`
-        : `${obligations.counts.due} due and ${obligations.counts.upcoming} upcoming obligations; no overdue policy work.`,
-      { type: "obligation" }
+        ? `${obligations.counts.overdue} Work Queue ${obligations.counts.overdue === 1 ? "item is" : "items are"} overdue`
+          + (obligations.counts.blocked ? ` and ${obligations.counts.blocked} ${obligations.counts.blocked === 1 ? "is" : "are"} blocked` : "")
+          + ". Resolve the work and retain its dated proof."
+        : obligations.counts.blocked
+          ? `${obligations.counts.blocked} Work Queue ${obligations.counts.blocked === 1 ? "item is" : "items are"} blocked. Open each task, review its named blockers, and resolve them before completion.`
+          : `${obligations.counts.due} due and ${obligations.counts.upcoming} upcoming Work Queue items; none are overdue or blocked.`,
+      { type: "obligation" },
+      {
+        commands: [
+          "npx filegrc obligations --json",
+          "npx filegrc workflow --json"
+        ]
+      }
     ),
     riskAssessmentItem(scope, records, byId, asOf)
   ]);
@@ -687,8 +975,21 @@ function policyCheckLabel(name) {
   })[name] || name;
 }
 
+function governedContentCheckLabel(name) {
+  return ({
+    active: "active status",
+    owner: "current owner",
+    independentlyApproved: "independent approval and approval date",
+    approved: "approval and approval date",
+    effective: "effective date",
+    effectiveContent: "effective content revision",
+    contentComplete: "content and organization placeholders"
+  })[name] || name;
+}
+
 function controlCheckLabel(name) {
   return ({
+    applicability: "reviewed applicability decision",
     implemented: "implemented status",
     owner: "owner",
     procedure: "actual procedure in Record Markdown",
@@ -696,6 +997,9 @@ function controlCheckLabel(name) {
     operationPattern: "operation pattern",
     evidenceSource: "authoritative evidence source",
     implementationDate: "implementation date",
+    procedureRevision: "effective procedure revision",
+    procedureEffective: "procedure effective date",
+    implementationReview: "independent implementation review",
     policyMapping: "policy mapping",
     criteriaMapping: "criteria mapping",
     workQueue: "running Work Queue schedules"

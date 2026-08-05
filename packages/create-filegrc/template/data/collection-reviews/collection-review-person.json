@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-person",
+  "type": "collection-review",
+  "title": "Program participants review",
+  "status": "planned",
+  "resourceType": "person",
+  "scopeResourceIds": [
+    "workspace"
+  ]
+}

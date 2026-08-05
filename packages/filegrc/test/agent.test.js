@@ -15,6 +15,7 @@ import {
   loadWorkspace,
   scaffoldResourceMutation,
   RESOURCE_INSTRUCTIONS,
+  RESOURCE_PAGE_SUMMARIES,
   updateResource,
   validateWorkspace
 } from "../src/index.js";
@@ -53,6 +54,9 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "types",
     "guide",
     "programPath",
+    "workflow",
+    "periodHealth",
+    "milestoneCheck",
     "scaffold",
     "list",
     "search",
@@ -61,10 +65,16 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "evidenceMap",
     "auditReadiness",
     "prepareAudit",
+    "reconcile",
+    "externalReviewerSetup",
+    "nextAuditCycle",
+    "reviewApplicability",
+    "reviewCollection",
     "trigger",
     "evidencePacket",
     "get",
     "references",
+    "previewMutation",
     "create",
     "complete",
     "completeAction",
@@ -78,6 +88,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   ]);
   const path = buildAgentProgramPath(loaded.model);
   assert.equal(path.length, 5);
+  assert.equal(path[0].pages.find(({ type }) => type === "system").summary, RESOURCE_PAGE_SUMMARIES.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").guide, "npx filegrc guide system --json");
   assert.ok(path.every((stage) => stage.commands.every((command) => command.startsWith("npx filegrc "))));
@@ -85,7 +96,9 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "npx filegrc evidence-map --json",
     "npx filegrc program-readiness --json"
   ]);
-  assert.match(path[2].summary, /authoritative Systems that produce its evidence/i);
+  assert.equal(path[2].summary, "Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.");
+  assert.ok(path.every(({ summary }) => summary.length <= 120));
+  assert.ok(Object.values(RESOURCE_PAGE_SUMMARIES).every((summary) => summary.length <= 100));
   assert.deepEqual(path[3].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
   assert.equal(path[3].operatingRecords.length, path[3].resourceTypes.length + path[3].supportingResourceTypes.length);
   assert.equal(path[3].operatingRecords.every(({ order }) => order === null), true);
@@ -105,9 +118,14 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.match(personGuideText.stdout, /Completion checks:\n- Required and status-dependent fields are complete/);
   const pathCommand = await execute(process.execPath, [cli, "program-path", "--root", root, "--json"]);
   const parsedPath = JSON.parse(pathCommand.stdout);
+  assert.equal(parsedPath.dataModelVersion, String(loaded.model.modelVersion));
   assert.equal(parsedPath.currentStep.number, 1);
   assert.equal(parsedPath.stages.length, 5);
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
+  assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").summary, RESOURCE_PAGE_SUMMARIES.system);
+  const pathText = await execute(process.execPath, [cli, "program-path", "--root", root]);
+  assert.match(pathText.stdout, /Step 1\.h · Systems[\s\S]*Define the service boundary and the Systems that operate controls or produce evidence\.[\s\S]*Details: npx filegrc guide system --json/);
+  assert.doesNotMatch(pathText.stdout, /Policy basis:|Instructions:/);
   const pathSummaryCommand = await execute(process.execPath, [
     cli,
     "program-path",
@@ -117,6 +135,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "--json"
   ]);
   const parsedPathSummary = JSON.parse(pathSummaryCommand.stdout);
+  assert.equal(parsedPathSummary.dataModelVersion, String(loaded.model.modelVersion));
   assert.equal(parsedPathSummary.stages.length, 5);
   assert.equal(parsedPathSummary.stages[0].pages, undefined);
   assert.equal(parsedPathSummary.stages[0].nextAction?.checks, undefined);
@@ -129,13 +148,13 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "--next",
     "--json"
   ])).stdout);
+  assert.equal(nextPath.dataModelVersion, String(loaded.model.modelVersion));
   assert.equal(nextPath.currentStep.number, 1);
   assert.equal(nextPath.step.id, "scope");
   assert.equal(nextPath.stages, undefined);
   assert.deepEqual(nextPath.step.commands, [
-    "npx filegrc guide workspace --json",
-    "npx filegrc get workspace --mutation",
-    "npx filegrc update workspace workspace MUTATION.json --json"
+    "npx filegrc setup",
+    "npx filegrc get workspace --mutation"
   ]);
   const workspacePath = join(root, "data", "workspace.json");
   const malformedWorkspace = JSON.parse(await readFile(workspacePath, "utf8"));
@@ -150,9 +169,8 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "--json"
   ])).stdout);
   assert.deepEqual(malformedNextPath.step.commands, [
-    "npx filegrc guide workspace --json",
-    "npx filegrc get 'workspace; touch PWNED' --mutation",
-    "npx filegrc update workspace 'workspace; touch PWNED' MUTATION.json --json"
+    "npx filegrc setup",
+    "npx filegrc get 'workspace; touch PWNED' --mutation"
   ]);
   malformedWorkspace.id = "workspace";
   await writeFile(workspacePath, `${JSON.stringify(malformedWorkspace, null, 2)}\n`, "utf8");
@@ -164,6 +182,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "--current",
     "--json"
   ])).stdout);
+  assert.equal(currentPath.dataModelVersion, String(loaded.model.modelVersion));
   assert.deepEqual(currentPath.stages.map(({ id }) => id), ["scope"]);
   assert.ok(currentPath.stages[0].pages.length > 0);
 

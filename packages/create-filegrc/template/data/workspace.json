@@ -1,5 +1,5 @@
 {
-  "dataModelVersion": "2",
+  "dataModelVersion": "3",
   "id": "workspace",
   "type": "workspace",
   "title": "{{program_title}}",

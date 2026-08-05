@@ -1,10 +1,10 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v2.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v3.json. Do not edit by hand. -->
 
-Model version: `2`
+Model version: `3`
 
-Stable, query-worthy GRC metadata. Long-form work is stored as implicit Markdown companion files beside each structured JSON record.
+Model v3 adds reviewed applicability, guided authority assignments, source-family coverage, structured control activities, period health, and audit delivery and closure facts.
 
 Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.
 
@@ -14,7 +14,7 @@ The renderer, CLI, generated agent instructions, and this reference use the same
 
 ### Step 1. Define Scope
 
-Confirm the people, dated appointments, and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.
+Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.
 
 - **People** (`person`): Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
 - **Appointments** (`appointment`): Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
@@ -31,11 +31,15 @@ Headless commands:
 - `npx filegrc guide person --json`
 - `npx filegrc guide appointment --json`
 - `npx filegrc guide system --json`
+- `npx filegrc review-collection person --scaffold`
+- `npx filegrc review-collection framework --scaffold`
+- `npx filegrc review-collection vendor --scaffold`
+- `npx filegrc review-collection system --scaffold`
 - `npx filegrc list system --json`
 
 ### Step 2. Approve Policies
 
-Turn every applicable policy and governed plan into the organization’s actual rules, remove placeholders, confirm that Controls link to their governing Policies, and establish approval and effective dates before scheduled work begins. The reviewer must be separate from the owner, is usually internal, and may be external.
+Turn the starter policy set into approved rules that match how the organization works.
 
 - **Policies** (`policy`): Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.
 - **Documents** (`document`): Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
@@ -48,22 +52,23 @@ Headless commands:
 
 ### Step 3. Implement Controls
 
-Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, operation pattern, policy and criteria mappings, and implementation date. Put calendar and event schedules in Obligations. Connect the Control to the exact authoritative Systems that produce its evidence, and complete each source’s role, access ownership, and retrieval instructions before marking the Control implemented. Then record any controls that customers or carved-out providers must perform.
+Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.
 
 - **Controls** (`control`): Finish each applicable starter control with the procedure people will follow, its owner, scope, operation pattern, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Put calendar and event schedules in Obligations. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.
-- **Complementary controls** (`complementary-control`): Record anything customers or carved-out providers must do for your controls to work as intended.
+- **Complementary controls** (`complementary-control`): Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
 
 Headless commands:
 
 - `npx filegrc guide control --json`
 - `npx filegrc list control --json`
 - `npx filegrc get CONTROL_ID --mutation`
+- `npx filegrc review-collection complementary-control --scaffold`
 - `npx filegrc evidence-map --json`
 - `npx filegrc program-readiness --json`
 
 ### Step 4. Operate the Program
 
-Record the management candidate start date when reliable evidence collection begins. Maintain current risk assessments and risks, updating the control set when needed. Complete recurring and event-driven work, run continuous and per-transaction controls, and keep dated evidence current throughout the period.
+Run scheduled and event-driven work, maintain risk, and retain dated evidence throughout the operating period.
 
 - **Policy Events** (`utility:policy-events`): Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.
 - **Work Queue** (`utility:work-queue`): Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.
@@ -99,24 +104,28 @@ Headless commands:
 
 - `npx filegrc obligations --json`
 - `npx filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json`
-- `npx filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION --json`
-- `npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --expected-revision REVISION --json`
+- `npx filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD`
+- `npx filegrc complete OBLIGATION_ID completion-mutation.json --json`
+- `npx filegrc complete-action ACTION_ITEM_ID --scaffold --completed-on YYYY-MM-DD`
+- `npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --json`
 - `npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION --json`
 - `npx filegrc program-readiness --json`
 
 ### Step 5. Audit
 
-After the program is collecting reliable evidence, create an Audit record for the real CPA engagement, keep the firm-agreed report period separate from management’s candidate dates, complete management documents, populations, requests, evidence delivery, and fieldwork, then preserve the findings, responses, opinion, and final report.
+Set up the CPA engagement, support fieldwork, and prepare the final evidence packet.
 
 - **Audits** (`audit`): Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period. Control Tests and External Evidence link back with auditId or auditIds.
-- **Audit requests** (`audit-request`): Record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
+- **Audit requests** (`audit-request`): When FileGRC is the approved request tracker, record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
 - **Audit populations** (`audit-population`): Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation.
-- **Control tests** (`control-test`): Record how an in-scope control was tested, what was sampled, the result, and any exceptions.
+- **Control tests** (`control-test`): Record a management Control Test only when management performs and reviews one. The CPA firm records its own independent testing separately.
 - **Audit Evidence & Packet** (`utility:audit-packet`): Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.
 
 Headless commands:
 
 - `npx filegrc guide audit --json`
+- `npx filegrc scaffold audit --title "YEAR SOC 2 TYPE"`
+- `npx filegrc create AUDIT-MUTATION.json --json`
 - `npx filegrc prepare-audit AUDIT_ID --json`
 - `npx filegrc audit-readiness AUDIT_ID --json`
 - `npx filegrc evidence-packet --audit AUDIT_ID --preview --json`
@@ -128,14 +137,26 @@ Relationship fields use the named groups below. The registry expands each group 
 | Group | Resource types |
 | --- | --- |
 | `accountable-party` | `person`, `team`, `appointment` |
-| `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
-| `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit` |
+| `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
+| `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage` |
 | `obligation-template` | `person`, `system`, `asset`, `document`, `control`, `policy`, `training` |
-| `completion-record` | `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request` |
+| `completion-record` | `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
 | `event-subject` | `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident` |
-| `evidence-source-record` | `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
-| `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
-| `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
+| `evidence-source-record` | `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
+| `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
+| `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
+
+## Collection review confirmations
+
+FileGRC derives record issues, but it cannot infer that management reviewed an apparently complete or empty collection. Each configured collection review records the conclusion, reviewer, date, current scope revision, and exact collection revision. A record or material scope change makes the confirmation stale.
+
+| Resource type | Review | Allowed conclusions | What to review |
+| --- | --- | --- | --- |
+| `person` | Program participants | `complete` | Think through who actually owns, approves, operates, reviews, or supports the program, and add anyone missing. Confirm each person's current job title, affiliation, and status. |
+| `framework` | Framework and criteria sources | `complete` | Confirm the selected Trust Services Categories match the service and planned audit. Confirm any other legal, contractual, privacy, or security framework the service must follow. Confirm the framework edition expected for the audit. |
+| `vendor` | Vendor and subservice scope | `complete`, `zero-population`, `externally-managed` | Think through every provider that hosts, secures, monitors, supports, or processes data for the in-scope service, and add any missing Vendor. Confirm each Vendor's service, data access, criticality, and subservice role match current use. Choose externally managed or zero population only when that conclusion is true for this scope. |
+| `system` | Service and system boundary | `complete` | Think through the customer-facing service and every application, infrastructure, identity, monitoring, backup, security, and data platform it depends on, and add any missing System. Confirm each System's role in the service boundary and current operating status. For Systems that produce evidence, confirm the named people can retrieve the required records. |
+| `complementary-control` | Customer and provider responsibilities | `complete`, `zero-population` | Think through the customer and carved-out provider actions that in-scope Controls depend on, and add any missing Complementary Control. Confirm each statement names a specific action, responsible party, affected System, and dependent Control. Use zero population only when no in-scope Control depends on a customer or carved-out provider action. |
 
 ## Relationship constraints
 
@@ -151,6 +172,7 @@ Relationship constraints prevent cycles and duplicate active authority or access
 - `vendor.backupVendorId` must be acyclic.
 - `appointment` records in `active` must be unique by `appointmentKind`, `scopeResourceIds`.
 - `access-grant` records in `active` must be unique by `subjectId`, `systemId`, `accessLevel`, `role`, `privileged`.
+- `collection-review` records in `active` must be unique by `resourceType`, `scopeResourceIds`.
 
 ## Obligation activities
 
@@ -167,25 +189,25 @@ The model owns each activity name, allowed recurrence modes and scope types, its
 | `asset-registration` | Asset registration | `event` | `person`, `asset` | `asset` | `asset`, `evidence` |
 | `backup-test` | Backup test | `calendar`, `event` | `system` | `backup-test` | `backup-test` |
 | `change-review` | Change review | `calendar`, `event` | `system`, `policy`, `document`, `control` | `meeting` | `meeting`, `policy`, `control`, `evidence` |
-| `continuity-review` | Continuity review | `calendar`, `event` | `document`, `system` | `evidence` | `evidence` |
+| `continuity-review` | Continuity review | `calendar`, `event` | `document`, `system` | `control-activity` | `control-activity` |
 | `document-review` | Document review | `calendar`, `event` | `document` | `document` | `document`, `evidence` |
 | `exception-review` | Exception review | `calendar`, `event` | `exception` | `exception` | `exception`, `evidence` |
 | `exercise` | Exercise | `calendar`, `event` | `document`, `system`, `team` | `exercise` | `exercise` |
 | `incident-retrospective` | Incident retrospective | `event` | `incident` | `incident` | `incident`, `document`, `evidence` |
-| `inventory-review` | Inventory review | `calendar`, `event` | `service-account`, `system`, `asset`, `vendor` | `evidence` | `evidence` |
-| `log-review` | Log review | `calendar`, `event` | `system` | `evidence` | `evidence` |
+| `inventory-review` | Inventory review | `calendar`, `event` | `service-account`, `system`, `asset`, `vendor` | `control-activity` | `control-activity` |
+| `log-review` | Log review | `calendar`, `event` | `system` | `control-activity` | `control-activity` |
 | `meeting` | Meeting | `calendar`, `event` | `team` | `meeting` | `meeting` |
-| `network-review` | Network review | `calendar`, `event` | `system` | `evidence` | `evidence` |
+| `network-review` | Network review | `calendar`, `event` | `system` | `control-activity` | `control-activity` |
 | `oversight-meeting` | Oversight meeting | `calendar`, `event` | `team` | `meeting` | `meeting` |
 | `penetration-test` | Penetration test | `calendar`, `event` | `system` | `penetration-test` | `penetration-test` |
-| `performance-review` | Performance review | `calendar`, `event` | `person` | `evidence` | `evidence` |
-| `personal-device-approval` | Personal device approval | `event` | `person`, `asset` | `evidence` | `evidence` |
+| `performance-review` | Performance review | `calendar`, `event` | `person` | `control-activity` | `control-activity` |
+| `personal-device-approval` | Personal device approval | `event` | `person`, `asset` | `control-activity` | `control-activity` |
 | `policy-review` | Policy review | `calendar`, `event` | `policy`, `document` | `policy-review` | `policy-review` |
 | `remediation` | Remediation | `calendar`, `event` | `finding`, `action-item`, `incident`, `vulnerability` | `action-item` | `action-item`, `finding` |
 | `retention-review` | Retention review | `calendar`, `event` | `document`, `system` | `document` | `document`, `evidence` |
 | `risk-assessment` | Risk assessment | `calendar`, `event` | `workspace`, `system`, `vendor`, `risk`, `control` | `risk-assessment` | `risk-assessment`, `risk`, `evidence` |
 | `role-training` | Role training | `calendar`, `event` | `person`, `training` | `attestation` | `attestation`, `evidence` |
-| `security-scan` | Security scan | `calendar`, `event` | `system`, `asset` | `evidence` | `evidence` |
+| `security-scan` | Security scan | `calendar`, `event` | `system`, `asset` | `control-activity` | `control-activity` |
 | `training` | Training | `calendar`, `event` | `person`, `training` | `attestation` | `attestation`, `evidence` |
 | `vendor-contract` | Vendor contract | `calendar`, `event` | `vendor`, `document` | `document` | `document`, `vendor` |
 | `vendor-remediation` | Vendor remediation | `calendar`, `event` | `vendor`, `risk`, `finding`, `action-item` | `vendor` | `vendor`, `risk`, `document`, `action-item`, `evidence` |
@@ -201,13 +223,25 @@ The model owns each event title and the minimum and maximum count for each subje
 | --- | --- | --- |
 | `person-started` | New Worker | `person` 1..1 |
 | `person-ended` | Worker Departure | `person` 1..1 |
-| `high-risk-person-ended` | High-Risk Departure | `person` 1..1 |
 | `person-role-changed` | Job or Responsibility Change | `person` 1..1 |
 | `personal-device-access-planned` | Personal Device Access | `person` 1..1, `asset` 0..1 |
 | `vendor-access-planned` | Vendor Access | `vendor` 1..1 |
 | `vendor-reassessment-needed` | Vendor Reassessment | `vendor` 1..1 |
 | `system-material-change` | Material System Change | `system` 1..1 |
 | `material-incident` | Material Incident | `incident` 1..1 |
+| `vendor-activated` | Vendor Activation | `vendor` 1..1 |
+| `vendor-terminated` | Vendor Termination | `vendor` 1..1 |
+| `material-data-use-change` | Material Data-Use Change | `system` 1..1 |
+| `incident-closed` | Incident Closure | `incident` 1..1 |
+| `policy-revised` | Policy Revision | `policy` 1..1 |
+| `emergency-change` | Emergency Change | `system` 1..1 |
+| `exception-expired` | Exception Expiry | `exception` 1..1 |
+| `service-account-created` | Service Account Creation | `service-account` 1..1 |
+| `service-account-expired` | Service Account Expiry | `service-account` 1..1 |
+| `vulnerability-confirmed` | Vulnerability Confirmation | `vulnerability` 1..1 |
+| `vulnerability-overdue` | Overdue Vulnerability | `vulnerability` 1..1 |
+| `asset-disposed` | Asset Disposal | `asset` 1..1 |
+| `continuity-activated` | Continuity Activation | `system` 1..1 |
 
 ## Nested object schemas
 
@@ -283,7 +317,7 @@ Key format: `namespace`.
 | `unit` | enum | Conditional | Values: `day`, `week`, `month`, `year` Required when `mode` is `calendar`. Allowed when `mode` is `calendar`. |
 | `interval` | integer | Conditional | Minimum: `1`. Required when `mode` is `calendar`. Allowed when `mode` is `calendar`. |
 | `anchorDate` | date | No | Allowed when `mode` is `calendar`. |
-| `eventType` | enum (id) | Conditional | Values: `person-started`, `person-ended`, `high-risk-person-ended`, `person-role-changed`, `personal-device-access-planned`, `vendor-access-planned`, `vendor-reassessment-needed`, `system-material-change`, `material-incident` Values come from the `policyEvents` registry. Required when `mode` is `event`. Allowed when `mode` is `event`. |
+| `eventType` | enum (id) | Conditional | Values: `person-started`, `person-ended`, `person-role-changed`, `personal-device-access-planned`, `vendor-access-planned`, `vendor-reassessment-needed`, `system-material-change`, `material-incident`, `vendor-activated`, `vendor-terminated`, `material-data-use-change`, `incident-closed`, `policy-revised`, `emergency-change`, `exception-expired`, `service-account-created`, `service-account-expired`, `vulnerability-confirmed`, `vulnerability-overdue`, `asset-disposed`, `continuity-activated` Values come from the `policyEvents` registry. Required when `mode` is `event`. Allowed when `mode` is `event`. |
 
 ### `obligation-window`
 
@@ -412,6 +446,54 @@ Key format: `data-path`.
 | `changedOn` | date | Yes |  |
 | `reason` | string | Yes |  |
 
+### `applicability-review`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `decision` | enum | Yes | Values: `applicable`, `not-applicable`, `externally-managed`, `zero-population` |
+| `rationale` | string | Yes |  |
+| `reviewedByIds` | array of id | Yes | References: `person` |
+| `reviewedOn` | date | Yes |  |
+| `scopeRevision` | string | Yes |  |
+
+### `external-activity-reference`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `systemId` | id | Yes | References: `system` |
+| `reference` | string | Yes |  |
+| `coverage` | object (`coverage-period`) | No |  |
+| `reconciledByIds` | array of id | Yes | References: `person` |
+| `reconciledOn` | date | Yes |  |
+
+### `packet-delivery`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `classificationReviewedByIds` | array of id | Yes | References: `person` |
+| `classificationReviewedOn` | date | Yes |  |
+| `redactionDecision` | string | Yes |  |
+| `recipient` | string | Yes |  |
+| `deliverySystem` | string | Yes |  |
+| `packetCommit` | string | Yes |  |
+| `manifestChecksum` | string | Yes |  |
+| `approvedByIds` | array of id | Yes | References: `person` |
+| `approvedOn` | date | Yes |  |
+| `deliveredOn` | date | Yes |  |
+| `receiptReference` | string | No |  |
+
+### `subsequent-events-review`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `reviewedByIds` | array of id | Yes | References: `person` |
+| `reviewedOn` | date | Yes |  |
+| `throughOn` | date | Yes |  |
+| `conclusion` | string | Yes |  |
+| `incidentIds` | array of id | No | References: `incident` |
+| `findingIds` | array of id | No | References: `finding` |
+| `evidenceIds` | array of id | No | References: `evidence` |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -426,7 +508,7 @@ Key format: `data-path`.
 
 Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record.
 
-Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`. Other resources without dedicated Markdown can add it when structured fields are not enough.
+Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `source-coverage`, `control-activity`. Other resources without dedicated Markdown can add it when structured fields are not enough.
 
 ## Program and audit readiness defaults
 
@@ -510,6 +592,12 @@ Policy basis: The selected Framework defines the Requirements. Controls show how
 
 Timing: Review applicability during audit planning and after material scope, service, system, or framework changes.
 
+When reviewing:
+
+- Decide whether this criterion applies to the selected service, Trust Services Categories, customer commitments, and planned audit.
+- Explain the decision using current service and system scope facts, not a generic statement.
+- Before marking it not applicable, confirm that no in-scope promise or control objective depends on it.
+
 Path: `data/requirements/<id>.json`
 
 Record Markdown: available when needed as an implicit companion file.
@@ -522,6 +610,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `description` | string | No |  |
 | `parentRequirementId` | id | No | References: `requirement` |
 | `applicabilityRationale` | string | No |  |
+| `applicabilityReview` | object (`applicability-review`) | No | Applicability review |
 
 #### `commitment`
 
@@ -533,6 +622,12 @@ Policy basis: Contracts, service descriptions, and approved management decisions
 
 Timing: Create before relying on a promise, review during audit scoping, and supersede it when the service or agreement changes.
 
+When reviewing:
+
+- Confirm the statement reflects a real customer promise, service requirement, or approved business objective that applies to the current scope.
+- Confirm which parts of the service the promise or objective affects.
+- Use an external, zero-population, or not-applicable conclusion only when it is factually true for the current scope.
+
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/commitments/<id>.json`
@@ -541,7 +636,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `active`, `superseded`, `retired` |
+| `status` | enum | Yes | Values: `planned`, `active`, `superseded`, `retired` |
 | `commitmentKind` | enum | Yes | Values: `service`, `system-requirement`, `business-objective` |
 | `statement` | string | Yes |  |
 | `systemIds` | array of id | No | References: `system` |
@@ -553,16 +648,23 @@ Record Markdown: available when needed as an implicit companion file.
 | `supersedesId` | id | No | References: `commitment` |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
+| `applicabilityReview` | object (`applicability-review`) | No | Applicability review |
 
 #### `complementary-control`
 
 Actions a customer or carved-out provider must perform for a linked Control to work as described. A Complementary Control record is not required for SOC 2 when no external dependency applies.
 
-Instructions: Record anything customers or carved-out providers must do for your controls to work as intended.
+Instructions: Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
 
 Policy basis: The system description must explain relevant customer and subservice-organization responsibilities so readers understand where management’s Controls depend on others.
 
 Timing: Review for every audit and after material customer-responsibility, vendor, contract, integration, or service changes.
+
+When reviewing:
+
+- Confirm that the linked Control actually depends on a customer or carved-out provider action.
+- Make the statement specific enough for the responsible party to perform and for the system description to explain.
+- Before marking it not applicable, confirm that management is not responsible for the action.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -572,7 +674,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `active`, `superseded`, `retired` |
+| `status` | enum | Yes | Values: `planned`, `active`, `superseded`, `retired` |
 | `responsibleParty` | enum | Yes | Values: `user-entity`, `subservice-organization` |
 | `statement` | string | Yes |  |
 | `systemIds` | array of id | Yes | References: `system` |
@@ -583,6 +685,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `sourceDocumentIds` | array of id | No | References: `document` |
 | `effectiveOn` | date | No |  |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
+| `applicabilityReview` | object (`applicability-review`) | No | Applicability review |
 
 #### `control`
 
@@ -593,6 +696,12 @@ Instructions: Finish each applicable starter control with the procedure people w
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. Policy text alone does not show implementation.
 
 Timing: Before marking a Control implemented, record its owner, actual procedure in Record Markdown, system scope, operation pattern, authoritative evidence source Systems, and implementation date. Put every calendar or event schedule in a linked Obligation. Confirm each source System is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. filegrc-managed Controls also require enabled schedules with effective governing policies. Marking the Control implemented starts eligible schedules.
+
+When reviewing:
+
+- Confirm the Control is needed for the applicable Requirements, customer Commitments, and current service boundary.
+- Confirm the procedure describes what people actually do.
+- Use a not-applicable, external, or zero-population conclusion only when it is factually true for the current scope.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -619,16 +728,27 @@ Markdown companions:
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `operationPattern` | enum | Yes | Operation pattern Values: `continuous`, `event-driven`, `scheduled`, `mixed` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `not-applicable`, `retired`. Allowed when `status` is one of `not-applicable`, `retired`. |
+| `applicabilityReview` | object (`applicability-review`) | No | Control applicability review |
+| `procedureRevision` | string | No | Effective procedure revision |
+| `procedureEffectiveOn` | date | No | Procedure effective date |
+| `implementationReviewedByIds` | array of id | No | Implementation reviewers References: `person` |
+| `implementationReviewedOn` | date | No | Implementation reviewed on |
 
 #### `control-test`
 
 A test of one Control’s design or operation for a date or period, including method, population, samples, Evidence, result, and exceptions. Management-run Control Tests are not required for SOC 2 because the CPA firm tests independently.
 
-Instructions: Record how an in-scope control was tested, what was sampled, the result, and any exceptions.
+Instructions: Record a management Control Test only when management performs and reviews one. The CPA firm records its own independent testing separately.
 
 Policy basis: The information security policy requires management to monitor Controls. The CPA firm performs its own independent testing for the SOC 2 examination.
 
 Timing: Plan from the Control operation pattern, linked Obligations, risk, and audit scope. Record the exact period or as-of date, link the complete population and sampled items when sampling applies, and complete review before relying on the result.
+
+When reviewing:
+
+- Confirm the test covers the intended Control, design or operating objective, and exact audit date or period.
+- Confirm the method, population, sample, and results support the conclusion.
+- Confirm every exception found during the test is recorded.
 
 Default sources: `policy-information-security`
 
@@ -662,6 +782,34 @@ Record Markdown: shown by default as an implicit companion file.
 
 At least one of `testerIds`, `externalTester` is required when `status` is `complete`.
 
+#### `collection-review`
+
+A management confirmation that one model-defined resource collection was reviewed against the current scope and exact record revisions.
+
+Instructions: A management confirmation that one model-defined resource collection was reviewed against the current scope and exact record revisions.
+
+Policy basis: FileGRC cannot infer that an apparently complete or empty collection was reviewed. This record preserves who reviewed it, what conclusion they reached, and the exact collection state they reviewed.
+
+Timing: Review during initial scoping and again whenever the collection or related scope facts change.
+
+Path: `data/collection-reviews/<id>.json`
+
+Record Markdown: available when needed as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `planned`, `active`, `retired` |
+| `resourceType` | enum | Yes | Reviewed resource type Values: `person`, `framework`, `vendor`, `system`, `complementary-control` Values come from the `collectionReviews` registry. |
+| `decision` | enum | Conditional | Values: `complete`, `zero-population`, `externally-managed`, `not-applicable` Required when `status` is `active`. |
+| `rationale` | string | Conditional | Required when `status` is `active`. |
+| `reviewedByIds` | array of id | Conditional | Reviewed by References: `person` Required when `status` is `active`. |
+| `reviewedOn` | date | Conditional | Reviewed on Required when `status` is `active`. |
+| `collectionRevision` | string | Conditional | Reviewed collection revision Required when `status` is `active`. |
+| `scopeRevision` | string | Conditional | Reviewed scope revision Required when `status` is `active`. |
+| `scopeResourceIds` | array of id | Yes | References: `workspace`, `system` |
+| `authoritativeSystemId` | id | Conditional | Authoritative System References: `system` Required when `decision` is `externally-managed` and `status` is `active`. |
+| `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
+
 ### Governance
 
 #### `appointment`
@@ -684,14 +832,15 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `active`, `ended` |
 | `appointmentKind` | string (id) | Yes | Appointment kind |
-| `holderId` | id | Yes | Holder References: `person` |
-| `scopeResourceIds` | array of id | Yes | Scope Relation group: `appointment-scope`. References: `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
+| `holderId` | id | Conditional | Holder References: `person` Required when `status` is one of `active`, `ended`. |
+| `scopeResourceIds` | array of id | Yes | Scope Relation group: `appointment-scope`. References: `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
 | `startsOn` | date | Conditional | Required when `status` is one of `active`, `ended`. |
 | `endsOn` | date | Conditional | Required when `status` is `ended`. |
 | `appointedByIds` | array of id | No | Appointed by References: `person` |
 | `responsibilities` | string | No |  |
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `ended`. Allowed when `status` is one of `ended`. |
+| `independenceRationale` | string | No | Independence rationale |
 
 #### `team`
 
@@ -745,7 +894,7 @@ Markdown companions:
 | `template` | boolean | No |  |
 | `approverIds` | array of id | Conditional | References: `person` Must not overlap `ownerIds`. Required when `status` is one of `active`, `superseded`, `retired`. |
 | `version` | string | No |  |
-| `effectiveOn` | date | Conditional | Required when `status` is `active`. |
+| `effectiveOn` | date | Conditional | Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
 | `approvedOn` | date | Conditional | Required when `status` is one of `active`, `superseded`, `retired`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
 | `supersedesId` | id | No | References: `document` |
 | `systemIds` | array of id | No | References: `system` |
@@ -759,6 +908,8 @@ Markdown companions:
 | `classificationId` | string | No | Classification |
 | `approvedContentRevisions` | object (`content-revisions`) | Conditional | Approved content revisions Managed by filegrc. Required when `status` is one of `active`, `superseded`, `retired`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
+| `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`. |
+| `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` |
 
 #### `policy`
 
@@ -785,7 +936,7 @@ Markdown companions:
 | `policyNumber` | string | No |  |
 | `policyKind` | string | No |  |
 | `version` | string | No |  |
-| `effectiveOn` | date | Conditional | Required when `status` is `active`. |
+| `effectiveOn` | date | Conditional | Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
 | `approvedOn` | date | Conditional | Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `supersedesId` | id | No | References: `policy` |
 | `parentPolicyId` | id | No | References: `policy` |
@@ -797,6 +948,8 @@ Markdown companions:
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `approvedContentRevisions` | object (`content-revisions`) | Conditional | Approved content revisions Managed by filegrc. Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
+| `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` |
+| `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`, `in-review`, `approved`. |
 
 #### `policy-review`
 
@@ -807,6 +960,12 @@ Instructions: Record scheduled and change-driven reviews of policies and governe
 Policy basis: Each starter Policy and the continuity plan requires periodic review and another review after specified material changes.
 
 Timing: Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.
+
+When reviewing:
+
+- Read the current Policy or governed Document.
+- Confirm it still matches the service, current requirements, and actual practice.
+- Record any needed change or follow-up.
 
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
@@ -933,6 +1092,10 @@ Markdown companions:
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `retired`. Allowed when `status` is one of `retired`. |
+| `effectiveOn` | date | No |  |
+| `approvedByIds` | array of id | No | References: `person` |
+| `approvedOn` | date | No |  |
+| `effectiveContentRevisions` | object (`content-revisions`) | No | Managed by filegrc. |
 
 #### `data-request`
 
@@ -991,7 +1154,7 @@ Record Markdown: shown by default as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `requested`, `approved`, `revoked`, `closed` |
-| `scopeResourceIds` | array of id | Yes | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit` |
+| `scopeResourceIds` | array of id | Yes | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage` |
 | `requestorIds` | array of id | Yes | References: `person` |
 | `rationale` | string | Yes |  |
 | `riskIds` | array of id | No | References: `risk` |
@@ -1033,6 +1196,8 @@ Record Markdown: shown by default as an implicit companion file.
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `acceptance` | object (`risk-acceptance`) | Conditional | Required when `response` is `accept`. Allowed when `response` is `accept`. |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `closed`, `archived`. Allowed when `status` is one of `closed`, `archived`. |
+| `treatmentTargetOn` | date | No | Treatment target date |
+| `reviewDueOn` | date | No | Next review due |
 
 #### `risk-assessment`
 
@@ -1043,6 +1208,12 @@ Instructions: Complete and approve an assessment of the risks to the in-scope se
 Policy basis: The information security and data handling policies require periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.
 
 Timing: Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.
+
+When reviewing:
+
+- Confirm the assessment covered the real service, material dependencies, data, commitments, and recent changes.
+- Confirm the ratings and responses match management's current view of each risk.
+- Confirm no material risk was left out.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -1138,6 +1309,8 @@ Record Markdown: available when needed as an implicit companion file.
 | `lastReviewedOn` | date | No |  |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `disabled`, `retired`. Allowed when `status` is one of `disabled`, `retired`. |
+| `reviewDueOn` | date | No | Next review due |
+| `nonExpiringRationale` | string | No | Non-expiring rationale |
 
 #### `access-grant`
 
@@ -1174,6 +1347,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `deprovisionReason` | string | Conditional | Required when `status` is one of `revoked`, `expired`. Allowed when `status` is one of `revoked`, `expired`. |
 | `ticketReference` | string | No |  |
 | `evidenceIds` | array of id | No | References: `evidence` |
+| `businessNeed` | string | No | Business need |
 
 #### `access-review`
 
@@ -1184,6 +1358,12 @@ Instructions: Review access on schedule, record each decision, and assign any ac
 Policy basis: The information security and data handling policies require System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.
 
 Timing: Review privileged and production access at least quarterly and other important-system access at least annually.
+
+When reviewing:
+
+- Confirm the review population is complete for every System and exact date or period in scope.
+- Decide whether each person and service account still needs its exact access and privilege level.
+- Confirm every removal, change, or exception has follow-up.
 
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
@@ -1330,6 +1510,12 @@ Policy basis: The information security and data handling policies require review
 
 Timing: Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.
 
+When reviewing:
+
+- Confirm the review covers the Vendor’s current services, connected Systems, data access, criticality, subservice role, and contract terms.
+- Evaluate current assurance reports, security and privacy terms, incident history, resilience, access model, and material changes.
+- Make the approve, conditional, or reject decision match the risks and assign any needed follow-up.
+
 Default sources: `policy-information-security`, `policy-data-protection-handling`
 
 Path: `data/vendor-reviews/<id>.json`
@@ -1389,6 +1575,11 @@ Record Markdown: shown by default as an implicit companion file.
 | `verifiedOn` | date | Conditional | Required when `status` is one of `remediated`, `closed`, `false-positive`. |
 | `evidenceIds` | array of id | Conditional | References: `evidence` Required when `status` is one of `remediated`, `closed`. |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
+| `confirmedOn` | date | No | Confirmed on |
+| `severityAssignedOn` | date | No | Severity assigned on |
+| `targetRemediationOn` | date | No | Target remediation date |
+| `severityChangedOn` | date | No | Severity changed on |
+| `severityChangeReason` | string | No | Severity change reason |
 
 #### `vulnerability-scan`
 
@@ -1399,6 +1590,12 @@ Instructions: Record each required scan, including its scope, timing, result, an
 Policy basis: The information security policy requires management to monitor for weaknesses and scan internet-facing and production Systems.
 
 Timing: Scan at least quarterly and after material changes when practical. Review failures and create vulnerability or finding records for confirmed results.
+
+When reviewing:
+
+- Confirm the scan covered the intended current Systems and attack surface.
+- Confirm any exclusion, authentication failure, unreachable target, or other coverage gap is understood.
+- Confirm every real finding has remediation or an accepted exception.
 
 Default sources: `policy-information-security`
 
@@ -1475,6 +1672,12 @@ Policy basis: The information security policy requires independent testing of th
 
 Timing: Perform at least annually and reconsider scope after material attack-surface or architecture changes.
 
+When reviewing:
+
+- Confirm the tester was independent and the scope covered the current attack surface.
+- Confirm the report supports the recorded result.
+- Confirm every issue has remediation, an accepted exception, or verified closure.
+
 Default sources: `policy-information-security`
 
 Path: `data/penetration-tests/<id>.json`
@@ -1547,6 +1750,12 @@ Policy basis: The information security policy and continuity plan require protec
 
 Timing: Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.
 
+When reviewing:
+
+- Confirm the test restored the intended Systems and data.
+- Confirm the restored data was usable and the recovery targets were met.
+- Record any failure, missed target, or needed follow-up.
+
 Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
 
 Path: `data/backup-tests/<id>.json`
@@ -1609,7 +1818,7 @@ Markdown companions:
 | `verifierIds` | array of id | Conditional | References: `person` Required when `status` is `verified`. |
 | `verifiedOn` | date | Conditional | Required when `status` is `verified`. |
 | `expiresOn` | date | No |  |
-| `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
+| `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
 | `filePaths` | array of data-path | Conditional | Required when `sourceKind` is `file` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `file`, `system`, `rendered-page`, `authored-record`. |
 | `externalReference` | object (`external-reference`) | Conditional | Required when `sourceKind` is `external-reference` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `external-reference`, `system`. |
 | `sourceSystemId` | id | Conditional | Source system References: `system` Required when `sourceKind` is `system` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `system`, `rendered-page`. |
@@ -1618,8 +1827,95 @@ Markdown companions:
 | `classificationId` | string | Conditional | Classification Required when `status` is one of `collected`, `verified`, `withdrawn`. |
 | `coverage` | object (`coverage-period`) | Conditional | Coverage Required when `artifactKind` is `population-export`. |
 | `withdrawal` | object (`withdrawal`) | Conditional | Required when `status` is `withdrawn`. Allowed when `status` is `withdrawn`. |
+| `businessEventAt` | timestamp | No | Business event time |
+| `sourceGeneratedAt` | timestamp | No | Source generation time |
+| `collectedAt` | timestamp | No | Collection time |
+| `verifiedAt` | timestamp | No | Verification time |
+| `readinessTest` | boolean | No | Pre-period readiness test |
+| `coveredSourceFamilyIds` | array of string | No | Covered source families |
+| `retrievalMethodKey` | string (id) | No | Retrieval method key |
+| `accessConfirmed` | boolean | No | Access confirmed |
+| `retrievalResult` | enum | No | Retrieval result Values: `passed`, `failed`, `partial` |
 
 At least one of **content Markdown** is required when `sourceKind` is `authored-record` and `status` is one of `collected`, `verified`, `expired`, `withdrawn`.
+
+#### `source-coverage`
+
+A reviewed decision about where one evidence source family is authoritative for a defined scope and period.
+
+Instructions: A reviewed decision about where one evidence source family is authoritative for a defined scope and period.
+
+Policy basis: Applicable control and audit work must identify an authoritative source for complete populations and retained evidence.
+
+Timing: Review before an evidence period, after a source or retrieval change, and during period reconciliation.
+
+When reviewing:
+
+- Decide whether this source family applies to the current scope and audit period.
+- Confirm the chosen source can produce the complete population or evidence needed.
+- Use not applicable or zero population only when that conclusion is factually true.
+
+Path: `data/source-coverage/<id>.json`
+
+Record Markdown: shown by default as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `planned`, `active`, `retired` |
+| `sourceFamilyId` | enum | Yes | Source family Values: `workforce`, `training-acknowledgement`, `identity-access`, `production-change`, `security-monitoring`, `vulnerability-management`, `endpoint-asset`, `backup-recovery`, `vendor-management`, `exception-finding`, `data-handling`, `network-security`, `governance`, `risk-management` |
+| `coverageKind` | enum | Yes | Coverage kind Values: `filegrc`, `external-system`, `not-applicable`, `zero-population` |
+| `systemId` | id | Conditional | References: `system` Required when `coverageKind` is `external-system` and `status` is `active`. |
+| `scopeResourceIds` | array of id | Yes | References: `workspace`, `system`, `control`, `policy`, `person`, `team`, `vendor` |
+| `excludedPopulation` | string | No |  |
+| `retrieverIds` | array of id | Conditional | References: `person` Required when `coverageKind` is `external-system` and `status` is `active`. |
+| `collectionCadence` | string | Conditional | Required when `status` is `active`. |
+| `retention` | string | Conditional | Required when `status` is `active`. |
+| `reconciliationMethod` | string | Conditional | Required when `status` is `active`. |
+| `validFrom` | date | Conditional | Required when `status` is `active`. |
+| `validThrough` | date | No |  |
+| `applicabilityReview` | object (`applicability-review`) | Conditional | Required when `coverageKind` is one of `not-applicable`, `zero-population` and `status` is `active`. |
+| `readinessTestEvidenceIds` | array of id | No | References: `evidence` |
+| `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
+| `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
+
+#### `control-activity`
+
+A completed or externally reconciled operating activity using a model-owned completion profile.
+
+Instructions: A completed or externally reconciled operating activity using a model-owned completion profile.
+
+Policy basis: Recurring control operation needs dated facts about who performed and reviewed the work, its scope, result, evidence, and follow-up.
+
+Timing: Create one record for each required occurrence or reconciled external activity.
+
+When reviewing:
+
+- Confirm the activity actually occurred for the stated scope and period.
+- Confirm the result and Evidence match the work performed.
+- Confirm every exception or failed objective has follow-up.
+
+Path: `data/control-activities/<id>.json`
+
+Record Markdown: shown by default as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `planned`, `complete`, `externally-managed`, `canceled` |
+| `profileId` | enum | Yes | Completion profile Values: `inventory-review`, `log-review`, `network-review`, `continuity-review`, `performance-review`, `personal-device-approval`, `security-scan` |
+| `obligationId` | id | No | References: `obligation` |
+| `controlIds` | array of id | No | References: `control` |
+| `scopeResourceIds` | array of id | Yes | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage` |
+| `performerIds` | array of id | Conditional | References: `person` Required when `status` is `complete`. |
+| `completedAt` | timestamp | Conditional | Required when `status` is `complete`. |
+| `method` | string | Conditional | Required when `status` is `complete`. |
+| `result` | outcome | Conditional | Required when `status` is `complete`. |
+| `reviewerIds` | array of id | Conditional | References: `person` Required when `status` is `complete`. |
+| `reviewedOn` | date | Conditional | Required when `status` is `complete`. |
+| `evidenceIds` | array of id | No | References: `evidence` |
+| `followupActionIds` | array of id | No | References: `action-item` |
+| `externalActivity` | object (`external-activity-reference`) | Conditional | Required when `status` is `externally-managed`. Allowed when `status` is `externally-managed`. |
+| `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
+| `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 
 ### Issues and Remediation
 
@@ -1643,20 +1939,21 @@ Markdown companions:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `active`, `paused`, `retired` |
+| `status` | enum | Yes | Values: `proposed`, `active`, `paused`, `retired` |
 | `activityType` | enum | Yes | Values: `access-change`, `access-provisioning`, `access-removal`, `access-review`, `alert-path-test`, `asset-recovery`, `asset-registration`, `backup-test`, `change-review`, `continuity-review`, `document-review`, `exception-review`, `exercise`, `incident-retrospective`, `inventory-review`, `log-review`, `meeting`, `network-review`, `oversight-meeting`, `penetration-test`, `performance-review`, `personal-device-approval`, `policy-review`, `remediation`, `retention-review`, `risk-assessment`, `role-training`, `security-scan`, `training`, `vendor-contract`, `vendor-remediation`, `vendor-review`, `vulnerability-scan`, `workforce-acknowledgement` Values come from the `obligationActivities` registry. |
 | `recurrence` | object (`recurrence`) | Yes |  |
 | `triggerPrompt` | string | No |  |
 | `window` | object (`obligation-window`) | No |  |
-| `scopeResourceIds` | array of id | No | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit` |
+| `scopeResourceIds` | array of id | No | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage` |
 | `templateResourceId` | id | No | Relation group: `obligation-template`. References: `person`, `system`, `asset`, `document`, `control`, `policy`, `training` |
 | `controlIds` | array of id | No | References: `control` |
 | `policyIds` | array of id | No | References: `policy` |
 | `startsOn` | date | No |  |
 | `endsOn` | date | No |  |
-| `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request` |
+| `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `paused`, `retired`. Allowed when `status` is one of `paused`, `retired`. |
+| `eventRiskLevels` | array of string | No | Event risk levels Values: `normal`, `high` |
 
 #### `obligation-event`
 
@@ -1683,6 +1980,8 @@ Record Markdown: available when needed as an implicit companion file.
 | `completedOn` | date | Conditional | Required when `status` is `complete`. |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
+| `riskLevel` | enum | Conditional | Departure risk Values: `normal`, `high` Required when `eventType` is `person-ended`. |
+| `transitionFingerprint` | string | No |  |
 
 #### `finding`
 
@@ -1704,7 +2003,7 @@ Record Markdown: shown by default as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `accepted`, `remediating`, `resolved`, `closed` |
 | `severity` | rating | Yes |  |
-| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
+| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
 | `description` | string | Yes |  |
 | `controlIds` | array of id | No | References: `control` |
 | `riskIds` | array of id | No | References: `risk` |
@@ -1736,14 +2035,14 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `in-progress`, `blocked`, `done`, `canceled` |
 | `assigneeIds` | array of id | Yes | References: `person`, `team`, `appointment` |
-| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
+| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
 | `description` | string | No |  |
 | `priority` | rating | No |  |
 | `obligationId` | id | No | References: `obligation` |
 | `completedOn` | date | Conditional | Required when `status` is `done`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
-| `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request` |
-| `blockingResourceIds` | array of id | No | Relation group: `work-blocker`. References: `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request` |
+| `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` |
+| `blockingResourceIds` | array of id | Conditional | Relation group: `work-blocker`. References: `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity` Required when `status` is `blocked`. Allowed when `status` is `blocked`. |
 | `completionWindow` | object (`completion-window`) | Conditional | Completion window Required when `status` is one of `open`, `in-progress`, `blocked`. |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 
@@ -1767,14 +2066,14 @@ Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `planned`, `in-progress`, `fieldwork`, `complete` |
+| `status` | enum | Yes | Values: `planned`, `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete` |
 | `auditKind` | enum | Yes | Values: `readiness`, `soc-2-type-1`, `soc-2-type-2` |
 | `frameworkIds` | array of id | Yes | References: `framework` |
 | `scope` | string | Yes |  |
-| `auditorVendorId` | id | Conditional | References: `vendor` Required when `status` is one of `in-progress`, `fieldwork`, `complete`. |
-| `fieldworkStart` | date | Conditional | Required when `status` is one of `fieldwork`, `complete`. |
-| `fieldworkEnd` | date | Conditional | Required when `status` is one of `fieldwork`, `complete`. |
-| `reportDate` | date | Conditional | Required when `status` is `complete`. |
+| `auditorVendorId` | id | Conditional | References: `vendor` Required when `status` is one of `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete`. |
+| `fieldworkStart` | date | Conditional | Required when `status` is one of `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete`. |
+| `fieldworkEnd` | date | Conditional | Required when `status` is one of `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete`. |
+| `reportDate` | date | Conditional | Required when `status` is one of `issued`, `delivered`, `complete`. |
 | `systemIds` | array of id | No | References: `system` |
 | `requirementIds` | array of id | No | References: `requirement` |
 | `controlIds` | array of id | No | References: `control` |
@@ -1787,13 +2086,23 @@ Record Markdown: available when needed as an implicit companion file.
 | `complementaryControlsConclusion` | enum | No | Complementary controls conclusion Values: `identified`, `not-applicable` |
 | `subserviceVendorIds` | array of id | No | References: `vendor` |
 | `subserviceMethod` | enum | No | Values: `carve-out`, `inclusive`, `not-applicable` |
-| `opinion` | enum | Conditional | Values: `unmodified`, `qualified`, `adverse`, `disclaimer`, `not-issued` Required when `status` is `complete` and `auditKind` is one of `soc-2-type-1`, `soc-2-type-2`. |
-| `opinionDate` | date | Conditional | Required when `status` is `complete` and `auditKind` is one of `soc-2-type-1`, `soc-2-type-2`. |
-| `reportEvidenceId` | id | Conditional | References: `evidence` Required when `status` is `complete`. |
+| `opinion` | enum | Conditional | Values: `unmodified`, `qualified`, `adverse`, `disclaimer`, `not-issued` Required when `status` is one of `issued`, `delivered`, `complete` and `auditKind` is one of `soc-2-type-1`, `soc-2-type-2`. |
+| `opinionDate` | date | Conditional | Required when `status` is one of `issued`, `delivered`, `complete` and `auditKind` is one of `soc-2-type-1`, `soc-2-type-2`. |
+| `reportEvidenceId` | id | Conditional | References: `evidence` Required when `status` is one of `issued`, `delivered`, `complete`. |
 | `managementResponseDocumentId` | id | No | References: `document` |
 | `supplementalDocumentIds` | array of id | No | References: `document` |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
-| `coverage` | object (`coverage-period`) | Conditional | Coverage Required when `status` is one of `in-progress`, `fieldwork`, `complete`. |
+| `coverage` | object (`coverage-period`) | Conditional | Coverage Required when `status` is one of `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete`. |
+| `engagementTermsDocumentId` | id | No | Engagement terms References: `document` |
+| `managementAcknowledgedByIds` | array of id | No | Management acknowledgement References: `person` |
+| `managementAcknowledgedOn` | date | No | Acknowledged on |
+| `signatoryAppointmentIds` | array of id | No | Authorized signatories References: `appointment` |
+| `scopeRevision` | string | No | Reviewed scope revision |
+| `subsequentEventsReview` | object (`subsequent-events-review`) | No |  |
+| `packetDelivery` | object (`packet-delivery`) | No |  |
+| `retentionDecision` | string | No |  |
+| `carryForwardActionIds` | array of id | No | References: `action-item` |
+| `priorAuditId` | id | No | Prior audit References: `audit` |
 
 #### `audit-population`
 
@@ -1829,7 +2138,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One auditor request or prepared-by-client item, with its Audit, owner, due date, approved response, Requirements, Controls, Evidence, and follow-up. A separate Audit Request tracker is not required for SOC 2 when the CPA firm’s portal is authoritative.
 
-Instructions: Record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
+Instructions: When FileGRC is the approved request tracker, record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
 
 Policy basis: Audit Requests turn fieldwork into owned, dated deliverables and preserve the exact response and Evidence supplied to the CPA firm.
 
@@ -1859,6 +2168,12 @@ Markdown companions:
 | `coverage` | object (`coverage-period`) | No | Coverage |
 | `acceptedOn` | date | Conditional | Required when `status` is one of `accepted`, `closed`. |
 | `acceptedByIds` | array of id | Conditional | References: `person` Required when `status` is one of `accepted`, `closed`. |
+| `externalAuthoritySystemId` | id | No | Authoritative request system References: `system` |
+| `externalReference` | object (`external-reference`) | No | External request reference |
+| `responseRevision` | string | No | Response revision |
+| `deliveryEvidenceId` | id | No | Delivery evidence References: `evidence` |
+| `reconciledByIds` | array of id | No | Reconciled by References: `person` |
+| `reconciledOn` | date | No | Reconciled on |
 
 ### Repository
 
@@ -1895,13 +2210,13 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `renderer-settings`
 
-Optional local interface and browser repository settings, including onboarding visibility, manually completed Step pages, and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.
+Optional local interface and browser repository settings, including onboarding visibility and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.
 
-Instructions: Optional local interface and browser repository settings, including onboarding visibility, manually completed Step pages, and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.
+Instructions: Optional local interface and browser repository settings, including onboarding visibility and authoritative-branch synchronization. Renderer settings are not required for SOC 2 and do not change compliance records.
 
 Policy basis: Renderer settings are a filegrc convenience, not a SOC 2 requirement, control, audit record, or substitute for evidence. Record lifecycle status represents approval; Git branches do not.
 
-Timing: Change it when the team wants to rerun or suppress an optional renderer workflow or change repository synchronization.
+Timing: Change it when the team wants to rerun or suppress optional onboarding or change repository synchronization.
 
 Path: `data/renderer.json`
 
@@ -1910,7 +2225,6 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `showOnboarding` | boolean | Yes | Show onboarding |
-| `completedStagePageIds` | array of string | No | Manually completed program pages |
 | `repositoryMode` | enum | Yes | Repository mode Values: `trunk`, `manual` |
 | `authoritativeBranch` | string (git-name) | Yes | Authoritative branch |
 | `repositoryRemote` | string (git-name) | Yes | Repository remote |

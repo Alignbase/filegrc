@@ -8,7 +8,6 @@
     "appointment-policy-owner"
   ],
   "version": "1.0",
-  "effectiveOn": "{{effective_date}}",
   "audience": [
     "employees"
   ],
@@ -18,5 +17,7 @@
   "trainingIds": [
     "training-security-awareness"
   ],
-  "classificationId": "internal"
+  "classificationId": "internal",
+  "proposedEffectiveOn": "{{effective_date}}",
+  "programRole": "conditional"
 }

@@ -16,14 +16,24 @@ if (!await exists(workspaceConfig)) {
     target: workspaceRoot,
     yes: true,
     install: false,
-    filegrcVersion: enginePackage.version
+    filegrcVersion: enginePackage.version,
+    policyOwnerEmail: "security@example.com",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
   });
   console.log(`Created development workspace at ${workspaceRoot}`);
 }
 
-const { url } = await serveWorkspace(workspaceRoot, { port });
+const { address, url, usedFallbackPort } = await serveWorkspace(workspaceRoot, {
+  port,
+  fallbackToAvailablePort: true,
+  allowNonAuthoritativeWrites: true
+});
+if (usedFallbackPort) {
+  console.log(`Port ${port} is already in use. Using ${address.port} instead.`);
+}
 console.log(`filegrc development app: ${url}`);
 console.log(`Data: ${join(workspaceRoot, "data")}`);
+console.log("Writes: enabled for internal development; browser changes stay local and are not committed or pushed.");
 console.log("Delete .filegrc/dev-workspace to reset the starter data.");
 printGithubStarMessage();
 

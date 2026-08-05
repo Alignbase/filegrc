@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-vendor",
+  "type": "collection-review",
+  "title": "Vendor and subservice scope review",
+  "status": "planned",
+  "resourceType": "vendor",
+  "scopeResourceIds": [
+    "workspace"
+  ]
+}

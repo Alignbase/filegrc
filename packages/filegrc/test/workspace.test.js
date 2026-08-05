@@ -594,6 +594,37 @@ test("binds approvals to exact Markdown revisions and requires reapproval after 
   );
 });
 
+test("binds active training to its effective Markdown revision", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-training-binding-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const workspacePath = join(root, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  await writeFile(workspacePath, `${JSON.stringify({ ...workspace, dataModelVersion: "3" }, null, 2)}\n`, "utf8");
+  await createResource(root, {
+    id: "training-security",
+    type: "training",
+    title: "Security training",
+    status: "draft",
+    ownerIds: ["person-owner"]
+  }, {
+    content: { content: "# Security training\n\nUse strong authentication and report suspected incidents promptly." }
+  });
+  const draft = (await loadWorkspace(root)).resources.find(({ id }) => id === "training-security");
+  const active = await updateResource(root, "training", draft.id, {
+    ...draft,
+    status: "active",
+    effectiveOn: "2026-08-03",
+    approvedByIds: ["person-approver"],
+    approvedOn: "2026-08-03"
+  });
+  assert.match(active.record.effectiveContentRevisions["training/training-security.md"], /^[a-f0-9]{64}$/);
+  await assert.rejects(
+    updateContent(root, "training/training-security.md", "# Security training\n\nUnapproved replacement."),
+    /Approved content no longer matches/
+  );
+});
+
 test("keeps scheduled work separate from completed operating proof", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-completion-integrity-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));

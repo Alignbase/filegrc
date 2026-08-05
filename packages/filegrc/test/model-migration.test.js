@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { loadModel } from "../model/index.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
 import { migrateModel, planModelMigration } from "../src/model-migration.js";
 import { loadWorkspace } from "../src/workspace.js";
@@ -18,7 +20,7 @@ const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 test("previews and atomically migrates every model v1 compatibility field", async (context) => {
   const root = await mkdtemp(`${tmpdir()}/filegrc-model-migration-`);
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-  await makeComprehensiveWorkspace(root);
+  await makeComprehensiveWorkspace(root, "2");
   const loaded = await loadWorkspace(root);
   const byId = new Map(loaded.resources.map((record) => [record.id, structuredClone(record)]));
 
@@ -280,7 +282,7 @@ test("previews and atomically migrates every model v1 compatibility field", asyn
   }
   assert.deepEqual((await validateWorkspace(root)).counts, { resources: 45, errors: 0, warnings: 0 });
 
-  const noop = await migrateModel(root);
+  const noop = await migrateModel(root, { targetModelVersion: "2" });
   assert.equal(noop.applied, false);
 });
 
@@ -310,4 +312,110 @@ test("blocks ambiguous Person roles for manual review", async (context) => {
   );
   await assert.rejects(migrateModel(root), /needs review/);
   assert.match(await readFile(personEntry.path, "utf8"), /"role": "Security Lead"/);
+});
+
+test("classifies and applies the v2-to-v3 migration without inventing decisions", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v3-migration-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await writeJson(join(root, "data", "renderer.json"), {
+    id: "renderer-settings",
+    type: "renderer-settings",
+    title: "Renderer settings",
+    showOnboarding: false,
+    repositoryMode: "manual",
+    authoritativeBranch: "main",
+    repositoryRemote: "origin",
+    completedStagePageIds: ["scope:person"]
+  });
+  await createResource(root, {
+    id: "appointment-policy-owner",
+    type: "appointment",
+    title: "Policy Owner",
+    status: "active",
+    appointmentKind: "policy-owner",
+    holderId: "person-owner",
+    scopeResourceIds: ["workspace"],
+    startsOn: "2026-08-01"
+  });
+  const preview = await planModelMigration(root);
+  assert.equal(preview.sourceModelVersion, "2");
+  assert.equal(preview.targetModelVersion, "3");
+  assert.equal(preview.ready, true);
+  assert.equal(preview.classifications.unsupported.length, 0);
+  assert.ok(preview.classifications.automatic.some(({ field }) => field === "completedStagePageIds"));
+  assert.ok(preview.classifications.reviewRequired.some(({ field }) => field === "holderId"));
+  assert.deepEqual(
+    preview.changes.create
+      .filter(({ type }) => type === "appointment")
+      .map(({ appointmentKind }) => appointmentKind),
+    ["independent-policy-reviewer"]
+  );
+  assert.ok(preview.changes.create.some(({ type }) => type === "source-coverage"));
+  assert.equal(preview.changes.create.every((record) => record.holderId === undefined), true);
+  const unsafeChanges = { ...preview.changes };
+  delete unsafeChanges.targetModelVersion;
+  await assert.rejects(
+    applyResourceBatch(root, unsafeChanges),
+    /must declare targetModelVersion/
+  );
+
+  const result = await migrateModel(root);
+  assert.equal(result.applied, true);
+  const migrated = await loadWorkspace(root);
+  assert.equal(migrated.workspace.dataModelVersion, "3");
+  assert.equal(migrated.model.modelVersion, "3");
+  assert.equal(
+    migrated.resources.find(({ type }) => type === "renderer-settings").completedStagePageIds,
+    undefined
+  );
+  assert.equal(
+    migrated.resources.filter(({ type, status }) => type === "appointment" && status === "planned").length,
+    1
+  );
+  assert.equal(
+    migrated.resources.filter(({ type }) => type === "source-coverage").length,
+    migrated.model.evidenceSourceFamilies.length
+  );
+  assert.deepEqual((await validateWorkspace(root)).counts, {
+    resources: 6
+      + migrated.model.evidenceSourceFamilies.length
+      + Object.keys(migrated.model.collectionReviews).length,
+    errors: 0,
+    warnings: 0
+  });
+  assert.equal(result.postMigrationAssessment.contractVersion, 1);
+});
+
+test("precreates model v3 source coverage when model v2 has no Appointments", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v3-source-coverage-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+
+  const preview = await planModelMigration(root);
+  const appointments = preview.changes.create.filter(({ type }) => type === "appointment");
+  const policyOwner = appointments.find(({ appointmentKind }) => appointmentKind === "policy-owner");
+  assert.ok(policyOwner);
+  assert.equal(
+    preview.changes.create.filter(({ type }) => type === "source-coverage").length,
+    loadModel("3").evidenceSourceFamilies.length
+  );
+  assert.equal(
+    preview.changes.create
+      .filter(({ type }) => type === "source-coverage")
+      .every(({ ownerIds }) => ownerIds.includes(policyOwner.id)),
+    true
+  );
+
+  const result = await migrateModel(root);
+  assert.equal(result.applied, true);
+  assert.equal((await validateWorkspace(root)).ok, true);
+
+  const current = await planModelMigration(root);
+  assert.equal(current.schemaVersion, 2);
+  assert.deepEqual(current.classifications, {
+    automatic: [],
+    reviewRequired: [],
+    unsupported: []
+  });
 });

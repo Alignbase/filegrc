@@ -1,13 +1,13 @@
 import { createResourceId } from "./id.js";
 import { applyResourceBatch, contentRevision } from "./files.js";
 import { loadWorkspace } from "./workspace.js";
-import { loadModel } from "../model/index.js";
+import { ACTIVE_MODEL_VERSION, loadModel } from "../model/index.js";
 import { legacyCoverage } from "./coverage.js";
 import { readFile } from "node:fs/promises";
 import { resolveDataPath } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 
-const TARGET_MODEL_VERSION = "2";
+const V1_TARGET_MODEL_VERSION = "2";
 const EXTENSION_NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 const LEGACY_POLICY_OWNER_ROLE = "Policy Owner";
 const ACCOUNTABILITY_FIELDS = new Set(["ownerIds", "evidenceOwnerIds"]);
@@ -51,13 +51,13 @@ const STAGE_PAGE_ID_MIGRATIONS = new Map([
   ["scope:complementary-control", "controls:complementary-control"]
 ]);
 
-export async function planModelMigration(input = process.cwd(), options = {}) {
+async function planV1ToV2Migration(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
   if (!loaded.workspace || !Object.hasOwn(loaded.workspace, "dataModelVersion")) {
     throw new Error("Model migration requires the Workspace record to declare dataModelVersion.");
   }
   const sourceVersion = String(loaded.workspace.dataModelVersion);
-  if (sourceVersion === TARGET_MODEL_VERSION) {
+  if (sourceVersion === V1_TARGET_MODEL_VERSION) {
     return emptyPlan(sourceVersion);
   }
   if (sourceVersion !== "1") {
@@ -229,7 +229,7 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
     }
   }
 
-  const targetModel = loadModel(TARGET_MODEL_VERSION);
+  const targetModel = loadModel(V1_TARGET_MODEL_VERSION);
   for (const record of loaded.resources.filter((candidate) => approvalBound(candidate))) {
     const migrated = editable(record);
     const revisions = {};
@@ -823,7 +823,7 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
     }
   }
 
-  editable(loaded.workspace).dataModelVersion = TARGET_MODEL_VERSION;
+  editable(loaded.workspace).dataModelVersion = V1_TARGET_MODEL_VERSION;
   const migratedRecords = [
     ...loaded.resources.map((record) => updateById.get(record.id) || record),
     ...create
@@ -851,7 +851,7 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   return {
     schemaVersion: 1,
     sourceModelVersion: sourceVersion,
-    targetModelVersion: TARGET_MODEL_VERSION,
+    targetModelVersion: V1_TARGET_MODEL_VERSION,
     ready: !missing.length && !conflicts.length && !manualActions.length,
     missing,
     conflicts,
@@ -867,14 +867,15 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
       expectedRevisions: Object.fromEntries(
         update.map(({ id }) => [id, revisionById.get(id)])
       ),
-      validateWholeWorkspace: true
+      validateWholeWorkspace: true,
+      targetModelVersion: V1_TARGET_MODEL_VERSION
     }
   };
 }
 
-export async function migrateModel(input = process.cwd(), options = {}) {
-  const plan = await planModelMigration(input, options);
-  if (plan.sourceModelVersion === TARGET_MODEL_VERSION) return { ...plan, applied: false };
+async function migrateV1ToV2(input = process.cwd(), options = {}) {
+  const plan = await planV1ToV2Migration(input, options);
+  if (plan.sourceModelVersion === V1_TARGET_MODEL_VERSION) return { ...plan, applied: false };
   if (!plan.ready) {
     throw new Error(
       "Model migration needs review. Run `npx filegrc migrate --to-model 2 --preview --json` "
@@ -883,6 +884,486 @@ export async function migrateModel(input = process.cwd(), options = {}) {
   }
   const result = await applyResourceBatch(input, plan.changes);
   return { ...plan, applied: true, result };
+}
+
+export async function planModelMigration(input = process.cwd(), options = {}) {
+  const loaded = await loadWorkspace(input);
+  const sourceVersion = String(loaded.workspace?.dataModelVersion || "");
+  const requestedTarget = options.targetModelVersion
+    ? String(options.targetModelVersion)
+    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION : ACTIVE_MODEL_VERSION;
+  if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
+  if (sourceVersion === "1" && requestedTarget === "2") {
+    return planV1ToV2Migration(input, options);
+  }
+  if (sourceVersion === "2" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV2ToV3Migration(loaded);
+  }
+  if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    throw new Error(
+      "Model v1 workspaces must migrate to model v2 first. "
+      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate to model v3."
+    );
+  }
+  throw new Error(`Model migration does not support v${sourceVersion} to v${requestedTarget}.`);
+}
+
+export async function migrateModel(input = process.cwd(), options = {}) {
+  const plan = await planModelMigration(input, options);
+  if (plan.sourceModelVersion === plan.targetModelVersion) {
+    return { ...plan, applied: false };
+  }
+  if (!plan.ready) {
+    throw new Error(
+      `Model migration needs review. Run \`npx filegrc migrate --to-model ${plan.targetModelVersion} --preview --json\` `
+      + "and resolve every missing value, conflict, manual action, and unsupported change."
+    );
+  }
+  if (plan.sourceModelVersion === "1" && plan.targetModelVersion === "2") {
+    return migrateV1ToV2(input, options);
+  }
+  const result = await applyResourceBatch(input, plan.changes);
+  return {
+    ...plan,
+    applied: true,
+    result,
+    postMigrationAssessment: await postMigrationAssessment(input)
+  };
+}
+
+async function planV2ToV3Migration(loaded) {
+  if (!loaded.workspace?.id) {
+    throw new Error("Model migration requires a valid Workspace record.");
+  }
+  const revisionById = new Map(loaded.entries.map((entry) => [
+    entry.record.id,
+    contentRevision(entry.source)
+  ]));
+  const updates = [];
+  const create = [];
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const targetModel = loadModel(ACTIVE_MODEL_VERSION);
+  const workspace = {
+    ...loaded.workspace,
+    dataModelVersion: ACTIVE_MODEL_VERSION
+  };
+  automatic.push(classifiedChange(
+    "automatic",
+    loaded.workspace.id,
+    "dataModelVersion",
+    "Select model v3."
+  ));
+
+  const renderer = loaded.resources.find(({ type }) => type === "renderer-settings");
+  if (renderer && Object.hasOwn(renderer, "completedStagePageIds")) {
+    const migrated = { ...renderer };
+    delete migrated.completedStagePageIds;
+    updates.push(migrated);
+    automatic.push(classifiedChange(
+      "automatic",
+      renderer.id,
+      "completedStagePageIds",
+      "Remove obsolete manual Step-page completion state. Model v3 derives page completion."
+    ));
+  }
+
+  for (const [appointmentKind, template] of Object.entries(targetModel.appointmentTemplates || {})) {
+    const { title, responsibilities } = template;
+    if (loaded.resources.some((record) => (
+      record.type === "appointment"
+      && record.appointmentKind === appointmentKind
+      && record.status !== "ended"
+    ))) continue;
+    const appointment = {
+      id: createResourceId("appointment", title, [
+        ...loaded.resources.map(({ id }) => id),
+        ...create.map(({ id }) => id)
+      ]),
+      type: "appointment",
+      title,
+      status: "planned",
+      appointmentKind,
+      scopeResourceIds: [loaded.workspace.id],
+      responsibilities
+    };
+    create.push(appointment);
+    automatic.push(classifiedChange(
+      "automatic",
+      appointment.id,
+      null,
+      `Create a planned ${title} Appointment without inventing a holder or effective date.`
+    ));
+    reviewRequired.push(classifiedChange(
+      "review-required",
+      appointment.id,
+      "holderId",
+      `Assign and activate the ${title} Appointment when management selects the holder.`
+    ));
+  }
+
+  for (const [resourceType, configuration] of Object.entries(targetModel.collectionReviews || {})) {
+    if (loaded.resources.some((record) => (
+      record.type === "collection-review"
+      && record.resourceType === resourceType
+      && record.status !== "retired"
+    ))) continue;
+    const review = {
+      id: createResourceId("collection-review", `${configuration.title} review`, [
+        ...loaded.resources.map(({ id }) => id),
+        ...create.map(({ id }) => id)
+      ]),
+      type: "collection-review",
+      title: `${configuration.title} review`,
+      status: "planned",
+      resourceType,
+      scopeResourceIds: [loaded.workspace.id]
+    };
+    create.push(review);
+    automatic.push(classifiedChange(
+      "automatic",
+      review.id,
+      null,
+      `Create a planned ${configuration.title} confirmation without asserting that management reviewed the collection.`
+    ));
+    reviewRequired.push(classifiedChange(
+      "review-required",
+      review.id,
+      "decision",
+      configuration.description
+    ));
+  }
+
+  const sourceOwner = [...loaded.resources, ...create].find((record) => (
+    record.type === "appointment"
+    && record.appointmentKind === "policy-owner"
+    && record.status !== "ended"
+  ));
+  if (sourceOwner) {
+    for (const family of targetModel.evidenceSourceFamilies || []) {
+      const record = {
+        id: createResourceId("source-coverage", `${family.title} coverage`, [
+          ...loaded.resources.map(({ id }) => id),
+          ...create.map(({ id }) => id)
+        ]),
+        type: "source-coverage",
+        title: `${family.title} coverage`,
+        status: "planned",
+        sourceFamilyId: family.id,
+        coverageKind: family.filegrcManaged ? "filegrc" : "external-system",
+        scopeResourceIds: [loaded.workspace.id],
+        ownerIds: [sourceOwner.id]
+      };
+      create.push(record);
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        null,
+        `Create a planned ${family.title} source-coverage prompt without asserting that the proposed path is final.`
+      ));
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "coverageKind",
+        `Confirm the authoritative recordkeeping path for ${family.title}.`
+      ));
+    }
+  }
+
+  for (const record of loaded.resources) {
+    collectV3ReviewItems(record, reviewRequired);
+    if (
+      ["policy", "document"].includes(record.type)
+      && ["draft", "in-review", "approved"].includes(record.status)
+      && record.effectiveOn
+    ) {
+      const migrated = {
+        ...record,
+        proposedEffectiveOn: record.effectiveOn
+      };
+      delete migrated.effectiveOn;
+      updates.push(migrated);
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        "effectiveOn",
+        "Move the non-active effective date to proposedEffectiveOn so it remains a proposal in model v3."
+      ));
+    }
+    if (
+      record.type === "obligation"
+      && record.recurrence?.mode === "event"
+      && record.recurrence.eventType === "high-risk-person-ended"
+    ) {
+      updates.push({
+        ...record,
+        recurrence: { ...record.recurrence, eventType: "person-ended" },
+        eventRiskLevels: ["high"]
+      });
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        "recurrence.eventType",
+        "Merge the high-risk departure trigger into person-ended and retain the high-risk filter."
+      ));
+    }
+    if (
+      record.type === "obligation-event"
+      && ["person-ended", "high-risk-person-ended"].includes(record.eventType)
+    ) {
+      updates.push({
+        ...record,
+        eventType: "person-ended",
+        riskLevel: record.eventType === "high-risk-person-ended" ? "high" : "normal"
+      });
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        "riskLevel",
+        "Record the departure risk level required by the unified person-ended workflow."
+      ));
+    }
+  }
+  for (const family of targetModel.evidenceSourceFamilies || []) {
+    reviewRequired.push(classifiedChange(
+      "review-required",
+      loaded.workspace.id,
+      `sourceCoverage.${family.id}`,
+      `Review whether the ${family.title} source family applies and identify its authoritative recordkeeping path.`
+    ));
+  }
+
+  updates.push(workspace);
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = [
+    ...loaded.resources.map((record) => updatedById.get(record.id) || record),
+    ...create
+  ];
+  collectModelShapeActions(migratedRecords, targetModel, missing, manualActions);
+  collectRelationshipConstraintActions(migratedRecords, targetModel, manualActions);
+  collectRelationTypeActions(migratedRecords, targetModel, manualActions);
+  collectV3CompatibilityActions(migratedRecords, targetModel, missing, manualActions);
+  await collectTargetValidationActions(
+    loaded,
+    migratedRecords,
+    targetModel,
+    missing,
+    manualActions
+  );
+  for (const item of missing) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      `Record ${item.field} before applying the model v3 migration.`
+    ));
+  }
+  for (const item of manualActions) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message
+    ));
+  }
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "2",
+    targetModelVersion: ACTIVE_MODEL_VERSION,
+    ready: unsupported.length === 0,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: {
+      automatic,
+      reviewRequired,
+      unsupported
+    },
+    notes: reviewRequired,
+    summary: {
+      create: create.length,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: create.map((record) => ({ type: record.type, id: record.id, after: record })),
+      update: updates.map((record) => {
+        const before = loaded.resources.find(({ id }) => id === record.id);
+        return { type: record.type, id: record.id, before, after: record };
+      })
+    },
+    changes: {
+      create,
+      update: updates,
+      expectedRevisions: Object.fromEntries(
+        updates.map(({ id }) => [id, revisionById.get(id)])
+      ),
+      validateWholeWorkspace: true,
+      targetModelVersion: ACTIVE_MODEL_VERSION
+    }
+  };
+}
+
+async function collectTargetValidationActions(loaded, records, model, missing, manualActions) {
+  const { validateWorkspace } = await import("./validate.js");
+  const existingById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
+  const entries = records.map((record) => {
+    const existing = existingById.get(record.id);
+    const definition = model.resources[record.type];
+    const recordPath = definition.singleton
+      || `${definition.collection}/${(definition.recordPath || "{id}.json").replaceAll("{id}", record.id)}`;
+    const source = `${JSON.stringify(record, null, 2)}\n`;
+    return {
+      ...existing,
+      path: existing?.path,
+      relativePath: existing?.relativePath || recordPath,
+      record,
+      source,
+      revision: contentRevision(source)
+    };
+  });
+  const candidate = {
+    ...loaded,
+    model,
+    workspace: records.find((record) => record.type === "workspace"),
+    resources: records,
+    entries,
+    diagnostics: []
+  };
+  const validation = await validateWorkspace(candidate);
+  const recordIdByPath = new Map(entries.map((entry) => [
+    `data/${entry.relativePath}`,
+    entry.record.id
+  ]));
+  const reported = new Set([
+    ...missing.map(({ resourceId, field }) => `${resourceId}:${field}`),
+    ...manualActions.map(({ resourceId, field }) => `${resourceId}:${field}`)
+  ]);
+  for (const diagnostic of validation.diagnostics.filter(({ severity }) => severity === "error")) {
+    const resourceId = recordIdByPath.get(diagnostic.path) || candidate.workspace.id;
+    const field = targetValidationField(diagnostic);
+    const key = `${resourceId}:${field}`;
+    if (reported.has(key)) continue;
+    manualActions.push({
+      resourceId,
+      field,
+      message: diagnostic.message
+    });
+    reported.add(key);
+  }
+}
+
+function targetValidationField(diagnostic) {
+  const quoted = diagnostic.message.match(/(?:Required field|Field) "([^"]+)"/)?.[1];
+  if (quoted) return quoted;
+  const prefix = diagnostic.message.match(/^([a-zA-Z][a-zA-Z0-9.[\]-]*)(?::| is not allowed)/)?.[1];
+  return prefix || diagnostic.code;
+}
+
+function collectV3ReviewItems(record, items) {
+  if (
+    ["requirement", "commitment", "complementary-control", "control"].includes(record.type)
+    && !record.applicabilityReview
+  ) {
+    items.push(classifiedChange(
+      "review-required",
+      record.id,
+      "applicabilityReview",
+      "Review applicability against the current scope and bind the decision to its Git revision."
+    ));
+  }
+  if (
+    ["policy", "document"].includes(record.type)
+    && ["draft", "in-review", "approved"].includes(record.status)
+    && record.effectiveOn
+  ) {
+    items.push(classifiedChange(
+      "review-required",
+      record.id,
+      "proposedEffectiveOn",
+      "Confirm the proposed effective date before this content becomes active."
+    ));
+  }
+  const requested = {
+    risk: ["treatmentTargetOn", "reviewDueOn"],
+    vulnerability: ["confirmedOn", "severityAssignedOn", "targetRemediationOn"],
+    "access-grant": ["businessNeed"],
+    "service-account": ["authenticationMethod", "reviewDueOn"]
+  }[record.type] || [];
+  for (const field of requested) {
+    if (record[field] !== undefined && record[field] !== null && record[field] !== "") continue;
+    items.push(classifiedChange(
+      "review-required",
+      record.id,
+      field,
+      `Review and record ${field} when it applies to this ${record.type}.`
+    ));
+  }
+}
+
+function collectV3CompatibilityActions(records, model, missing, manualActions) {
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const reported = new Set(manualActions.map(({ resourceId, field }) => `${resourceId}:${field}`));
+  const reportedMissing = new Set(missing.map(({ resourceId, field }) => `${resourceId}:${field}`));
+  for (const record of records) {
+    if (
+      record.type === "action-item"
+      && record.status === "done"
+      && record.obligationId
+    ) {
+      const obligation = byId.get(record.obligationId);
+      const expectedTypes = obligation?.type === "obligation"
+        ? model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || []
+        : [];
+      const linked = (record.completionResourceIds || [])
+        .map((id) => byId.get(id))
+        .filter(Boolean);
+      if (expectedTypes.length && !linked.some((item) => expectedTypes.includes(item.type))) {
+        const field = "completionResourceIds";
+        const key = `${record.id}:${field}`;
+        if (!reported.has(key)) {
+          manualActions.push({
+            resourceId: record.id,
+            field,
+            value: record.completionResourceIds || [],
+            message: `Link the completion record required by Obligation "${record.obligationId}" before applying model v3.`
+          });
+          reported.add(key);
+        }
+      }
+    }
+    if (
+      record.type === "action-item"
+      && record.status === "blocked"
+      && migrationValueMissing(record.blockingResourceIds)
+    ) {
+      const field = "blockingResourceIds";
+      const key = `${record.id}:${field}`;
+      if (!reportedMissing.has(key)) {
+        missing.push({ resourceId: record.id, field });
+        reportedMissing.add(key);
+      }
+    }
+  }
+}
+
+function classifiedChange(classification, resourceId, field, message) {
+  return {
+    classification,
+    resourceId,
+    ...(field ? { field } : {}),
+    message
+  };
+}
+
+async function postMigrationAssessment(input) {
+  const { assessWorkflow } = await import("./workflow.js");
+  return assessWorkflow(input);
 }
 
 function migrateInverseArrays(resources, byId, editable, conflicts, mapping) {
@@ -906,17 +1387,31 @@ function migrateInverseArrays(resources, byId, editable, conflicts, mapping) {
   }
 }
 
-function emptyPlan(version) {
+function emptyPlan(version, targetVersion = V1_TARGET_MODEL_VERSION) {
+  const currentV3 = targetVersion === ACTIVE_MODEL_VERSION;
   return {
-    schemaVersion: 1,
+    schemaVersion: currentV3 ? 2 : 1,
     sourceModelVersion: version,
-    targetModelVersion: TARGET_MODEL_VERSION,
+    targetModelVersion: targetVersion,
     ready: true,
     missing: [],
     conflicts: [],
     manualActions: [],
     notes: [],
-    summary: { create: 0, update: 0 },
+    ...(currentV3 ? {
+      classifications: {
+        automatic: [],
+        reviewRequired: [],
+        unsupported: []
+      },
+      fileDiff: {
+        create: [],
+        update: []
+      }
+    } : {}),
+    summary: currentV3
+      ? { create: 0, update: 0, automatic: 0, reviewRequired: 0, unsupported: 0 }
+      : { create: 0, update: 0 },
     changes: {
       create: [],
       update: [],
@@ -1167,7 +1662,7 @@ function collectModelShapeActions(records, model, missing, manualActions) {
         resourceId: record.id,
         field: name,
         value: record[name],
-        message: `Field "${name}" is not part of model v2. Move organization-specific data under a namespaced extensions object or remove the obsolete field.`
+        message: `Field "${name}" is not part of model v${model.modelVersion}. Move organization-specific data under a namespaced extensions object or remove the obsolete field.`
       });
       reportedManual.add(key);
     }
@@ -1183,7 +1678,7 @@ function collectModelShapeActions(records, model, missing, manualActions) {
             resourceId: record.id,
             field: name,
             value: record[name],
-            message: `Field "${name}" is not allowed for the selected ${Object.keys(field.allowedWhen).join(" and ")} in model v2.`
+            message: `Field "${name}" is not allowed for the selected ${Object.keys(field.allowedWhen).join(" and ")} in model v${model.modelVersion}.`
           });
           reportedManual.add(key);
         }
@@ -1239,7 +1734,7 @@ function collectRelationshipConstraintActions(records, model, manualActions) {
               resourceId: record.id,
               field: constraint.field,
               value: record[constraint.field],
-              message: `Break the model-v2 relationship cycle: ${cycle.join(" -> ")}.`
+              message: `Break the model-v${model.modelVersion} relationship cycle: ${cycle.join(" -> ")}.`
             });
             reported.add(key);
           }
@@ -1296,7 +1791,7 @@ function collectRelationTypeActions(records, model, manualActions) {
       resourceId,
       field: fieldName,
       value: invalid,
-      message: `Replace IDs whose resource type is not allowed by model v2 (${field.relation.join(" or ")}).`
+      message: `Replace IDs whose resource type is not allowed by model v${model.modelVersion} (${field.relation.join(" or ")}).`
     });
     reported.add(key);
   };
@@ -1373,7 +1868,7 @@ function collectObjectShapeActions(
           resourceId,
           field,
           value: value[name],
-          message: `Nested field "${field}" is not allowed for the selected ${Object.keys(property.allowedWhen).join(" and ")} in model v2.`
+          message: `Nested field "${field}" is not allowed for the selected ${Object.keys(property.allowedWhen).join(" and ")} in model v${model.modelVersion}.`
         });
         reportedManual.add(key);
       }
@@ -1421,7 +1916,7 @@ function collectObjectShapeActions(
           resourceId,
           field,
           value: nested,
-          message: `Nested field "${field}" is not part of model v2. Move organization-specific data under extensions or replace it with a defined property.`
+          message: `Nested field "${field}" is not part of model v${model.modelVersion}. Move organization-specific data under extensions or replace it with a defined property.`
         });
         reportedManual.add(key);
       }

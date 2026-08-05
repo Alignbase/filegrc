@@ -10,6 +10,7 @@ import {
   assessAuditPreparation,
   assessEvidenceMap,
   assessProgramReadiness,
+  assessWorkflow,
   createResource,
   createResources,
   loadWorkspace,
@@ -72,9 +73,9 @@ test("requires the starter oversight team to be activated with a separate curren
     .find(({ id }) => id === "scope")
     .items.find(({ id }) => id === "program-ownership");
   assert.equal(pendingOwnership.status, "action");
-  assert.match(pendingOwnership.message, /1 record has no current person owner/);
+  assert.match(pendingOwnership.message, /This team owns 1 proposed obligation/);
   assert.doesNotMatch(pendingOwnership.message, /obligation-quarterly-oversight/);
-  assert.match(pendingOwnership.message, /Finish and activate Security and Risk Oversight/);
+  assert.match(pendingOwnership.message, /Activate Security and Risk Oversight/);
   assert.deepEqual(pendingOwnership.commands, [
     "npx filegrc guide person --json",
     "npx filegrc guide appointment --json",
@@ -197,6 +198,18 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       evidenceOwnerIds: ["person-owner"]
     },
     {
+      id: "system-governance",
+      type: "system",
+      title: "Governance repository",
+      status: "active",
+      criticality: "high",
+      ownerIds: ["person-owner"],
+      description: "Authoritative governance record repository.",
+      classificationId: "confidential",
+      evidenceSourceKinds: ["governance"],
+      evidenceOwnerIds: ["person-owner"]
+    },
+    {
       id: "control-access",
       type: "control",
       title: "Access approval",
@@ -209,7 +222,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       operationMode: "manual",
       operationPattern: "event-driven",
       systemIds: ["system-service"],
-      evidenceSourceIds: ["system-identity"],
+      evidenceSourceIds: ["system-identity", "system-governance"],
       policyIds: ["policy-access"],
       effectiveOn: "2026-06-01"
     }
@@ -217,7 +230,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   const scopedWorkspace = (await loadWorkspace(root)).workspace;
   await updateResource(root, "workspace", scopedWorkspace.id, {
     ...scopedWorkspace,
-    systemIds: ["system-service", "system-identity"]
+    systemIds: ["system-service", "system-identity", "system-governance"]
   });
   const retrievalPending = await assessEvidenceMap(root, { asOf: "2026-07-01" });
   assert.deepEqual(retrievalPending.items[0].sourceSystemChecks, [{
@@ -320,6 +333,12 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(readyWorkspace.resources.find(({ id }) => id === "person-approver").status, "active");
   assert.equal(ready.stages.find(({ id }) => id === "policies").counts.action, 0);
   assert.equal(readyWorkspace.resources.some(({ type }) => type === "audit"), false);
+  const workflow = await assessWorkflow(root, {
+    asOf: "2026-07-01",
+    evaluatedAt: "2026-07-01T12:00:00Z",
+    programReadiness: ready
+  });
+  assert.equal(workflow.assessments.evidenceReadiness.status, "complete");
   const evidenceMap = await assessEvidenceMap(root, { asOf: "2026-07-01" });
   assert.equal(evidenceMap.status, "complete");
   assert.equal(evidenceMap.items.length, 1);
@@ -401,7 +420,8 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     candidateCoverage: { kind: "range", startsOn: "2026-07-01", endsOn: "2026-12-31" },
   });
   const operating = await assessProgramReadiness(root, { asOf: "2026-07-02" });
-  assert.equal(operating.status, "operating");
+  assert.equal(operating.status, "evidence-ready");
+  assert.equal(operating.operating, false);
   assert.equal(operating.canStartCandidatePeriod, false);
   assert.equal(operating.suggestedCandidatePeriodStart, null);
   assert.deepEqual(operating.target.candidateCoverage, {
@@ -443,4 +463,6 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   });
   const assessed = await assessProgramReadiness(root, { asOf: "2026-07-02" });
   assert.equal(assessed.stages.find(({ id }) => id === "operation").items.find(({ id }) => id === "risk-assessment").status, "complete");
+  assert.equal(assessed.status, "operating");
+  assert.equal(assessed.operating, true);
 });

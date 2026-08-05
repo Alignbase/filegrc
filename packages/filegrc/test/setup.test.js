@@ -255,6 +255,37 @@ test("setup applies its records in one validation pass", async (context) => {
   assert.equal(timings.writes.count, 3);
 });
 
+test("model v3 setup creates one visible service commitment prompt", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-setup-v3-commitment-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const workspace = (await loadWorkspace(root)).workspace;
+  await writeJson(join(root, "data", "workspace.json"), {
+    ...workspace,
+    dataModelVersion: "3"
+  });
+  const setup = {
+    serviceName: "Customer Service",
+    boundary: "The customer application and supporting systems.",
+    ownerId: "person-owner",
+    criticality: "high",
+    classificationId: "confidential",
+    internetExposed: true,
+    programGoal: "type-2",
+    draft: false
+  };
+
+  const first = await setupWorkspace(root, setup);
+  assert.equal(first.commitment.status, "planned");
+  assert.deepEqual(first.commitment.systemIds, [first.system.id]);
+  assert.match(first.commitment.statement, /Replace this starter/);
+  const second = await setupWorkspace(root, { ...setup, systemId: first.system.id });
+  assert.equal(second.commitment, null);
+  const commitments = (await loadWorkspace(root)).resources.filter(({ type }) => type === "commitment");
+  assert.equal(commitments.length, 1);
+  assert.equal((await validateWorkspace(root)).ok, true);
+});
+
 test("setup restores every affected file when a later batch write fails", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-setup-rollback-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));

@@ -34,6 +34,19 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 - Prefer explicit, inspectable behavior over automation that changes audit records without review.
 - UI, HTTP, and CLI workflows must call the same domain functions so headless agents receive the same calculations, validation, and output as browser users.
 
+## Source truth and derived workflow axiom
+
+- Files under `data/`, including companion Markdown, are the authoritative program record. Store organization facts, decisions, relationships, status, dates, and evidence references there.
+- Individual resource files do not need to describe everything required for program or audit readiness. Do not copy generic readiness instructions, calculated TODO lists, or derived blocker state into every record.
+- The active model, authoritative records, policy content, and Git state are the inputs to shared domain functions that calculate applicability, missing work, blockers, allowed actions, program readiness, audit readiness, and evidence-packet readiness.
+- The browser, HTTP API, and CLI, including machine-readable CLI output used by agents, must expose the same derived workflow state and next actions from those shared domain functions. No interface may maintain its own readiness rules or require users to infer work that another interface calculates.
+- Use progressive disclosure in every interface. A program stage states the outcome, a page states its purpose, and current record or action UI shows the detailed checks needed now. Keep complete criteria available through guides, workflow output, record editors, and action previews instead of repeating them in high-level descriptions.
+- Mark a derived item `blocked` only when it cannot proceed until named prerequisite records are resolved. Missing records, editable errors, and management decisions are `ready` when the user or agent can act on them now, even when they prevent an assessment from passing.
+- Keep derived workflow output disposable and reproducible. It may be rendered, indexed, or cached for use, but it must never become a second source of truth.
+- A user or agent who edits source files directly must receive the same validation, guidance, and readiness result as a user who performs the equivalent work through the browser or CLI.
+- Persist a TODO only when the TODO is itself an authoritative program record, such as an assigned Action Item with an owner, deadline, and completion proof. Derive informational next steps and blockers instead of storing them.
+- When FileGRC cannot infer that management reviewed a complete or empty collection, persist a model-defined Collection Review with the conclusion, reviewer, date, current scope revision, and calculated collection revision. Keep the review criteria in the model, show them in every interface, and mark the confirmation stale when a reviewed record or material scope fact changes.
+
 ## Package constraints
 
 ### `filegrc`
@@ -60,7 +73,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 
 ## Data rules
 
-The active authoritative model registry is the standalone `packages/filegrc/model/v2.json`. Model v1 is published and frozen in `packages/filegrc/model/v1.json` only for migration tests and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
+The active authoritative model registry is the standalone `packages/filegrc/model/v3.json`. Models v1 and v2 are published and frozen in `packages/filegrc/model/v1.json` and `packages/filegrc/model/v2.json` for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
@@ -74,7 +87,7 @@ The active authoritative model registry is the standalone `packages/filegrc/mode
 - Store relationships as resource IDs, not relative file paths.
 - Treat IDs as immutable after a record is committed.
 - Keep attachments behind evidence records. Do not scatter unexplained files through `data/`.
-- Keep each policy and governed document approver separate from its owner. The reviewer may be another person in the organization or an external person. Most organizations use an internal reviewer with enough authority and separation to challenge the owner. A one-person organization needs an external reviewer because no second internal person is available.
+- Keep each policy and governed document approver separate from its owner. The reviewer may be another person in the organization or an external person. Use an internal reviewer with enough authority and separation to challenge the owner when one is available. Otherwise, appoint a qualified external reviewer.
 - Bind Policy and governed Document approvals to the exact companion Markdown revisions reviewed. Move changed approved content back through review before recording a new approval.
 - Keep identity separate from assigned authority. A Person records the individual’s actual organization job title. A dated Appointment records named authority such as CISO, DPO, Policy Owner, or team chair and may be used by accountable-party fields. Fields that prove who performed, reviewed, collected, verified, attended, or attested to work must continue to name the actual Person.
 - Keep Team membership authoritative on the Team record.
@@ -149,7 +162,7 @@ Before recovering a failed release, query npm for both package versions. If neit
 
 After substantive changes, run `npm run validate`.
 
-Run `pnpm dev` from the monorepo root for local UI development. It creates an ignored workspace under `.filegrc/dev-workspace` on first run, serves it with the current local engine, and restarts when imported source files change. Set `FILEGRC_DEV_PORT` to override port `8787`. Delete `.filegrc/dev-workspace` when you need fresh starter data.
+Run `pnpm dev` from the monorepo root for local UI development. It creates an ignored workspace under `.filegrc/dev-workspace` on first run, serves it with the current local engine, and restarts when imported source files change. This internal development server enables the explicit non-authoritative write override, so browser changes stay local and are never committed or pushed. It prefers port `8787`, or `FILEGRC_DEV_PORT` when set, and automatically selects an available local port when that port is occupied. Delete `.filegrc/dev-workspace` when you need fresh starter data.
 
 Before completing a change:
 

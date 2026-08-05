@@ -10,7 +10,7 @@ export const RESOURCE_INSTRUCTIONS = {
   policy: "Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.",
   document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
   control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, operation pattern, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Put calendar and event schedules in Obligations. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.",
-  "complementary-control": "Record anything customers or carved-out providers must do for your controls to work as intended.",
+  "complementary-control": "Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.",
   evidence: "Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, retain the fixed artifact or reference, and have another person verify it before audit use.",
   "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
   risk: "Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.",
@@ -35,10 +35,29 @@ export const RESOURCE_INSTRUCTIONS = {
   finding: "Create a Finding only for a confirmed gap that needs separate remediation tracking. Keep the report details in the source record’s Markdown, then assign the Finding, set its due date, and verify closure.",
   "action-item": "Create an Action Item only when follow-up needs its own assignee, deadline, and completion proof. Point it to the record that created the work, then work it from Work Queue.",
   audit: "Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period. Control Tests and External Evidence link back with auditId or auditIds.",
-  "audit-request": "Record each request from the audit team, assign an owner and due date, and link the approved response and evidence.",
+  "audit-request": "When FileGRC is the approved request tracker, record each request from the audit team, assign an owner and due date, and link the approved response and evidence.",
   "data-request": "Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.",
-  "control-test": "Record how an in-scope control was tested, what was sampled, the result, and any exceptions.",
+  "control-test": "Record a management Control Test only when management performs and reviews one. The CPA firm records its own independent testing separately.",
   "audit-population": "Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation."
+};
+
+export const RESOURCE_PAGE_SUMMARIES = {
+  person: "Confirm who participates in the program.",
+  appointment: "Assign named program authority to the right people.",
+  team: "Confirm shared program responsibilities and membership.",
+  framework: "Confirm the SOC 2 criteria framework.",
+  requirement: "Decide which criteria apply to the service.",
+  commitment: "Record customer promises that affect scope or controls.",
+  vendor: "Identify providers that affect the service or its controls.",
+  system: "Define the service boundary and the Systems that operate controls or produce evidence.",
+  policy: "Turn starter policies into the organization’s approved rules.",
+  document: "Tailor and approve the plans and governed documents the program needs.",
+  control: "Define how each applicable control works and where its evidence comes from.",
+  "complementary-control": "Record customer or provider responsibilities, or confirm there are none.",
+  audit: "Record the real CPA engagement and agreed report scope.",
+  "audit-request": "Track approved fieldwork requests and responses.",
+  "audit-population": "Prepare complete Type 2 populations for sampling.",
+  "control-test": "Record management testing when management performs it."
 };
 
 export const PROGRAM_PATH = [
@@ -47,7 +66,7 @@ export const PROGRAM_PATH = [
     number: 1,
     title: "Define Scope",
     description: "Ownership, criteria, and service boundary",
-    summary: "Confirm the people, dated appointments, and teams responsible for the program, set the management goal, review the criteria and customer commitments in scope, then define the customer-facing service, supporting systems, and supplier dependencies.",
+    summary: "Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.",
     sections: [
       { id: "ownership", title: "Program Ownership", description: "Confirm the people, appointments, and teams that own, approve, review, and operate the program.", steps: ["Confirm the initial program lead’s actual job title and the separate Policy Owner Appointment.", "Add the organization’s real appointments, reviewers, and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "appointment", "team"], defaultOpen: true },
       { id: "criteria", title: "Criteria", description: "Confirm the criteria used for the program, resolve whether each requirement applies, and record customer commitments that shape the service or control design.", steps: ["Review the included Security criteria references.", "Mark each requirement applicable or not applicable with a rationale.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["framework", "requirement", "commitment"], defaultOpen: true },
@@ -59,6 +78,10 @@ export const PROGRAM_PATH = [
       "filegrc guide person --json",
       "filegrc guide appointment --json",
       "filegrc guide system --json",
+      "filegrc review-collection person --scaffold",
+      "filegrc review-collection framework --scaffold",
+      "filegrc review-collection vendor --scaffold",
+      "filegrc review-collection system --scaffold",
       "filegrc list system --json"
     ]
   },
@@ -67,7 +90,7 @@ export const PROGRAM_PATH = [
     number: 2,
     title: "Approve Policies",
     description: "Tailor, review, approve, and adopt",
-    summary: "Turn every applicable policy and governed plan into the organization’s actual rules, remove placeholders, confirm that Controls link to their governing Policies, and establish approval and effective dates before scheduled work begins. The reviewer must be separate from the owner, is usually internal, and may be external.",
+    summary: "Turn the starter policy set into approved rules that match how the organization works.",
     sections: [
       { id: "library", title: "Policy Library", description: "Review, approve, and activate policies and governed plans without treating starter text as adopted practice.", steps: ["Review policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval and effective dates before changing the status to active."], types: ["policy", "document"], defaultOpen: true }
     ],
@@ -83,7 +106,7 @@ export const PROGRAM_PATH = [
     number: 3,
     title: "Implement Controls",
     description: "Finish controls and their evidence sources",
-    summary: "Review the starter catalog against the scoped service, then give every applicable internal control an actual procedure, owner, system scope, operation pattern, policy and criteria mappings, and implementation date. Put calendar and event schedules in Obligations. Connect the Control to the exact authoritative Systems that produce its evidence, and complete each source’s role, access ownership, and retrieval instructions before marking the Control implemented. Then record any controls that customers or carved-out providers must perform.",
+    summary: "Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.",
     sections: [
       { id: "catalog", title: "Control Catalog", description: "Finish the starter controls and their authoritative evidence sources, record applicable complementary controls, and see whether filegrc tracks operation through Work Queue or evidence records.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add system scope, and map the exact authoritative evidence source Systems.", "Create or confirm every calendar and event schedule as an Obligation.", "Confirm each source System is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Resolve every incomplete evidence-family check before marking the Controls implemented.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
     ],
@@ -92,6 +115,7 @@ export const PROGRAM_PATH = [
       "filegrc guide control --json",
       "filegrc list control --json",
       "filegrc get CONTROL_ID --mutation",
+      "filegrc review-collection complementary-control --scaffold",
       "filegrc evidence-map --json",
       "filegrc program-readiness --json"
     ]
@@ -101,7 +125,7 @@ export const PROGRAM_PATH = [
     number: 4,
     title: "Operate the Program",
     description: "Run the work and retain dated proof",
-    summary: "Record the management candidate start date when reliable evidence collection begins. Maintain current risk assessments and risks, updating the control set when needed. Complete recurring and event-driven work, run continuous and per-transaction controls, and keep dated evidence current throughout the period.",
+    summary: "Run scheduled and event-driven work, maintain risk, and retain dated evidence throughout the operating period.",
     sections: [
       { id: "risk", title: "Risk", description: "Maintain the program’s risk assessments and risk register as the service, threats, suppliers, and control needs change.", steps: ["Complete and approve risk assessments on schedule and after material changes.", "Record risks that need treatment, acceptance, or ongoing tracking.", "Add or update controls when the assessment identifies a new or changed response."], types: ["risk-assessment", "risk"], defaultOpen: true },
       { id: "queue", title: "Work Queue", description: "Complete recurring work, Policy Event tasks, and assigned follow-up within their required windows.", steps: ["Review proposed work while policies are drafts.", "Complete due work within its allowed window and link dated proof.", "Start Policy Events when hiring, departures, incidents, or material changes occur; every other open Action Item appears here automatically."], types: ["obligation", "obligation-event", "data-request"], utility: "obligation-board", defaultOpen: true },
@@ -143,6 +167,7 @@ export const PROGRAM_PATH = [
       {
         id: "policy-events",
         title: "Policy Events",
+        summary: "Start a guided checklist when a policy-triggering change occurs.",
         instructions: "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.",
         use: "Preview the full workflow before triggering it, then create the event and every linked task in one validated write.",
         policyBasis: "Active event obligations translate policy-triggering changes into owned, deadline-bound Action Items. Proposed workflows remain unavailable until their governing policies and linked controls are ready.",
@@ -151,17 +176,24 @@ export const PROGRAM_PATH = [
       {
         id: "work-queue",
         title: "Work Queue",
+        summary: "Complete scheduled, event-driven, and assigned work by its due date.",
         instructions: "Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.",
-        use: "See proposed, upcoming, due, and overdue policy work together with every open Action Item. Continuous and per-transaction controls still operate in their source Systems and need dated operating records or evidence.",
+        use: "See proposed, upcoming, blocked, due, and overdue policy work together with every open Action Item. Continuous and per-transaction controls still operate in their source Systems and need dated operating records or evidence.",
         policyBasis: "Effective policies and implemented linked controls activate reusable obligations. Policy Events and source records create owned Action Items. Each occurrence or task retains its own deadline, completion record, and evidence.",
-        commands: ["filegrc obligations --json", "filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION --json"]
+        commands: [
+          "filegrc obligations --json",
+          "filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD",
+          "filegrc complete OBLIGATION_ID completion-mutation.json --json"
+        ]
       }
     ],
     commands: [
       "filegrc obligations --json",
       "filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json",
-      "filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION --json",
-      "filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --expected-revision REVISION --json",
+      "filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD",
+      "filegrc complete OBLIGATION_ID completion-mutation.json --json",
+      "filegrc complete-action ACTION_ITEM_ID --scaffold --completed-on YYYY-MM-DD",
+      "filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --json",
       "filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION --json",
       "filegrc program-readiness --json"
     ]
@@ -171,7 +203,7 @@ export const PROGRAM_PATH = [
     number: 5,
     title: "Audit",
     description: "Firm, formal period, fieldwork, and report",
-    summary: "After the program is collecting reliable evidence, create an Audit record for the real CPA engagement, keep the firm-agreed report period separate from management’s candidate dates, complete management documents, populations, requests, evidence delivery, and fieldwork, then preserve the findings, responses, opinion, and final report.",
+    summary: "Set up the CPA engagement, support fieldwork, and prepare the final evidence packet.",
     sections: [
       { id: "engagement", title: "Engagement", description: "Record the actual CPA engagement, formal scope and dates, requests, and management responses.", steps: ["Create the Audit after the CPA firm is engaged.", "Record the firm-agreed type, scope, systems, criteria, and dates.", "Track incoming requests and approved response material."], types: ["audit", "audit-request"], defaultOpen: true },
       { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Review dated filegrc Evidence and verified External Evidence for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and findings.", "Build the packet from a clean Git revision; it includes filegrc records, Markdown, External Evidence, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
@@ -181,6 +213,7 @@ export const PROGRAM_PATH = [
       {
         id: "audit-packet",
         title: "Audit Evidence & Packet",
+        summary: "Review fieldwork readiness and build the indexed evidence packet.",
         instructions: "Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.",
         use: "Prepare management documents and populations, answer fieldwork requests, review both evidence paths, and compile a delivery bound to a clean Git revision.",
         policyBasis: "Management prepares the scoped records, evidence, populations, assertions, and responses. The CPA firm selects samples, evaluates evidence and exceptions, and issues the report.",
@@ -189,6 +222,8 @@ export const PROGRAM_PATH = [
     ],
     commands: [
       "filegrc guide audit --json",
+      "filegrc scaffold audit --title \"YEAR SOC 2 TYPE\"",
+      "filegrc create AUDIT-MUTATION.json --json",
       "filegrc prepare-audit AUDIT_ID --json",
       "filegrc audit-readiness AUDIT_ID --json",
       "filegrc evidence-packet --audit AUDIT_ID --preview --json"
@@ -205,6 +240,7 @@ export function buildAgentProgramPath(model) {
         order: stage.id === "run" ? null : `${stage.number}.${String.fromCharCode(97 + index)}`,
         type,
         title: definition.pluralTitle,
+        summary: RESOURCE_PAGE_SUMMARIES[type] || definition.description,
         instructions: RESOURCE_INSTRUCTIONS[type] || definition.description,
         use: definition.description,
         policyBasis: definition.guidance.policyBasis,
@@ -216,6 +252,7 @@ export function buildAgentProgramPath(model) {
       order: stage.id === "run" ? null : `${stage.number}.${String.fromCharCode(97 + stage.resourceTypes.length + index)}`,
       utility: utility.id,
       title: utility.title,
+      summary: utility.summary,
       instructions: utility.instructions,
       use: utility.use,
       policyBasis: utility.policyBasis,

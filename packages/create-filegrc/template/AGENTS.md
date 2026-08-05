@@ -18,7 +18,7 @@ npx filegrc list person --json
 npx filegrc program-readiness --summary --json
 ```
 
-`program-path --next --json` gives agents the current step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. The general guide lists every supported action and record type. A type guide repeats that page guidance and adds timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
+`program-path --next --json` gives agents the current step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s page summaries, detailed guidance fields, commands, and next actions. The general guide lists every supported action and record type. A type guide adds the checks needed for that resource, including timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
 
 For a new record, generate a mutation envelope:
 
@@ -51,6 +51,20 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 - Never fetch an external evidence reference automatically.
 - Do not store secrets, credentials, session data, or personal data that may need to be erased from Git history.
 - Keep the editable local server on loopback or behind trusted authentication. Use the read-only static build for audit sharing.
+
+## Source truth and derived workflow
+
+The JSON and Markdown under `data/`, the installed model, policy content, and Git history are the inputs to FileGRC’s shared workflow calculation. Source files hold facts, decisions, relationships, dates, status, and evidence references. They do not each need a copy of the generic audit-readiness instructions or calculated TODO list.
+
+Use `npx filegrc workflow --json` for the complete derived checklist, named readiness assessments, blockers, Work Items, and recommended next action. `guide`, `list --workflow`, `get --workflow`, mutation previews, the HTTP API, and the browser consume the same calculation. Resolve a derived finding by changing its source facts, recording a reviewed applicability decision, accepting an allowed Exception, or completing authoritative assigned work. Never add a separate TODO file or UI-only completion flag for calculated work.
+
+FileGRC marks an item `blocked` only when named prerequisite records must be resolved first. A missing record, editable error, or management decision is `ready` when you can act on it now, even when it prevents a readiness assessment from passing.
+
+An Action Item or Audit Request is a source record because it captures a real assignment, owner, deadline, and completion proof. A Collection Review is also a source record because FileGRC cannot infer that management reviewed an apparently complete or empty collection. `npx filegrc guide RESOURCE_TYPE --json` returns the type-specific review criteria and current confirmation state. Use `npx filegrc review-collection RESOURCE_TYPE --scaffold`, fill the conclusion and reviewer facts, preview it, then apply it with `--yes`. FileGRC calculates the collection revision and marks the confirmation stale after a reviewed record or material scope fact changes.
+
+Other prompts and blockers remain derived. After a direct file edit, run `npm run validate`, `npx filegrc reconcile --preview --json`, and `npx filegrc workflow --json`. Reconciliation reports source transitions that may need a dated Policy Event and linked tasks. It never treats a file diff as proof that a real-world event happened. Apply a candidate only after confirming the event facts. The result must match an equivalent browser or CLI edit.
+
+Run `npm run check:milestone` in CI. Before an assurance goal is selected it checks structural validity. It checks Evidence Readiness after a goal is selected, then Period Health after candidate coverage dates exist.
 
 ## Git is the audit trail
 
@@ -86,10 +100,12 @@ Do not rewrite or remove committed records that explain prior audit periods. Clo
 If the installed CLI reports that this workspace uses an unsupported model, start with:
 
 ```sh
-npx filegrc migrate --to-model 2 --preview --json
+npx filegrc migrate --to-model 3 --preview --json
 ```
 
-Resolve every missing value, conflict, and manual action in the preview before applying the migration with the same options and `--yes`.
+Model v1 workspaces migrate to v2 first. Review the v3 preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The migration creates no approvals, holders, evidence, or historical dates.
+
+The [model v3 upgrade guide](https://github.com/Sunpeak-AI/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains the classifications, automatic changes, and required post-migration review.
 
 Run these commands when working with records:
 
@@ -118,11 +134,13 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 `data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`, `authoritativeBranch` to `main`, and `repositoryRemote` to `origin`. In trunk mode, completing or skipping onboarding commits the related change and starts its background push.
 
-Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates one `system` record and stores that selected system and the management goal on `workspace`. It does not select framework records, link controls to the service, or create evidence. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies.
+Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates one `system` record, stores that selected system and the management goal on `workspace`, and creates one planned service-commitment prompt. Replace that prompt with the actual customer promise or approved service requirement before activation. Onboarding does not link controls to the service or create evidence. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can add the real reviewers and operators, finish the oversight team, and confirm the criteria, commitments, vendors, and systems before approving policies.
 
 The renderer is optional. Agents may set `showOnboarding` to `false` and maintain all records headlessly. Restart onboarding from Repository when useful. Read-only builds never run it.
 
 {{starter_baseline}}
+
+Review all criteria against the actual service boundary in one explicit batch. Run `npx filegrc review-applicability --scaffold --type requirement > decisions.json`, fill every decision, then preview with `npx filegrc review-applicability decisions.json --preview --json` and apply the same file with `--yes`. Every decision needs a reviewer, date, and rationale. FileGRC records the current scope revision automatically.
 
 ## Work Queue and Policy Events
 
@@ -138,10 +156,12 @@ Work Queue includes recurring obligations, Policy Event tasks, and every other o
 A calendar obligation’s recurrence anchor starts its first allowed cycle. Unless `window` narrows that range, completion is allowed from the cycle start through the day before the next cycle, and the item becomes overdue on the next cycle’s first day. Use **Record work** in Work Queue, or create and link a completion atomically with:
 
 ```sh
-npx filegrc complete obligation-id completion-record.json --expected-revision REVISION
+npx filegrc complete obligation-id --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD > completion-record.json
+# Fill the actual work, evidence, review, and any null or empty required values.
+npx filegrc complete obligation-id completion-record.json
 ```
 
-Keep prior completion links because the planner matches each dated record to its own period.
+The scaffold includes the current obligation revision, so the second command rejects a stale Work Queue write. Keep prior completion links because the planner matches each dated record to its own period.
 
 Event obligations are templates. Do not mark a template complete or replace it for each occurrence. Use Trigger Work on Step 4 or run:
 
@@ -155,11 +175,13 @@ Run `npx filegrc obligations` first to preview every task, owner, deadline, and 
 Complete an event action and link its new proof in one validated write:
 
 ```sh
-npx filegrc complete-action action-item-id completion-record.json --completed-on 2026-07-25 --expected-revision REVISION
+npx filegrc complete-action action-item-id --scaffold --completed-on 2026-07-25 > completion-record.json
+# Fill the actual work, evidence, review, and any null or empty required values.
+npx filegrc complete-action action-item-id completion-record.json --completed-on 2026-07-25
 npx filegrc complete-event obligation-event-id --completed-on 2026-07-25 --expected-revision REVISION
 ```
 
-Read `REVISION` from `npx filegrc get RESOURCE_ID --mutation`. filegrc rejects a completion resource whose type does not match the obligation. It will close the event only after every action has its requested proof.
+Completion scaffolds include the target revision. For other updates, read `REVISION` from `npx filegrc get RESOURCE_ID --mutation`. filegrc rejects a completion resource whose type does not match the obligation. It will close the event only after every action has its requested proof.
 
 ## Headless Markdown
 
@@ -241,7 +263,16 @@ Link a control test to its `audit-population` record when sampling applies. Link
 
 The initial program lead is {{policy_owner_name}}, {{policy_owner_job_title}}, at {{policy_owner_email}}. The separate Policy Owner Appointment records this person’s starting program authority, and the security reporting address is {{security_contact_email}}. Update the Person when their organizational position changes. End and replace Appointments when named authority moves to someone else.
 
-Appoint an independent management reviewer during policy review, not as a condition of defining the service boundary. The reviewer must be separate from the policy owner and able to challenge the owner’s decisions. Most organizations assign another internal leader or manager. An external reviewer is also allowed, and a one-person company needs one because no second internal person is available. The reviewer chairs Security and Risk Oversight and approves policies and governed documents.
+Appoint an independent management reviewer during policy review, not as a condition of defining the service boundary. The reviewer must be separate from the policy owner and able to challenge the owner’s decisions. Assign another internal leader or manager when a suitable reviewer is available. Otherwise, appoint a qualified external reviewer. The reviewer chairs Security and Risk Oversight and approves policies and governed documents.
+
+To appoint an internal reviewer, create or update that Person and set the planned Independent Policy Reviewer Appointment’s `holderId`, scope, start date, responsibilities, and independence rationale before making it active. When no suitable internal reviewer is available, include the reviewer’s real organizational job title, organization, start date, and independence rationale in `reviewer.json`, then preview the external-reviewer bundle before applying it:
+
+```sh
+npx filegrc external-reviewer-setup --scaffold > reviewer.json
+# Replace the null values with the reviewer's current facts and independence rationale.
+npx filegrc external-reviewer-setup reviewer.json --preview --json
+npx filegrc external-reviewer-setup reviewer.json --yes --json
+```
 
 The management reviewer and CPA auditor are different roles. Do not assign the CPA firm management or approval work without first confirming the firm's independence requirements.
 

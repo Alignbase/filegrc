@@ -4,6 +4,17 @@ import { createInterface } from "node:readline/promises";
 import { loadModel } from "../model/index.js";
 import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
+import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
+import {
+  applyApplicabilityReview,
+  planApplicabilityReview,
+  scaffoldApplicabilityReview
+} from "./batch-review.js";
+import {
+  applyCollectionReview,
+  planCollectionReview,
+  scaffoldCollectionReview
+} from "./collection-review.js";
 import { buildWorkspace } from "./build.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import {
@@ -21,11 +32,18 @@ import {
   completeObligationEvent,
   completeObligationOccurrence,
   createObligationEvent,
-  planObligations
+  planObligations,
+  scaffoldObligationCompletion
 } from "./obligations.js";
+import {
+  planExternalReviewerGovernance,
+  scaffoldExternalReviewerGovernance,
+  setupExternalReviewerGovernance
+} from "./external-reviewer.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+import { applyReconciliation, planReconciliation } from "./reconciliation.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { effectiveResourceStatus } from "./resource-status.js";
 import { searchResources } from "./search.js";
@@ -36,9 +54,16 @@ import { createAppState } from "./state.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
+import {
+  assessWorkflow,
+  buildWorkflowDelta,
+  previewWorkflowMutation,
+  workflowForResource
+} from "./workflow.js";
 
 const BOOLEAN_FLAGS = new Set([
   "allow-non-authoritative-writes",
+  "apply",
   "check-docs",
   "complete",
   "current",
@@ -49,7 +74,10 @@ const BOOLEAN_FLAGS = new Set([
   "next",
   "preview",
   "require-ready",
+  "require-healthy",
+  "scaffold",
   "summary",
+  "workflow",
   "write-docs",
   "yes"
 ]);
@@ -98,7 +126,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     });
     const result = flags.preview
       ? await planWorkspaceSetup(root, setupInput)
-      : await setupWorkspace(root, setupInput);
+      : await withWorkflowDelta(root, () => setupWorkspace(root, setupInput));
     const output = flags.summary && !flags.preview ? summarizeSetupResult(result) : result;
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else if (flags.preview) {
@@ -148,14 +176,15 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "migrate") {
     const targetModel = String(flags["to-model"] || "");
-    if (targetModel !== "2") throw new Error("Pass --to-model 2.");
+    if (!["2", "3"].includes(targetModel)) throw new Error("Pass --to-model 2 or --to-model 3.");
     const options = {
       jobTitle: flags["job-title"],
-      startsOn: flags["starts-on"]
+      startsOn: flags["starts-on"],
+      targetModelVersion: targetModel
     };
     const plan = await planModelMigration(root, options);
     if (!flags.preview && plan.sourceModelVersion !== plan.targetModelVersion && !flags.yes) {
-      throw new Error("Review migrate --to-model 2 --preview --json, then pass --yes to apply the migration.");
+      throw new Error(`Review migrate --to-model ${targetModel} --preview --json, then pass --yes to apply the migration.`);
     }
     const result = flags.preview
       ? plan
@@ -215,6 +244,71 @@ export async function runCli(argv = process.argv.slice(2)) {
     else printProgramPathOutput(output, flags);
     return output;
   }
+  if (command === "workflow") {
+    const result = await assessWorkflow(root, {
+      auditId: positionals[0] || flags.audit,
+      asOf: flags["as-of"],
+      through: flags.through,
+      includeComplete: Boolean(flags.complete)
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else printWorkflow(result);
+    if (flags["require-ready"] && result.assessments.evidenceReadiness.status !== "complete") {
+      process.exitCode = 2;
+    }
+    return result;
+  }
+  if (command === "period-health") {
+    const coverage = flags.start || flags.end
+      ? { kind: "range", startsOn: flags.start, endsOn: flags.end }
+      : undefined;
+    const result = await assessWorkflow(root, {
+      auditId: positionals[0] || flags.audit,
+      asOf: flags["as-of"],
+      through: flags.end || flags.through,
+      coverage
+    });
+    const output = {
+      contractVersion: result.contractVersion,
+      dataModelVersion: result.dataModelVersion,
+      evaluatedAt: result.evaluatedAt,
+      input: result.input,
+      assessment: result.assessments.periodHealth,
+      findings: result.findings.filter(({ assessment }) => assessment === "period-health"),
+      workItems: result.workItems.filter((item) => (
+        ["overdue", "due", "scheduled", "blocked"].includes(item.state)
+      )),
+      recommended: result.recommended
+    };
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else {
+      console.log(`${output.assessment.status.toUpperCase()}: ${output.assessment.message}`);
+      for (const finding of output.findings) {
+        console.log(`${finding.state.toUpperCase()}\t${finding.title}\t${finding.message}`);
+      }
+    }
+    if (flags["require-healthy"] && output.assessment.status !== "complete") process.exitCode = 2;
+    return output;
+  }
+  if (command === "milestone-check") {
+    const loaded = await loadWorkspace(root);
+    const result = await assessWorkflow(loaded, { asOf: flags["as-of"] });
+    const target = loaded.workspace?.assuranceGoal === "none"
+      ? "structuralValidity"
+      : loaded.workspace?.candidateCoverage
+        ? "periodHealth"
+        : "evidenceReadiness";
+    const output = {
+      milestone: target,
+      assessment: result.assessments[target],
+      findingKeys: result.assessments[target].findingKeys,
+      evaluatedAt: result.evaluatedAt
+    };
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else console.log(`${target}: ${output.assessment.status.toUpperCase()} · ${output.assessment.message}`);
+    if (output.assessment.status !== "complete") process.exitCode = 2;
+    return output;
+  }
   if (command === "scaffold") {
     const loaded = await loadWorkspace(root);
     const type = positionals[0];
@@ -236,9 +330,15 @@ export async function runCli(argv = process.argv.slice(2)) {
           ? { ...record, effectiveStatus }
           : record;
       });
-    if (flags.json) console.log(JSON.stringify(records, null, 2));
+    const output = flags.workflow
+      ? {
+          records,
+          workflow: await assessWorkflow(loaded, { asOf })
+        }
+      : records;
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
     else for (const record of records) console.log(`${record.id}\t${record.type}\t${record.effectiveStatus ?? record.status ?? ""}\t${record.title}`);
-    return records;
+    return output;
   }
   if (command === "search") {
     const loaded = await loadWorkspace(root);
@@ -260,7 +360,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
-      console.log(`${result.counts.overdue} overdue, ${result.counts.due} due, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
+      console.log(`${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
       for (const item of result.items) {
         const deadline = item.dueWindowEndAt || item.dueWindowEnd;
         if (!deadline) throw new Error(`Planned work "${item.title}" is missing a deadline.`);
@@ -269,7 +369,12 @@ export async function runCli(argv = process.argv.slice(2)) {
           item.dueWindowStartAt || item.dueWindowStart,
           deadline,
           item.title,
-          item.actionItemId || item.obligationId
+          item.actionItemId || item.obligationId,
+          item.actionItemId
+            ? item.status === "blocked"
+              ? `filegrc get ${item.actionItemId} --mutation`
+              : `filegrc complete-action ${item.actionItemId} --scaffold --completed-on YYYY-MM-DD`
+            : `filegrc complete ${item.obligationId} --scaffold --window-start ${item.dueWindowStart} --completed-on YYYY-MM-DD`
         ].join("\t"));
       }
       if (result.triggers.length) {
@@ -360,19 +465,124 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "prepare-audit") {
     const auditId = positionals[0] || flags.audit;
     if (!auditId) throw new Error("An audit ID is required.");
-    const result = await prepareAuditWorkspace(root, { auditId });
+    const result = await withWorkflowDelta(root, () => prepareAuditWorkspace(root, { auditId }));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Prepared ${result.auditId}: linked ${result.linkedDocumentIds.length} management documents and created ${result.createdPopulationIds.length} population records.`);
     return result;
   }
+  if (command === "reconcile") {
+    const result = flags.apply
+      ? await withWorkflowDelta(root, () => applyReconciliation(root, {
+        candidateId: flags.candidate,
+        transitionFingerprint: flags.candidate,
+        occurredOn: flags["occurred-on"],
+        occurredAt: flags["occurred-at"],
+        riskLevel: flags["risk-level"],
+        title: flags.title,
+        confirmed: flags.yes === true
+      }))
+      : await planReconciliation(root);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.apply) {
+      console.log(`Reconciled ${result.candidate.eventType}: created ${result.event.id} and ${result.actions.length} linked tasks.`);
+    } else if (!result.candidates.length) {
+      console.log("No direct-file transitions need confirmation.");
+    } else {
+      for (const candidate of result.candidates) {
+        console.log(`${candidate.id}\t${candidate.eventType}\t${candidate.subject.title}\t${candidate.message}`);
+        console.log(`  ${candidate.action.command}`);
+      }
+    }
+    return result;
+  }
+  if (command === "external-reviewer-setup") {
+    if (flags.scaffold) {
+      const result = await scaffoldExternalReviewerGovernance(root);
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    const payload = await readSetupPayload(positionals[0]);
+    const options = {
+      ...payload,
+      confirmed: flags.yes === true
+    };
+    const result = flags.preview
+      ? await planExternalReviewerGovernance(root, options)
+      : await withWorkflowDelta(root, () => setupExternalReviewerGovernance(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) {
+      console.log(`External reviewer governance preview: ${result.changes.create.length} records to create and ${result.changes.update.length} to update.`);
+    } else {
+      console.log(`Assigned external reviewer ${result.reviewerId} through ${result.appointmentIds.length} active Appointments.`);
+    }
+    return result;
+  }
+  if (command === "next-audit-cycle") {
+    const payload = await readSetupPayload(positionals[1]);
+    const options = {
+      ...payload,
+      priorAuditId: positionals[0] || flags.audit || payload.priorAuditId,
+      startsOn: flags.start || payload.startsOn,
+      endsOn: flags.end || payload.endsOn,
+      confirmed: flags.yes === true
+    };
+    const result = flags.preview
+      ? await planNextAuditCycle(root, options)
+      : await withWorkflowDelta(root, () => createNextAuditCycle(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) {
+      console.log(`${result.operation} preview: ${result.audit.title}, ${result.audit.coverage.startsOn} through ${result.audit.coverage.endsOn}.`);
+    } else {
+      console.log(`Created ${result.audit.id}. Review carried-forward scope and period continuity before fieldwork.`);
+    }
+    return result;
+  }
+  if (command === "review-applicability") {
+    if (flags.scaffold) {
+      const result = await scaffoldApplicabilityReview(root, { type: flags.type });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    const payload = await readSetupPayload(positionals[0]);
+    const options = { ...payload, confirmed: flags.yes === true };
+    const result = flags.preview
+      ? await planApplicabilityReview(root, options)
+      : await withWorkflowDelta(root, () => applyApplicabilityReview(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) console.log(`Applicability preview: ${result.reviewedIds.length} decisions.`);
+    else console.log(`Recorded ${result.reviewedIds.length} reviewed applicability decisions.`);
+    return result;
+  }
+  if (command === "review-collection") {
+    const resourceType = positionals[0] || flags.type;
+    if (flags.scaffold) {
+      const result = await scaffoldCollectionReview(root, { resourceType });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    const payload = await readSetupPayload(positionals[1]);
+    const options = {
+      ...payload,
+      resourceType: resourceType || payload.resourceType,
+      confirmed: flags.yes === true
+    };
+    const result = flags.preview
+      ? await planCollectionReview(root, options)
+      : await withWorkflowDelta(root, () => applyCollectionReview(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) console.log(`Collection review preview: ${result.assessment.configuration.title}.`);
+    else console.log(`Confirmed ${result.assessment.configuration.title}.`);
+    return result;
+  }
   if (command === "trigger") {
-    const result = await createObligationEvent(root, {
+    const result = await withWorkflowDelta(root, () => createObligationEvent(root, {
       eventType: positionals[0],
       occurredOn: flags["occurred-on"],
       occurredAt: flags["occurred-at"],
+      riskLevel: flags["risk-level"],
       subjectResourceIds: String(flags.subject || "").split(",").map((value) => value.trim()).filter(Boolean),
       title: flags.title
-    });
+    }));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`Work added to the Work Queue: ${result.actions.length} ${result.actions.length === 1 ? "task" : "tasks"} created for ${result.event.title}.`);
@@ -432,8 +642,14 @@ export async function runCli(argv = process.argv.slice(2)) {
       console.log(JSON.stringify(mutation, null, 2));
       return mutation;
     }
-    console.log(JSON.stringify(record, null, 2));
-    return record;
+    const output = flags.workflow
+      ? {
+          record,
+          workflow: workflowForResource(await assessWorkflow(loaded), record.type, record.id)
+        }
+      : record;
+    console.log(JSON.stringify(output, null, 2));
+    return output;
   }
   if (command === "references") {
     const loaded = await loadWorkspace(root);
@@ -447,36 +663,65 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     return result;
   }
+  if (command === "preview-mutation") {
+    const payload = await readSetupPayload(positionals[0]);
+    const result = await previewWorkflowMutation(root, payload);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.operation.toUpperCase()} preview for ${result.target.type}/${result.target.id}`);
+      console.log(`${result.workflowDelta.findings.added.length} findings added, ${result.workflowDelta.findings.removed.length} resolved, ${result.workflowDelta.findings.changed.length} changed.`);
+      if (result.workflow.recommended) console.log(`Next: ${result.workflow.recommended.title}`);
+      console.log("No workspace files were changed.");
+    }
+    return result;
+  }
   if (command === "create") {
     const mutation = await readMutation(positionals[0]);
-    const result = await createResource(root, mutation.record, { content: mutation.content });
-    if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
+    const result = await withWorkflowDelta(root, () => createResource(root, mutation.record, { content: mutation.content }));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.record.type}/${result.record.id}`);
     return result;
   }
   if (command === "complete") {
     const [obligationId, file] = positionals;
+    if (flags.scaffold) {
+      const result = await scaffoldObligationCompletion(root, {
+        obligationId,
+        windowStart: flags["window-start"],
+        completedOn: flags["completed-on"]
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
     const mutation = await readMutation(file);
-    const result = await completeObligationOccurrence(root, {
+    const result = await withWorkflowDelta(root, () => completeObligationOccurrence(root, {
       obligationId,
       record: mutation.record,
       content: mutation.content,
-      expectedRevision: requireExpectedRevision(flags, `obligation/${obligationId}`)
-    });
+      expectedRevision: expectedRevision(flags, mutation, `obligation/${obligationId}`)
+    }));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.type}/${result.created.id} and linked it to obligation/${obligationId}`);
     return result;
   }
   if (command === "complete-action") {
     const [actionItemId, file] = positionals;
+    if (flags.scaffold) {
+      const result = await scaffoldObligationCompletion(root, {
+        actionItemId,
+        completedOn: flags["completed-on"]
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
     const mutation = await readMutation(file);
-    const result = await completeObligationAction(root, {
+    const result = await withWorkflowDelta(root, () => completeObligationAction(root, {
       actionItemId,
       completedOn: flags["completed-on"],
       record: mutation.record,
       content: mutation.content,
-      expectedRevision: requireExpectedRevision(flags, `action-item/${actionItemId}`)
-    });
+      expectedRevision: expectedRevision(flags, mutation, `action-item/${actionItemId}`)
+    }));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.type}/${result.created.id}, linked it to action-item/${actionItemId}, and marked the action done.`);
     return result;
@@ -484,25 +729,25 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "complete-event") {
     const eventId = positionals[0];
     if (!eventId) throw new Error("A Policy Event ID is required.");
-    const result = await completeObligationEvent(root, {
+    const result = await withWorkflowDelta(root, () => completeObligationEvent(root, {
       eventId,
       completedOn: flags["completed-on"],
       expectedRevision: requireExpectedRevision(flags, `obligation-event/${eventId}`)
-    });
-    if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
+    }));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Marked obligation-event/${eventId} complete.`);
     return result;
   }
   if (command === "update") {
     const [type, id, file] = positionals;
     const mutation = await readMutation(file, { requireRevision: true });
-    const result = await updateResource(root, type, id, mutation.record, {
+    const result = await withWorkflowDelta(root, () => updateResource(root, type, id, mutation.record, {
       content: mutation.content,
       expectedRevision: mutation.revision,
       expectedContentRevisions: mutation.contentRevisions,
       requireExpectedContentRevisions: true
-    });
-    if (flags.json) console.log(JSON.stringify({ record: result.record }, null, 2));
+    }));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Updated ${result.record.type}/${result.record.id}`);
     return result;
   }
@@ -522,14 +767,21 @@ export async function runCli(argv = process.argv.slice(2)) {
       const state = await createAppState(root);
       const stateEntry = state.resources.find((item) => item.record.type === type && item.record.id === id);
       const existingContentRevision = stateEntry.content?.[slot.name]?.revision;
-      await updateResource(root, type, id, record, {
+      const mutationResult = await withWorkflowDelta(root, () => updateResource(root, type, id, record, {
         content: { [slot.name]: source },
         expectedRevision: stateEntry.revision,
         expectedContentRevisions: existingContentRevision
           ? { [slot.path]: flags["expected-revision"] ?? existingContentRevision }
           : undefined
-      });
-      const result = { type, id, slot: slot.name, path: `data/${slot.path}`, written: true };
+      }));
+      const result = {
+        type,
+        id,
+        slot: slot.name,
+        path: `data/${slot.path}`,
+        written: true,
+        workflowDelta: mutationResult.workflowDelta
+      };
       if (flags.json) console.log(JSON.stringify(result, null, 2));
       else console.log(`Updated ${result.path}`);
       return result;
@@ -549,14 +801,15 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "attach") {
     const [evidenceId, sourcePath] = positionals;
     if (!evidenceId || !sourcePath) throw new Error("An evidence ID and source file are required.");
-    const result = await addEvidenceAttachment(root, evidenceId, sourcePath, {
+    const result = await withWorkflowDelta(root, () => addEvidenceAttachment(root, evidenceId, sourcePath, {
       name: flags.name,
       expectedRevision: requireExpectedRevision(flags, `evidence/${evidenceId}`)
-    });
+    }));
     const output = {
       evidenceId,
       path: `data/${result.dataRelativePath}`,
-      filePaths: result.record.filePaths
+      filePaths: result.record.filePaths,
+      workflowDelta: result.workflowDelta
     };
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else console.log(`Attached ${output.path} to evidence/${evidenceId}`);
@@ -566,13 +819,14 @@ export async function runCli(argv = process.argv.slice(2)) {
     const [evidenceId, attachment] = positionals;
     if (!evidenceId || !attachment) throw new Error("An evidence ID and attachment name are required.");
     if (!flags.yes) throw new Error("Pass --yes to confirm attachment removal.");
-    const result = await removeEvidenceAttachment(root, evidenceId, attachment, {
+    const result = await withWorkflowDelta(root, () => removeEvidenceAttachment(root, evidenceId, attachment, {
       expectedRevision: requireExpectedRevision(flags, `evidence/${evidenceId}`)
-    });
+    }));
     const output = {
       evidenceId,
       removed: `data/${result.dataRelativePath}`,
-      filePaths: result.record.filePaths ?? []
+      filePaths: result.record.filePaths ?? [],
+      workflowDelta: result.workflowDelta
     };
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else console.log(`Detached and removed ${output.removed} from evidence/${evidenceId}`);
@@ -581,11 +835,13 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "delete") {
     const [type, id] = positionals;
     if (!flags.yes) throw new Error("Pass --yes to confirm deletion. Preserve historical records unless this is a mistake or uncommitted draft.");
-    await deleteResource(root, type, id, {
+    const result = await withWorkflowDelta(root, () => deleteResource(root, type, id, {
       expectedRevision: requireExpectedRevision(flags, `${type}/${id}`)
-    });
-    console.log(`Deleted ${type}/${id}`);
-    return;
+    }));
+    const output = { deleted: true, type, id, workflowDelta: result.workflowDelta };
+    if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else console.log(`Deleted ${type}/${id}`);
+    return output;
   }
   throw new Error(`Unknown command "${command}". Run filegrc help.`);
 }
@@ -611,6 +867,16 @@ function parseArgs(args) {
   return { positionals, flags };
 }
 
+async function withWorkflowDelta(root, task) {
+  const before = await assessWorkflow(root);
+  const result = await task();
+  const after = await assessWorkflow(root);
+  return {
+    ...result,
+    workflowDelta: buildWorkflowDelta(before, after)
+  };
+}
+
 async function readMutation(path, options = {}) {
   if (!path) throw new Error("A JSON file path or - is required.");
   const source = path === "-" ? await readStdin() : await readFile(resolve(path), "utf8");
@@ -621,6 +887,14 @@ function requireExpectedRevision(flags, target) {
   const revision = flags["expected-revision"];
   if (typeof revision !== "string" || revision.length === 0) {
     throw new Error(`--expected-revision is required when changing ${target}. Reload the resource and try again.`);
+  }
+  return revision;
+}
+
+function expectedRevision(flags, mutation, target) {
+  const revision = flags["expected-revision"] || mutation.revision;
+  if (typeof revision !== "string" || revision.length === 0) {
+    throw new Error(`A mutation revision or --expected-revision is required when changing ${target}. Reload the resource and try again.`);
   }
   return revision;
 }
@@ -715,26 +989,38 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
-  filegrc migrate --to-model 2 [--preview] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
+  filegrc migrate --to-model <2|3> [--preview] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--json]
   filegrc program-path [audit-id] [--as-of YYYY-MM-DD] [--summary|--next|--current] [--json]
+  filegrc workflow [audit-id] [--as-of YYYY-MM-DD] [--through YYYY-MM-DD] [--complete] [--require-ready] [--json]
+  filegrc period-health [audit-id] [--start YYYY-MM-DD --end YYYY-MM-DD] [--as-of YYYY-MM-DD] [--require-healthy] [--json]
+  filegrc milestone-check [--as-of YYYY-MM-DD] [--json]
   filegrc scaffold <resource-type> --title text [--id resource-id]
-  filegrc list [resource-type] [--json]
+  filegrc list [resource-type] [--workflow] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
   filegrc audit-readiness [audit-id] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
-  filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--subject resource-id[,resource-id]] [--title text] [--json]
+  filegrc reconcile [--preview|--apply --candidate fingerprint (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --yes] [--risk-level normal|high] [--json]
+  filegrc external-reviewer-setup --scaffold
+  filegrc external-reviewer-setup <reviewer.json|-> [--preview|--yes] [--json]
+  filegrc next-audit-cycle <prior-audit-id> [cycle.json|-] --start YYYY-MM-DD --end YYYY-MM-DD [--preview|--yes] [--json]
+  filegrc review-applicability [--scaffold --type requirement|control|commitment|complementary-control] [decisions.json|-] [--preview|--yes] [--json]
+  filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--json]
+  filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
   filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
   filegrc get [resource-type] <id> [--mutation]
   filegrc references <id> [--json]
+  filegrc preview-mutation <preview.json|-> [--json]
   filegrc create <mutation.json|-> [--json]
-  filegrc complete <obligation-id> <completion-record.json|-> --expected-revision hash [--json]
-  filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD --expected-revision hash [--json]
+  filegrc complete <obligation-id> --scaffold --window-start YYYY-MM-DD [--completed-on YYYY-MM-DD]
+  filegrc complete <obligation-id> <completion-record.json|-> [--expected-revision hash] [--json]
+  filegrc complete-action <action-item-id> --scaffold [--completed-on YYYY-MM-DD]
+  filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
   filegrc complete-event <obligation-event-id> --completed-on YYYY-MM-DD --expected-revision hash [--json]
   filegrc update <resource-type> <id> <mutation.json|-> [--json]
   filegrc content <resource-type> <id> [slot] [--write markdown-file|-] [--expected-revision hash] [--json]
@@ -777,7 +1063,7 @@ Options:
   --boundary <description>    boundary
   --owner <person-id>         ownerId
   --criticality <level>       low, medium, high, or critical
-  --classification <id>       classificationId
+  --classification <level>    public, internal, confidential, or restricted
   --internet-exposed <bool>   true or false
   --program-goal <goal>       none, readiness, type-1, or type-2
   --draft                     Save the service boundary as planned
@@ -790,16 +1076,15 @@ Options:
   }
   if (command === "migrate") {
     console.log(`Usage:
-  filegrc migrate --to-model 2 [options]
+  filegrc migrate --to-model <2|3> [options]
 
-Upgrade a model v1 workspace to model v2. The migration moves reverse
-relationships to their authoritative records, converts the former Policy Owner
-seed role into a dated Appointment, makes repository behavior explicit, rewrites
-the moved program-page ID, removes obsolete collection-test fields and per-record
-schemaVersion keys, and changes dataModelVersion last. It writes no Git commit.
+Upgrade a workspace through an explicit, reviewable model boundary. Model v1
+workspaces migrate to v2 first. Model v2 workspaces migrate to v3 with planned
+core Appointments, removal of obsolete manual page state, classified review work,
+and dataModelVersion changed last. The command writes no Git commit.
 
 Options:
-  --to-model <version>  Required target model; currently 2
+  --to-model <version>  Required target model; 2 for legacy v1 migration, 3 for the active model
   --preview             Show the complete atomic record plan without writing
   --job-title <title>   Actual job title for the former Policy Owner seed person
   --starts-on <date>    Effective date of a new Policy Owner Appointment
@@ -809,7 +1094,7 @@ Options:
   --help                Show this help
 
 Start with:
-  npx filegrc migrate --to-model 2 --preview --json`);
+  npx filegrc migrate --to-model 3 --preview --json`);
     return;
   }
   if (command === "program-readiness") {
@@ -825,6 +1110,25 @@ Options:
   --require-ready    Exit with code 2 unless the Evidence Ready gate passes
   --summary          Omit item details and print stage counts and next actions
   --json             Print the result as JSON
+  --root <path>      Workspace path
+  --help             Show this help`);
+    return;
+  }
+  if (command === "workflow") {
+    console.log(`Usage:
+  filegrc workflow [audit-id] [options]
+
+Return the shared assessment envelope used by browser, HTTP, CLI, static, and
+agent workflows. Results include named assessments, normalized findings,
+deterministic Work Items, and one recommended next action.
+
+Options:
+  --audit <id>       Limit audit assessments to one engagement
+  --as-of <date>     Evaluate on YYYY-MM-DD
+  --through <date>   Include scheduled work through YYYY-MM-DD
+  --complete         Include completed Work Items
+  --require-ready    Exit with code 2 unless Evidence Readiness passes
+  --json             Print the versioned result envelope
   --root <path>      Workspace path
   --help             Show this help`);
     return;
@@ -875,11 +1179,14 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
-    migrate: "filegrc migrate --to-model 2 --preview --json",
+    migrate: "filegrc migrate --to-model 3 --preview --json",
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",
     programPath: "filegrc program-path [audit-id] --next --json",
+    workflow: "filegrc workflow [audit-id] --json",
+    periodHealth: "filegrc period-health [audit-id] --require-healthy --json",
+    milestoneCheck: "filegrc milestone-check --json",
     scaffold: "filegrc scaffold <resource-type> --title <name>",
     list: "filegrc list [resource-type] --json",
     search: "filegrc search <query> --json",
@@ -888,10 +1195,16 @@ function agentOverview(model) {
     evidenceMap: "filegrc evidence-map --json",
     auditReadiness: "filegrc audit-readiness <audit-id> --json",
     prepareAudit: "filegrc prepare-audit <audit-id>",
+    reconcile: "filegrc reconcile --preview --json",
+    externalReviewerSetup: "filegrc external-reviewer-setup [--scaffold | <reviewer.json|-> --preview] --json",
+    nextAuditCycle: "filegrc next-audit-cycle <prior-audit-id> --start <date> --end <date> --preview --json",
+    reviewApplicability: "filegrc review-applicability <decisions.json|-> --preview --json",
+    reviewCollection: "filegrc review-collection <resource-type> [--scaffold | <review.json|-> --preview] --json",
     trigger: "filegrc trigger <event-type> <date-or-time-and-subject-flags>",
     evidencePacket: "filegrc evidence-packet --audit <audit-id> --preview --json",
     get: "filegrc get <resource-id> [--mutation]",
     references: "filegrc references <resource-id> --json",
+    previewMutation: "filegrc preview-mutation <preview.json> --json",
     create: "filegrc create <mutation.json>",
     complete: "filegrc complete <obligation-id> <completion-mutation.json>",
     completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
@@ -934,6 +1247,17 @@ function printAgentGuide(result) {
   console.log(`Policy basis: ${result.policyBasis}`);
   console.log(`Timing: ${result.cadence}`);
   console.log(`JSON: ${result.location}`);
+  if (result.reviewRequirements.collectionReview) {
+    const review = result.reviewRequirements.collectionReview;
+    console.log(`\nCollection review: ${review.title} (${review.status}, ${review.recordCount} ${review.recordCount === 1 ? "record" : "records"})`);
+    console.log(review.description);
+    for (const point of review.reviewPoints) console.log(`- ${point}`);
+    console.log(`Action: ${review.command}`);
+  }
+  if (result.reviewRequirements.recordReviewPoints.length) {
+    console.log("\nWhen reviewing each record:");
+    for (const point of result.reviewRequirements.recordReviewPoints) console.log(`- ${point}`);
+  }
   console.log("\nRequired fields:");
   for (const field of result.requiredAtCreation) console.log(formatGuideField(field));
   if (result.conditionalRequirements.length) {
@@ -980,11 +1304,28 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
   const readinessById = new Map(readiness.stages.map((stage) => [stage.id, stage]));
   const stages = buildAgentProgramPath(model).map((stage) => {
     if (stage.id === "audit") {
+      const auditAction = auditReadiness?.firstAction || (
+        auditReadiness?.status === "not-started"
+          ? {
+              id: "create-audit",
+              status: "action",
+              title: "Create the planned CPA engagement",
+              message: "Create a planned Audit from the current management scope, then replace the remaining scaffold values with the CPA firm and firm-agreed scope and dates.",
+              resourceType: "audit",
+              commands: [
+                "npx filegrc guide audit --json",
+                "npx filegrc scaffold audit --title \"YEAR SOC 2 TYPE\" > audit-mutation.json",
+                "npx filegrc create audit-mutation.json --json",
+                "npx filegrc prepare-audit AUDIT_ID --json"
+              ]
+            }
+          : null
+      );
       return {
         ...stage,
         status: auditReadiness?.status || "not-started",
         counts: auditReadiness?.counts || null,
-        nextActions: auditReadiness?.firstAction ? [auditReadiness.firstAction] : []
+        nextActions: auditAction ? [auditAction] : []
       };
     }
     const readinessId = stage.id === "run" ? "operation" : stage.id;
@@ -1002,6 +1343,7 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
   const currentStep = stages.find((stage) => !["complete", "operating", "management-ready"].includes(stage.status)) || stages.at(-1);
   return {
     schemaVersion: 1,
+    dataModelVersion: String(model.modelVersion),
     asOf: readiness.asOf,
     currentStep: { id: currentStep.id, number: currentStep.number, title: currentStep.title },
     evidenceReady: readiness.evidenceReady,
@@ -1018,14 +1360,13 @@ function printProgramPath(result) {
     console.log(stage.summary);
     for (const page of stage.pages) {
       console.log(`${page.order ? `Step ${page.order}` : "Operating area"} · ${page.title} (${page.type || `utility:${page.utility}`})`);
-      console.log(`  Instructions: ${page.instructions}`);
-      console.log(`  Use: ${page.use}`);
-      console.log(`  Policy basis: ${page.policyBasis}`);
+      console.log(`  ${page.summary}`);
+      if (page.guide) console.log(`  Details: ${page.guide}`);
     }
     if (stage.operatingRecords?.length) {
       console.log("Operating record guides:");
       for (const record of stage.operatingRecords) {
-        console.log(`  ${record.type}\t${record.instructions}\t${record.guide}`);
+        console.log(`  ${record.type}\t${record.summary}\t${record.guide}`);
       }
     }
     console.log("Commands:");
@@ -1049,6 +1390,7 @@ function selectProgramPathOutput(result, flags) {
 function summarizeProgramPath(result) {
   return {
     schemaVersion: result.schemaVersion,
+    dataModelVersion: result.dataModelVersion,
     asOf: result.asOf,
     currentStep: result.currentStep,
     evidenceReady: result.evidenceReady,
@@ -1069,6 +1411,7 @@ function nextProgramPath(result) {
   const nextAction = stage?.nextActions[0];
   return {
     schemaVersion: result.schemaVersion,
+    dataModelVersion: result.dataModelVersion,
     asOf: result.asOf,
     currentStep: result.currentStep,
     evidenceReady: result.evidenceReady,
@@ -1149,6 +1492,20 @@ function printProgramPathOutput(result, flags) {
     return;
   }
   printProgramPath(result);
+}
+
+function printWorkflow(result) {
+  console.log(`Workflow contract v${result.contractVersion}, model v${result.dataModelVersion}`);
+  for (const [name, assessment] of Object.entries(result.assessments)) {
+    console.log(`${String(assessment.status).toUpperCase()}\t${name}\t${assessment.message}`);
+  }
+  console.log(`\n${result.counts.findings.ready || 0} ready findings, ${result.counts.workItems.overdue || 0} overdue Work Items`);
+  if (result.recommended) {
+    console.log(`Next: ${result.recommended.title}`);
+    if (result.recommended.message) console.log(`  ${result.recommended.message}`);
+    const command = result.recommended.nextAction?.command || result.recommended.actions?.[0]?.command;
+    if (command) console.log(`  ${command}`);
+  }
 }
 
 function summarizeProgramReadiness(result) {

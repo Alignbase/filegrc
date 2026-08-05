@@ -1,6 +1,7 @@
 import { currentPartyPeople } from "./parties.js";
 
 export function obligationProgramStatus(obligation, byId, asOf) {
+  if (obligation.status !== "active") return "proposed";
   if (currentPartyPeople(obligation.ownerIds || [], byId).size === 0) return "proposed";
   const policyIds = obligation.policyIds || [];
   const policiesReady = policyIds.every((id) => {

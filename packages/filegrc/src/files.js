@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { getResourceDefinition } from "../model/index.js";
+import { getResourceDefinition, loadModel } from "../model/index.js";
 import { serializeWorkspaceMutation, workspaceValidationDeferred } from "./mutation.js";
 import { isCanonicalDataPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -214,6 +214,31 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     throw new Error("Batch expected revisions must be keyed by resource ID.");
   }
   const loaded = await loadWorkspace(input);
+  const workspaceUpdate = updates.find((record) => (
+    record.type === "workspace" && record.id === loaded.workspace?.id
+  ));
+  const changesModelVersion = workspaceUpdate
+    && String(workspaceUpdate.dataModelVersion || "") !== String(loaded.workspace?.dataModelVersion || "");
+  const targetModelVersion = changes.targetModelVersion
+    ? String(changes.targetModelVersion)
+    : null;
+  if (changesModelVersion && !targetModelVersion) {
+    throw new Error(
+      "A resource batch that changes dataModelVersion must declare targetModelVersion."
+    );
+  }
+  if (
+    targetModelVersion
+    && (
+      changes.validateWholeWorkspace !== true
+      || String(workspaceUpdate?.dataModelVersion || "") !== targetModelVersion
+    )
+  ) {
+    throw new Error(
+      "A cross-model resource batch must validate the whole workspace and update its dataModelVersion to the target model."
+    );
+  }
+  const writeModel = targetModelVersion ? loadModel(targetModelVersion) : loaded.model;
   const deferValidation = workspaceValidationDeferred();
   const before = deferValidation || changes.validateWholeWorkspace
     ? null
@@ -224,7 +249,7 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
   for (const record of creates) {
     validateBatchRecord(record, ids);
     if (existingById.has(record.id)) throw new Error(`Resource "${record.id}" already exists.`);
-    const path = resourcePath(loaded.root, loaded.model, record);
+    const path = resourcePath(loaded.root, writeModel, record);
     writes.push({ operation: "create", path, record, previous: null, fileMode: 0o666 });
   }
   for (const record of updates) {
@@ -234,7 +259,7 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     if (existing.record.type !== record.type) {
       throw new Error(`Resource "${record.id}" cannot change type.`);
     }
-    const path = resourcePath(loaded.root, loaded.model, record);
+    const path = resourcePath(loaded.root, writeModel, record);
     const previous = await readFile(path, "utf8");
     const mode = (await stat(path)).mode & 0o777;
     assertRevision(
@@ -643,14 +668,15 @@ async function prepareApprovalBinding(loaded, record, contentWrites, previousRec
   if (record.type === "attestation") {
     return prepareAttestationBinding(loaded, record, previousRecord);
   }
-  if (!["policy", "document"].includes(record.type)) return record;
+  const bindingField = approvalBindingField(record, loaded.model);
+  if (!bindingField) return record;
   const nextRecord = structuredClone(record);
   if (!approvalBound(record)) {
-    delete nextRecord.approvedContentRevisions;
+    delete nextRecord[bindingField];
     return nextRecord;
   }
-  if (approvalBound(previousRecord) && previousRecord.approvedContentRevisions) {
-    nextRecord.approvedContentRevisions = structuredClone(previousRecord.approvedContentRevisions);
+  if (approvalBound(previousRecord) && previousRecord[bindingField]) {
+    nextRecord[bindingField] = structuredClone(previousRecord[bindingField]);
     return nextRecord;
   }
   const proposed = new Map(contentWrites.map((item) => [item.dataRelativePath, item.source]));
@@ -667,7 +693,7 @@ async function prepareApprovalBinding(loaded, record, contentWrites, previousRec
     }
     revisions[item.path] = contentRevision(source);
   }
-  nextRecord.approvedContentRevisions = revisions;
+  nextRecord[bindingField] = revisions;
   return nextRecord;
 }
 
@@ -704,11 +730,21 @@ async function prepareAttestationBinding(loaded, record, previousRecord = null) 
 }
 
 function approvalBound(record) {
-  if (!record || !["policy", "document"].includes(record.type)) return false;
+  if (!record || !["policy", "document", "training"].includes(record.type)) return false;
   const statuses = record.type === "policy"
     ? ["approved", "active", "superseded", "retired"]
-    : ["active", "superseded", "retired"];
+    : record.type === "document"
+      ? ["active", "superseded", "retired"]
+      : ["active", "retired"];
   return statuses.includes(record.status);
+}
+
+function approvalBindingField(record, model) {
+  if (["policy", "document"].includes(record?.type)) return "approvedContentRevisions";
+  if (record?.type === "training" && model.resources.training?.fields?.effectiveContentRevisions) {
+    return "effectiveContentRevisions";
+  }
+  return null;
 }
 
 async function exclusiveContentFiles(loaded, record) {

@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { validateWorkspace } from "../../filegrc/src/index.js";
+import {
+  assessProgramReadiness,
+  assessWorkflow,
+  loadModel,
+  scaffoldCollectionReview,
+  validateWorkspace
+} from "../../filegrc/src/index.js";
 import { createFilegrc } from "../src/index.js";
 
 test("creates a complete generic repository with one dependency", async (context) => {
@@ -26,21 +32,23 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 142,
+    total: 175,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
       person: 1,
-      appointment: 1,
+      appointment: 2,
       team: 1,
       policy: 6,
       document: 12,
       training: 4,
       system: 1,
       framework: 2,
+      "collection-review": 5,
       requirement: 42,
+      "source-coverage": 14,
       control: 29,
-      obligation: 41
+      obligation: 54
     }
   });
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
@@ -60,15 +68,18 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(agents, /adds its full set of Action Items to the Work Queue in a single validated write/);
   assert.match(agents, /`complementary-control\.relatedControlIds` is the source of truth/);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
-  assert.match(dataGuide, /current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions/);
+  assert.match(dataGuide, /shared assessments, complete checklist, Work Items, blockers, and recommended next action/);
   assert.equal(result.install, "skipped");
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "2");
+  assert.equal(workspace.dataModelVersion, "3");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
-  for (const path of generatedJson) {
-    assert.equal(Object.hasOwn(JSON.parse(await readFile(path, "utf8")), "schemaVersion"), false, path);
+  const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
+    JSON.parse(await readFile(path, "utf8"))
+  )));
+  for (const [index, record] of generatedRecords.entries()) {
+    assert.equal(Object.hasOwn(record, "schemaVersion"), false, generatedJson[index]);
   }
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.timezone, "America/Chicago");
@@ -79,7 +90,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(renderer.repositoryMode, "trunk");
   assert.equal(renderer.authoritativeBranch, "main");
   assert.equal(renderer.repositoryRemote, "origin");
-  assert.deepEqual(renderer.completedStagePageIds, []);
+  assert.equal(renderer.completedStagePageIds, undefined);
   const owner = JSON.parse(await readFile(join(target, "data", "people", "person-program-lead.json"), "utf8"));
   assert.equal(owner.title, "Example Owner");
   assert.equal(owner.email, "owner@example.test");
@@ -94,6 +105,53 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(policyOwnerAppointment.holderId, owner.id);
   assert.deepEqual(policyOwnerAppointment.scopeResourceIds, ["workspace"]);
   assert.equal(policyOwnerAppointment.startsOn, "2026-07-25");
+  const appointmentFiles = (await readdir(join(target, "data", "appointments")))
+    .filter((file) => file.endsWith(".json"));
+  const appointmentRecords = await Promise.all(appointmentFiles.map(async (file) => (
+    JSON.parse(await readFile(join(target, "data", "appointments", file), "utf8"))
+  )));
+  assert.equal(appointmentRecords.length, 2);
+  assert.deepEqual(
+    new Set(appointmentRecords.map(({ appointmentKind }) => appointmentKind)),
+    new Set(Object.keys(loadModel("3").appointmentTemplates))
+  );
+  assert.equal(appointmentRecords.every(({ scopeResourceIds }) => (
+    scopeResourceIds.length === 1 && scopeResourceIds[0] === "workspace"
+  )), true);
+  assert.equal(appointmentRecords.filter(({ status }) => status === "active").length, 1);
+  assert.equal(appointmentRecords.filter(({ status }) => status === "planned").length, 1);
+  const model = loadModel("3");
+  assert.deepEqual(
+    new Set(generatedRecords
+      .filter(({ type }) => type === "source-coverage")
+      .map(({ sourceFamilyId }) => sourceFamilyId)),
+    new Set(model.evidenceSourceFamilies.map(({ id }) => id))
+  );
+  assert.deepEqual(
+    new Set(generatedRecords
+      .filter(({ type, recurrence }) => type === "obligation" && recurrence?.mode === "event")
+      .map(({ recurrence }) => recurrence.eventType)),
+    new Set(Object.keys(model.policyEvents))
+  );
+  assert.deepEqual(
+    new Set(generatedRecords
+      .filter(({ type, template }) => type === "document" && template === true)
+      .map(({ documentKind }) => documentKind)
+      .filter((kind) => model.auditReadiness.managementDocuments.some((definition) => definition.kind === kind))),
+    new Set(model.auditReadiness.managementDocuments.map(({ kind }) => kind))
+  );
+  const starterActivityTypes = new Set(generatedRecords
+    .filter(({ type }) => type === "obligation")
+    .map(({ activityType }) => activityType));
+  for (const profileId of Object.keys(model.completionProfiles)) {
+    assert.equal(
+      Object.entries(model.obligationActivities).some(([activityType, activity]) => (
+        activity.completionProfile === profileId && starterActivityTypes.has(activityType)
+      )),
+      true,
+      `No starter Obligation exercises completion profile ${profileId}`
+    );
+  }
   await assert.rejects(
     access(join(target, "data", "people", "person-independent-approver.json")),
     /ENOENT/
@@ -175,9 +233,29 @@ test("creates a complete generic repository with one dependency", async (context
   const changeDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc9.json"), "utf8"));
   assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
   assert.equal(controlFiles.length, 29);
-  assert.equal(obligationFiles.length, 41);
+  assert.equal(obligationFiles.length, 54);
   const programRepository = JSON.parse(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.json"), "utf8"));
-  assert.deepEqual(programRepository.evidenceSourceKinds, ["training-acknowledgement", "exception-finding"]);
+  const filegrcSourceFamilyIds = generatedRecords
+    .filter(({ type, coverageKind }) => type === "source-coverage" && coverageKind === "filegrc")
+    .map(({ sourceFamilyId }) => sourceFamilyId);
+  assert.deepEqual(
+    new Set(programRepository.evidenceSourceKinds),
+    new Set(filegrcSourceFamilyIds)
+  );
+  assert.equal(
+    generatedRecords
+      .filter(({ type, sourceFamilyId }) => (
+        type === "source-coverage" && filegrcSourceFamilyIds.includes(sourceFamilyId)
+      ))
+      .every(({ status, collectionCadence, retention, reconciliationMethod, validFrom }) => (
+        status === "active"
+        && Boolean(collectionCadence)
+        && Boolean(retention)
+        && Boolean(reconciliationMethod)
+        && validFrom === "2026-07-25"
+      )),
+    true
+  );
   assert.equal(Object.hasOwn(programRepository, "inScope"), false);
   assert.equal((workspace.systemIds || []).includes(programRepository.id), false);
   assert.match(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.md"), "utf8"), /system of record for filegrc governance records/);
@@ -185,6 +263,17 @@ test("creates a complete generic repository with one dependency", async (context
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
   assert.equal(controls.every((control) => control.ownerIds.includes(policyOwnerAppointment.id)), true);
+  const filegrcSourceControlCodes = new Set(model.evidenceSourceFamilies
+    .filter(({ id }) => filegrcSourceFamilyIds.includes(id))
+    .flatMap(({ controlCodes }) => controlCodes));
+  assert.equal(
+    controls
+      .filter(({ code }) => filegrcSourceControlCodes.has(code))
+      .every(({ evidenceSourceIds }) => (
+        evidenceSourceIds?.length === 1 && evidenceSourceIds[0] === programRepository.id
+      )),
+    true
+  );
   assert.equal(
     obligations
       .filter((obligation) => obligation.recurrence.mode === "event")
@@ -243,7 +332,105 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 142, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 175, errors: 0, warnings: 0 });
+  const workflow = await assessWorkflow(target, { asOf: "2026-07-25" });
+  const reviewerFinding = workflow.findings.find(({ code }) => (
+    code === "governance.appointment.independent-policy-reviewer"
+  ));
+  assert.equal(reviewerFinding.subject.id, "appointment-independent-policy-reviewer");
+  assert.equal(reviewerFinding.stage, "policies");
+  assert.equal(
+    workflow.findings.some(({ key }) => key === "program.policies.independent-reviewer"),
+    false
+  );
+  assert.equal(
+    workflow.findings.some(({ key }) => key === "program.scope.required-appointments"),
+    false
+  );
+  assert.equal(
+    workflow.findings.some(({ key }) => key === "record.appointment.appointment-independent-policy-reviewer.finalize"),
+    false
+  );
+  assert.equal(
+    workflow.findings.some(({ key }) => (
+      key.startsWith("record.source-coverage.") && key.endsWith(".finalize")
+    )),
+    false
+  );
+  assert.equal(
+    workflow.findings.some(({ key }) => (
+      key.startsWith("record.control.") && (
+        key.endsWith(".finalize") || key.endsWith(".field.applicabilityReview")
+      )
+    )),
+    false
+  );
+  for (const requirement of requirementRecords) {
+    assert.equal(
+      workflow.findings.filter(({ subject }) => (
+        subject?.type === "requirement" && subject.id === requirement.id
+      )).length,
+      1,
+      requirement.id
+    );
+  }
+  const programReadiness = await assessProgramReadiness(target, { asOf: "2026-07-25" });
+  const complementaryReview = programReadiness.stages
+    .find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === "collection-review-complementary-control");
+  assert.equal(complementaryReview.status, "action");
+  assert.equal(
+    programReadiness.stages
+      .find(({ id }) => id === "scope")
+      .items.some(({ id }) => id === complementaryReview.id),
+    false
+  );
+  assert.equal(
+    workflow.findings.some(({ key }) => (
+      key === "record.collection-review.collection-review-complementary-control.finalize"
+    )),
+    false
+  );
+  assert.deepEqual(
+    await scaffoldCollectionReview(target, { resourceType: "complementary-control" }),
+    {
+      resourceType: "complementary-control",
+      decision: "zero-population",
+      rationale: null,
+      reviewedByIds: [],
+      reviewedOn: null,
+      authoritativeSystemId: null
+    }
+  );
+  const requiredAppointments = programReadiness.stages
+    .find(({ id }) => id === "scope")
+    .items.find(({ id }) => id === "required-appointments");
+  assert.equal(
+    requiredAppointments.commands.some((command) => (
+      command === "npx filegrc get appointment-independent-policy-reviewer --mutation"
+    )),
+    true
+  );
+  assert.equal(
+    requiredAppointments.commands.some((command) => /scaffold appointment/.test(command)),
+    false
+  );
+  for (const familyId of filegrcSourceFamilyIds) {
+    const sourceFinding = workflow.findings.find(({ key }) => (
+      key === `program.controls.source-family-${familyId}`
+    ));
+    assert.equal(sourceFinding.state, "complete", familyId);
+    assert.equal(
+      sourceFinding.actions.some(({ command }) => /scaffold system/.test(command)),
+      false,
+      familyId
+    );
+    assert.equal(
+      workflow.findings.find(({ key }) => key === `evidence-source.${familyId}.coverage`).state,
+      "complete",
+      familyId
+    );
+  }
 
   await writeFile(
     join(target, "data", "policies", "policy-information-security.json"),
@@ -256,7 +443,7 @@ test("creates a complete generic repository with one dependency", async (context
   )));
 });
 
-test("creates a six-record foundation without selecting a framework", async (context) => {
+test("creates a seven-record foundation without selecting a framework", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-foundation-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   const target = join(parent, "program");
@@ -269,16 +456,16 @@ test("creates a six-record foundation without selecting a framework", async (con
   });
   assert.equal(result.starter, "foundation");
   assert.deepEqual(result.stages, [
-    { id: "foundation", status: "created", records: 5 },
+    { id: "foundation", status: "created", records: 7 },
     { id: "soc2-security", status: "skipped", records: 0 }
   ]);
   assert.deepEqual(result.resourceCounts, {
-    total: 6,
+    total: 7,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
       person: 1,
-      appointment: 1,
+      appointment: 2,
       system: 1,
       team: 1
     }
@@ -297,6 +484,34 @@ test("creates a six-record foundation without selecting a framework", async (con
     (await readdir(join(target, "data", "policies"))).some((name) => name.endsWith(".json")),
     false
   );
+});
+
+test("uses the selected program timezone for default starter dates", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-timezone-date-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const target = join(parent, "program");
+  const timezone = "Pacific/Honolulu";
+  const expectedDates = new Set([
+    localCalendarDate(timezone, new Date())
+  ]);
+  await createFilegrc({
+    target,
+    yes: true,
+    timezone,
+    filegrcVersion: "1.2.3",
+    install: false
+  });
+  expectedDates.add(localCalendarDate(timezone, new Date()));
+  const appointment = JSON.parse(await readFile(
+    join(target, "data", "appointments", "appointment-policy-owner.json"),
+    "utf8"
+  ));
+  const sourceCoverage = JSON.parse(await readFile(
+    join(target, "data", "source-coverage", "source-coverage-training-acknowledgement.json"),
+    "utf8"
+  ));
+  assert.equal(expectedDates.has(appointment.startsOn), true);
+  assert.equal(expectedDates.has(sourceCoverage.validFrom), true);
 });
 
 test("preserves legal-name punctuation without generating doubled sentence punctuation", async (context) => {
@@ -320,6 +535,16 @@ test("preserves legal-name punctuation without generating doubled sentence punct
     assert.doesNotMatch(await readFile(path, "utf8"), /Example Systems, Inc\.\./, path);
   }
 });
+
+function localCalendarDate(timezone, date) {
+  const values = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 test("writes an explicit local filegrc package dependency", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-local-package-"));
@@ -530,7 +755,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 142 records, including 42 requirements, 29 controls, and 41 obligations/);
+  assert.match(output, /Program baseline: 175 records, including 42 requirements, 29 controls, and 54 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -681,17 +906,24 @@ test("creates and configures a service from one JSON config", async (context) =>
     "--config",
     configPath
   ], { encoding: "utf8" });
-  assert.match(output, /Stage foundation: created \(5 records\)/);
-  assert.match(output, /Stage soc2-security: created \(137 records\)/);
+  assert.match(output, /Stage foundation: created \(7 records\)/);
+  assert.match(output, /Stage soc2-security: created \(168 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 143, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 177, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.deepEqual(workspace.systemIds, ["system-example-service"]);
   const control = JSON.parse(await readFile(join(target, "data", "controls", "control-security-governance.json"), "utf8"));
   assert.equal(control.systemIds, undefined);
+  const commitment = JSON.parse(await readFile(
+    join(target, "data", "commitments", "commitment-example-service-service-commitment.json"),
+    "utf8"
+  ));
+  assert.equal(commitment.status, "planned");
+  assert.deepEqual(commitment.systemIds, ["system-example-service"]);
+  assert.match(commitment.statement, /Replace this starter/);
   const evidenceFiles = (await readdir(join(target, "data", "evidence"))).filter((name) => name.endsWith(".json"));
   assert.deepEqual(evidenceFiles, []);
 });

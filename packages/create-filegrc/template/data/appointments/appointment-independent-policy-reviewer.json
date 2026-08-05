@@ -1,0 +1,11 @@
+{
+  "id": "appointment-independent-policy-reviewer",
+  "type": "appointment",
+  "title": "Independent Policy Reviewer",
+  "status": "planned",
+  "appointmentKind": "independent-policy-reviewer",
+  "scopeResourceIds": [
+    "workspace"
+  ],
+  "responsibilities": "Challenge and approve policies and governed documents independently from their owners. Assign a qualified external reviewer when no suitable internal reviewer is available."
+}

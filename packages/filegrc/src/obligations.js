@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { scaffoldResourceMutation } from "./agent.js";
 import { createResourceId } from "./id.js";
 import { createResourceAndLink, createResources, updateResource } from "./files.js";
 import { loadModel } from "../model/index.js";
@@ -10,7 +12,7 @@ import {
   parseCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
-import { isRfc3339Timestamp } from "./time.js";
+import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { obligationProgramStatus } from "./program-lifecycle.js";
 
@@ -36,7 +38,14 @@ const COMPLETION_TIMESTAMP_FIELDS = [
 const MAX_PLANNED_ITEMS = 10_000;
 
 export function planObligations(resources, options = {}) {
-  const model = options.model || loadModel("2");
+  const records = resources.map((item) => item?.record ?? item).filter(Boolean);
+  const declaredModelVersion = records.find((record) => record.type === "workspace")?.dataModelVersion;
+  const model = options.model || (declaredModelVersion ? loadModel(declaredModelVersion) : null);
+  if (!model) {
+    throw new Error(
+      "Obligation planning requires options.model or a Workspace record with dataModelVersion."
+    );
+  }
   const asOf = requireDate(options.asOf ?? new Date().toISOString().slice(0, 10), "as-of date");
   const defaultNow = options.asOf ? `${asOf}T23:59:59Z` : new Date().toISOString();
   const now = requireTimestamp(options.now ?? defaultNow, "current timestamp");
@@ -44,9 +53,11 @@ export function planObligations(resources, options = {}) {
   const requestedFrom = options.from ? requireDate(options.from, "from date") : null;
   if (through < asOf && !requestedFrom) throw new Error("The through date must not be before the as-of date.");
   if (requestedFrom && through < requestedFrom) throw new Error("The through date must not be before the from date.");
-  const records = resources.map((item) => item?.record ?? item).filter(Boolean);
   const byId = new Map(records.map((record) => [record.id, record]));
-  const obligations = records.filter((record) => record.type === "obligation" && record.status === "active");
+  const obligations = records.filter((record) => (
+    record.type === "obligation"
+    && ["active", "proposed"].includes(record.status)
+  ));
   if (obligations.length > MAX_PLANNED_ITEMS) {
     throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} active obligations.`);
   }
@@ -86,9 +97,11 @@ export function planObligations(resources, options = {}) {
         policyIds: obligation.policyIds || [],
         controlIds: obligation.controlIds || [],
         scopeResourceIds: obligation.scopeResourceIds || [],
+        eventRiskLevels: obligation.eventRiskLevels || [],
         templateResourceId: obligation.templateResourceId || null,
         completionResourceTypes: expectedCompletionTypes,
         completionType: activity.completionType,
+        completionProfile: activity.completionProfile || null,
         programStatus,
         window: normalizedEventWindow(obligation.window)
       });
@@ -142,6 +155,7 @@ export function planObligations(resources, options = {}) {
         scopeResourceIds: obligation.scopeResourceIds || [],
         completionResourceTypes: expectedCompletionTypes,
         completionType: activity.completionType,
+        completionProfile: activity.completionProfile || null,
         completionResourceIds: completions.map((record) => record.id),
         status,
         timingStatus,
@@ -187,12 +201,13 @@ export function planObligations(resources, options = {}) {
     throw new Error(`The obligation query must be narrowed; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} planned items.`);
   }
   const items = [...calendarItems, ...eventItems, ...standaloneItems].sort(comparePlannedItems);
-  const counts = { overdue: 0, due: 0, upcoming: 0, proposed: 0, complete: 0 };
+  const counts = { overdue: 0, blocked: 0, due: 0, upcoming: 0, proposed: 0, complete: 0 };
   for (const item of items) {
     if (counts[item.status] !== undefined) counts[item.status] += 1;
   }
 
   return {
+    dataModelVersion: String(model.modelVersion),
     asOf,
     through,
     from: requestedFrom,
@@ -224,11 +239,22 @@ export async function createObligationEvent(input, options) {
   if (timestampDate && options?.occurredOn && occurredOn !== timestampDate) {
     throw new Error(`The event date must match the event timestamp in ${loaded.workspace.timezone}.`);
   }
+  const supportsRiskLevel = Boolean(loaded.model.resources["obligation-event"]?.fields?.riskLevel);
+  const riskLevel = supportsRiskLevel && eventType === "person-ended"
+    ? String(options?.riskLevel || "normal")
+    : null;
+  if (riskLevel && !["normal", "high"].includes(riskLevel)) {
+    throw new Error("A departure risk level must be normal or high.");
+  }
   const templates = records.filter((record) => (
     record.type === "obligation"
     && record.status === "active"
     && record.recurrence?.mode === "event"
     && record.recurrence.eventType === eventType
+    && (
+      !Array.isArray(record.eventRiskLevels)
+      || record.eventRiskLevels.includes(riskLevel)
+    )
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
   if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn) === "proposed")) {
@@ -267,6 +293,10 @@ export async function createObligationEvent(input, options) {
     eventType,
     occurredOn,
     ...(occurredAt ? { occurredAt } : {}),
+    ...(riskLevel ? { riskLevel } : {}),
+    ...(options.transitionFingerprint && loaded.model.resources["obligation-event"]?.fields?.transitionFingerprint
+      ? { transitionFingerprint: String(options.transitionFingerprint) }
+      : {}),
     ownerIds: [...new Set(templates.flatMap((record) => record.ownerIds || []))],
     obligationIds: templates.map((record) => record.id),
     ...(subjectResourceIds.length ? { subjectResourceIds } : {})
@@ -290,6 +320,62 @@ export async function completeObligationOccurrence(input, options) {
   }, { content: options.content });
 }
 
+export async function scaffoldObligationCompletion(input, options = {}) {
+  const loaded = await loadWorkspace(input);
+  const action = options.actionItemId
+    ? loaded.resources.find((record) => record.type === "action-item" && record.id === options.actionItemId)
+    : null;
+  if (options.actionItemId && !action) {
+    throw new Error(`Action item "${options.actionItemId}" was not found.`);
+  }
+  const obligationId = action?.obligationId || options.obligationId;
+  const obligation = loaded.resources.find((record) => (
+    record.type === "obligation" && record.id === obligationId
+  ));
+  if (!obligation) throw new Error(`Obligation "${obligationId ?? ""}" was not found.`);
+
+  const completedOn = requireDate(
+    options.completedOn || currentCalendarDate(loaded.workspace.timezone),
+    "completion date"
+  );
+  const item = action
+    ? plannedActionForScaffold(loaded, action, completedOn)
+    : plannedOccurrenceForScaffold(loaded, obligation, options.windowStart, completedOn);
+  const activity = obligationActivity(loaded.model, obligation.activityType);
+  const type = activity.completionType;
+  if (!type) throw new Error(`Obligation "${obligation.id}" has no configured completion resource type.`);
+
+  const mutation = scaffoldResourceMutation(
+    loaded,
+    type,
+    `${item.title} · ${item.dueWindowStart || completedOn}`
+  );
+  applyCompletionScaffoldDefaults(mutation.record, {
+    loaded,
+    item,
+    obligation,
+    completedOn,
+    activity
+  });
+  const target = action || obligation;
+  const entry = loaded.entries.find(({ record }) => record.type === target.type && record.id === target.id);
+  return {
+    ...mutation,
+    revision: contentRevision(entry?.source || ""),
+    scaffold: {
+      target: { type: target.type, id: target.id },
+      obligationId: obligation.id,
+      activityType: obligation.activityType,
+      completionResourceType: type,
+      completionProfile: activity.completionProfile || null,
+      requiredFacts: loaded.model.completionProfiles?.[activity.completionProfile]?.requiredFacts || [],
+      dueWindowStart: item.dueWindowStart || null,
+      dueWindowEnd: item.dueWindowEnd || null,
+      instructions: "Replace every null or empty required value with the actual work performed. Keep the actual completion date and time, actors, result, scope, independent review, and supporting evidence. This revision makes the completed write safe against a stale Work Queue item."
+    }
+  };
+}
+
 export async function completeObligationAction(input, options) {
   const loaded = await loadWorkspace(input);
   const action = loaded.resources.find((record) => (
@@ -297,6 +383,9 @@ export async function completeObligationAction(input, options) {
   ));
   if (!action) throw new Error(`Action item "${options?.actionItemId ?? ""}" was not found.`);
   if (!action.obligationId) throw new Error(`Action item "${action.id}" is not linked to an obligation.`);
+  if (action.status === "blocked") {
+    throw new Error(`Action item "${action.id}" is blocked. Resolve its blockingResourceIds before completing it.`);
+  }
   const obligation = loaded.resources.find((record) => (
     record.type === "obligation" && record.id === action.obligationId
   ));
@@ -366,6 +455,277 @@ function assertExpectedCompletionType(obligation, record, model) {
   }
 }
 
+function plannedOccurrenceForScaffold(loaded, obligation, windowStart, completedOn) {
+  const start = requireDate(windowStart, "occurrence window start");
+  const plan = planObligations(loaded.resources, {
+    from: start,
+    asOf: completedOn,
+    through: start,
+    includeComplete: true,
+    model: loaded.model
+  });
+  const item = plan.calendarItems.find((candidate) => (
+    candidate.obligationId === obligation.id && candidate.dueWindowStart === start
+  ));
+  if (!item) {
+    throw new Error(`No ${obligation.id} occurrence starts on ${start}. Run filegrc obligations --json and use its dueWindowStart.`);
+  }
+  return item;
+}
+
+function plannedActionForScaffold(loaded, action, completedOn) {
+  const plan = planObligations(loaded.resources, {
+    asOf: completedOn,
+    through: completedOn,
+    includeComplete: true,
+    model: loaded.model
+  });
+  const item = plan.eventItems.find((candidate) => candidate.actionItemId === action.id);
+  if (!item) throw new Error(`Action item "${action.id}" is not an active Work Queue item.`);
+  return item;
+}
+
+function applyCompletionScaffoldDefaults(record, context) {
+  const { loaded, item, obligation, completedOn, activity } = context;
+  const responsiblePeople = currentPeopleForParties(loaded.resources, item.ownerIds || []);
+  if (!responsiblePeople.length) {
+    throw new Error(`Obligation "${obligation.id}" needs an active owner whose Appointment or Team resolves to a current Person.`);
+  }
+  const reviewer = loaded.resources.find((candidate) => (
+    candidate.type === "person"
+    && ["active", "external"].includes(candidate.status)
+    && !responsiblePeople.includes(candidate.id)
+  ));
+  const reviewerIds = reviewer ? [reviewer.id] : [];
+  const systemIds = loaded.resources
+    .filter((candidate) => (
+      candidate.type === "system"
+      && candidate.status !== "retired"
+      && (loaded.workspace.systemIds || []).includes(candidate.id)
+    ))
+    .map(({ id }) => id);
+  const vendorIds = loaded.resources
+    .filter((candidate) => candidate.type === "vendor" && candidate.status !== "terminated")
+    .map(({ id }) => id);
+  const timestamp = completedOn === new Date().toISOString().slice(0, 10)
+    ? new Date().toISOString()
+    : null;
+  const coverage = {
+    kind: "range",
+    startsOn: item.dueWindowStart || completedOn,
+    endsOn: item.dueWindowEnd || completedOn
+  };
+  const common = { status: "complete" };
+  const defaults = {
+    meeting: () => {
+      const team = completionTeam(loaded.resources, item.ownerIds || []);
+      if (!team) throw new Error("A Meeting completion needs an active Team with an active chair.");
+      return {
+        ...common,
+        teamId: team.id,
+        chairIds: currentPeopleForParties(loaded.resources, team.chairIds || []),
+        scheduledFor: completedOn,
+        startedAt: timestamp,
+        endedAt: timestamp,
+        attendeeIds: responsiblePeople
+      };
+    },
+    "policy-review": () => ({
+      ...common,
+      scopeResourceIds: obligation.scopeResourceIds || [],
+      reviewerIds,
+      completedOn,
+      outcome: "passed",
+      changesRequired: false,
+      evidenceIds: [],
+      coverage
+    }),
+    "risk-assessment": () => ({
+      ...common,
+      completedOn,
+      assessmentKind: "enterprise-risk",
+      scope: "In-scope SOC 2 systems and dependencies",
+      assessorIds: responsiblePeople,
+      reviewerIds,
+      methodology: loaded.workspace.riskMethodology?.method || "Documented risk methodology",
+      summary: "",
+      evidenceIds: [],
+      approvedOn: completedOn
+    }),
+    attestation: () => ({
+      status: "completed",
+      subjectResourceIds: [...new Set([
+        obligation.templateResourceId,
+        ...(obligation.scopeResourceIds || [])
+      ].filter(Boolean))],
+      personId: responsiblePeople[0],
+      attestationKind: obligation.activityType || "completion",
+      assignedOn: item.dueWindowStart || completedOn,
+      dueOn: item.dueWindowEnd || completedOn,
+      completedOn,
+      attestationMethod: "git-approval"
+    }),
+    "access-review": () => {
+      if (!systemIds.length) throw new Error("An Access Review completion needs an active in-scope System.");
+      return {
+        ...common,
+        completedOn,
+        reviewerIds: responsiblePeople,
+        systemIds,
+        scope: "Privileged, production, and important-system access",
+        outcome: "passed",
+        evidenceIds: [],
+        approvedByIds: reviewerIds,
+        approvedOn: completedOn,
+        coverage
+      };
+    },
+    "vulnerability-scan": () => ({
+      ...common,
+      scanKind: "vulnerability",
+      scope: "In-scope systems",
+      operatorIds: responsiblePeople,
+      scheduledFor: completedOn,
+      completedAt: timestamp,
+      systemIds,
+      resultSummary: "",
+      evidenceIds: [],
+      reviewerIds,
+      reviewedOn: completedOn
+    }),
+    "penetration-test": () => ({
+      ...common,
+      testKind: "independent",
+      scope: "In-scope systems and service boundary",
+      coverage: { kind: "as-of", on: completedOn },
+      ownerIds: responsiblePeople,
+      outcome: "passed",
+      evidenceIds: [],
+      systemIds,
+      completedOn,
+      reviewerIds,
+      reviewedOn: completedOn
+    }),
+    "control-test": () => ({
+      ...common,
+      controlId: obligation.controlIds?.[0] || null,
+      testKinds: [obligation.activityType || "control-operation"],
+      performedBy: "management",
+      testerIds: responsiblePeople,
+      reviewerIds,
+      completedOn,
+      reviewedOn: completedOn,
+      outcome: "passed",
+      evidenceIds: [],
+      coverage
+    }),
+    "control-activity": () => ({
+      ...common,
+      profileId: activity.completionProfile || obligation.activityType,
+      obligationId: obligation.id,
+      controlIds: item.controlIds || obligation.controlIds || [],
+      scopeResourceIds: (item.scopeResourceIds || obligation.scopeResourceIds || []).length
+        ? (item.scopeResourceIds || obligation.scopeResourceIds)
+        : [loaded.workspace.id],
+      performerIds: responsiblePeople,
+      completedAt: timestamp,
+      method: "",
+      result: "",
+      reviewerIds,
+      reviewedOn: completedOn,
+      ownerIds: item.ownerIds || obligation.ownerIds || []
+    }),
+    exercise: () => ({
+      ...common,
+      exerciseKind: item.title.toLowerCase().includes("continuity") ? "business-continuity" : "incident-response",
+      scheduledFor: completedOn,
+      facilitatorIds: responsiblePeople,
+      objective: item.title,
+      outcome: "passed",
+      evidenceIds: [],
+      systemIds,
+      completedAt: timestamp
+    }),
+    "backup-test": () => {
+      if (!systemIds.length) throw new Error("A Backup Test completion needs an active in-scope System.");
+      return {
+        ...common,
+        systemIds,
+        scheduledFor: completedOn,
+        operatorIds: responsiblePeople,
+        reviewerIds,
+        outcome: "passed",
+        evidenceIds: [],
+        completedAt: timestamp
+      };
+    },
+    "vendor-review": () => {
+      const subjectVendor = (item.subjectResourceIds || []).find((id) => vendorIds.includes(id));
+      if (!subjectVendor && !vendorIds.length) throw new Error("A Vendor Review completion needs an active Vendor.");
+      return {
+        ...common,
+        vendorId: subjectVendor || vendorIds[0],
+        reviewerIds: responsiblePeople,
+        completedOn,
+        decision: "approved",
+        evidenceIds: [],
+        coverage
+      };
+    }
+  };
+  const values = defaults[record.type]?.() || {
+    status: "collected",
+    artifactKind: "business-record",
+    artifactSubtype: obligation.activityType || "control-operation",
+    sourceKind: "authored-record",
+    sourceDescription: "Internal control operation",
+    collectedOn: completedOn,
+    collectorIds: responsiblePeople,
+    classificationId: defaultClassificationId(loaded.workspace),
+    coverage,
+    controlIds: item.controlIds || obligation.controlIds || [],
+    sourceResourceIds: [obligation.id]
+  };
+  Object.assign(record, values);
+}
+
+function currentPeopleForParties(resources, ids = [], seen = new Set()) {
+  const byId = new Map(resources.map((record) => [record.id, record]));
+  const people = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const party = byId.get(id);
+    if (party?.type === "person" && ["active", "external"].includes(party.status)) people.push(party.id);
+    if (party?.type === "team" && party.status === "active") {
+      people.push(...currentPeopleForParties(resources, [...(party.memberIds || []), ...(party.chairIds || [])], seen));
+    }
+    if (party?.type === "appointment" && party.status === "active") {
+      people.push(...currentPeopleForParties(resources, [party.holderId], seen));
+    }
+  }
+  return [...new Set(people)];
+}
+
+function completionTeam(resources, ownerIds) {
+  const owners = new Set(ownerIds);
+  const teams = resources.filter((record) => record.type === "team");
+  const owned = teams.filter((record) => owners.has(record.id));
+  return (owned.length ? owned : teams).find((record) => (
+    record.status === "active"
+    && currentPeopleForParties(resources, record.chairIds || []).length
+  )) || null;
+}
+
+function defaultClassificationId(workspace) {
+  const definitions = workspace.classificationDefinitions || {};
+  return Object.hasOwn(definitions, "internal") ? "internal" : Object.keys(definitions)[0] || "";
+}
+
+function contentRevision(source) {
+  return createHash("sha256").update(source).digest("hex");
+}
+
 function calendarWindow(recurrence, configuredWindow, index) {
   const occurrence = calendarOccurrence(recurrence, index);
   const next = calendarOccurrence(recurrence, index + 1);
@@ -415,23 +775,26 @@ function eventWindow(obligation, occurredOn, occurredAt, timezone) {
   };
 }
 
-function planEventRun(event, actionItems, byId, asOf, now, model = loadModel("2")) {
+function planEventRun(event, actionItems, byId, asOf, now, model) {
   const actions = actionItems
     .map((record) => {
       const obligation = byId.get(record.obligationId);
       const expectedCompletionTypes = obligation?.type === "obligation"
         ? obligationActivity(model, obligation.activityType).completionResourceTypes
         : [];
-      const linkedCompletionIds = [...new Set([
-        ...(record.completionResourceIds || []),
-        ...(record.evidenceIds || [])
-      ])];
+      const completionProfile = obligation?.type === "obligation"
+        ? obligationActivity(model, obligation.activityType).completionProfile || null
+        : null;
+      const completionIds = String(model.modelVersion) === "3"
+        ? record.completionResourceIds || []
+        : [...(record.completionResourceIds || []), ...(record.evidenceIds || [])];
+      const linkedCompletionIds = [...new Set(completionIds)];
       const matchingCompletionIds = linkedCompletionIds.filter((id) => completionTypeMatches(byId.get(id), expectedCompletionTypes));
       const completionSatisfied = expectedCompletionTypes.length === 0
         || matchingCompletionIds.length > 0;
       const complete = record.status === "done" && completionSatisfied;
       const window = plannedCompletionWindow(record.completionWindow);
-      const status = complete
+      const timingStatus = complete
         ? "complete"
         : window.overdueAt && new Date(now) > new Date(window.overdueAt)
           ? "overdue"
@@ -442,6 +805,7 @@ function planEventRun(event, actionItems, byId, asOf, now, model = loadModel("2"
             : window.dueWindowStart <= asOf
               ? "due"
               : "upcoming";
+      const status = record.status === "blocked" ? "blocked" : timingStatus;
       return {
         key: record.id,
         kind: "event",
@@ -449,6 +813,7 @@ function planEventRun(event, actionItems, byId, asOf, now, model = loadModel("2"
         actionItemId: record.id,
         obligationId: record.obligationId,
         title: record.title,
+        activityType: obligation?.activityType || null,
         ownerIds: record.assigneeIds || [],
         policyIds: obligation?.policyIds || [],
         controlIds: obligation?.controlIds || [],
@@ -457,12 +822,16 @@ function planEventRun(event, actionItems, byId, asOf, now, model = loadModel("2"
         completionResourceIds: record.completionResourceIds || [],
         evidenceIds: record.evidenceIds || [],
         expectedCompletionTypes,
+        completionProfile,
         matchingCompletionIds,
         missingCompletion: record.status === "done" && !completionSatisfied,
         canceledAction: record.status === "canceled",
         recordedStatus: record.status,
         completedOn: record.completedOn || null,
+        blockingResourceIds: record.blockingResourceIds || [],
+        blockingReason: actionBlockingReason(record, byId),
         status,
+        timingStatus,
         ...window,
         ...relativeTiming(window, asOf),
         ...relativeTimestampTiming(window, now)
@@ -474,6 +843,8 @@ function planEventRun(event, actionItems, byId, asOf, now, model = loadModel("2"
       ? "complete"
       : actions.some((item) => item.status === "overdue")
         ? "overdue"
+        : actions.some((item) => item.status === "blocked")
+          ? "blocked"
         : actions.length > 0 && actions.every((item) => item.status === "upcoming")
           ? "upcoming"
           : "due";
@@ -496,7 +867,7 @@ function planStandaloneAction(record, byId, asOf, now) {
   const source = byId.get(record.sourceResourceId);
   const window = plannedCompletionWindow(record.completionWindow);
   const complete = ["done", "canceled"].includes(record.status);
-  const status = complete
+  const timingStatus = complete
     ? "complete"
     : window.overdueAt && new Date(now) > new Date(window.overdueAt)
       ? "overdue"
@@ -507,6 +878,7 @@ function planStandaloneAction(record, byId, asOf, now) {
           : window.dueWindowStart && window.dueWindowStart > asOf
             ? "upcoming"
             : "due";
+  const status = record.status === "blocked" ? "blocked" : timingStatus;
   return {
     key: record.id,
     kind: "action",
@@ -521,11 +893,22 @@ function planStandaloneAction(record, byId, asOf, now) {
     evidenceIds: record.evidenceIds || [],
     recordedStatus: record.status,
     completedOn: record.completedOn || null,
+    blockingResourceIds: record.blockingResourceIds || [],
+    blockingReason: actionBlockingReason(record, byId),
     status,
+    timingStatus,
     ...window,
     ...relativeTiming(window, asOf),
     ...relativeTimestampTiming(window, now)
   };
+}
+
+function actionBlockingReason(record, byId) {
+  if (record.status !== "blocked") return null;
+  const blockers = (record.blockingResourceIds || []).map((id) => byId.get(id)?.title || id);
+  return blockers.length
+    ? `Blocked by ${blockers.join(", ")}.`
+    : "The Action Item is marked blocked but has no blocking resource.";
 }
 
 function storedCompletionWindow(window, timezone) {
@@ -635,7 +1018,7 @@ function relativeTimestampTiming(window, now) {
 }
 
 function comparePlannedItems(a, b) {
-  const rank = { overdue: 0, due: 1, upcoming: 2, proposed: 3, complete: 4 };
+  const rank = { overdue: 0, blocked: 1, due: 2, upcoming: 3, proposed: 4, complete: 5 };
   return (rank[a.status] - rank[b.status])
     || String(a.overdueAt || a.overdueOn || a.dueWindowEndAt || a.dueWindowEnd || a.dueWindowStartAt || a.dueWindowStart)
       .localeCompare(String(b.overdueAt || b.overdueOn || b.dueWindowEndAt || b.dueWindowEnd || b.dueWindowStartAt || b.dueWindowStart))

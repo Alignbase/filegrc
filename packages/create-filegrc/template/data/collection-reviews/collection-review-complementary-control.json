@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-complementary-control",
+  "type": "collection-review",
+  "title": "Customer and provider responsibilities review",
+  "status": "planned",
+  "resourceType": "complementary-control",
+  "scopeResourceIds": [
+    "workspace"
+  ]
+}

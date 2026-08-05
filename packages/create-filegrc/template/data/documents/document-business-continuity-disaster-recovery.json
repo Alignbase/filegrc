@@ -8,7 +8,6 @@
     "appointment-policy-owner"
   ],
   "version": "1.0",
-  "effectiveOn": "{{effective_date}}",
   "audience": [
     "employees",
     "contractors"
@@ -24,5 +23,7 @@
     "document-incident-response-plan"
   ],
   "evidenceIds": [],
-  "classificationId": "internal"
+  "classificationId": "internal",
+  "proposedEffectiveOn": "{{effective_date}}",
+  "programRole": "required"
 }

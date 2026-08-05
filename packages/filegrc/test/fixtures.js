@@ -18,6 +18,7 @@ const TITLES = {
   evidence: "Quarterly access review screenshot",
   obligation: "Quarterly access review",
   framework: "SOC 2 Trust Services Criteria",
+  "collection-review": "Program participants review",
   requirement: "Logical and physical access controls",
   commitment: "Service availability commitment",
   "complementary-control": "Customer account administration",
@@ -59,6 +60,7 @@ const STATUS_OVERRIDES = {
   evidence: "verified",
   obligation: "active",
   framework: "active",
+  "collection-review": "planned",
   commitment: "active",
   "complementary-control": "active",
   control: "implemented",
@@ -88,8 +90,8 @@ const STATUS_OVERRIDES = {
   "audit-request": "submitted"
 };
 
-export async function makeComprehensiveWorkspace(root) {
-  const model = loadModel();
+export async function makeComprehensiveWorkspace(root, version) {
+  const model = loadModel(version);
   const ids = Object.fromEntries(Object.keys(model.resources).map((type) => [type, type === "workspace" ? "workspace" : `${type}-example`]));
   ids.independentApprover = "person-independent-approver-example";
   await mkdir(join(root, "data", "content"), { recursive: true });
@@ -195,7 +197,7 @@ function sampleValue(name, field, ids, model, type) {
   if (field.type === "timestamp") return "2026-06-15T15:30:00Z";
   if (field.type === "rating") return "high";
   if (field.type === "outcome") return "passed";
-  if (field.type === "enum") return field.values[0];
+  if (field.type === "enum") return field.values?.[0] ?? Object.keys(model[field.registry] || {})[0];
   if (field.type === "id") return ids.person;
   if (name === "dataModelVersion") return model.modelVersion;
   if (name === "classificationId") return "example";

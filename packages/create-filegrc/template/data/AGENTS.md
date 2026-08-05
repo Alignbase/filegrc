@@ -8,6 +8,8 @@ Treat the installed model as the authority. Do not infer a schema from a nearby 
 
 ```sh
 npx filegrc guide --json
+npx filegrc workflow --json
+npx filegrc reconcile --preview --json
 npx filegrc program-path --next --json
 npx filegrc types --json
 npx filegrc guide RESOURCE_TYPE --json
@@ -15,7 +17,9 @@ npx filegrc list RESOURCE_TYPE --json
 npx filegrc search "TERM" --json
 ```
 
-Use `program-path --next --json` to find the current lifecycle step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s full renderer Instructions, Use, Policy Basis, commands, and next actions. Use `guide` before any unfamiliar create or status transition. It repeats the page guidance and reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
+Use `workflow --json` to get the shared assessments, complete checklist, Work Items, blockers, and recommended next action. Use `program-path --next --json` for the current lifecycle step. Use `guide` before any unfamiliar create or status transition. It reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
+
+After changing a lifecycle fact directly, review `reconcile --preview --json`. A candidate asks whether the change represents a real policy event. Supply the actual event date or timestamp, departure risk when relevant, and explicit confirmation before applying it.
 
 ## Choose the right record
 
@@ -93,6 +97,8 @@ Never replace a complete record with a partial JSON object. Never change `id` or
 JSON is for stable metadata used by validation, relationships, filters, schedules, and audit checks. Markdown is for the actual work: inputs, method, observations, results, rationale, decisions, exceptions, and follow-up.
 
 If `guide` marks a Markdown slot recommended, fill it before treating the deliverable as complete. Keep observations and report details in the source record’s Markdown. Create a Finding only for a confirmed gap that needs its own remediation lifecycle. Create an Action Item only when follow-up needs a separate assignee, deadline, and completion proof. Set each child record’s `sourceResourceId` to the record that produced it; do not maintain reverse Finding or Action Item arrays on the source. Do not put a report’s entire variable structure into new JSON fields.
+
+When `guide` returns a collection review requirement, review the listed type-specific criteria and use `npx filegrc review-collection RESOURCE_TYPE --scaffold`. Fill the management conclusion, rationale, reviewer, and date, then preview and apply the payload. Do not invent `collectionRevision`; FileGRC calculates it from the current records and material Workspace scope. Any later change makes the confirmation stale and requires another review.
 
 Store a relationship only on its authoritative record. Control Tests store `auditId`; External Evidence stores `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds` and `requirementIds`; Risks store `controlIds`; Systems store their direct `vendorId`. Use `references` to inspect derived inbound links.
 
@@ -178,13 +184,15 @@ Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change togeth
 
 ```sh
 npx filegrc obligations --json
-npx filegrc complete OBLIGATION_ID completion-mutation.json --expected-revision REVISION
+npx filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD > completion-mutation.json
+npx filegrc complete OBLIGATION_ID completion-mutation.json
 npx filegrc trigger EVENT_TYPE --occurred-on YYYY-MM-DD --subject RESOURCE_ID --json
-npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD --expected-revision REVISION
+npx filegrc complete-action ACTION_ITEM_ID --scaffold --completed-on YYYY-MM-DD > completion-mutation.json
+npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD
 npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION
 ```
 
-Read `REVISION` from `npx filegrc get RESOURCE_ID --mutation`. Run `obligations` before `trigger` to preview every Policy Event task, owner, deadline, and requested proof. Triggering creates the event and adds all linked Action Items to the Work Queue atomically. `complete` and `complete-action` validate the expected completion type and link the new record atomically. `complete-event` refuses to close the workflow until every action has its requested proof. For hour-based deadlines use `--occurred-at` with an RFC 3339 timestamp and timezone.
+Fill the scaffold with the actual work, evidence, review, and every null or empty required value. Completion scaffolds include the target revision. For other updates, read `REVISION` from `npx filegrc get RESOURCE_ID --mutation`. Run `obligations` before `trigger` to preview every Policy Event task, owner, deadline, and requested proof. Triggering creates the event and adds all linked Action Items to the Work Queue atomically. `complete` and `complete-action` validate the expected completion type and link the new record atomically. `complete-event` refuses to close the workflow until every action has its requested proof. For hour-based deadlines use `--occurred-at` with an RFC 3339 timestamp and timezone.
 
 ## Audit work
 

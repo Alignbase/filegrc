@@ -1,11 +1,22 @@
 import { createServer as createHttpServer } from "node:http";
-import { readFile, realpath } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join, resolve } from "node:path";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
+import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
+import { applyApplicabilityReview, planApplicabilityReview } from "./batch-review.js";
+import { applyCollectionReview, planCollectionReview } from "./collection-review.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import { FAVICON_PNG, LOGO_MARK_PNG } from "./favicon.js";
-import { createResource, deleteResource, updateContent, updateResource } from "./files.js";
+import {
+  addEvidenceAttachment,
+  createResource,
+  deleteResource,
+  removeEvidenceAttachment,
+  updateContent,
+  updateResource
+} from "./files.js";
 import {
   BROWSER_VALIDATION,
   commitAndPushWorkspace,
@@ -18,11 +29,28 @@ import {
   runBrowserMutation
 } from "./git.js";
 import { normalizeResourceMutation, serializeWorkspaceMutation } from "./mutation.js";
-import { completeObligationOccurrence, createObligationEvent, planObligations } from "./obligations.js";
+import {
+  completeObligationAction,
+  completeObligationEvent,
+  completeObligationOccurrence,
+  createObligationEvent,
+  planObligations
+} from "./obligations.js";
+import {
+  planExternalReviewerGovernance,
+  setupExternalReviewerGovernance
+} from "./external-reviewer.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
+import { applyReconciliation, planReconciliation } from "./reconciliation.js";
 import { createAppState, createResourceDetail } from "./state.js";
 import { setupWorkspace } from "./setup.js";
 import { collectTimings, measureTiming, timingEnabled } from "./timing.js";
+import {
+  assessWorkflow,
+  buildWorkflowDelta,
+  previewWorkflowMutation,
+  workflowForResource
+} from "./workflow.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
@@ -66,6 +94,80 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           model: loaded.model
         }));
       }
+      if (request.method === "GET" && url.pathname === "/api/workflow") {
+        const start = url.searchParams.get("start");
+        const end = url.searchParams.get("end");
+        return json(response, 200, await assessWorkflow(input, {
+          auditId: url.searchParams.get("auditId") || undefined,
+          asOf: url.searchParams.get("asOf") || undefined,
+          through: url.searchParams.get("through") || undefined,
+          coverage: start || end ? { kind: "range", startsOn: start, endsOn: end } : undefined,
+          includeComplete: url.searchParams.get("includeComplete") === "true"
+        }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/workflow/preview") {
+        return json(response, 200, await previewWorkflowMutation(input, await readJson(request)));
+      }
+      if (request.method === "GET" && url.pathname === "/api/reconciliation") {
+        return json(response, 200, await planReconciliation(input));
+      }
+      if (request.method === "POST" && url.pathname === "/api/reconciliation") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: (result) => `Reconcile policy event: ${result.event?.title || payload.candidateId}`
+        }, () => applyReconciliation(input, {
+          ...payload,
+          confirmed: payload.confirmed === true
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/external-reviewer-governance/preview") {
+        return json(response, 200, await planExternalReviewerGovernance(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/external-reviewer-governance") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: (result) => `Assign external independent reviewer: ${result.reviewerId}`
+        }, () => setupExternalReviewerGovernance(input, {
+          ...payload,
+          confirmed: payload.confirmed === true
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/audit-cycle/preview") {
+        return json(response, 200, await planNextAuditCycle(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/audit-cycle") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: (result) => `Create next audit cycle: ${result.audit?.title || payload.priorAuditId}`
+        }, () => createNextAuditCycle(input, {
+          ...payload,
+          confirmed: payload.confirmed === true
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/applicability-review/preview") {
+        return json(response, 200, await planApplicabilityReview(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/applicability-review") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: (result) => `Record ${result.reviewedIds?.length || 0} applicability decisions`
+        }, () => applyApplicabilityReview(input, {
+          ...payload,
+          confirmed: payload.confirmed === true
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/collection-review/preview") {
+        return json(response, 200, await planCollectionReview(input, await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/collection-review") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, options, {
+          message: (result) => `Confirm ${result.assessment?.configuration?.title || payload.resourceType}`
+        }, () => applyCollectionReview(input, {
+          ...payload,
+          confirmed: payload.confirmed === true
+        })));
+      }
       if (request.method === "POST" && url.pathname === "/api/obligation-events") {
         const payload = await readJson(request);
         return json(response, 201, await browserMutation(input, options, {
@@ -84,6 +186,73 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           expectedRevision: requireRevision(payload.revision, `obligation/${payload.obligationId}`)
         }));
         return json(response, 201, result);
+      }
+      if (request.method === "POST" && url.pathname === "/api/action-completions") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.actionItemId)) {
+          return json(response, 400, { error: "A safe Action Item ID is required." });
+        }
+        const result = await browserMutation(input, options, {
+          message: () => `Complete action item: ${payload.actionItemId}`
+        }, () => completeObligationAction(input, {
+          actionItemId: payload.actionItemId,
+          completedOn: payload.completedOn,
+          record: payload.record,
+          content: payload.content,
+          expectedRevision: requireRevision(payload.revision, `action-item/${payload.actionItemId}`)
+        }));
+        return json(response, 201, result);
+      }
+      if (request.method === "POST" && url.pathname === "/api/obligation-event-completions") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.eventId)) {
+          return json(response, 400, { error: "A safe Policy Event ID is required." });
+        }
+        const result = await browserMutation(input, options, {
+          message: () => `Complete policy event: ${payload.eventId}`
+        }, () => completeObligationEvent(input, {
+          eventId: payload.eventId,
+          completedOn: payload.completedOn,
+          expectedRevision: requireRevision(payload.revision, `obligation-event/${payload.eventId}`)
+        }));
+        return json(response, 200, result);
+      }
+      const attachmentMatch = /^\/api\/evidence-attachments\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+      if (attachmentMatch && request.method === "POST") {
+        const evidenceId = decodeURIComponent(attachmentMatch[1]);
+        const attachment = decodeURIComponent(attachmentMatch[2]);
+        if (!safeSegment(evidenceId) || !safeAttachmentName(attachment)) {
+          return json(response, 400, { error: "Safe Evidence and attachment identifiers are required." });
+        }
+        const revision = requireRevision(url.searchParams.get("revision"), `evidence/${evidenceId}`);
+        const temporaryDirectory = await mkdtemp(join(tmpdir(), "filegrc-evidence-upload-"));
+        try {
+          const temporaryPath = join(temporaryDirectory, attachment);
+          await writeFile(temporaryPath, await readBytes(request));
+          const result = await browserMutation(input, options, {
+            message: () => `Attach evidence file: ${attachment}`
+          }, () => addEvidenceAttachment(input, evidenceId, temporaryPath, {
+            name: attachment,
+            expectedRevision: revision
+          }));
+          return json(response, 201, result);
+        } finally {
+          await rm(temporaryDirectory, { recursive: true, force: true });
+        }
+      }
+      if (attachmentMatch && request.method === "DELETE") {
+        const evidenceId = decodeURIComponent(attachmentMatch[1]);
+        const attachment = decodeURIComponent(attachmentMatch[2]);
+        if (!safeSegment(evidenceId) || !safeAttachmentName(attachment)) {
+          return json(response, 400, { error: "Safe Evidence and attachment identifiers are required." });
+        }
+        const revision = requireRevision(url.searchParams.get("revision"), `evidence/${evidenceId}`);
+        const result = await browserMutation(input, options, {
+          message: () => `Remove evidence file: ${attachment}`
+        }, () => removeEvidenceAttachment(input, evidenceId, attachment, {
+          expectedRevision: revision
+        }));
+        return json(response, 200, result);
       }
       if (request.method === "GET" && url.pathname === "/api/evidence-packet") {
         return json(response, 200, await prepareEvidencePacket(input, {
@@ -130,7 +299,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const result = await browserMutation(input, options, {
           message: () => `Create ${resourceTypeLabel(record.type)}: ${record.title || record.id}`
         }, () => createResource(input, record, { content: payload.content }));
-        return json(response, 201, { record: result.record, synchronization: result.synchronization, state: result.state });
+        return json(response, 201, result);
       }
       if (request.method === "POST" && url.pathname === "/api/commit") {
         await requireManualBrowserGit(input, options);
@@ -174,7 +343,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }, () => updateContent(input, payload.path, payload.source, {
           expectedRevision: requireRevision(payload.revision, `content/${payload.path}`)
         }));
-        return json(response, 200, { path: result.dataRelativePath, synchronization: result.synchronization, state: result.state });
+        return json(response, 200, result);
       }
       const match = /^\/api\/resource\/([^/]+)\/([^/]+)$/.exec(url.pathname);
       if (match) {
@@ -183,7 +352,12 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (!safeSegment(type) || !safeSegment(id)) return json(response, 400, { error: "Unsafe resource identifier." });
         if (request.method === "GET") {
           const entry = await createResourceDetail(input, type, id);
-          return entry ? json(response, 200, entry) : json(response, 404, { error: "Resource not found." });
+          if (!entry) return json(response, 404, { error: "Resource not found." });
+          if (url.searchParams.get("workflow") === "true") {
+            const workflow = await assessWorkflow(input);
+            entry.workflow = workflowForResource(workflow, type, id);
+          }
+          return json(response, 200, entry);
         }
         if (request.method === "PUT") {
           const payload = normalizeResourceMutation(await readJson(request), { requireRevision: true });
@@ -196,7 +370,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             expectedContentRevisions: payload.contentRevisions,
             requireExpectedContentRevisions: true
           }));
-          return json(response, 200, { record: result.record, synchronization: result.synchronization, state: result.state });
+          return json(response, 200, result);
         }
         if (request.method === "DELETE") {
           const revision = requireRevision(url.searchParams.get("revision"), `${type}/${id}`);
@@ -209,6 +383,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             id,
             deletedContent: result.deletedContent,
             synchronization: result.synchronization,
+            workflowDelta: result.workflowDelta,
             state: result.state
           });
         }
@@ -267,20 +442,49 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
     allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true,
     backgroundPushDelayMs: options.backgroundPushDelayMs
   });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, host, resolve);
-  });
+  let usedFallbackPort = false;
+  try {
+    await listen(server, port, host);
+  } catch (error) {
+    if (
+      error.code !== "EADDRINUSE"
+      || port === 0
+      || options.fallbackToAvailablePort !== true
+    ) {
+      throw error;
+    }
+    await listen(server, 0, host);
+    usedFallbackPort = true;
+  }
   return {
     server,
     root: loaded.root,
     address: server.address(),
-    url: `http://${urlHost(host)}:${server.address().port}`
+    url: `http://${urlHost(host)}:${server.address().port}`,
+    requestedPort: port,
+    usedFallbackPort
   };
+}
+
+function listen(server, port, host) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
 }
 
 function browserMutation(input, options, mutationOptions, task) {
   const run = () => serializeWorkspaceMutation(input, async (root) => {
+    const workflowBefore = await assessWorkflow(root);
     const result = await runBrowserMutation(root, {
       ...mutationOptions,
       allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true,
@@ -299,7 +503,11 @@ function browserMutation(input, options, mutationOptions, task) {
         pushError: state.repository.backgroundSyncError ?? null
       };
     }
-    return { ...result, state };
+    return {
+      ...result,
+      workflowDelta: buildWorkflowDelta(workflowBefore, state.workflow),
+      state
+    };
   });
   if (!timingEnabled()) return run();
   return collectTimings(run).then(({ result, timings }) => {
@@ -347,6 +555,18 @@ async function readJson(request) {
   return value;
 }
 
+async function readBytes(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 25_000_000) throw new Error("Attachment exceeds 25 MB.");
+    chunks.push(chunk);
+  }
+  if (size === 0) throw new Error("An attachment body is required.");
+  return Buffer.concat(chunks);
+}
+
 function json(response, status, value) {
   text(response, status, `${JSON.stringify(value, null, 2)}\n`, "application/json; charset=utf-8");
 }
@@ -381,6 +601,13 @@ function packetContentType(path, isPacketIndex = false) {
 
 function safeSegment(value) {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+function safeAttachmentName(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.split(/[\\/]/).at(-1)
+    && !value.startsWith(".");
 }
 
 function requireRevision(value, target) {
@@ -433,6 +660,7 @@ function urlHost(host) {
 function statusFor(error) {
   if (error instanceof SyntaxError || error instanceof URIError) return 400;
   if (/exceeds 2 MB/i.test(error.message)) return 413;
+  if (/exceeds 25 MB/i.test(error.message)) return 413;
   if (/changed after you opened|source changed|revision changed/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
   if (/Git could not|upstream branch|multiple remotes|no Git remote|configured repository remote|safe Git name|check out a branch|before trying to (?:pull|push)|authoritative branch|not synchronized|not synced|diverged|waiting to be pushed|Retry sync|background push|outside this FileGRC workspace|worktree has uncommitted changes|development write override|browser commit, pull, and push/i.test(error.message)) return 409;
