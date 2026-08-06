@@ -1,0 +1,317 @@
+---
+title: "SOC 2 Policy Templates for Startups: How to Tailor Them"
+description: "Use SOC 2 policy templates without creating false claims. Choose the right set, tailor each rule, bind approval, and keep reviews current."
+publishedDate: "2026-08-06"
+lastMod: "2026-08-06"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 policy templates",
+    "SOC 2 policies for startups",
+    "free SOC 2 policy templates",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc keeps policy text, approval, controls, scheduled work, and acknowledgements connected in Git."
+faqs:
+  - question: "What policies are required for SOC 2?"
+    answer: "SOC 2 does not prescribe one universal policy bundle. Management chooses policies based on the scoped service, selected Trust Services Criteria, risks, commitments, systems, vendors, and control design. A CPA firm can help confirm whether the resulting control environment supports the planned examination."
+  - question: "Can a startup use free SOC 2 policy templates?"
+    answer: "Yes, but treat each template as a draft. Remove claims that do not match current practice, fill in scope and ownership, connect the policy to real controls and work, then have a separate person review the exact text before it takes effect."
+  - question: "Who should approve a SOC 2 policy?"
+    answer: "Use a reviewer with enough authority and separation to challenge the policy owner. This is usually another internal leader. A one-person company may need an external management reviewer. This policy approval is a management control, not the independent CPA examination."
+  - question: "How often should SOC 2 policies be reviewed?"
+    answer: "Set a review schedule that fits the policy and also define event triggers. Review a policy when its systems, risks, legal duties, customer commitments, roles, or operating process materially change, even if its next scheduled review is months away."
+  - question: "What happens when an approved policy changes?"
+    answer: "Move the changed policy back through review. The prior approval covered an earlier text revision, so record a new approval and effective date for the changed text. Obtain new acknowledgements when the revision changes employee responsibilities."
+  - question: "Does a policy template make a startup SOC 2 compliant?"
+    answer: "No. A template does not operate controls, produce evidence, support a management assertion, or replace the CPA examination. It is only a starting point for a policy that must match the startup's actual service and practices."
+furtherReading:
+  - text: "Follow the SOC 2 compliance checklist for startups"
+    url: "/blogs/soc-2-compliance-checklist-startups"
+  - text: "Build a realistic startup SOC 2 timeline"
+    url: "/blogs/soc-2-timeline-startups"
+  - text: "Build a startup SOC 2 budget"
+    url: "/blogs/soc-2-compliance-cost-startups"
+  - text: "What open source SOC 2 software can and cannot replace"
+    url: "/blogs/open-source-soc-2-compliance"
+  - text: "Choose between SOC 2 Type 1 and Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+SOC 2 policy templates are draft language, not a fixed set of requirements. A
+startup should select policies for its scoped service, risks, commitments, and
+controls, then rewrite each one to match current practice. Give every policy an
+owner, a separate approver, an effective date, linked operating work, and a
+review plan. Approval should cover the exact text reviewed.
+
+## TL;DR
+
+- Start with the service and control scope, not a numbered policy bundle.
+- Remove every template claim that the company cannot prove in practice.
+- Keep policies separate from procedures, plans, controls, and evidence.
+- Name an owner and a separate management approver for each policy.
+- Bind approval to the exact policy revision, then review changed text again.
+- Connect policy rules to controls, recurring work, training, and
+  acknowledgements.
+
+## What a SOC 2 policy template can do
+
+A good template gives a team a useful outline and questions to answer. It may
+prompt the team to define a policy's purpose, scope, roles, rules, exceptions,
+approval, and review schedule. That is a faster start than a blank page.
+
+A template cannot decide which Trust Services Criteria apply, define the system
+boundary, assess the startup's risks, or prove that a control operates. It also
+cannot make management assertions or perform the independent CPA examination.
+
+The AICPA's
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide criteria for evaluating controls relevant to security, availability,
+processing integrity, confidentiality, and privacy. They do not prescribe one
+universal list of policy documents. The right policy set depends on the service
+in scope and the controls management designs for it.
+
+That is why policy packs vary so much. One bundle may split access control,
+passwords, remote work, and mobile devices into separate files. Another may
+govern the same topics through an information security policy plus supporting
+standards and procedures. Count does not tell you whether either set matches
+the company.
+
+## Choose policies from the scoped work
+
+Start with the scope decisions in your
+[SOC 2 compliance checklist](/blogs/soc-2-compliance-checklist-startups). List
+the service, systems, vendors, people, data, commitments, risks, and selected
+criteria. Then ask which management rules need to be stable, approved, and
+communicated.
+
+Use a worksheet like this before downloading or drafting anything:
+
+| Decision              | Question to answer                                                          |
+| --------------------- | --------------------------------------------------------------------------- |
+| Reason for the policy | Which risk, commitment, criterion, or control needs a management rule?      |
+| Scope                 | Which service, systems, data, locations, and people does the rule cover?    |
+| Owner                 | Who maintains the policy and makes sure related work exists?                |
+| Approver              | Who has enough authority and separation to challenge the owner?             |
+| Operating links       | Which controls, procedures, plans, training, and scheduled tasks apply it?  |
+| Audience              | Who must receive, understand, or acknowledge the policy?                    |
+| Review triggers       | Which dates or business changes should send the policy back through review? |
+
+Common topics include information security, access, change management,
+incident response, vendor management, risk management, data handling,
+retention, continuity, acceptable use, and workforce security. This is a topic
+list for discovery, not a required bundle. Some topics may belong in one
+policy, while others need their own plan, standard, or procedure.
+
+Use the
+[SOC 2 Type 1 and Type 2 guide](/blogs/soc-2-type-1-vs-type-2) to decide what
+dated operating records the planned report will need. The policies should
+govern that work, not make promises about a future process that has not started.
+
+## Separate policies from the records that apply them
+
+Teams often put every security detail into one policy because the template has
+a heading for it. The result is hard to approve and harder to keep true.
+
+Use each record for a clear job:
+
+| Record    | What it should say                                                     | Example                                                       |
+| --------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Policy    | Management's approved rule, scope, roles, and required outcomes        | Access must be approved, limited by role, and reviewed        |
+| Standard  | A required technical or process baseline                               | Production accounts require phishing-resistant authentication |
+| Procedure | The steps a person follows                                             | How an administrator exports the current user population      |
+| Plan      | Roles and actions for a future event                                   | Incident classification, communication, and recovery steps    |
+| Control   | Who performs or reviews an activity, when, and what records the result | A manager reviews production access each quarter              |
+| Evidence  | A dated artifact that supports what occurred                           | User export, review record, decisions, and follow-up          |
+
+This separation keeps the policy readable. It also lets the team change an
+export procedure without rewriting a management rule when the underlying
+policy has not changed.
+
+## Tailor every template before approval
+
+Read a template as a set of claims. For each sentence, ask:
+
+1. Does this rule apply to the scoped service?
+2. Does the company follow it now?
+3. Who performs or reviews the related work?
+4. Which system or record can support the claim?
+5. What happens when the normal process does not fit?
+
+Delete decorative prose and unsupported promises. A sentence such as "all
+access is reviewed quarterly" creates an operating claim. If the company has
+not defined the population, reviewer, decisions, follow-up, and evidence, the
+sentence is premature. Draft the control and test the workflow before making
+the policy effective.
+
+Replace vague subjects such as "the organization" with named roles. Define
+which workers, systems, environments, and data the policy covers. Use exact
+terms for deadlines and review schedules. If an incident rule says "promptly,"
+the team cannot tell when work is late.
+
+Keep tool names out of policy text unless the chosen system is part of the
+rule. Tool-specific clicks and report settings usually belong in a procedure.
+This reduces policy churn when the company changes a vendor.
+
+## Give the owner a separate approver
+
+The policy owner writes and maintains the policy. The approver challenges the
+text, checks that it matches management's intent, and accepts the rule on
+management's behalf. They should not be the same person.
+
+Most startups can use another internal leader or manager with enough context
+and authority. A one-person company may need an external person because no
+second internal person can provide that review. The approver does not need to
+be the CPA who performs the SOC 2 examination. Policy approval is part of
+management's program, while the CPA firm independently examines the system
+description and controls.
+
+Before approval, the reviewer should check:
+
+- the scope matches the service and people affected;
+- the rule describes current or ready-to-start practice;
+- named roles exist and accept the work;
+- controls and procedures can apply each requirement;
+- exceptions and escalation paths are clear;
+- the effective date allows time for communication or training;
+- the review schedule and change triggers fit the policy.
+
+## Bind approval to the exact policy text
+
+An approval date without a content revision leaves a basic question
+unanswered: which text did management approve?
+
+Keep the policy body in versioned Markdown and bind the approval to that exact
+revision. In a Git-based workspace, the content hash and Git history make the
+reviewed text inspectable. The policy record still needs explicit approval and
+effective dates because a commit timestamp does not prove management approval.
+
+When approved text changes, move the policy back through review. Fixing a typo
+and changing a worker responsibility do not have the same effect, but both
+create a new text revision. Management should decide whether the change is
+material, record a new approval for the final text, and obtain new
+acknowledgements when responsibilities change.
+
+This rule stops a common failure: a policy appears active even though its text
+changed after the recorded approval.
+
+## Connect policy rules to operating work
+
+A policy becomes useful when people can trace each rule to the work that
+applies it. Link the policy to:
+
+- controls that implement its requirements;
+- procedures and plans people follow;
+- recurring obligations with clear deadlines;
+- event checklists for changes such as departures or incidents;
+- training assigned to the affected audience;
+- acknowledgements bound to the policy revision;
+- exceptions, risks, and corrective work;
+- evidence records produced by the related controls.
+
+For example, a vendor management policy may require risk-based review before
+use and on a recurring schedule. The operating records should identify each
+vendor, the review owner, decision, coverage, evidence, due date, and follow-up.
+The policy should not contain a fictional review history.
+
+The NIST Cybersecurity Framework 2.0 subcategory
+[GV.PO-02](https://csrc.nist.gov/projects/cybersecurity-framework/filters)
+offers a useful lifecycle check: review, update, communicate, and enforce
+cybersecurity risk policy as requirements, threats, technology, and business
+needs change. That is general policy guidance, not a claim that SOC 2 requires
+one fixed review cadence.
+
+## Set both scheduled and event-driven reviews
+
+An annual review date is easy to track, but a policy can become wrong before
+that date. Define event triggers as well as a schedule.
+
+Review a policy when:
+
+- the scoped service, system boundary, or data use changes;
+- the company adopts or replaces a major system or vendor;
+- a law, contract, or customer commitment changes;
+- an incident, control failure, or risk review finds a policy gap;
+- roles or approval authority change;
+- a procedure can no longer meet the policy rule;
+- the team adds criteria or changes the planned report scope.
+
+Record the review result even when the text stays the same. A dated review that
+confirms no change is different from a policy nobody checked.
+
+## Manage SOC 2 policy templates in filegrc
+
+filegrc scaffolds starter policies as proposals. They are prompts for review,
+not facts about the company and not a universal SOC 2 policy pack. The active
+data model keeps policy text in companion Markdown and policy metadata in JSON,
+so the same record can link ownership, approval, controls, training, and
+scheduled work.
+
+Start by asking the model what a policy record needs:
+
+```sh
+npx filegrc guide policy --json
+npx filegrc list policy --workflow --json
+npx filegrc get policy policy-information-security --mutation
+npx filegrc references policy-information-security --json
+```
+
+Use the returned mutation shape to update structured metadata, and use the
+content command to read or write the policy body. An expected revision prevents
+one writer from silently replacing another writer's changes.
+
+```sh
+npx filegrc content policy policy-information-security --json
+npx filegrc content policy policy-information-security \
+  --write ./information-security.md \
+  --expected-revision CURRENT_REVISION \
+  --json
+npx filegrc validate --json
+npx filegrc program-readiness --summary --json
+```
+
+The validator checks the record shape and relationships. It also detects when
+active approved content no longer matches the revision that was reviewed.
+Management still decides whether the policy fits the company, and the
+engagement team decides whether evidence is sufficient and appropriate.
+
+## A practical policy template workflow
+
+Use this order for each policy:
+
+1. Write down why the policy exists and which scoped work it governs.
+2. Choose a starter template and keep it in draft.
+3. Delete unsupported claims, fill in scope and roles, and separate procedures.
+4. Create the controls, obligations, training, and event work that apply it.
+5. Test whether people can follow the rule and produce the expected records.
+6. Have a separate person review the exact policy text.
+7. Record approval, the approved revision, and the effective date.
+8. Communicate the policy and collect revision-bound acknowledgements when
+   needed.
+9. Complete scheduled reviews and respond to change triggers.
+10. Send every changed revision back through review before treating it as
+    approved.
+
+This takes more work than changing a company name in a downloaded file. It
+also produces a policy set that a founder, control owner, and CPA firm can read
+without guessing what the company actually does.
+
+## Start with reviewable files
+
+You can run filegrc locally with `npx create-filegrc@latest`, tailor its starter
+proposals, and review every policy change in Git. The
+[open source SOC 2 guide](/blogs/open-source-soc-2-compliance) explains which
+program records fit this model and which live systems still need to remain
+outside the GRC repository.
+
+filegrc manages GRC records and audit evidence. It does not replace identity,
+cloud, endpoint, backup, monitoring, or incident-detection systems. It also
+does not make a company compliant or replace the independent CPA examination.
+
+[See filegrc on GitHub](https://github.com/Sunpeak-AI/filegrc) or use the
+[startup SOC 2 timeline](/blogs/soc-2-timeline-startups) to place policy
+selection, control implementation, approval, communication, and review in the
+rest of the program.
