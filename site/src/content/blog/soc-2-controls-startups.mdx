@@ -1,0 +1,317 @@
+---
+title: "SOC 2 Controls for Startups: Build the Right Control Set"
+description: "Build SOC 2 controls for a startup from scope, risks, and commitments. Define owners, procedures, evidence sources, and an implementation test."
+publishedDate: "2026-08-07"
+lastMod: "2026-08-07"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 controls for startups",
+    "SOC 2 controls list",
+    "SOC 2 control examples",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects each control to its requirements, policies, owners, procedure, systems, evidence sources, and scheduled work."
+faqs:
+  - question: "How many SOC 2 controls does a startup need?"
+    answer: "There is no universal control count. The startup should design enough controls to address the applicable Trust Services Criteria, scoped risks, customer commitments, system requirements, and service boundary. The CPA firm evaluates the controls in the planned examination."
+  - question: "What are common SOC 2 control examples for startups?"
+    answer: "Common topics include access approval and review, change management, incident response, vendor review, risk assessment, backup and recovery testing, vulnerability management, security training, and monitoring. The exact controls and their frequency must fit the startup's scope and risks."
+  - question: "What is the difference between a SOC 2 criterion and a control?"
+    answer: "A Trust Services Criterion is a benchmark used to evaluate controls. A control is a safeguard or activity management designs and operates to address applicable criteria, risks, and commitments. One control may address several criteria, and one criterion may need several controls."
+  - question: "Can a startup use a SOC 2 controls list?"
+    answer: "A list can prompt discovery, but it should remain a draft until management checks each item against the service boundary, systems, vendors, risks, and commitments. Remove controls that do not apply, add missing controls, and do not mark a control implemented before its real procedure and evidence source work."
+  - question: "When is a SOC 2 control implemented?"
+    answer: "Treat a control as implemented when its owner, scope, activity, procedure, operation pattern, governing mappings, authoritative evidence sources, and effective date match current practice. The team should also be able to retrieve the expected source evidence and run any required schedule or event workflow."
+  - question: "Does SOC 2 software operate a startup's controls?"
+    answer: "Not by itself. Software may organize control records, work, and evidence, but people and source systems still enforce access, deploy changes, monitor services, train workers, respond to incidents, and produce source records. The CPA firm performs the independent examination."
+furtherReading:
+  - text: "Tailor and approve SOC 2 policy templates"
+    url: "/blogs/soc-2-policy-templates-startups"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Build reviewable SOC 2 access review evidence"
+    url: "/blogs/soc-2-access-review-evidence"
+  - text: "Build complete SOC 2 audit populations"
+    url: "/blogs/soc-2-audit-populations"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+SOC 2 controls for startups should come from the service in scope, applicable
+criteria, risks, customer commitments, and system requirements. There is no
+universal control count. For each control, define the outcome, activity, owner,
+scope, operation pattern, procedure, and authoritative evidence sources. Mark
+it implemented only when the team can perform the work and retrieve the
+expected source records.
+
+## TL;DR
+
+- Treat downloaded control lists as prompts, not the startup's final control
+  set.
+- Separate the Trust Services Criteria from the controls management designs.
+- Write each control so an owner knows what to do, when, where, and for whom.
+- Keep the detailed procedure beside the control instead of hiding it in the
+  control statement.
+- Test the evidence source and retrieval steps before starting a candidate
+  Type 2 period.
+- Put scheduled and event-driven operation in tracked work with clear
+  deadlines.
+
+## SOC 2 criteria are not a controls list
+
+The AICPA says its
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+are control criteria for evaluating and reporting on controls relevant to
+security, availability, processing integrity, confidentiality, or privacy.
+The criteria are the benchmarks. Management still designs the controls that
+address the selected criteria for its system.
+
+This distinction matters because a search for a "SOC 2 controls list" often
+returns a fixed number of generic tasks. Those tasks may help a founder find
+missing topics, but they do not know:
+
+- which product, service, entity, and locations are in scope;
+- which criteria management selected with the CPA firm;
+- which customer promises and system requirements apply;
+- which systems, vendors, data, and people support the service;
+- which risks need treatment;
+- which safeguards already operate and produce reliable records.
+
+The AICPA describes SOC as a suite of services that CPAs provide in connection
+with
+[system-level controls](https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services).
+Management owns the system description and control design. The CPA firm
+performs the independent examination.
+
+## Start with five control inputs
+
+Do not begin by copying rows into a control matrix. Finish the relevant scope
+work in the
+[startup SOC 2 checklist](/blogs/soc-2-compliance-checklist-startups), then
+build the control set from these inputs.
+
+| Input               | What to ask                                                                     | Control effect                                                          |
+| ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Service boundary    | Which service, systems, people, data, vendors, and locations are included?      | Limits the systems and activities each control must cover               |
+| Applicable criteria | Which Trust Services Criteria match the planned report?                         | Identifies the outcomes that need support                               |
+| Risks               | What can prevent the service from meeting its security and business duties?     | Adds safeguards or review where treatment is needed                     |
+| Commitments         | What has the company promised customers, workers, regulators, or other parties? | Connects controls to statements the company must support                |
+| System requirements | Which approved technical and operating rules must the service follow?           | Turns required settings and processes into owned, inspectable operation |
+
+Review all five together. A risk may need a control even when it does not map
+neatly to one downloaded checklist row. A customer commitment may narrow a
+control's scope or set a deadline. A provider may operate part of the
+safeguard, which means the startup must identify the provider responsibility
+and its own review work.
+
+NIST SP 800-53 is not the SOC 2 criteria, but its control-design principle is
+useful here. NIST describes security and privacy controls as
+[flexible and customizable safeguards implemented through an organization-wide risk process](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final).
+A startup should apply the same discipline when tailoring its own controls
+rather than assuming a catalog fits unchanged.
+
+## Write a control someone can operate
+
+A control statement should describe an outcome and the management activity
+that supports it. It should be specific enough to review, but it should not
+contain every click in a tool.
+
+Use this design worksheet:
+
+| Field                 | Question the record must answer                                                 |
+| --------------------- | ------------------------------------------------------------------------------- |
+| Statement             | What outcome or safeguard does management maintain?                             |
+| Activity              | What does the team actually do?                                                 |
+| Owner                 | Who is accountable for keeping the control in place?                            |
+| Scope                 | Which systems, services, people, data, or events does it cover?                 |
+| Operation mode        | Is the work manual, automated, or a mix?                                        |
+| Operation pattern     | Does it run continuously, on an event, on a schedule, or through a mix?         |
+| Requirements          | Which criteria, commitments, policies, and system requirements does it address? |
+| Procedure             | Which repeatable steps do performers and reviewers follow?                      |
+| Evidence sources      | Which authoritative systems produce records of operation?                       |
+| Effective date        | When did the implemented control begin operating in this form?                  |
+| Implementation review | Who checked that the control and evidence path work as described, and when?     |
+
+Keep the control statement stable enough to govern the process. Put the
+detailed procedure in versioned Markdown so the team can review operational
+changes without turning the structured record into a wall of text.
+
+## Example: design an access review control
+
+Suppose the startup decides that people with production access need periodic
+review. A generic checklist might say, "Review access quarterly." That line
+does not define a working control.
+
+The team still needs to decide:
+
+| Decision       | Example answer to verify, not copy                                             |
+| -------------- | ------------------------------------------------------------------------------ |
+| Population     | All active human and service accounts with production roles                    |
+| Source systems | The identity system and each production platform that grants access            |
+| Performer      | The person who exports and prepares the complete population                    |
+| Reviewer       | A manager who can decide whether each grant remains appropriate                |
+| Review test    | Confirm identity, role, business need, privilege level, and current employment |
+| Exceptions     | Record removal, correction, owner, due date, and proof of completion           |
+| Evidence       | Fixed exports, parameters, review decisions, approval, and remediation records |
+| Schedule       | The cadence management chose for the scoped risk and commitments               |
+
+The final control may say that management reviews production access on its
+approved schedule, records a decision for every in-scope grant, and tracks
+required changes to completion. The procedure explains how to export the
+population, reconcile sources, perform the review, and retain the result.
+
+This is only an example. The startup must choose the systems, reviewers, tests,
+and schedule that fit its own service. A fixed quarterly claim is harmful when
+the team cannot run or support it.
+
+## Separate the control from its procedure and evidence
+
+Control records, procedures, schedules, and evidence answer different
+questions:
+
+| Record        | Question it answers                                                        |
+| ------------- | -------------------------------------------------------------------------- |
+| Control       | Which safeguard or management activity exists, and what does it cover?     |
+| Procedure     | How do people perform and review the activity?                             |
+| Obligation    | When must scheduled or event-driven work happen, and when is it overdue?   |
+| Work result   | Who completed the activity, for which period or event, with what outcome?  |
+| Evidence      | Which fixed artifact supports the result, and where did it come from?      |
+| Source system | Which authoritative system produces the population, report, or event data? |
+
+Keeping these records separate prevents a common problem: one control row tries
+to be a policy, procedure, task list, and evidence log. The row becomes hard to
+read and still fails to show whether the work occurred.
+
+Use the
+[open source SOC 2 guide](/blogs/open-source-soc-2-compliance) to decide which
+records belong in Git and which operating data should remain in identity,
+cloud, source control, monitoring, workforce, and other source systems.
+
+## Test the control before marking it implemented
+
+An implemented label should describe current facts. Before using it, check that:
+
+1. The control is needed for the current criteria, risks, commitments, and
+   service boundary.
+2. Its statement and activity match what people and systems actually do.
+3. A named owner accepts responsibility for the control.
+4. The procedure covers the real scope, performer, reviewer, decisions,
+   exceptions, and follow-up.
+5. The operation mode and pattern match the work.
+6. Each authoritative source system is active and has a current person who can
+   retrieve the required record.
+7. The source instructions name the report or query, filters, date range,
+   timezone, export format, and completeness checks.
+8. Management has tested the retrieval steps and received the expected output.
+9. Required policies are effective and scheduled or event work can run.
+10. The effective date reflects when this implemented form began, not when
+    someone edited the file.
+
+If one of these facts is missing, keep the control planned or partially
+implemented. Do not backdate implementation to make a timeline look complete.
+The
+[startup SOC 2 timeline](/blogs/soc-2-timeline-startups) explains why the
+candidate evidence period should begin only after the control and evidence path
+are reliable.
+
+## Check the whole control set
+
+Reviewing controls one at a time can hide gaps and duplicates. Review the
+collection before relying on it.
+
+Ask:
+
+- Does every applicable criterion have enough control coverage?
+- Does every control map to a current risk, commitment, requirement, or policy?
+- Are two controls describing the same activity under different names?
+- Do controls cover the full service boundary rather than one convenient tool?
+- Are customer or provider responsibilities stated separately where the
+  control depends on them?
+- Does every scheduled or event-driven control have active work behind it?
+- Can each control produce dated records that match its statement and scope?
+- Are any controls marked not applicable based on an old boundary or
+  unsupported assumption?
+
+Record management's applicability decisions. A generic list can remain useful
+for discovery, but the final control set should show why each control belongs,
+what it covers, and how it operates.
+
+## Operate the control and keep the record
+
+Implementation is the starting point for operating evidence. Continuous
+technical controls still need source records and review when the design calls
+for it. Scheduled controls need completed work for each required period.
+Event-driven controls need a record when the triggering event occurs.
+
+The GRC record should connect the control to the dated result and supporting
+evidence. It should not copy live infrastructure logs or access data into Git
+by default. Keep sensitive operating data in approved source systems, then
+store or reference a fixed artifact according to the company's access,
+classification, and retention rules.
+
+People still need to investigate failures and exceptions. A passing dashboard
+status does not replace the decision, remediation, or review record that the
+control requires.
+
+## Manage SOC 2 controls for startups in filegrc
+
+filegrc stores each control as structured JSON with companion Markdown for its
+procedure. The active model connects the control to requirements, policies,
+systems, evidence sources, owners, operation mode, operation pattern, and
+effective date.
+
+Start with the model and current workflow state:
+
+```sh
+npx filegrc guide control --json
+npx filegrc list control --workflow --json
+```
+
+Inspect existing records and relationship candidates before creating or
+changing a control:
+
+```sh
+npx filegrc scaffold control --title "CONTROL TITLE"
+npx filegrc get CONTROL_ID --mutation
+npx filegrc references CONTROL_ID --json
+npx filegrc content control CONTROL_ID --json
+```
+
+Once draft controls exist, review which ones apply to the current program
+scope. Fill the reviewer, review date, and fact-backed decisions in the
+scaffold before previewing it:
+
+```sh
+npx filegrc review-applicability --scaffold --type control > decisions.json
+npx filegrc review-applicability decisions.json --preview --json
+```
+
+After management reviews the control set and finishes the real procedures and
+source systems, run the shared checks:
+
+```sh
+npx filegrc validate --json
+npx filegrc program-readiness --json
+```
+
+The browser and CLI use the same model and readiness rules. File edits remain
+authoritative, so an engineer or agent can prepare a reviewable change and see
+the same missing work without opening the browser.
+
+filegrc does not operate the safeguards or collect live evidence from external
+systems. It manages the control records, scheduled work, and audit evidence.
+The CPA firm selects its tests, evaluates exceptions, decides whether evidence
+is sufficient, and issues the SOC 2 report.
+
+## Build the smallest truthful control set
+
+The goal is not the fewest controls or the largest matrix. Build the set that
+fits the scoped service and addresses its applicable criteria, risks, and
+commitments. Make every control specific enough to operate, test its evidence
+path, and keep changes reviewable.
+
+[Run filegrc locally](/) to manage that work as JSON, Markdown, and Git. Start
+with draft records, review each control against current practice, and mark it
+implemented only when the source facts support the status.
