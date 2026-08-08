@@ -1,0 +1,341 @@
+---
+title: "SOC 2 Risk Assessment for Startups: A Practical Workflow"
+description: "Run a SOC 2 risk assessment for a startup. Define scope and scoring, record each risk and treatment, approve the result, and keep reviews current."
+publishedDate: "2026-08-08"
+lastMod: "2026-08-08"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 risk assessment",
+    "SOC 2 risk assessment template",
+    "SOC 2 risk register",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc keeps the dated assessment, individual risks, treatment decisions, controls, evidence, and follow-up connected."
+faqs:
+  - question: "What is a SOC 2 risk assessment?"
+    answer: "A SOC 2 risk assessment is management's documented process for identifying and evaluating risks that could affect the scoped service and its commitments. The record should define the scope and method, identify who performed and reviewed the work, connect the risks considered, and preserve the resulting decisions and evidence."
+  - question: "What should a SOC 2 risk assessment template include?"
+    answer: "The assessment template should include purpose, scope, participants, method, inputs reviewed, threats considered, risks created or changed, conclusions, evidence, approval, and follow-up. Keep a separate risk register with an owner, rating, response, affected scope, treatment, and review date for each risk."
+  - question: "What is the difference between a risk assessment and a risk register?"
+    answer: "The assessment is the dated evaluation process. The risk register is the current set of individual risk records produced and maintained through that process. One assessment may review many existing risks, create new risks, and change ratings or treatments."
+  - question: "How often should a startup perform a SOC 2 risk assessment?"
+    answer: "Set a cadence in the company's approved policy and run another assessment after a material change that could alter risk. Give higher risks and accepted risks their own review dates when they need attention before the next full assessment."
+  - question: "What is inherent risk versus residual risk?"
+    answer: "Inherent risk is the exposure before considering the controls used to treat it. Residual risk is the exposure that remains after those controls. Document the assumptions behind both ratings so a reviewer can follow the decision."
+  - question: "Does a risk assessment make a startup SOC 2 compliant?"
+    answer: "No. A risk assessment informs management's control design and risk decisions, but the startup must still implement and operate its controls, maintain evidence, and support the independent CPA examination. The CPA firm decides whether the evidence is sufficient and appropriate for the engagement."
+furtherReading:
+  - text: "Tailor and approve SOC 2 policy templates"
+    url: "/blogs/soc-2-policy-templates-startups"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Build a realistic startup SOC 2 timeline"
+    url: "/blogs/soc-2-timeline-startups"
+  - text: "Build reviewable access review evidence"
+    url: "/blogs/soc-2-access-review-evidence"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+A SOC 2 risk assessment should record a dated evaluation of the startup's real
+service, systems, vendors, data, commitments, and recent changes. Keep that
+assessment separate from the risk register. The assessment explains the scope,
+method, participants, inputs, conclusions, and approval. Each risk then gets
+its own owner, rating, response, treatment, affected scope, and review date.
+That split makes the work easier to update and review.
+
+## TL;DR
+
+- Define the service boundary and risk method before assigning scores.
+- Use one record for the assessment and one record for each risk.
+- Review systems, vendors, data, commitments, incidents, findings, and material
+  changes as inputs.
+- Rate inherent risk before controls and residual risk after current controls.
+- Give each risk an owner, response, treatment date, and next review date.
+- Have someone other than the assessor review the completed assessment.
+- Repeat the work on the approved schedule and after a material change.
+
+## What the Trust Services Criteria ask management to do
+
+The AICPA's
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+are the criteria used to evaluate controls relevant to security, availability,
+processing integrity, confidentiality, and privacy. Risk assessment supports
+management's control decisions within that structure. It is not a generic
+security questionnaire or a list of auditor-selected controls.
+
+NIST SP 800-30 is not a SOC 2 requirement, but it gives a useful description of
+the management purpose. NIST says
+[risk assessments support decisions about risk responses](https://csrc.nist.gov/pubs/sp/800/30/r1/final).
+That is the job here: identify plausible events, assess their effect on the
+scoped service, decide what to do, and preserve enough context for someone else
+to follow the decision.
+
+A startup should confirm its planned report scope and criteria with a qualified
+CPA firm. Management owns the risk assessment, risk register, and control
+decisions. The CPA firm performs the independent examination.
+
+## Keep the assessment separate from the risk register
+
+Many SOC 2 risk assessment templates put everything in one spreadsheet. That
+can work for a very small program, but it often combines two records with
+different lifecycles.
+
+| Record          | Question it answers                                                    | Typical change pattern                                   |
+| --------------- | ---------------------------------------------------------------------- | -------------------------------------------------------- |
+| Risk assessment | What scope, method, inputs, and people produced this dated conclusion? | Completed on a schedule or after a material change       |
+| Risk register   | What individual risks does management own and track now?               | Updated when ratings, controls, responses, or scope move |
+
+One assessment may review 20 existing risks, create two new risks, and change
+three treatments. The assessment should link all risks considered and call out
+the new or materially changed ones. The individual risk records should preserve
+their own owners, ratings, responses, and follow-up after the assessment closes.
+
+This prevents the assessment summary from recording a problem without leaving
+an owned risk or action after the meeting. If an issue needs a separate
+remediation lifecycle, record the finding or assigned action instead of burying
+it in the narrative.
+
+## Define scope before scoring
+
+Start with the same boundary used for the planned SOC 2 report. Name the
+product or service, entity, locations, environments, people, and data in scope.
+Then list the systems and vendors that support the service and the commitments
+the company has made to customers or other parties.
+
+Write down exclusions too. An exclusion needs a reason tied to the service
+boundary, not a desire to avoid more work.
+
+The assessment scope should answer:
+
+- Which service and business processes did the team evaluate?
+- Which production and supporting systems did it consider?
+- Which vendors or subservice organizations can affect the service?
+- Which customer, legal, privacy, security, and availability commitments apply?
+- Which data types and trust boundaries matter?
+- Which material changes occurred since the last assessment?
+- Which areas were outside the evaluation, and why?
+
+Use the
+[startup SOC 2 checklist](/blogs/soc-2-compliance-checklist-startups) if the
+service boundary, systems, vendors, commitments, or people are not yet
+documented. A score cannot fix an incomplete scope.
+
+## Choose a method your team can repeat
+
+A risk method should be simple enough for two reviewers to reach similar
+results from the same facts. Define it before rating individual risks.
+
+At minimum, document:
+
+| Method choice     | What to define                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| Risk statement    | How the team describes a cause, event, and effect                                  |
+| Likelihood scale  | What each label means and the time horizon used                                    |
+| Impact scale      | What each label means for customers, operations, commitments, and the organization |
+| Overall rating    | How likelihood and impact produce the rating                                       |
+| Control treatment | Which current controls may reduce likelihood or impact                             |
+| Response choices  | When the team avoids, mitigates, transfers, accepts, or monitors a risk            |
+| Review rules      | Which ratings or responses need earlier review or added approval                   |
+
+Do not copy a five-by-five matrix without defining its labels. "Likely" might
+mean once per year to one person and once per month to another. "High impact"
+might refer to downtime, data exposure, contract breach, financial loss, or all
+four. Write definitions that fit the scoped service.
+
+Numbers can help sort work, but they do not make judgment objective. If the
+team calculates a score, retain the likelihood, impact, overall rating, and
+reasoning. Do not let multiplication hide a severe customer or security effect.
+
+## Review evidence, not memory
+
+An assessment workshop should use current program and operating inputs. Before
+the meeting, gather:
+
+- the prior assessment and current risk register;
+- changes to the service boundary, architecture, data, or commitments;
+- current system and vendor inventories;
+- incidents, security events, findings, exceptions, and overdue actions;
+- vulnerability, backup, access, availability, and change records;
+- customer or internal complaints that point to process failure;
+- changes in staff, ownership, providers, or operating procedures;
+- new or changed laws and contracts that management has determined apply;
+- current controls and evidence about how they operate.
+
+The list should fit the startup. A source can show both risk and treatment. For
+example, an access review may show that stale access is possible and also show
+that a periodic control finds and removes it.
+
+Keep sensitive exports in an approved evidence system when they do not belong
+in Git. The assessment record can link a fixed evidence record without copying
+credentials, personal data, or live infrastructure data into the GRC
+repository.
+
+## Write one clear record for each risk
+
+Use a cause-event-effect structure so the risk is specific enough to own and
+treat:
+
+> Because departure access depends on several separate systems, an account may
+> remain active after a worker leaves, which could allow unauthorized access to
+> production data.
+
+That statement is more useful than "access risk." It names the condition, the
+event, and the possible effect without claiming the event already happened.
+
+A practical SOC 2 risk register should keep these fields:
+
+| Field            | What to record                                                   |
+| ---------------- | ---------------------------------------------------------------- |
+| Title            | A short name for the scenario                                    |
+| Description      | The cause, possible event, and effect                            |
+| Categories       | Stable labels used to group or filter risks                      |
+| Owner            | The person, team, or appointed role accountable for the decision |
+| Affected scope   | Systems, vendors, commitments, requirements, or data at risk     |
+| Inherent rating  | Likelihood and impact before current controls                    |
+| Response         | Avoid, mitigate, transfer, accept, or monitor                    |
+| Controls         | Current controls that treat the risk                             |
+| Residual rating  | Likelihood and impact after those controls                       |
+| Treatment target | The date planned treatment work should finish                    |
+| Next review      | The date management will reassess the risk                       |
+| Acceptance       | The approver, reason, conditions, and expiry for accepted risk   |
+
+Do not use the risk owner field as a list of everyone involved. The owner is
+accountable for the decision and follow-up. Individual action items can name
+the people who must complete separate work.
+
+## Rate inherent and residual risk in the right order
+
+Inherent risk describes exposure before considering the controls that treat
+it. Residual risk describes what remains after the current controls.
+
+For the departure-access example, management might reason:
+
+1. Several systems grant production access, so a missed revocation is plausible
+   without a coordinated process.
+2. Unauthorized production access could affect confidential customer data and
+   contractual duties.
+3. A departure workflow, identity-provider suspension, system-owner checklist,
+   and later access review reduce the likelihood that access remains.
+4. Some residual exposure remains when a system sits outside centralized
+   identity or an integration fails.
+
+The final labels depend on the startup's defined method. Do not copy an example
+rating into the register. Record the facts and assumptions that support the
+rating, then link the controls that management relies on.
+
+The
+[SOC 2 controls guide](/blogs/soc-2-controls-startups) explains how to turn a
+risk response into an owned control with a procedure and authoritative evidence
+source. If a proposed control does not operate yet, do not use it to lower the
+current residual rating.
+
+## Choose a response and track the decision
+
+Each risk needs an explicit response:
+
+- **Avoid:** stop the activity or remove the exposure.
+- **Mitigate:** add or change controls to reduce likelihood or impact.
+- **Transfer:** shift defined financial or operating consequences through a
+  contract or other arrangement while recording what remains.
+- **Accept:** approve the residual exposure for a defined period and under
+  stated conditions.
+- **Monitor:** watch an exposure when management is not adding treatment now.
+
+Acceptance should not be a permanent blank check. Name the approver, decision
+date, reason, conditions, and expiry or review date. A changed service,
+commitment, incident, or threat may invalidate the old decision before that
+date.
+
+When mitigation needs separate work, create an owned action with a deadline and
+completion proof. Keep the risk open or under monitoring until its status
+matches the actual decision and treatment state.
+
+## Complete and approve the assessment
+
+The assessment is complete when a reviewer can reconstruct what the team did
+without guessing. Record:
+
+- assessment kind, scope, trigger, and dates;
+- assessors and other participants;
+- the method used;
+- systems, vendors, commitments, and other inputs reviewed;
+- every risk considered;
+- risks created or materially changed;
+- evidence supporting the work;
+- conclusions, exceptions, and assigned follow-up;
+- a reviewer who was not an assessor;
+- the completion and approval dates.
+
+The reviewer should check that the scope matches the real service, the team did
+not omit a material dependency or recent change, and ratings and responses
+match management's current decisions.
+
+Do not mark planned work complete to satisfy a checklist. Keep the assessment
+in progress until the risks, evidence, review, and follow-up records exist.
+
+## Set the cadence and change triggers
+
+The approved policy should set the cadence for a full assessment. Higher-rated
+risks and accepted risks may need their own earlier review dates.
+
+Also define change triggers. Reassess affected risks when the startup:
+
+- launches a material service or architecture change;
+- begins handling a new class of customer data;
+- adds or replaces a material vendor;
+- makes a new security, privacy, or availability commitment;
+- experiences a significant incident or control failure;
+- finds a material vulnerability or audit issue;
+- changes the boundary of the planned SOC 2 report.
+
+A change-driven review does not always require repeating every interview. State
+the trigger and affected scope, review the related risks, and preserve what
+changed.
+
+## Manage the assessment and register in filegrc
+
+[filegrc](/) models the dated assessment and individual risks separately. Start
+by asking the active model for the requirements and current relationship
+candidates:
+
+```sh
+npx filegrc guide risk-assessment --json
+npx filegrc guide risk --json
+npx filegrc list risk --workflow --json
+npx filegrc references SYSTEM_ID --json
+```
+
+Scaffold the assessment and each new risk:
+
+```sh
+npx filegrc scaffold risk-assessment \
+  --title "2026 Annual Risk Assessment" > /tmp/risk-assessment.json
+
+npx filegrc scaffold risk \
+  --title "Production access persists after departure" > /tmp/risk.json
+```
+
+The scaffold is a prompt. It starts in a non-final state and leaves required
+facts blank. Fill in the structured record and companion Markdown, then create
+or update it through the validated CLI. Link the assessment to every risk
+considered, plus the risks that were new or materially changed.
+
+Run the shared validation and readiness calculations after the change:
+
+```sh
+npx filegrc validate --json
+npx filegrc program-readiness --summary --json
+```
+
+Review the Git diff before committing. The diff should show the assessment,
+risk decisions, control links, and any separately assigned follow-up together
+when practical.
+
+filegrc manages GRC records and audit evidence. It does not operate identity,
+cloud, backup, endpoint, monitoring, or incident-detection systems. It also does
+not decide whether evidence is sufficient or appropriate for a SOC 2
+examination. Keep the operating facts in their authoritative systems, connect
+reviewable records, and let the CPA firm make the independent judgment.
