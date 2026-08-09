@@ -1,0 +1,302 @@
+---
+title: "SOC 2 System Description Template: A Startup Guide"
+description: "Write a SOC 2 system description from current scope, systems, commitments, controls, vendors, incidents, and changes, then review the exact draft."
+publishedDate: "2026-08-09"
+lastMod: "2026-08-09"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 system description template",
+    "SOC 2 system description",
+    "SOC 2 description criteria",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects a SOC 2 system description to the scope, systems, commitments, controls, vendors, incidents, changes, and exact approved Markdown revision."
+faqs:
+  - question: "What is a SOC 2 system description?"
+    answer: "A SOC 2 system description is management's account of the service and system covered by the examination. It explains the service, commitments, system components, applicable criteria and controls, relevant vendors and customer responsibilities, significant incidents, and significant changes for the reporting date or period."
+  - question: "Who writes the SOC 2 system description?"
+    answer: "Management owns the description and should reconcile it to current company records. The CPA firm reviews the presentation as part of the engagement and evaluates the description under the applicable AICPA Description Criteria."
+  - question: "What should a SOC 2 system description template include?"
+    answer: "Start with the reporting scope and the nine Description Criteria sections. Cover services, commitments and requirements, infrastructure, software, people, procedures, data, significant incidents, criteria and controls, customer responsibilities, subservice organizations, excluded criteria, and significant changes."
+  - question: "Is a SOC 2 system description the same as a scope document?"
+    answer: "No. A scope record states the service, systems, criteria, and date or period covered by the engagement. The system description turns that boundary into a management narrative and adds commitments, system components, controls, vendors, customer responsibilities, incidents, and changes."
+  - question: "How does a Type 1 system description differ from Type 2?"
+    answer: "A Type 1 description is framed as of the specified reporting date. A Type 2 description covers the specified period, so management must also reconcile significant incidents and changes across that period and keep the narrative consistent with the controls and operating records being examined."
+  - question: "Can software write the final SOC 2 system description?"
+    answer: "Software can provide a structure, connect source records, and find missing or stale facts. Management still owns the accuracy of the description, and the CPA firm must review the presentation for the actual engagement."
+furtherReading:
+  - text: "Run a practical SOC 2 risk assessment"
+    url: "/blogs/soc-2-risk-assessment-startups"
+  - text: "Tailor and approve SOC 2 policy templates"
+    url: "/blogs/soc-2-policy-templates-startups"
+  - text: "Build a realistic startup SOC 2 timeline"
+    url: "/blogs/soc-2-timeline-startups"
+  - text: "Choose between SOC 2 Type 1 and Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Sunpeak-AI/filegrc"
+---
+
+A SOC 2 system description template should help management describe the real
+service covered by the examination. Start with the agreed scope, then reconcile
+the narrative to current systems, vendors, commitments, controls, people, data,
+incidents, and changes. Keep the draft with its source records, have the CPA firm
+review the presentation, and bind approval to the exact text used for the
+engagement.
+
+## TL;DR
+
+- Treat the template as a preparation outline, not a finished management
+  statement.
+- Use the AICPA Description Criteria for the section structure.
+- Write from current program and operating records instead of memory.
+- Keep the description consistent with the engagement scope and control set.
+- Reconcile incident and change claims to complete sources for the date or
+  period.
+- Have a separate approver review the exact draft after the CPA firm's comments.
+- Update the description when scope or another material fact changes.
+
+## What is a SOC 2 system description?
+
+The AICPA says its
+[2018 SOC 2 Description Criteria](https://www.aicpa-cima.com/resources/download/get-description-criteria-for-your-organizations-soc-2-r-report)
+are benchmarks for preparing and evaluating a service organization's system
+description in a SOC 2 examination. The description is management's account of
+the service and the system that supports it.
+
+The system description should let a report user understand what the service
+does, which parts of the organization and technology support it, what management
+has committed to do, and where controls depend on vendors or customers. It also
+needs to match the specified date or period and the criteria covered by the
+engagement.
+
+Management owns the description. The CPA firm performs the independent
+examination and evaluates its presentation. Ask the firm for its preferred
+format and review process before treating any template as final.
+
+## Do not confuse the description with adjacent records
+
+The description uses several records, but it does not replace them.
+
+| Record               | What it decides or records                                                     |
+| -------------------- | ------------------------------------------------------------------------------ |
+| Engagement scope     | The service, systems, criteria, and specified date or period under examination |
+| System inventory     | The current infrastructure, software, owners, data, and evidence-source facts  |
+| Commitment records   | The promises and duties that shape system requirements                         |
+| Control records      | The safeguards and management activities in the scoped control set             |
+| System description   | Management's narrative of how those facts fit together                         |
+| Management assertion | Management's formal assertion for the engagement                               |
+
+Write the scope first. A narrative cannot settle a boundary that management and
+the CPA firm have not agreed. Use the
+[startup SOC 2 checklist](/blogs/soc-2-compliance-checklist-startups) to finish
+the service, criteria, systems, vendors, people, and data decisions that the
+description needs.
+
+## Build the template from current source records
+
+A downloaded document starts blank because it does not know the startup. Before
+drafting, assemble the records behind each claim:
+
+- the engagement and its agreed date or period;
+- the service boundary and every in-scope system;
+- selected Trust Services Categories and criteria;
+- customer, legal, security, privacy, and availability commitments;
+- the implemented control set and current procedures;
+- people and teams who develop, operate, secure, and oversee the service;
+- relevant vendors, their services, and the selected presentation method;
+- customer and provider responsibilities on which controls depend;
+- incident and change records for the specified date or period;
+- data classifications, flows, retention, and disposal rules.
+
+Name one owner who can reconcile the whole document. Section contributors may
+know infrastructure, product workflows, contracts, or people processes, but a
+single owner needs to resolve contradictions across the final draft.
+
+The source records remain authoritative for day-to-day program work. The system
+description is a governed narrative prepared for the engagement, so copying the
+same inventory into several uncontrolled documents creates more places for facts
+to drift.
+
+## Use all nine Description Criteria sections
+
+The FileGRC starter organizes the work under DC1 through DC9. The table below
+paraphrases the preparation questions. Use the official AICPA resource and the
+CPA firm's instructions for the final wording.
+
+| Section | Preparation question                                                                               | Records to reconcile                                       |
+| ------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| DC1     | What services does the startup provide, to whom, and through which main workflows?                 | Scope, systems, service commitments                        |
+| DC2     | Which commitments and system requirements guide the service and its controls?                      | Commitments, requirements, contracts, policies             |
+| DC3     | Which infrastructure, software, people, procedures, and data make up the system?                   | Systems, people, teams, controls, classifications          |
+| DC4     | Which significant incidents matter to understanding the system for the date or period?             | Incident population, incident records, findings            |
+| DC5     | Which criteria apply, and which controls address them?                                             | Framework, requirements, controls, applicability decisions |
+| DC6     | Which controls must customers operate for management's controls to work as intended?               | Complementary user-entity controls, commitments            |
+| DC7     | Which subservice organizations support the system, how are they presented, and what duties remain? | Vendors, vendor reviews, complementary controls            |
+| DC8     | Which criteria inside a selected category are not relevant, and what supports that conclusion?     | Applicability review, scope, commitments, risks            |
+| DC9     | Which significant changes matter to understanding the system for the date or period?               | Change population, system history, policies, incidents     |
+
+Do not answer a section with a policy slogan. Name enough of the real service,
+process, or relationship for a reader to understand the boundary and control
+context.
+
+## Describe the five system components with useful detail
+
+DC3 often takes the most work because it joins technical and organizational
+facts. Organize it under five component headings.
+
+### Infrastructure
+
+Describe the production and supporting infrastructure inside the boundary.
+Include the main cloud environments, networks, compute, storage, facilities,
+and security services that a reader needs to understand. Avoid an asset dump.
+Explain each material component's role in delivering or protecting the service.
+
+### Software
+
+Cover the application, data stores, deployment path, source control, identity,
+monitoring, and important business software. State what each category does and
+where it fits. Keep fast-changing inventory details in the system records so
+the narrative can stay readable.
+
+### People
+
+Describe the teams and roles that build, operate, secure, support, and oversee
+the service. Use real reporting and responsibility facts. Do not invent
+departments or separation that a small startup does not have.
+
+### Procedures
+
+Summarize the procedures that support the controls, such as access management,
+change review, incident response, vendor review, backup recovery, monitoring,
+and recurring oversight. Link the detailed procedure records instead of copying
+every operational step into the description.
+
+### Data
+
+Describe the important data types, classifications, flows, storage locations,
+retention, and disposal rules. State what the service receives, creates,
+processes, stores, and transmits without putting customer data or secrets into
+the preparation document.
+
+## Keep the control narrative consistent with operation
+
+DC5 connects the selected criteria to management's controls. The description
+may summarize those controls or point to a control matrix in the format agreed
+with the CPA firm. It should not introduce controls that do not exist in the
+program records.
+
+For every control mentioned, check:
+
+1. The control is in the engagement scope.
+2. Its owner, systems, procedure, and operation pattern match current practice.
+3. Its criteria and commitment mappings are current.
+4. The team can retrieve the expected source evidence.
+5. Its status and effective date support the description's date or period.
+
+Use the [SOC 2 controls guide](/blogs/soc-2-controls-startups) to fix incomplete
+control records before revising prose around them. A polished paragraph does
+not turn a planned safeguard into an implemented control.
+
+## Make vendor and customer responsibilities explicit
+
+The description needs to explain important dependencies outside management's
+direct operation.
+
+For each relevant provider, record the service it supplies, why it is in scope,
+and whether the engagement uses the carve-out or inclusive method. Then identify
+the complementary controls that management must operate when the provider's
+controls depend on the startup.
+
+Do the same for customers. A complementary user-entity control should state a
+specific customer action needed for the startup's controls to work as intended.
+Do not turn product advice or a contract preference into a customer control
+without a real dependency.
+
+Management and the CPA firm should make these conclusions for the engagement.
+Software can keep the vendor, complementary-control, and scope records
+connected, but it cannot choose the presentation method on management's behalf.
+
+## Reconcile incidents and changes before saying none occurred
+
+For a Type 2 period, the incident and change sections cover the period rather
+than one convenient point in time. A blank internal tracker is not enough to
+support a statement that management identified no significant incidents or
+changes.
+
+Reconcile the complete populations from the authoritative source systems. Keep
+the query or report parameters, period, timezone, count, and completeness checks
+with the population evidence, including when the count is zero. Then decide
+which events matter to a report user's understanding and explain the result in
+the description.
+
+For Type 1, frame the description for the specified date and discuss incidents
+or changes relevant to understanding the system as of that date. The
+[AICPA's SOC 2 publication](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy-OPL)
+provides the engagement guidance. Confirm the treatment with the CPA firm rather
+than applying a generic example unchanged.
+
+## Review the exact draft that will support the engagement
+
+Run a fact review before the approval review.
+
+| Reviewer                  | What to check                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| Service owner             | Service workflows, customers, boundary, and commitments                       |
+| Engineering or operations | Infrastructure, software, deployment, monitoring, backup, and changes         |
+| Security or program owner | Criteria, controls, incidents, vendors, risks, and evidence links             |
+| People-process owner      | Roles, workforce procedures, and training facts                               |
+| Management approver       | Completeness, accuracy, unresolved exceptions, and approval of the exact text |
+| CPA firm                  | Engagement-specific presentation, scope, and required revisions               |
+
+Resolve differences in the source records first. If the document says one
+system is in scope while the engagement or control records say another, editing
+only the narrative hides the problem.
+
+After the CPA firm's comments, have an approver who is separate from the owner
+review the final Markdown. Bind the approval to that exact revision. If the text
+changes later, move it back through review instead of carrying the old approval
+forward.
+
+## Manage a SOC 2 system description in filegrc
+
+[filegrc](/) creates the system description as a draft governed document with
+DC1 through DC9 prompts. Inspect the current record and its Markdown revision:
+
+```sh
+npx filegrc get document document-soc2-system-description --mutation
+npx filegrc content document document-soc2-system-description --json
+```
+
+Write the revised Markdown through the same validated content path used by the
+browser. Read the system description Markdown hash from `contentRevisions` in
+the mutation output before writing:
+
+```sh
+npx filegrc content document document-soc2-system-description \
+  --write system-description.md \
+  --expected-revision CONTENT_REVISION \
+  --json
+```
+
+Link the governed document from the real audit record through
+`systemDescriptionDocumentId`, then run the shared preparation checks:
+
+```sh
+npx filegrc audit-readiness AUDIT_ID --json
+npx filegrc prepare-audit AUDIT_ID --json
+npx filegrc validate --json
+```
+
+FileGRC checks that the required description sections have substantive content,
+that preparation placeholders are gone, and that an active governed document's
+approval matches its Markdown revision. It also connects the description to the
+engagement and evidence packet.
+
+FileGRC manages GRC records and audit evidence. It does not inspect live
+infrastructure, decide which facts matter to the report, approve management's
+description, or evaluate whether audit evidence is sufficient. Keep operating
+facts in their authoritative systems, have management own the narrative, and
+work with the CPA firm on the final presentation.
