@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v2 workspaces must run `npx filegrc migrate --to-model 3 --preview --json` after installing a model v3 package. Review each automatic, review-required, and unsupported item before applying the same migration with `--yes`. Model v1 workspaces migrate to v2 first. See the [model v3 upgrade guide](https://github.com/Sunpeak-AI/filegrc/blob/main/docs/upgrading-to-model-v3.md).
+Existing model v2 workspaces must run `npx filegrc migrate --to-model 3 --preview --json` after installing a model v3 package. Review each automatic, review-required, and unsupported item before applying the same migration with `--yes`. Model v1 workspaces migrate to v2 first. See the [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md).
 
 ## How it works
 
@@ -92,4 +92,4 @@ The independent CPA firm still selects samples, tests controls, evaluates except
 
 Do not put secrets or personal data that may need erasure into Git. The editable local server has no authentication and binds to loopback by default.
 
-Learn more at [filegrc.com](https://filegrc.com) or [view the source on GitHub](https://github.com/Sunpeak-AI/filegrc).
+Learn more at [filegrc.com](https://filegrc.com) or [view the source on GitHub](https://github.com/Alignbase/filegrc).

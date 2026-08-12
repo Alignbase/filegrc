@@ -59,4 +59,4 @@ and issues the SOC 2 report.
 ## Links
 
 - Website: https://filegrc.com
-- Source: https://github.com/Sunpeak-AI/filegrc
+- Source: https://github.com/Alignbase/filegrc

@@ -38,7 +38,7 @@ test("serve ends startup output with the GitHub star message", async (context) =
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
     stdout += chunk;
-    if (!stopping && stdout.includes("https://github.com/Sunpeak-AI/filegrc")) {
+    if (!stopping && stdout.includes("https://github.com/Alignbase/filegrc")) {
       stopping = true;
       child.kill("SIGTERM");
     }
@@ -68,7 +68,7 @@ test("serve ends startup output with the GitHub star message", async (context) =
   );
   assert.equal(
     stdout.slice(stdout.lastIndexOf("\n\x1b[38;2;255;184;0m")),
-    "\n\x1b[38;2;255;184;0m⭐️  → ❤️  https://github.com/Sunpeak-AI/filegrc\x1b[0m\n\n"
+    "\n\x1b[38;2;255;184;0m⭐️  → ❤️  https://github.com/Alignbase/filegrc\x1b[0m\n\n"
   );
 });
 

@@ -105,7 +105,7 @@ npx filegrc migrate --to-model 3 --preview --json
 
 Model v1 workspaces migrate to v2 first. Review the v3 preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The migration creates no approvals, holders, evidence, or historical dates.
 
-The [model v3 upgrade guide](https://github.com/Sunpeak-AI/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains the classifications, automatic changes, and required post-migration review.
+The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains the classifications, automatic changes, and required post-migration review.
 
 Run these commands when working with records:
 

@@ -42,7 +42,7 @@ The normal runtime uses data model v3. Start a model v2 upgrade with a read-only
 npx filegrc migrate --to-model 3 --preview --json
 ```
 
-Review every automatic, review-required, and unsupported item. Resolve unsupported items before applying the same migration with `--yes`. The migration writes one atomic batch, validates model v3, changes no Git history, and is safe to rerun. The [model v3 upgrade guide](https://github.com/Sunpeak-AI/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains every migration class and the review that follows.
+Review every automatic, review-required, and unsupported item. Resolve unsupported items before applying the same migration with `--yes`. The migration writes one atomic batch, validates model v3, changes no Git history, and is safe to rerun. The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains every migration class and the review that follows.
 
 A model v1 workspace must migrate to v2 first:
 
@@ -50,7 +50,7 @@ A model v1 workspace must migrate to v2 first:
 npx filegrc migrate --to-model 2 --preview --json
 ```
 
-Follow the [model v2 upgrade guide](https://github.com/Sunpeak-AI/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3 preview.
+Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3 preview.
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
