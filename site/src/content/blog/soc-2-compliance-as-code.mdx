@@ -1,0 +1,291 @@
+---
+title: "SOC 2 Compliance as Code: A Practical Git Workflow"
+description: "Run SOC 2 compliance as code with structured records, Markdown, Git history, CLI validation, and clear boundaries for evidence and CPA judgment."
+publishedDate: "2026-08-13"
+lastMod: "2026-08-13"
+author: "Abe Wheeler"
+tags: ["SOC 2 compliance as code", "GRC as code", "SOC 2 CLI", "file-based GRC"]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc uses structured records, Markdown, Git history, and CLI checks for SOC 2 program work."
+faqs:
+  - question: "What does SOC 2 compliance as code mean?"
+    answer: "SOC 2 compliance as code means keeping program records in machine-readable files that software can validate and use to derive workflow state, while keeping policies and other long-form work in reviewable text and preserving changes in version control."
+  - question: "Is compliance as code the same as policy as code?"
+    answer: "No. Policy as code usually evaluates technical rules against systems or configurations. SOC 2 compliance as code also needs scope, owners, policies, controls, recurring work, evidence records, management decisions, and audit preparation."
+  - question: "Can compliance as code automate a SOC 2 examination?"
+    answer: "No. It can validate management records, calculate workflow state, and prepare evidence, but an independent CPA firm plans and performs the examination, selects samples, evaluates exceptions, and issues the report."
+  - question: "Should SOC 2 evidence be stored in Git?"
+    answer: "Some fixed evidence can be stored in a private repository when access and retention rules permit it. Keep secrets, credentials, regulated personal data, and personal data that may need deletion out of Git."
+  - question: "Can an AI agent run a compliance-as-code workflow?"
+    answer: "An agent can discover record types, prepare validated changes, complete work from reviewed facts, and run readiness checks. People still approve policies, operate controls, review sensitive changes, and make management and audit judgments."
+furtherReading:
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Build complete SOC 2 audit populations"
+    url: "/blogs/soc-2-audit-populations"
+  - text: "Save useful access review evidence"
+    url: "/blogs/soc-2-access-review-evidence"
+  - text: "Write a connected SOC 2 system description"
+    url: "/blogs/soc-2-system-description-template"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 compliance as code means storing program records in machine-readable
+files that software can validate and use to derive workflow state, while
+keeping policies and other narrative work in reviewable text. Git records each
+change. Automated infrastructure checks can feed this system, but they do not
+replace control operation, management decisions, evidence evaluation, or the
+independent CPA examination.
+
+## TL;DR
+
+- Put scope, owners, relationships, statuses, and domain dates in structured
+  records.
+- Keep policies, procedures, minutes, and narratives in Markdown.
+- Keep operating data in its source systems, then collect fixed evidence with
+  source, time, scope, and verification details.
+- Use Git for diffs and revisions, while keeping approval and completion dates
+  explicit in the records.
+- Derive due work and readiness from the current files instead of copying
+  checklist state into another database.
+
+## What SOC 2 compliance as code means
+
+In this guide, compliance as code describes an operating model, not a new SOC 2
+standard. The AICPA publishes the [Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+used to evaluate controls relevant to security, availability, processing
+integrity, confidentiality, and privacy. Management still defines its system,
+selects applicable criteria, designs controls, operates them, and provides the
+records and evidence used in the examination.
+
+For a small software company, compliance as code is a way to manage that work
+with the same properties engineers expect from source code:
+
+1. A defined data model says which records and relationships are valid.
+2. Plain files keep the current program state inspectable.
+3. Validation catches missing fields and broken references.
+4. Commands derive due work and readiness from the source files.
+5. Git preserves authors, revisions, diffs, and commit messages.
+6. CI can reject an invalid program change before it lands.
+
+NIST's [Open Security Controls Assessment Language](https://pages.nist.gov/OSCAL/)
+shows why machine-readable compliance records are useful. Its models express
+control information in formats such as JSON, XML, and YAML so tools can
+validate, exchange, and process it. A SOC 2 repository does not need to use
+OSCAL, but it benefits from the same split between structured facts and
+human-readable output.
+
+## Compliance as code needs more than policy checks
+
+Many search results use compliance as code to mean an executable rule that
+checks infrastructure or blocks a deployment. Those checks can prove a narrow
+technical fact, such as whether a setting matched a rule at a given time. A SOC
+2 program also includes work that cannot be reduced to a configuration test.
+
+| Layer            | Example                                              | What code can do                                    | What people still do                    |
+| ---------------- | ---------------------------------------------------- | --------------------------------------------------- | --------------------------------------- |
+| Program records  | Scope, owners, risks, controls, vendors, systems     | Validate fields and relationships                   | Decide what is true and applicable      |
+| Governed content | Policies, plans, procedures, narratives              | Check status, required content, and revision links  | Write, review, and approve the content  |
+| Operating work   | Access reviews, vendor reviews, risk work, incidents | Calculate schedules and validate completion records | Perform the work and resolve exceptions |
+| Technical checks | Configuration rules, scans, deployment gates         | Run tests and produce source output                 | Design the rule and assess its coverage |
+| Audit evidence   | Exports, screenshots, signed files, reports          | Track source, period, links, and checksums          | Collect, verify, and judge the evidence |
+| Examination      | Samples, testing, exceptions, opinion                | Prepare an index and fixed packet                   | The CPA firm performs the examination   |
+
+This distinction prevents a common design error: mapping a technical check to
+a criterion and treating a green result as the whole control. The result may
+support one control, but management still needs the control definition,
+ownership, scope, operating record, exceptions, and evidence context.
+
+The [SOC 2 controls guide](/blogs/soc-2-controls-startups) explains how to build
+the control set from the service boundary, criteria, risks, commitments, and
+system requirements instead of starting with a fixed list.
+
+## What belongs in files
+
+Use structured fields when software needs the value for validation, filtering,
+relationships, lifecycle rules, schedules, or readiness calculations. Useful
+fields include:
+
+- stable IDs and record types;
+- status, owner, and reviewer relationships;
+- links among requirements, policies, controls, systems, risks, work, and
+  evidence;
+- dates for approval, occurrence, completion, collection, and verification;
+- recurrence rules, allowed completion windows, and deadlines;
+- evidence source, coverage period, query details, and count.
+
+Use Markdown for prose that changes with the organization. Policies,
+procedures, meeting minutes, risk analysis, system descriptions, management
+assertions, and audit responses stay readable without turning each paragraph
+into a schema field.
+
+Keep the source system authoritative for operational data. Identity providers,
+cloud platforms, source control, endpoint tools, monitoring systems, training
+systems, and procurement systems still run the controls and hold their native
+records. The compliance repository should catalog those systems and store or
+reference fixed evidence collected from them.
+
+Git answers when a file changed, who committed it, and what the diff contained.
+[GitHub's Git guide](https://docs.github.com/en/get-started/using-git/about-git)
+describes that version history. Domain records answer different questions. A
+policy approved on August 4 needs that approval date even if someone committed
+the record on August 5.
+
+## A practical repository shape
+
+A compliance-as-code repository should be understandable without a hosted
+dashboard. One useful shape is:
+
+```text
+company-grc/
+├── AGENTS.md
+├── data/
+│   ├── controls/
+│   ├── evidence/
+│   ├── obligations/
+│   ├── policies/
+│   ├── risks/
+│   ├── systems/
+│   ├── vendors/
+│   └── workspace.json
+├── package.json
+└── README.md
+```
+
+The exact folders matter less than the contract around them. An engineer or
+agent should be able to discover the available record types, inspect required
+fields, find valid relationship targets, prepare a change, validate it, and
+see the next action without guessing at hidden rules.
+
+Keep one source of truth. Do not save a second `updatedAt` field when Git
+already has the commit time, and do not paste calculated readiness checklists
+into every record. Recalculate those views from the model, source files, and
+Git state.
+
+## Build the workflow in seven steps
+
+### 1. Define the service boundary
+
+Record the product, people, processes, infrastructure, data, providers, and
+systems that can affect the service. Choose the management objective and
+applicable criteria. If the scope is wrong, machine-readable controls only make
+the wrong program easier to process.
+
+### 2. Adopt a versioned model
+
+Define each record type, required field, allowed status, and relationship once.
+Use that registry for validation, forms, CLI guidance, filters, and generated
+documentation. Version the model when a breaking change would make existing
+work invalid, and provide an explicit migration path.
+
+### 3. Treat starter content as a proposal
+
+Scaffolds should expose missing facts instead of pretending the control or
+policy is finished. Replace placeholders with the company's actual owners,
+systems, procedures, dates, and decisions. Review the resulting diff before
+changing a record to an approved or implemented state.
+
+### 4. Connect policy to operation
+
+A policy states management's rule. A control says how the company implements
+it. A recurring obligation or event workflow says when people must act. A
+completed operating record says who did the work, when it happened, what the
+result was, and which evidence supports it.
+
+This chain gives software enough structure to find missing work without
+claiming that a policy document proves the control operated.
+
+### 5. Record evidence provenance
+
+For each fixed artifact, capture its source system, collector, collection time,
+scope, period, and verification details. For a report or export, record the
+query parameters, timezone, item count, and completeness check when those facts
+affect its meaning.
+
+Do not put secrets, credentials, session data, regulated personal data, or
+personal data that may need erasure into Git. Use an approved external system
+and an opaque reference when the repository's access and retention rules do not
+fit the data.
+
+### 6. Derive current work
+
+Calculate upcoming, blocked, due, and overdue work from active policies,
+controls, obligations, events, dates, and relationships. Calculate program and
+audit readiness from the same source. A user who edits a file directly should
+receive the same result as a user who made the equivalent change in a browser.
+
+### 7. Bind audit output to a revision
+
+Prepare the engagement from its exact type, scope, date or period, management
+documents, controls, evidence, populations, and tests. Export indexes,
+historical source versions, and checksums from a clean Git revision so the
+packet can be traced back to the files management reviewed.
+
+The CPA firm still chooses samples, evaluates exceptions, decides whether the
+evidence is sufficient and appropriate, and issues the report. The
+[audit evidence packet guide](/blogs/soc-2-audit-evidence-packet) covers the
+handoff in more detail.
+
+## A SOC 2 CLI workflow
+
+[filegrc](/) implements this model with JSON records, Markdown content, Git,
+and one set of domain rules shared by its CLI and local browser. A headless
+workflow can start with read-only discovery:
+
+```sh
+npx filegrc program-path --next --json
+npx filegrc guide control --json
+npx filegrc list control --workflow --json
+npx filegrc workflow --through 2026-09-30 --json
+npx filegrc program-readiness --json
+```
+
+When you need a new record, scaffold a validated mutation shape first:
+
+```sh
+npx filegrc scaffold control --title "Quarterly access review" > control.json
+```
+
+Fill the scaffold with facts from authoritative sources, then preview and
+create it:
+
+```sh
+npx filegrc preview-mutation control.json --json
+npx filegrc create control.json --json
+npm run validate
+```
+
+FileGRC writes the files but does not create a Git commit from CLI mutations.
+Review the diff, run the repository checks, and commit the intended change
+through the team's normal Git process.
+
+An agent can use the same commands to discover the model, inspect relationship
+candidates, prepare changes, complete reviewed work, and report blockers. The
+repository's `AGENTS.md` sets the program and safety rules. People remain
+responsible for approvals, source facts, sensitive changes, and judgment.
+
+For the design choices behind this approach, read the technical guide to
+[running SOC 2 in Git](/blogs/soc-2-in-git). If you are deciding whether to own
+the whole workflow, the [open source SOC 2 software guide](/blogs/open-source-soc-2-compliance)
+separates the repository layer from the systems and professional work it cannot
+replace.
+
+## Test whether the system is really code-driven
+
+Ask these questions before relying on a compliance-as-code workflow:
+
+- Can a new engineer discover the next action from the repository alone?
+- Does one model drive validation, forms, CLI guidance, and readiness?
+- Do direct file edits and browser edits receive the same checks?
+- Can every relationship be resolved by stable record ID?
+- Are Git dates kept separate from approval, event, and completion dates?
+- Does evidence retain its source, scope, collection, and verification context?
+- Can management reproduce an audit packet from a clean revision?
+- Does the system state what it cannot automate?
+
+If any answer is no, fix the record model or workflow before adding more
+automation. Compliance as code helps when it makes the program easier to
+inspect, validate, and review. It fails when a passing check hides missing
+facts, missing work, or a decision that only a person can make.

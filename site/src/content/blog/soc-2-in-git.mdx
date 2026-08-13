@@ -4,13 +4,7 @@ description: "A technical look at running SOC 2 in Git with JSON records, Markdo
 publishedDate: "2026-07-27"
 lastMod: "2026-07-27"
 author: "Abe Wheeler"
-tags:
-  [
-    "SOC 2 in Git",
-    "Git-native GRC",
-    "SOC 2 compliance as code",
-    "AI agent for SOC 2",
-  ]
+tags: ["SOC 2 in Git", "Git-native GRC", "AI agent for SOC 2", "file-based GRC"]
 featured: false
 image: "https://filegrc.com/og-image.png"
 imageCaption: "filegrc stores structured SOC 2 records in JSON, long-form work in Markdown, and change history in Git."
@@ -39,6 +33,10 @@ long-form work in Markdown, and change history in the repository. That gives
 engineers reviewable diffs and agent-ready files. It does not operate security
 controls, collect every item of external evidence, or replace the independent
 CPA examination.
+
+If you want the operating model as well as the repository design, the
+[SOC 2 compliance-as-code workflow](/blogs/soc-2-compliance-as-code) connects
+the files to schedules, evidence provenance, readiness checks, and audit output.
 
 I started building [filegrc](https://github.com/Alignbase/filegrc) after
 writing this on X:

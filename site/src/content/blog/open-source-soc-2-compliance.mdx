@@ -8,7 +8,7 @@ tags:
   [
     "open source SOC 2 compliance",
     "free SOC 2 compliance software",
-    "SOC 2 compliance as code",
+    "open source GRC for startups",
   ]
 featured: true
 image: "https://filegrc.com/og-image.png"
@@ -220,13 +220,17 @@ or CPA work from the process. The
 [SOC 2 compliance cost guide](/blogs/soc-2-compliance-cost-startups) separates
 those budget lines from the GRC software choice.
 
-## How filegrc handles compliance as code
+## How filegrc applies the file-based model
 
 [filegrc](/) is an MIT-licensed, Git-native workspace for SOC 2 program records
 and audit evidence. JSON holds structured records, Markdown holds long-form
 work, and Git supplies the change history. The browser and CLI use the same
 validation and domain logic, so an engineer or agent can inspect and prepare
 the same changes without a separate API-only record store.
+
+The [SOC 2 compliance-as-code guide](/blogs/soc-2-compliance-as-code) explains
+how to connect those files to validation, recurring work, evidence provenance,
+and a revision-bound audit packet.
 
 ```sh
 npx create-filegrc@latest company-grc
