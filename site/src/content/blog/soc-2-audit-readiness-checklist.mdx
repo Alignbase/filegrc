@@ -1,0 +1,268 @@
+---
+title: "SOC 2 Audit Readiness Checklist: A Pre-Fieldwork Gate"
+description: "Use this SOC 2 audit readiness checklist to test scope, period health, evidence, populations, management documents, and packet delivery."
+publishedDate: "2026-08-14"
+lastMod: "2026-08-14"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 audit readiness checklist",
+    "SOC 2 readiness assessment",
+    "SOC 2 audit preparation",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc separates program readiness, period health, management audit readiness, and packet delivery checks."
+faqs:
+  - question: "What is SOC 2 audit readiness?"
+    answer: "SOC 2 audit readiness means management can support a defined examination with current scope, approved documents, implemented controls, dated operating records, traceable evidence, and complete Type 2 populations when they apply. The CPA firm still decides whether the evidence is sufficient and appropriate."
+  - question: "When should a startup run a SOC 2 audit readiness checklist?"
+    answer: "Run a program readiness check before a candidate Type 2 period, monitor period health while controls operate, run an engagement-specific check before fieldwork, and review the final packet before delivery. Recheck after a material scope, system, control, or engagement change."
+  - question: "Is a SOC 2 readiness assessment the same as a SOC 2 examination?"
+    answer: "No. A readiness assessment finds gaps before the examination. A qualified CPA firm performs the examination, tests controls, evaluates evidence and exceptions, and issues the SOC 2 report."
+  - question: "How does Type 1 audit readiness differ from Type 2 readiness?"
+    answer: "Type 1 readiness supports control design and implementation as of a specified date. Type 2 readiness also needs control operation across a specified period, complete populations, source exports, reconciliations, and evidence that covers that period."
+  - question: "Can software decide whether a company is ready for a SOC 2 audit?"
+    answer: "Software can validate management records, calculate missing work, check period coverage, and prepare a reviewable packet. It cannot decide whether evidence is sufficient and appropriate, select audit samples, evaluate exceptions, or issue an opinion. Those decisions belong to the CPA firm."
+furtherReading:
+  - text: "Run a SOC 2 risk assessment"
+    url: "/blogs/soc-2-risk-assessment-startups"
+  - text: "Design practical SOC 2 controls"
+    url: "/blogs/soc-2-controls-startups"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Build complete SOC 2 audit populations"
+    url: "/blogs/soc-2-audit-populations"
+  - text: "Choose between SOC 2 Type 1 and Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+A SOC 2 audit readiness checklist should answer whether management can support
+the exact examination it plans to start. Before fieldwork, confirm the scoped
+system, applicable criteria, approved policies, implemented controls, healthy
+evidence period, management documents, evidence coverage, and Type 2
+populations. A passing internal checklist does not mean the CPA firm will
+accept the evidence or issue an unmodified report.
+
+## TL;DR
+
+- Check program setup before relying on a candidate audit period.
+- Monitor control operation and evidence coverage throughout a Type 2 period.
+- Test readiness against the exact engagement, date or period, and scope.
+- Reconcile every Type 2 population to an authoritative source and fixed
+  export, including populations with zero items.
+- Preview the delivery packet from a clean revision, then review every file for
+  secrets and out-of-scope data.
+- Keep CPA decisions outside the management readiness score.
+
+## Use four readiness gates, not one score
+
+A flat checklist mixes decisions that happen months apart. It can show a green
+percentage even when the program has no reliable evidence source or the final
+packet comes from an uncommitted revision. Use four gates instead:
+
+| Gate                       | When to run it                              | Question it answers                                                  |
+| -------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| Program readiness          | Before a candidate Type 2 period            | Can the scoped program start producing reliable operating records?   |
+| Period health              | Throughout a Type 2 period                  | Are controls operating and is evidence coverage staying current?     |
+| Management audit readiness | After recording the formal engagement       | Can management support this exact date or period, scope, and report? |
+| Delivery readiness         | Before sending files to the engagement team | Is the packet complete, reproducible, clean, and safe to transfer?   |
+
+The gates are related, but each has a different failure mode. A team can have
+well-written policies and still miss control operation during the period. It
+can have a healthy period and still prepare the wrong system description. It
+can have complete records and still send a packet with stale files or secrets.
+
+## SOC 2 audit readiness checklist
+
+Run these checks against one recorded Type 1 date or Type 2 period. Name the
+owner of every open item and set a deadline that falls before the work it
+blocks.
+
+### 1. Fix the engagement goal and boundaries
+
+Record the report type, scoped service, applicable Trust Services Criteria,
+subservice organization method, Type 1 date or Type 2 period, and responsible
+contacts. Reconcile them with the engagement letter and the CPA firm's current
+request process.
+
+The AICPA describes SOC 2 as an
+[examination of a service organization's system and controls](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy-OPL)
+relevant to security, availability, processing integrity, confidentiality, or
+privacy. A generic security checklist cannot choose that scope for management.
+
+### 2. Reconcile scope, criteria, risks, and controls
+
+Confirm that the system boundary includes the people, processes, technology,
+data, locations, and vendors that support the scoped service. Each selected
+criterion should connect to management's risks and implemented controls.
+Retired controls should not remain in the matrix, and active controls should
+not depend on systems or owners that have left the scope.
+
+Use the AICPA's
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+as the criteria source. Keep management's control wording tied to how the
+company actually operates.
+
+### 3. Approve current management documents
+
+Confirm that management's system description and assertion match the formal
+engagement. Check policy owners, reviewers, approval dates, effective dates,
+and the exact content revisions approved. A changed approved policy should
+move back through review before the company records a new approval.
+
+The [SOC 2 system description template](/blogs/soc-2-system-description-template)
+explains how to reconcile the narrative with current systems, vendors,
+controls, incidents, and changes.
+
+### 4. Confirm each control can produce evidence
+
+For every selected control, name the operator, cadence or event trigger,
+source system, evidence type, collection method, and reviewer. The source
+system should have a current access owner and retrieval instructions detailed
+enough for another authorized person to repeat the collection.
+
+Infrastructure tools may produce logs and exports, but those tools do not
+record every management decision or prove that someone reviewed the result.
+Keep the operating record, source details, fixed evidence, and review connected.
+
+### 5. Check Type 2 period health
+
+Review every scheduled and event-driven activity due during the period. Find
+missed work, late work, stale collection reviews, uncovered controls, material
+changes, open incidents, and evidence gaps while the team can still address
+them. Do not backdate a record to fill a missed control occurrence.
+
+A Type 2 period must support operating-effectiveness testing throughout the
+specified period. One fresh screenshot near fieldwork does not establish that
+coverage.
+
+### 6. Trace evidence to its source and review
+
+Each evidence record should identify what it supports, who collected it, when
+it was generated or observed, the covered period, and the authoritative source.
+Verified evidence should also name the verifier and verification date.
+
+Flag links that the packet cannot include. An external reference may be valid,
+but management should know which files the CPA firm will need through a portal
+or other approved channel.
+
+### 7. Reconcile Type 2 populations before sampling
+
+Create one population for each complete management set the CPA firm may sample.
+Record the source system, exact query or report parameters, generation time,
+timezone, item count, completeness checks, accuracy checks, and fixed export.
+The population and export should name the same source.
+
+A zero-item population still needs the query, period, source, result count, and
+management checks. "Nothing happened" is a conclusion that needs support, not
+a reason to omit the record.
+
+### 8. Resolve open requests, exceptions, and changes
+
+Compare management's records with the CPA firm's current request tracker. Link
+requested samples to the related population and control test. Record known
+exceptions and corrective work without deleting the source record that
+explains what happened.
+
+Re-run readiness after a material change to scope, systems, controls, evidence
+sources, report dates, or subservice treatment. A previously passing result can
+be stale after any of those changes.
+
+### 9. Preview the packet from a clean revision
+
+Generate a preview before delivery. The packet should include the engagement
+summary, control and evidence indexes, source-system index, required management
+documents, relevant historical source versions, fixed attachments, population
+exports, and per-file checksums.
+
+Bind the output to a clean Git revision so management can reproduce what it
+sent. The [SOC 2 audit evidence packet guide](/blogs/soc-2-audit-evidence-packet)
+covers packet contents, integrity checks, and handoff steps.
+
+### 10. Review privacy, access, and transfer
+
+Open the generated handling instructions and inspect every included file for
+credentials, session material, personal data, customer data, confidential
+reports, and records outside the engagement scope. Apply the strictest handling
+rule in the packet.
+
+Send the reviewed material through the CPA firm's approved encrypted channel.
+Checksums detect file changes after generation, but they do not encrypt files
+or prove who received them.
+
+## Type 1 and Type 2 readiness differ
+
+The report type changes the evidence burden:
+
+| Readiness area    | Type 1                                                  | Type 2                                                            |
+| ----------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
+| Time boundary     | A specified date                                        | A specified period                                                |
+| Primary question  | Are controls suitably designed and implemented?         | Were controls suitably designed and operating through the period? |
+| Operating records | Support implementation as of the date                   | Cover scheduled and event work across the period                  |
+| Populations       | May support design or implementation work               | Complete sets support sample selection when sampling applies      |
+| Change review     | Current design and scope as of the date                 | Changes and control continuity across the period                  |
+| Evidence gaps     | Often require design or implementation work before date | May create a period exception that later work cannot erase        |
+
+Do not stretch a Type 1 checklist by adding a few screenshots and call it Type
+2 readiness. The period, populations, and operating records change the work.
+
+## Failures that flat checklists miss
+
+Simple readiness lists tend to ask whether a document or control exists. That
+misses relationships and time. Look for these failures:
+
+- The engagement period differs from the dates used in management's system
+  description or population queries.
+- A control points to a source system with no current access owner or extraction
+  instructions.
+- A policy is approved, but the approval refers to an older content revision.
+- A recurring activity is complete for the latest month but missing earlier in
+  the Type 2 period.
+- A population export exists, but its item count or query parameters were not
+  recorded and checked.
+- A packet contains current files, but not the committed versions used during
+  the period.
+- A green status includes decisions that only the CPA firm can make.
+
+The broad [SOC 2 compliance checklist for startups](/blogs/soc-2-compliance-checklist-startups)
+covers the path from business goal to report. This readiness gate is narrower:
+it tests whether management can support the formal work about to begin.
+
+## Run the gates from the same source records
+
+[filegrc](/) stores program records in JSON, long-form work in Markdown, and
+change history in Git. Its browser and CLI use the same domain checks, so a
+person, CI job, or agent sees the same missing work and allowed next actions.
+
+Run each gate separately:
+
+```sh
+npx filegrc program-readiness --require-ready --summary --json
+npx filegrc period-health audit-2026-type-2 --require-healthy --json
+npx filegrc audit-readiness audit-2026-type-2 --require-ready --json
+npx filegrc evidence-packet --audit audit-2026-type-2 --preview --require-ready --json
+```
+
+The first command checks whether the selected program can support a candidate
+period. The second checks operating-period continuity. The third calculates
+engagement-specific management readiness. The fourth previews the bound audit
+packet without treating delivery as auditor acceptance.
+
+This is one application of a broader
+[SOC 2 compliance-as-code workflow](/blogs/soc-2-compliance-as-code): keep
+authoritative facts in reviewable files, derive readiness from them, and make
+the result reproducible from a known revision.
+
+## Keep CPA judgments outside the checklist
+
+Management readiness can confirm that required records exist, relationships are
+valid, dates cover the engagement, populations reconcile, and packet files are
+present. It cannot conclude that evidence is sufficient and appropriate.
+
+The CPA firm sets its request list, chooses procedures and samples, evaluates
+control design and operation, considers exceptions, and issues the report. A
+readiness check should make management's work easier to inspect. It should
+never predict the opinion.
