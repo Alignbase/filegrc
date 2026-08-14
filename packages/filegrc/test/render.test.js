@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
-import { APP_SCRIPT, APP_STYLES, renderIndex } from "../src/web.js";
+import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, renderIndex } from "../src/web.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.meta.url), "utf8");
+const execute = promisify(execFile);
+const CLI = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("builds a self-contained read-only site", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-build-"));
@@ -26,6 +31,82 @@ test("builds a self-contained read-only site", async (context) => {
   assert.deepEqual([...logoMark.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   await access(join(output, "filegrc-app.js"));
   await access(join(output, "filegrc.css"));
+});
+
+test("uses item-level program readiness for the dashboard lifecycle summary", () => {
+  assert.deepEqual(dashboardProgramReadiness({
+    progress: { percent: 11, complete: 7, total: 62 },
+    evidenceReady: false,
+    operating: false
+  }), {
+    percent: 11,
+    complete: 7,
+    total: 62,
+    status: "Needs work",
+    tone: "warn"
+  });
+  assert.deepEqual(dashboardProgramReadiness({
+    progress: { percent: 100, complete: 62, total: 62 },
+    status: "evidence-ready",
+    evidenceReady: true,
+    operating: false,
+    target: {
+      goal: "soc-2-type-2",
+      candidateCoverage: { kind: "range", startsOn: "2026-09-01", endsOn: "2027-02-28" }
+    }
+  }), {
+    percent: 100,
+    complete: 62,
+    total: 62,
+    status: "Evidence ready",
+    tone: "good"
+  });
+  assert.deepEqual(dashboardProgramReadiness({
+    progress: { percent: 100, complete: 62, total: 62 },
+    status: "operating",
+    evidenceReady: true,
+    operating: true,
+    target: {
+      goal: "soc-2-type-2",
+      candidateCoverage: { kind: "range", startsOn: "2026-08-01", endsOn: "2027-01-31" }
+    }
+  }), {
+    percent: 100,
+    complete: 62,
+    total: 62,
+    status: "Operating",
+    tone: "good"
+  });
+});
+
+test("static and editable dashboards receive the same program readiness progress", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-dashboard-state-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+
+  const { state: staticState } = await buildWorkspace(root);
+  const result = await serveWorkspace(root, { port: 0, allowNonAuthoritativeWrites: true });
+  context.after(() => new Promise((resolve) => result.server.close(resolve)));
+  const editableState = await fetch(`${result.url}/api/state`).then((response) => response.json());
+  const cliSummary = JSON.parse((await execute(process.execPath, [
+    CLI,
+    "program-readiness",
+    "--root",
+    root,
+    "--as-of",
+    staticState.asOf,
+    "--summary",
+    "--json"
+  ])).stdout);
+
+  assert.equal(staticState.readOnly, true);
+  assert.equal(editableState.readOnly, false);
+  assert.deepEqual(editableState.programReadiness.progress, staticState.programReadiness.progress);
+  assert.deepEqual(staticState.programReadiness.progress, cliSummary.progress);
+  assert.deepEqual(
+    dashboardProgramReadiness(editableState.programReadiness),
+    dashboardProgramReadiness(staticState.programReadiness)
+  );
 });
 
 test("static builds cannot leave the workspace through paths or symlinks", async (context) => {
@@ -902,7 +983,8 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.doesNotMatch(APP_SCRIPT, /workflowGuidance\(\{ stageId: stage\.id/);
   assert.match(APP_SCRIPT, /const summary = stagePageSummary\(destination\)/);
   assert.match(APP_SCRIPT, /function stageProgress\(stage\)/);
-  assert.match(APP_SCRIPT, /function programPathProgress\(\)/);
+  assert.doesNotMatch(APP_SCRIPT, /function programPathProgress\(\)/);
+  assert.match(APP_SCRIPT, /const progress = dashboardProgramReadiness\(state\.programReadiness\)/);
   assert.match(APP_SCRIPT, /pages\.filter\(\(destination\) => derivedStagePageState\(stage, destination\)\.complete\)\.length/);
   assert.match(APP_SCRIPT, /if \(!total\) return \{ percent: 0/);
   assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 5/);
@@ -1179,7 +1261,8 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.match(APP_SCRIPT, /class="hero overview-hero"/);
   assert.match(APP_SCRIPT, /class="readiness-progress-summary"/);
   assert.match(APP_SCRIPT, /<span>Program readiness<\/span><strong>' \+ progress\.percent \+ '%<\/strong>/);
-  assert.match(APP_SCRIPT, /program pages " \+ \(progress\.complete === 1 \? "is" : "are"\) \+ " ready/);
+  assert.match(APP_SCRIPT, /progress\.complete \+ " of " \+ progress\.total \+ " readiness items complete"/);
+  assert.match(APP_SCRIPT, /class="badge ' \+ esc\(progress\.tone\) \+ '">' \+ esc\(progress\.status\) \+ '<\/b>/);
   assert.match(APP_SCRIPT, /pluralize\(noun, total\) \+ \(complete === 1 \? " is" : " are"\) \+ " ready\."/);
   assert.match(APP_SCRIPT, /function obligationBoardItems\(items, status\)/);
   assert.match(APP_SCRIPT, /function distinctObligationPreviews\(items, limit\)/);
