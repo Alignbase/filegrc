@@ -5,7 +5,9 @@ const timingContext = new AsyncLocalStorage();
 
 export async function collectTimings(task) {
   const timings = new Map();
+  const started = performance.now();
   const result = await timingContext.run(timings, task);
+  recordCollectedTiming(timings, "total", performance.now() - started);
   return { result, timings: Object.fromEntries(timings) };
 }
 
@@ -30,6 +32,10 @@ export function measureTimingSync(name, task) {
 export function recordTiming(name, durationMs) {
   const timings = timingContext.getStore();
   if (!timings) return;
+  recordCollectedTiming(timings, name, durationMs);
+}
+
+function recordCollectedTiming(timings, name, durationMs) {
   const current = timings.get(name) ?? { count: 0, durationMs: 0 };
   current.count += 1;
   current.durationMs += durationMs;

@@ -12,6 +12,7 @@ import { currentCalendarDate } from "./time.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { assessWorkflow } from "./workflow.js";
+import { measureTiming } from "./timing.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -37,19 +38,21 @@ async function createAppStateUnlocked(input, options) {
     ? getWorkspaceHistories(loaded.root, loaded.entries.map((entry) => `data/${entry.relativePath}`), 12)
     : new Map();
 
-  for (const entry of loaded.entries) {
-    entries.push(await createStateEntry(loaded, entry, {
-      includeDetails,
-      history: histories.get(`data/${entry.relativePath}`) ?? []
-    }));
-  }
+  await measureTiming("state-entries", async () => {
+    for (const entry of loaded.entries) {
+      entries.push(await createStateEntry(loaded, entry, {
+        includeDetails,
+        history: histories.get(`data/${entry.relativePath}`) ?? []
+      }));
+    }
+  });
 
   const git = getGitSummary(loaded.root);
   delete git.root;
-  const repository = await getBrowserRepositoryState(loaded.root, {
+  const repository = await measureTiming("state-repository", () => getBrowserRepositoryState(loaded.root, {
     readOnly: options.readOnly,
     allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
-  });
+  }));
   const workspace = loaded.workspace ?? {
     dataModelVersion: loaded.model.modelVersion,
     id: "workspace",
@@ -60,12 +63,12 @@ async function createAppStateUnlocked(input, options) {
   };
   const asOf = options.asOf ?? currentCalendarDate(workspace.timezone);
   const generatedAt = new Date().toISOString();
-  const programReadiness = await assessProgramReadiness(loaded, {
+  const programReadiness = await measureTiming("state-program-readiness", () => assessProgramReadiness(loaded, {
     asOf,
     generatedAt
-  });
+  }));
   const audits = loaded.resources.filter((record) => record.type === "audit");
-  const auditPreparations = Object.fromEntries(await Promise.all(
+  const auditPreparations = await measureTiming("state-audit-preparation", async () => Object.fromEntries(await Promise.all(
     (audits.length ? audits : [null]).map(async (audit) => {
       const preparation = await assessAuditPreparation(loaded, {
         auditId: audit?.id,
@@ -74,13 +77,13 @@ async function createAppStateUnlocked(input, options) {
       });
       return [audit?.id || "none", preparation];
     })
-  ));
+  )));
   const obligations = planObligations(entries, {
     asOf,
     now: options.now ?? generatedAt,
     model: loaded.model
   });
-  const workflow = await assessWorkflow(loaded, {
+  const workflow = await measureTiming("state-workflow", () => assessWorkflow(loaded, {
     asOf,
     evaluatedAt: generatedAt,
     programReadiness,
@@ -90,7 +93,7 @@ async function createAppStateUnlocked(input, options) {
     obligations,
     git,
     validation
-  });
+  }));
   const collectionReviews = Object.fromEntries(
     assessCollectionReviews(loaded).map((assessment) => [
       assessment.resourceType,

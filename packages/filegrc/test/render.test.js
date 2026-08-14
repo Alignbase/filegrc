@@ -906,6 +906,7 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /commit-dialog event-dialog collection-review-dialog/);
   assert.match(APP_SCRIPT, /Before confirming/);
   assert.match(APP_SCRIPT, /FileGRC will ask for another review/);
+  assert.match(APP_SCRIPT, /" Note: " \+ esc\(assessment\.review\.rationale\)/);
   assert.doesNotMatch(APP_SCRIPT, /name="scopeRevision"/);
   assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type\)/);
   assert.match(APP_SCRIPT, /What the reviewer should check/);

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getWorkspaceHistories, runBrowserMutation, serveWorkspace, updateResource } from "../src/index.js";
+import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getWorkspaceHistories, prefetchBrowserRemote, runBrowserMutation, serveWorkspace, updateResource } from "../src/index.js";
 import {
   BROWSER_VALIDATION,
   commitAndPushWorkspace,
@@ -361,6 +361,53 @@ test("a trunk browser record save validates once and reuses that proof for curre
   assert.equal(timings.validation.count, 1);
   assert.equal(result.state.resources.find(({ record }) => record.id === owner.record.id).record.department, "Validation count");
   assert.equal(result.mutation.synchronization.status, "syncing");
+  assert.equal((await waitForRepository(fixture.root)).status, "synced");
+});
+
+test("a recent browser prefetch removes remote network work from confirmation", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-prefetch-");
+  const initialState = await createAppState(fixture.root);
+  const owner = initialState.resources.find(({ record }) => record.id === "person-owner");
+  const prefetched = await prefetchBrowserRemote(fixture.root);
+
+  const { result, timings } = await collectTimings(() => runBrowserMutation(fixture.root, {
+    message: "Update owner after prefetch",
+    prefetchToken: prefetched.token,
+    includeValidationProof: false
+  }, () => updateResource(fixture.root, "person", owner.record.id, {
+    ...owner.record,
+    department: "Prefetched"
+  }, {
+    expectedRevision: owner.revision
+  })));
+
+  assert.equal(timings.fetch, undefined);
+  assert.equal(timings["fetch-reused"].count, 1);
+  assert.equal(result.synchronization.status, "syncing");
+  assert.equal(result[BROWSER_VALIDATION], undefined);
+  assert.equal((await waitForRepository(fixture.root)).status, "synced");
+});
+
+test("an invalid browser prefetch token cannot skip the remote fetch", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-invalid-prefetch-");
+  const initialState = await createAppState(fixture.root);
+  const owner = initialState.resources.find(({ record }) => record.id === "person-owner");
+  await prefetchBrowserRemote(fixture.root);
+
+  const { result, timings } = await collectTimings(() => runBrowserMutation(fixture.root, {
+    message: "Update owner with invalid prefetch",
+    prefetchToken: "invalid-token",
+    includeValidationProof: false
+  }, () => updateResource(fixture.root, "person", owner.record.id, {
+    ...owner.record,
+    department: "Invalid prefetch token"
+  }, {
+    expectedRevision: owner.revision
+  })));
+
+  assert.equal(timings.fetch.count, 1);
+  assert.equal(timings["fetch-reused"], undefined);
+  assert.equal(result.synchronization.status, "syncing");
   assert.equal((await waitForRepository(fixture.root)).status, "synced");
 });
 

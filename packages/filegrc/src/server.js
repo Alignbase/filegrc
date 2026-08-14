@@ -2,6 +2,7 @@ import { createServer as createHttpServer } from "node:http";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
@@ -23,6 +24,7 @@ import {
   getBrowserRepositoryState,
   getFileHistory,
   getGitSummary,
+  prefetchBrowserRemote,
   pullWorkspace,
   pushWorkspace,
   retryBrowserSync,
@@ -56,6 +58,18 @@ import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
 export function createFilegrcServer(input = process.cwd(), options = {}) {
   return createHttpServer(async (request, response) => {
+    const requestStarted = performance.now();
+    if (timingEnabled()) {
+      response.once("finish", () => {
+        console.error(`[filegrc timing] ${JSON.stringify({
+          operation: "http-request",
+          method: request.method,
+          path: request.url?.split("?")[0],
+          status: response.statusCode,
+          durationMs: performance.now() - requestStarted
+        })}`);
+      });
+    }
     try {
       if (!expectedHost(request, options.allowedHosts)) {
         return json(response, 403, { error: "The request host is not allowed." });
@@ -105,6 +119,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           includeComplete: url.searchParams.get("includeComplete") === "true"
         }));
       }
+      if (request.method === "POST" && url.pathname === "/api/git/prefetch") {
+        return json(response, 200, await prefetchBrowserRemote(input, {
+          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+        }));
+      }
       if (request.method === "POST" && url.pathname === "/api/workflow/preview") {
         return json(response, 200, await previewWorkflowMutation(input, await readJson(request)));
       }
@@ -149,10 +168,13 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/applicability-review") {
         const payload = await readJson(request);
+        const { prefetchToken, ...reviewPayload } = payload;
         return json(response, 201, await browserMutation(input, options, {
-          message: (result) => `Record ${result.reviewedIds?.length || 0} applicability decisions`
+          message: (result) => `Record ${result.reviewedIds?.length || 0} applicability decisions`,
+          fastResponse: prefersFastMutation(request),
+          prefetchToken
         }, () => applyApplicabilityReview(input, {
-          ...payload,
+          ...reviewPayload,
           confirmed: payload.confirmed === true
         })));
       }
@@ -161,10 +183,13 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/collection-review") {
         const payload = await readJson(request);
+        const { prefetchToken, ...reviewPayload } = payload;
         return json(response, 201, await browserMutation(input, options, {
-          message: (result) => `Confirm ${result.assessment?.configuration?.title || payload.resourceType}`
+          message: (result) => `Confirm ${result.assessment?.configuration?.title || payload.resourceType}`,
+          fastResponse: prefersFastMutation(request),
+          prefetchToken
         }, () => applyCollectionReview(input, {
-          ...payload,
+          ...reviewPayload,
           confirmed: payload.confirmed === true
         })));
       }
@@ -484,12 +509,22 @@ function listen(server, port, host) {
 
 function browserMutation(input, options, mutationOptions, task) {
   const run = () => serializeWorkspaceMutation(input, async (root) => {
-    const workflowBefore = await assessWorkflow(root);
-    const result = await runBrowserMutation(root, {
+    const fastResponse = mutationOptions.fastResponse === true;
+    const workflowBefore = fastResponse
+      ? null
+      : await measureTiming("workflow-before", () => assessWorkflow(root));
+    const result = await measureTiming("mutation", () => runBrowserMutation(root, {
       ...mutationOptions,
       allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true,
-      backgroundPushDelayMs: options.backgroundPushDelayMs
-    }, task);
+      backgroundPushDelayMs: options.backgroundPushDelayMs,
+      includeValidationProof: !fastResponse
+    }, task));
+    if (fastResponse) {
+      return {
+        ...result,
+        stateRefresh: true
+      };
+    }
     const state = await measureTiming("state", () => createAppState(root, {
       allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
       includeDetails: false,
@@ -514,6 +549,12 @@ function browserMutation(input, options, mutationOptions, task) {
     console.error(`[filegrc timing] ${JSON.stringify({ operation: "browser-mutation", ...timings })}`);
     return result;
   });
+}
+
+function prefersFastMutation(request) {
+  return String(request.headers.prefer || "")
+    .split(",")
+    .some((value) => value.trim().toLowerCase() === "respond-async");
 }
 
 async function requireManualBrowserGit(input, options) {

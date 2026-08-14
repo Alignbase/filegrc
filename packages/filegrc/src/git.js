@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
@@ -6,13 +7,15 @@ import { performance } from "node:perf_hooks";
 import { isSafeGitName } from "./git-name.js";
 import { serializeWorkspaceMutation, withDeferredWorkspaceValidation } from "./mutation.js";
 import { resolveWorkspaceRoot } from "./paths.js";
-import { measureTiming, measureTimingSync, timingEnabled } from "./timing.js";
+import { measureTiming, measureTimingSync, recordTiming, timingEnabled } from "./timing.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
 
 const lastSuccessfulSynchronizations = new Map();
 const workspaceHistoryCache = new Map();
 const backgroundSynchronizations = new Map();
+const browserRemotePrefetches = new Map();
+const BROWSER_REMOTE_PREFETCH_MAX_AGE_MS = 30_000;
 export const BROWSER_VALIDATION = Symbol("filegrc.browserValidation");
 
 export function getGitSummary(input = process.cwd()) {
@@ -195,6 +198,34 @@ export async function runBrowserMutation(input, options, task) {
   });
 }
 
+export async function prefetchBrowserRemote(input = process.cwd(), options = {}) {
+  return serializeWorkspaceMutation(input, async (root) => {
+    const config = await getRepositoryConfig(root);
+    if (config.mode !== "trunk" || options.allowNonAuthoritativeWrites === true) {
+      return { status: "not-needed", token: null, fetchedAt: null, expiresAt: null };
+    }
+    measureTimingSync("git-preconditions", () => requireTrunkPreconditions(root, config));
+    await fetchConfiguredRemote(root, config.remote);
+    const summary = getGitSummary(root);
+    const repository = inspectTrunkRepository(root, config, summary);
+    const fetchedAt = new Date().toISOString();
+    const token = randomUUID();
+    browserRemotePrefetches.set(root, {
+      token,
+      remote: config.remote,
+      currentCommit: summary.commit,
+      upstreamCommit: repository.upstreamCommit,
+      fetchedAt: Date.parse(fetchedAt)
+    });
+    return {
+      status: "checked",
+      token,
+      fetchedAt,
+      expiresAt: new Date(Date.parse(fetchedAt) + BROWSER_REMOTE_PREFETCH_MAX_AGE_MS).toISOString()
+    };
+  });
+}
+
 export async function retryBrowserSync(input = process.cwd(), options = {}) {
   return serializeWorkspaceMutation(input, async (root) => {
     const config = await getRepositoryConfig(root);
@@ -238,9 +269,12 @@ export async function retryBrowserSync(input = process.cwd(), options = {}) {
 }
 
 async function runTrunkMutationUnlocked(root, config, options, task) {
-  requireTrunkPreconditions(root, config);
-  await fetchConfiguredRemote(root, config.remote);
-  let synchronized = inspectTrunkRepository(root, config, getGitSummary(root));
+  const beforeFetch = measureTimingSync("git-preconditions", () => requireTrunkPreconditions(root, config));
+  let synchronized = beforeFetch;
+  if (!consumeFreshBrowserRemotePrefetch(root, config, options?.prefetchToken, beforeFetch)) {
+    await fetchConfiguredRemote(root, config.remote);
+    synchronized = inspectTrunkRepository(root, config, getGitSummary(root));
+  }
   if (synchronized.ahead > 0 && synchronized.behind > 0) {
     throw new Error("The authoritative branch has diverged from its upstream. FileGRC will not merge or rebase it. Reconcile the repository with Git, then reload.");
   }
@@ -259,16 +293,18 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   let subject;
   let validationProof;
   try {
-    result = await withDeferredWorkspaceValidation(() => task(root));
+    result = await measureTiming("write", () => withDeferredWorkspaceValidation(() => task(root)));
     subject = generatedCommitMessage(typeof options?.message === "function" ? options.message(result) : options?.message);
     const validation = await validateWorkspace(root);
     if (!validation.ok) {
       throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. The browser change was rolled back.`);
     }
-    validationProof = {
-      validation,
-      fingerprint: (await fingerprintWorkspace(validation.loaded)).fingerprint
-    };
+    validationProof = options?.includeValidationProof === false
+      ? null
+      : {
+          validation,
+          fingerprint: (await measureTiming("fingerprint", () => fingerprintWorkspace(validation.loaded))).fingerprint
+        };
     assertNoOutsideWorktreeChanges(root);
   } catch (error) {
     try {
@@ -279,7 +315,8 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
     throw error;
   }
 
-  if (!getGitSummary(root).changes.length && options?.allowNoChanges === true) {
+  const changed = getGitSummary(root).changes.length > 0;
+  if (!changed && options?.allowNoChanges === true) {
     return withValidationProof({
       ...result,
       synchronization: {
@@ -292,13 +329,15 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
       }
     }, validationProof);
   }
-  if (!getGitSummary(root).changes.length) {
+  if (!changed) {
     throw new Error("The browser action did not change any FileGRC workspace files.");
   }
   if (!tryGit(root, ["config", "user.name"]) || !tryGit(root, ["config", "user.email"])) {
     throw new Error("Configure git user.name and git user.email before browser changes can be committed. The saved files remain uncommitted and later browser changes are blocked.");
   }
-  gitForWrite(root, ["add", "--all", "--", "."], "stage the FileGRC workspace change");
+  measureTimingSync("stage", () => {
+    gitForWrite(root, ["add", "--all", "--", "."], "stage the FileGRC workspace change");
+  });
   assertNoOutsideWorktreeChanges(root, false);
   assertOnlyWorkspaceFilesStaged(root);
   try {
@@ -325,10 +364,28 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
 }
 
 function withValidationProof(result, proof) {
-  if (result && typeof result === "object") {
+  if (proof && result && typeof result === "object") {
     Object.defineProperty(result, BROWSER_VALIDATION, { value: proof });
   }
   return result;
+}
+
+function consumeFreshBrowserRemotePrefetch(root, config, token, repository) {
+  const prefetch = browserRemotePrefetches.get(root);
+  browserRemotePrefetches.delete(root);
+  if (
+    !token
+    || !prefetch
+    || prefetch.token !== token
+    || prefetch.remote !== config.remote
+    || Date.now() - prefetch.fetchedAt > BROWSER_REMOTE_PREFETCH_MAX_AGE_MS
+  ) {
+    return false;
+  }
+  const reusable = repository.currentCommit === prefetch.currentCommit
+    && repository.upstreamCommit === prefetch.upstreamCommit;
+  if (reusable) recordTiming("fetch-reused", 0);
+  return reusable;
 }
 
 function queueBackgroundPush(root, config, committed, delayMs = 0) {

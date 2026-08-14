@@ -137,9 +137,27 @@ test("exposes collection confirmation preview and apply through the browser API"
 
   const applyResponse = await fetch(`${running.url}/api/collection-review`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", prefer: "respond-async" },
     body: JSON.stringify({ ...payload, confirmed: true })
   });
   assert.equal(applyResponse.status, 201);
-  assert.equal((await applyResponse.json()).state.collectionReviews.person.status, "current");
+  const applied = await applyResponse.json();
+  assert.equal(applied.state, undefined);
+  assert.equal(applied.stateRefresh, true);
+  assert.equal(applied.assessment.status, "current");
+  const refreshed = await fetch(`${running.url}/api/state`).then((response) => response.json());
+  assert.equal(refreshed.collectionReviews.person.status, "current");
+
+  const standardResponse = await fetch(`${running.url}/api/collection-review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...payload,
+      rationale: "Confirmed again through the standard API response.",
+      expectedRevision: refreshed.collectionReviews.person.reviewRevision,
+      confirmed: true
+    })
+  });
+  assert.equal(standardResponse.status, 201);
+  assert.equal((await standardResponse.json()).state.collectionReviews.person.status, "current");
 });

@@ -41,6 +41,7 @@ export {
   getFileHistory,
   getGitSummary,
   getWorkspaceHistories,
+  prefetchBrowserRemote,
   pullWorkspace,
   pushWorkspace,
   retryBrowserSync,
