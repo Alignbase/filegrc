@@ -482,7 +482,7 @@ function openCollectionReviewDialog(type) {
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog event-dialog collection-review-dialog";
   dialog.setAttribute("aria-labelledby", "collection-review-dialog-title");
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Scope confirmation</p><h2 id="collection-review-dialog-title">Confirm ' + esc(configuration.title.toLowerCase()) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>Before confirming</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section><div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(assessment.review?.reviewedOn || currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.authoritativeComponentId || assessment.review?.authoritativeSystemId) === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview" role="status"></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary" data-preview-collection-review>Preview confirmation</button></div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Scope confirmation</p><h2 id="collection-review-dialog-title">Confirm ' + esc(configuration.title.toLowerCase()) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>Before confirming</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section><div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(assessment.review?.reviewedOn || currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.authoritativeComponentId || assessment.review?.authoritativeSystemId) === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>Confirm ' + assessment.recordCount + ' current ' + esc(pluralize("record", assessment.recordCount)) + '. If the collection or material scope changes, FileGRC will ask for another review.</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Confirm and save</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   const form = dialog.querySelector("form");
@@ -498,12 +498,8 @@ function openCollectionReviewDialog(type) {
   dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
   dialog.querySelector('[data-event="cancel"]').addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
-  let previewedPayload = null;
   form.addEventListener("input", () => {
-    previewedPayload = null;
     syncDecision();
-    dialog.querySelector(".workflow-preview").innerHTML = "";
-    dialog.querySelector("[data-preview-collection-review]").textContent = "Preview confirmation";
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -521,32 +517,20 @@ function openCollectionReviewDialog(type) {
     };
     form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = true; });
     try {
-      if (!previewedPayload) {
-        const response = await localFetch("/api/collection-review/preview", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (!response.ok) throw new Error(await responseMessage(response));
-        const preview = await response.json();
-        previewedPayload = payload;
-        dialog.querySelector(".workflow-preview").innerHTML = '<strong>Review before saving</strong><p>Save this confirmation for ' + preview.assessment.recordCount + ' current ' + esc(pluralize("record", preview.assessment.recordCount)) + '. If the collection or material scope changes, FileGRC will ask for another review.</p>';
-        dialog.querySelector("[data-preview-collection-review]").textContent = "Confirm and save";
-      } else {
-        saveStatus.textContent = "Validating and saving…";
-        const prefetch = await repositoryPrefetch;
-        const response = await localFetch("/api/collection-review", {
-          method: "POST",
-          headers: { "content-type": "application/json", prefer: "respond-async" },
-          body: JSON.stringify({ ...previewedPayload, confirmed: true, prefetchToken: prefetch?.token })
-        });
-        if (!response.ok) throw new Error(await responseMessage(response));
-        saveStatus.textContent = "Saved locally. Refreshing page…";
-        applyMutationState(await response.json());
-        dialog.close();
-        render();
-      }
+      saveStatus.textContent = "Validating and saving…";
+      const prefetch = await repositoryPrefetch;
+      const response = await localFetch("/api/collection-review", {
+        method: "POST",
+        headers: { "content-type": "application/json", prefer: "respond-async" },
+        body: JSON.stringify({ ...payload, confirmed: true, prefetchToken: prefetch?.token })
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      saveStatus.textContent = "Saved locally. Refreshing page…";
+      applyMutationState(await response.json());
+      dialog.close();
+      render();
     } catch (requestError) {
+      saveStatus.textContent = "Not saved";
       error.textContent = requestError.message;
     } finally {
       form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = false; });

@@ -850,6 +850,15 @@ test("lets record editors close without validating required fields", () => {
   assert.match(APP_SCRIPT, /const items = Array\.isArray\(value\) \? value : \[\]/);
 });
 
+test("saves collection confirmations without a repetitive preview step", () => {
+  assert.match(APP_SCRIPT, /<strong>What this saves<\/strong>/);
+  assert.match(APP_SCRIPT, /<button type="submit" class="button primary">Confirm and save<\/button>/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/collection-review",/);
+  assert.match(APP_SCRIPT, /saveStatus\.textContent = "Not saved"/);
+  assert.doesNotMatch(APP_SCRIPT, /data-preview-collection-review/);
+  assert.doesNotMatch(APP_SCRIPT, /localFetch\("\/api\/collection-review\/preview",/);
+});
+
 test("uses one accessible confirmation pattern for destructive and evidence-file actions", () => {
   assert.match(APP_SCRIPT, /function confirmAction\(\{ kicker, title, message, confirmLabel = "Confirm", danger = false \}\)/);
   assert.match(APP_SCRIPT, /aria-describedby", "confirmation-dialog-message"/);
