@@ -60,7 +60,7 @@ npx filegrc migrate --to-model 2 --preview --json
 
 Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3 and v4 previews in order.
 
-`filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
+`filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server prefers `127.0.0.1:8787` and chooses another available port when that port is occupied. Set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
 `filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Add `--preview` to validate and inspect the planned System and Program writes without saving. Add `--summary --json` for compact agent output. Selecting Type 1 or Type 2 updates the Program goal and selected Systems. Setup does not select Framework records, link Controls, create Evidence Artifacts, or create an Audit record.
 

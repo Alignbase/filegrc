@@ -96,6 +96,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const result = await serveWorkspace(positionals[0] ?? root, {
       host: flags.host ?? process.env.FILEGRC_HOST,
       port: flags.port ?? process.env.FILEGRC_PORT,
+      fallbackToAvailablePort: true,
       allowNonAuthoritativeWrites: flags["allow-non-authoritative-writes"] === true
     });
     const stopped = new Promise((resolvePromise) => {
@@ -107,6 +108,9 @@ export async function runCli(argv = process.argv.slice(2)) {
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
     });
+    if (result.usedFallbackPort) {
+      console.log(`Port ${result.requestedPort} is already in use. Using ${result.address.port} instead.`);
+    }
     console.log(`filegrc workspace: ${result.url}`);
     console.log(`Data: ${result.root}/data`);
     printGithubStarMessage();
@@ -1048,7 +1052,8 @@ function printCommandHelp(command) {
 
 Options:
   --host <address>  Bind address. Defaults to FILEGRC_HOST or 127.0.0.1.
-  --port <number>   Port. Defaults to FILEGRC_PORT or 8787. Use 0 for an available port.
+  --port <number>   Preferred port. Defaults to FILEGRC_PORT or 8787. If occupied,
+                    the server uses an available port. Use 0 to choose one directly.
   --root <path>     Workspace path when no positional root is given.
   --allow-non-authoritative-writes
                      Allow local browser writes from a task checkout. This explicit
