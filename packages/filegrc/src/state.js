@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessCollectionReviews } from "./collection-review.js";
-import { getBrowserRepositoryState, getGitSummary, getWorkspaceHistories } from "./git.js";
+import { getBrowserRepositoryState, getRepositorySnapshot, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
-import { resolveDataPath } from "./paths.js";
+import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate } from "./time.js";
@@ -16,9 +16,23 @@ import { measureTiming } from "./timing.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
+const appStatePromises = new Map();
 
 export async function createAppState(input = process.cwd(), options = {}) {
-  return serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options));
+  const key = JSON.stringify([
+    resolveWorkspaceRoot(input),
+    options.readOnly === true,
+    options.allowNonAuthoritativeWrites === true,
+    options.includeDetails !== false,
+    options.asOf ?? null,
+    options.now ?? null
+  ]);
+  if (!options.validationProof && appStatePromises.has(key)) return appStatePromises.get(key);
+  const promise = serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options)).finally(() => {
+    if (appStatePromises.get(key) === promise) appStatePromises.delete(key);
+  });
+  if (!options.validationProof) appStatePromises.set(key, promise);
+  return promise;
 }
 
 async function createAppStateUnlocked(input, options) {
@@ -47,11 +61,12 @@ async function createAppStateUnlocked(input, options) {
     }
   });
 
-  const git = getGitSummary(loaded.root);
+  const git = { ...await measureTiming("state-repository-snapshot", () => getRepositorySnapshot(loaded.root)) };
   delete git.root;
   const repository = await measureTiming("state-repository", () => getBrowserRepositoryState(loaded.root, {
     readOnly: options.readOnly,
-    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+    repositorySnapshot: git
   }));
   const workspace = loaded.workspace ?? {
     dataModelVersion: loaded.model.modelVersion,

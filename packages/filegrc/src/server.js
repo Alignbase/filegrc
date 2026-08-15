@@ -23,7 +23,7 @@ import {
   commitAndPushWorkspace,
   getBrowserRepositoryState,
   getFileHistory,
-  getGitSummary,
+  getRepositorySnapshot,
   prefetchBrowserRemote,
   pullWorkspace,
   pushWorkspace,
@@ -174,8 +174,9 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           message: (result) => `Record ${result.reviewedIds?.length || 0} applicability decisions`,
           fastResponse: prefersFastMutation(request),
           prefetchToken
-        }, () => applyApplicabilityReview(input, {
+        }, (_root, mutationContext) => applyApplicabilityReview(input, {
           ...reviewPayload,
+          scopeRevision: mutationContext?.repositorySnapshot?.currentCommit,
           confirmed: payload.confirmed === true
         })));
       }
@@ -189,8 +190,9 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           message: (result) => `Confirm ${result.assessment?.configuration?.title || payload.resourceType}`,
           fastResponse: prefersFastMutation(request),
           prefetchToken
-        }, () => applyCollectionReview(input, {
+        }, (_root, mutationContext) => applyCollectionReview(input, {
           ...reviewPayload,
+          scopeRevision: mutationContext?.repositorySnapshot?.currentCommit,
           confirmed: payload.confirmed === true
         })));
       }
@@ -351,10 +353,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 200, { ...result, state });
       }
       if (request.method === "GET" && url.pathname === "/api/git/sync-status") {
+        const git = { ...await getRepositorySnapshot(input) };
         const repository = await getBrowserRepositoryState(input, {
-          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+          repositorySnapshot: git
         });
-        const git = getGitSummary(input);
         delete git.root;
         return json(response, 200, {
           repository,
@@ -705,7 +708,7 @@ function statusFor(error) {
   if (/exceeds 25 MB/i.test(error.message)) return 413;
   if (/changed after you opened|source changed|revision changed/i.test(error.message)) return 409;
   if (/already exists|target file already exists/i.test(error.message)) return 409;
-  if (/Git could not|upstream branch|multiple remotes|no Git remote|configured repository remote|safe Git name|check out a branch|before trying to (?:pull|push)|authoritative branch|not synchronized|not synced|diverged|waiting to be pushed|Retry sync|background push|outside this FileGRC workspace|worktree has uncommitted changes|development write override|browser commit, pull, and push/i.test(error.message)) return 409;
+  if (/Git could not|Git is unavailable|Git timed out|upstream branch|multiple remotes|no Git remote|configured repository remote|safe Git name|check out a branch|before trying to (?:pull|push)|authoritative branch|not synchronized|not synced|diverged|waiting to be pushed|Retry sync|background push|outside this FileGRC workspace|worktree has uncommitted changes|development write override|browser commit, pull, and push/i.test(error.message)) return 409;
   if (/not found|ENOENT/i.test(error.message)) return 404;
   if (/invalid|required|unsafe|match|workspace|singleton|commit message|no changes|git history|git user|unknown resource type|must use|must be|content path|data path|path leaves|valid .*date|not found|no active obligations|end date|through date|already exists|EEXIST/i.test(error.message)) return 400;
   return 500;

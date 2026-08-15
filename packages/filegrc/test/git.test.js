@@ -5,17 +5,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getWorkspaceHistories, prefetchBrowserRemote, runBrowserMutation, serveWorkspace, updateResource } from "../src/index.js";
+import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getRepositorySnapshot, getWorkspaceHistories, prefetchBrowserRemote, runBrowserMutation, serveWorkspace, updateResource } from "../src/index.js";
 import {
   BROWSER_VALIDATION,
   commitAndPushWorkspace,
   commitWorkspace,
+  GitOperationError,
   hasGitRevision,
   pullWorkspace,
   pushWorkspace,
-  sanitizeGitErrorMessage
+  runGitCommand,
+  sanitizeGitErrorMessage,
+  setGitCommandInterceptorForTests
 } from "../src/git.js";
 import { collectTimings } from "../src/timing.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
@@ -26,6 +30,7 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   await makeWorkspace(root);
   await writeFile(join(parent, "outside.txt"), "outside\n", "utf8");
+  await writeFile(join(root, "rename-me.txt"), "rename boundary test\n", "utf8");
   await git(parent, ["init"]);
   await git(parent, ["config", "user.name", "Test User"]);
   await git(parent, ["config", "user.email", "test@example.test"]);
@@ -34,6 +39,11 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   assert.equal(hasGitRevision(root, getGitSummary(root).commit), true);
   assert.equal(hasGitRevision(root, "0000000000000000000000000000000000000000"), false);
   assert.equal(hasGitRevision(root, "not-a-commit"), false);
+
+  await git(parent, ["mv", "compliance/rename-me.txt", "renamed-outside.txt"]);
+  assert.equal((await getRepositorySnapshot(root, { fresh: true })).clean, false);
+  await git(parent, ["mv", "renamed-outside.txt", "compliance/rename-me.txt"]);
+  assert.equal((await getRepositorySnapshot(root, { fresh: true })).clean, true);
 
   await writeFile(join(parent, "outside.txt"), "changed outside\n", "utf8");
   assert.equal(getGitSummary(root).clean, true);
@@ -388,6 +398,17 @@ test("a recent browser prefetch removes remote network work from confirmation", 
   assert.equal((await waitForRepository(fixture.root)).status, "synced");
 });
 
+test("prefetch coalescing keeps development override results separate", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-prefetch-options-");
+  const [notNeeded, checked] = await Promise.all([
+    prefetchBrowserRemote(fixture.root, { allowNonAuthoritativeWrites: true }),
+    prefetchBrowserRemote(fixture.root)
+  ]);
+  assert.equal(notNeeded.status, "not-needed");
+  assert.equal(checked.status, "checked");
+  assert.ok(checked.token);
+});
+
 test("an invalid browser prefetch token cannot skip the remote fetch", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-invalid-prefetch-");
   const initialState = await createAppState(fixture.root);
@@ -409,6 +430,137 @@ test("an invalid browser prefetch token cannot skip the remote fetch", async (co
   assert.equal(timings["fetch-reused"], undefined);
   assert.equal(result.synchronization.status, "syncing");
   assert.equal((await waitForRepository(fixture.root)).status, "synced");
+});
+
+test("model v4 People confirmation reuses prefetch, commits locally, and synchronizes", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-people-review-", "4");
+  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 100 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+  const initial = await fetchJson(`${running.url}/api/state`);
+  assert.equal(String(initial.model.modelVersion), "4");
+  assert.ok(initial.git.invocationCount <= 5, `expected at most 5 Git launches, received ${initial.git.invocationCount}`);
+  const payload = {
+    resourceType: "person",
+    decision: "complete",
+    rationale: "Confirmed the current people and their program roles.",
+    reviewedByIds: [initial.resources.find(({ record }) => record.type === "person" && record.status === "active").record.id],
+    reviewedOn: "2026-08-15",
+    scopeRevision: initial.git.commit,
+    expectedRevision: initial.collectionReviews.person.reviewRevision || undefined
+  };
+  const preview = await fetch(`${running.url}/api/collection-review/preview`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  assert.equal(preview.status, 200);
+
+  const [prefetchA, prefetchB] = await Promise.all([
+    fetchJsonResponse(`${running.url}/api/git/prefetch`, { method: "POST" }),
+    fetchJsonResponse(`${running.url}/api/git/prefetch`, { method: "POST" })
+  ]);
+  assert.equal(prefetchA.token, prefetchB.token);
+  const confirmed = await fetch(`${running.url}/api/collection-review`, {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "respond-async" },
+    body: JSON.stringify({ ...payload, confirmed: true, prefetchToken: prefetchA.token })
+  });
+  assert.equal(confirmed.status, 201);
+  const result = await confirmed.json();
+  assert.equal(result.assessment.status, "current");
+  assert.ok(["syncing", "synced"].includes(result.synchronization.status));
+  assert.equal((await git(fixture.root, ["log", "-1", "--format=%s"])).stdout.trim(), "Confirm Program participants");
+  await waitForRepository(running.url);
+  assert.match((await git(fixture.remote, ["grep", "-n", "Confirmed the current people", "main", "--", "data"])).stdout, /Confirmed the current people/);
+});
+
+test("concurrent browser state requests share one bounded repository inspection", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-state-coalescing-");
+  const running = await serveWorkspace(fixture.root, { port: 0 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+  const started = performance.now();
+  const states = await Promise.all(Array.from({ length: 8 }, () => fetchJson(`${running.url}/api/state`)));
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 1_000, `expected concurrent state requests under 1 second, received ${elapsed.toFixed(1)} ms`);
+  assert.ok(states.every(({ git }) => git.invocationCount <= 5));
+  assert.equal(new Set(states.map(({ generatedAt }) => generatedAt)).size, 1);
+});
+
+test("a hung fetch times out without holding the mutation queue or poisoning later requests", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-git-timeout-");
+  let failFirstFetch;
+  let markFetchStarted;
+  const fetchStarted = new Promise((resolve) => { markFetchStarted = resolve; });
+  const restoreInterceptor = setGitCommandInterceptorForTests(({ cwd, args, options, run }) => {
+    if (args[0] === "fetch" && !failFirstFetch) {
+      markFetchStarted();
+      return new Promise((resolve, reject) => {
+        failFirstFetch = () => reject(new GitOperationError(
+          "timeout",
+          options.operation,
+          "The test operation exceeded its deadline and the process group was terminated."
+        ));
+      });
+    }
+    return run(cwd, args, options);
+  });
+  context.after(restoreInterceptor);
+  const running = await serveWorkspace(fixture.root, { port: 0 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+
+  const prefetchPromise = fetch(`${running.url}/api/git/prefetch`, { method: "POST" });
+  await fetchStarted;
+  const state = await fetchJson(`${running.url}/api/state`);
+  assert.equal(state.repository.status, "synced");
+  failFirstFetch();
+  const failedPrefetch = await prefetchPromise;
+  assert.equal(failedPrefetch.status, 409);
+  assert.match((await failedPrefetch.json()).error, /timed out while trying to fetch origin/i);
+
+  const current = await fetchJson(`${running.url}/api/state`);
+  const owner = current.resources.find(({ record }) => record.id === "person-owner");
+  const saved = await fetch(`${running.url}/api/resource/person/person-owner`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      record: { ...owner.record, department: "Recovered after timeout" },
+      revision: owner.revision
+    })
+  });
+  assert.equal(saved.status, 200);
+  assert.match(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8"), /Recovered after timeout/);
+});
+
+test("async Git errors distinguish missing executables and sanitize command failures", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-git-errors-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await writeTrunkSettings(root);
+  let failure = new GitOperationError("missing-executable", "locate the repository");
+  const restoreInterceptor = setGitCommandInterceptorForTests(() => Promise.reject(failure));
+  context.after(restoreInterceptor);
+  const missingSnapshot = await getRepositorySnapshot(root, { fresh: true });
+  assert.equal(missingSnapshot.error.kind, "missing-executable");
+  assert.match(missingSnapshot.message, /^Git is unavailable\. Install Git/);
+  const missingRepository = await getBrowserRepositoryState(root, { repositorySnapshot: missingSnapshot });
+  assert.equal(missingRepository.status, "git-setup-required");
+  assert.match(missingRepository.message, /^Git is unavailable\. Install Git/);
+
+  failure = new GitOperationError(
+    "command-failure",
+    "inspect the test repository",
+    "fatal: https://user:password@example.test/repo?access_token=secret"
+  );
+  await assert.rejects(
+    runGitCommand(root, ["status"], { operation: "inspect the test repository" }),
+    (error) => {
+      assert.equal(error.kind, "command-failure");
+      assert.match(error.message, /Git could not inspect the test repository/);
+      assert.doesNotMatch(error.message, /password|secret/);
+      assert.match(error.message, /\[redacted\]/);
+      return true;
+    }
+  );
 });
 
 test("the evidence map is read-only in trunk mode", async (context) => {
@@ -666,6 +818,7 @@ test("Git errors redact credentials before reaching browser responses", () => {
   assert.match(message, /https:\/\/\[redacted\]@example\.test\/repository\?token=\[redacted\]/);
   assert.match(message, /Authorization: \[redacted\]/);
   assert.doesNotMatch(message, /private-token|query-secret|header-secret/);
+  assert.equal(sanitizeGitErrorMessage("x".repeat(9_000)).length, 8_001);
 });
 
 test("trunk transactions roll back invalid FileGRC writes without creating a commit", async (context) => {
@@ -857,13 +1010,26 @@ test("retry sync refuses diverged history and commits that include files outside
   await new Promise((resolve) => running.server.close(resolve));
 });
 
-async function makeTrunkGitFixture(context, prefix) {
+async function makeTrunkGitFixture(context, prefix, modelVersion = "2") {
   const parent = await mkdtemp(join(tmpdir(), prefix));
   const root = join(parent, "workspace");
   const remote = join(parent, "remote.git");
   context.after(() => import("node:fs/promises").then(({ rm: remove }) => remove(parent, { recursive: true, force: true })));
-  await makeWorkspace(root);
-  await writeTrunkSettings(root);
+  if (modelVersion === "4") {
+    await makeComprehensiveWorkspace(root, "4");
+    const loaded = await import("../src/workspace.js").then(({ loadWorkspace }) => loadWorkspace(root));
+    const rendererEntry = loaded.entries.find(({ record }) => record.type === "renderer-settings");
+    await writeJson(rendererEntry.path, {
+      ...rendererEntry.record,
+      id: "renderer-settings",
+      repositoryMode: "trunk",
+      authoritativeBranch: "main",
+      repositoryRemote: "origin"
+    });
+  } else {
+    await makeWorkspace(root);
+    await writeTrunkSettings(root);
+  }
   await git(root, ["init", "--initial-branch=main"]);
   await configureGit(root);
   await git(root, ["add", "."]);
@@ -894,6 +1060,12 @@ async function configureGit(cwd, name = "Test User", email = "test@example.test"
 
 async function fetchJson(url) {
   const response = await fetch(url);
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+async function fetchJsonResponse(url, options) {
+  const response = await fetch(url, options);
   assert.equal(response.status, 200);
   return response.json();
 }

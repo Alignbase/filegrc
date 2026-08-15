@@ -40,6 +40,7 @@ export {
   getBrowserRepositoryState,
   getFileHistory,
   getGitSummary,
+  getRepositorySnapshot,
   getWorkspaceHistories,
   prefetchBrowserRemote,
   pullWorkspace,

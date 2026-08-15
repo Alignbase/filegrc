@@ -512,6 +512,7 @@ function openCollectionReviewDialog(type) {
       rationale: form.elements.rationale.value.trim(),
       reviewedByIds: [form.elements.reviewerId.value],
       reviewedOn: form.elements.reviewedOn.value,
+      scopeRevision: state.git?.commit || undefined,
       [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: form.elements.authoritativeSourceId.value || undefined,
       expectedRevision: assessment.reviewRevision || undefined
     };
@@ -519,6 +520,7 @@ function openCollectionReviewDialog(type) {
     try {
       saveStatus.textContent = "Validating and saving…";
       const prefetch = await repositoryPrefetch;
+      if (prefetch?.error) throw prefetch.error;
       const response = await localFetch("/api/collection-review", {
         method: "POST",
         headers: { "content-type": "application/json", prefer: "respond-async" },
@@ -1509,6 +1511,7 @@ function openApplicabilityReviewDialog(type, entries) {
       decisions,
       reviewedByIds: [form.elements.reviewerId.value],
       reviewedOn: form.elements.reviewedOn.value,
+      scopeRevision: state.git?.commit || undefined,
       expectedRevisions: Object.fromEntries([
         ...entries.filter((entry) => decisionIds.has(entry.record.id)).map((entry) => [entry.record.id, entry.revision]),
         ...(type === "requirement" && String(state.model.modelVersion) === "4"
@@ -1532,6 +1535,7 @@ function openApplicabilityReviewDialog(type, entries) {
       } else {
         saveStatus.textContent = "Validating and saving…";
         const prefetch = await repositoryPrefetch;
+        if (prefetch?.error) throw prefetch.error;
         const response = await localFetch("/api/applicability-review", {
           method: "POST",
           headers: { "content-type": "application/json", prefer: "respond-async" },
@@ -4147,9 +4151,9 @@ function prefetchRepositoryForReview(status) {
       status.textContent = result.status === "checked" ? "Repository checked" : "Ready to save";
       return result;
     })
-    .catch(() => {
-      status.textContent = "Repository will be checked when you save";
-      return null;
+    .catch((error) => {
+      status.textContent = "Repository check failed";
+      return { error };
     });
 }
 
