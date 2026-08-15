@@ -98,9 +98,9 @@ JSON is for stable metadata used by validation, relationships, filters, schedule
 
 If `guide` marks a Markdown slot recommended, fill it before treating the deliverable as complete. Keep observations and report details in the source record’s Markdown. Create a Finding only for a confirmed gap that needs its own remediation lifecycle. Create an Action Item only when follow-up needs a separate assignee, deadline, and completion proof. Set each child record’s `sourceResourceId` to the record that produced it; do not maintain reverse Finding or Action Item arrays on the source. Do not put a report’s entire variable structure into new JSON fields.
 
-When `guide` returns a collection review requirement, review the listed type-specific criteria and use `npx filegrc review-collection RESOURCE_TYPE --scaffold`. Fill the management conclusion, rationale, reviewer, and date, then preview and apply the payload. Do not invent `collectionRevision`; FileGRC calculates it from the current records and material Workspace scope. Any later change makes the confirmation stale and requires another review.
+When `guide` returns a collection review requirement, review the listed type-specific criteria and use `npx filegrc review-collection RESOURCE_TYPE --scaffold`. Fill the management conclusion, rationale, reviewer, and date, then preview and apply the payload. Do not invent `collectionRevision`; FileGRC calculates it from the current records and material Program scope. Any later change makes the confirmation stale and requires another review.
 
-Store a relationship only on its authoritative record. Control Tests store `auditId`; External Evidence stores `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds` and `requirementIds`; Risks store `controlIds`; Systems store their direct `vendorId`. Use `references` to inspect derived inbound links.
+Store a relationship only on its authoritative record. Control Tests store `auditId`; Evidence Artifacts store `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds`, `requirementIds`, `systemIds`, `componentIds`, and `evidenceSourceComponentIds`; Risks store `controlIds`; Components store their `vendorId` and `systemUses`. Use `references` to inspect derived inbound links.
 
 Use explicit business dates. Git records when a file changed, but it does not replace `occurredOn`, `scheduledFor`, `completedOn`, `approvedOn`, or similar fields.
 
@@ -110,7 +110,7 @@ Status is an assertion. Before moving a record to a completed, approved, impleme
 
 1. Run `guide RESOURCE_TYPE --json` and satisfy every conditional field.
 2. Write the actual work and conclusion in Markdown when recommended.
-3. Link source systems, evidence, risks, findings, exceptions, and actions that support the result.
+3. Link source Components, Evidence Artifacts, risks, findings, exceptions, and actions that support the result.
 4. Use the real completion or approval date.
 5. Confirm the named people performed and reviewed the work.
 
@@ -159,11 +159,11 @@ npx filegrc detach EVIDENCE_ID source-export.csv --yes --expected-revision REVIS
 
 filegrc will not delete an evidence record that still has local attachments.
 
-Never invent evidence, dates, approvals, results, people, or source-system details. If a required fact is unavailable, leave the record in a non-final state and report the missing input.
+Never invent Evidence, dates, approvals, results, people, or source-Component details. If a required fact is unavailable, leave the record in a non-final state and report the missing input.
 
 ## Implement Controls and Their Evidence Sources
 
-Finish each applicable Control and its authoritative source Systems together. Use Program Readiness as the completion check:
+Finish each applicable Control and its authoritative source Components together. Use Program Readiness as the completion check:
 
 ```sh
 npx filegrc program-readiness --json
@@ -174,11 +174,11 @@ The Control stage reports both Control implementation items and evidence-family 
 1. Choose an existing System or scaffold the System that is authoritative for the family.
 2. Set the System to `active`, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
 3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the System’s Record Markdown.
-4. Add the System ID to `evidenceSourceIds` on every Control in the family that it supports.
+4. Add the Component ID to `evidenceSourceComponentIds` on every Control in the family that it supports.
 5. Finish the Control’s owner, procedure, scope, operation pattern, mappings, and implementation date. Put every calendar or event schedule in an Obligation.
 6. Run `program-readiness --json` again and resolve every failed Control or source check before marking the Controls implemented or starting the candidate period.
 
-Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. `evidence-map --json` remains available when you want only the evidence-family checks. Do not create an Evidence record while designing or implementing a Control. Create External Evidence during Step 4 only when the real export, report, screenshot, signed file, or approved external reference exists.
+Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. `evidence-map --json` remains available when you want only the evidence-family checks. Do not create an Evidence Artifact while designing or implementing a Control. Create one during Step 4 only when the real export, report, screenshot, signed file, or approved external reference exists.
 
 ## Scheduled and event work
 

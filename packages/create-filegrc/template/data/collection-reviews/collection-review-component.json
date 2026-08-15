@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-component",
+  "type": "collection-review",
+  "title": "Scoped Components review",
+  "status": "planned",
+  "resourceType": "component",
+  "scopeResourceIds": [
+    "program-soc-2"
+  ]
+}

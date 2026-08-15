@@ -70,7 +70,7 @@ test("initializes model-owned Type 2 populations and management document links",
   const auditEvidenceItems = before.stages.find(({ id }) => id === "fieldwork").items
     .filter(({ section }) => section === "Audit Evidence");
   assert.equal(auditEvidenceItems.some(({ id, title }) => id === "evidence-filegrc-evidence" && title === "Review filegrc Evidence"), true);
-  assert.equal(auditEvidenceItems.some(({ id, title }) => id === "evidence-external-evidence" && title === "Review External Evidence"), true);
+  assert.equal(auditEvidenceItems.some(({ id, title }) => id === "evidence-external-evidence" && title === "Review Evidence Artifacts"), true);
   assert.equal(before.stages.find(({ id }) => id === "auditor").title, "Fieldwork and Report");
 
   const result = await prepareAuditWorkspace(root, { auditId: "audit-type-2" });

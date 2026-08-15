@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v2 workspaces must run `npx filegrc migrate --to-model 3 --preview --json` after installing a model v3 package. Review each automatic, review-required, and unsupported item before applying the same migration with `--yes`. Model v1 workspaces migrate to v2 first. See the [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md).
+Existing model v3 workspaces must run `npx filegrc migrate --to-model 4 --preview --json` after installing a model v4 package. Review each automatic, review-required, and unsupported item, supply explicit System classification decisions where needed, then apply the same migration with `--yes`. Older workspaces migrate one model version at a time. See the [model v4 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v4.md).
 
 ## How it works
 
@@ -45,7 +45,7 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 4. **Operate the program.** Run scheduled and event-driven work, maintain risk, and retain dated evidence.
 5. **Audit.** Set up the CPA engagement, support fieldwork, and prepare the evidence packet.
 
-Control implementation includes evidence-source readiness. Use `npx filegrc program-readiness --json` to find incomplete Control or System records. `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create External Evidence during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists.
+Control implementation includes evidence-source readiness. Use `npx filegrc program-readiness --json` to find incomplete Control or Component records. `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create an Evidence Artifact during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists.
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 

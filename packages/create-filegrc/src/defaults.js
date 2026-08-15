@@ -34,18 +34,18 @@ const FILEGRC_SOURCE_CONTROL_CODES = new Set([
   "VEN-02"
 ]);
 const SOURCE_FAMILIES = [
-  ["workforce", "Workforce System"],
+  ["workforce", "Workforce"],
   ["training-acknowledgement", "Training and Acknowledgements"],
-  ["identity-access", "Identity and Access Systems"],
-  ["production-change", "Production Change Systems"],
-  ["security-monitoring", "Security Monitoring Systems"],
+  ["identity-access", "Identity and Access"],
+  ["production-change", "Production Change"],
+  ["security-monitoring", "Security Monitoring"],
   ["vulnerability-management", "Vulnerability Management"],
-  ["endpoint-asset", "Endpoint Management Systems"],
+  ["endpoint-asset", "Endpoint Management"],
   ["backup-recovery", "Backup and Recovery"],
   ["vendor-management", "Vendors"],
   ["exception-finding", "Exceptions and Findings"],
   ["data-handling", "Data Protection Configuration"],
-  ["network-security", "Network Security Systems"],
+  ["network-security", "Network Security"],
   ["governance", "Governance"],
   ["risk-management", "Risk Management"]
 ];
@@ -1082,9 +1082,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: `${reference}: ${name}`,
     frameworkId: FRAMEWORK_ID,
     reference,
-    applicability: "undetermined",
     description,
-    applicabilityRationale: "Confirm applicability against the selected service, scope, and auditor guidance before accepting this starter criterion.",
     tags: ["security", "common-criteria"]
   }));
   const descriptionRequirements = descriptionCriteria.map(([reference, name, description]) => ({
@@ -1093,9 +1091,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     title: `${reference}: ${name}`,
     frameworkId: DESCRIPTION_FRAMEWORK_ID,
     reference,
-    applicability: "undetermined",
     description,
-    applicabilityRationale: "Confirm applicability against the selected service and auditor guidance before accepting this starter description criterion.",
     tags: ["description-criteria"]
   }));
   const controlRecords = controls.map((control) => ({
@@ -1113,7 +1109,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     operationPattern: control.operationPattern,
     policyIds: control.policies,
     ...(FILEGRC_SOURCE_CONTROL_CODES.has(control.code)
-      ? { evidenceSourceIds: ["system-filegrc-program-repository"] }
+      ? { evidenceSourceComponentIds: ["component-filegrc-program-repository"] }
       : {})
   }));
   const team = {
@@ -1126,17 +1122,18 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     chairIds: []
   };
   const programRepository = {
-    id: "system-filegrc-program-repository",
-    type: "system",
+    id: "component-filegrc-program-repository",
+    type: "component",
     title: "filegrc Program Repository",
-    status: "active",
+    status: "planned",
+    componentKind: "software",
     criticality: "high",
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     description: "The Git repository that is authoritative for filegrc governance records, approvals, exceptions, findings, acknowledgements, evidence indexes, and their revision history.",
-    systemKind: "governance-system-of-record",
     environment: "Git repository",
     classificationId: "confidential",
     internetExposed: false,
+    systemUses: [],
     evidenceSourceKinds: FILEGRC_SOURCE_FAMILIES,
     evidenceOwnerIds: [POLICY_OWNER_APPOINTMENT_ID]
   };
@@ -1167,8 +1164,8 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
       title: `${title} coverage`,
       status: filegrcManaged ? "active" : "planned",
       sourceFamilyId,
-      coverageKind: filegrcManaged ? "filegrc" : "external-system",
-      scopeResourceIds: ["workspace"],
+      coverageKind: filegrcManaged ? "filegrc" : "external-component",
+      scopeResourceIds: ["program-soc-2"],
       ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
       ...(filegrcManaged ? {
         collectionCadence: "Record work when it occurs and export the complete population for the audit period.",
@@ -1180,7 +1177,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
   });
 
   const foundation = [
-    recordFile("systems", programRepository),
+    recordFile("components", programRepository),
     recordFile("teams", team)
   ];
   if (starter === "foundation") return foundation;

@@ -1,0 +1,8 @@
+{
+  "id": "confidential",
+  "type": "classification",
+  "title": "Confidential",
+  "status": "active",
+  "rank": 2,
+  "description": "Disclosure could harm the organization, a customer, or another person."
+}

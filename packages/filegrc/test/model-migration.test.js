@@ -7,6 +7,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { loadModel } from "../model/index.js";
+import { assessAuditPreparation } from "../src/audit-preparation.js";
+import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
 import { migrateModel, planModelMigration } from "../src/model-migration.js";
 import { loadWorkspace } from "../src/workspace.js";
@@ -411,11 +413,154 @@ test("precreates model v3 source coverage when model v2 has no Appointments", as
   assert.equal(result.applied, true);
   assert.equal((await validateWorkspace(root)).ok, true);
 
-  const current = await planModelMigration(root);
-  assert.equal(current.schemaVersion, 2);
-  assert.deepEqual(current.classifications, {
+  const noOpV3 = await planModelMigration(root, { targetModelVersion: "3" });
+  assert.equal(noOpV3.schemaVersion, 2);
+  assert.equal(noOpV3.sourceModelVersion, "3");
+  assert.equal(noOpV3.targetModelVersion, "3");
+  assert.deepEqual(noOpV3.classifications, {
     automatic: [],
     reviewRequired: [],
     unsupported: []
   });
+
+  const current = await planModelMigration(root);
+  assert.equal(current.schemaVersion, 2);
+  assert.equal(current.sourceModelVersion, "3");
+  assert.equal(current.targetModelVersion, "4");
+  assert.equal(current.classifications.unsupported.length, 0);
+  assert.ok(current.classifications.automatic.some(({ resourceId }) => resourceId === "workspace"));
+});
+
+test("classifies and atomically migrates a complete v3 System and Component graph", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v4-migration-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "3");
+  let loaded = await loadWorkspace(root);
+  const rootSystem = loaded.resources.find(({ type }) => type === "system");
+  const child = {
+    ...rootSystem,
+    id: "system-production-platform",
+    title: "Production platform",
+    systemKind: "infrastructure",
+    parentSystemId: rootSystem.id,
+    vendorId: "vendor-example",
+    description: "Runs the bounded production application and produces authoritative Evidence.",
+    evidenceSourceKinds: [loaded.model.evidenceSourceFamilies[0].sourceKinds[0]],
+    evidenceOwnerIds: ["person-example"]
+  };
+  await createResource(root, child, { content: { record: "# Production platform\n\nExport the authoritative access report for the selected period.\n" } });
+  loaded = await loadWorkspace(root);
+  for (const entry of loaded.entries) {
+    const record = structuredClone(entry.record);
+    let changed = false;
+    if (record.type === "control") {
+      record.systemIds = [rootSystem.id];
+      record.evidenceSourceIds = [child.id];
+      changed = true;
+    }
+    if (record.type === "audit") {
+      record.systemIds = [rootSystem.id, child.id];
+      changed = true;
+    }
+    if (["asset", "access-review", "vulnerability-scan"].includes(record.type) && record.systemIds) {
+      record.systemIds = [child.id];
+      changed = true;
+    }
+    if (record.type === "access-grant" && record.systemId) {
+      record.systemId = child.id;
+      changed = true;
+    }
+    if (record.type === "audit-population" && record.sourceSystemId) {
+      record.sourceSystemId = child.id;
+      changed = true;
+    }
+    if (record.type === "audit-request" && record.externalAuthoritySystemId) {
+      record.externalAuthoritySystemId = child.id;
+      changed = true;
+    }
+    if (record.type === "collection-review" && record.authoritativeSystemId) {
+      record.authoritativeSystemId = child.id;
+      changed = true;
+    }
+    if (record.type === "source-coverage" && record.systemId) {
+      record.systemId = child.id;
+      changed = true;
+    }
+    if (record.type === "evidence") {
+      record.sourceKind = "system";
+      record.sourceSystemId = child.id;
+      changed = true;
+    }
+    if (changed) await writeJson(entry.path, record);
+  }
+
+  const preview = await planModelMigration(root, { targetModelVersion: "4" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  assert.equal(preview.migrationReport.retainedSystemIds.includes(rootSystem.id), true);
+  assert.equal(preview.migrationReport.componentIds.includes(child.id), true);
+  assert.deepEqual(preview.fileDiff.move, [{ from: `systems/${child.id}.md`, to: `components/${child.id}.md` }]);
+  assert.ok(preview.classifications.automatic.length);
+  assert.ok(preview.classifications.reviewRequired.length);
+  const unrelatedMove = structuredClone(preview.changes);
+  unrelatedMove.movePaths = [{ from: "workspace.json", to: "archive/workspace.json" }];
+  await assert.rejects(
+    applyResourceBatch(root, unrelatedMove),
+    /must match companion Markdown for a resource whose type changes/
+  );
+
+  const result = await migrateModel(root, { targetModelVersion: "4" });
+  assert.equal(result.applied, true);
+  const migrated = await loadWorkspace(root);
+  assert.equal(migrated.workspace.dataModelVersion, "4");
+  assert.equal(migrated.resources.find(({ id }) => id === rootSystem.id).type, "system");
+  const component = migrated.resources.find(({ id }) => id === child.id);
+  assert.equal(component.type, "component");
+  assert.equal(component.vendorId, "vendor-example");
+  assert.equal(component.systemUses[0].systemId, rootSystem.id);
+  assert.equal(await readFile(join(root, "data", "components", `${child.id}.md`), "utf8"), "# Production platform\n\nExport the authoritative access report for the selected period.\n");
+  await assert.rejects(readFile(join(root, "data", "systems", `${child.id}.md`), "utf8"), /ENOENT/);
+  assert.equal((await validateWorkspace(root)).ok, true);
+  const audit = migrated.resources.find(({ type }) => type === "audit");
+  assert.deepEqual(audit.systemIds, [rootSystem.id]);
+  assert.equal(audit.componentIds, undefined);
+  const auditReadiness = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(auditReadiness.audit.id, audit.id);
+  const packet = await prepareEvidencePacket(root, { auditId: audit.id });
+  assert.equal(packet.dataModelVersion, "4");
+  assert.ok(Array.isArray(packet.sourceComponents));
+  assert.equal(packet.sourceSystems, undefined);
+});
+
+test("blocks an ambiguous v3 System until an explicit v4 decision is supplied", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v4-ambiguous-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "3");
+  const loaded = await loadWorkspace(root);
+  const rootSystem = loaded.resources.find(({ type }) => type === "system");
+  await createResource(root, {
+    ...rootSystem,
+    id: "system-ambiguous-tool",
+    title: "Ambiguous tool",
+    systemKind: "tool",
+    description: "The v3 facts do not establish whether this is a bounded System or a Component."
+  });
+  const preview = await planModelMigration(root, { targetModelVersion: "4" });
+  assert.equal(preview.ready, false);
+  assert.ok(preview.classifications.unsupported.some(({ resourceId, field }) => resourceId === "system-ambiguous-tool" && field === "type"));
+  await assert.rejects(migrateModel(root, { targetModelVersion: "4" }), /needs review/);
+
+  const decided = await planModelMigration(root, {
+    targetModelVersion: "4",
+    systemDecisions: {
+      "system-ambiguous-tool": {
+        kind: "component",
+        systemUses: [{
+          systemId: rootSystem.id,
+          roles: ["supporting-operations"],
+          rationale: "Supports relevant operations for the bounded production application."
+        }]
+      }
+    }
+  });
+  assert.equal(decided.classifications.unsupported.some(({ resourceId, field }) => resourceId === "system-ambiguous-tool" && field === "type"), false);
 });

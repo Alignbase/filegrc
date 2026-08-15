@@ -15,6 +15,7 @@ import {
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { obligationProgramStatus } from "./program-lifecycle.js";
+import { resolveProgram } from "./program.js";
 
 const COMPLETION_DATE_FIELDS = [
   "completedOn",
@@ -487,6 +488,7 @@ function plannedActionForScaffold(loaded, action, completedOn) {
 
 function applyCompletionScaffoldDefaults(record, context) {
   const { loaded, item, obligation, completedOn, activity } = context;
+  const program = resolveProgram(loaded);
   const responsiblePeople = currentPeopleForParties(loaded.resources, item.ownerIds || []);
   if (!responsiblePeople.length) {
     throw new Error(`Obligation "${obligation.id}" needs an active owner whose Appointment or Team resolves to a current Person.`);
@@ -501,7 +503,7 @@ function applyCompletionScaffoldDefaults(record, context) {
     .filter((candidate) => (
       candidate.type === "system"
       && candidate.status !== "retired"
-      && (loaded.workspace.systemIds || []).includes(candidate.id)
+      && (program.systemIds || []).includes(candidate.id)
     ))
     .map(({ id }) => id);
   const vendorIds = loaded.resources
@@ -547,7 +549,7 @@ function applyCompletionScaffoldDefaults(record, context) {
       scope: "In-scope SOC 2 systems and dependencies",
       assessorIds: responsiblePeople,
       reviewerIds,
-      methodology: loaded.workspace.riskMethodology?.method || "Documented risk methodology",
+      methodology: program.riskMethodology?.method || "Documented risk methodology",
       summary: "",
       evidenceIds: [],
       approvedOn: completedOn
@@ -626,7 +628,7 @@ function applyCompletionScaffoldDefaults(record, context) {
       controlIds: item.controlIds || obligation.controlIds || [],
       scopeResourceIds: (item.scopeResourceIds || obligation.scopeResourceIds || []).length
         ? (item.scopeResourceIds || obligation.scopeResourceIds)
-        : [loaded.workspace.id],
+        : [program.id],
       performerIds: responsiblePeople,
       completedAt: timestamp,
       method: "",
@@ -681,7 +683,7 @@ function applyCompletionScaffoldDefaults(record, context) {
     sourceDescription: "Internal control operation",
     collectedOn: completedOn,
     collectorIds: responsiblePeople,
-    classificationId: defaultClassificationId(loaded.workspace),
+    classificationId: defaultClassificationId(loaded),
     coverage,
     controlIds: item.controlIds || obligation.controlIds || [],
     sourceResourceIds: [obligation.id]
@@ -717,8 +719,13 @@ function completionTeam(resources, ownerIds) {
   )) || null;
 }
 
-function defaultClassificationId(workspace) {
-  const definitions = workspace.classificationDefinitions || {};
+function defaultClassificationId(loaded) {
+  if (String(loaded.model.modelVersion) === "4") {
+    return loaded.resources.find(({ type, id, status }) => type === "classification" && id === "internal" && status === "active")?.id
+      || loaded.resources.find(({ type, status }) => type === "classification" && status === "active")?.id
+      || "";
+  }
+  const definitions = loaded.workspace.classificationDefinitions || {};
   return Object.hasOwn(definitions, "internal") ? "internal" : Object.keys(definitions)[0] || "";
 }
 
@@ -785,7 +792,7 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
       const completionProfile = obligation?.type === "obligation"
         ? obligationActivity(model, obligation.activityType).completionProfile || null
         : null;
-      const completionIds = String(model.modelVersion) === "3"
+      const completionIds = ["3", "4"].includes(String(model.modelVersion))
         ? record.completionResourceIds || []
         : [...(record.completionResourceIds || []), ...(record.evidenceIds || [])];
       const linkedCompletionIds = [...new Set(completionIds)];

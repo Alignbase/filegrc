@@ -8,7 +8,60 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createResource, loadWorkspace, serveWorkspace, setupWorkspace, validateWorkspace } from "../src/index.js";
 import { collectTimings } from "../src/timing.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
+
+test("model v4 setup preserves Component scope and draft lifecycle", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-setup-v4-component-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  await createResource(root, {
+    id: "system-secondary",
+    type: "system",
+    title: "Secondary service",
+    status: "active",
+    purpose: "Provide a separate service.",
+    servicesProvided: ["Secondary service"],
+    boundary: "The secondary application and its supporting operations.",
+    exclusions: [],
+    criticality: "medium",
+    ownerIds: ["appointment-example"]
+  });
+  await createResource(root, {
+    id: "component-filegrc-program-repository",
+    type: "component",
+    title: "filegrc Program Repository",
+    status: "planned",
+    componentKind: "software",
+    description: "Stores the Program record and revision history.",
+    ownerIds: ["appointment-example"],
+    systemUses: [{
+      systemId: "system-secondary",
+      roles: ["supporting-operations"],
+      rationale: "Stores governance records for the secondary service."
+    }]
+  });
+  const setup = {
+    serviceName: "Production application",
+    boundary: "The production application and supporting operations.",
+    ownerId: "person-example",
+    criticality: "high",
+    classificationId: "classification-example",
+    internetExposed: true,
+    programGoal: "readiness",
+    systemId: "system-example"
+  };
+
+  await setupWorkspace(root, { ...setup, draft: true });
+  let component = (await loadWorkspace(root)).resources.find(({ id }) => id === "component-filegrc-program-repository");
+  assert.equal(component.status, "planned");
+  assert.deepEqual(component.systemUses.map(({ systemId }) => systemId).sort(), ["system-example", "system-secondary"]);
+
+  await setupWorkspace(root, { ...setup, draft: false });
+  component = (await loadWorkspace(root)).resources.find(({ id }) => id === "component-filegrc-program-repository");
+  assert.equal(component.status, "active");
+  assert.deepEqual(component.systemUses.map(({ systemId }) => systemId).sort(), ["system-example", "system-secondary"]);
+});
 
 const execute = promisify(execFile);
 const cliPath = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));

@@ -2,49 +2,58 @@ import { createHash } from "node:crypto";
 import { applyResourceBatch } from "./files.js";
 import { getGitSummary } from "./git.js";
 import { loadWorkspace } from "./workspace.js";
+import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
 
-export function collectionRevision(loaded, resourceType) {
+export function collectionRevision(loaded, resourceType, options = {}) {
+  const program = resolveProgram(loaded, options.programId);
+  const scopedIds = new Set(scopedCollectionRecords(loaded, resourceType, program).map(({ id }) => id));
   const records = loaded.entries
-    .filter(({ record }) => record.type === resourceType)
+    .filter(({ record }) => record.type === resourceType && scopedIds.has(record.id))
     .map(({ record, source }) => ({
       id: record.id,
       revision: createHash("sha256").update(source).digest("hex")
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const workspaceScope = {
-    assuranceGoal: loaded.workspace?.assuranceGoal ?? null,
-    candidateCoverage: loaded.workspace?.candidateCoverage ?? null,
-    systemIds: [...(loaded.workspace?.systemIds || [])].sort(),
-    frameworkIds: [...(loaded.workspace?.frameworkIds || [])].sort(),
-    requirementIds: [...(loaded.workspace?.requirementIds || [])].sort(),
-    controlIds: [...(loaded.workspace?.controlIds || [])].sort()
+    programId: program?.id ?? null,
+    assuranceGoal: program?.assuranceGoal ?? null,
+    candidateCoverage: program?.candidateCoverage ?? null,
+    systemIds: [...(program?.systemIds || [])].sort(),
+    frameworkIds: [...(program?.frameworkIds || [])].sort(),
+    requirementIds: [...selectedRequirementIds(program || {}, loaded.model)].sort(),
+    controlIds: [...(program?.controlIds || [])].sort()
   };
   return createHash("sha256")
     .update(JSON.stringify({ resourceType, records, workspaceScope }))
     .digest("hex");
 }
 
-export function assessCollectionReviews(input) {
+export function assessCollectionReviews(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
     : null;
   if (!loaded) throw new Error("Collection review assessment requires a loaded workspace.");
   return Object.keys(loaded.model.collectionReviews || {})
-    .map((resourceType) => assessCollectionReview(loaded, resourceType));
+    .map((resourceType) => assessCollectionReview(loaded, resourceType, options));
 }
 
-export function assessCollectionReview(loaded, resourceType) {
+export function assessCollectionReview(loaded, resourceType, options = {}) {
   const configuration = loaded.model.collectionReviews?.[resourceType];
   if (!configuration) return null;
-  const records = loaded.resources.filter((record) => record.type === resourceType);
+  const program = resolveProgram(loaded, options.programId);
+  const records = scopedCollectionRecords(loaded, resourceType, program);
   const reviewEntry = loaded.entries.find(({ record }) => (
     record.type === "collection-review"
     && record.resourceType === resourceType
     && record.status !== "retired"
+    && (String(loaded.model.modelVersion) !== "4" || (record.scopeResourceIds || []).includes(program.id))
   ));
   const review = reviewEntry?.record || null;
-  const currentRevision = collectionRevision(loaded, resourceType);
+  const currentRevision = collectionRevision(loaded, resourceType, { programId: program.id });
   const allowedDecisions = configuration.decisions || ["complete"];
+  const allowsEmptyCollection = allowedDecisions.some((decision) => (
+    decision === "zero-population" || decision === "externally-managed"
+  ));
   const complete = Boolean(
     review?.status === "active"
     && allowedDecisions.includes(review.decision)
@@ -71,14 +80,17 @@ export function assessCollectionReview(loaded, resourceType) {
       ? `${configuration.title} were reviewed on ${review.reviewedOn}.`
       : stale
         ? `${configuration.title} changed after the last confirmation. Review the current records again.`
+        : !records.length && !allowsEmptyCollection
+          ? `Add at least one ${loaded.model.resources[resourceType].title.toLowerCase()} before confirming this collection.`
         : `Review ${configuration.title.toLowerCase()} before this page can be ready.`
   };
 }
 
 export async function scaffoldCollectionReview(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
+  const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
-  const assessment = assessCollectionReview(loaded, resourceType);
+  const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
   const allowedDecisions = assessment.configuration.decisions || ["complete"];
   return {
     resourceType,
@@ -88,28 +100,37 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
     rationale: null,
     reviewedByIds: [],
     reviewedOn: null,
-    authoritativeSystemId: null
+    ...(String(loaded.model.modelVersion) === "4"
+      ? { authoritativeComponentId: null }
+      : { authoritativeSystemId: null })
   };
 }
 
 export async function planCollectionReview(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
+  const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
-  const assessment = assessCollectionReview(loaded, resourceType);
+  const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
   const configuration = assessment.configuration;
   const decision = String(options.decision || "").trim();
   const rationale = String(options.rationale || "").trim();
   const reviewedByIds = [...new Set((options.reviewedByIds || []).map(String).filter(Boolean))];
   const reviewedOn = String(options.reviewedOn || "").trim();
   const scopeRevision = String(options.scopeRevision || getGitSummary(loaded.root).commit || "uncommitted").trim();
-  const authoritativeSystemId = String(options.authoritativeSystemId || "").trim();
+  const v4 = String(loaded.model.modelVersion) === "4";
+  const authoritativeSourceId = String(v4 ? options.authoritativeComponentId : options.authoritativeSystemId || "").trim();
   if (!(configuration.decisions || ["complete"]).includes(decision)) {
     throw new Error(
       `${configuration.title} review must use one of: ${(configuration.decisions || ["complete"]).join(", ")}.`
     );
   }
   if (!assessment.records.length && decision === "complete") {
-    throw new Error(`${configuration.title} has no records. Use zero-population or another allowed conclusion.`);
+    const emptyDecisions = (configuration.decisions || []).filter((value) => (
+      value === "zero-population" || value === "externally-managed"
+    ));
+    throw new Error(emptyDecisions.length
+      ? `${configuration.title} has no records. Use one of the allowed empty-collection conclusions: ${emptyDecisions.join(", ")}.`
+      : `${configuration.title} has no records. Add the required records before confirming this collection.`);
   }
   if (assessment.records.length && decision === "zero-population") {
     throw new Error(`${configuration.title} has ${assessment.records.length} records and cannot be confirmed as a zero population.`);
@@ -119,11 +140,11 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   }
   if (decision === "externally-managed") {
     const system = loaded.resources.find((record) => (
-      record.type === "system"
-      && record.id === authoritativeSystemId
+      record.type === (v4 ? "component" : "system")
+      && record.id === authoritativeSourceId
       && record.status === "active"
     ));
-    if (!system) throw new Error(`${configuration.title} review needs an active authoritative System.`);
+    if (!system) throw new Error(`${configuration.title} review needs an active authoritative ${v4 ? "Component" : "System"}.`);
   }
   const existing = assessment.review;
   const record = {
@@ -132,7 +153,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
       type: "collection-review",
       title: `${configuration.title} review`,
       resourceType,
-      scopeResourceIds: [loaded.workspace.id]
+      scopeResourceIds: [program.id]
     }),
     status: "active",
     decision,
@@ -141,9 +162,14 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     reviewedOn,
     collectionRevision: assessment.collectionRevision,
     scopeRevision,
-    ...(decision === "externally-managed" ? { authoritativeSystemId } : {})
+    ...(decision === "externally-managed"
+      ? { [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: authoritativeSourceId }
+      : {})
   };
-  if (decision !== "externally-managed") delete record.authoritativeSystemId;
+  if (decision !== "externally-managed") {
+    delete record.authoritativeSystemId;
+    delete record.authoritativeComponentId;
+  }
   return {
     operation: "collection-review",
     resourceType,
@@ -170,8 +196,28 @@ export async function applyCollectionReview(input = process.cwd(), options = {})
   return {
     ...plan,
     result,
-    assessment: assessCollectionReview(loaded, plan.resourceType)
+    assessment: assessCollectionReview(loaded, plan.resourceType, { programId: options.programId })
   };
+}
+
+function scopedCollectionRecords(loaded, resourceType, program) {
+  if (String(loaded.model.modelVersion) !== "4") {
+    return loaded.resources.filter((record) => record.type === resourceType);
+  }
+  const components = programComponents(loaded, program);
+  const componentIds = new Set(components.map(({ id }) => id));
+  const selected = {
+    system: new Set(program.systemIds || []),
+    component: componentIds,
+    framework: new Set(program.frameworkIds || []),
+    vendor: new Set(components.map(({ vendorId }) => vendorId).filter(Boolean)),
+    asset: new Set(loaded.resources.filter((record) => (
+      record.type === "asset" && (record.componentIds || []).some((id) => componentIds.has(id))
+    )).map(({ id }) => id))
+  }[resourceType];
+  return loaded.resources.filter((record) => (
+    record.type === resourceType && (!selected || selected.has(record.id))
+  ));
 }
 
 function requiredType(loaded, value) {

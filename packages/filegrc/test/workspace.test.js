@@ -442,12 +442,12 @@ test("enforces model-declared relationship cycles, active uniqueness, and nested
   await makeComprehensiveWorkspace(root);
   const loaded = await loadWorkspace(root);
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const system = structuredClone(byId.get("system-example"));
+  const requirement = structuredClone(byId.get("requirement-example"));
   const appointment = structuredClone(byId.get("appointment-example"));
   const accessGrant = structuredClone(byId.get("access-grant-example"));
   const risk = structuredClone(byId.get("risk-example"));
 
-  system.parentSystemId = system.id;
+  requirement.parentRequirementId = requirement.id;
   risk.response = "accept";
   risk.acceptance = {
     rationale: "Management approved the residual exposure.",
@@ -460,9 +460,9 @@ test("enforces model-declared relationship cycles, active uniqueness, and nested
   accessGrant.id = "access-grant-duplicate";
   accessGrant.title = "Duplicate active access grant";
 
-  const systemEntry = loaded.entries.find(({ record }) => record.id === system.id);
+  const requirementEntry = loaded.entries.find(({ record }) => record.id === requirement.id);
   const riskEntry = loaded.entries.find(({ record }) => record.id === risk.id);
-  await writeFile(systemEntry.path, `${JSON.stringify(system, null, 2)}\n`, "utf8");
+  await writeFile(requirementEntry.path, `${JSON.stringify(requirement, null, 2)}\n`, "utf8");
   await writeFile(riskEntry.path, `${JSON.stringify(risk, null, 2)}\n`, "utf8");
   await writeFile(
     join(root, "data", "appointments", `${appointment.id}.json`),

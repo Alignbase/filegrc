@@ -544,6 +544,7 @@ test("keeps repository and validation status in separate topbar controls", () =>
 test("uses compact topbar spacing on wide and narrow screens", () => {
   assert.match(APP_STYLES, /\.topbar\{height:63px\}/);
   assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}/);
+  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}\.topbar>div:first-of-type\{display:none\}\.search\{flex:1;min-width:0\}/);
 });
 
 test("uses the larger interface type scale", () => {
@@ -619,6 +620,27 @@ test("places source attributes first in record metadata", () => {
   assert.doesNotMatch(APP_SCRIPT, /<h3>Source<\/h3>/);
 });
 
+test("renders nested relationship values without exposing raw JSON", () => {
+  assert.match(APP_SCRIPT, /function formatObjectArray\(items, objectType, compact = false\)/);
+  assert.match(APP_SCRIPT, /definition\?\.items === "object"\) return formatObjectArray/);
+  assert.match(APP_SCRIPT, /formatValue\(name === "status" \? displayStatus\(entry\.record\) : entry\.record\[name\], name, type, true\)/);
+  assert.match(APP_STYLES, /\.object-value-list\{display:grid;gap:7px\}/);
+});
+
+test("uses model-driven controls for fixed-shape object fields", () => {
+  assert.match(APP_SCRIPT, /schema\?\.additionalProperties === false/);
+  assert.match(APP_SCRIPT, /function objectPropertyFields\(schema, value = \{\}\)/);
+  assert.match(APP_SCRIPT, /function readStructuredObject\(container\)/);
+  assert.match(APP_SCRIPT, /wireStructuredObjectEditors\(dialog\)/);
+  assert.match(APP_SCRIPT, /return fieldWrap\(name, "structured-object"/);
+  assert.match(APP_STYLES, /\.structured-object-fields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(APP_SCRIPT, /nested\?\.additionalProperties\?\.type === "string"/);
+  assert.match(APP_SCRIPT, /function stringMapEditor\(value = \{\}, name = "item"\)/);
+  assert.match(APP_SCRIPT, /function readStringMap\(container\)/);
+  assert.match(APP_STYLES, /\.string-map-row\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\) auto/);
+  assert.match(APP_SCRIPT, /typeof value === "object" && !Array\.isArray\(value\) && !Object\.keys\(value\)\.length/);
+});
+
 test("uses a concise record edit action", () => {
   assert.match(APP_SCRIPT, /id="edit-resource">Edit<\/button>/);
   assert.doesNotMatch(APP_SCRIPT, /id="edit-resource">Edit record<\/button>/);
@@ -672,16 +694,16 @@ test("uses semantic nesting within the readiness sidebar", () => {
   const operationStage = PROGRAM_PATH.find(({ id }) => id === "run");
   const auditStage = PROGRAM_PATH.find(({ id }) => id === "audit");
   const section = (stage, title) => stage.sections.find((candidate) => candidate.title === title);
-  assert.deepEqual(section(scopeStage, "Service Boundary").types, ["vendor", "system"]);
+  assert.deepEqual(section(scopeStage, "System Boundary").types, ["system", "component", "vendor", "classification", "information-type"]);
   assert.equal(section(scopeStage, "Dependencies"), undefined);
-  assert.deepEqual(section(scopeStage, "Criteria").types, ["framework", "requirement", "commitment"]);
+  assert.deepEqual(section(scopeStage, "Program and Criteria").types, ["program", "framework", "requirement", "commitment"]);
   assert.deepEqual(section(PROGRAM_PATH[2], "Control Catalog").types, ["control", "complementary-control"]);
   assert.deepEqual(section(operationStage, "Risk").types, ["risk-assessment", "risk"]);
   assert.ok(scopeStage.sections.findIndex(({ id }) => id === "criteria") < scopeStage.sections.findIndex(({ id }) => id === "boundary"));
   assert.equal(scopeStage.resourceTypes.includes("risk"), false);
   assert.deepEqual(section(operationStage, "Assets and Vendors").types, ["asset", "vendor-review"]);
   assert.deepEqual(section(operationStage, "Work Queue").types, ["obligation", "obligation-event", "data-request"]);
-  assert.deepEqual(section(operationStage, "External Evidence").types, ["evidence"]);
+  assert.deepEqual(section(operationStage, "Evidence Artifacts").types, ["evidence"]);
   assert.deepEqual(section(operationStage, "Access and Training").types, ["service-account", "access-grant", "access-review", "training", "attestation"]);
   assert.deepEqual(section(auditStage, "Engagement").types, ["audit", "audit-request"]);
   assert.deepEqual(section(auditStage, "Fieldwork").types, ["audit-population", "control-test"]);
@@ -755,6 +777,9 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_STYLES, /\.record-prose\{max-width:790px\}/);
   assert.match(APP_STYLES, /\.connections\{display:grid\}/);
   assert.match(APP_STYLES, /\.external-source\{display:flex/);
+  assert.match(APP_SCRIPT, /function resourceCreationAllowed\(type\)/);
+  assert.match(APP_SCRIPT, /resourceCreationAllowed\(type\) \? '<button class="button primary"/);
+  assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*resourceCreationAllowed\(type\)/);
   assert.match(APP_STYLES, /\.organization-grid\{display:grid;grid-template-columns:repeat\(2/);
 });
 
@@ -765,11 +790,16 @@ test("keeps IDs behind the guided editor and generates them from titles", () => 
   assert.match(APP_SCRIPT, /A stable ID and file name will be generated from this value/);
   assert.match(APP_SCRIPT, /labels\.slice\(0, -1\)\.join\(", "\) \+ ", or " \+ labels\.at\(-1\)/);
   assert.doesNotMatch(APP_SCRIPT, /\[\s*"id",\s*"title"/);
+  assert.doesNotMatch(APP_SCRIPT, /state\.model\.resources\[record\.type\]\.title \+ " · " \+ record\.id/);
+  assert.match(APP_SCRIPT, /function relationTypeLabel\(field, plural = false\)/);
+  assert.match(APP_SCRIPT, /field\.relation\.length > 3\) return plural \? "Resources" : "resource"/);
+  assert.match(APP_SCRIPT, /field\.relation\.length > 3\) return "References supported records"/);
 });
 
 test("proper-cases enum displays and uses native required validation", () => {
   assert.match(APP_SCRIPT, /function properCase\(value\)/);
   assert.match(APP_SCRIPT, /esc\(properCase\(item\)\)/);
+  assert.match(APP_SCRIPT, /field === "evidenceSourceKinds"\) return value\.map\(\(item\) => '<span class="tag choice-tag">' \+ esc\(properCase\(item\)\)/);
   assert.match(APP_SCRIPT, /esc\(filterOptionLabel\(value\)\)/);
   assert.match(APP_SCRIPT, /if \(definition\?\.type === "enum"\) return esc\(properCase\(value\)\)/);
   assert.match(APP_SCRIPT, /status-' \+ esc\(String\(value\)\) \+ '">' \+ esc\(properCase\(value\)\)/);
@@ -801,12 +831,35 @@ test("title-cases multi-word navigation and interface headings", () => {
   assert.match(APP_SCRIPT, /esc\(titleCase\(step\.title\)\)/);
 });
 
+test("gives missing records and routes a concise recovery path", () => {
+  assert.match(APP_SCRIPT, /const recordMissing = route\.name === "detail" && definition/);
+  assert.match(APP_SCRIPT, /definition\.title \+ " Not Found"/);
+  assert.match(APP_SCRIPT, /This record may have been renamed or deleted/);
+  assert.match(APP_SCRIPT, /Back to ' \+ esc\(titleCase\(definition\.pluralTitle\)\)/);
+  assert.match(APP_SCRIPT, />Program overview<\/a>/);
+  assert.doesNotMatch(APP_SCRIPT, /That resource does not exist/);
+  assert.match(APP_STYLES, /\.not-found\{max-width:620px;padding:28px\}/);
+});
+
 test("lets record editors close without validating required fields", () => {
   assert.match(APP_SCRIPT, /<button type="button" class="icon-button" data-editor-dismiss aria-label="Close">/);
   assert.match(APP_SCRIPT, /<button type="button" class="button" data-editor-dismiss>Cancel<\/button>/);
   assert.match(APP_SCRIPT, /<button type="submit" class="button primary" id="save-record">/);
   assert.match(APP_SCRIPT, /querySelectorAll\("\[data-editor-dismiss\]"\).*dialog\.close\(\)/);
   assert.match(APP_SCRIPT, /querySelector\("form"\)\.addEventListener\("submit", async \(event\) => \{\s+event\.preventDefault\(\)/);
+  assert.match(APP_SCRIPT, /const items = Array\.isArray\(value\) \? value : \[\]/);
+});
+
+test("uses one accessible confirmation pattern for destructive and evidence-file actions", () => {
+  assert.match(APP_SCRIPT, /function confirmAction\(\{ kicker, title, message, confirmLabel = "Confirm", danger = false \}\)/);
+  assert.match(APP_SCRIPT, /aria-describedby", "confirmation-dialog-message"/);
+  assert.match(APP_SCRIPT, /kicker: "Delete record"[\s\S]*confirmLabel: "Delete"[\s\S]*danger: true/);
+  assert.match(APP_SCRIPT, /kicker: "Attach evidence"[\s\S]*confirmLabel: "Attach"/);
+  assert.match(APP_SCRIPT, /const input = event\.currentTarget;\s+const file = input\.files\?\.\[0\]/);
+  assert.match(APP_SCRIPT, /\}\)\) \{\s+input\.value = ""/);
+  assert.match(APP_SCRIPT, /kicker: "Remove attachment"[\s\S]*confirmLabel: "Remove"[\s\S]*danger: true/);
+  assert.doesNotMatch(APP_SCRIPT, /\bconfirm\(/);
+  assert.match(APP_STYLES, /\.button\.danger-action\{background:var\(--red\);border-color:var\(--red\);color:#fff\}/);
 });
 
 test("paginates large result sets and makes the mobile drawer modal", () => {
@@ -819,6 +872,9 @@ test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_SCRIPT, /workspace\.inert = open/);
   assert.match(APP_STYLES, /\.sidebar\.shown\+\.nav-scrim\{opacity:1;pointer-events:auto\}/);
   assert.match(APP_STYLES, /\.sidebar\{visibility:hidden;transition:/);
+  assert.match(APP_STYLES, /\.topbar h1\{overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/);
+  assert.match(APP_SCRIPT, /const clearSearch = \(\) => \{[\s\S]*if \(search\?\.value\.trim\(\) === query\) search\.value = ""/);
+  assert.match(APP_SCRIPT, /querySelector\("\.icon-button"\)\.onclick = \(\) => \{\s+clearSearch\(\)/);
 });
 
 test("ships local timestamp formatting while preserving calendar dates", () => {
@@ -908,9 +964,10 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /FileGRC will ask for another review/);
   assert.match(APP_SCRIPT, /" Note: " \+ esc\(assessment\.review\.rationale\)/);
   assert.doesNotMatch(APP_SCRIPT, /name="scopeRevision"/);
-  assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type\)/);
-  assert.match(APP_SCRIPT, /What the reviewer should check/);
+  assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type, collapsed = false\)/);
+  assert.match(APP_SCRIPT, /<summary>Review criteria<\/summary>/);
   assert.match(detailSource, /resourceReviewCriteria\(type\)/);
+  assert.match(APP_SCRIPT, /resourceReviewCriteria\(type, true\)/);
   assert.match(APP_STYLES, /\.workflow-findings>a:hover\{/);
   assert.match(APP_STYLES, /\.event-dialog label\[hidden\]\{display:none\}/);
   assert.match(APP_SCRIPT, /function controlOperationTracking\(control\)/);
@@ -929,7 +986,7 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /type === "obligation" && name === "status"\) return "Configuration"/);
   assert.doesNotMatch(APP_SCRIPT, /Work Queue · ' \+ esc\(label\)/);
   assert.match(APP_SCRIPT, /governing policies are effective, at least one linked control is implemented/);
-  assert.match(APP_SCRIPT, /Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists/);
+  assert.match(APP_SCRIPT, /Create an Evidence Artifact when the artifact exists or an operating record needs fixed supporting proof/);
   assert.match(APP_SCRIPT, /Complete scheduled work and assigned follow-up here/);
   assert.doesNotMatch(APP_STYLES, /\.stage-instruction-grid/);
   assert.doesNotMatch(APP_STYLES, /\.evidence-instruction-grid/);
@@ -941,11 +998,11 @@ test("handles evidence-source readiness during Control implementation and create
   assert.match(APP_SCRIPT, /item\.id\.startsWith\("source-family-"\)/);
   assert.match(APP_SCRIPT, /item\.evidencePrompt/);
   assert.match(APP_SCRIPT, /item\.sourceKinds\?\.length/);
-  assert.match(APP_SCRIPT, /item\.sourceSystemChecks \|\| \[\]/);
+  assert.match(APP_SCRIPT, /item\.sourceComponentChecks \|\| item\.sourceSystemChecks \|\| \[\]/);
   assert.match(APP_SCRIPT, /add retrieval instructions/);
   assert.match(APP_SCRIPT, /item\.controlIds \|\| \[\]\)\.map\(\(id\) => formatReference\(id\)\)/);
-  assert.match(APP_SCRIPT, /item\.sourceSystemIds \|\| \[\]\)\.map/);
-  assert.match(APP_SCRIPT, /href="#\/resources\/system\?new=1">Add source System/);
+  assert.match(APP_SCRIPT, /item\.sourceComponentIds \|\| item\.sourceSystemIds \|\| \[\]/);
+  assert.match(APP_SCRIPT, /sourceType \+ '\?new=1">Add source ' \+ sourceLabel/);
   assert.match(APP_SCRIPT, /href="#\/resources\/control">Review Controls/);
   assert.equal(PROGRAM_PATH.some(({ id }) => id === "evidence"), false);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ relatedLinks }) => relatedLinks?.length)), false);
@@ -955,15 +1012,21 @@ test("handles evidence-source readiness during Control implementation and create
   assert.doesNotMatch(APP_SCRIPT, /type === "system" \? \["evidenceSourceKinds", "evidenceOwnerIds"\]/);
   assert.doesNotMatch(APP_SCRIPT, /type === "control" \? \["evidenceSourceIds"\]/);
   assert.match(APP_SCRIPT, /\.\.\.\(definition\.formFields \|\| \[\]\)/);
-  assert.match(APP_SCRIPT, /Use the roles required by the Controls this System supports/);
-  assert.match(APP_SCRIPT, /Before marking it implemented, confirm each source is active/);
+  assert.match(APP_SCRIPT, /name === "evidenceSourceKinds"/);
+  assert.match(APP_SCRIPT, /class="choice-picker"/);
+  assert.match(APP_SCRIPT, /Select only roles this Component performs/);
+  assert.match(APP_SCRIPT, /data-show-evidence-families/);
+  assert.match(APP_SCRIPT, /data-evidence-family-extra hidden/);
+  assert.match(APP_SCRIPT, /item\.sourceKinds\.map\(\(kind\) => esc\(properCase\(kind\)\)\)/);
+  assert.match(APP_SCRIPT, /Connect each Control to the ' \+ sourceLabel \+ ' that produce its evidence/);
+  assert.match(APP_SCRIPT, /Confirm each source Component is active/);
   assert.doesNotMatch(APP_SCRIPT, /evidenceTestDrafts/);
   assert.doesNotMatch(APP_SCRIPT, /api\/evidence-test-drafts/);
   assert.doesNotMatch(APP_SCRIPT, /Create test drafts/);
   assert.match(APP_STYLES, /\.evidence-map\{/);
   assert.match(APP_STYLES, /\.evidence-map-card\{/);
   assert.match(APP_STYLES, /\.evidence-map-source\.complete\{/);
-  assert.match(APP_SCRIPT, /External Evidence/);
+  assert.match(APP_SCRIPT, /Evidence Artifacts/);
   assert.match(APP_SCRIPT, /Create records only for real exports, reports, screenshots, signed files, or approved external references/);
 });
 
@@ -991,12 +1054,12 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 5/);
   assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
   assert.doesNotMatch(APP_SCRIPT, /stage\.steps\.map/);
-  assert.equal(PROGRAM_PATH[0].summary, "Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.");
-  assert.equal(PROGRAM_PATH[2].summary, "Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.");
-  assert.equal(PROGRAM_PATH[3].summary, "Run scheduled and event-driven work, maintain risk, and retain dated evidence throughout the operating period.");
+  assert.equal(PROGRAM_PATH[0].summary, "Name the owners, criteria, service, Systems, and providers in scope.");
+  assert.equal(PROGRAM_PATH[2].summary, "Describe each Control and connect its evidence source.");
+  assert.equal(PROGRAM_PATH[3].summary, "Complete scheduled and event work. Keep dated proof.");
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
   assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team"]);
-  assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["framework", "requirement", "commitment"]);
+  assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment"]);
   assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control"]);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
   assert.doesNotMatch(APP_SCRIPT, /Working areas/);
@@ -1008,14 +1071,14 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.doesNotMatch(cardSource, /destination\.description/);
   assert.doesNotMatch(cardSource, /guidance\?\.cadence/);
   assert.doesNotMatch(cardSource, /stage-page-actions?/);
-  assert.match(summarySource, /Define the service boundary and the Systems that operate controls or produce evidence\./);
-  assert.match(summarySource, /Identify providers that affect the service or its controls\./);
+  assert.match(summarySource, /Define the service boundary\./);
+  assert.match(summarySource, /List material external providers\./);
   assert.doesNotMatch(summarySource, /Before implementing|repeatable retrieval instructions|required evidence role/);
   assert.doesNotMatch(summarySource, /manage contracts, due diligence, supplier risk, and reviews/);
   const boundary = PROGRAM_PATH[0].sections.find(({ id }) => id === "boundary");
-  assert.match(boundary.description, /An application or platform is a System because it operates controls or produces evidence/);
-  assert.match(boundary.description, /the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship/);
-  assert.match(boundary.steps.join(" "), /Create a Vendor record for each material provider[\s\S]*connect vendor-provided Systems to their providers/);
+  assert.match(boundary.description, /Start with the bounded System/);
+  assert.match(boundary.description, /Keep Vendor relationships and specific Assets separate/);
+  assert.match(boundary.steps.join(" "), /Create Vendors for material external provider relationships and link supplied Components when factual/);
   const issues = PROGRAM_PATH[3].sections.find(({ id }) => id === "issues");
   assert.equal(issues.title, "Issues and Remediation");
   assert.match(issues.steps.join(" "), /Create a Finding only when a confirmed gap needs its own owner/);
@@ -1040,7 +1103,7 @@ test("uses the Step 4 page for compact policy-event triggers and the Work Queue"
   assert.ok(stepFour.indexOf("<h2>Policy Events</h2>") < stepFour.indexOf("<h2>Work Queue</h2>"));
   assert.match(stepFour, /renderExternalEvidenceSection\(\)/);
   assert.match(APP_SCRIPT, /function renderExternalEvidenceSection\(\)/);
-  assert.match(APP_SCRIPT, /data-new-external-evidence>New external evidence/);
+  assert.match(APP_SCRIPT, /data-new-external-evidence>New Evidence Artifact/);
   assert.match(APP_SCRIPT, /data-new-external-evidence.*openEditor\("evidence"\)/s);
   assert.match(APP_SCRIPT, /field\.showWhenInactive !== true/);
   assert.match(APP_STYLES, /\.external-evidence-list\{/);
@@ -1102,12 +1165,12 @@ test("derives step-page completion from the shared workflow assessment", () => {
 
 test("runs optional onboarding from committed renderer settings", () => {
   assert.doesNotThrow(() => new Function(APP_SCRIPT));
-  assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true/);
+  assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true && !initialSetupSystem\(\)/);
+  assert.match(APP_SCRIPT, /function initialSetupSystem\(\)/);
   assert.match(APP_SCRIPT, /function initialSetupBanner\(\)/);
-  assert.match(APP_SCRIPT, /Setup draft saved/);
-  assert.match(APP_SCRIPT, /Review the saved service boundary/);
-  assert.match(APP_SCRIPT, /Confirm the saved program goal/);
-  assert.match(APP_SCRIPT, /Confirm the service scope to activate the planned service/);
+  assert.match(APP_SCRIPT, /class="setup-draft-state"/);
+  assert.match(APP_SCRIPT, /Review and confirm the initial scope/);
+  assert.match(APP_SCRIPT, /Choose goal/);
   assert.match(APP_SCRIPT, /!state\.readOnly && rendererSettingsEntry/);
   assert.match(APP_SCRIPT, /onboardingDialog\.showModal\(\)/);
   assert.match(APP_SCRIPT, /onboardingDialog\.addEventListener\("cancel"/);
@@ -1130,45 +1193,42 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /if \(dialog\.dataset\.mutationBusy === "true"\) return/);
   assert.match(APP_SCRIPT, /setMutationBusy\(dialog, true, "Saving…"/);
   assert.match(APP_SCRIPT, /Files are the program/);
-  assert.match(APP_SCRIPT, /Choose the report goal and plan fieldwork/);
-  assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*title: "Files are the program"[\s\S]*title: "Follow the audit chain"[\s\S]*title: "Work the queue and trigger policy events"[\s\S]*title: "Choose the report goal and plan fieldwork"/);
+  assert.match(APP_SCRIPT, /Choose a goal/);
+  assert.match(APP_SCRIPT, /function onboardingSteps\(\)[\s\S]*title: "Files are the program"[\s\S]*title: "Follow the audit chain"[\s\S]*title: "Run work and record changes"[\s\S]*title: "Choose a goal"/);
   assert.match(APP_SCRIPT, /target: "\.repo-chip",[\s\S]*title: "Files are the program"/);
-  assert.match(APP_SCRIPT, /SOC 2 is an independent CPA report on controls relevant to the selected Trust Services Criteria/);
-  assert.match(APP_SCRIPT, /Most customer requests focus on Security/);
+  assert.match(APP_SCRIPT, /SOC 2 is an independent CPA report on controls tied to selected Trust Services Criteria/);
   assert.match(APP_SCRIPT, /Array\.isArray\(step\.body\)[\s\S]*<p class="onboarding-body">/);
   assert.match(APP_SCRIPT, /title: "Type 1"/);
-  assert.match(APP_SCRIPT, /Type 1 is optional before Type 2/);
+  assert.match(APP_SCRIPT, /Optional before Type 2/);
   assert.match(APP_SCRIPT, /title: "Type 2"/);
-  assert.match(APP_SCRIPT, /Dated evidence and complete populations must cover that period/);
-  assert.match(APP_SCRIPT, /The CPA firm selects samples, tests controls, evaluates exceptions, and issues the report/);
+  assert.match(APP_SCRIPT, /Evidence and populations must cover it/);
+  assert.match(APP_SCRIPT, /The CPA tests and reports/);
   assert.match(APP_SCRIPT, /onboarding-after-sections/);
   assert.match(APP_SCRIPT, /class="onboarding-sections"/);
   assert.match(APP_SCRIPT, /Follow the audit chain/);
-  assert.match(APP_SCRIPT, /Define the people, criteria, service, Systems, and providers in scope/);
-  assert.match(APP_SCRIPT, /Approve the policies, implement the controls, then operate them and retain dated proof/);
-  assert.match(APP_SCRIPT, /Work the queue and trigger policy events/);
-  assert.match(APP_SCRIPT, /FileGRC creates one owned Action Item for each applicable policy step/);
-  assert.match(APP_SCRIPT, /Choose the report goal and plan fieldwork/);
-  assert.match(APP_SCRIPT, /Create the audit engagement when a CPA firm is involved or a real customer deadline requires it/);
-  assert.match(APP_SCRIPT, /This renderer edits those files/);
-  assert.match(APP_SCRIPT, /Use the UI, an editor, the CLI, or an agent/);
-  assert.match(APP_SCRIPT, /the browser validates, commits, and pushes each save/);
-  assert.match(APP_SCRIPT, /Record status represents approval/);
-  assert.match(APP_SCRIPT, /agents and terminal users manage Git explicitly/);
-  assert.match(APP_SCRIPT, /The browser and CLI use the same schedules, event rules, and completion checks/);
-  assert.match(APP_SCRIPT, /Work Queue with owners, allowed completion dates, and overdue cutoffs/);
+  assert.match(APP_SCRIPT, /Run work and record changes/);
+  assert.match(APP_SCRIPT, /Policy Events add tasks when a listed change occurs/);
+  assert.match(APP_SCRIPT, /Source files live under data\//);
+  assert.match(APP_SCRIPT, /browser saves validate, commit, and push/);
+  assert.match(APP_SCRIPT, /Record status tracks approval/);
+  assert.match(APP_SCRIPT, /Open a task to see its owner, due date, and proof/);
   assert.doesNotMatch(APP_SCRIPT, /no fixed (?:deadline|cutoff|overdue)/i);
   assert.match(APP_SCRIPT, /data-onboarding="draft">Save as planned/);
   assert.doesNotMatch(APP_SCRIPT, /name="independentApproverName" maxlength/);
   assert.doesNotMatch(APP_SCRIPT, /name="independentApproverEmail" type="email" maxlength/);
   assert.match(APP_SCRIPT, /programGoal: onboardingDraft\.programGoal/);
   assert.doesNotMatch(APP_SCRIPT, /auditId: onboardingDraft\.auditId/);
-  assert.match(APP_SCRIPT, /Create the first in-scope System and record management’s goal/);
+  assert.match(APP_SCRIPT, /Create the first System and choose the program goal/);
   assert.match(APP_SCRIPT, /history\.replaceState\(null, "", draft \? "#\/" : "#\/stage\/scope"\)/);
-  assert.match(APP_SCRIPT, /Save as planned keeps the System planned/);
-  assert.match(APP_SCRIPT, /Confirm service scope makes it active/);
-  assert.match(APP_SCRIPT, /Both add it to the Workspace scope/);
-  assert.match(APP_SCRIPT, /Completing onboarding will save its related workspace, system, and renderer changes in one local commit, then push it in the background/);
+  assert.match(APP_SCRIPT, /Planned saves a draft/);
+  assert.match(APP_SCRIPT, /Confirm scope activates it/);
+  assert.match(APP_SCRIPT, /Both add it to the Program/);
+  assert.match(APP_SCRIPT, /data-onboarding="next">Confirm scope/);
+  assert.match(APP_SCRIPT, /requestOnboarding\(\{ setupOnly: Boolean\(initialSetupSystem\(\)\) \}\)/);
+  assert.match(APP_SCRIPT, /onboardingStep = setupOnly \? onboardingSteps\(\)\.length - 1 : 0/);
+  assert.match(APP_SCRIPT, /onboardingSetupOnly \? "Close" : "Skip onboarding"/);
+  assert.match(APP_SCRIPT, /onboardingSetupOnly \? closeOnboarding : cancelOnboarding/);
+  assert.match(APP_SCRIPT, /Completing onboarding will save its related Workspace, Program, System, Component, and renderer changes in one local commit, then push it in the background/);
   assert.match(APP_SCRIPT, /Manual repository mode/);
   assert.match(APP_SCRIPT, /Git setup needed/);
   assert.match(APP_SCRIPT, /Manual-mode writes still work/);
@@ -1186,9 +1246,12 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /localFetch\("\/api\/git\/" \+ action/);
   assert.match(APP_SCRIPT, /state\.git\.upstream/);
   assert.match(APP_SCRIPT, /class="repository-sync-status"/);
+  assert.match(APP_SCRIPT, /function conciseResourceDescription\(definition\)/);
+  assert.match(APP_SCRIPT, /conciseResourceDescription\(definition\)[\s\S]*Add the facts known now/);
   assert.match(APP_SCRIPT, /Pushed " \+ result\.shortCommit/);
   assert.match(APP_SCRIPT, /Retry sync/);
-  assert.match(APP_SCRIPT, /Development write override active/);
+  assert.doesNotMatch(APP_SCRIPT, /class="repository-override"/);
+  assert.match(APP_SCRIPT, /class="panel repository-state-banner"/);
   assert.match(APP_SCRIPT, /Pending FileGRC-only Commits/);
   assert.match(APP_SCRIPT, /nextCalendarOccurrence\(recurrence, currentDate\(\)\)/);
   assert.match(APP_STYLES, /\.onboarding-dialog::backdrop\{/);
@@ -1242,7 +1305,7 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function renderAuditPreparation\(preparation\)/);
   assert.match(APP_SCRIPT, /Review both evidence paths/);
   assert.match(APP_SCRIPT, /filegrc Evidence/);
-  assert.match(APP_SCRIPT, /External Evidence/);
+  assert.match(APP_SCRIPT, /Evidence Artifacts/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/audit-preparation"/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/evidence-packet"/);
   assert.match(APP_SCRIPT, /let latestPacketResult = null/);

@@ -32,19 +32,21 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 175,
+    total: 181,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
       person: 1,
       appointment: 2,
       team: 1,
+      program: 1,
+      classification: 4,
+      component: 1,
       policy: 6,
       document: 12,
       training: 4,
-      system: 1,
       framework: 2,
-      "collection-review": 5,
+      "collection-review": 6,
       requirement: 42,
       "source-coverage": 14,
       control: 29,
@@ -73,7 +75,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "3");
+  assert.equal(workspace.dataModelVersion, "4");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
   const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
     JSON.parse(await readFile(path, "utf8"))
@@ -83,8 +85,12 @@ test("creates a complete generic repository with one dependency", async (context
   }
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.timezone, "America/Chicago");
-  assert.equal(workspace.riskMethodology.method, "5x5 likelihood and impact");
-  assert.deepEqual(Object.keys(workspace.classificationDefinitions), ["public", "internal", "confidential", "restricted"]);
+  const programRecord = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));
+  assert.equal(programRecord.riskMethodology.method, "5x5 likelihood and impact");
+  assert.deepEqual(
+    generatedRecords.filter(({ type }) => type === "classification").map(({ id }) => id).sort(),
+    ["confidential", "internal", "public", "restricted"]
+  );
   const renderer = JSON.parse(await readFile(join(target, "data", "renderer.json"), "utf8"));
   assert.equal(renderer.showOnboarding, true);
   assert.equal(renderer.repositoryMode, "trunk");
@@ -224,7 +230,8 @@ test("creates a complete generic repository with one dependency", async (context
   const firstRequirement = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-cc1-1.json"), "utf8"));
   assert.equal(firstRequirement.title, "CC1.1: Integrity and ethical values");
   assert.match(firstRequirement.description, /integrity and ethical conduct/);
-  assert.match(firstRequirement.applicabilityRationale, /Confirm applicability/);
+  assert.equal(firstRequirement.applicabilityRationale, undefined);
+  assert.ok(programRecord.requirementApplicability.some(({ requirementId, decision }) => requirementId === firstRequirement.id && decision === "undetermined"));
   const eventEvaluationRequirement = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-cc7-3.json"), "utf8"));
   assert.equal(eventEvaluationRequirement.title, "CC7.3: Security event evaluation");
   assert.match(eventEvaluationRequirement.description, /detected events.*security incidents/);
@@ -234,7 +241,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
   assert.equal(controlFiles.length, 29);
   assert.equal(obligationFiles.length, 54);
-  const programRepository = JSON.parse(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.json"), "utf8"));
+  const programRepository = JSON.parse(await readFile(join(target, "data", "components", "component-filegrc-program-repository.json"), "utf8"));
   const filegrcSourceFamilyIds = generatedRecords
     .filter(({ type, coverageKind }) => type === "source-coverage" && coverageKind === "filegrc")
     .map(({ sourceFamilyId }) => sourceFamilyId);
@@ -257,8 +264,8 @@ test("creates a complete generic repository with one dependency", async (context
     true
   );
   assert.equal(Object.hasOwn(programRepository, "inScope"), false);
-  assert.equal((workspace.systemIds || []).includes(programRepository.id), false);
-  assert.match(await readFile(join(target, "data", "systems", "system-filegrc-program-repository.md"), "utf8"), /system of record for filegrc governance records/);
+  assert.equal(programRepository.systemUses.length, 0);
+  assert.match(await readFile(join(target, "data", "components", "component-filegrc-program-repository.md"), "utf8"), /authoritative Component for FileGRC governance records/);
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
@@ -269,8 +276,8 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(
     controls
       .filter(({ code }) => filegrcSourceControlCodes.has(code))
-      .every(({ evidenceSourceIds }) => (
-        evidenceSourceIds?.length === 1 && evidenceSourceIds[0] === programRepository.id
+      .every(({ evidenceSourceComponentIds }) => (
+        evidenceSourceComponentIds?.length === 1 && evidenceSourceComponentIds[0] === programRepository.id
       )),
     true
   );
@@ -332,7 +339,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 175, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 181, errors: 0, warnings: 0 });
   const workflow = await assessWorkflow(target, { asOf: "2026-07-25" });
   const reviewerFinding = workflow.findings.find(({ code }) => (
     code === "governance.appointment.independent-policy-reviewer"
@@ -370,11 +377,15 @@ test("creates a complete generic repository with one dependency", async (context
       workflow.findings.filter(({ subject }) => (
         subject?.type === "requirement" && subject.id === requirement.id
       )).length,
-      1,
+      0,
       requirement.id
     );
   }
   const programReadiness = await assessProgramReadiness(target, { asOf: "2026-07-25" });
+  assert.match(
+    programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "criteria").message,
+    /42 criteria remain undetermined/
+  );
   const complementaryReview = programReadiness.stages
     .find(({ id }) => id === "controls")
     .items.find(({ id }) => id === "collection-review-complementary-control");
@@ -399,7 +410,7 @@ test("creates a complete generic repository with one dependency", async (context
       rationale: null,
       reviewedByIds: [],
       reviewedOn: null,
-      authoritativeSystemId: null
+      authoritativeComponentId: null
     }
   );
   const requiredAppointments = programReadiness.stages
@@ -419,7 +430,7 @@ test("creates a complete generic repository with one dependency", async (context
     const sourceFinding = workflow.findings.find(({ key }) => (
       key === `program.controls.source-family-${familyId}`
     ));
-    assert.equal(sourceFinding.state, "complete", familyId);
+    assert.equal(sourceFinding.state, "ready", familyId);
     assert.equal(
       sourceFinding.actions.some(({ command }) => /scaffold system/.test(command)),
       false,
@@ -443,7 +454,7 @@ test("creates a complete generic repository with one dependency", async (context
   )));
 });
 
-test("creates a seven-record foundation without selecting a framework", async (context) => {
+test("creates a twelve-record foundation without selecting a framework", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-foundation-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   const target = join(parent, "program");
@@ -456,18 +467,20 @@ test("creates a seven-record foundation without selecting a framework", async (c
   });
   assert.equal(result.starter, "foundation");
   assert.deepEqual(result.stages, [
-    { id: "foundation", status: "created", records: 7 },
+    { id: "foundation", status: "created", records: 12 },
     { id: "soc2-security", status: "skipped", records: 0 }
   ]);
   assert.deepEqual(result.resourceCounts, {
-    total: 7,
+    total: 12,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
       person: 1,
       appointment: 2,
-      system: 1,
-      team: 1
+      team: 1,
+      program: 1,
+      classification: 4,
+      component: 1
     }
   });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
@@ -755,7 +768,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 175 records, including 42 requirements, 29 controls, and 54 obligations/);
+  assert.match(output, /Program baseline: 181 records, including 42 requirements, 29 controls, and 54 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -906,15 +919,17 @@ test("creates and configures a service from one JSON config", async (context) =>
     "--config",
     configPath
   ], { encoding: "utf8" });
-  assert.match(output, /Stage foundation: created \(7 records\)/);
-  assert.match(output, /Stage soc2-security: created \(168 records\)/);
+  assert.match(output, /Stage foundation: created \(12 records\)/);
+  assert.match(output, /Stage soc2-security: created \(169 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 177, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 183, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.deepEqual(workspace.systemIds, ["system-example-service"]);
+  assert.equal(workspace.systemIds, undefined);
+  const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));
+  assert.deepEqual(program.systemIds, ["system-example-service"]);
   const control = JSON.parse(await readFile(join(target, "data", "controls", "control-security-governance.json"), "utf8"));
   assert.equal(control.systemIds, undefined);
   const commitment = JSON.parse(await readFile(

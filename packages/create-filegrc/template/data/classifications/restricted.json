@@ -1,0 +1,8 @@
+{
+  "id": "restricted",
+  "type": "classification",
+  "title": "Restricted",
+  "status": "active",
+  "rank": 3,
+  "description": "Disclosure or alteration could cause severe harm or trigger legal duties."
+}

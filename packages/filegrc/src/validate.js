@@ -73,6 +73,10 @@ async function validateWorkspaceUnmeasured(input) {
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
     validateDateRanges(record, displayPath, diagnostics);
     if (record.type === "appointment") validateAppointment(record, byId, displayPath, diagnostics);
+    if (record.type === "program") validateProgram(record, displayPath, diagnostics);
+    if (record.type === "component") validateComponent(record, displayPath, diagnostics);
+    if (record.type === "control") validateControlComponents(record, byId, displayPath, diagnostics);
+    if (record.type === "audit") validateAuditSubservices(record, byId, displayPath, diagnostics);
     if (record.type === "collection-review") {
       validateCollectionReview(record, loaded.model, loaded.resources, byId, displayPath, diagnostics);
     }
@@ -83,7 +87,7 @@ async function validateWorkspaceUnmeasured(input) {
     if (record.type === "obligation-event") validatePolicyEvent(record, loaded.model, byId, displayPath, diagnostics);
     if (record.type === "evidence") validateEvidencePaths(record, displayPath, diagnostics);
     validateCoverage(record, displayPath, diagnostics);
-    validateClassification(record, loaded.workspace, displayPath, diagnostics);
+    validateClassification(record, loaded, displayPath, diagnostics);
     validateCompletionDates(record, displayPath, diagnostics);
     await validateAttestationBinding(record, loaded.model, loaded.root, byId, displayPath, diagnostics);
 
@@ -167,7 +171,24 @@ function validateCollectionReview(record, model, resources, byId, path, diagnost
     ));
     return;
   }
-  const recordCount = resources.filter(({ type }) => type === record.resourceType).length;
+  const program = String(model.modelVersion) === "4"
+    ? (record.scopeResourceIds || []).map((id) => byId.get(id)).find(({ type } = {}) => type === "program")
+    : null;
+  const programSystemIds = new Set(program?.systemIds || []);
+  const componentIds = new Set(resources.filter((candidate) => (
+    candidate.type === "component"
+    && (candidate.systemUses || []).some(({ systemId }) => programSystemIds.has(systemId))
+  )).map(({ id }) => id));
+  const selectedIds = {
+    system: programSystemIds,
+    component: componentIds,
+    framework: new Set(program?.frameworkIds || []),
+    vendor: new Set(resources.filter(({ id }) => componentIds.has(id)).map(({ vendorId }) => vendorId).filter(Boolean)),
+    asset: new Set(resources.filter(({ type, componentIds: ids }) => type === "asset" && (ids || []).some((id) => componentIds.has(id))).map(({ id }) => id))
+  }[record.resourceType];
+  const recordCount = resources.filter(({ type, id }) => (
+    type === record.resourceType && (!program || !selectedIds || selectedIds.has(id))
+  )).length;
   if (!recordCount && record.decision === "complete") {
     diagnostics.push(error(
       "invalid-collection-review-decision",
@@ -184,12 +205,12 @@ function validateCollectionReview(record, model, resources, byId, path, diagnost
   }
   if (
     record.decision === "externally-managed"
-    && byId.get(record.authoritativeSystemId)?.status !== "active"
+    && byId.get(record.authoritativeComponentId || record.authoritativeSystemId)?.status !== "active"
   ) {
     diagnostics.push(error(
       "inactive-authoritative-system",
       path,
-      `${configuration.title} must name an active authoritative System for an externally managed conclusion.`
+      `${configuration.title} must name an active authoritative ${String(model.modelVersion) === "4" ? "Component" : "System"} for an externally managed conclusion.`
     ));
   }
 }
@@ -302,6 +323,64 @@ function validateAppointment(record, byId, path, diagnostics) {
   ));
 }
 
+function validateProgram(record, path, diagnostics) {
+  const requirementIds = (record.requirementApplicability || [])
+    .map(({ requirementId }) => requirementId)
+    .filter(Boolean);
+  if (new Set(requirementIds).size !== requirementIds.length) {
+    diagnostics.push(error(
+      "duplicate-program-applicability",
+      path,
+      "A Program may record each Requirement only once in requirementApplicability."
+    ));
+  }
+}
+
+function validateComponent(record, path, diagnostics) {
+  const systemIds = (record.systemUses || []).map(({ systemId }) => systemId).filter(Boolean);
+  if (new Set(systemIds).size !== systemIds.length) {
+    diagnostics.push(error("duplicate-system-use", path, "A Component may name each System only once in systemUses."));
+  }
+  for (const [index, use] of (record.systemUses || []).entries()) {
+    if (!(use.roles || []).length || !String(use.rationale || "").trim()) {
+      diagnostics.push(error("incomplete-system-use", path, `systemUses[${index}] needs at least one role and a rationale.`));
+    }
+  }
+}
+
+function validateControlComponents(record, byId, path, diagnostics) {
+  if (record.status !== "implemented") return;
+  const systemIds = new Set(record.systemIds || []);
+  for (const field of ["componentIds", "evidenceSourceComponentIds"]) {
+    for (const id of record[field] || []) {
+      const component = byId.get(id);
+      if (component?.type !== "component") continue;
+      const uses = (component.systemUses || []).filter(({ systemId }) => systemIds.has(systemId));
+      if (!uses.length) {
+        diagnostics.push(error("component-outside-control-scope", path, `${field} Component "${id}" has no use in a System where this Control applies.`));
+      }
+      if (field === "evidenceSourceComponentIds" && !uses.some(({ roles }) => (roles || []).includes("evidence-source"))) {
+        diagnostics.push(error("invalid-evidence-source-component", path, `Component "${id}" must have the evidence-source role in a System where this Control applies.`));
+      }
+    }
+  }
+}
+
+function validateAuditSubservices(record, byId, path, diagnostics) {
+  for (const [index, treatment] of (record.subserviceTreatments || []).entries()) {
+    for (const componentId of treatment.componentIds || []) {
+      const component = byId.get(componentId);
+      if (component?.type === "component" && component.vendorId !== treatment.vendorId) {
+        diagnostics.push(error(
+          "subservice-vendor-mismatch",
+          path,
+          `subserviceTreatments[${index}] Component "${componentId}" is not supplied by Vendor "${treatment.vendorId}".`
+        ));
+      }
+    }
+  }
+}
+
 function validateCompletedObligationEvent(record, byId, model, path, diagnostics) {
   if (record.type !== "obligation-event" || record.status !== "complete") return;
   if (record.completedOn && record.occurredOn && record.completedOn < record.occurredOn) {
@@ -334,7 +413,7 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
       ? model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || []
       : [];
     if (!expectedTypes.length) continue;
-    const completionIds = String(model.modelVersion) === "3"
+    const completionIds = ["3", "4"].includes(String(model.modelVersion))
       ? action.completionResourceIds || []
       : [...(action.completionResourceIds || []), ...(action.evidenceIds || [])];
     const linked = [...new Set(completionIds)]
@@ -352,7 +431,7 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
 
 function validateCompletedObligationAction(record, byId, model, path, diagnostics) {
   if (
-    String(model.modelVersion) !== "3"
+    !["3", "4"].includes(String(model.modelVersion))
     || record.status !== "done"
     || !record.obligationId
   ) return;
@@ -754,9 +833,19 @@ function validateCoverage(record, path, diagnostics) {
   }
 }
 
-function validateClassification(record, workspace, path, diagnostics) {
+function validateClassification(record, loaded, path, diagnostics) {
   if (!record.classificationId) return;
-  const definitions = workspace?.classificationDefinitions;
+  if (String(loaded.model.modelVersion) === "4") {
+    if (!loaded.resources.some(({ id, type }) => id === record.classificationId && type === "classification")) {
+      diagnostics.push(error(
+        "unknown-classification",
+        path,
+        `classificationId references undefined Classification "${record.classificationId}".`
+      ));
+    }
+    return;
+  }
+  const definitions = loaded.workspace?.classificationDefinitions;
   if (
     !definitions
     || Array.isArray(definitions)
@@ -1076,8 +1165,10 @@ function validateArrayItem(name, value, field, model, path, diagnostics, index) 
     diagnostics.push(error("invalid-field", path, `${name} items must be objects.`));
   } else if (type === "object" && field.itemObjectType) {
     validateObjectValue(`${name}[${index}]`, value, field.itemObjectType, model, path, diagnostics);
-  } else if ((type === "string" || type === "data-path") && typeof value !== "string") {
+  } else if ((type === "string" || type === "data-path" || type === "enum") && typeof value !== "string") {
     diagnostics.push(error("invalid-field", path, `${name} items must be strings.`));
+  } else if (type === "enum" && field.values && !field.values.includes(value)) {
+    diagnostics.push(error("invalid-field", path, `${name} items must be one of ${field.values.join(", ")}.`));
   } else if (type === "id" && (typeof value !== "string" || !ID_PATTERN.test(value))) {
     diagnostics.push(error("invalid-field", path, `${name} items must be lowercase kebab-case IDs.`));
   }

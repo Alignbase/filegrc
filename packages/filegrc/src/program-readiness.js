@@ -6,6 +6,7 @@ import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
 import { obligationIsRunning } from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
+import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { currentCalendarDate } from "./time.js";
@@ -18,9 +19,10 @@ export async function assessProgramReadiness(input, options = {}) {
   const records = loaded.resources;
   const byId = new Map(records.map((record) => [record.id, record]));
   const workspace = loaded.workspace || records.find((record) => record.type === "workspace");
+  const program = resolveProgram(loaded, options.programId);
   const asOf = options.asOf || currentCalendarDate(workspace?.timezone || "UTC");
-  const scope = programScope(workspace, records, byId);
-  const collectionReviews = assessCollectionReviews(loaded);
+  const scope = programScope(program, records, byId, loaded.model, loaded);
+  const collectionReviews = assessCollectionReviews(loaded, { programId: program.id });
   const markdown = new Map();
   const readMarkdown = async (record) => {
     if (!record) return "";
@@ -34,10 +36,10 @@ export async function assessProgramReadiness(input, options = {}) {
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
-  controlStage.description = "Each implemented control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, and complete authoritative source Systems with the required evidence roles, access owners, and retrieval instructions.";
+  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, and complete authoritative source ${String(loaded.model.modelVersion) === "4" ? "Components" : "Systems"} with the required evidence roles, access owners, and retrieval instructions.`;
   const evidenceGateStages = [
     scopeStage(
-      workspace,
+      program,
       scope,
       records,
       byId,
@@ -51,20 +53,20 @@ export async function assessProgramReadiness(input, options = {}) {
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
     ...evidenceGateStages,
-    operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, loaded.model)
+    operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model)
   ];
   finalizeStage(stages.at(-1));
   const candidateStarted = Boolean(
-    workspace?.assuranceGoal === "soc-2-type-2"
-    && workspace.candidateCoverage?.kind === "range"
-    && coverageStart(workspace.candidateCoverage) <= asOf
+    program?.assuranceGoal === "soc-2-type-2"
+    && program.candidateCoverage?.kind === "range"
+    && coverageStart(program.candidateCoverage) <= asOf
   );
   const obligations = planObligations(records, { asOf, through: asOf, model: loaded.model });
   const operating = evidenceReady && candidateStarted && stages.at(-1).counts.action === 0;
   const canStartCandidatePeriod = Boolean(
     evidenceReady
-    && workspace?.assuranceGoal === "soc-2-type-2"
-    && !workspace.candidateCoverage
+    && program?.assuranceGoal === "soc-2-type-2"
+    && !program.candidateCoverage
   );
   const items = stages.flatMap((current) => current.items);
   const managedItems = items.filter((current) => !["info", "later"].includes(current.status));
@@ -73,12 +75,14 @@ export async function assessProgramReadiness(input, options = {}) {
 
   return {
     schemaVersion: 1,
+    dataModelVersion: String(loaded.model.modelVersion),
     generatedAt: options.generatedAt || new Date().toISOString(),
     asOf,
     target: {
-      goal: workspace?.assuranceGoal || "none",
-      label: assuranceGoalLabel(workspace?.assuranceGoal),
-      candidateCoverage: workspace?.candidateCoverage || null
+      programId: program?.id || null,
+      goal: program?.assuranceGoal || "none",
+      label: assuranceGoalLabel(program?.assuranceGoal),
+      candidateCoverage: program?.candidateCoverage || null
     },
     status: operating ? "operating" : evidenceReady ? "evidence-ready" : "needs-work",
     evidenceReady,
@@ -94,6 +98,7 @@ export async function assessProgramReadiness(input, options = {}) {
     firstAction,
     scope: {
       systemIds: scope.systems.map((record) => record.id),
+      componentIds: scope.components.map((record) => record.id),
       frameworkIds: scope.frameworks.map((record) => record.id),
       requirementIds: scope.requirements.map((record) => record.id),
       controlIds: scope.controls.map((record) => record.id)
@@ -115,31 +120,32 @@ export async function assessEvidenceMap(input, options = {}) {
     status: counts.action ? "action" : "complete",
     counts,
     workflow: [
-      "Choose an existing System or create the System that is authoritative for each evidence family.",
-      "On every source System, set an evidence source role, name current evidence access owners, and write repeatable retrieval instructions in Record Markdown.",
-      "Set each selected Control's evidenceSourceIds to the authoritative Systems that produce its evidence.",
+      `Choose an existing ${String(readiness.dataModelVersion) === "4" ? "Component" : "System"} or create one that is authoritative for each evidence family.`,
+      `On every source ${String(readiness.dataModelVersion) === "4" ? "Component" : "System"}, set an evidence source role, name current evidence access owners, and write repeatable retrieval instructions in Record Markdown.`,
+      `Map each selected Control to the authoritative source ${String(readiness.dataModelVersion) === "4" ? "Components with evidenceSourceComponentIds" : "Systems with evidenceSourceIds"} that produce its evidence.`,
       "Run program-readiness again and resolve every incomplete source check and control mapping before marking the Controls implemented."
     ],
     items: evidenceItems
   };
 }
 
-function programScope(workspace, records, byId) {
+function programScope(program, records, byId, model, loaded) {
   const select = (ids, type, fallback) => {
     if (ids?.length) return ids.map((id) => byId.get(id)).filter((record) => record?.type === type);
     return records.filter(fallback);
   };
   return {
-    systems: (workspace?.systemIds || [])
+    systems: (program?.systemIds || [])
       .map((id) => byId.get(id))
       .filter((record) => record?.type === "system" && record.status !== "retired"),
-    frameworks: select(workspace?.frameworkIds, "framework", (record) => (
+    components: programComponents(loaded, program),
+    frameworks: select(program?.frameworkIds, "framework", (record) => (
       record.type === "framework" && record.status === "active"
     )),
-    requirements: select(workspace?.requirementIds, "requirement", (record) => (
+    requirements: select(selectedRequirementIds(program, model), "requirement", (record) => (
       record.type === "requirement" && record.applicability === "applicable"
-    )).filter((record) => record.applicability === "applicable"),
-    controls: select(workspace?.controlIds, "control", (record) => (
+    )).filter((record) => String(model.modelVersion) === "4" || record.applicability === "applicable"),
+    controls: select(program?.controlIds, "control", (record) => (
       record.type === "control" && !["not-applicable", "retired"].includes(record.status)
     )).filter((record) => !["not-applicable", "retired"].includes(record.status))
   };
@@ -164,6 +170,29 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     }
   ));
 
+  if (String(model.modelVersion) === "4") {
+    const completeComponents = scope.components.filter((component) => (
+      component.status === "active"
+      && component.description
+      && (component.ownerIds || []).length
+      && (component.systemUses || []).some(({ systemId, roles, rationale }) => (
+        scope.systems.some(({ id }) => id === systemId)
+        && (roles || []).length
+        && String(rationale || "").trim()
+      ))
+    ));
+    items.push(item(
+      "system-components",
+      scope.components.length === completeComponents.length ? "complete" : "action",
+      "Confirm scoped Components",
+      scope.components.length
+        ? `${completeComponents.length} of ${scope.components.length} Components have an active, owned, rationalized role in the selected Systems.`
+        : "No Components are selected. This is valid only when the bounded Systems do not rely on a separately managed service-delivery, Control-support, evidence-source, or supporting-operations building block.",
+      scope.components[0] || { type: "component" },
+      { componentIds: scope.components.map(({ id }) => id) }
+    ));
+  }
+
   items.push(programOwnershipItem(records, byId));
   items.push(requiredAppointmentsItem(records, model));
   for (const assessment of collectionReviews) {
@@ -172,7 +201,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
 
   const completeSystems = scope.systems.filter((system) => (
     system.status === "active"
-    && system.description
+    && (String(model.modelVersion) === "4" ? system.purpose && system.boundary && (system.servicesProvided || []).length : system.description)
     && system.classificationId
     && (system.ownerIds || []).length
   ));
@@ -186,7 +215,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     scope.systems[0] || { type: "system" }
   ));
 
-  if (String(model.modelVersion) === "3") {
+  if (["3", "4"].includes(String(model.modelVersion))) {
     const commitments = records.filter((record) => (
       record.type === "commitment"
       && !["superseded", "retired"].includes(record.status)
@@ -196,7 +225,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
       record.status === "active"
       && record.statement
       && record.effectiveOn
-      && record.applicabilityReview?.decision === "applicable"
+      && (String(model.modelVersion) === "4" || record.applicabilityReview?.decision === "applicable")
       && currentPartyPeople(record.ownerIds, byId).size > 0
       && (record.requirementIds || []).length > 0
       && (record.controlIds || []).length > 0
@@ -225,15 +254,16 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   }
 
   const selectedRequirementIds = new Set(scope.requirements.map((record) => record.id));
+  const v4Decisions = new Map((workspace?.requirementApplicability || []).map((decision) => [decision.requirementId, decision.decision]));
   const applicableRequirements = records.filter((record) => (
     record.type === "requirement"
     && scope.frameworks.some((framework) => framework.id === record.frameworkId)
-    && record.applicability === "applicable"
+    && (String(model.modelVersion) === "4" ? v4Decisions.get(record.id) === "applicable" : record.applicability === "applicable")
   ));
   const unresolvedRequirements = records.filter((record) => (
     record.type === "requirement"
     && scope.frameworks.some((framework) => framework.id === record.frameworkId)
-    && record.applicability === "undetermined"
+    && (String(model.modelVersion) === "4" ? !v4Decisions.has(record.id) || v4Decisions.get(record.id) === "undetermined" : record.applicability === "undetermined")
   ));
   const missingRequirements = applicableRequirements.filter((record) => !selectedRequirementIds.has(record.id));
   const criteriaComplete = Boolean(
@@ -256,7 +286,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
         "npx filegrc review-applicability --scaffold --type requirement > decisions.json",
         "npx filegrc review-applicability decisions.json --preview --json",
         "npx filegrc review-applicability decisions.json --yes --json",
-        "npx filegrc get workspace --mutation"
+        `npx filegrc get ${shellArgument(workspace?.id || "workspace")} --mutation`
       ]
     }
   ));
@@ -595,7 +625,11 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
   }
   for (const control of scope.controls) {
     const source = await readMarkdown(control);
-    const sourceSystems = (control.evidenceSourceIds || []).map((id) => byId.get(id)).filter((record) => record?.type === "system");
+    const sourceSystems = (
+      String(model.modelVersion) === "4"
+        ? control.evidenceSourceComponentIds || []
+        : control.evidenceSourceIds || []
+    ).map((id) => byId.get(id)).filter((record) => record?.type === (String(model.modelVersion) === "4" ? "component" : "system"));
     const queueSchedules = [...byId.values()].filter((record) => (
       record.type === "obligation"
       && record.status !== "retired"
@@ -662,17 +696,20 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   const families = selectedControlFamilies(scope.controls, model);
   const items = [];
   for (const family of families) {
-    const selectedSources = [...new Set(family.controls.flatMap((control) => control.evidenceSourceIds || []))]
+    const componentSources = String(model.modelVersion) === "4";
+    const sourceField = componentSources ? "evidenceSourceComponentIds" : "evidenceSourceIds";
+    const sourceType = componentSources ? "component" : "system";
+    const selectedSources = [...new Set(family.controls.flatMap((control) => control[sourceField] || []))]
       .map((id) => byId.get(id))
       .filter((record) => (
-        record?.type === "system"
+        record?.type === sourceType
         && (
           !(record.evidenceSourceKinds || []).length
           || family.sourceKinds.some((kind) => (record.evidenceSourceKinds || []).includes(kind))
         )
       ));
     const completeSources = [];
-    const sourceSystemChecks = [];
+    const sourceChecks = [];
     for (const source of selectedSources) {
       const instructions = await readMarkdown(source);
       const matchesRole = !family.sourceKinds.length
@@ -684,8 +721,8 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
         retrievalInstructions: substantiveMarkdown(instructions) && openPlaceholderCount(instructions) === 0
       };
       const complete = Object.values(checks).every(Boolean);
-      sourceSystemChecks.push({
-        sourceSystemId: source.id,
+      sourceChecks.push({
+        [componentSources ? "sourceComponentId" : "sourceSystemId"]: source.id,
         complete,
         checks
       });
@@ -694,28 +731,31 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       }
     }
     const controlMappings = family.controls.map((control) => {
-      const sourceSystemIds = (control.evidenceSourceIds || []).filter((id) => selectedSources.some((source) => source.id === id));
-      const completeSourceSystemIds = sourceSystemIds.filter((id) => completeSources.some((source) => source.id === id));
+      const sourceIds = (control[sourceField] || []).filter((id) => selectedSources.some((source) => source.id === id));
+      const completeSourceIds = sourceIds.filter((id) => completeSources.some((source) => source.id === id));
       return {
         controlId: control.id,
-        sourceSystemIds,
-        completeSourceSystemIds,
-        mapped: sourceSystemIds.length > 0,
-        complete: completeSourceSystemIds.length > 0
+        [componentSources ? "sourceComponentIds" : "sourceSystemIds"]: sourceIds,
+        [componentSources ? "completeSourceComponentIds" : "completeSourceSystemIds"]: completeSourceIds,
+        mapped: sourceIds.length > 0,
+        complete: completeSourceIds.length > 0
       };
     });
     const coveredControls = controlMappings.filter(({ complete }) => complete);
     const complete = completeSources.length > 0 && coveredControls.length === family.controls.length;
     const commands = [
       ...(selectedSources.length
-        ? sourceSystemChecks.filter(({ complete: sourceComplete }) => !sourceComplete).flatMap(({ sourceSystemId }) => [
-            `npx filegrc get ${shellArgument(sourceSystemId)} --mutation > /tmp/${shellArgument(sourceSystemId)}.json`,
-            `npx filegrc update system ${shellArgument(sourceSystemId)} /tmp/${shellArgument(sourceSystemId)}.json --json`
-          ])
+        ? sourceChecks.filter(({ complete: sourceComplete }) => !sourceComplete).flatMap((sourceCheck) => {
+            const sourceId = sourceCheck.sourceComponentId || sourceCheck.sourceSystemId;
+            return [
+            `npx filegrc get ${shellArgument(sourceId)} --mutation > /tmp/${shellArgument(sourceId)}.json`,
+            `npx filegrc update ${sourceType} ${shellArgument(sourceId)} /tmp/${shellArgument(sourceId)}.json --json`
+            ];
+          })
         : [
-            "npx filegrc list system --json",
-            'npx filegrc scaffold system --title "SYSTEM NAME" > /tmp/filegrc-system.json',
-            "npx filegrc create /tmp/filegrc-system.json --json"
+            `npx filegrc list ${sourceType} --json`,
+            `npx filegrc scaffold ${sourceType} --title "${componentSources ? "COMPONENT" : "SYSTEM"} NAME" > /tmp/filegrc-${sourceType}.json`,
+            `npx filegrc create /tmp/filegrc-${sourceType}.json --json`
           ]),
       ...controlMappings.filter(({ mapped }) => !mapped).flatMap(({ controlId }) => [
         `npx filegrc get ${shellArgument(controlId)} --mutation > /tmp/${shellArgument(controlId)}.json`,
@@ -729,15 +769,15 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       family.title,
       complete
         ? `${completeSources.map((source) => source.title).join(", ")} ${completeSources.length === 1 ? "covers" : "cover"} all ${family.controls.length} selected controls and record access owners and extraction instructions.`
-        : `${coveredControls.length} of ${family.controls.length} selected controls have an active authoritative system with the required source role, access owners, and extraction instructions.`,
-      completeSources[0] || selectedSources[0] || { type: "system" },
+        : `${coveredControls.length} of ${family.controls.length} selected controls have an active authoritative ${componentSources ? "Component" : "System"} with the required source role, access owners, and extraction instructions.`,
+      completeSources[0] || selectedSources[0] || { type: sourceType },
       {
         familyId: family.id,
         sourceKinds: family.sourceKinds,
         controlIds: family.controls.map((control) => control.id),
-        sourceSystemIds: selectedSources.map((source) => source.id),
-        completeSourceSystemIds: completeSources.map((source) => source.id),
-        sourceSystemChecks,
+        [componentSources ? "sourceComponentIds" : "sourceSystemIds"]: selectedSources.map((source) => source.id),
+        [componentSources ? "completeSourceComponentIds" : "completeSourceSystemIds"]: completeSources.map((source) => source.id),
+        [componentSources ? "sourceComponentChecks" : "sourceSystemChecks"]: sourceChecks,
         controlMappings,
         evidenceForm: family.evidenceForm,
         evidencePrompt: family.evidencePrompt,
@@ -748,7 +788,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       }
     ));
   }
-  return stage("sources", "Control Evidence Sources", "Complete the authoritative Systems for every selected control family before marking the Controls implemented.", items);
+  return stage("sources", "Control Evidence Sources", `Complete the authoritative ${String(model.modelVersion) === "4" ? "Components" : "Systems"} for every selected control family before marking the Controls implemented.`, items);
 }
 
 function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model) {
@@ -790,7 +830,7 @@ function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceR
     ? coverageEnd(workspace.candidateCoverage)
     : null;
   const startStatus = !start ? "action" : start <= asOf ? "complete" : "later";
-  const sourceCoverage = assessSourceCoverageReadiness(loaded, scope.controls.map(({ id }) => id));
+  const sourceCoverage = assessSourceCoverageReadiness(loaded, scope.controls.map(({ id }) => id), workspace);
   const incompleteSourceCoverage = sourceCoverage.filter(({ complete }) => !complete);
   return stage("operation", "Operate the Program", "Start the management candidate Type 2 period only after the Evidence Ready gate, then keep collection running.", [
     item(

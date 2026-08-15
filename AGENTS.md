@@ -73,7 +73,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 
 ## Data rules
 
-The active authoritative model registry is the standalone `packages/filegrc/model/v3.json`. Models v1 and v2 are published and frozen in `packages/filegrc/model/v1.json` and `packages/filegrc/model/v2.json` for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
+The active authoritative model registry is the standalone `packages/filegrc/model/v4.json`. Models v1, v2, and v3 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.
@@ -102,11 +102,11 @@ The active authoritative model registry is the standalone `packages/filegrc/mode
 - Keep scheduled dates separate from actual completion dates. Completed operating records must name their actors, result, supporting evidence, review, coverage, and completion time when the model requires them.
 - Use one Vendor Review per Vendor so its decision, coverage, evidence, and follow-up are unambiguous.
 - Build audit packets from an explicit Type 1 or Type 2 engagement, its exact date or period and scope, model-defined dates, policy and control context, and linked evidence. Add obligation coverage, event checklists, populations, and samples for Type 2. Keep packet output under `.filegrc/` and bind delivery-ready output to a clean Git revision.
-- Never report filegrc management checks as passed when the required scope, management documents, approved policy coverage, implemented control coverage, source systems, evidence, or Type 2 population work is missing. Do not imply that filegrc decides whether evidence is sufficient or appropriate; the engagement team makes that judgment.
+- Never report filegrc management checks as passed when the required scope, management documents, approved policy coverage, implemented control coverage, source Components, evidence, or Type 2 population work is missing. Do not imply that filegrc decides whether evidence is sufficient or appropriate; the engagement team makes that judgment.
 - Export auditor control, population, and evidence indexes, committed historical source versions, and per-file checksums with every packet. External references remain warnings because the packet is not self-contained.
 - Use one `audit-population` record for each complete management population and link its fixed `population-export` evidence. Record the evidence generation time, exact query or report parameters, timezone, count, and completeness and accuracy checks, including when the count is zero. Link the population and sampled-item evidence from the related control test.
-- Catalog every authoritative evidence source as a `system`, assign its `evidenceSourceKinds`, name the people who can obtain evidence, and keep extraction instructions in Record Markdown. A reconciled population and its export must name the same source system. Split a population when its items require different source systems or queries.
-- Every evidence record names its collector. Verified evidence also names its verifier and verification date. A source-system export links the cataloged system of record.
+- Catalog every authoritative evidence source as a `component`, assign its `evidenceSourceKinds`, name the people who can obtain evidence, and keep extraction instructions in Record Markdown. A reconciled population and its Evidence Artifact must name the same source Component. Split a population when its items require different source Components or queries.
+- Every Evidence Artifact names its collector. Verified Evidence Artifacts also name their verifier and verification date. A source export links the cataloged source Component.
 - Define fields, types, enums, relationships, conditional requirements, and default UI metadata once in the model registry. Validators, CRUD forms, filters, search indexing, CLI help, and generated model documentation must consume that registry.
 - Do not hand-copy model definitions into validators, templates, generated repositories, or documentation.
 - Generate `docs/data-model.md` from the registry. Do not edit generated model documentation by hand.

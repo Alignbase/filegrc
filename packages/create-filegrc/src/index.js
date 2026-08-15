@@ -397,16 +397,22 @@ async function applyStarterScope(target, starter, effectiveDate) {
   const workspacePath = join(target, "data", "workspace.json");
   const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
   const ids = (type) => records.filter((record) => record.type === type).map((record) => record.id);
-  await writeFile(workspacePath, `${JSON.stringify({
-    ...workspace,
+  await writeFile(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`, "utf8");
+  const programPath = join(target, "data", "programs", "program-soc-2.json");
+  const program = JSON.parse(await readFile(programPath, "utf8"));
+  await writeFile(programPath, `${JSON.stringify({
+    ...program,
     frameworkIds: ids("framework"),
-    requirementIds: ids("requirement"),
+    requirementApplicability: ids("requirement").map((requirementId) => ({
+      requirementId,
+      decision: "undetermined"
+    })),
     controlIds: ids("control")
   }, null, 2)}\n`, "utf8");
 }
 
 function starterStages(starter, counts) {
-  const foundationTypes = new Set(["workspace", "renderer-settings", "person", "appointment", "team", "system"]);
+  const foundationTypes = new Set(["workspace", "program", "renderer-settings", "person", "appointment", "team", "system", "component", "classification", "information-type"]);
   const foundation = Object.entries(counts.byType)
     .filter(([type]) => foundationTypes.has(type))
     .reduce((total, [, count]) => total + count, 0);
@@ -516,13 +522,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.5.1",
+    version: "0.6.0",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.5.1",
+        version: "0.6.0",
         dependencies: { filegrc: versionRange }
       }
     }

@@ -1,10 +1,10 @@
 {
   "id": "collection-review-system",
   "type": "collection-review",
-  "title": "Service and system boundary review",
+  "title": "Bounded System scope review",
   "status": "planned",
   "resourceType": "system",
   "scopeResourceIds": [
-    "workspace"
+    "program-soc-2"
   ]
 }

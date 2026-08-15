@@ -1,6 +1,7 @@
 import { applyResourceBatch } from "./files.js";
 import { getGitSummary } from "./git.js";
 import { loadWorkspace } from "./workspace.js";
+import { resolveProgram } from "./program.js";
 
 const REVIEWABLE_TYPES = new Set([
   "requirement",
@@ -11,17 +12,23 @@ const REVIEWABLE_TYPES = new Set([
 
 export async function scaffoldApplicabilityReview(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
-  if (String(loaded.model.modelVersion) !== "3") {
-    throw new Error("Batch applicability review requires a model v3 workspace.");
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
+    throw new Error("Batch applicability review requires a model v3 or v4 workspace.");
   }
   const requestedType = options.type ? String(options.type) : null;
   if (requestedType && !REVIEWABLE_TYPES.has(requestedType)) {
     throw new Error(`Applicability review type must be one of ${[...REVIEWABLE_TYPES].join(", ")}.`);
   }
+  const program = resolveProgram(loaded, options.programId);
+  const reviewedRequirementIds = new Set((program.requirementApplicability || [])
+    .filter(({ decision }) => ["applicable", "not-applicable"].includes(decision))
+    .map(({ requirementId }) => requirementId));
   const records = loaded.resources.filter((record) => (
     REVIEWABLE_TYPES.has(record.type)
     && (!requestedType || record.type === requestedType)
-    && !record.applicabilityReview
+    && (record.type === "requirement" && String(loaded.model.modelVersion) === "4"
+      ? !reviewedRequirementIds.has(record.id)
+      : !record.applicabilityReview)
     && !["retired", "superseded"].includes(record.status)
   ));
   return {
@@ -39,14 +46,16 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
 
 export async function planApplicabilityReview(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
-  if (String(loaded.model.modelVersion) !== "3") {
-    throw new Error("Batch applicability review requires a model v3 workspace.");
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
+    throw new Error("Batch applicability review requires a model v3 or v4 workspace.");
   }
   if (!Array.isArray(options.decisions) || !options.decisions.length) {
     throw new Error("Applicability review needs at least one decision.");
   }
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const update = options.decisions.map((decision) => {
+  const program = resolveProgram(loaded, options.programId);
+  const v4RequirementDecisions = [];
+  const update = options.decisions.flatMap((decision) => {
     const record = byId.get(decision.id);
     if (!record || !REVIEWABLE_TYPES.has(record.type)) {
       throw new Error(`Resource "${decision.id}" is not an applicability-review record.`);
@@ -81,16 +90,30 @@ export async function planApplicabilityReview(input = process.cwd(), options = {
       if (!["applicable", "not-applicable"].includes(result)) {
         throw new Error(`Requirement "${record.id}" must be applicable or not-applicable.`);
       }
+      if (String(loaded.model.modelVersion) === "4") {
+        v4RequirementDecisions.push({ requirementId: record.id, decision: result, rationale, reviewedByIds, reviewedOn, scopeRevision });
+        return [];
+      }
       next.applicability = result;
       next.applicabilityRationale = rationale;
     }
     if (record.type === "control" && result === "not-applicable") next.status = "not-applicable";
     if (record.type === "control" && result === "applicable" && record.status === "not-applicable") next.status = "planned";
-    return next;
+    return [next];
   });
+  if (v4RequirementDecisions.length) {
+    const replaced = new Set(v4RequirementDecisions.map(({ requirementId }) => requirementId));
+    update.push({
+      ...program,
+      requirementApplicability: [
+        ...(program.requirementApplicability || []).filter(({ requirementId }) => !replaced.has(requirementId)),
+        ...v4RequirementDecisions
+      ]
+    });
+  }
   return {
     operation: "applicability-review",
-    reviewedIds: update.map(({ id }) => id),
+    reviewedIds: options.decisions.map(({ id }) => id),
     changes: {
       update,
       expectedRevisions: options.expectedRevisions || {},

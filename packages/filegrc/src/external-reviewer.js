@@ -5,8 +5,8 @@ import { loadWorkspace } from "./workspace.js";
 
 export async function scaffoldExternalReviewerGovernance(input = process.cwd()) {
   const loaded = await loadWorkspace(input);
-  if (String(loaded.model.modelVersion) !== "3") {
-    throw new Error("External reviewer setup requires a model v3 workspace.");
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
+    throw new Error("External reviewer setup requires a model v3 or v4 workspace.");
   }
   return {
     reviewerName: null,
@@ -22,8 +22,8 @@ export async function scaffoldExternalReviewerGovernance(input = process.cwd()) 
 
 export async function planExternalReviewerGovernance(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
-  if (String(loaded.model.modelVersion) !== "3") {
-    throw new Error("External reviewer setup requires a model v3 workspace.");
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
+    throw new Error("External reviewer setup requires a model v3 or v4 workspace.");
   }
   const name = required(options.reviewerName, "External reviewer name");
   const startsOn = required(options.startsOn, "Appointment start date");

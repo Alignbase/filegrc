@@ -1,10 +1,10 @@
 {
   "id": "collection-review-vendor",
   "type": "collection-review",
-  "title": "Vendor and subservice scope review",
+  "title": "Vendor inventory review",
   "status": "planned",
   "resourceType": "vendor",
   "scopeResourceIds": [
-    "workspace"
+    "program-soc-2"
   ]
 }

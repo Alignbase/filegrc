@@ -81,6 +81,7 @@ let onboardingShade = null;
 let onboardingStep = 0;
 let onboardingDraft = null;
 let onboardingBusy = false;
+let onboardingSetupOnly = false;
 let onboardingStillWorkingTimer = null;
 let onboardingPendingDraft = false;
 const resourceDetailRequests = new Map();
@@ -103,7 +104,7 @@ async function start() {
   window.addEventListener("scroll", positionCurrentOnboarding, true);
   render();
   scheduleRepositorySyncPoll();
-  if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true) {
+  if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true && !initialSetupSystem()) {
     queueMicrotask(requestOnboarding);
   }
 }
@@ -209,6 +210,16 @@ function readinessStageForType(type) {
   ));
 }
 
+function activeProgram() {
+  return resourcesOfType("program").find(({ record }) => !["retired"].includes(record.status))?.record || state.workspace;
+}
+
+function reviewedRequirementIds() {
+  return new Set((activeProgram().requirementApplicability || [])
+    .filter(({ decision }) => ["applicable", "not-applicable"].includes(decision))
+    .map(({ requirementId }) => requirementId));
+}
+
 function renderSidebarUtility(utility, route, direct = false) {
   const directClass = direct ? "nav-direct " : "";
   if (utility === "obligation-board") return "";
@@ -274,27 +285,28 @@ function renderHome(main) {
     '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>' + obligationHeading + '</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>' +
     '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">' + (acceptedEventTriggers.length ? "Trigger work" : "Review proposals") + '</a></div>' + eventReminderPreview(orderedPolicyEventTriggers(state.obligations.triggers).slice(0, 4)) + '</section>' +
     auditPanel + '</div></div>';
-  main.querySelector("#resume-setup")?.addEventListener("click", requestOnboarding);
+  main.querySelector("#resume-setup")?.addEventListener("click", () => requestOnboarding({ setupOnly: Boolean(initialSetupSystem()) }));
+}
+
+function initialSetupSystem() {
+  const program = activeProgram();
+  return resourcesOfType("system").find(({ record }) => (program.systemIds || []).includes(record.id) && record.status !== "retired")?.record || null;
 }
 
 function initialSetupBanner() {
-  const system = resourcesOfType("system").find(({ record }) => (state.workspace.systemIds || []).includes(record.id) && record.status !== "retired")?.record;
+  const program = activeProgram();
+  const system = initialSetupSystem();
   if (!system) {
-    return '<section class="setup-banner"><div><p class="kicker">Setup incomplete</p><h3>Define the initial service boundary</h3><p>Record the management program goal and the systems that should enter policy and control review.</p></div><ol><li>Describe the service boundary.</li><li>Choose the program goal.</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>';
+    return '<section class="setup-banner"><div><p class="kicker">Setup</p><h3>Define the service in scope</h3><p>Name the service and choose the program goal.</p></div><button class="button primary" type="button" id="resume-setup">Start setup</button></section>';
   }
-  const goal = programGoalFromKind(state.workspace.assuranceGoal);
+  const goal = programGoalFromKind(program.assuranceGoal);
   const goalLabels = {
     readiness: "Program Readiness",
     "type-1": "SOC 2 Type 1",
     "type-2": "SOC 2 Type 2"
   };
-  const goalStep = goal === "none"
-    ? "Choose the program goal."
-    : "Confirm the saved program goal: " + goalLabels[goal] + ".";
-  const completion = system.status === "planned"
-    ? "Confirm the service scope to activate the planned service and continue to Step 1."
-    : "Confirm the service scope to close onboarding and continue to Step 1.";
-  return '<section class="setup-banner"><div><p class="kicker">Setup draft saved</p><h3>Review the initial service scope</h3><p>' + esc(system.title) + ' already has a saved service boundary.</p></div><ol><li>Review the saved service boundary.</li><li>' + esc(goalStep) + '</li><li>' + esc(completion) + '</li><li><button class="text-button" type="button" id="resume-setup">Resume setup</button></li></ol></section>';
+  const goalLabel = goal === "none" ? "Choose goal" : goalLabels[goal];
+  return '<section class="setup-banner"><div><p class="kicker">Setup draft</p><h3>' + esc(system.title) + '</h3><p>Review and confirm the initial scope.</p></div><div class="setup-draft-state"><span><small>Program goal</small><strong>' + esc(goalLabel) + '</strong></span><span><small>System</small><strong>' + esc(properCase(system.status)) + '</strong></span><button class="button primary" type="button" id="resume-setup">Resume setup</button></div></section>';
 }
 
 function readinessOverview() {
@@ -334,6 +346,10 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
     renderStagePageIndex(stage) + (stage.id === "controls" ? renderEvidenceReadiness() : "") + '</div>';
+  main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
+    main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
+    event.currentTarget.remove();
+  });
 }
 
 function workflowGuidance(options = {}) {
@@ -372,6 +388,7 @@ function collectionReviewPanel(type) {
   if (!assessment) return "";
   const configuration = assessment.configuration;
   const current = assessment.status === "current";
+  const needsFirstRecord = collectionNeedsFirstRecord(type);
   const reviewerNames = (assessment.review?.reviewedByIds || [])
     .map((id) => state.resources.find(({ record }) => record.id === id)?.record.title || id);
   const reviewNote = assessment.review?.rationale
@@ -379,16 +396,46 @@ function collectionReviewPanel(type) {
     : "";
   const reviewSummary = current
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + "." + reviewNote + '</span></p>'
-    : '<p class="collection-review-result"><strong>' + (assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(assessment.message) + '</span></p>';
-  return '<section class="collection-review-panel panel ' + (current ? "current" : "required") + '"><div class="collection-review-head"><div><p class="kicker">Scope confirmation</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + (current ? "Reviewed" : assessment.status === "stale" ? "Stale" : "Review required") + '</span></div>' +
+    : '<p class="collection-review-result"><strong>' + (needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(assessment.message) + '</span></p>';
+  const action = state.readOnly
+    ? ""
+    : needsFirstRecord
+      ? '<a class="button primary" href="#/resources/' + encodeURIComponent(type) + '?new=1">Add first ' + esc(state.model.resources[type].title.toLowerCase()) + '</a>'
+      : '<button class="button ' + (current ? "" : "primary") + '" type="button" data-review-collection="' + esc(type) + '">' + (current ? "Review again" : "Review and confirm") + '</button>';
+  return '<section class="collection-review-panel panel ' + (current ? "current" : "required") + '"><div class="collection-review-head"><div><p class="kicker">Scope confirmation</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + (current ? "Reviewed" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Stale" : "Review required") + '</span></div>' +
     '<details ' + (current ? "" : "open") + '><summary>What to review</summary><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></details>' +
-    '<div class="collection-review-foot">' + reviewSummary + (!state.readOnly ? '<button class="button ' + (current ? "" : "primary") + '" type="button" data-review-collection="' + esc(type) + '">' + (current ? "Review again" : "Review and confirm") + '</button>' : "") + '</div></section>';
+    '<div class="collection-review-foot">' + reviewSummary + action + '</div></section>';
 }
 
-function resourceReviewCriteria(type) {
+function collectionNeedsFirstRecord(type) {
+  const assessment = state.collectionReviews?.[type];
+  if (!assessment || assessment.recordCount) return false;
+  return !(assessment.configuration.decisions || []).some((decision) => (
+    decision === "zero-population" || decision === "externally-managed"
+  ));
+}
+
+function resourceCreationAllowed(type) {
+  return type !== "program" || !resourcesOfType("program").some(({ record }) => record.status !== "retired");
+}
+
+function collectionEmptyState(type, definition) {
+  const assessment = state.collectionReviews?.[type];
+  if (!assessment) {
+    return definition.guidance?.emptyState || "No records exist. Use the page guidance to decide whether a record is required, then add only real program facts.";
+  }
+  return collectionNeedsFirstRecord(type)
+    ? "No " + definition.pluralTitle.toLowerCase() + " have been added yet."
+    : "No records exist. Use the scope confirmation above to record an allowed empty-collection conclusion, or add the records management identified.";
+}
+
+function resourceReviewCriteria(type, collapsed = false) {
   const reviewPoints = state.model.resources[type]?.guidance?.reviewPoints || [];
   if (!reviewPoints.length) return "";
-  return '<section class="resource-review-criteria"><strong>What the reviewer should check</strong><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>';
+  const content = '<strong>Review criteria</strong><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>';
+  return collapsed
+    ? '<details class="resource-review-criteria compact"><summary>Review criteria</summary><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></details>'
+    : '<section class="resource-review-criteria">' + content + '</section>';
 }
 
 function recordWorkflowItems(type, id) {
@@ -414,7 +461,8 @@ function recordWorkflowCell(type, entry) {
   if (!items.length) return '<span class="record-workflow-clear">No calculated action</span>';
   const item = items[0];
   const href = workflowItemHref(item) || "#/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id);
-  return '<a class="record-workflow-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.message || workflowItemDetail(item)) + (items.length > 1 ? " +" + (items.length - 1) + " more" : "") + '</small></span></a>';
+  const title = type === "control" ? "Finish implementation" : item.title;
+  return '<a class="record-workflow-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(title) + '</strong><small>' + esc(stagePageItemDetail(item)) + (items.length > 1 ? " +" + (items.length - 1) + " more" : "") + '</small></span></a>';
 }
 
 function openCollectionReviewDialog(type) {
@@ -422,7 +470,9 @@ function openCollectionReviewDialog(type) {
   if (!assessment) return;
   const configuration = assessment.configuration;
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
-  const systems = resourcesOfType("system").filter(({ record }) => record.status === "active");
+  const v4 = String(state.model.modelVersion) === "4";
+  const sourceType = v4 ? "component" : "system";
+  const systems = resourcesOfType(sourceType).filter(({ record }) => record.status === "active");
   const allowedDecisions = configuration.decisions || ["complete"];
   const defaultDecision = assessment.review?.decision
     || (!assessment.recordCount && allowedDecisions.includes("zero-population") ? "zero-population" : allowedDecisions[0]);
@@ -432,7 +482,7 @@ function openCollectionReviewDialog(type) {
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog event-dialog collection-review-dialog";
   dialog.setAttribute("aria-labelledby", "collection-review-dialog-title");
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Scope confirmation</p><h2 id="collection-review-dialog-title">Confirm ' + esc(configuration.title.toLowerCase()) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>Before confirming</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section><div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(assessment.review?.reviewedOn || currentDate()) + '"></label><label data-authoritative-system><span>Authoritative System</span><select name="authoritativeSystemId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (assessment.review?.authoritativeSystemId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview" role="status"></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary" data-preview-collection-review>Preview confirmation</button></div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Scope confirmation</p><h2 id="collection-review-dialog-title">Confirm ' + esc(configuration.title.toLowerCase()) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>Before confirming</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section><div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(assessment.review?.reviewedOn || currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.authoritativeComponentId || assessment.review?.authoritativeSystemId) === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview" role="status"></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary" data-preview-collection-review>Preview confirmation</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   const form = dialog.querySelector("form");
@@ -442,7 +492,7 @@ function openCollectionReviewDialog(type) {
   const syncDecision = () => {
     const external = form.elements.decision.value === "externally-managed";
     systemField.hidden = !external;
-    form.elements.authoritativeSystemId.required = external;
+    form.elements.authoritativeSourceId.required = external;
   };
   syncDecision();
   dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
@@ -466,7 +516,7 @@ function openCollectionReviewDialog(type) {
       rationale: form.elements.rationale.value.trim(),
       reviewedByIds: [form.elements.reviewerId.value],
       reviewedOn: form.elements.reviewedOn.value,
-      authoritativeSystemId: form.elements.authoritativeSystemId.value || undefined,
+      [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: form.elements.authoritativeSourceId.value || undefined,
       expectedRevision: assessment.reviewRevision || undefined
     };
     form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = true; });
@@ -592,11 +642,18 @@ function renderEvidenceReadiness() {
     ?.find((stage) => stage.id === "controls")
     ?.items.filter((item) => item.id.startsWith("source-family-")) || [];
   const completeCount = items.filter((item) => item.status === "complete").length;
-  const cards = items.map((item) => {
-    const sources = (item.sourceSystemIds || []).map((id) => {
-      const source = state.resources.find(({ record }) => record.type === "system" && record.id === id)?.record;
-      const sourceCheck = (item.sourceSystemChecks || []).find(({ sourceSystemId }) => sourceSystemId === id);
-      const complete = sourceCheck?.complete ?? (item.completeSourceSystemIds || []).includes(id);
+  const visibleCount = 4;
+  const componentSources = items.some((item) => Array.isArray(item.sourceComponentIds));
+  const sourceType = componentSources ? "component" : "system";
+  const sourceLabel = componentSources ? "Components" : "Systems";
+  const cards = items.map((item, index) => {
+    const componentSources = Array.isArray(item.sourceComponentIds);
+    const sourceType = componentSources ? "component" : "system";
+    const sourceLabel = componentSources ? "Component" : "System";
+    const sources = (item.sourceComponentIds || item.sourceSystemIds || []).map((id) => {
+      const source = state.resources.find(({ record }) => record.type === sourceType && record.id === id)?.record;
+      const sourceCheck = (item.sourceComponentChecks || item.sourceSystemChecks || []).find((check) => (check.sourceComponentId || check.sourceSystemId) === id);
+      const complete = sourceCheck?.complete ?? (item.completeSourceComponentIds || item.completeSourceSystemIds || []).includes(id);
       const status = complete
         ? "Ready"
         : Object.entries(sourceCheck?.checks || {})
@@ -604,23 +661,26 @@ function renderEvidenceReadiness() {
             .map(([name]) => evidenceSourceCheckLabel(name))
             .join(", ") || "Needs details";
       return source
-        ? '<a class="evidence-map-source ' + (complete ? "complete" : "incomplete") + '" href="#/resource/system/' + encodeURIComponent(id) + '">' + esc(source.title) + '<small>' + esc(status) + '</small></a>'
+        ? '<a class="evidence-map-source ' + (complete ? "complete" : "incomplete") + '" href="#/resource/' + sourceType + '/' + encodeURIComponent(id) + '">' + esc(source.title) + '<small>' + esc(status) + '</small></a>'
         : "";
     }).join("");
     const sourceAction = sources
       ? sources
-      : '<a class="button" href="#/resources/system?new=1">Add source System</a>';
+      : '<a class="button" href="#/resources/' + sourceType + '?new=1">Add source ' + sourceLabel + '</a>';
     const method = item.operationRecordTypes?.length
       ? "FileGRC records: " + item.operationRecordTypes.map(properCase).join(", ")
       : properCase(item.evidenceForm || "External evidence");
-    return '<article class="evidence-map-card ' + esc(item.status) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (item.status === "complete" ? "good" : "warn") + '">' + (item.status === "complete" ? "Mapped" : "Needs mapping") + '</span><h3>' + esc(item.title) + '</h3></div><small>' + esc(method) + '</small></div><p>' + esc(item.description || item.message) + '</p>' +
-      (item.sourceKinds?.length ? '<div class="evidence-map-expectation"><strong>Source role</strong><span>' + item.sourceKinds.map((kind) => '<code>' + esc(kind) + '</code>').join(" or ") + '</span></div>' : "") +
+    return '<article class="evidence-map-card ' + esc(item.status) + '"' + (index >= visibleCount ? ' data-evidence-family-extra hidden' : "") + '><div class="evidence-map-card-head"><div><span class="badge ' + (item.status === "complete" ? "good" : "warn") + '">' + (item.status === "complete" ? "Mapped" : "Needs mapping") + '</span><h3>' + esc(item.title) + '</h3></div><small>' + esc(method) + '</small></div><p>' + esc(item.description || item.message) + '</p>' +
+      (item.sourceKinds?.length ? '<div class="evidence-map-expectation"><strong>Source role</strong><span>' + item.sourceKinds.map((kind) => esc(properCase(kind))).join(" or ") + '</span></div>' : "") +
       (item.evidencePrompt ? '<div class="evidence-map-expectation"><strong>Expected evidence</strong><span>' + esc(item.evidencePrompt) + '</span></div>' : "") +
       (item.timing ? '<div class="evidence-map-expectation"><strong>When</strong><span>' + esc(item.timing) + '</span></div>' : "") +
       '<div class="evidence-map-links"><div><small>Controls</small><div class="evidence-map-references">' + (item.controlIds || []).map((id) => formatReference(id)).join("") + '</div></div><div><small>Authoritative sources</small><div class="evidence-map-sources">' + sourceAction + '</div></div></div><p class="evidence-map-status">' + esc(item.message) + '</p></article>';
   }).join("");
+  const more = items.length > visibleCount
+    ? '<button class="button evidence-map-more" type="button" data-show-evidence-families>Show ' + (items.length - visibleCount) + ' more evidence families</button>'
+    : "";
   const empty = '<section class="evidence-map-empty"><p class="kicker">Evidence readiness</p><h3>Select the program controls first</h3><p>Control implementation checks are generated from the selected Controls and their authoritative evidence sources.</p><a class="button primary" href="#/resources/control">Review Controls</a></section>';
-  return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Control implementation</p><h2>' + completeCount + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' ready</h2><p>Connect each Control to the Systems that produce its evidence. The cards below show what each source still needs.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/system">Review Systems</a><a class="button primary" href="#/resources/control">Review Controls</a></div></div>' + (cards || empty) + '</section>';
+  return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Control implementation</p><h2>' + completeCount + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' ready</h2><p>Connect each Control to the ' + sourceLabel + ' that produce its evidence.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/' + sourceType + '">Review ' + sourceLabel + '</a><a class="button primary" href="#/resources/control">Review Controls</a></div></div>' + (cards || empty) + more + '</section>';
 }
 
 function evidenceSourceCheckLabel(name) {
@@ -673,6 +733,7 @@ function stagePageItemDetail(item) {
     ? String(item.message || "").match(/^Complete (\d+) checks before implementation:/)
     : null;
   if (controlChecks) return controlChecks[1] + " implementation checks remain. Open the Control to review them.";
+  if (/^Review .+ before this page can be ready\.$/i.test(item.message || "")) return "Confirm the current scope.";
   return item.message || workflowItemDetail(item);
 }
 
@@ -766,7 +827,7 @@ function stagePageItems(stage, destination) {
 
 function operationProgress() {
   const program = state.programReadiness;
-  const goal = program?.target?.goal || state.workspace.assuranceGoal || "none";
+  const goal = program?.target?.goal || activeProgram().assuranceGoal || "none";
   const asOf = program?.asOf || currentDate();
   const candidateStarted = goal === "soc-2-type-2"
     ? Boolean(program?.target?.candidateCoverage?.kind === "range" && program.target.candidateCoverage.startsOn <= asOf)
@@ -847,7 +908,7 @@ function sectionDestinations(section) {
     destinations.push({ type, kind: "Record page", label: titleCase(definition.pluralTitle), href: "#/resources/" + encodeURIComponent(type), description: definition.description });
   }
   if (section.utility === "obligation-board") destinations.push({ utility: section.utility, kind: "Working page", label: "Work Queue", href: "#/stage/run", description: "Complete recurring work, Policy Event tasks, and assigned follow-up with its due windows and linked proof." });
-  if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Evidence & Packet", href: "#/audit-packet", description: "Review filegrc and External Evidence, prepare fieldwork, and build the indexed packet." });
+  if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Evidence & Packet", href: "#/audit-packet", description: "Review filegrc Evidence and Evidence Artifacts, prepare fieldwork, and build the indexed packet." });
   return destinations;
 }
 
@@ -867,10 +928,10 @@ function renderExternalEvidenceSection() {
   )).join("");
   const createButton = state.readOnly
     ? ""
-    : '<button class="button primary" type="button" data-new-external-evidence>New external evidence</button>';
-  return '<section class="workflow-section external-evidence-section"><div class="section-head"><div><p class="kicker">Fixed artifacts and approved references</p><h2>External Evidence</h2><p>Add fixed artifacts only when they exist. Link each one to its source System and the work it supports.</p></div><div class="page-actions">' +
+    : '<button class="button primary" type="button" data-new-external-evidence>New Evidence Artifact</button>';
+  return '<section class="workflow-section external-evidence-section"><div class="section-head"><div><p class="kicker">Fixed artifacts and approved references</p><h2>Evidence Artifacts</h2><p>Add fixed artifacts only when they exist. Link each one to its source Component and the work it supports.</p></div><div class="page-actions">' +
     createButton + '<a class="button" href="#/resources/evidence">View all</a></div></div><div class="external-evidence-list">' +
-    (recent || empty("No External Evidence has been collected yet. Create it during operation only when a real artifact or approved external reference exists.")) +
+    (recent || empty("No Evidence Artifacts have been collected yet. Create one during operation only when a real artifact or approved external reference exists.")) +
     '</div></section>';
 }
 
@@ -1019,6 +1080,12 @@ function coverageEnd(coverage) {
 }
 
 function defaultClassificationId() {
+  const classifications = resourcesOfType("classification")
+    .filter(({ record }) => record.status === "active")
+    .map(({ record }) => record.id);
+  if (classifications.length) {
+    return classifications.includes("internal") ? "internal" : classifications[0];
+  }
   const definitions = state.workspace.classificationDefinitions || {};
   return Object.hasOwn(definitions, "internal") ? "internal" : Object.keys(definitions)[0] || "";
 }
@@ -1081,7 +1148,7 @@ function obligationCompletionPlan(item) {
   if (!currentPeopleForParties(item.ownerIds || []).length) {
     return { type, blocked: "Assign current owner", href: "#/resource/obligation/" + encodeURIComponent(item.obligationId) };
   }
-  if (["access-review", "backup-test"].includes(type) && !(state.workspace.systemIds || []).some((id) => state.resources.some(({ record }) => record.id === id && record.status !== "retired"))) {
+  if (["access-review", "backup-test"].includes(type) && !(activeProgram().systemIds || []).some((id) => state.resources.some(({ record }) => record.id === id && record.status !== "retired"))) {
     return { type, blocked: "Add system first", href: "#/resources/system?new=1" };
   }
   if (type === "vendor-review" && !resourcesOfType("vendor").some(({ record }) => record.status !== "terminated")) {
@@ -1133,7 +1200,7 @@ function obligationCompletionSeed(type, item, obligation) {
     .filter((record) => record.status === "active" && !responsiblePeople.includes(record.id))
     .map(({ id }) => id);
   const reviewerPeople = independentPeople.length ? [independentPeople[0]] : [];
-  const inScopeSystems = resourcesOfType("system").filter(({ record }) => (state.workspace.systemIds || []).includes(record.id) && record.status !== "retired").map(({ record }) => record.id);
+  const inScopeSystems = resourcesOfType("system").filter(({ record }) => (activeProgram().systemIds || []).includes(record.id) && record.status !== "retired").map(({ record }) => record.id);
   const activeVendors = resourcesOfType("vendor").filter(({ record }) => record.status !== "terminated").map(({ record }) => record.id);
   const title = item.title + " · " + formatCalendarDate(item.dueWindowStart);
   const common = { title };
@@ -1396,8 +1463,11 @@ function openApplicabilityReviewDialog(type, entries) {
   const definition = state.model.resources[type];
   const reviewPoints = definition?.guidance?.reviewPoints || [];
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
+  const reviewedRequirements = reviewedRequirementIds();
   const pending = entries.filter(({ record }) => (
-    !record.applicabilityReview
+    type === "requirement" && String(state.model.modelVersion) === "4"
+      ? !reviewedRequirements.has(record.id)
+      : !record.applicabilityReview
     || type === "requirement" && record.applicability === "undetermined"
   ));
   const dialog = document.createElement("dialog");
@@ -1450,11 +1520,17 @@ function openApplicabilityReviewDialog(type, entries) {
       error.textContent = "Select at least one decision.";
       return;
     }
+    const decisionIds = new Set(decisions.map(({ id }) => id));
     const payload = {
       decisions,
       reviewedByIds: [form.elements.reviewerId.value],
       reviewedOn: form.elements.reviewedOn.value,
-      expectedRevisions: Object.fromEntries(entries.map((entry) => [entry.record.id, entry.revision]))
+      expectedRevisions: Object.fromEntries([
+        ...entries.filter((entry) => decisionIds.has(entry.record.id)).map((entry) => [entry.record.id, entry.revision]),
+        ...(type === "requirement" && String(state.model.modelVersion) === "4"
+          ? state.resources.filter(({ record }) => record.id === activeProgram().id).map((entry) => [entry.record.id, entry.revision])
+          : [])
+      ])
     };
     form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = true; });
     try {
@@ -1467,7 +1543,7 @@ function openApplicabilityReviewDialog(type, entries) {
         if (!response.ok) throw new Error(await responseMessage(response));
         const preview = await response.json();
         previewedPayload = payload;
-        dialog.querySelector(".workflow-preview").innerHTML = '<strong>Review before saving</strong><p>' + preview.reviewedIds.length + ' decisions will be saved with the reviewer, review date, and current scope recorded automatically.</p>';
+        dialog.querySelector(".workflow-preview").innerHTML = '<strong>Review before saving</strong><p>' + preview.reviewedIds.length + ' ' + pluralize("decision", preview.reviewedIds.length) + ' will be saved with the reviewer, review date, and current scope recorded automatically.</p>';
         dialog.querySelector("[data-preview-review]").textContent = "Confirm and save";
       } else {
         saveStatus.textContent = "Validating and saving…";
@@ -1513,10 +1589,10 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Repository", state.git.available ? state.git.clean ? "Clean revision" : state.git.changes.length + " uncommitted" : "Git unavailable", "#/repository", state.git.clean ? "good" : "warn"],
     ["Engagement", selected ? selected.title : "No audit record", "#/resources/audit", selected ? "good" : "warn"],
     ["filegrc Evidence", filegrcRecords.length + " operating " + pluralize("record", filegrcRecords.length), "#/stage/run", "neutral"],
-    ["External Evidence", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
+    ["Evidence Artifacts", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
     ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.blocked ? state.obligations.counts.blocked + " blocked" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/stage/run", state.obligations.counts.overdue || state.obligations.counts.blocked ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
   ];
-  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Confirm the applicable Step 4 records are complete and linked to their Controls.</p></a><a href="#/resources/evidence"><span class="step-label">External Evidence</span><h4>Review imported or referenced proof</h4><p>Confirm each artifact is fixed, verified, and linked to its source System and Controls.</p></a></div></section>';
+  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Confirm the applicable Step 4 records are complete and linked to their Controls.</p></a><a href="#/resources/evidence"><span class="step-label">Evidence Artifacts</span><h4>Review imported or referenced proof</h4><p>Confirm each artifact is fixed, verified, and linked to its source Component and Controls.</p></a></div></section>';
   const dateFields = typeOne
     ? '<label><span>As-of date</span><input type="date" name="start" required value="' + esc(start) + '"></label>'
     : '<label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label>';
@@ -1617,10 +1693,10 @@ function renderPacketResults(container, result) {
   container.innerHTML = '<section class="metrics packet-metrics">' +
     metric("filegrc Evidence", packet.summary.filegrcRecords, packet.summary.records + " total packet records", "neutral") +
     metric("Obligations", packet.summary.obligationOccurrences, packet.summary.eventRuns + " event workflows", "neutral") +
-    metric("External Evidence", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
+    metric("Evidence Artifacts", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
     metric("Review items", packet.summary.gaps, packet.summary.errors + " errors · " + packet.summary.warnings + " warnings", packet.summary.errors ? "bad" : packet.summary.warnings ? "warn" : "good") +
     '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">' + (ready ? "filegrc management checks passed" : "Draft packet") + '</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. ' + (ready ? "Verify the checksums, reconcile external deliveries, and let the engagement team confirm evidence sufficiency." : "Do not deliver it until every error is resolved and each warning has been reviewed.") + '</p></section>' +
-    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included External Evidence</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.artifactKind)) + '</small></a>').join("") + '</div>' : empty("No External Evidence matched.")) + '</section></div>';
+    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included Evidence Artifacts</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.artifactKind)) + '</small></a>').join("") + '</div>' : empty("No Evidence Artifacts matched.")) + '</section></div>';
 }
 
 function obligationPreview(items) {
@@ -1714,10 +1790,12 @@ function renderList(main, type, params = new URLSearchParams()) {
     const values = [...new Set(observed)].sort();
     return { name, label: field.label || humanize(name), values };
   }).filter(({ values }) => values.length > 1);
-  const createButton = !state.readOnly && !definition.singleton ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "";
+  const createButton = !state.readOnly && !definition.singleton && !collectionNeedsFirstRecord(type) && resourceCreationAllowed(type) ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "";
+  const reviewedRequirements = reviewedRequirementIds();
   const hasPendingApplicability = entries.some(({ record }) => (
-    !record.applicabilityReview
-    || type === "requirement" && record.applicability === "undetermined"
+    type === "requirement" && String(state.model.modelVersion) === "4"
+      ? !reviewedRequirements.has(record.id)
+      : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
   ));
   const applicabilityButton = !state.readOnly
     && ["requirement", "control", "commitment", "complementary-control"].includes(type)
@@ -1745,7 +1823,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : state.collectionReviews?.[type] ? "No records exist. Use the scope confirmation above to record an allowed zero population or add the records management identified." : definition.guidance?.emptyState || "No records exist. Use the page guidance to decide whether a record is required, then add only real program facts.") + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -1787,7 +1865,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type));
   main.querySelector("#review-applicability")?.addEventListener("click", () => openApplicabilityReviewDialog(type, entries));
   main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog(type));
-  if (params.get("new") === "1" && !state.readOnly && !definition.singleton) queueMicrotask(() => openEditor(type));
+  if (params.get("new") === "1" && !state.readOnly && !definition.singleton && resourceCreationAllowed(type)) queueMicrotask(() => openEditor(type));
   if (params.get("review") === "1" && !state.readOnly) {
     queueMicrotask(() => main.querySelector("#review-applicability")?.click());
   }
@@ -1893,10 +1971,16 @@ function renderDetail(main, type, id) {
     main.querySelector("[data-evidence-file]")?.click();
   });
   main.querySelector("[data-evidence-file]")?.addEventListener("change", async (event) => {
-    const file = event.currentTarget.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    if (!confirm('Attach "' + file.name + '" to this Evidence record? Confirm that its classification, retention, and repository access are appropriate.')) {
-      event.currentTarget.value = "";
+    if (!await confirmAction({
+      kicker: "Attach evidence",
+      title: file.name,
+      message: "Confirm its classification, retention, and repository access are appropriate.",
+      confirmLabel: "Attach"
+    })) {
+      input.value = "";
       return;
     }
     try {
@@ -1909,12 +1993,19 @@ function renderDetail(main, type, id) {
       applyMutationState(await response.json());
       render();
     } catch (error) {
+      input.value = "";
       showError(error.message);
     }
   });
   main.querySelectorAll("[data-detach-evidence]").forEach((button) => button.addEventListener("click", async () => {
     const attachment = button.dataset.detachEvidence;
-    if (!confirm('Remove "' + attachment + '" from this Evidence record and delete its local file?')) return;
+    if (!await confirmAction({
+      kicker: "Remove attachment",
+      title: attachment,
+      message: "Deletes this local file from the Evidence Artifact.",
+      confirmLabel: "Remove",
+      danger: true
+    })) return;
     try {
       const response = await localFetch(
         "/api/evidence-attachments/" + encodeURIComponent(entry.record.id) + "/" + encodeURIComponent(attachment)
@@ -1931,7 +2022,13 @@ function renderDetail(main, type, id) {
   main.querySelector("#add-record-content")?.addEventListener("click", () => openEditor(type, entry, { addRecordContent: true }));
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
   main.querySelector("#delete-resource")?.addEventListener("click", async () => {
-    if (!confirm('Delete "' + entry.record.title + '"? Use deletion only for mistakes and uncommitted drafts. Unshared Markdown authored for this record will also be deleted.')) return;
+    if (!await confirmAction({
+      kicker: "Delete record",
+      title: entry.record.title,
+      message: "Deletes this record and its Markdown. Use this only for mistakes and uncommitted drafts.",
+      confirmLabel: "Delete",
+      danger: true
+    })) return;
     try {
       const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
       if (!response.ok) return showError(await responseMessage(response));
@@ -2197,13 +2294,10 @@ function renderTrunkRepository(main) {
   const lastSync = repository.lastSuccessfulSynchronization
     ? formatLocalDateTime(repository.lastSuccessfulSynchronization)
     : "No successful sync recorded by this server";
-  const override = repository.developmentOverride
-    ? '<div class="repository-override"><span class="status-dot warn"></span><div><strong>Development write override active</strong><p>Browser writes stay local. FileGRC will not fetch, commit, or push while this server uses <code>--allow-non-authoritative-writes</code>.</p></div></div>'
-    : "";
   const validationBody = state.validation.diagnostics.length
     ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(properCase(item.severity)) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>'
     : empty("No validation problems.");
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository State</h2><p>Browser saves use one authoritative branch. Record status represents draft, proposal, approval, and retirement; Git branches do not.</p><p class="repository-sync-status" role="status" aria-live="polite"></p></div><div class="page-actions">' + retryButton + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div>' + override + '<section class="panel repository-state-banner"><span class="status-dot ' + repositoryStatusTone(repository.status) + '"></span><div><p class="kicker">Repository status</p><h3>' + esc(repository.label) + '</h3><p>' + esc(repository.message) + '</p></div></section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Configured Repository</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(repository.authoritativeBranch) + '</dd></div><div><dt>Remote</dt><dd>' + esc(repository.remote) + '</dd></div><div><dt>Checkout</dt><dd>' + esc(state.git.branch || (state.git.available ? "Detached HEAD" : "Unavailable")) + '</dd></div><div><dt>Upstream</dt><dd>' + esc(repository.upstream || "Not configured") + '</dd></div></dl></section><section class="panel"><div class="panel-head"><h3>Synchronization</h3></div><dl class="metadata"><div><dt>Current commit</dt><dd><code>' + esc(repository.currentCommit || "Unavailable") + '</code></dd></div><div><dt>Upstream commit</dt><dd><code>' + esc(repository.upstreamCommit || "Unavailable") + '</code></dd></div><div><dt>Ahead</dt><dd>' + esc(repository.ahead ?? "Unknown") + '</dd></div><div><dt>Behind</dt><dd>' + esc(repository.behind ?? "Unknown") + '</dd></div><div><dt>Last sync</dt><dd>' + esc(lastSync) + '</dd></div></dl></section><section class="panel"><div class="panel-head"><h3>Safety Checks</h3></div><dl class="metadata"><div><dt>Whole worktree</dt><dd>' + (repository.wholeWorktreeClean === null ? "Unavailable" : repository.wholeWorktreeClean ? "Clean" : "Has changes") + '</dd></div><div><dt>Git operation</dt><dd>' + esc(repository.operationInProgress || "None") + '</dd></div><div><dt>Pending scope</dt><dd>' + (repository.pendingCommitsFilegrcOnly === false ? "Includes external files" : repository.pendingCommits?.length ? "FileGRC only" : "None") + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Pending FileGRC-only Commits</h3></div>' + pending + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + validationBody + '</section></div></div>';
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">Audit trail</p><h2>Repository State</h2><p>Browser saves use one authoritative branch. Record status represents draft, proposal, approval, and retirement; Git branches do not.</p><p class="repository-sync-status" role="status" aria-live="polite"></p></div><div class="page-actions">' + retryButton + onboardingButton + settingsLink + '<a class="button" href="#/resource/workspace/workspace">Workspace settings</a></div></div><section class="panel repository-state-banner"><span class="status-dot ' + repositoryStatusTone(repository.status) + '"></span><div><p class="kicker">Repository status</p><h3>' + esc(repository.label) + '</h3><p>' + esc(repository.message) + '</p></div></section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Configured Repository</h3></div><dl class="metadata"><div><dt>Branch</dt><dd>' + esc(repository.authoritativeBranch) + '</dd></div><div><dt>Remote</dt><dd>' + esc(repository.remote) + '</dd></div><div><dt>Checkout</dt><dd>' + esc(state.git.branch || (state.git.available ? "Detached HEAD" : "Unavailable")) + '</dd></div><div><dt>Upstream</dt><dd>' + esc(repository.upstream || "Not configured") + '</dd></div></dl></section><section class="panel"><div class="panel-head"><h3>Synchronization</h3></div><dl class="metadata"><div><dt>Current commit</dt><dd><code>' + esc(repository.currentCommit || "Unavailable") + '</code></dd></div><div><dt>Upstream commit</dt><dd><code>' + esc(repository.upstreamCommit || "Unavailable") + '</code></dd></div><div><dt>Ahead</dt><dd>' + esc(repository.ahead ?? "Unknown") + '</dd></div><div><dt>Behind</dt><dd>' + esc(repository.behind ?? "Unknown") + '</dd></div><div><dt>Last sync</dt><dd>' + esc(lastSync) + '</dd></div></dl></section><section class="panel"><div class="panel-head"><h3>Safety Checks</h3></div><dl class="metadata"><div><dt>Whole worktree</dt><dd>' + (repository.wholeWorktreeClean === null ? "Unavailable" : repository.wholeWorktreeClean ? "Clean" : "Has changes") + '</dd></div><div><dt>Git operation</dt><dd>' + esc(repository.operationInProgress || "None") + '</dd></div><div><dt>Pending scope</dt><dd>' + (repository.pendingCommitsFilegrcOnly === false ? "Includes external files" : repository.pendingCommits?.length ? "FileGRC only" : "None") + '</dd></div></dl></section><section class="panel span-2"><div class="panel-head"><h3>Pending FileGRC-only Commits</h3></div>' + pending + '</section><section class="panel span-2"><div class="panel-head"><h3>Validation</h3><span class="badge ' + (state.validation.ok ? "good" : "bad") + '">' + (state.validation.ok ? "Passing" : "Needs attention") + '</span></div>' + validationBody + '</section></div></div>';
   main.querySelectorAll("[data-git-action]").forEach((button) => button.addEventListener("click", () => runRepositoryGitAction(button.dataset.gitAction)));
   main.querySelector("#start-onboarding")?.addEventListener("click", requestOnboarding);
 }
@@ -2391,13 +2485,14 @@ function rendererSettingsEntry() {
   return state.resources.find(({ record }) => record.type === "renderer-settings");
 }
 
-function requestOnboarding() {
+function requestOnboarding({ setupOnly = false } = {}) {
   if (state.readOnly || onboardingDialog || !rendererSettingsEntry()) return;
   if (parseRoute().name !== "home") {
     history.replaceState(null, "", "#/");
     render();
   }
-  onboardingStep = 0;
+  onboardingStep = setupOnly ? onboardingSteps().length - 1 : 0;
+  onboardingSetupOnly = setupOnly;
   onboardingDraft = initialOnboardingDraft();
   onboardingBusy = false;
   onboardingShade = document.createElement("div");
@@ -2422,23 +2517,25 @@ function requestOnboarding() {
     onboardingDialog = null;
     onboardingDraft = null;
     onboardingBusy = false;
+    onboardingSetupOnly = false;
     onboardingPendingDraft = false;
   });
   renderOnboardingStep();
 }
 
 function initialOnboardingDraft() {
-  const systemEntry = resourcesOfType("system").find(({ record }) => (state.workspace.systemIds || []).includes(record.id) && record.status !== "retired");
+  const program = activeProgram();
+  const system = initialSetupSystem();
   const owner = resourcesOfType("person").find(({ record }) => record.status === "active")?.record;
   return {
-    systemId: systemEntry?.record.id || "",
-    serviceName: systemEntry?.record.title || "",
-    scope: systemEntry?.record.description || "",
-    ownerId: systemEntry?.record.ownerIds?.[0] || owner?.id || "",
-    criticality: systemEntry?.record.criticality || "high",
-    classificationId: systemEntry?.record.classificationId || defaultClassificationId(),
-    internetExposed: systemEntry?.record.internetExposed === false ? "false" : "true",
-    programGoal: programGoalFromKind(state.workspace.assuranceGoal)
+    systemId: system?.id || "",
+    serviceName: system?.title || "",
+    scope: system?.boundary || system?.description || "",
+    ownerId: system?.ownerIds?.[0] || owner?.id || "",
+    criticality: system?.criticality || "high",
+    classificationId: system?.classificationId || defaultClassificationId(),
+    internetExposed: system?.internetExposed === false ? "false" : "true",
+    programGoal: programGoalFromKind(program.assuranceGoal)
   };
 }
 
@@ -2447,60 +2544,51 @@ function onboardingSteps() {
     target: ".repo-chip",
     kicker: "Mental model",
     title: "Files are the program",
-    body: "You or an agent add JSON records, Markdown, and evidence attachments under data/. This renderer edits those files, and Git records their history.",
+    body: "Source files live under data/. The UI, CLI, and direct edits change the same files. Git records the history.",
     points: [
-      "Use the UI, an editor, the CLI, or an agent; every path changes the same files.",
-      "JSON holds structured records. Markdown holds policies, plans, minutes, and other long-form work.",
-      "Record status represents approval. In trunk mode, the browser validates, commits, and pushes each save; agents and terminal users manage Git explicitly."
+      "JSON holds fields. Markdown holds long-form content.",
+      "Record status tracks approval.",
+      "Trunk-mode browser saves validate, commit, and push."
     ]
   };
   const path = {
     target: ".readiness-map",
     kicker: "Program model",
     title: "Follow the audit chain",
-    body: "Follow the five program steps in order. Each step reveals the records and decisions needed next.",
-    points: [
-      "Define the people, criteria, service, Systems, and providers in scope.",
-      "Approve the policies, implement the controls, then operate them and retain dated proof.",
-      "Create the audit engagement when a CPA firm is involved or a real customer deadline requires it."
-    ]
+    body: "Follow five steps. Each page shows the next decision.",
   };
   const operation = {
     target: ".obligation-panel",
     kicker: "Program operation",
-    title: "Work the queue and trigger policy events",
-    body: "Recurring work and assigned follow-up appear in the Work Queue with owners, allowed completion dates, and overdue cutoffs. When a listed event happens, start its Policy Event to create the applicable tasks and deadlines.",
+    title: "Run work and record changes",
+    body: "Work Queue holds scheduled and assigned tasks. Policy Events add tasks when a listed change occurs.",
     points: [
-      "Complete each occurrence with the requested dated operating record and supporting evidence.",
-      "Start Policy Events only after the real event occurs. FileGRC creates one owned Action Item for each applicable policy step.",
-      "The browser and CLI use the same schedules, event rules, and completion checks."
+      "Open a task to see its owner, due date, and proof.",
+      "Record events after they happen."
     ]
   };
   const auditPath = {
     target: null,
     kicker: "Report goal and audit",
-    title: "Choose the report goal and plan fieldwork",
-    body: [
-      "SOC 2 is an independent CPA report on controls relevant to the selected Trust Services Criteria.",
-      "Most customer requests focus on Security. Add another category only when the service and customer need call for it. Choose a management goal now, then create an Audit record only after a real CPA engagement or customer deadline exists."
-    ],
+    title: "Choose a goal",
+    body: "SOC 2 is an independent CPA report on controls tied to selected Trust Services Criteria.",
     sections: [
       {
         title: "Type 1",
-        body: "The CPA evaluates control design and implementation at a point in time. Type 1 is optional before Type 2."
+        body: "Design and implementation at a point in time. Optional before Type 2."
       },
       {
         title: "Type 2",
-        body: "The CPA evaluates operation across an agreed period. Dated evidence and complete populations must cover that period."
+        body: "Operation across a period. Evidence and populations must cover it."
       }
     ],
-    afterSections: "FileGRC prepares the records and packet. The CPA firm selects samples, tests controls, evaluates exceptions, and issues the report."
+    afterSections: "FileGRC prepares the records and evidence packet. The CPA tests and reports."
   };
   const setup = {
     target: null,
     kicker: "Initial scope",
-    title: "Describe the service you plan to audit",
-    body: "Create the first in-scope System and record management’s goal. Step 1 will guide the rest of the scope."
+    title: "Describe the service in scope",
+    body: "Create the first System and choose the program goal."
   };
   return [
     files,
@@ -2527,10 +2615,10 @@ function renderOnboardingStep() {
     ? onboardingSetupForm()
     : description + explanation + afterSections;
   const finalActions = onboardingStep === steps.length - 1
-    ? '<span class="onboarding-save-status" role="status" aria-live="polite"></span><button class="button" type="button" data-onboarding="draft">Save as planned</button><button class="button primary" type="button" data-onboarding="next">Confirm service scope</button>'
+    ? '<span class="onboarding-save-status" role="status" aria-live="polite"></span><button class="button" type="button" data-onboarding="draft">Save as planned</button><button class="button primary" type="button" data-onboarding="next">Confirm scope</button>'
     : '<button class="button primary" type="button" data-onboarding="next">Next</button>';
-  onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-scroll"><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(titleCase(step.title)) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">Skip onboarding</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + finalActions + '</div>';
-  onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", cancelOnboarding);
+  onboardingDialog.innerHTML = '<div class="onboarding-progress" style="--onboarding-step-count:' + steps.length + '" aria-label="Onboarding step ' + (onboardingStep + 1) + ' of ' + steps.length + '">' + progress + '</div><div class="onboarding-scroll"><div class="onboarding-head"><p class="kicker">' + esc(step.kicker) + ' · ' + (onboardingStep + 1) + ' of ' + steps.length + '</p><h2 id="onboarding-title">' + esc(titleCase(step.title)) + '</h2></div>' + body + '<div class="dialog-error" role="alert"></div></div><div class="dialog-actions onboarding-actions"><button class="button text-button onboarding-skip" type="button" data-onboarding="skip">' + (onboardingSetupOnly ? "Close" : "Skip onboarding") + '</button>' + (onboardingStep ? '<button class="button" type="button" data-onboarding="back">Back</button>' : "") + finalActions + '</div>';
+  onboardingDialog.querySelector('[data-onboarding="skip"]').addEventListener("click", onboardingSetupOnly ? closeOnboarding : cancelOnboarding);
   onboardingDialog.querySelector('[data-onboarding="back"]')?.addEventListener("click", () => {
     captureOnboardingForm();
     onboardingStep -= 1;
@@ -2563,16 +2651,21 @@ function renderOnboardingStep() {
 
 function onboardingSetupForm() {
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
-  const classifications = Object.keys(state.workspace.classificationDefinitions || {});
+  const resourceClassifications = resourcesOfType("classification")
+    .filter(({ record }) => record.status === "active")
+    .map(({ record }) => record.id);
+  const classifications = resourceClassifications.length
+    ? resourceClassifications
+    : Object.keys(state.workspace.classificationDefinitions || {});
   if (onboardingDraft.classificationId && !classifications.includes(onboardingDraft.classificationId)) {
     classifications.push(onboardingDraft.classificationId);
   }
   const gitStatus = state.repository?.mode === "trunk"
-    ? '<div class="onboarding-git-status ' + (state.repository.status === "synced" ? "" : "warning") + '"><span class="status-dot ' + repositoryStatusTone(state.repository.status) + '"></span><span><strong>' + esc(state.repository.label) + '</strong><small>' + esc(state.repository.status === "synced" ? "Completing onboarding will save its related workspace, system, and renderer changes in one local commit, then push it in the background." : state.repository.message) + '</small></span></div>'
+    ? '<div class="onboarding-git-status ' + (state.repository.status === "synced" ? "" : "warning") + '"><span class="status-dot ' + repositoryStatusTone(state.repository.status) + '"></span><span><strong>' + esc(state.repository.label) + '</strong><small>' + esc(state.repository.status === "synced" ? "Completing onboarding will save its related Workspace, Program, System, Component, and renderer changes in one local commit, then push it in the background." : state.repository.message) + '</small></span></div>'
     : state.git.available && state.git.branch
       ? '<div class="onboarding-git-status"><span class="status-dot good"></span><span><strong>Manual repository mode</strong><small>Setup changes will stay local until you commit and synchronize them.</small></span></div>'
       : '<div class="onboarding-git-status warning"><span class="status-dot warn"></span><span><strong>Git setup needed</strong><small>Manual-mode writes still work, but Git history is unavailable until the repository is configured.</small></span></div>';
-  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="classificationId" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.classificationId ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Program goal</span><select name="programGoal" required><option value="none" ' + (onboardingDraft.programGoal === "none" ? "selected" : "") + '>No Assurance Goal Yet</option><option value="readiness" ' + (onboardingDraft.programGoal === "readiness" ? "selected" : "") + '>Program Readiness</option><option value="type-1" ' + (onboardingDraft.programGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.programGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>This records management intent only. It does not create an engagement or establish the formal report period.</small></label></form><p class="onboarding-write-note">Save as planned keeps the System planned. Confirm service scope makes it active. Both add it to the Workspace scope.</p>';
+  return '<p class="onboarding-body">' + esc(onboardingSteps().at(-1).body) + '</p>' + gitStatus + '<form id="onboarding-setup" class="onboarding-form"><label class="wide"><span>Service name</span><input name="serviceName" required maxlength="200" value="' + esc(onboardingDraft.serviceName) + '" placeholder="Customer-facing application"></label><label class="wide"><span>Scope description</span><textarea name="scope" required maxlength="2000" placeholder="What the service does and which production boundary is in scope">' + esc(onboardingDraft.scope) + '</textarea></label><label><span>Accountable owner</span><select name="ownerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === onboardingDraft.ownerId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Business criticality</span><select name="criticality" required>' + ["low", "medium", "high", "critical"].map((value) => '<option value="' + value + '" ' + (value === onboardingDraft.criticality ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Highest data classification</span><select name="classificationId" required>' + classifications.map((value) => '<option value="' + esc(value) + '" ' + (value === onboardingDraft.classificationId ? "selected" : "") + '>' + esc(properCase(value)) + '</option>').join("") + '</select></label><label><span>Internet exposed</span><select name="internetExposed" required><option value="true" ' + (onboardingDraft.internetExposed === "true" ? "selected" : "") + '>Yes</option><option value="false" ' + (onboardingDraft.internetExposed === "false" ? "selected" : "") + '>No</option></select></label><label class="wide"><span>Program goal</span><select name="programGoal" required><option value="none" ' + (onboardingDraft.programGoal === "none" ? "selected" : "") + '>No assurance goal yet</option><option value="readiness" ' + (onboardingDraft.programGoal === "readiness" ? "selected" : "") + '>Program readiness</option><option value="type-1" ' + (onboardingDraft.programGoal === "type-1" ? "selected" : "") + '>SOC 2 Type 1</option><option value="type-2" ' + (onboardingDraft.programGoal === "type-2" ? "selected" : "") + '>SOC 2 Type 2</option></select><small>Sets management intent. Audits and report periods are separate.</small></label></form><p class="onboarding-write-note">Planned saves a draft. Confirm scope activates it. Both add it to the Program.</p>';
 }
 
 function captureOnboardingForm() {
@@ -2852,8 +2945,9 @@ function openEditor(type, entry = null, options = {}) {
   const recordContentItem = recordContent ? entry?.content?.[recordContent.slot] : null;
   const editorDescription = options.description
     || implementationEditorDescription(type)
-    || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type) + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
+    || conciseResourceDescription(definition)
+    || "Add the facts known now.";
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -2872,6 +2966,8 @@ function openEditor(type, entry = null, options = {}) {
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelectorAll("[data-editor-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   wireEditorRequirements(dialog, record, fields, oneOfGroups, markdownDefinitions);
+  wireStructuredObjectEditors(dialog);
+  wireChoicePickers(dialog);
   dialog.querySelector(".advanced-editor textarea").addEventListener("input", () => {
     dialog.dataset.jsonDirty = "true";
     dialog.querySelector("form").noValidate = true;
@@ -2957,13 +3053,69 @@ function openEditor(type, entry = null, options = {}) {
 }
 
 function implementationEditorDescription(type) {
+  if (type === "person") {
+    return "Record someone who owns, reviews, approves, or performs program work.";
+  }
+  if (type === "appointment") {
+    return "Assign named authority to one person for a defined period.";
+  }
+  if (type === "program") {
+    return "Choose the goal, scope, owners, criteria, controls, and risk method.";
+  }
   if (type === "system") {
-    return "Complete the System inventory fields. If this System produces control evidence, add its evidence source roles and current access owners, then write the exact report, filters, date range, timezone, export format, and reconciliation steps in Record Markdown.";
+    return "Define the service boundary, owners, information, and recovery needs.";
+  }
+  if (type === "component") {
+    return "Connect this Component to its Systems and select any evidence roles.";
   }
   if (type === "control") {
-    return "Document the actual procedure and select every authoritative System that produces evidence for this Control. Before marking it implemented, confirm each source is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown.";
+    return "Describe the procedure, Systems, Components, and evidence sources.";
+  }
+  if (type === "evidence") {
+    return "Add a retained export, report, screenshot, signed file, or approved external reference.";
+  }
+  if (type === "audit") {
+    return "Record a real CPA engagement or a customer deadline that requires audit planning.";
+  }
+  if (type === "audit-request") {
+    return "Track one auditor request, owner, due date, response, and evidence.";
+  }
+  if (type === "vendor") {
+    return "Record a material external provider relationship.";
+  }
+  if (type === "classification") {
+    return "Define one information handling level and its rank.";
+  }
+  if (type === "information-type") {
+    return "Name an information category and its default handling level.";
+  }
+  if (type === "policy") {
+    return "Define a program rule, its scope, owner, reviewer, and dates.";
+  }
+  if (type === "obligation") {
+    return "Schedule recurring or event-driven work.";
+  }
+  if (type === "risk") {
+    return "Track one threat or business impact and its treatment.";
+  }
+  if (type === "risk-assessment") {
+    return "Evaluate a defined scope with the Program risk method.";
+  }
+  if (type === "finding") {
+    return "Track a confirmed gap that needs its own remediation.";
+  }
+  if (type === "exception") {
+    return "Record an approved, time-bound departure from a Policy or Control.";
+  }
+  if (type === "action-item") {
+    return "Assign one dated follow-up task and its completion proof.";
   }
   return "";
+}
+
+function conciseResourceDescription(definition) {
+  const description = definition?.description?.trim() || "";
+  return description.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || description;
 }
 
 function seedRecord(type, definition) {
@@ -2972,7 +3124,8 @@ function seedRecord(type, definition) {
   for (const name of definition.required || []) {
     const field = fields[name];
     if (record[name] !== undefined) continue;
-    if (field.relation) {
+    if (field.default !== undefined) record[name] = structuredClone(field.default);
+    else if (field.relation) {
       const candidates = relationCandidates(field);
       record[name] = field.type === "array" ? (candidates.length === 1 ? [candidates[0].record.id] : []) : (candidates.length === 1 ? candidates[0].record.id : "");
     }
@@ -3026,10 +3179,16 @@ function renderRecordContentEditor(type, entry, options) {
   if (!config) return "";
   const item = entry?.content?.[config.slot];
   const source = item?.source || "";
-  const editor = '<label class="content-editor-field record-content-editor"><span>' + esc(config.label) + ' Markdown <small>optional</small></span><textarea data-record-content spellcheck="true" placeholder="Document the work performed, method, results, decisions, and follow-up.">' + esc(source) + '</textarea></label>';
+  const editor = '<label class="content-editor-field record-content-editor"><span>' + esc(config.label) + ' Markdown <small>optional</small></span><textarea data-record-content spellcheck="true" placeholder="' + esc(recordContentPlaceholder(type)) + '">' + esc(source) + '</textarea></label>';
   if (config.mode === "default") return editor;
   const open = item || options.addRecordContent;
   return '<details class="record-content-details" ' + (open ? "open" : "") + '><summary>' + (item ? "Record Markdown" : "Add Record Markdown") + '</summary><p>Use this when the structured fields do not capture the full record.</p>' + editor + '</details>';
+}
+
+function recordContentPlaceholder(type) {
+  if (type === "system") return "Add architecture, dependencies, or boundary details.";
+  if (type === "component") return "Add operating details or evidence retrieval steps.";
+  return "Document the work, results, decisions, and follow-up.";
 }
 
 function editorField(type, name, field, value, required, editing, oneOfRequired = false, oneOfActive = oneOfRequired) {
@@ -3049,21 +3208,22 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   if (field.relation && field.type === "array") {
     const candidates = relationCandidates(field);
     control = candidates.length
-      ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(state.model.resources[record.type].title + " · " + record.id) + '</small></span></label>').join("") + '</div>'
-      : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
+      ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(state.model.resources[record.type].title) + '</small></span></label>').join("") + '</div>'
+      : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet.</div>';
     return fieldWrap(name, "relation-array", label, requiredMark, control, help, required);
   }
   if (field.relation) {
     const candidates = relationCandidates(field);
     control = candidates.length
-      ? '<select><option value="">Select a Resource</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + ' · ' + esc(record.id) + '</option>').join("") + '</select>'
-      : required ? '<select><option value="">No Matching Resources Exist Yet</option></select>' : '<div class="missing-options">No matching resources exist yet.</div>';
+      ? '<select><option value="">Select ' + esc(relationTypeLabel(field).toLowerCase()) + '</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + '</option>').join("") + '</select>'
+      : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet.</div>';
     return fieldWrap(name, "relation", label, requiredMark, control, help, required);
   }
   if (name === "classificationId") {
-    const values = Object.keys(state.workspace.classificationDefinitions || {});
+    const classifications = resourcesOfType("classification").filter(({ record }) => record.status === "active");
+    const values = classifications.length ? classifications.map(({ record }) => record.id) : Object.keys(state.workspace.classificationDefinitions || {});
     control = '<select><option value="">Select</option>' + values.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
-    return fieldWrap(name, "string", label, requiredMark, control, "Defined by Workspace classificationDefinitions", required);
+    return fieldWrap(name, "string", label, requiredMark, control, classifications.length ? "References an active Classification" : "Defined by Workspace classificationDefinitions", required);
   }
   if (field.type === "enum" || field.type === "rating" || field.type === "outcome") {
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
@@ -3075,15 +3235,30 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     return fieldWrap(name, "boolean", label, requiredMark, control, help, required);
   }
   if (field.type === "object") {
+    const schema = state.model.objectTypes[field.objectType];
+    if (schema?.additionalProperties === false) {
+      control = '<div class="structured-object-fields" data-object-type="' + esc(field.objectType) + '">' + objectPropertyFields(schema, value || {}) + '</div>';
+      return fieldWrap(name, "structured-object", label, requiredMark, control, "Fill only the details that apply.", required);
+    }
     control = '<textarea spellcheck="false" placeholder="{ }">' + esc(value === undefined ? "" : JSON.stringify(value, null, 2)) + '</textarea>';
     return fieldWrap(name, "object", label, requiredMark, control, "JSON object", required);
   }
   if (field.type === "array") {
+    if (field.items === "object") {
+      const schema = state.model.objectTypes[field.itemObjectType];
+      const items = Array.isArray(value) ? value : [];
+      control = '<div class="object-array-items">' + items.map((item) => objectArrayItem(schema, item)).join("") + '</div><button class="button" type="button" data-add-object-item>Add ' + esc(humanize(field.itemObjectType || "item")) + '</button><template>' + objectArrayItem(schema, {}) + '</template>';
+      return fieldWrap(name, "object-array", label, requiredMark, control, "Add one row for each relationship or scoped decision.", required);
+    }
+    if (name === "evidenceSourceKinds") {
+      const selected = Array.isArray(value) ? value : [];
+      const options = evidenceSourceRoleOptions();
+      const summary = selected.length ? selected.length + " selected" : "Choose roles";
+      control = '<details class="choice-picker"><summary><span data-choice-summary>' + esc(summary) + '</span></summary><div class="checkbox-list">' + options.map((option) => '<label><input type="checkbox" value="' + esc(option) + '" ' + (selected.includes(option) ? "checked" : "") + '><span>' + esc(properCase(option)) + '</span></label>').join("") + '</div></details>';
+      return fieldWrap(name, "choice-array", label, requiredMark, control, "Select only roles this Component performs.", required);
+    }
     control = '<textarea placeholder="One value per line">' + esc((value || []).join("\n")) + '</textarea>';
-    const arrayHelp = name === "evidenceSourceKinds"
-      ? "One role per line. Use the roles required by the Controls this System supports, such as " + evidenceSourceRoleOptions().join(", ") + "."
-      : "One value per line";
-    return fieldWrap(name, "array", label, requiredMark, control, arrayHelp, required);
+    return fieldWrap(name, "array", label, requiredMark, control, "One value per line", required);
   }
   if (["description", "statement", "scope", "rationale", "purpose"].some((part) => name.toLowerCase().includes(part))) {
     control = '<textarea>' + esc(value ?? "") + '</textarea>';
@@ -3099,6 +3274,178 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
 
 function evidenceSourceRoleOptions() {
   return [...new Set((state.model.evidenceSourceFamilies || []).flatMap(({ sourceKinds }) => sourceKinds || []))].sort();
+}
+
+function wireChoicePickers(dialog) {
+  dialog.querySelectorAll(".choice-picker").forEach((picker) => {
+    const sync = () => {
+      const count = picker.querySelectorAll('input[type="checkbox"]:checked').length;
+      picker.querySelector("[data-choice-summary]").textContent = count ? count + " selected" : "Choose roles";
+    };
+    picker.addEventListener("change", sync);
+    sync();
+  });
+}
+
+function objectPropertyFields(schema, value = {}) {
+  const required = new Set(schema?.required || []);
+  return Object.entries(schema?.properties || {}).map(([name, property]) => {
+    const requiredNow = required.has(name) && !property.requiredWhen;
+    const mark = required.has(name) || property.requiredWhen
+      ? '<span class="required-mark" ' + (requiredNow ? "" : "hidden") + '>Required</span>'
+      : "";
+    const stringMap = property.type === "object" && state.model.objectTypes[property.objectType]?.additionalProperties?.type === "string";
+    let input;
+    if (property.relation && property.type === "id") {
+      const candidates = relationCandidates(property);
+      input = '<select><option value="">Select ' + esc(relationTypeLabel(property).toLowerCase()) + '</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value[name] === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + '</option>').join("") + '</select>';
+    } else if (property.relation && property.type === "array") {
+      const candidates = relationCandidates(property);
+      input = candidates.length
+        ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value[name] || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(state.model.resources[record.type].title) + '</small></span></label>').join("") + '</div>'
+        : '<div class="missing-options">No matching ' + esc(relationTypeLabel(property, true).toLowerCase()) + ' yet.</div>';
+    } else if (property.type === "array" && property.values) {
+      input = '<div class="checkbox-list">' + property.values.map((option) => '<label><input type="checkbox" value="' + esc(option) + '" ' + ((value[name] || []).includes(option) ? "checked" : "") + '><span>' + esc(properCase(option)) + '</span></label>').join("") + '</div>';
+    } else if (property.type === "array") {
+      input = '<textarea placeholder="One value per line">' + esc((value[name] || []).join("\n")) + '</textarea>';
+    } else if (property.type === "enum" || property.type === "rating") {
+      const options = property.values || (property.registry ? Object.keys(state.model[property.registry] || {}) : state.model.primitives[property.type] || []);
+      input = '<select><option value="">Select</option>' + options.map((option) => '<option value="' + esc(option) + '" ' + (value[name] === option ? "selected" : "") + '>' + esc(properCase(option)) + '</option>').join("") + '</select>';
+    } else if (property.type === "object") {
+      const nested = state.model.objectTypes[property.objectType];
+      input = nested?.additionalProperties === false
+        ? '<div class="structured-object-fields nested" data-object-type="' + esc(property.objectType) + '">' + objectPropertyFields(nested, value[name] || {}) + '</div>'
+        : nested?.additionalProperties?.type === "string"
+          ? stringMapEditor(value[name] || {}, name)
+        : '<textarea spellcheck="false" placeholder="{ }">' + esc(value[name] === undefined ? "" : JSON.stringify(value[name], null, 2)) + '</textarea>';
+    } else if (property.type === "boolean") {
+      input = '<select><option value="">Not set</option><option value="true" ' + (value[name] === true ? "selected" : "") + '>Yes</option><option value="false" ' + (value[name] === false ? "selected" : "") + '>No</option></select>';
+    } else {
+      const multiline = ["rationale", "description", "notes"].some((part) => name.toLowerCase().includes(part));
+      input = multiline
+        ? '<textarea>' + esc(value[name] || "") + '</textarea>'
+        : '<input type="' + (property.type === "date" ? "date" : property.type === "timestamp" ? "datetime-local" : ["integer", "number"].includes(property.type) ? "number" : "text") + '" value="' + esc(property.type === "timestamp" && value[name] ? String(value[name]).slice(0, 16) : value[name] ?? "") + '"' + (property.minimum !== undefined ? ' min="' + esc(property.minimum) + '"' : "") + '>';
+    }
+    return '<div class="object-property' + (stringMap ? " string-map-property" : "") + '" data-object-field="' + esc(name) + '" data-object-kind="' + esc(property.type) + '" data-object-required="' + (required.has(name) || property.requiredWhen ? "true" : "false") + '"' + (property.requiredWhen ? ' data-object-required-when="' + esc(JSON.stringify(property.requiredWhen)) + '"' : "") + (property.allowedWhen ? ' data-object-allowed-when="' + esc(JSON.stringify(property.allowedWhen)) + '"' : "") + '><span class="object-property-label">' + esc(humanize(name)) + mark + '</span>' + input + '</div>';
+  }).join("");
+}
+
+function objectArrayItem(schema, value = {}) {
+  return '<fieldset class="object-array-item"><legend>' + esc(humanize(schema?.title || "Relationship")) + '</legend><div class="structured-object-fields">' + objectPropertyFields(schema, value) + '</div><button type="button" class="text-button" data-remove-object-item>Remove</button></fieldset>';
+}
+
+function stringMapEditor(value = {}, name = "item") {
+  const entries = Object.entries(value);
+  const row = ([key = "", item = ""] = []) => '<div class="string-map-row"><input data-map-key value="' + esc(key) + '" placeholder="Name"><input data-map-value value="' + esc(item) + '" placeholder="Value"><button type="button" class="text-button" data-remove-string-map aria-label="Remove ' + esc(humanize(name).toLowerCase()) + '">Remove</button></div>';
+  return '<div class="string-map-editor"><div class="string-map-items">' + (entries.length ? entries.map(row).join("") : row()) + '</div><button type="button" class="button" data-add-string-map>Add ' + esc(humanize(name).replace(/s$/, "").toLowerCase()) + '</button><template>' + row() + '</template></div>';
+}
+
+function wireStructuredObjectEditors(dialog) {
+  dialog.querySelectorAll('[data-kind="object-array"]').forEach((group) => {
+    group.querySelector('[data-add-object-item]')?.addEventListener("click", () => {
+      const template = group.querySelector("template");
+      group.querySelector(".object-array-items").append(template.content.cloneNode(true));
+      refresh(group.querySelector(".object-array-items > .object-array-item:last-child > .structured-object-fields"));
+    });
+    group.addEventListener("click", (event) => {
+      const remove = event.target.closest("[data-remove-object-item]");
+      if (!remove) return;
+      remove.closest(".object-array-item")?.remove();
+    });
+  });
+  dialog.querySelector("form").addEventListener("click", (event) => {
+    const add = event.target.closest("[data-add-string-map]");
+    if (add) {
+      const editor = add.closest(".string-map-editor");
+      editor.querySelector(".string-map-items").append(editor.querySelector("template").content.cloneNode(true));
+      editor.querySelector(".string-map-row:last-child [data-map-key]").focus();
+      return;
+    }
+    const remove = event.target.closest("[data-remove-string-map]");
+    if (!remove) return;
+    const editor = remove.closest(".string-map-editor");
+    const rows = editor.querySelectorAll(".string-map-row");
+    if (rows.length > 1) remove.closest(".string-map-row").remove();
+    else rows[0].querySelectorAll("input").forEach((input) => { input.value = ""; });
+  });
+  const refresh = (container) => {
+    const fields = [...container.querySelectorAll(":scope > [data-object-field]")];
+    const values = Object.fromEntries(fields.map((field) => [field.dataset.objectField, readObjectProperty(field)]));
+    const hasValue = Object.values(values).some((value) => value !== undefined && (!Array.isArray(value) || value.length) && (typeof value !== "object" || Array.isArray(value) || Object.keys(value).length));
+    const group = container.closest("[data-field-group]");
+    const active = Boolean(container.closest(".object-array-item")) || group?.dataset.required === "true" || hasValue;
+    for (const field of fields) {
+      const allowedWhen = field.dataset.objectAllowedWhen ? JSON.parse(field.dataset.objectAllowedWhen) : null;
+      const requiredWhen = field.dataset.objectRequiredWhen ? JSON.parse(field.dataset.objectRequiredWhen) : null;
+      field.hidden = Boolean(allowedWhen) && !conditionMatches(values, allowedWhen);
+      const required = active && !field.hidden && (field.dataset.objectRequired === "true") && (!requiredWhen || conditionMatches(values, requiredWhen));
+      field.querySelector(".required-mark")?.toggleAttribute("hidden", !required);
+      const checkboxes = [...field.querySelectorAll(":scope > .checkbox-list input[type=checkbox]")];
+      if (checkboxes.length) {
+        const selected = checkboxes.findIndex((checkbox) => checkbox.checked);
+        checkboxes.forEach((checkbox, index) => { checkbox.required = required && index === (selected < 0 ? 0 : selected); });
+      } else {
+        const map = field.querySelector(":scope > .string-map-editor");
+        if (map) {
+          [...map.querySelectorAll(".string-map-row")].forEach((row, index) => {
+            const key = row.querySelector("[data-map-key]");
+            const value = row.querySelector("[data-map-value]");
+            const rowRequired = required && index === 0 || key.value.trim() || value.value.trim();
+            key.required = Boolean(rowRequired);
+            value.required = Boolean(rowRequired);
+          });
+          continue;
+        }
+        const control = field.querySelector(":scope > input, :scope > select, :scope > textarea");
+        if (control) control.required = required;
+      }
+    }
+  };
+  dialog.querySelectorAll(".structured-object-fields").forEach(refresh);
+  dialog.querySelector("form").addEventListener("input", (event) => {
+    const container = event.target.closest(".structured-object-fields");
+    if (container) refresh(container);
+  });
+  dialog.querySelector("form").addEventListener("change", (event) => {
+    const container = event.target.closest(".structured-object-fields");
+    if (container) refresh(container);
+  });
+}
+
+function readObjectProperty(field) {
+  if (field.hidden) return undefined;
+  const kind = field.dataset.objectKind;
+  if (kind === "array") {
+    const checkboxes = [...field.querySelectorAll(":scope > .checkbox-list input[type=checkbox]")];
+    if (checkboxes.length) return checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+    return (field.querySelector(":scope > textarea")?.value || "").split(/\n|,/).map((item) => item.trim()).filter(Boolean);
+  }
+  if (kind === "object") {
+    const nested = field.querySelector(":scope > .structured-object-fields");
+    if (nested) return readStructuredObject(nested);
+    const map = field.querySelector(":scope > .string-map-editor");
+    if (map) return readStringMap(map);
+    const raw = field.querySelector(":scope > textarea")?.value.trim();
+    return raw ? JSON.parse(raw) : undefined;
+  }
+  const raw = field.querySelector(":scope > input, :scope > select, :scope > textarea")?.value ?? "";
+  if (raw === "") return undefined;
+  if (kind === "boolean") return raw === "true";
+  if (["integer", "number"].includes(kind)) return Number(raw);
+  if (kind === "timestamp") return new Date(raw).toISOString();
+  return raw;
+}
+
+function readStringMap(container) {
+  return Object.fromEntries([...container.querySelectorAll(".string-map-row")]
+    .map((row) => [row.querySelector("[data-map-key]").value.trim(), row.querySelector("[data-map-value]").value.trim()])
+    .filter(([key, value]) => key && value));
+}
+
+function readStructuredObject(container) {
+  return Object.fromEntries([...container.querySelectorAll(":scope > [data-object-field]")]
+    .map((field) => [field.dataset.objectField, readObjectProperty(field)])
+    .filter(([, value]) => value !== undefined && (!Array.isArray(value) || value.length) && (typeof value !== "object" || Array.isArray(value) || Object.keys(value).length)));
 }
 
 function fieldWrap(name, kind, label, requiredMark, control, help, required) {
@@ -3226,18 +3573,28 @@ function readGuidedRecord(dialog, base, fields) {
     }
     const kind = group.dataset.kind;
     let value;
-    if (kind === "relation-array") value = [...group.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+    if (kind === "relation-array" || kind === "choice-array") value = [...group.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
     else {
       const control = group.querySelector("input,select,textarea");
       const raw = control?.value ?? "";
       if (kind === "array") value = raw.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
+      else if (kind === "object-array") {
+        value = [...group.querySelectorAll(".object-array-items > .object-array-item")]
+          .map((item) => readStructuredObject(item.querySelector(":scope > .structured-object-fields")))
+          .filter((item) => Object.keys(item).length);
+      }
+      else if (kind === "structured-object") value = readStructuredObject(group.querySelector(":scope > .structured-object-fields"));
       else if (kind === "object") value = raw.trim() ? JSON.parse(raw) : undefined;
       else if (kind === "boolean") value = raw === "" ? undefined : raw === "true";
       else if (kind === "integer") value = raw === "" ? undefined : Number(raw);
       else if (kind === "number") value = raw === "" ? undefined : Number(raw);
       else value = raw;
     }
-    if ((value === "" || value === undefined || (Array.isArray(value) && !value.length)) && group.dataset.required !== "true") delete record[name];
+    const empty = value === ""
+      || value === undefined
+      || Array.isArray(value) && !value.length
+      || value && typeof value === "object" && !Array.isArray(value) && !Object.keys(value).length;
+    if (empty && group.dataset.required !== "true") delete record[name];
     else record[name] = value;
   }
   return record;
@@ -3247,8 +3604,20 @@ function relationCandidates(field) {
   return state.resources.filter(({ record }) => field.relation.includes("*") || field.relation.includes(record.type));
 }
 
+function relationTypeLabel(field, plural = false) {
+  if (field.relation.includes("*")) return plural ? "Resources" : "resource";
+  if (field.relation.length > 3) return plural ? "Resources" : "resource";
+  const labels = field.relation.map((type) => (
+    plural ? state.model.resources[type]?.pluralTitle : state.model.resources[type]?.title
+  ) || humanize(type));
+  if (labels.length < 2) return labels.join("");
+  if (labels.length === 2) return labels.join(" or ");
+  return labels.slice(0, -1).join(", ") + ", or " + labels.at(-1);
+}
+
 function relationHelp(field) {
   if (field.relation.includes("*")) return "References any resource";
+  if (field.relation.length > 3) return "References supported records";
   const labels = field.relation.map((type) => state.model.resources[type]?.pluralTitle || type);
   if (labels.length < 2) return "References " + labels.join("");
   if (labels.length === 2) return "References " + labels.join(" or ");
@@ -3348,7 +3717,14 @@ function globalSearch(query) {
   dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Search</p><h2 id="search-results-title">' + esc(query) + '</h2></div><button class="icon-button" aria-label="Close">×</button></div><div class="result-list"></div><nav class="pagination search-pagination" aria-label="Search result pages" hidden><button class="button" type="button" data-search-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-search-page="next">Next</button></nav>';
   document.body.append(dialog);
   dialog.showModal();
-  dialog.querySelector(".icon-button").onclick = () => dialog.close();
+  const clearSearch = () => {
+    const search = root.querySelector("#global-search");
+    if (search?.value.trim() === query) search.value = "";
+  };
+  dialog.querySelector(".icon-button").onclick = () => {
+    clearSearch();
+    dialog.close();
+  };
   const results = dialog.querySelector(".result-list");
   const pagination = dialog.querySelector(".search-pagination");
   const previous = pagination.querySelector('[data-search-page="previous"]');
@@ -3359,7 +3735,10 @@ function globalSearch(query) {
     const start = (pageNumber - 1) * SEARCH_PAGE_SIZE;
     const visible = matches.slice(start, start + SEARCH_PAGE_SIZE);
     results.innerHTML = visible.length ? visible.map(({ record }) => '<a href="#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '"><strong>' + esc(record.title) + '</strong><small>' + esc(state.model.resources[record.type].title) + '</small></a>').join("") : empty("No matching records.");
-    results.querySelectorAll("a").forEach((link) => link.onclick = () => dialog.close());
+    results.querySelectorAll("a").forEach((link) => link.onclick = () => {
+      clearSearch();
+      dialog.close();
+    });
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -3378,7 +3757,10 @@ function globalSearch(query) {
     results.scrollTop = 0;
   });
   renderResults();
-  dialog.addEventListener("close", () => dialog.remove());
+  dialog.addEventListener("close", () => {
+    clearSearch();
+    dialog.remove();
+  });
 }
 
 function auditProgress(audit) {
@@ -3553,9 +3935,15 @@ function conditionMatchesValues(condition, valueFor) {
 function conditionValueMatches(actual, expected) {
   return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
 }
-function formatValue(value, field, type) {
+function formatValue(value, field, type, compact = false) {
   if (value === undefined || value === null || value === "") return '<span class="muted">Not set</span>';
   const definition = fieldDefinition(type, field);
+  if (type === "program" && field === "requirementApplicability" && Array.isArray(value)) {
+    const reviewed = value.filter(({ decision }) => ["applicable", "not-applicable"].includes(decision)).length;
+    const pending = value.length - reviewed;
+    const label = reviewed + " reviewed" + (pending ? " · " + pending + " to review" : "");
+    return '<a class="tag relation" href="#/resources/requirement' + (pending ? "?review=1" : "") + '">' + esc(label) + '</a>';
+  }
   if (definition?.type === "date") return esc(formatCalendarDate(value));
   if (definition?.type === "timestamp") return esc(formatLocalDateTime(value));
   if (type === "obligation" && field === "status") {
@@ -3563,7 +3951,12 @@ function formatValue(value, field, type) {
     return '<span class="badge ' + (value === "active" ? "neutral" : "status-" + esc(String(value))) + '">' + esc(label) + '</span>';
   }
   if (field === "status" || field.endsWith("Rating") || field === "severity" || field === "outcome") return '<span class="badge status-' + esc(String(value)) + '">' + esc(properCase(value)) + '</span>';
-  if (Array.isArray(value)) return value.length ? value.map((item) => typeof item === "object" ? '<code>' + esc(JSON.stringify(item)) + '</code>' : formatReference(item)).join(" ") : '<span class="muted">None</span>';
+  if (Array.isArray(value) && definition?.items === "object") return formatObjectArray(value, definition.itemObjectType, compact);
+  if (Array.isArray(value)) {
+    if (!value.length) return '<span class="muted">None</span>';
+    if (field === "evidenceSourceKinds") return value.map((item) => '<span class="tag choice-tag">' + esc(properCase(item)) + '</span>').join(" ");
+    return value.map((item) => formatReference(item)).join(" ");
+  }
   if (field === "sourceReference" && typeof value === "object") {
     const href = safeExternalUrl(value.url);
     if (href) return '<a class="external-source" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer"><span><strong>' + esc(value.title || "Official source") + '</strong><small>' + esc(href) + '</small></span><b aria-hidden="true">↗</b></a>';
@@ -3574,6 +3967,33 @@ function formatValue(value, field, type) {
   if (reference) return '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + '">' + esc(reference.record.title) + '</a>';
   if (definition?.type === "enum") return esc(properCase(value));
   return esc(String(value));
+}
+
+function formatObjectArray(items, objectType, compact = false) {
+  if (!items.length) return '<span class="muted">None</span>';
+  const schema = state.model.objectTypes[objectType];
+  if (!schema) return '<span class="muted">' + items.length + ' ' + pluralize("item", items.length) + '</span>';
+  return '<div class="object-value-list ' + (compact ? "compact" : "") + '">' + items.map((item) => {
+    const notes = [];
+    const facts = Object.entries(schema.properties || {}).flatMap(([name, property]) => {
+      const value = item[name];
+      if (value === undefined || value === null || value === "" || Array.isArray(value) && !value.length) return [];
+      if (["rationale", "description", "notes"].includes(name)) {
+        notes.push(String(value));
+        return [];
+      }
+      const label = humanize(name.replace(/Ids?$/, ""));
+      let display;
+      if (property.relation && property.type === "id") display = formatReference(value);
+      else if (property.relation && property.type === "array") display = value.map((id) => formatReference(id)).join(" ");
+      else if (Array.isArray(value)) display = esc(value.map((entry) => properCase(entry)).join(", "));
+      else if (property.type === "enum") display = esc(properCase(value));
+      else if (property.type === "date") display = esc(formatCalendarDate(value));
+      else display = esc(String(value));
+      return ['<span><b>' + esc(label) + '</b>' + display + '</span>'];
+    });
+    return '<div class="object-value"><span class="object-value-facts">' + facts.join("") + '</span>' + (!compact && notes.length ? '<small>' + esc(notes.join(" ")) + '</small>' : "") + '</div>';
+  }).join("") + '</div>';
 }
 function controlOperationTracking(control) {
   const obligations = resourcesOfType("obligation")
@@ -3658,7 +4078,17 @@ function pluralize(noun, count) {
   if (/[^aeiou]y$/i.test(noun)) return noun.slice(0, -1) + "ies";
   return noun + "s";
 }
-function renderNotFound(main) { main.innerHTML = '<div class="page">' + empty("That resource does not exist.") + '</div>'; }
+function renderNotFound(main) {
+  const route = parseRoute();
+  const definition = route.type ? state.model.resources[route.type] : null;
+  const recordMissing = route.name === "detail" && definition;
+  const title = recordMissing ? definition.title + " Not Found" : "Page Not Found";
+  const message = recordMissing ? "This record may have been renamed or deleted." : "This page does not exist.";
+  const collectionLink = recordMissing
+    ? '<a class="button primary" href="#/resources/' + encodeURIComponent(route.type) + '">Back to ' + esc(titleCase(definition.pluralTitle)) + '</a>'
+    : "";
+  main.innerHTML = '<div class="page"><section class="panel not-found"><p class="kicker">Not found</p><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p><div class="page-actions">' + collectionLink + '<a class="button ' + (recordMissing ? "" : "primary") + '" href="#/">Program overview</a></div></section></div>';
+}
 function applyMutationState(result) {
   if (result?.state) {
     state = result.state;
@@ -3813,6 +4243,30 @@ function showError(message) {
   dialog.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => dialog.close()));
   dialog.addEventListener("close", () => dialog.remove());
 }
+
+function confirmAction({ kicker, title, message, confirmLabel = "Confirm", danger = false }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "alert-dialog confirmation-dialog";
+  dialog.setAttribute("aria-labelledby", "confirmation-dialog-title");
+  dialog.setAttribute("aria-describedby", "confirmation-dialog-message");
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + esc(kicker) + '</p><h2 id="confirmation-dialog-title">' + esc(title) + '</h2></div><button type="button" class="icon-button" data-confirm-dismiss aria-label="Close">×</button></div><p id="confirmation-dialog-message">' + esc(message) + '</p><div class="dialog-actions"><button type="button" class="button" data-confirm-dismiss>Cancel</button><button type="submit" class="button ' + (danger ? "danger-action" : "primary") + '">' + esc(confirmLabel) + '</button></div></form>';
+  document.body.append(dialog);
+  return new Promise((resolve) => {
+    let confirmed = false;
+    dialog.querySelector("form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      confirmed = true;
+      dialog.close();
+    });
+    dialog.querySelectorAll("[data-confirm-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(confirmed);
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
 async function responseMessage(response) {
   const source = await response.text();
   try { return JSON.parse(source).error || source; } catch { return source; }
@@ -3876,7 +4330,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .overview-grid>.panel{padding:15px}.overview-grid .panel-head{margin-bottom:10px}.overview-grid .audit-progress{gap:7px 20px}.overview-grid .progress-number strong{font-size:31.2px}.overview-grid .audit-engagement{padding:8px 11px}
 .nav-close,.nav-scrim{display:none}.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}.pagination[hidden]{display:none}.page-status{color:var(--muted);font-size:12px;min-width:150px;text-align:center}.button:disabled{cursor:not-allowed;opacity:.45}.search-pagination{padding-top:2px}
 .list-tools{flex-wrap:wrap}.list-tools label{min-width:220px}.list-header-tools{flex:1;justify-content:flex-end;margin:0 0 0 28px}.list-header-tools label{flex:1 1 220px;max-width:360px}.list-header-tools select{max-width:190px}.list-header-tools .button{white-space:nowrap}
-.setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr 1.3fr;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:18px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:13.2px;line-height:1.5}.setup-banner ol{margin:0;padding-left:22px;display:grid;gap:7px}.setup-banner li{font-size:13.2px}.setup-banner a{color:var(--accent);font-weight:700}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:12px;font-weight:700;margin-bottom:6px}.required-mark{font-size:9.6px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:14.4px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:10.8px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:12px}.checkbox-list small{color:var(--muted);margin-top:2px}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:12px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:13.2px;font-weight:750}.advanced-editor p{font-size:12px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:14.4px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
+.setup-banner{margin:14px 0;background:#eef1ff;border:1px solid #ccd4ff;border-radius:11px;padding:19px 22px;display:grid;grid-template-columns:1fr auto;gap:25px;align-items:center}.setup-banner h3{margin:5px 0 6px;font-size:18px}.setup-banner p:not(.kicker){margin:0;color:var(--muted);font-size:13.2px;line-height:1.5}.setup-banner>.button{justify-self:end}.setup-draft-state{display:flex;align-items:center;justify-content:flex-end;gap:22px}.setup-draft-state span{min-width:100px}.setup-draft-state small,.setup-draft-state strong{display:block}.setup-draft-state small{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.06em}.setup-draft-state strong{margin-top:3px;font-size:12px}.due-list time.overdue{color:var(--red)}.content-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.text-button{border:0;background:none;color:var(--accent);font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;cursor:pointer;white-space:nowrap}.tag{white-space:normal;overflow-wrap:anywhere;max-width:100%}.editor{max-height:calc(100vh - 30px);overflow:auto}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.form-field>.field-label,.content-editor-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#3e4557;font-size:12px;font-weight:700;margin-bottom:6px}.required-mark{font-size:9.6px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.form-field input,.form-field select,.editor .form-field textarea{width:100%;height:auto;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:9px 10px;font:14.4px/1.4 inherit}.editor .form-field textarea{height:82px}.form-field input[readonly]{background:#eef0f6;color:#5d6475}.form-field>small{display:block;color:#6a7181;font-size:10.8px;margin-top:5px}.checkbox-list{display:grid;gap:5px;max-height:145px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:7px}.checkbox-list label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:5px}.checkbox-list input{width:16px;min-height:16px;padding:0;flex:0 0 auto}.checkbox-list label:hover{background:#f2f4fa}.checkbox-list span,.checkbox-list small{display:block;font-size:12px}.checkbox-list small{color:var(--muted);margin-top:2px}.choice-picker{border:1px solid var(--line);border-radius:7px;background:var(--field)}.choice-picker summary{min-height:40px;padding:10px;cursor:pointer;font-size:13.2px}.choice-picker .checkbox-list{max-height:220px;border:0;border-top:1px solid var(--line);border-radius:0}.structured-object-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.structured-object-fields.nested{grid-column:1/-1;background:var(--panel)}.object-property{min-width:0}.object-property-label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;font-size:11px;font-weight:700}.string-map-editor,.string-map-items{display:grid;gap:7px}.string-map-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px;align-items:center}.object-array-items{display:grid;gap:10px;margin-bottom:8px}.object-array-item{display:grid;gap:9px;border:1px solid var(--line);border-radius:8px;padding:10px}.object-array-item legend{padding:0 5px;color:var(--muted);font-size:11px;font-weight:750}.object-array-item>.structured-object-fields{padding:0;border:0;background:none}.missing-options{padding:11px;border:1px dashed #d7c8a9;background:#fbf5e9;color:#795b23;border-radius:7px;font-size:12px}.content-editor-field{display:block;margin:17px 0}.editor .content-editor-field textarea,.editor .markdown-source{height:260px;background:#10162b;color:#e8ebff;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.advanced-editor{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.advanced-editor summary{cursor:pointer;color:var(--accent);font-size:13.2px;font-weight:750}.advanced-editor p{font-size:12px;color:var(--muted)}.editor .advanced-editor>textarea{height:320px}.alert-dialog{width:min(520px,calc(100vw - 30px));border:0;border-radius:12px;padding:23px;box-shadow:0 25px 80px rgba(0,0,24,.28)}.alert-dialog>p{font-size:14.4px;line-height:1.55;color:var(--muted)}.metadata dd{overflow-wrap:anywhere}
 .record-content-action{display:flex;justify-content:flex-start;margin-top:20px}.record-content-details{border-top:1px solid var(--line);margin-top:18px;padding-top:13px}.record-content-details summary{cursor:pointer;color:var(--accent);font-size:13.2px;font-weight:750}.record-content-details>p{color:var(--muted);font-size:12px}.record-content-editor>span small{color:var(--muted);font-size:10.8px;font-weight:500}
 .program-setup{grid-template-columns:minmax(250px,.75fr) minmax(440px,1.4fr)}.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.setup-steps a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);text-decoration:none}.setup-steps a:hover{border-color:var(--accent-light)}.setup-steps a>span:first-child{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px}.setup-steps a.done>span:first-child{background:#dcefe4;color:#125733}.setup-steps strong,.setup-steps small{display:block}.setup-steps strong{font-size:12px}.setup-steps small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4;font-weight:500}
 .readiness-map{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px 22px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.readiness-map-head{display:grid;grid-template-columns:minmax(220px,1fr) minmax(320px,420px);gap:28px;align-items:center;margin-bottom:17px}.readiness-map-head h3{font-size:18px;margin:5px 0 0}.readiness-progress-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center}.readiness-progress-summary>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 8px;align-items:baseline}.readiness-progress-summary>div>span{color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.readiness-progress-summary>div>strong{font-size:9.6px;font-weight:700;line-height:1.2}.readiness-progress-summary>div>.badge{font-size:8.4px}.readiness-progress-summary .progress,.readiness-progress-summary small{grid-column:1/-1}.readiness-progress-summary small{color:var(--muted);font-size:9.6px}.readiness-progress-summary>.button{white-space:nowrap}.readiness-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.readiness-flow a{display:grid;grid-template-columns:23px minmax(0,1fr);column-gap:8px;align-content:start;min-width:0;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.readiness-flow a:hover{border-color:var(--accent-light);background:var(--accent-soft)}.readiness-flow a>span{grid-row:1/4;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--primary-gradient);color:#fff;font-size:9.6px;font-weight:800}.readiness-flow strong{font-size:12px;line-height:1.25}.readiness-flow small{grid-column:2;color:var(--muted);font-size:9.6px;line-height:1.4;margin-top:3px}.readiness-state{grid-column:2;justify-self:start;margin-top:8px;padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:8.4px;line-height:1.2}.readiness-state.good{background:#dcefe4;color:#125733}.readiness-state.warn{background:#f6e8c9;color:#79500f}.readiness-state.bad{background:#f7dfdc;color:#873027}.audit-engagement{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,1.25fr) auto;gap:20px;align-items:center;padding:14px 15px;border-radius:8px;background:var(--surface-soft)}.audit-engagement strong{font-size:13.2px}.audit-engagement p,.audit-engagement li{color:var(--muted);font-size:10.8px;line-height:1.5}.audit-engagement p{margin:5px 0 0}.audit-engagement ul{margin:0;padding-left:18px}.audit-engagement .button{white-space:nowrap;text-decoration:none}.resource-directory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-directory>section{min-width:0;padding:12px;border-radius:8px;background:var(--surface-soft)}.resource-directory h4{margin:0 0 7px;color:var(--muted);font-size:10.8px;text-transform:uppercase;letter-spacing:.08em}.resource-directory a{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:10.8px;text-decoration:none}.resource-directory a:first-of-type{border-top:0}.resource-directory a:hover span{color:var(--accent)}.resource-directory a strong{color:var(--muted);font-size:9.6px}.record-prose{max-width:790px}.record-prose section{padding:0 0 20px}.record-prose section+section{padding-top:20px;border-top:1px solid var(--line)}.record-prose h3{margin:0 0 7px;color:var(--muted);font-size:10.8px;text-transform:uppercase;letter-spacing:.08em}.record-prose p{margin:0;font-size:16.8px;line-height:1.65;white-space:pre-wrap}.connections-panel .panel-head>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:99px;background:var(--surface-muted);color:var(--muted);font-size:9.6px}.connections{display:grid}.connections a{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none}.connections a:first-child{padding-top:0;border-top:0}.connections strong,.connections small{display:block}.connections strong{font-size:12px}.connections small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.connections a:hover strong{color:var(--accent)}.connections-more{margin:9px 0 0;color:var(--muted);font-size:9.6px;line-height:1.4}.external-source{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;color:var(--accent);text-decoration:none}.external-source span,.external-source strong,.external-source small{display:block}.external-source strong{font-size:12px;line-height:1.35}.external-source small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.35;overflow-wrap:anywhere}.external-source b{font-size:13.2px}.external-source:hover strong{text-decoration:underline}
@@ -3886,16 +4340,18 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .onboarding-save-status{color:var(--muted);font-size:10.8px;line-height:1.35}.onboarding-save-status:empty{display:none}.onboarding-save-status:not(:empty){order:-1;flex-basis:100%;margin-bottom:4px}.onboarding-retry-sync{margin-top:9px}.detail-loading{color:var(--muted)}
 .save-status{min-height:16px;color:var(--muted);font-size:10.8px;line-height:1.35}
 .page-intro,.detail-head{align-items:center;margin-bottom:12px}.actions{align-items:center}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:10.8px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+.not-found{max-width:620px;padding:28px}.not-found h2{font-family:Georgia,serif;font-size:37.2px;font-weight:500;margin:7px 0}.not-found>p:not(.kicker){margin:0;color:var(--muted);font-size:15.6px}.not-found .page-actions{justify-content:flex-start;margin-top:22px}
+.button.danger-action{background:var(--red);border-color:var(--red);color:#fff}
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}
 @media(max-width:1100px){.search{display:none}.topbar-status{margin-left:auto}.metrics{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.organization-grid{grid-template-columns:repeat(2,1fr)}.catalog{grid-template-columns:repeat(3,1fr)}.span-2{grid-column:span 2}.resource-directory{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:24px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{min-width:0}.topbar-status{display:none}.search{display:flex;max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.page-intro>.list-header-tools{justify-content:flex-start;margin:15px 0 0}.list-header-tools label{max-width:none}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
+@media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:24px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{flex:1;min-width:0}.topbar h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topbar-status{display:none}.search{display:flex;flex:0 1 180px;min-width:110px;max-width:none}.search kbd,.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.page-intro>.list-header-tools{justify-content:flex-start;margin:15px 0 0}.list-header-tools label{max-width:none}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
 @media(max-width:760px){.setup-banner,.page-guide,.stage-overview-hero,.relationship-note,.group-destination-card,.stage-page-grid,.evidence-map-expectation,.evidence-map-links,.external-evidence-list{grid-template-columns:1fr}.context-workflow,.evidence-map-head{align-items:stretch;flex-direction:column}.evidence-map-actions{flex-wrap:wrap}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.group-overview-head{display:block}.stage-progress-card,.stage-status-link{margin-top:15px}.destination-rollup{text-align:left}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:9.6px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}}
 @media(max-width:760px){.guide-review ul,.resource-review-criteria ul{grid-template-columns:1fr}.collection-review-head,.collection-review-foot{align-items:stretch;flex-direction:column}.record-workflow-action{min-width:0}}
 @media(max-width:520px){.onboarding-form,.onboarding-sections,.setup-steps{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}.obligation-card-foot{align-items:flex-start;flex-direction:column}.obligation-action{align-self:flex-start}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}
 @media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.detail-grid-structured aside>.panel{align-self:start}}
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:24px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
-@media(max-width:760px){.topbar{height:56px}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
+@media(max-width:760px){.topbar{height:56px}.topbar>div:first-of-type{display:none}.search{flex:1;min-width:0}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
 
 .connection-group+.connection-group{margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}.connection-group h4{margin:0 0 8px;color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.08em}
 body,button,input,select,textarea,dialog{color:var(--ink)}
@@ -3970,6 +4426,8 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:10.8px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
 .event-dialog label{display:block;margin-top:13px}.event-dialog label[hidden]{display:none}.event-dialog label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select,.event-dialog textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.event-dialog textarea{resize:vertical}.commit-dialog .form-grid label.full{grid-column:1/-1}.workflow-preview{margin-top:14px;padding:0 12px;border-radius:7px;background:var(--surface-soft)}.workflow-preview:not(:empty){padding-top:10px;padding-bottom:10px}.workflow-preview strong,.workflow-preview p{display:block;margin:0}.workflow-preview p{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.5}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:12px}.event-dialog-steps small{font-size:9.6px;color:var(--muted);margin-top:2px}
 .applicability-dialog{width:min(980px,calc(100vw - 30px));max-height:calc(100vh - 32px);border:0;border-radius:12px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 25px 80px rgba(0,0,24,.28)}.applicability-dialog form{padding:23px}.applicability-dialog form>p{color:var(--muted);font-size:13.2px}.review-context label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.review-context input,.review-context select,.applicability-row input,.applicability-row select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:8px 9px;font-size:13.2px}.review-context label.full{grid-column:1/-1}.applicability-rows{display:grid;gap:7px;max-height:46vh;overflow:auto;margin-top:16px;padding-right:4px}.applicability-row{display:grid;grid-template-columns:minmax(210px,1fr) 180px minmax(240px,1.3fr);gap:9px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:8px}.applicability-row strong,.applicability-row small{display:block}.applicability-row small{margin-top:3px;color:var(--muted);font-size:10.8px}
+.object-value-list{display:grid;gap:7px}.object-value{min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.object-value-facts{display:flex;flex-wrap:wrap;gap:5px 10px}.object-value-facts>span{display:flex;align-items:baseline;gap:5px;min-width:0;font-size:11px}.object-value-facts b{color:var(--muted);font-size:8.8px;text-transform:uppercase;letter-spacing:.05em}.object-value>small{display:block;margin-top:6px;color:var(--muted);font-size:10px;line-height:1.45}.object-value-list.compact .object-value{padding:0;border:0;background:none}.object-value-list.compact .object-value-facts{display:grid;gap:5px}.object-value-list.compact .object-value-facts>span{display:grid;gap:2px;font-size:10px}
+.resource-review-criteria.compact{margin:12px 0;padding:10px 12px;background:var(--surface-soft)}.resource-review-criteria.compact summary{cursor:pointer;font-size:11px;font-weight:750}.resource-review-criteria.compact ul{margin-bottom:0}.evidence-map-more{justify-self:center;margin:2px 0 8px}
 .packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:10.8px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:13.2px}.packet-note,.packet-output>p{font-size:12px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:12px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:12px}.packet-list small{font-size:9.6px;color:var(--muted);margin-top:2px}
 .packet-preflight{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:12px}.packet-preflight a{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);text-decoration:none}.packet-preflight .status-dot{margin-top:4px}.packet-preflight small,.packet-preflight strong{display:block}.packet-preflight small{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.07em}.packet-preflight strong{margin-top:3px;font-size:12px}.audit-evidence-paths{margin-bottom:12px}.audit-evidence-paths .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:10.8px}.audit-evidence-path-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.audit-evidence-path-grid>a{display:block;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.audit-evidence-path-grid h4{margin:7px 0 5px;font-size:13.2px}.audit-evidence-path-grid p{margin:0;color:var(--muted);font-size:10.8px;line-height:1.55}
 .audit-preparation{margin-bottom:12px}.audit-preparation .panel-head{align-items:flex-start}.audit-preparation .panel-head h3{margin:3px 0}.audit-preparation .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:10.8px}.preparation-progress{height:5px;margin:12px 0 0;border-radius:99px;background:var(--surface-muted);overflow:hidden}.preparation-progress span{display:block;height:100%;border-radius:inherit;background:var(--primary-gradient)}.audit-preparation-note{margin:9px 0 0;color:var(--muted);font-size:10.8px;line-height:1.5}.preparation-stages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.preparation-stage{border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);overflow:hidden}.preparation-stage summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px 12px;cursor:pointer;list-style:none}.preparation-stage summary::-webkit-details-marker{display:none}.preparation-stage summary span,.preparation-stage summary strong,.preparation-stage summary small{display:block}.preparation-stage summary strong{font-size:12px}.preparation-stage summary small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.preparation-stage summary b{flex:none;color:var(--muted);font-size:9.6px;font-weight:650}.preparation-items{border-top:1px solid var(--line);background:var(--panel)}.preparation-items>a,.preparation-items>div{display:grid;grid-template-columns:22px minmax(0,1fr);gap:9px;padding:10px 12px;border-top:1px solid var(--line);text-decoration:none}.preparation-items>:first-child{border-top:0}.preparation-items strong,.preparation-items small{display:block}.preparation-items strong{font-size:10.8px}.preparation-items small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.45}.preparation-status{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--surface-muted);color:var(--muted);font-size:10.8px;font-weight:800}.preparation-status.complete{background:#dcefe4;color:#125733}.preparation-status.action{background:#f7dfdc;color:#873027}.preparation-status.later{background:#f6e8c9;color:#79500f}.preparation-status.external,.preparation-status.info{background:var(--accent-soft);color:var(--accent)}.audit-preparation-error:empty{display:none}
@@ -3979,7 +4437,11 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 @media(max-width:900px){.overview-grid{grid-template-columns:1fr}.overview-grid>.audit-panel{grid-column:auto}}
 @media(max-width:520px){.event-reminder-preview,.policy-event-list,.packet-builder form,.packet-preflight,.audit-evidence-path-grid{grid-template-columns:1fr}.policy-event-row:nth-child(n) .policy-event-tooltip{right:auto;left:0}.packet-metrics{grid-template-columns:1fr}.obligation-card-head{display:block}.obligation-card-head strong{display:block;text-align:left;margin-top:3px}}
 @media(max-width:520px){.policy-event-feedback{grid-template-columns:auto minmax(0,1fr) auto}.policy-event-feedback>.button{grid-column:2}.policy-event-feedback>.icon-button{grid-column:3;grid-row:1}}
+@media(max-width:520px){.applicability-dialog form{padding:18px}.applicability-row{grid-template-columns:1fr}.applicability-rows{max-height:42vh}}
 @media(max-width:760px){.workflow-findings{grid-template-columns:1fr}}
+.choice-tag{overflow-wrap:normal;font-size:10px}.form-field[data-kind="structured-object"],.string-map-property{grid-column:1/-1}.string-map-row .text-button{text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px}
+@media(max-width:760px){.setup-banner>.button{justify-self:start}.setup-draft-state{justify-content:flex-start;flex-wrap:wrap;gap:12px 22px}.setup-draft-state .button{width:100%}}
+@media(max-width:760px){.string-map-row{grid-template-columns:1fr 1fr}.string-map-row .text-button{grid-column:1/-1;justify-self:start}}
 
 @media(prefers-color-scheme:dark){
   :root{--ink:#f4f5ff;--muted:#b8bfd3;--line:#343d5c;--paper:#000;--panel:#141a2e;--accent:#aab7ff;--accent-soft:#252e52;--accent-light:#9aabff;--focus:#bdc7ff;--amber:#ffd08a;--red:#ffaaa0;--surface-soft:#1b2238;--surface-muted:#252d48;--field:#11172a;--field-readonly:#1c2338;--shadow:0 12px 34px rgba(0,0,0,.3)}

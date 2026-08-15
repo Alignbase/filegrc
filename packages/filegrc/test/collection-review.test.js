@@ -43,6 +43,19 @@ test("binds a collection confirmation to the exact records and material scope", 
     reviewedOn: null,
     authoritativeSystemId: null
   });
+  const emptyRequiredCollection = assessCollectionReview(loaded, "system");
+  assert.equal(emptyRequiredCollection.recordCount, 0);
+  assert.equal(emptyRequiredCollection.message, "Add at least one system before confirming this collection.");
+  await assert.rejects(
+    planCollectionReview(root, {
+      resourceType: "system",
+      decision: "complete",
+      rationale: "No Systems were added.",
+      reviewedByIds: ["person-approver"],
+      reviewedOn: "2026-08-03"
+    }),
+    /Add the required records before confirming/
+  );
 
   const plan = await planCollectionReview(root, {
     resourceType: "person",

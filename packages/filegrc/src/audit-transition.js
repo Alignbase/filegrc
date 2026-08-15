@@ -4,8 +4,8 @@ import { loadWorkspace } from "./workspace.js";
 
 export async function planNextAuditCycle(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
-  if (String(loaded.model.modelVersion) !== "3") {
-    throw new Error("Audit-cycle carry-forward requires a model v3 workspace.");
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
+    throw new Error("Audit-cycle carry-forward requires a model v3 or v4 workspace.");
   }
   const prior = loaded.resources.find((record) => (
     record.type === "audit" && record.id === options.priorAuditId
@@ -32,8 +32,11 @@ export async function planNextAuditCycle(input = process.cwd(), options = {}) {
     requirementIds: [...(prior.requirementIds || [])],
     controlIds: [...(prior.controlIds || [])],
     complementaryControlIds: [...(prior.complementaryControlIds || [])],
-    subserviceVendorIds: [...(prior.subserviceVendorIds || [])],
-    ...(prior.subserviceMethod ? { subserviceMethod: prior.subserviceMethod } : {}),
+    ...(prior.programId ? { programId: prior.programId } : {}),
+    ...(prior.subserviceTreatments ? { subserviceTreatments: structuredClone(prior.subserviceTreatments) } : {
+      subserviceVendorIds: [...(prior.subserviceVendorIds || [])],
+      ...(prior.subserviceMethod ? { subserviceMethod: prior.subserviceMethod } : {})
+    }),
     ...(prior.complementaryControlsConclusion
       ? { complementaryControlsConclusion: prior.complementaryControlsConclusion }
       : {}),

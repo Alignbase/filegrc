@@ -113,6 +113,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const end = url.searchParams.get("end");
         return json(response, 200, await assessWorkflow(input, {
           auditId: url.searchParams.get("auditId") || undefined,
+          programId: url.searchParams.get("programId") || undefined,
           asOf: url.searchParams.get("asOf") || undefined,
           through: url.searchParams.get("through") || undefined,
           coverage: start || end ? { kind: "range", startsOn: start, endsOn: end } : undefined,

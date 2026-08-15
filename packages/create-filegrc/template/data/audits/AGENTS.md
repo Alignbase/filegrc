@@ -18,9 +18,9 @@ Preparation creates engagement-specific management documents and, for Type 2, po
 Review both evidence paths for the exact formal date or period:
 
 1. filegrc Evidence consists of dated Step 4 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
-2. External Evidence consists of verified `evidence` records from other Systems. Confirm the source System, date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
+2. Evidence Artifacts are verified `evidence` records from source Components. Confirm the source Component, date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
 
-The packet compiles both paths. It includes filegrc records and Markdown with Git history, plus External Evidence records, retained attachments, delivery indexes, and checksums.
+The packet compiles both paths. It includes FileGRC records and Markdown with Git history, plus Evidence Artifacts, retained attachments, delivery indexes, and checksums.
 
 Run readiness repeatedly and fix source records. Preview the packet before writing it:
 

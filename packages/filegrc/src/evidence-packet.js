@@ -218,9 +218,12 @@ export async function prepareEvidencePacket(input, options = {}) {
     return sourceRevisionValidity.get(revision);
   };
   const evidence = [...evidenceIds].map((id) => evidenceSummary(byId.get(id), byId, revisionIsValid)).filter(Boolean).sort(byTitle);
+  const v4 = String(loaded.model.modelVersion) === "4";
   const sourceSystemIds = new Set([
-    ...(audit?.systemIds || []),
-    ...evidence.map((item) => item.sourceSystemId).filter(Boolean)
+    ...(v4
+      ? [...controlIds].flatMap((id) => byId.get(id)?.evidenceSourceComponentIds || [])
+      : audit?.systemIds || []),
+    ...evidence.map((item) => item.sourceComponentId || item.sourceSystemId).filter(Boolean)
   ]);
   const sourceSystems = [...sourceSystemIds]
     .map((id) => sourceSystemSummary(byId.get(id), evidence, audit))
@@ -351,7 +354,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       controls: controlIds.size,
       requirements: requirementIds.size,
       systems: audit?.systemIds?.length || 0,
-      sourceSystems: sourceSystems.length,
+      [v4 ? "sourceComponents" : "sourceSystems"]: sourceSystems.length,
       obligationOccurrences: obligations.length,
       eventRuns: eventRuns.length,
       evidence: evidence.length,
@@ -367,7 +370,8 @@ export async function prepareEvidencePacket(input, options = {}) {
     obligations,
     eventRuns,
     evidence,
-    sourceSystems,
+    [v4 ? "sourceComponents" : "sourceSystems"]: sourceSystems,
+    dataModelVersion: String(loaded.model.modelVersion),
     populations,
     managementPreparation,
     controlCoverage,
@@ -412,6 +416,11 @@ function recordRelevantToAudit(record, audit, byId, seen = new Set()) {
   const auditSystems = new Set(audit.systemIds || []);
   const recordSystems = new Set([...(record.systemIds || []), record.systemId, record.sourceSystemId].filter(Boolean));
   if (recordSystems.size && [...recordSystems].some((id) => auditSystems.has(id))) return true;
+  const auditComponents = new Set([...auditSystems].flatMap((systemId) => [...byId.values()]
+    .filter((candidate) => candidate.type === "component" && (candidate.systemUses || []).some((use) => use.systemId === systemId))
+    .map(({ id }) => id)));
+  const recordComponents = new Set([...(record.componentIds || []), record.componentId, record.sourceComponentId].filter(Boolean));
+  if (recordComponents.size && [...recordComponents].some((id) => auditComponents.has(id))) return true;
   const auditControls = new Set(audit.controlIds || []);
   const recordControls = controlIdsForRecord(record, byId);
   if (recordControls.size && [...recordControls].some((id) => auditControls.has(id))) return true;
@@ -454,7 +463,7 @@ function expandEvidenceWorkflowContext(selectedIds, byId) {
   for (let index = 0; index < queue.length; index += 1) {
     const record = byId.get(queue[index]);
     enqueue(childrenBySource.get(record?.id));
-    if (record?.type === "evidence") enqueue([...(record.sourceResourceIds || []), record.sourceSystemId]);
+    if (record?.type === "evidence") enqueue([...(record.sourceResourceIds || []), record.sourceComponentId, record.sourceSystemId]);
     if (record?.type === "audit-population") enqueue([record.sourceEvidenceId, ...(record.controlIds || [])]);
     if (record?.type === "control-test") enqueue([record.populationId, ...(record.sampleEvidenceIds || [])]);
     if (record?.type === "action-item") {
@@ -505,8 +514,8 @@ export async function writeEvidencePacket(input, packet, options = {}) {
     await writePacketFile(output, "index.html", packetHtml(packet), files);
     await writePacketFile(output, "control-matrix.csv", controlMatrixCsv(packet), files);
     await writePacketFile(output, "evidence-index.csv", evidenceIndexCsv(packet), files);
-    await writePacketFile(output, "source-system-index.csv", sourceSystemIndexCsv(packet), files);
-    await writePacketFile(output, "external-evidence-index.csv", externalEvidenceIndexCsv(packet), files);
+    await writePacketFile(output, packet.dataModelVersion === "4" ? "source-component-index.csv" : "source-system-index.csv", sourceSystemIndexCsv(packet), files);
+    await writePacketFile(output, packet.dataModelVersion === "4" ? "evidence-artifact-index.csv" : "external-evidence-index.csv", externalEvidenceIndexCsv(packet), files);
     await writePacketFile(output, "population-index.csv", populationIndexCsv(packet), files);
     await writePacketFile(output, "HANDLING.md", packetHandlingMarkdown(packet), files);
     for (const item of packet.records) {
@@ -587,7 +596,7 @@ async function writeChecksums(output, files) {
 
 function controlMatrixCsv(packet) {
   return csv([
-    ["Control ID", "Code", "Control", "Control Statement", "Operating Activity", "Status", "Effective On", "Operation Pattern", "Operation Mode", "System IDs", "Requirement IDs", "Policy IDs", "Risk IDs", "filegrc Evidence IDs", "External Evidence IDs", "Control Test IDs", "Test Outcomes", "Population IDs", "Population Counts", "Sample Sizes", "Exception Counts", "Population Evidence IDs", "Sample Evidence IDs"],
+    ["Control ID", "Code", "Control", "Control Statement", "Operating Activity", "Status", "Effective On", "Operation Pattern", "Operation Mode", "System IDs", "Requirement IDs", "Policy IDs", "Risk IDs", "filegrc Evidence IDs", packet.dataModelVersion === "4" ? "Evidence Artifact IDs" : "External Evidence IDs", "Control Test IDs", "Test Outcomes", "Population IDs", "Population Counts", "Sample Sizes", "Exception Counts", "Population Evidence IDs", "Sample Evidence IDs"],
     ...packet.controlCoverage.map((control) => [
       control.id,
       control.code,
@@ -636,16 +645,17 @@ function packetHandlingMarkdown(packet) {
 }
 
 function evidenceIndexCsv(packet) {
+  const v4 = packet.dataModelVersion === "4";
   return csv([
-    ["Evidence ID", "Evidence", "Status", "Kind", "Source", "Source System ID", "Source System", "Collected On", "Collector IDs", "Verified On", "Verifier IDs", "Period Start", "Period End", "Generated At", "Timezone", "Query or Report Parameters", "Population Count", "Completeness Validation", "Accuracy Validation", "Control IDs", "Source Resource IDs", "Source Commit", "File Paths", "External Reference"],
+    ["Evidence ID", v4 ? "Evidence Artifact" : "Evidence", "Status", "Kind", "Source", v4 ? "Source Component ID" : "Source System ID", v4 ? "Source Component" : "Source System", "Collected On", "Collector IDs", "Verified On", "Verifier IDs", "Period Start", "Period End", "Generated At", "Timezone", "Query or Report Parameters", "Population Count", "Completeness Validation", "Accuracy Validation", "Control IDs", "Source Resource IDs", "Source Commit", "File Paths", "External Reference"],
     ...packet.evidence.map((item) => [
       item.id,
       item.title,
       item.status,
       item.artifactKind,
       item.sourceDescription,
-      item.sourceSystemId,
-      item.sourceSystem,
+      v4 ? item.sourceComponentId : item.sourceSystemId,
+      v4 ? item.sourceComponent : item.sourceSystem,
       item.collectedOn,
       item.collectorIds.join("\n"),
       item.verifiedOn,
@@ -668,9 +678,10 @@ function evidenceIndexCsv(packet) {
 }
 
 function sourceSystemIndexCsv(packet) {
+  const v4 = packet.dataModelVersion === "4";
   return csv([
-    ["System ID", "System", "Status", "Evidence Source Roles", "Evidence Access Owner IDs", "Vendor ID", "In Audit Scope", "Evidence IDs"],
-    ...packet.sourceSystems.map((item) => [
+    [v4 ? "Component ID" : "System ID", v4 ? "Component" : "System", "Status", "Evidence Source Roles", "Evidence Access Owner IDs", "Vendor ID", v4 ? "Supports Audit System" : "In Audit Scope", "Evidence IDs"],
+    ...(packet.sourceComponents || packet.sourceSystems || []).map((item) => [
       item.id,
       item.title,
       item.status,
@@ -684,15 +695,16 @@ function sourceSystemIndexCsv(packet) {
 }
 
 function externalEvidenceIndexCsv(packet) {
+  const v4 = packet.dataModelVersion === "4";
   return csv([
-    ["Evidence ID", "Evidence", "Source System ID", "Source System", "Control IDs", "External Reference", "Fixed Attachment Included", "Delivery Note"],
+    ["Evidence ID", v4 ? "Evidence Artifact" : "Evidence", v4 ? "Source Component ID" : "Source System ID", v4 ? "Source Component" : "Source System", "Control IDs", "External Reference", "Fixed Attachment Included", "Delivery Note"],
     ...packet.evidence
       .filter((item) => item.externalReference)
       .map((item) => [
         item.id,
         item.title,
-        item.sourceSystemId,
-        item.sourceSystem,
+        v4 ? item.sourceComponentId : item.sourceSystemId,
+        v4 ? item.sourceComponent : item.sourceSystem,
         item.controlIds.join("\n"),
         JSON.stringify(item.externalReference),
         item.filePaths.length ? "yes" : "no",
@@ -704,8 +716,9 @@ function externalEvidenceIndexCsv(packet) {
 }
 
 function populationIndexCsv(packet) {
+  const v4 = packet.dataModelVersion === "4";
   return csv([
-    ["Population ID", "Population", "Kind", "Status", "Period Start", "Period End", "Source System ID", "Source System", "Authoritative Source", "Query or Report Parameters", "Timezone", "Generated At", "Record Count", "Completeness Validation", "Accuracy Validation", "Reconciled By", "Reconciled On", "Conclusion", "Control IDs", "Evidence ID", "Not Applicable Reason"],
+    ["Population ID", "Population", "Kind", "Status", "Period Start", "Period End", v4 ? "Source Component ID" : "Source System ID", v4 ? "Source Component" : "Source System", "Authoritative Source", "Query or Report Parameters", "Timezone", "Generated At", "Record Count", "Completeness Validation", "Accuracy Validation", "Reconciled By", "Reconciled On", "Conclusion", "Control IDs", "Evidence ID", "Not Applicable Reason"],
     ...packet.populations.map((item) => [
       item.id,
       item.title,
@@ -713,8 +726,8 @@ function populationIndexCsv(packet) {
       item.status,
       item.periodStart,
       item.periodEnd,
-      item.sourceSystemId,
-      item.sourceSystem,
+      v4 ? item.sourceComponentId : item.sourceSystemId,
+      v4 ? item.sourceComponent : item.sourceSystem,
       item.sourceDescription,
       item.queryDescription,
       item.timezone,
@@ -1018,7 +1031,7 @@ function packetGaps({
       }
     }
     if (controlNeedsExternalEvidence(control, model) && !coverage.evidenceIds.length) {
-      gaps.push(gap("error", "control-missing-external-evidence", `${coverage.code || coverage.title} relies on an external system but has no linked External Evidence in the packet.`, coverage.id));
+      gaps.push(gap("error", "control-missing-external-evidence", `${coverage.code || coverage.title} relies on an external source but has no linked ${String(model.modelVersion) === "4" ? "Evidence Artifact" : "External Evidence"} in the packet.`, coverage.id));
     } else if (!controlNeedsExternalEvidence(control, model) && !coverage.operatingRecordIds.length) {
       gaps.push(gap("error", "control-missing-filegrc-evidence", `${coverage.code || coverage.title} has no dated filegrc operating record in the packet.`, coverage.id));
     }
@@ -1219,10 +1232,12 @@ function packetGaps({
       const dateLabel = audit?.auditKind === "soc-2-type-1" ? `the ${start} as-of date` : `${start} through ${end}`;
       gaps.push(gap("error", "evidence-outside-engagement-date", `${item.title} is linked to a control but does not cover ${dateLabel}.`, item.id));
     }
-    if (item.sourceSystemId) {
-      const sourceSystem = byId.get(item.sourceSystemId);
-      if (!sourceSystem || sourceSystem.type !== "system") {
-        gaps.push(gap("error", "evidence-source-system-missing", `${item.title} does not resolve to a cataloged source system.`, item.id));
+    if (item.sourceComponentId || item.sourceSystemId) {
+      const sourceId = item.sourceComponentId || item.sourceSystemId;
+      const sourceSystem = byId.get(sourceId);
+      const expectedType = item.sourceComponentId ? "component" : "system";
+      if (!sourceSystem || sourceSystem.type !== expectedType) {
+        gaps.push(gap("error", "evidence-source-missing", `${item.title} does not resolve to a cataloged source ${expectedType}.`, item.id));
       } else {
         if (!["active", "deprecated"].includes(sourceSystem.status)) {
           gaps.push(gap("warning", "evidence-source-system-inactive", `${item.title} came from ${sourceSystem.title}, which is ${sourceSystem.status}. Confirm that this was the authoritative source when the evidence was generated.`, item.id));
@@ -1232,7 +1247,7 @@ function packetGaps({
         }
       }
     } else if (["population-export", "system-export", "configuration-export"].includes(item.artifactKind)) {
-      gaps.push(gap("error", "evidence-source-system-unrecorded", `${item.title} is a source-system export but does not link the cataloged system of record.`, item.id));
+      gaps.push(gap("error", "evidence-source-system-unrecorded", `${item.title} is a source export but does not link the cataloged ${String(model.modelVersion) === "4" ? "source Component" : "system of record"}.`, item.id));
     }
     if (item.externalReference && !item.filePaths.length) {
       gaps.push(gap("warning", "external-only-evidence", `${item.title} relies on an external reference and is not self-contained in the packet.`, item.id));
@@ -1433,6 +1448,8 @@ function evidenceSummary(record, byId, revisionIsValid) {
     capture: record.capture || null,
     sourceSystemId: record.sourceSystemId || null,
     sourceSystem: byId.get(record.sourceSystemId)?.title || null,
+    sourceComponentId: record.sourceComponentId || null,
+    sourceComponent: byId.get(record.sourceComponentId)?.title || null,
     collectorIds: record.collectorIds || [],
     verifierIds: record.verifierIds || [],
     verifiedOn: record.verifiedOn || null,
@@ -1449,6 +1466,7 @@ function evidenceSummary(record, byId, revisionIsValid) {
 function populationSummary(record, byId) {
   const evidence = byId.get(record.sourceEvidenceId);
   const sourceSystemId = record.sourceSystemId || evidence?.sourceSystemId || null;
+  const sourceComponentId = record.sourceComponentId || evidence?.sourceComponentId || null;
   return {
     id: record.id,
     title: record.title,
@@ -1461,6 +1479,8 @@ function populationSummary(record, byId) {
     controlIds: record.controlIds || [],
     sourceSystemId,
     sourceSystem: byId.get(sourceSystemId)?.title || null,
+    sourceComponentId,
+    sourceComponent: byId.get(sourceComponentId)?.title || null,
     sourceEvidenceId: record.sourceEvidenceId || null,
     source: evidence?.sourceDescription || null,
     populationCount: evidence?.populationCount ?? null,
@@ -1477,7 +1497,7 @@ function populationSummary(record, byId) {
 }
 
 function sourceSystemSummary(record, evidence, audit) {
-  if (!record || record.type !== "system") return null;
+  if (!record || !["system", "component"].includes(record.type)) return null;
   return {
     id: record.id,
     title: record.title,
@@ -1485,8 +1505,11 @@ function sourceSystemSummary(record, evidence, audit) {
     evidenceSourceKinds: record.evidenceSourceKinds || [],
     evidenceOwnerIds: record.evidenceOwnerIds || [],
     vendorId: record.vendorId || null,
-    inAuditScope: (audit?.systemIds || []).includes(record.id),
-    evidenceIds: evidence.filter((item) => item.sourceSystemId === record.id).map((item) => item.id)
+    inAuditScope: record.type === "system"
+      ? (audit?.systemIds || []).includes(record.id)
+      : (record.systemUses || []).some(({ systemId }) => (audit?.systemIds || []).includes(systemId)),
+    evidenceIds: evidence.filter((item) => (item.sourceComponentId || item.sourceSystemId) === record.id).map((item) => item.id),
+    resourceType: record.type
   };
 }
 
@@ -1545,13 +1568,15 @@ function populationGaps(gaps, audit, populations, byId, model) {
     if (population.reconciledOn && generatedOn && population.reconciledOn < generatedOn) {
       gaps.push(gap("error", "population-reconciled-before-generation", `${population.title} was reconciled before its population export was generated.`, population.id));
     }
-    if (!population.sourceSystemId) {
-      gaps.push(gap("error", "population-source-system-missing", `${population.title} does not identify its authoritative source system.`, population.id));
-    } else if (evidence.sourceSystemId !== population.sourceSystemId) {
-      gaps.push(gap("error", "population-source-system-mismatch", `${population.title} and ${evidence.title} do not name the same authoritative source system.`, population.id));
+    const populationSourceId = population.sourceComponentId || population.sourceSystemId;
+    const evidenceSourceId = evidence.sourceComponentId || evidence.sourceSystemId;
+    if (!populationSourceId) {
+      gaps.push(gap("error", "population-source-missing", `${population.title} does not identify its authoritative source Component.`, population.id));
+    } else if (evidenceSourceId !== populationSourceId) {
+      gaps.push(gap("error", "population-source-mismatch", `${population.title} and ${evidence.title} do not name the same authoritative source Component.`, population.id));
     }
     const template = expected.find((item) => item.kind === population.populationKind);
-    const sourceSystem = byId.get(population.sourceSystemId);
+    const sourceSystem = byId.get(populationSourceId);
     if (template?.sourceKind && sourceSystem && !(sourceSystem.evidenceSourceKinds || []).includes(template.sourceKind)) {
       gaps.push(gap("error", "population-source-role-mismatch", `${sourceSystem.title} is not cataloged for the ${displaySourceKind(template.sourceKind)} evidence role required by ${population.title}.`, sourceSystem.id));
     }
@@ -1594,6 +1619,7 @@ function recordSummary(record) {
 }
 
 function packetMarkdown(packet) {
+  const v4 = packet.dataModelVersion === "4";
   const readiness = packet.readiness.status === "delivery-ready"
     ? "filegrc management checks passed. The engagement team still determines whether the evidence is sufficient and appropriate."
     : `${packet.readiness.errors} errors and ${packet.readiness.warnings} warnings require review. This is a draft packet.`;
@@ -1618,15 +1644,17 @@ function packetMarkdown(packet) {
     `- ${packet.summary.filegrcRecords} filegrc Evidence records`,
     `- ${packet.summary.obligationOccurrences} recurring obligation occurrences`,
     `- ${packet.summary.eventRuns} event runs`,
-    `- ${packet.summary.evidence} External Evidence records`,
+    `- ${packet.summary.evidence} ${v4 ? "Evidence Artifact" : "External Evidence"} records`,
     `- ${packet.summary.populations} reconciled or planned populations`,
     `- ${packet.summary.policies} policies`,
     `- ${packet.summary.controls} controls`,
     `- ${packet.summary.requirements} criteria`,
     `- ${packet.summary.systems} in-scope systems`,
-    `- ${packet.summary.sourceSystems} cataloged source systems`,
+    `- ${v4 ? packet.summary.sourceComponents : packet.summary.sourceSystems} cataloged source ${v4 ? "Components" : "Systems"}`,
     "",
-    "Open `index.html` for the auditor-oriented index. `control-matrix.csv` cross-references criteria, controls, filegrc Evidence, External Evidence, and tests. `source-system-index.csv` identifies the systems of record used to produce External Evidence. `external-evidence-index.csv` lists material that must be delivered or accessed outside this packet. For Type 2, `population-index.csv` records management's population reconciliation and fixed source exports. filegrc records, governed Markdown, fixed attachments, and committed historical versions are included in their respective directories.",
+    v4
+      ? "Open `index.html` for the auditor-oriented index. `control-matrix.csv` cross-references criteria, Controls, filegrc Evidence, Evidence Artifacts, and tests. `source-component-index.csv` identifies the Components used to produce Evidence. `evidence-artifact-index.csv` lists material that must be delivered or accessed outside this packet. For Type 2, `population-index.csv` records management's population reconciliation and fixed source exports. FileGRC records, governed Markdown, fixed attachments, and committed historical versions are included in their respective directories."
+      : "Open `index.html` for the auditor-oriented index. `control-matrix.csv` cross-references criteria, controls, filegrc Evidence, External Evidence, and tests. `source-system-index.csv` identifies the systems of record used to produce External Evidence. `external-evidence-index.csv` lists material that must be delivered or accessed outside this packet. For Type 2, `population-index.csv` records management's population reconciliation and fixed source exports. filegrc records, governed Markdown, fixed attachments, and committed historical versions are included in their respective directories.",
     "",
     "After transfer, enter the packet directory and run `shasum -a 256 -c SHA256SUMS` or `sha256sum -c SHA256SUMS`. The checksum file covers every other packet file.",
     ""
@@ -1635,6 +1663,8 @@ function packetMarkdown(packet) {
 }
 
 function packetHtml(packet) {
+  const v4 = packet.dataModelVersion === "4";
+  const artifactLabel = v4 ? "Evidence Artifact" : "External Evidence";
   const section = (title, body) => `<section><h2>${escapeHtml(title)}</h2>${body}</section>`;
   const links = (items) => items.length
     ? `<ul>${items.map((item) => `<li><a href="records/${encodeURIComponent(item.type)}/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.type)}</small></li>`).join("")}</ul>`
@@ -1652,11 +1682,14 @@ function packetHtml(packet) {
     ? `<table><thead><tr><th>Obligation</th><th>Allowed window</th><th>Status</th></tr></thead><tbody>${packet.obligations.map((item) => `<tr><td>${escapeHtml(item.title)}</td><td>${item.dueWindowStart} through ${item.dueWindowEnd}<br><small>Overdue ${item.overdueOn}</small></td><td>${escapeHtml(item.status)}</td></tr>`).join("")}</tbody></table>`
     : "<p>No recurring occurrences intersect this period.</p>";
   const evidence = packet.evidence.length
-    ? `<table><thead><tr><th>External Evidence</th><th>Source and period</th><th>Controls</th><th>Files</th></tr></thead><tbody>${packet.evidence.map((item) => `<tr><td><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.artifactKind)}</small></td><td>${escapeHtml(item.sourceDescription)}<small>${escapeHtml(item.periodStart || item.collectedOn)}${item.periodEnd ? ` through ${escapeHtml(item.periodEnd)}` : ""}</small></td><td>${item.controlIds.map(escapeHtml).join("<br>") || "None"}</td><td>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("") || "No fixed attachment"}</td></tr>`).join("")}</tbody></table>`
-    : "<p>No External Evidence records were selected.</p>";
-  const sourceSystems = packet.sourceSystems.length
-    ? `<p><a href="source-system-index.csv">Download source system index CSV</a></p><table><thead><tr><th>System of record</th><th>Evidence roles</th><th>Audit relationship</th><th>Evidence</th></tr></thead><tbody>${packet.sourceSystems.map((item) => `<tr><td><a href="records/system/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)}</small></td><td>${item.evidenceSourceKinds.map(escapeHtml).join("<br>") || "No evidence role recorded"}</td><td>${item.inAuditScope ? "In-scope system" : "Evidence source"}</td><td>${item.evidenceIds.length}</td></tr>`).join("")}</tbody></table><p><a href="external-evidence-index.csv">Download external evidence delivery index CSV</a></p>`
-    : "<p>No source systems were cataloged.</p>";
+    ? `<table><thead><tr><th>${artifactLabel}</th><th>Source and period</th><th>Controls</th><th>Files</th></tr></thead><tbody>${packet.evidence.map((item) => `<tr><td><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.artifactKind)}</small></td><td>${escapeHtml(item.sourceDescription)}<small>${escapeHtml(item.periodStart || item.collectedOn)}${item.periodEnd ? ` through ${escapeHtml(item.periodEnd)}` : ""}</small></td><td>${item.controlIds.map(escapeHtml).join("<br>") || "None"}</td><td>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("") || "No fixed attachment"}</td></tr>`).join("")}</tbody></table>`
+    : `<p>No ${artifactLabel} records were selected.</p>`;
+  const packetSources = packet.sourceComponents || packet.sourceSystems || [];
+  const sourceIndex = v4 ? "source-component-index.csv" : "source-system-index.csv";
+  const artifactIndex = v4 ? "evidence-artifact-index.csv" : "external-evidence-index.csv";
+  const sourceSystems = packetSources.length
+    ? `<p><a href="${sourceIndex}">Download source ${v4 ? "Component" : "System"} index CSV</a></p><table><thead><tr><th>${v4 ? "Source Component" : "System of record"}</th><th>Evidence roles</th><th>Audit relationship</th><th>Evidence</th></tr></thead><tbody>${packetSources.map((item) => `<tr><td><a href="records/${encodeURIComponent(item.resourceType)}/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)}</small></td><td>${item.evidenceSourceKinds.map(escapeHtml).join("<br>") || "No evidence role recorded"}</td><td>${item.inAuditScope ? (v4 ? "Supports an in-scope System" : "In-scope system") : "Evidence source"}</td><td>${item.evidenceIds.length}</td></tr>`).join("")}</tbody></table><p><a href="${artifactIndex}">Download ${artifactLabel} delivery index CSV</a></p>`
+    : `<p>No source ${v4 ? "Components" : "Systems"} were cataloged.</p>`;
   const populations = packet.populations.length
     ? `<p><a href="population-index.csv">Download population index CSV</a></p><table><thead><tr><th>Population</th><th>Period and source</th><th>Count</th><th>Reconciliation</th></tr></thead><tbody>${packet.populations.map((item) => `<tr><td><a href="records/audit-population/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.populationKind)}</small></td><td>${escapeHtml(item.periodStart)} through ${escapeHtml(item.periodEnd)}<small>${escapeHtml(item.source || "No authoritative source recorded")}</small></td><td>${item.populationCount ?? "Not recorded"}</td><td>${escapeHtml(item.conclusion || item.notApplicableReason || "Not complete")}</td></tr>`).join("")}</tbody></table>`
     : "<p>No audit populations were selected.</p>";
@@ -1674,7 +1707,7 @@ function packetHtml(packet) {
     }).join("")}</tbody></table>`
     : "<p>No filegrc Evidence records matched this period.</p>";
   const controlCoverage = packet.controlCoverage.length
-    ? `<p><a href="control-matrix.csv">Download control matrix CSV</a></p><table><thead><tr><th>Control</th><th>Status and scope</th><th>Criteria</th><th>filegrc Evidence</th><th>External Evidence</th><th>Tests</th></tr></thead><tbody>${packet.controlCoverage.map((control) => `<tr><td><a href="records/control/${encodeURIComponent(control.id)}.json">${escapeHtml(control.code || control.id)}</a><small>${escapeHtml(control.title)}</small></td><td>${escapeHtml(control.status)}<small>${control.systemIds.map(escapeHtml).join(", ") || "No system scope"}</small></td><td>${control.requirementIds.map(escapeHtml).join("<br>") || "None"}</td><td>${control.operatingRecordIds.length}</td><td>${control.evidenceIds.length}</td><td>${control.tests.length}</td></tr>`).join("")}</tbody></table>`
+    ? `<p><a href="control-matrix.csv">Download control matrix CSV</a></p><table><thead><tr><th>Control</th><th>Status and scope</th><th>Criteria</th><th>filegrc Evidence</th><th>${artifactLabel}</th><th>Tests</th></tr></thead><tbody>${packet.controlCoverage.map((control) => `<tr><td><a href="records/control/${encodeURIComponent(control.id)}.json">${escapeHtml(control.code || control.id)}</a><small>${escapeHtml(control.title)}</small></td><td>${escapeHtml(control.status)}<small>${control.systemIds.map(escapeHtml).join(", ") || "No system scope"}</small></td><td>${control.requirementIds.map(escapeHtml).join("<br>") || "None"}</td><td>${control.operatingRecordIds.length}</td><td>${control.evidenceIds.length}</td><td>${control.tests.length}</td></tr>`).join("")}</tbody></table>`
     : "<p>No controls were selected.</p>";
   const readinessLabel = packet.readiness.status === "delivery-ready" ? "filegrc management checks passed" : "Draft, do not deliver";
   const packetDate = packet.period.basis === "as-of"
@@ -1682,7 +1715,7 @@ function packetHtml(packet) {
     : `${escapeHtml(packet.period.start)} through ${escapeHtml(packet.period.end)}`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Evidence packet</title><style>
 body{font:14px/1.5 system-ui,sans-serif;color:#161825;max-width:1120px;margin:auto;padding:40px;background:#f7f8fc}header,section{background:#fff;border:1px solid #dfe3ef;border-radius:10px;padding:24px;margin:14px 0}h1,h2{margin-top:0}h1{font-size:26px}h2{font-size:17px}ul{padding-left:20px}li{margin:8px 0}small{display:block;color:#656c7e}.attachment{margin-right:10px;font-size:12px}.error{color:#8a2f28}.warning{color:#76500d}.readiness{display:inline-block;padding:5px 9px;border-radius:999px;background:#f7e4e2;color:#7a2520;font-weight:700}.readiness.ready{background:#e2f1e8;color:#245d3b}table{width:100%;border-collapse:collapse}th,td{padding:9px;border:1px solid #dfe3ef;text-align:left;vertical-align:top}code{overflow-wrap:anywhere}dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px}dt{font-weight:700}dd{margin:0}
-</style></head><body><header><p>SOC 2 evidence packet</p><span class="readiness ${packet.readiness.status === "delivery-ready" ? "ready" : ""}">${escapeHtml(readinessLabel)}</span><h1>${packetDate}</h1><p>${escapeHtml(packet.workspace.organizationName)} · revision <code>${escapeHtml(packet.revision.commit || "uncommitted")}</code></p></header>${section("Engagement scope", engagement)}${section("Review status", gaps)}${section("Control coverage", controlCoverage)}${section("Systems of record", sourceSystems)}${packet.period.basis === "period" ? section("Management population reconciliation", populations) : ""}${packet.period.basis === "period" ? section("Recurring obligation coverage", obligations) : ""}${packet.period.basis === "period" ? section("Event workflow coverage", eventRuns) : ""}${section("Policies", links(packet.policies))}${section("filegrc Evidence", filegrcRecords)}${section("External Evidence", evidence)}${section("Integrity and history", "<p>Verify all transferred files with <code>SHA256SUMS</code>. Committed prior versions are under <code>history/</code> with an index that records their source paths and Git metadata.</p>")}</body></html>`;
+</style></head><body><header><p>SOC 2 evidence packet</p><span class="readiness ${packet.readiness.status === "delivery-ready" ? "ready" : ""}">${escapeHtml(readinessLabel)}</span><h1>${packetDate}</h1><p>${escapeHtml(packet.workspace.organizationName)} · revision <code>${escapeHtml(packet.revision.commit || "uncommitted")}</code></p></header>${section("Engagement scope", engagement)}${section("Review status", gaps)}${section("Control coverage", controlCoverage)}${section(v4 ? "Source Components" : "Systems of record", sourceSystems)}${packet.period.basis === "period" ? section("Management population reconciliation", populations) : ""}${packet.period.basis === "period" ? section("Recurring obligation coverage", obligations) : ""}${packet.period.basis === "period" ? section("Event workflow coverage", eventRuns) : ""}${section("Policies", links(packet.policies))}${section("filegrc Evidence", filegrcRecords)}${section(v4 ? "Evidence Artifacts" : "External Evidence", evidence)}${section("Integrity and history", "<p>Verify all transferred files with <code>SHA256SUMS</code>. Committed prior versions are under <code>history/</code> with an index that records their source paths and Git metadata.</p>")}</body></html>`;
 }
 
 async function writePacketFile(output, relativePath, source, files) {

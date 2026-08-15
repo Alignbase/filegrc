@@ -1,17 +1,21 @@
 export const RESOURCE_INSTRUCTIONS = {
+  program: "Define one management compliance or assurance Program with its goal, bounded Systems, selected Frameworks, Requirement applicability decisions, Controls, owners, risk method, and candidate period.",
   person: "Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.",
   appointment: "Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.",
   team: "Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.",
-  system: "Catalog all in-scope systems for the program. Treat anything that operates a control or produces evidence as a System, including software provided by a vendor (like HR software). Set vendorId on each vendor-provided System; the Vendor’s System list is derived. For every authoritative evidence source, set its source roles, name current access owners, and write repeatable retrieval instructions in Record Markdown before implementing the linked Controls.",
-  vendor: "Catalog the companies that provide in-scope software or services. Link each vendor-provided System with the System’s vendorId.",
+  system: "Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and continuity objectives.",
+  component: "Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.",
+  vendor: "Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.",
+  classification: "Define an ordered information-handling category used by inventory and Evidence Artifacts.",
+  "information-type": "Define a stable category of information and its default Classification, then link it from Systems, Components, and Vendors.",
   framework: "Confirm the criteria framework and version used for the program.",
-  requirement: "Review each criterion, decide whether it applies, and record the reason for that decision.",
+  requirement: "Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.",
   commitment: "Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.",
   policy: "Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.",
   document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
-  control: "Finish each applicable starter control with the procedure people will follow, its owner, scope, operation pattern, governing Policy and Requirement mappings, authoritative evidence source Systems, and implementation date. Put calendar and event schedules in Obligations. Confirm that each source is active, has the required evidence role and access owners, and includes repeatable retrieval instructions in Record Markdown.",
+  control: "Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.",
   "complementary-control": "Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.",
-  evidence: "Create External Evidence when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source System, link the Controls and operating record it supports, retain the fixed artifact or reference, and have another person verify it before audit use.",
+  evidence: "Create an Evidence Artifact when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source Component, link the Controls and operating records it supports, retain the fixed artifact or reference, and have another person verify it before audit use.",
   "risk-assessment": "Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.",
   risk: "Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.",
   obligation: "Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.",
@@ -21,7 +25,7 @@ export const RESOURCE_INSTRUCTIONS = {
   exception: "Record and approve any time-limited departure from a policy or control before the departure begins.",
   asset: "Keep the inventory of important devices, software, media, and records current, including ownership, custody, and status.",
   "vendor-review": "Document due diligence before relying on a provider, then repeat the review on schedule or after a material change.",
-  "access-grant": "Record each person’s or service account’s access to a System, including approval, provisioning, changes, and removal.",
+  "access-grant": "Record each person’s or service account’s access to a Component, including approval, provisioning, changes, and removal.",
   "access-review": "Review access on schedule, record each decision, and assign any access changes that result.",
   "service-account": "Catalog non-human accounts that need separate tracking, including their owner, purpose, System, privilege, and expiry.",
   training: "Maintain the training content people must complete, along with its audience, timing, and passing requirements.",
@@ -34,30 +38,34 @@ export const RESOURCE_INSTRUCTIONS = {
   exercise: "Record each incident or continuity exercise, including its objective, participants, result, and follow-up.",
   finding: "Create a Finding only for a confirmed gap that needs separate remediation tracking. Keep the report details in the source record’s Markdown, then assign the Finding, set its due date, and verify closure.",
   "action-item": "Create an Action Item only when follow-up needs its own assignee, deadline, and completion proof. Point it to the record that created the work, then work it from Work Queue.",
-  audit: "Create this record after engaging the CPA firm, then record the agreed scope, criteria, Systems, and report period. Control Tests and External Evidence link back with auditId or auditIds.",
+  audit: "Create this record after engaging the CPA firm, then select the Program and record the agreed scope, criteria, Systems, subservice treatments, and report period. Control Tests and Evidence Artifacts link back with auditId or auditIds.",
   "audit-request": "When FileGRC is the approved request tracker, record each request from the audit team, assign an owner and due date, and link the approved response and evidence.",
   "data-request": "Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.",
   "control-test": "Record a management Control Test only when management performs and reviews one. The CPA firm records its own independent testing separately.",
-  "audit-population": "Record each complete Type 2 population with its source System, fixed export, query, count, and reconciliation."
+  "audit-population": "Record each complete Type 2 population with its source Component, fixed export, query, count, and reconciliation."
 };
 
 export const RESOURCE_PAGE_SUMMARIES = {
-  person: "Confirm who participates in the program.",
-  appointment: "Assign named program authority to the right people.",
-  team: "Confirm shared program responsibilities and membership.",
-  framework: "Confirm the SOC 2 criteria framework.",
-  requirement: "Decide which criteria apply to the service.",
-  commitment: "Record customer promises that affect scope or controls.",
-  vendor: "Identify providers that affect the service or its controls.",
-  system: "Define the service boundary and the Systems that operate controls or produce evidence.",
-  policy: "Turn starter policies into the organization’s approved rules.",
-  document: "Tailor and approve the plans and governed documents the program needs.",
-  control: "Define how each applicable control works and where its evidence comes from.",
+  person: "Confirm who works on the program.",
+  appointment: "Assign named authority.",
+  team: "Confirm shared owners and members.",
+  program: "Choose the goal, scope, criteria, controls, owners, and risk method.",
+  framework: "Confirm the SOC 2 framework.",
+  requirement: "Decide which SOC 2 criteria apply.",
+  commitment: "Record customer promises that affect scope.",
+  vendor: "List material external providers.",
+  system: "Define the service boundary.",
+  component: "Connect each material Component to a System.",
+  classification: "Define handling levels.",
+  "information-type": "Define information categories.",
+  policy: "Adapt and approve starter policies.",
+  document: "Adapt and approve plans.",
+  control: "Describe each Control and its evidence source.",
   "complementary-control": "Record customer or provider responsibilities, or confirm there are none.",
-  audit: "Record the real CPA engagement and agreed report scope.",
-  "audit-request": "Track approved fieldwork requests and responses.",
-  "audit-population": "Prepare complete Type 2 populations for sampling.",
-  "control-test": "Record management testing when management performs it."
+  audit: "Record the CPA engagement and scope.",
+  "audit-request": "Track fieldwork requests and responses.",
+  "audit-population": "Prepare Type 2 populations for sampling.",
+  "control-test": "Record management testing when it occurs."
 };
 
 export const PROGRAM_PATH = [
@@ -66,22 +74,24 @@ export const PROGRAM_PATH = [
     number: 1,
     title: "Define Scope",
     description: "Ownership, criteria, and service boundary",
-    summary: "Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.",
+    summary: "Name the owners, criteria, service, Systems, and providers in scope.",
     sections: [
       { id: "ownership", title: "Program Ownership", description: "Confirm the people, appointments, and teams that own, approve, review, and operate the program.", steps: ["Confirm the initial program lead’s actual job title and the separate Policy Owner Appointment.", "Add the organization’s real appointments, reviewers, and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "appointment", "team"], defaultOpen: true },
-      { id: "criteria", title: "Criteria", description: "Confirm the criteria used for the program, resolve whether each requirement applies, and record customer commitments that shape the service or control design.", steps: ["Review the included Security criteria references.", "Mark each requirement applicable or not applicable with a rationale.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["framework", "requirement", "commitment"], defaultOpen: true },
-      { id: "boundary", title: "Service Boundary", description: "Record the service and its supporting technology and providers. An application or platform is a System because it operates controls or produces evidence; the company providing it is a Vendor because contracts, due diligence, and supplier risk belong to that relationship.", steps: ["Create a Vendor record for each material provider.", "Create System records for the customer-facing service and each supporting application, platform, or internal system that is in scope or produces evidence, then connect vendor-provided Systems to their providers.", "Assign owners, classification, and dependencies, then select the program-scope Systems on the Workspace.", "For Systems that produce control evidence, add their evidence source roles and access owners, then write the exact retrieval procedure in Record Markdown before implementing the linked Controls."], types: ["vendor", "system"], defaultOpen: false }
+      { id: "criteria", title: "Program and Criteria", description: "Define the Program, confirm its Frameworks, record Program-scoped Requirement applicability, and connect customer commitments that shape the System or Control design.", steps: ["Confirm the Program goal, owners, risk method, and candidate period.", "Review the included Security criteria references and record each applicability decision on the Program.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["program", "framework", "requirement", "commitment"], defaultOpen: true },
+      { id: "boundary", title: "System Boundary", description: "Start with the bounded System. Add Components that materially deliver the service, support Controls, produce authoritative Evidence, or support relevant operations. Keep Vendor relationships and specific Assets separate.", steps: ["Create the complete bounded System and select it on the Program.", "Add only relevant Components, with a role and rationale for each System use.", "Create Vendors for material external provider relationships and link supplied Components when factual.", "Normalize Information Types and Classifications used by the System, Components, Vendors, Risks, and Evidence Artifacts."], types: ["system", "component", "vendor", "classification", "information-type"], defaultOpen: false }
     ],
-    resourceTypes: ["person", "appointment", "team", "framework", "requirement", "commitment", "vendor", "system"],
+    resourceTypes: ["person", "appointment", "team", "program", "framework", "requirement", "commitment", "system", "component", "vendor", "classification", "information-type"],
     commands: [
       "filegrc setup",
       "filegrc guide person --json",
       "filegrc guide appointment --json",
       "filegrc guide system --json",
+      "filegrc guide component --json",
       "filegrc review-collection person --scaffold",
       "filegrc review-collection framework --scaffold",
       "filegrc review-collection vendor --scaffold",
       "filegrc review-collection system --scaffold",
+      "filegrc review-collection component --scaffold",
       "filegrc list system --json"
     ]
   },
@@ -90,7 +100,7 @@ export const PROGRAM_PATH = [
     number: 2,
     title: "Approve Policies",
     description: "Tailor, review, approve, and adopt",
-    summary: "Turn the starter policy set into approved rules that match how the organization works.",
+    summary: "Adapt and approve the starter policies.",
     sections: [
       { id: "library", title: "Policy Library", description: "Review, approve, and activate policies and governed plans without treating starter text as adopted practice.", steps: ["Review policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval and effective dates before changing the status to active."], types: ["policy", "document"], defaultOpen: true }
     ],
@@ -106,9 +116,9 @@ export const PROGRAM_PATH = [
     number: 3,
     title: "Implement Controls",
     description: "Finish controls and their evidence sources",
-    summary: "Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.",
+    summary: "Describe each Control and connect its evidence source.",
     sections: [
-      { id: "catalog", title: "Control Catalog", description: "Finish the starter controls and their authoritative evidence sources, record applicable complementary controls, and see whether filegrc tracks operation through Work Queue or evidence records.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add system scope, and map the exact authoritative evidence source Systems.", "Create or confirm every calendar and event schedule as an Obligation.", "Confirm each source System is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Resolve every incomplete evidence-family check before marking the Controls implemented.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
+      { id: "catalog", title: "Control Catalog", description: "Finish the starter Controls and their authoritative evidence sources, record applicable complementary controls, and see whether FileGRC tracks operation through Work Queue or operating records.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components.", "Create or confirm every calendar and event schedule as an Obligation.", "Confirm each source Component is active, has an evidence-source role and rationale in the Control's System scope, has current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Resolve every incomplete evidence-family check before marking the Controls implemented.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
     ],
     resourceTypes: ["control", "complementary-control"],
     commands: [
@@ -125,11 +135,11 @@ export const PROGRAM_PATH = [
     number: 4,
     title: "Operate the Program",
     description: "Run the work and retain dated proof",
-    summary: "Run scheduled and event-driven work, maintain risk, and retain dated evidence throughout the operating period.",
+    summary: "Complete scheduled and event work. Keep dated proof.",
     sections: [
       { id: "risk", title: "Risk", description: "Maintain the program’s risk assessments and risk register as the service, threats, suppliers, and control needs change.", steps: ["Complete and approve risk assessments on schedule and after material changes.", "Record risks that need treatment, acceptance, or ongoing tracking.", "Add or update controls when the assessment identifies a new or changed response."], types: ["risk-assessment", "risk"], defaultOpen: true },
       { id: "queue", title: "Work Queue", description: "Complete recurring work, Policy Event tasks, and assigned follow-up within their required windows.", steps: ["Review proposed work while policies are drafts.", "Complete due work within its allowed window and link dated proof.", "Start Policy Events when hiring, departures, incidents, or material changes occur; every other open Action Item appears here automatically."], types: ["obligation", "obligation-event", "data-request"], utility: "obligation-board", defaultOpen: true },
-      { id: "evidence", title: "External Evidence", description: "Create records only for real exports, reports, screenshots, signed files, or approved external references collected during operation.", steps: ["Create External Evidence when the artifact exists or an operating record needs fixed supporting proof.", "Select the authoritative source System, link the Controls and source operating record, and retain the fixed attachment or approved reference.", "Record the collector and classification, then have another person verify the evidence before audit use."], types: ["evidence"], defaultOpen: true },
+      { id: "evidence", title: "Evidence Artifacts", description: "Create records only for real exports, reports, screenshots, signed files, or approved external references collected during operation.", steps: ["Create an Evidence Artifact when the artifact exists or an operating record needs fixed supporting proof.", "Select the authoritative source Component, link the Controls and source operating record, and retain the fixed attachment or approved reference.", "Record the collector and Classification, then have another person verify the artifact before audit use."], types: ["evidence"], defaultOpen: true },
       { id: "governance", title: "Governance", description: "Record formal reviews, oversight meetings, and approved policy or control exceptions.", steps: ["Complete scheduled policy reviews and oversight meetings.", "Record decisions, attendees, follow-up work, and evidence.", "Approve time-bound exceptions before the departure begins."], types: ["policy-review", "meeting", "exception"], defaultOpen: false },
       { id: "inventories", title: "Assets and Vendors", description: "Maintain the asset inventory and recurring reviews of supplier relationships during operation.", steps: ["Keep ownership, custody, status, and lifecycle current for important assets.", "Perform vendor reviews on schedule and after material supplier changes.", "Link fixed reports and review evidence to the operating records."], types: ["asset", "vendor-review"], defaultOpen: false },
       { id: "access-training", title: "Access and Training", description: "Inventory service accounts before recording access decisions, periodic reviews, assignments, and acknowledgements.", steps: ["Catalog service accounts that need separate tracking.", "Preserve access approvals and removals as they occur, then complete periodic access reviews and resolve exceptions.", "Assign training and retain acknowledgement evidence for the exact content revision."], types: ["service-account", "access-grant", "access-review", "training", "attestation"], defaultOpen: false },
@@ -178,7 +188,7 @@ export const PROGRAM_PATH = [
         title: "Work Queue",
         summary: "Complete scheduled, event-driven, and assigned work by its due date.",
         instructions: "Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.",
-        use: "See proposed, upcoming, blocked, due, and overdue policy work together with every open Action Item. Continuous and per-transaction controls still operate in their source Systems and need dated operating records or evidence.",
+        use: "See proposed, upcoming, blocked, due, and overdue policy work together with every open Action Item. Continuous and per-transaction Controls still operate through their Components and need dated operating records or Evidence.",
         policyBasis: "Effective policies and implemented linked controls activate reusable obligations. Policy Events and source records create owned Action Items. Each occurrence or task retains its own deadline, completion record, and evidence.",
         commands: [
           "filegrc obligations --json",
@@ -203,18 +213,18 @@ export const PROGRAM_PATH = [
     number: 5,
     title: "Audit",
     description: "Firm, formal period, fieldwork, and report",
-    summary: "Set up the CPA engagement, support fieldwork, and prepare the final evidence packet.",
+    summary: "Track the CPA engagement, fieldwork, and evidence packet.",
     sections: [
       { id: "engagement", title: "Engagement", description: "Record the actual CPA engagement, formal scope and dates, requests, and management responses.", steps: ["Create the Audit after the CPA firm is engaged.", "Record the firm-agreed type, scope, systems, criteria, and dates.", "Track incoming requests and approved response material."], types: ["audit", "audit-request"], defaultOpen: true },
-      { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Review dated filegrc Evidence and verified External Evidence for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and findings.", "Build the packet from a clean Git revision; it includes filegrc records, Markdown, External Evidence, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
+      { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Review dated FileGRC operating records and verified Evidence Artifacts for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and Findings.", "Build the packet from a clean Git revision; it includes FileGRC records, Markdown, Evidence Artifacts, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
     ],
     resourceTypes: ["audit", "audit-request", "audit-population", "control-test"],
     utilities: [
       {
         id: "audit-packet",
         title: "Audit Evidence & Packet",
-        summary: "Review fieldwork readiness and build the indexed evidence packet.",
-        instructions: "Review filegrc Evidence and External Evidence for the formal period, complete engagement preparation, and build the indexed audit packet.",
+        summary: "Review readiness and build the evidence packet.",
+        instructions: "Review FileGRC operating records and Evidence Artifacts for the formal period, complete engagement preparation, and build the indexed audit packet.",
         use: "Prepare management documents and populations, answer fieldwork requests, review both evidence paths, and compile a delivery bound to a clean Git revision.",
         policyBasis: "Management prepares the scoped records, evidence, populations, assertions, and responses. The CPA firm selects samples, evaluates evidence and exceptions, and issues the report.",
         commands: ["filegrc audit-readiness AUDIT_ID --json", "filegrc evidence-packet --audit AUDIT_ID --preview --json"]
@@ -233,7 +243,8 @@ export const PROGRAM_PATH = [
 
 export function buildAgentProgramPath(model) {
   return PROGRAM_PATH.map((stage) => {
-    const programResourceTypes = [...stage.resourceTypes, ...(stage.supportingResourceTypes || [])];
+    const programResourceTypes = [...stage.resourceTypes, ...(stage.supportingResourceTypes || [])]
+      .filter((type) => model.resources[type]);
     const resourcePages = programResourceTypes.map((type, index) => {
       const definition = model.resources[type];
       return {

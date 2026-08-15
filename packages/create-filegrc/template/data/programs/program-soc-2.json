@@ -1,0 +1,37 @@
+{
+  "id": "program-soc-2",
+  "type": "program",
+  "title": "{{program_title}}",
+  "status": "planned",
+  "assuranceGoal": "none",
+  "systemIds": [],
+  "frameworkIds": [],
+  "requirementApplicability": [],
+  "controlIds": [],
+  "ownerIds": [
+    "appointment-policy-owner"
+  ],
+  "riskMethodology": {
+    "method": "5x5 likelihood and impact",
+    "likelihoodScale": [
+      "Rare",
+      "Unlikely",
+      "Possible",
+      "Likely",
+      "Almost certain"
+    ],
+    "impactScale": [
+      "Negligible",
+      "Minor",
+      "Moderate",
+      "Major",
+      "Severe"
+    ],
+    "ratingBands": {
+      "low": "1-4",
+      "medium": "5-9",
+      "high": "10-16",
+      "critical": "17-25"
+    }
+  }
+}

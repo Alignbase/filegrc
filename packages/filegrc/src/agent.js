@@ -2,6 +2,7 @@ import { createResourceId } from "./id.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { RESOURCE_INSTRUCTIONS, resourceProgramContext } from "./program-path.js";
 import { assessCollectionReview } from "./collection-review.js";
+import { resolveProgram } from "./program.js";
 
 const STARTING_STATUS_ORDER = [
   "draft",
@@ -29,7 +30,7 @@ export function listResourceTypes(model) {
 export function buildAgentGuide(loaded, type, options = {}) {
   const definition = loaded.model.resources[type];
   if (!definition) throw new Error(`Unknown resource type "${type}".`);
-  const collectionReview = assessCollectionReview(loaded, type);
+  const collectionReview = assessCollectionReview(loaded, type, { programId: options.programId });
   const fields = { ...loaded.model.commonFields, ...definition.fields };
   const required = new Set([
     ...Object.entries(loaded.model.commonFields)
@@ -115,12 +116,18 @@ export function buildAgentGuide(loaded, type, options = {}) {
       recommendedMarkdown.length
         ? "Keep model fields in JSON and use the recommended Markdown companion for the detailed work, decisions, results, exceptions, and follow-up that apply to this record."
         : "Keep the current facts and lifecycle state in JSON. Add optional Record Markdown only when the model fields cannot explain the record clearly.",
+      ...(type === "program" && String(loaded.model.modelVersion) === "4"
+        ? ["Review Requirement applicability with npx filegrc review-applicability --type requirement --scaffold, then preview and apply the reviewed decisions as one validated batch."]
+        : []),
       "Run npx filegrc validate, review the full Git diff, and commit the JSON, Markdown, and attachments together with a message that explains why the record changed."
     ],
     completionChecks: [
       "Required and status-dependent fields are complete, and the lifecycle status matches the facts.",
       "Every relationship resolves to the intended existing record.",
       "Dates describe the business event in the workspace time zone, not the file edit time.",
+      ...(type === "program" && String(loaded.model.modelVersion) === "4"
+        ? ["Every selected Requirement has an applicable or not-applicable decision reviewed against the current Program scope."]
+        : []),
       ...(recommendedMarkdown.length
         ? ["Required or recommended Markdown explains the work, decisions, results, exceptions, and follow-up that apply."]
         : ["The structured fields state the current fact clearly; optional Record Markdown is added only when needed."]),
@@ -172,7 +179,7 @@ export function scaffoldResourceMutation(loaded, type, title, options = {}) {
       record[name] = scaffoldValue(name, field, loaded.model);
     }
   }
-  applyModelScaffoldDefaults(record, loaded);
+  applyModelScaffoldDefaults(record, loaded, options);
 
   const slots = markdownEntries(loaded.model, record).filter((slot) => (
     slot.required
@@ -189,7 +196,7 @@ export function scaffoldResourceMutation(loaded, type, title, options = {}) {
   };
 }
 
-function applyModelScaffoldDefaults(record, loaded) {
+function applyModelScaffoldDefaults(record, loaded, options = {}) {
   if (record.type === "appointment") {
     const normalizedTitle = record.title.toLowerCase();
     const match = Object.entries(loaded.model.appointmentTemplates || {}).find(([kind, template]) => (
@@ -203,14 +210,18 @@ function applyModelScaffoldDefaults(record, loaded) {
     return;
   }
   if (record.type === "audit") {
+    const program = resolveProgram(loaded, options.programId);
     const kind = {
       "soc-2-type-1": "soc-2-type-1",
       "soc-2-type-2": "soc-2-type-2"
-    }[loaded.workspace?.assuranceGoal];
+    }[program?.assuranceGoal];
     if (kind) record.auditKind = kind;
     for (const field of ["frameworkIds", "systemIds", "requirementIds", "controlIds"]) {
-      if (loaded.workspace?.[field]?.length) record[field] = [...loaded.workspace[field]];
+      if (field === "requirementIds" && String(loaded.model.modelVersion) === "4") {
+        record[field] = (program.requirementApplicability || []).filter(({ decision }) => decision === "applicable").map(({ requirementId }) => requirementId);
+      } else if (program?.[field]?.length) record[field] = [...program[field]];
     }
+    if (program.type === "program") record.programId = program.id;
     const programOwner = loaded.resources.find((candidate) => (
       candidate.type === "appointment"
       && candidate.appointmentKind === "program-lead"
@@ -280,6 +291,7 @@ function allowedValues(model, field) {
 
 function scaffoldValue(name, field = {}, model) {
   if (field.const !== undefined) return field.const;
+  if (field.default !== undefined) return structuredClone(field.default);
   if (name === "status" && field.values) {
     return STARTING_STATUS_ORDER.find((value) => field.values.includes(value)) ?? field.values[0] ?? null;
   }

@@ -7,12 +7,16 @@ import { writeJson } from "./helpers.js";
 
 const TITLES = {
   workspace: "Example Engineering SOC 2 Program",
+  program: "Example SOC 2 Program",
   "renderer-settings": "Renderer settings",
   person: "Jordan Lee",
   appointment: "Chief Information Security Officer",
   "service-account": "Deployment automation",
   team: "Risk and Security Committee",
   system: "Production application",
+  component: "Production platform",
+  classification: "Confidential",
+  "information-type": "Customer records",
   asset: "Customer data store",
   document: "Business Continuity Plan",
   evidence: "Quarterly access review screenshot",
@@ -54,7 +58,11 @@ const STATUS_OVERRIDES = {
   appointment: "active",
   "service-account": "active",
   team: "active",
+  program: "active",
   system: "active",
+  component: "active",
+  classification: "active",
+  "information-type": "active",
   asset: "active",
   document: "active",
   evidence: "verified",
@@ -264,10 +272,34 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
   set("policyIds", [ids.policy]);
   set("controlIds", [ids.control]);
   set("systemIds", [ids.system]);
+  set("componentIds", [ids.component]);
   set("evidenceIds", [ids.evidence]);
   set("riskIds", [ids.risk]);
   set("attendeeIds", [ids.person]);
   if (type === "document") set("approverIds", [ids.independentApprover]);
+  if (type === "program") {
+    set("systemIds", [ids.system]);
+    set("frameworkIds", [ids.framework]);
+    set("controlIds", [ids.control]);
+    set("ownerIds", [ids.appointment]);
+    set("requirementApplicability", [{
+      requirementId: ids.requirement,
+      decision: "applicable",
+      rationale: "The criterion applies to the example Program scope.",
+      reviewedByIds: [ids.person],
+      reviewedOn: "2026-06-30",
+      scopeRevision: "example-scope-revision"
+    }]);
+  }
+  if (type === "component") {
+    record.systemUses = [{
+      systemId: ids.system,
+      roles: ["service-delivery", "control-support", "evidence-source"],
+      rationale: "The Component delivers the example System, supports its Control, and produces authoritative Evidence."
+    }];
+    set("evidenceSourceKinds", [model.evidenceSourceFamilies[0].sourceKinds[0]]);
+    set("evidenceOwnerIds", [ids.person]);
+  }
 }
 
 async function writeRecord(root, definition, record, model) {

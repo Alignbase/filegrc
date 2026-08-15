@@ -43,6 +43,7 @@ import {
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+import { resolveProgram } from "./program.js";
 import { applyReconciliation, planReconciliation } from "./reconciliation.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { effectiveResourceStatus } from "./resource-status.js";
@@ -130,7 +131,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const output = flags.summary && !flags.preview ? summarizeSetupResult(result) : result;
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else if (flags.preview) {
-      console.log(`Setup preview: ${result.changes.system} system ${result.system.id}; update workspace target to ${result.target.assuranceGoal}.`);
+      console.log(`Setup preview: ${result.changes.system} System ${result.system.id}; update the assurance target to ${result.target.assuranceGoal}.`);
       console.log("No controls will be linked and no evidence records will be created.");
     }
     else {
@@ -139,8 +140,8 @@ export async function runCli(argv = process.argv.slice(2)) {
       if (result.draft) {
         console.log("Planned and in scope means selected for scope review, not approved or active.");
       }
-      console.log(`Target: ${result.workspace.assuranceGoal}`);
-      console.log("Next: finish Step 1 by confirming people, criteria, commitments, vendors, and in-scope systems. Run npx filegrc program-path --next --json.");
+      console.log(`Target: ${(result.program || result.workspace).assuranceGoal}`);
+      console.log("Next: finish Step 1 by confirming people, criteria, commitments, bounded Systems, Components, and Vendors. Run npx filegrc program-path --next --json.");
     }
     return output;
   }
@@ -176,11 +177,15 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "migrate") {
     const targetModel = String(flags["to-model"] || "");
-    if (!["2", "3"].includes(targetModel)) throw new Error("Pass --to-model 2 or --to-model 3.");
+    if (!["2", "3", "4"].includes(targetModel)) throw new Error("Pass --to-model 2, --to-model 3, or --to-model 4.");
+    const systemDecisions = flags.decisions
+      ? JSON.parse(await readFile(resolve(String(flags.decisions)), "utf8"))
+      : undefined;
     const options = {
       jobTitle: flags["job-title"],
       startsOn: flags["starts-on"],
-      targetModelVersion: targetModel
+      targetModelVersion: targetModel,
+      systemDecisions: systemDecisions?.systemDecisions || systemDecisions
     };
     const plan = await planModelMigration(root, options);
     if (!flags.preview && plan.sourceModelVersion !== plan.targetModelVersion && !flags.yes) {
@@ -228,15 +233,17 @@ export async function runCli(argv = process.argv.slice(2)) {
       else printAgentOverview(result);
       return result;
     }
-    const result = buildAgentGuide(loaded, type, { id: flags.id });
+    const result = buildAgentGuide(loaded, type, { id: flags.id, programId: flags.program });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else printAgentGuide(result);
     return result;
   }
   if (command === "program-path") {
     const loaded = await loadWorkspace(root);
-    const readiness = await assessProgramReadiness(loaded, { asOf: flags["as-of"] });
     const auditId = positionals[0] || flags.audit;
+    const audit = auditId ? loaded.resources.find(({ id, type }) => id === auditId && type === "audit") : null;
+    const programId = flags.program || audit?.programId;
+    const readiness = await assessProgramReadiness(loaded, { asOf: flags["as-of"], programId });
     const auditReadiness = auditId ? await assessAuditPreparation(loaded, { auditId }) : null;
     const result = buildProgramPathResult(loaded.model, readiness, auditReadiness);
     const output = selectProgramPathOutput(result, flags);
@@ -247,6 +254,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "workflow") {
     const result = await assessWorkflow(root, {
       auditId: positionals[0] || flags.audit,
+      programId: flags.program,
       asOf: flags["as-of"],
       through: flags.through,
       includeComplete: Boolean(flags.complete)
@@ -264,6 +272,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       : undefined;
     const result = await assessWorkflow(root, {
       auditId: positionals[0] || flags.audit,
+      programId: flags.program,
       asOf: flags["as-of"],
       through: flags.end || flags.through,
       coverage
@@ -292,10 +301,11 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "milestone-check") {
     const loaded = await loadWorkspace(root);
-    const result = await assessWorkflow(loaded, { asOf: flags["as-of"] });
-    const target = loaded.workspace?.assuranceGoal === "none"
+    const result = await assessWorkflow(loaded, { asOf: flags["as-of"], programId: flags.program });
+    const program = resolveProgram(loaded, flags.program);
+    const target = program?.assuranceGoal === "none"
       ? "structuralValidity"
-      : loaded.workspace?.candidateCoverage
+      : program?.candidateCoverage
         ? "periodHealth"
         : "evidenceReadiness";
     const output = {
@@ -312,7 +322,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "scaffold") {
     const loaded = await loadWorkspace(root);
     const type = positionals[0];
-    const result = scaffoldResourceMutation(loaded, type, flags.title, { id: flags.id });
+    const result = scaffoldResourceMutation(loaded, type, flags.title, { id: flags.id, programId: flags.program });
     console.log(JSON.stringify(result, null, 2));
     return result;
   }
@@ -333,7 +343,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const output = flags.workflow
       ? {
           records,
-          workflow: await assessWorkflow(loaded, { asOf })
+          workflow: await assessWorkflow(loaded, { asOf, programId: flags.program })
         }
       : records;
     if (flags.json) console.log(JSON.stringify(output, null, 2));
@@ -394,7 +404,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "program-readiness") {
     const loaded = await loadWorkspace(root);
-    const result = await assessProgramReadiness(loaded, { asOf: flags["as-of"] });
+    const result = await assessProgramReadiness(loaded, { asOf: flags["as-of"], programId: flags.program });
     const output = flags.summary ? summarizeProgramReadiness(result) : result;
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else if (flags.summary) {
@@ -427,7 +437,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "evidence-map") {
     const loaded = await loadWorkspace(root);
-    const result = await assessEvidenceMap(loaded, { asOf: flags["as-of"] });
+    const result = await assessEvidenceMap(loaded, { asOf: flags["as-of"], programId: flags.program });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`${result.status.toUpperCase()}: ${result.counts.complete} mapped, ${result.counts.action} need action`);
@@ -435,11 +445,11 @@ export async function runCli(argv = process.argv.slice(2)) {
         console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
         if (item.status !== "action") continue;
         if (item.sourceKinds?.length) console.log(`  Source role: ${item.sourceKinds.join(" or ")}`);
-        for (const source of item.sourceSystemChecks || []) {
+        for (const source of item.sourceComponentChecks || item.sourceSystemChecks || []) {
           const missing = Object.entries(source.checks)
             .filter(([, passed]) => !passed)
             .map(([name]) => evidenceSourceCheckName(name));
-          if (missing.length) console.log(`  ${source.sourceSystemId}: ${missing.join(", ")}`);
+          if (missing.length) console.log(`  ${source.sourceComponentId || source.sourceSystemId}: ${missing.join(", ")}`);
         }
         if (item.commands?.length) console.log(`  Next: ${item.commands[0]}`);
       }
@@ -989,15 +999,15 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
-  filegrc migrate --to-model <2|3> [--preview] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
+  filegrc migrate --to-model <2|3|4> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
-  filegrc guide [resource-type] [--id resource-id] [--json]
+  filegrc guide [resource-type] [--id resource-id] [--program program-id] [--json]
   filegrc program-path [audit-id] [--as-of YYYY-MM-DD] [--summary|--next|--current] [--json]
   filegrc workflow [audit-id] [--as-of YYYY-MM-DD] [--through YYYY-MM-DD] [--complete] [--require-ready] [--json]
   filegrc period-health [audit-id] [--start YYYY-MM-DD --end YYYY-MM-DD] [--as-of YYYY-MM-DD] [--require-healthy] [--json]
   filegrc milestone-check [--as-of YYYY-MM-DD] [--json]
-  filegrc scaffold <resource-type> --title text [--id resource-id]
+  filegrc scaffold <resource-type> --title text [--id resource-id] [--program program-id]
   filegrc list [resource-type] [--workflow] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
@@ -1076,15 +1086,19 @@ Options:
   }
   if (command === "migrate") {
     console.log(`Usage:
-  filegrc migrate --to-model <2|3> [options]
+  filegrc migrate --to-model <2|3|4> [options]
 
 Upgrade a workspace through an explicit, reviewable model boundary. Model v1
-workspaces migrate to v2 first. Model v2 workspaces migrate to v3 with planned
+workspaces migrate to v2 first. Model v2 workspaces migrate to v3, then v4. v4 separates
+the repository Workspace, management Program, bounded Systems, operational Components,
+specific Assets, Vendors, normalized information, and Evidence Artifacts. v3 migration
+previews may require a decisions JSON file for ambiguous old Systems. v3 still creates planned
 core Appointments, removal of obsolete manual page state, classified review work,
 and dataModelVersion changed last. The command writes no Git commit.
 
 Options:
-  --to-model <version>  Required target model; 2 for legacy v1 migration, 3 for the active model
+  --to-model <version>  Required target model; migrations must run in order through 2, 3, and 4
+  --decisions <path>    v4 JSON object keyed by old System ID with system/component decisions
   --preview             Show the complete atomic record plan without writing
   --job-title <title>   Actual job title for the former Policy Owner seed person
   --starts-on <date>    Effective date of a new Policy Owner Appointment
@@ -1094,7 +1108,7 @@ Options:
   --help                Show this help
 
 Start with:
-  npx filegrc migrate --to-model 3 --preview --json`);
+  npx filegrc migrate --to-model 4 --preview --json`);
     return;
   }
   if (command === "program-readiness") {
@@ -1106,6 +1120,7 @@ controls, and mapped every selected control to a configured authoritative eviden
 source. No audit ID or CPA firm is required.
 
 Options:
+  --program <id>     Program to assess when more than one active Program exists
   --as-of <date>     Evaluate effective dates and obligations on YYYY-MM-DD
   --require-ready    Exit with code 2 unless the Evidence Ready gate passes
   --summary          Omit item details and print stage counts and next actions
@@ -1124,6 +1139,7 @@ deterministic Work Items, and one recommended next action.
 
 Options:
   --audit <id>       Limit audit assessments to one engagement
+  --program <id>     Program to assess when no Audit supplies the Program
   --as-of <date>     Evaluate on YYYY-MM-DD
   --through <date>   Include scheduled work through YYYY-MM-DD
   --complete         Include completed Work Items
@@ -1143,6 +1159,7 @@ and current readiness state. Pass an audit ID to include Step 5 status.
 
 Options:
   --audit <id>       Audit record to use for Step 5
+  --program <id>     Program to assess when no Audit supplies the Program
   --as-of <date>     Evaluate readiness on YYYY-MM-DD
   --summary          Print compact status and the first action for all five steps
   --next             Print only the current step and its first action
@@ -1157,10 +1174,11 @@ Options:
   filegrc evidence-map [options]
 
 Inspect the evidence-source checks included in Control implementation. Each item
-reports the required source roles, linked Controls, authoritative source Systems,
+reports the required source roles, linked Controls, authoritative source Components,
 per-record checks, and exact edit commands. This diagnostic is read-only.
 
 Options:
+  --program <id>  Program to assess when more than one active Program exists
   --as-of <date>  Evaluate the map on YYYY-MM-DD
   --json          Print the map as JSON
   --root <path>   Workspace path
@@ -1179,7 +1197,7 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
-    migrate: "filegrc migrate --to-model 3 --preview --json",
+    migrate: "filegrc migrate --to-model 4 --preview --json",
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",

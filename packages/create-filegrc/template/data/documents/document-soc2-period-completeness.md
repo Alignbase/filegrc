@@ -19,7 +19,7 @@ Management reconciled every audit-population record linked to this engagement to
 | Backup failures and restoration tests | [Population ID] | [Result] |
 | Security exceptions and control findings | [Population ID] | [Result] |
 
-For a population with zero items, retain the source-system export or report that produced the zero count. Describe any source limitation, omitted item, or reconciliation difference below.
+For a population with zero items, retain the source-Component export or report that produced the zero count. Describe any source limitation, omitted item, or reconciliation difference below.
 
 ## Exceptions and Source Limitations
 

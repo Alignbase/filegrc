@@ -1,5 +1,6 @@
 import { applyResourceBatch } from "./files.js";
 import { createResourceId } from "./id.js";
+import { resolveProgram, selectedRequirementIds } from "./program.js";
 import { loadWorkspace } from "./workspace.js";
 
 const PROGRAM_GOALS = new Set(["none", "readiness", "type-1", "type-2"]);
@@ -12,7 +13,8 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
   const plan = buildSetupRecords(loaded, setup);
   const updates = [
     ...(plan.existingSystem ? [plan.system] : []),
-    plan.workspace,
+    plan.target,
+    ...(plan.component ? [plan.component] : []),
     ...(plan.renderer ? [plan.renderer] : [])
   ];
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, entry.revision]));
@@ -30,7 +32,8 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
   return {
     draft: setup.draft,
     system: plan.system,
-    workspace: plan.workspace,
+    workspace: plan.target.type === "workspace" ? plan.target : plan.workspace,
+    program: plan.target.type === "program" ? plan.target : null,
     renderer: plan.renderer,
     commitment: plan.commitment,
     linkedControlIds: [],
@@ -49,13 +52,13 @@ export async function planWorkspaceSetup(input = process.cwd(), payload = {}) {
     draft: setup.draft,
     changes: {
       system: plan.existingSystem ? "update" : "create",
-      workspace: "update",
+      [plan.target.type]: "update",
       renderer: plan.renderer ? "update" : "unchanged",
       controls: 0,
       commitment: plan.commitment ? "create" : "unchanged"
     },
     system: setupSystemSummary(plan.system),
-    target: setupTargetSummary(plan.workspace),
+    target: setupTargetSummary(plan.target, loaded.model),
     renderer: plan.renderer ? setupRendererSummary(plan.renderer) : null,
     commitment: plan.commitment || null,
     onboardingComplete: !setup.draft
@@ -69,12 +72,12 @@ export function summarizeSetupResult(result) {
     draft: result.draft,
     changes: {
       system: "saved",
-      workspace: "updated",
+      [result.program ? "program" : "workspace"]: "updated",
       controls: result.linkedControlIds?.length || 0,
       commitment: result.commitment ? "saved" : "unchanged"
     },
     system: setupSystemSummary(result.system),
-    target: setupTargetSummary(result.workspace),
+    target: setupTargetSummary(result.program || result.workspace, { modelVersion: result.program ? "4" : "3" }),
     renderer: result.renderer ? setupRendererSummary(result.renderer) : null,
     commitment: result.commitment || null,
     onboardingComplete: result.onboardingComplete
@@ -126,14 +129,16 @@ function validateSetup(loaded, setup) {
       throw new Error(`System "${setup.systemId}" cannot be used for initial scope because it is ${system.status}.`);
     }
   }
-  const classifications = Object.keys(loaded.workspace.classificationDefinitions || {});
+  const classifications = String(loaded.model.modelVersion) === "4"
+    ? loaded.resources.filter(({ type, status }) => type === "classification" && status === "active").map(({ id }) => id)
+    : Object.keys(loaded.workspace.classificationDefinitions || {});
   if (classifications.length && !classifications.includes(setup.classificationId)) {
     throw new Error(`classificationId must be one of ${classifications.join(", ")}.`);
   }
 }
 
-function findSetupSystem(resources, workspace, setup) {
-  const scopedSystemIds = new Set(workspace.systemIds || []);
+function findSetupSystem(resources, target, setup) {
+  const scopedSystemIds = new Set(target.systemIds || []);
   return (setup.systemId && resources.find(({ type, id }) => type === "system" && id === setup.systemId))
     || resources.find(({ type, id, title, status }) => (
       type === "system"
@@ -144,7 +149,9 @@ function findSetupSystem(resources, workspace, setup) {
 }
 
 function buildSetupRecords(loaded, setup) {
-  const existingSystem = findSetupSystem(loaded.resources, loaded.workspace, setup);
+  const target = resolveProgram(loaded);
+  const v4 = String(loaded.model.modelVersion) === "4";
+  const existingSystem = findSetupSystem(loaded.resources, target, setup);
   const systemId = existingSystem?.id || createResourceId(
     "system",
     setup.serviceName,
@@ -162,18 +169,46 @@ function buildSetupRecords(loaded, setup) {
         : existingSystem?.status || "active",
     criticality: setup.criticality,
     ownerIds: [setup.ownerId],
-    description: setup.boundary,
-    systemKind: existingSystem?.systemKind || "service",
+    ...(v4 ? {
+      purpose: existingSystem?.purpose || setup.boundary,
+      servicesProvided: existingSystem?.servicesProvided || [setup.serviceName],
+      boundary: setup.boundary,
+      exclusions: existingSystem?.exclusions || []
+    } : {
+      description: setup.boundary,
+      systemKind: existingSystem?.systemKind || "service"
+    }),
     classificationId: setup.classificationId,
     internetExposed: setup.internetExposed
   };
   const existingWorkspace = loaded.resources.find(({ type }) => type === "workspace");
   if (!existingWorkspace) throw new Error("The workspace settings record was not found.");
-  const workspace = {
-    ...existingWorkspace,
+  const nextTarget = {
+    ...target,
+    ...(!setup.draft && v4 ? { status: "active" } : {}),
     assuranceGoal: assuranceGoalFromSetup(setup.programGoal),
-    systemIds: [...new Set([...(existingWorkspace.systemIds || []), systemId])]
+    systemIds: [...new Set([...(target.systemIds || []), systemId])]
   };
+  const componentEntry = v4
+    ? loaded.resources.find(({ id, type }) => id === "component-filegrc-program-repository" && type === "component")
+    : null;
+  const existingSystemUses = componentEntry?.systemUses || [];
+  const component = componentEntry ? {
+    ...componentEntry,
+    status: setup.draft
+      ? componentEntry.status || "planned"
+      : componentEntry.status === "planned"
+        ? "active"
+        : componentEntry.status || "active",
+    systemUses: [
+      ...existingSystemUses.filter((use) => use.systemId !== systemId),
+      {
+        systemId,
+        roles: ["control-support", "evidence-source", "supporting-operations"],
+        rationale: "FileGRC stores the Program records, retained evidence index, and Git revision history used to operate and support this System's Controls."
+      }
+    ]
+  } : null;
   const existingRenderer = loaded.resources.find(({ type }) => type === "renderer-settings");
   const renderer = existingRenderer ? { ...existingRenderer, showOnboarding: setup.draft } : null;
   const existingCommitment = loaded.resources.find((record) => (
@@ -181,7 +216,7 @@ function buildSetupRecords(loaded, setup) {
     && !["superseded", "retired"].includes(record.status)
     && (record.systemIds || []).includes(systemId)
   ));
-  const commitment = String(loaded.model.modelVersion) === "3" && !existingCommitment
+  const commitment = ["3", "4"].includes(String(loaded.model.modelVersion)) && !existingCommitment
     ? {
         id: createResourceId(
           "commitment",
@@ -196,11 +231,11 @@ function buildSetupRecords(loaded, setup) {
         systemIds: [systemId],
         ownerIds: [setup.ownerId],
         customerFacing: true,
-        ...(workspace.requirementIds?.length ? { requirementIds: [...workspace.requirementIds] } : {}),
-        ...(workspace.controlIds?.length ? { controlIds: [...workspace.controlIds] } : {})
+        ...(selectedRequirementIds(nextTarget, loaded.model).length ? { requirementIds: selectedRequirementIds(nextTarget, loaded.model) } : {}),
+        ...(nextTarget.controlIds?.length ? { controlIds: [...nextTarget.controlIds] } : {})
       }
     : null;
-  return { existingSystem, system, workspace, renderer, commitment };
+  return { existingSystem, system, workspace: existingWorkspace, target: nextTarget, component, renderer, commitment };
 }
 
 function assuranceGoalFromSetup(goal) {
@@ -214,14 +249,14 @@ function setupSystemSummary(system) {
   return { ...system };
 }
 
-function setupTargetSummary(workspace) {
+function setupTargetSummary(workspace, model) {
   return {
     assuranceGoal: workspace.assuranceGoal,
     systemIds: [...(workspace.systemIds || [])],
     scopeCounts: {
       systems: workspace.systemIds?.length || 0,
       frameworks: workspace.frameworkIds?.length || 0,
-      requirements: workspace.requirementIds?.length || 0,
+      requirements: selectedRequirementIds(workspace, model).length,
       controls: workspace.controlIds?.length || 0
     }
   };

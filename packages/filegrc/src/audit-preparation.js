@@ -55,7 +55,8 @@ export async function assessAuditPreparation(input, options = {}) {
   if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
 
   const programReadiness = options.programReadiness || await assessProgramReadiness(loaded, {
-    generatedAt: options.generatedAt
+    generatedAt: options.generatedAt,
+    programId: audit?.programId
   });
   const stages = [
     programFoundationStage(programReadiness, loaded.workspace),
@@ -157,7 +158,8 @@ export async function prepareAuditWorkspace(input, options = {}) {
   const selectedControls = (audit.controlIds || [])
     .map((id) => loaded.resources.find((record) => record.id === id))
     .filter(Boolean);
-  const sourceSystems = loaded.resources.filter((record) => record.type === "system");
+  const v4 = String(loaded.model.modelVersion) === "4";
+  const sourceSystems = loaded.resources.filter((record) => record.type === (v4 ? "component" : "system"));
   const populations = (audit.auditKind === "soc-2-type-2" ? model.populationTemplates || [] : [])
     .filter((template) => !existingKinds.has(template.kind))
     .map((template) => {
@@ -183,7 +185,7 @@ export async function prepareAuditWorkspace(input, options = {}) {
         coverage: structuredClone(audit.coverage),
         ownerIds: [...audit.ownerIds],
         ...(controlIds.length ? { controlIds } : {}),
-        ...(matchingSources.length === 1 ? { sourceSystemId: matchingSources[0].id } : {}),
+        ...(matchingSources.length === 1 ? { [v4 ? "sourceComponentId" : "sourceSystemId"]: matchingSources[0].id } : {}),
         reconciliationSummary: `Authoritative source to confirm: ${template.sourcePrompt}. ${template.timing || ""}`.trim()
       };
     });
@@ -608,14 +610,16 @@ function evidenceStage(audit, records, byId, model) {
     item(
       "external-evidence",
       externalControls.length && controlsWithExternalEvidence.length === externalControls.length ? "complete" : externalControls.length ? "action" : "info",
-      "Review External Evidence",
+      "Review Evidence Artifacts",
       externalControls.length
-        ? `${controlsWithExternalEvidence.length} of ${externalControls.length} selected controls that rely on external systems have verified External Evidence for the formal period. Confirm the source System, date or period, control links, collector, verifier, and retained artifact or approved external reference.`
-        : "No selected controls require a separate External Evidence record.",
+        ? `${controlsWithExternalEvidence.length} of ${externalControls.length} selected controls that rely on external Components have verified Evidence Artifacts for the formal period. Confirm the source Component, date or period, control links, collector, verifier, and retained artifact or approved external reference.`
+        : "No selected controls require a separate Evidence Artifact.",
       externalEvidence[0] || { type: "evidence" }
     )
   ];
-  const systems = records.filter((record) => record.type === "system" && record.status === "active");
+  const v4 = String(model.modelVersion) === "4";
+  const systems = records.filter((record) => record.type === (v4 ? "component" : "system") && record.status === "active");
+  const sourceId = (record) => v4 ? record.sourceComponentId : record.sourceSystemId;
   for (const source of model.evidenceSourceFamilies || []) {
     const relevantControls = controls.filter((control) => (source.controlCodes || []).includes(control.code));
     if (!relevantControls.length) {
@@ -652,7 +656,7 @@ function evidenceStage(audit, records, byId, model) {
       (system.evidenceSourceKinds || []).some((kind) => (source.sourceKinds || []).includes(kind))
     ));
     const coveredControls = relevantControls.filter((control) => externalEvidence.some((record) => (
-      sourceSystems.some((system) => system.id === record.sourceSystemId)
+      sourceSystems.some((system) => system.id === sourceId(record))
       && controlIdsForRecord(record, byId).has(control.id)
     )));
     const status = sourceSystems.length && coveredControls.length === relevantControls.length ? "complete" : "action";
@@ -666,12 +670,12 @@ function evidenceStage(audit, records, byId, model) {
       status,
       source.title,
       message,
-      externalEvidence.find((record) => sourceSystems.some((system) => system.id === record.sourceSystemId))
+      externalEvidence.find((record) => sourceSystems.some((system) => system.id === sourceId(record)))
         || sourceSystems[0]
-        || { type: "system" }
+        || { type: v4 ? "component" : "system" }
     ));
   }
-  return stage("evidence", "Audit Evidence", "Review both evidence paths: dated filegrc operating records and verified External Evidence from authoritative systems. filegrc includes both in the audit packet.", items);
+  return stage("evidence", "Audit Evidence", `Review both evidence paths: dated filegrc operating records and verified ${v4 ? "Evidence Artifacts from authoritative Components" : "External Evidence from authoritative systems"}. filegrc includes both in the audit packet.`, items);
 }
 
 function populationsStage(audit, records, byId, model) {
@@ -748,8 +752,8 @@ function populationResult(population, audit, byId) {
     && evidence.type === "evidence"
     && evidence.artifactKind === "population-export"
     && evidence.status === "verified"
-    && population.sourceSystemId
-    && evidence.sourceSystemId === population.sourceSystemId
+    && (population.sourceComponentId || population.sourceSystemId)
+    && (evidence.sourceComponentId || evidence.sourceSystemId) === (population.sourceComponentId || population.sourceSystemId)
     && coverageMatches(
       evidence.coverage,
       coverageStart(audit.coverage),

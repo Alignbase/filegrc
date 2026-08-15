@@ -20,6 +20,7 @@ import {
 } from "./obligations.js";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
+import { resolveProgram } from "./program.js";
 import { planReconciliation } from "./reconciliation.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -81,14 +82,22 @@ export async function assessWorkflow(input, options = {}) {
     : await loadWorkspace(input);
   const workspace = loaded.workspace
     || loaded.resources.find((record) => record.type === "workspace");
+  const selectedAuditRecords = selectedAudits(loaded.resources, options.auditId);
+  const programRecord = resolveProgram(loaded, options.programId || (options.auditId ? selectedAuditRecords[0]?.programId : undefined));
+  if (options.auditId && selectedAuditRecords[0]?.programId && selectedAuditRecords[0].programId !== programRecord.id) {
+    throw new Error(`Audit "${options.auditId}" belongs to Program "${selectedAuditRecords[0].programId}", not "${programRecord.id}".`);
+  }
+  const audits = String(loaded.model.modelVersion) === "4"
+    ? selectedAuditRecords.filter(({ programId }) => programId === programRecord.id)
+    : selectedAuditRecords;
   const timezone = options.timezone || workspace?.timezone || "UTC";
   const asOf = options.asOf || currentCalendarDate(timezone);
   const evaluatedAt = options.evaluatedAt || options.now || new Date().toISOString();
   const program = options.programReadiness || await assessProgramReadiness(loaded, {
     asOf,
-    generatedAt: evaluatedAt
+    generatedAt: evaluatedAt,
+    programId: programRecord.type === "program" ? programRecord.id : undefined
   });
-  const audits = selectedAudits(loaded.resources, options.auditId);
   const auditPreparations = options.auditPreparations || Object.fromEntries(await Promise.all(
     audits.map(async (audit) => [
       audit.id,
@@ -111,26 +120,27 @@ export async function assessWorkflow(input, options = {}) {
   const coverage = normalizeCoverage(
     options.coverage
     || (options.auditId ? audits[0]?.coverage : null)
-    || workspace?.candidateCoverage
+    || programRecord?.candidateCoverage
   );
   const periodFindings = await assessPeriodHealth(loaded, {
     coverage,
     asOf,
     evaluatedAt,
-    controlIds: options.auditId ? audits[0]?.controlIds : workspace?.controlIds
+    programId: programRecord.type === "program" ? programRecord.id : undefined,
+    controlIds: options.auditId ? audits[0]?.controlIds : programRecord?.controlIds
   });
   const guidedFindings = [
     ...programFindings(program),
     ...Object.values(auditPreparations).flatMap(auditFindings),
     ...appointmentTemplateFindings(loaded),
-    ...sourceCoverageFindings(loaded),
+    ...sourceCoverageFindings(loaded, programRecord),
     ...reconciliationFindings(reconciliation),
     ...periodFindings,
-    ...auditLifecycleFindings(loaded, audits)
+    ...auditLifecycleFindings(loaded, audits, programRecord)
   ];
   const findings = [
     ...validationFindings(validation, loaded),
-    ...removeRedundantRecordFindings(recordFinalizationFindings(loaded), guidedFindings),
+    ...removeRedundantRecordFindings(recordFinalizationFindings(loaded, programRecord), guidedFindings),
     ...guidedFindings
   ];
   const workItems = buildWorkItems(loaded.resources, obligationPlan, {
@@ -329,11 +339,11 @@ function validationFindings(validation, loaded) {
   });
 }
 
-function recordFinalizationFindings(loaded) {
+function recordFinalizationFindings(loaded, program) {
   const findings = [];
   for (const record of loaded.resources) {
     if (["workspace", "renderer-settings"].includes(record.type)) continue;
-    const incomplete = recordIncompleteReason(record, loaded);
+    const incomplete = recordIncompleteReason(record, loaded, program);
     if (incomplete) {
       findings.push(finalizationFinding(record, incomplete));
     }
@@ -389,7 +399,7 @@ function subjectKey(subject) {
   return `${subject.type}:${subject.id}`;
 }
 
-function recordIncompleteReason(record, loaded) {
+function recordIncompleteReason(record, loaded, program) {
   if (record.type === "requirement" && record.applicability === "undetermined") {
     return {
       state: "ready",
@@ -418,7 +428,7 @@ function recordIncompleteReason(record, loaded) {
     "partially-implemented": "Finish the remaining control design, operation, source, and scheduling work."
   };
   if (!messages[record.status]) return null;
-  const requiredness = recordFinalizationRequiredness(record, loaded);
+  const requiredness = recordFinalizationRequiredness(record, loaded, program);
   if (record.status === "blocked") {
     const byId = new Map(loaded.resources.map((resource) => [resource.id, resource]));
     return {
@@ -437,11 +447,12 @@ function recordIncompleteReason(record, loaded) {
   };
 }
 
-function recordFinalizationRequiredness(record, loaded) {
+function recordFinalizationRequiredness(record, loaded, program) {
   if (!["policy", "document", "training"].includes(record.type)) return "required";
+  const target = program || resolveProgram(loaded);
   const selectedControlIds = new Set(
-    loaded.workspace?.controlIds?.length
-      ? loaded.workspace.controlIds
+    target?.controlIds?.length
+      ? target.controlIds
       : loaded.resources
         .filter((resource) => resource.type === "control" && !["not-applicable", "retired"].includes(resource.status))
         .map(({ id }) => id)
@@ -606,11 +617,19 @@ function appointmentFinding(kind, template, record, state, requiredness) {
   };
 }
 
-function sourceCoverageFindings(loaded) {
+function sourceCoverageFindings(loaded, program) {
+  const selected = String(loaded.model.modelVersion) === "4"
+    ? new Set(program?.controlIds || [])
+    : null;
   const selectedControlIds = loaded.resources
-    .filter((record) => record.type === "control" && record.status !== "not-applicable" && record.status !== "retired")
+    .filter((record) => (
+      record.type === "control"
+      && record.status !== "not-applicable"
+      && record.status !== "retired"
+      && (!selected || selected.has(record.id))
+    ))
     .map(({ id }) => id);
-  return assessSourceCoverageReadiness(loaded, selectedControlIds)
+  return assessSourceCoverageReadiness(loaded, selectedControlIds, program)
     .map(({ family, record, complete }) => {
       const state = complete ? "complete" : "ready";
       const code = `evidence-source.${family.id}.coverage`;
@@ -659,15 +678,16 @@ function reconciliationFindings(reconciliation) {
 
 async function assessPeriodHealth(loaded, options) {
   const coverage = options.coverage;
+  const target = resolveProgram(loaded, options.programId);
   if (!coverage?.start || !coverage?.end) {
-    if (loaded.workspace?.assuranceGoal !== "soc-2-type-2") return [];
+    if (target?.assuranceGoal !== "soc-2-type-2") return [];
     return [periodFinding(
       "period.coverage.select",
       "Select the candidate operating period",
       "Set the candidate Type 2 start and end dates before FileGRC can calculate continuous policy, control, source, role, and obligation coverage.",
       "ready",
-      { type: "workspace", id: loaded.workspace.id },
-      [{ kind: "command", command: "npx filegrc get workspace workspace --mutation" }]
+      { type: target.type, id: target.id },
+      [{ kind: "command", command: `npx filegrc get ${target.id} --mutation` }]
     )];
   }
 
@@ -680,7 +700,8 @@ async function assessPeriodHealth(loaded, options) {
     "obligation",
     "policy",
     "source-coverage",
-    "system"
+    "system",
+    "component"
   ].includes(record.type));
   const paths = relevantEntries.map(({ relativePath }) => `data/${relativePath}`);
   const histories = getWorkspaceHistories(loaded.root, paths, 50);
@@ -843,8 +864,9 @@ async function assessPeriodHealth(loaded, options) {
   return findings;
 }
 
-function auditLifecycleFindings(loaded, audits) {
-  if (String(loaded.model.modelVersion) !== "3") return [];
+function auditLifecycleFindings(loaded, audits, program) {
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) return [];
+  const target = program || resolveProgram(loaded);
   const findings = [];
   for (const audit of audits) {
     if (!(audit.controlIds || []).length) {
@@ -857,7 +879,7 @@ function auditLifecycleFindings(loaded, audits) {
       ));
     }
     if (!audit.scopeRevision) {
-      const workspaceControls = new Set(loaded.workspace?.controlIds || []);
+      const workspaceControls = new Set(target?.controlIds || []);
       const omittedControls = [...workspaceControls].filter((id) => !(audit.controlIds || []).includes(id));
       findings.push(auditLifecycleFinding(
         audit,
@@ -879,7 +901,7 @@ function auditLifecycleFindings(loaded, audits) {
           "Set the exact start and end dates before evaluating expected occurrences and source continuity."
         ));
       }
-      const candidateStart = coverageStart(loaded.workspace?.candidateCoverage);
+      const candidateStart = coverageStart(target?.candidateCoverage);
       if (start && candidateStart && start < candidateStart) {
         findings.push(auditLifecycleFinding(
           audit,

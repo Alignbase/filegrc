@@ -1,0 +1,8 @@
+{
+  "id": "public",
+  "type": "classification",
+  "title": "Public",
+  "status": "active",
+  "rank": 0,
+  "description": "Approved for public release."
+}

@@ -1,8 +1,8 @@
-# External Evidence Instructions
+# Evidence Artifact Instructions
 
 An evidence record explains what a proof item is, where it came from, what period it supports, who collected it, and which records or controls it supports. The attachment alone is not enough.
 
-Do not create placeholder or collection-test Evidence. Control implementation maps Controls to complete authoritative Systems; `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create External Evidence during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists. When an operating record needs fixed supporting proof, create or update an External Evidence record and link its ID from that record. Keep new evidence as `draft` until the artifact exists. Set it to `collected` only after selecting the source System, attaching or referencing the result, and recording the source, date, classification, and collector. Set it to `verified` only after another named person checks it.
+Do not create placeholder or collection-test Evidence. Control implementation maps Controls to complete authoritative source Components; `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create an Evidence Artifact during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists. When an operating record needs fixed supporting proof, create or update an Evidence Artifact and link its ID from that record. Keep it as `draft` until the artifact exists. Set it to `collected` only after selecting the source Component, attaching or referencing the result, and recording the source, date, Classification, and collector. Set it to `verified` only after another named person checks it.
 
 ## Create evidence
 
@@ -27,6 +27,6 @@ For a rendered page capture, record the route, filters, audit period, exact Git 
 
 For a signed acknowledgement, bind the attestation to the exact content Git revision and store the signed file as evidence.
 
-For a `population-export`, also record the authoritative `sourceSystemId`, exact period, generation timestamp, timezone, query or report parameters, item count, completeness check, and accuracy check. A zero-item population still needs its source export and query.
+For a `population-export`, also record the authoritative `sourceComponentId`, exact period, generation timestamp, timezone, query or report parameters, item count, completeness check, and accuracy check. A zero-item population still needs its source export and query.
 
 Do not commit secrets, session data, regulated data, or personal data that may need erasure. Use an approved external reference when Git is not an appropriate store.

@@ -92,13 +92,13 @@ const TRANSITIONS = {
 
 export async function planReconciliation(input = process.cwd()) {
   const loaded = await loadWorkspace(input);
-  if (String(loaded.model.modelVersion) !== "3") {
+  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
     return {
       contractVersion: 1,
       gitRevision: gitRevision(loaded.root),
       changedPaths: [],
       candidates: [],
-      message: "Direct-file transition reconciliation is available after migrating this workspace to model v3."
+      message: "Direct-file transition reconciliation is available in model v3 and v4 workspaces."
     };
   }
   const changedPaths = gitChangedPaths(loaded.root);

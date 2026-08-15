@@ -891,18 +891,21 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   const sourceVersion = String(loaded.workspace?.dataModelVersion || "");
   const requestedTarget = options.targetModelVersion
     ? String(options.targetModelVersion)
-    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION : ACTIVE_MODEL_VERSION;
+    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION : sourceVersion === "2" ? "3" : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
   }
-  if (sourceVersion === "2" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "2" && requestedTarget === "3") {
     return planV2ToV3Migration(loaded);
+  }
+  if (sourceVersion === "3" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV3ToV4Migration(loaded, options);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
       "Model v1 workspaces must migrate to model v2 first. "
-      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate to model v3."
+      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate to model v3 and v4."
     );
   }
   throw new Error(`Model migration does not support v${sourceVersion} to v${requestedTarget}.`);
@@ -946,10 +949,10 @@ async function planV2ToV3Migration(loaded) {
   const unsupported = [];
   const missing = [];
   const manualActions = [];
-  const targetModel = loadModel(ACTIVE_MODEL_VERSION);
+  const targetModel = loadModel("3");
   const workspace = {
     ...loaded.workspace,
-    dataModelVersion: ACTIVE_MODEL_VERSION
+    dataModelVersion: "3"
   };
   automatic.push(classifiedChange(
     "automatic",
@@ -1172,7 +1175,7 @@ async function planV2ToV3Migration(loaded) {
   return {
     schemaVersion: 2,
     sourceModelVersion: "2",
-    targetModelVersion: ACTIVE_MODEL_VERSION,
+    targetModelVersion: "3",
     ready: unsupported.length === 0,
     missing,
     conflicts: [],
@@ -1204,7 +1207,293 @@ async function planV2ToV3Migration(loaded) {
         updates.map(({ id }) => [id, revisionById.get(id)])
       ),
       validateWholeWorkspace: true,
-      targetModelVersion: ACTIVE_MODEL_VERSION
+      targetModelVersion: "3"
+    }
+  };
+}
+
+async function planV3ToV4Migration(loaded, options = {}) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("4");
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const creates = [];
+  const updates = [];
+  const movePaths = [];
+  const usedIds = loaded.resources.map(({ id }) => id);
+  const decisions = options.systemDecisions && typeof options.systemDecisions === "object"
+    ? options.systemDecisions
+    : {};
+  const oldSystems = loaded.resources.filter(({ type }) => type === "system");
+  const scopedIds = new Set(loaded.workspace.systemIds || []);
+  const commitmentSystemIds = new Set(loaded.resources
+    .filter(({ type, status }) => type === "commitment" && !["superseded", "retired"].includes(status))
+    .flatMap(({ systemIds }) => systemIds || []));
+  const componentKinds = new Set([
+    "application", "infrastructure", "platform", "repository", "evidence-source",
+    "software", "network", "physical", "external-system", "interconnection"
+  ]);
+  const classifications = migrateV4Classifications(loaded, creates, automatic, reviewRequired, usedIds);
+  const informationTypes = migrateV4InformationTypes(
+    loaded,
+    creates,
+    automatic,
+    reviewRequired,
+    usedIds,
+    classifications
+  );
+  const systemKinds = new Map();
+
+  for (const record of oldSystems) {
+    const explicit = normalizeSystemDecision(decisions[record.id]);
+    if (explicit) {
+      systemKinds.set(record.id, explicit.kind);
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "type",
+        `Use the supplied migration decision to keep this v3 System as a ${explicit.kind === "system" ? "bounded System" : "Component"}.`
+      ));
+      continue;
+    }
+    const rootCandidate = scopedIds.has(record.id)
+      && !record.parentSystemId
+      && !record.vendorId
+      && (record.systemKind === "service" || commitmentSystemIds.has(record.id));
+    const componentCandidate = Boolean(
+      record.parentSystemId
+      || record.vendorId
+      || componentKinds.has(String(record.systemKind || "").toLowerCase())
+    );
+    if (rootCandidate !== componentCandidate) {
+      systemKinds.set(record.id, rootCandidate ? "system" : "component");
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        "type",
+        rootCandidate
+          ? "Keep the selected root service as a bounded System."
+          : "Convert the operational, provider-supplied, or subordinate v3 System to a Component."
+      ));
+    } else {
+      const message = rootCandidate
+        ? "This v3 System has both bounded-service and Component signals. Choose system or component explicitly."
+        : "This v3 System could be either a bounded System or a Component. Choose its v4 identity explicitly.";
+      unsupported.push(classifiedChange("unsupported", record.id, "type", message));
+      manualActions.push({ resourceId: record.id, field: "type", message });
+    }
+  }
+
+  const retainedSystemIds = new Set([...systemKinds].filter(([, kind]) => kind === "system").map(([id]) => id));
+  const componentSystemUses = new Map();
+  for (const record of oldSystems.filter(({ id }) => systemKinds.get(id) === "component")) {
+    const explicit = normalizeSystemDecision(decisions[record.id]);
+    const candidateIds = explicit?.systemUses?.map(({ systemId }) => systemId)
+      || [record.parentSystemId, ...scopedIds].filter(Boolean);
+    const targetIds = [...new Set(candidateIds)].filter((id) => retainedSystemIds.has(id));
+    const uses = explicit?.systemUses?.length
+      ? explicit.systemUses
+      : targetIds.length === 1
+        ? [{
+            systemId: targetIds[0],
+            roles: derivedComponentRoles(record, loaded.resources),
+            rationale: `Migrated from v3 System "${record.title}" because it was recorded as part of or support for this bounded System.`
+          }]
+        : [];
+    if (!uses.length) {
+      const message = "Choose at least one bounded System, role, and rationale for this Component.";
+      unsupported.push(classifiedChange("unsupported", record.id, "systemUses", message));
+      manualActions.push({ resourceId: record.id, field: "systemUses", message });
+    }
+    componentSystemUses.set(record.id, uses);
+  }
+
+  const programId = createResourceId(
+    "program",
+    loaded.workspace.title || `${loaded.workspace.organizationName} program`,
+    [...usedIds, ...creates.map(({ id }) => id)]
+  );
+  const applicability = [];
+  const selectedRequirementIds = new Set(loaded.workspace.requirementIds || []);
+  for (const requirement of loaded.resources.filter(({ type }) => type === "requirement")) {
+    if (!selectedRequirementIds.has(requirement.id) && requirement.applicability !== "not-applicable") continue;
+    const review = requirement.applicabilityReview;
+    if (review?.reviewedByIds?.length && review.reviewedOn && review.scopeRevision && (review.rationale || requirement.applicabilityRationale)) {
+      applicability.push({
+        requirementId: requirement.id,
+        decision: requirement.applicability || review.decision || "undetermined",
+        rationale: requirement.applicabilityRationale || review.rationale,
+        reviewedByIds: review.reviewedByIds,
+        reviewedOn: review.reviewedOn,
+        scopeRevision: review.scopeRevision
+      });
+      automatic.push(classifiedChange("automatic", requirement.id, "applicability", "Move the reviewed applicability decision from the catalog Requirement to the new Program."));
+    } else {
+      applicability.push({
+        requirementId: requirement.id,
+        decision: "undetermined"
+      });
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        requirement.id,
+        "applicability",
+        "Review this Requirement against the new Program and record the decision, rationale, reviewer, date, and scope revision."
+      ));
+    }
+  }
+  const programOwners = programOwnerIds(loaded.resources, retainedSystemIds);
+  const program = {
+    id: programId,
+    type: "program",
+    title: loaded.workspace.title,
+    status: programOwners.length
+      && loaded.workspace.riskMethodology
+      && retainedSystemIds.size
+      && (loaded.workspace.frameworkIds || []).length
+      && (loaded.workspace.controlIds || []).length
+      ? "active"
+      : "planned",
+    assuranceGoal: loaded.workspace.assuranceGoal || "none",
+    systemIds: [...retainedSystemIds].filter((id) => scopedIds.has(id)),
+    frameworkIds: [...(loaded.workspace.frameworkIds || [])],
+    requirementApplicability: applicability,
+    controlIds: [...(loaded.workspace.controlIds || [])],
+    ...(programOwners.length ? { ownerIds: programOwners } : {}),
+    ...(loaded.workspace.riskMethodology ? { riskMethodology: loaded.workspace.riskMethodology } : {}),
+    ...(loaded.workspace.candidateCoverage ? { candidateCoverage: loaded.workspace.candidateCoverage } : {}),
+    description: `Compliance and assurance program for ${loaded.workspace.organizationName}.`
+  };
+  creates.push(program);
+  automatic.push(classifiedChange("automatic", program.id, null, "Create a Program from the program facts previously stored on Workspace."));
+  if (!programOwners.length) reviewRequired.push(classifiedChange("review-required", program.id, "ownerIds", "Assign Program owners before activating the Program."));
+  if (!program.riskMethodology) reviewRequired.push(classifiedChange("review-required", program.id, "riskMethodology", "Record the Program risk methodology before activation."));
+
+  for (const original of loaded.resources) {
+    let record = structuredClone(original);
+    if (record.type === "workspace") {
+      record.dataModelVersion = "4";
+      for (const field of ["assuranceGoal", "frameworkIds", "requirementIds", "controlIds", "systemIds", "riskMethodology", "classificationDefinitions", "candidateCoverage"]) delete record[field];
+      updates.push(record);
+      automatic.push(classifiedChange("automatic", record.id, "dataModelVersion", "Select model v4 and leave repository-wide identity on Workspace."));
+      continue;
+    }
+    if (record.type === "system") {
+      if (!systemKinds.has(record.id)) continue;
+      record = systemKinds.get(record.id) === "system"
+        ? migrateBoundedSystem(record, informationTypes, classifications)
+        : migrateComponent(record, componentSystemUses.get(record.id) || [], informationTypes, classifications);
+      updates.push(record);
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        record.type === "system" ? "boundary" : "systemUses",
+        record.type === "system"
+          ? "Confirm the migrated purpose, services, boundary, exclusions, and information scope."
+          : "Confirm every migrated Component role, rationale, information use, and evidence-source fact."
+      ));
+      if (record.type === "component") {
+        const oldMarkdown = `systems/${record.id}.md`;
+        const newMarkdown = `components/${record.id}.md`;
+        if (loaded.entries.some(({ record: candidate }) => candidate.id === record.id)) {
+          try {
+            await readFile(resolveDataPath(loaded.root, oldMarkdown), "utf8");
+            movePaths.push({ from: oldMarkdown, to: newMarkdown });
+          } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+          }
+        }
+      }
+      continue;
+    }
+    if (record.type === "requirement") {
+      delete record.applicability;
+      delete record.applicabilityRationale;
+      delete record.applicabilityReview;
+    }
+    if (record.type === "vendor") record = migrateV4Vendor(record, informationTypes, classifications, reviewRequired);
+    record = rewriteV4SystemRelationships(record, {
+      programId,
+      workspaceId: loaded.workspace.id,
+      systemKinds,
+      componentSystemUses,
+      classifications,
+      informationTypes,
+      reviewRequired,
+      unsupported,
+      manualActions,
+      byId
+    });
+    updates.push(record);
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = [
+    ...loaded.resources.map((record) => updatedById.get(record.id) || record),
+    ...creates
+  ];
+  collectModelShapeActions(migratedRecords, targetModel, missing, manualActions);
+  collectRelationshipConstraintActions(migratedRecords, targetModel, manualActions);
+  collectRelationTypeActions(migratedRecords, targetModel, manualActions);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    const key = `${item.resourceId}:${item.field}:${item.message || "missing"}`;
+    if (unsupported.some((entry) => `${entry.resourceId}:${entry.field}:${entry.message}` === key)) continue;
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Record ${item.field} before applying the model v4 migration.`
+    ));
+  }
+  const ready = unsupported.length === 0;
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "3",
+    targetModelVersion: "4",
+    ready,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: reviewRequired,
+    migrationReport: {
+      programId,
+      retainedSystemIds: [...retainedSystemIds],
+      componentIds: [...systemKinds].filter(([, kind]) => kind === "component").map(([id]) => id),
+      classificationIds: [...classifications.values()],
+      informationTypeIds: [...informationTypes.values()],
+      relationshipUpdates: updates.filter((record) => record.type !== "workspace").map(({ id, type }) => ({ id, type }))
+    },
+    summary: {
+      create: creates.length,
+      update: updates.length,
+      move: movePaths.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: creates.map((record) => ({ type: record.type, id: record.id, after: record })),
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      })),
+      move: movePaths
+    },
+    changes: {
+      create: creates,
+      update: updates,
+      movePaths,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "4"
     }
   };
 }
@@ -1217,11 +1506,12 @@ async function collectTargetValidationActions(loaded, records, model, missing, m
     const definition = model.resources[record.type];
     const recordPath = definition.singleton
       || `${definition.collection}/${(definition.recordPath || "{id}.json").replaceAll("{id}", record.id)}`;
+    const keepsType = existing?.record?.type === record.type;
     const source = `${JSON.stringify(record, null, 2)}\n`;
     return {
       ...existing,
       path: existing?.path,
-      relativePath: existing?.relativePath || recordPath,
+      relativePath: keepsType ? existing.relativePath : recordPath,
       record,
       source,
       revision: contentRevision(source)
@@ -1361,6 +1651,331 @@ function classifiedChange(classification, resourceId, field, message) {
   };
 }
 
+function normalizeSystemDecision(value) {
+  if (value === "system" || value === "component") return { kind: value };
+  if (!value || typeof value !== "object" || !["system", "component"].includes(value.kind)) return null;
+  return {
+    kind: value.kind,
+    ...(Array.isArray(value.systemUses) ? { systemUses: value.systemUses } : {})
+  };
+}
+
+function derivedComponentRoles(system, resources) {
+  const roles = new Set();
+  if ((system.evidenceSourceKinds || []).length) roles.add("evidence-source");
+  if (resources.some((record) => (
+    record.type === "control"
+    && ((record.systemIds || []).includes(system.id) || (record.evidenceSourceIds || []).includes(system.id))
+  ))) roles.add("control-support");
+  if (system.parentSystemId) roles.add("service-delivery");
+  if (!roles.size) roles.add("supporting-operations");
+  return [...roles];
+}
+
+function programOwnerIds(resources, systemIds) {
+  const appointments = resources.filter((record) => (
+    record.type === "appointment"
+    && record.status === "active"
+    && ["policy-owner", "chief-information-security-officer"].includes(record.appointmentKind)
+  )).map(({ id }) => id);
+  if (appointments.length) return appointments;
+  return [...new Set(resources
+    .filter((record) => record.type === "system" && systemIds.has(record.id))
+    .flatMap(({ ownerIds }) => ownerIds || []))];
+}
+
+function migrateV4Classifications(loaded, creates, automatic, reviewRequired, usedIds) {
+  const result = new Map();
+  let rank = 0;
+  for (const [key, description] of Object.entries(loaded.workspace.classificationDefinitions || {})) {
+    const candidate = normalizeClassificationId(key);
+    const id = candidate && ![...usedIds, ...creates.map(({ id: current }) => current)].includes(candidate)
+      ? candidate
+      : createResourceId("classification", key, [...usedIds, ...creates.map(({ id: current }) => current)]);
+    creates.push({
+      id,
+      type: "classification",
+      title: properTitle(key),
+      status: "active",
+      rank,
+      description
+    });
+    result.set(key, id);
+    rank += 1;
+    automatic.push(classifiedChange("automatic", id, null, `Create a Classification from Workspace classificationDefinitions.${key}.`));
+    reviewRequired.push(classifiedChange("review-required", id, "rank", "Confirm that the migrated classification rank reflects increasing handling sensitivity."));
+  }
+  return result;
+}
+
+function migrateV4InformationTypes(loaded, creates, automatic, reviewRequired, usedIds, classifications) {
+  const uses = new Map();
+  for (const record of loaded.resources) {
+    for (const value of record.dataTypes || []) {
+      const key = String(value || "").trim().toLowerCase();
+      if (!key) continue;
+      if (!uses.has(key)) uses.set(key, { title: String(value).trim(), classifications: new Set() });
+      if (record.classificationId && classifications.has(record.classificationId)) {
+        uses.get(key).classifications.add(classifications.get(record.classificationId));
+      }
+    }
+  }
+  const result = new Map();
+  for (const [key, value] of uses) {
+    const id = createResourceId("information-type", value.title, [...usedIds, ...creates.map(({ id: current }) => current)]);
+    const classificationIds = [...value.classifications];
+    creates.push({
+      id,
+      type: "information-type",
+      title: value.title,
+      status: classificationIds.length === 1 ? "active" : "planned",
+      description: `Information category migrated from the v3 dataTypes value "${value.title}".`,
+      ...(classificationIds.length === 1 ? { classificationId: classificationIds[0] } : {})
+    });
+    result.set(key, id);
+    automatic.push(classifiedChange("automatic", id, null, `Normalize the v3 dataTypes value "${value.title}" as an Information Type.`));
+    reviewRequired.push(classifiedChange("review-required", id, "classificationId", "Confirm the Information Type description and default Classification before activation."));
+  }
+  return result;
+}
+
+function migrateBoundedSystem(record, informationTypes, classifications) {
+  return cleanUndefined({
+    id: record.id,
+    type: "system",
+    title: record.title,
+    status: record.status,
+    purpose: record.description || `Purpose of ${record.title}`,
+    servicesProvided: [record.title],
+    boundary: record.description || `Boundary of ${record.title}`,
+    exclusions: [],
+    criticality: record.criticality,
+    ownerIds: record.ownerIds,
+    informationTypeIds: normalizedInformationTypeIds(record.dataTypes, informationTypes),
+    classificationId: classifications.get(record.classificationId),
+    internetExposed: record.internetExposed,
+    continuityObjectives: record.continuityObjectives,
+    statusTransition: record.statusTransition,
+    tags: record.tags,
+    extensions: mergeMigrationExtension(record.extensions, {
+      ...(record.environment ? { environment: record.environment } : {}),
+      ...(record.vendorId ? { vendorId: record.vendorId } : {}),
+      ...(record.subserviceVendorIds ? { subserviceVendorIds: record.subserviceVendorIds } : {}),
+      ...(record.evidenceSourceKinds ? { evidenceSourceKinds: record.evidenceSourceKinds } : {}),
+      ...(record.evidenceOwnerIds ? { evidenceOwnerIds: record.evidenceOwnerIds } : {})
+    }),
+    externalIds: record.externalIds
+  });
+}
+
+function migrateComponent(record, systemUses, informationTypes, classifications) {
+  const kind = componentKind(record.systemKind, record.vendorId);
+  return cleanUndefined({
+    id: record.id,
+    type: "component",
+    title: record.title,
+    status: record.status,
+    componentKind: kind,
+    description: record.description || record.title,
+    criticality: record.criticality,
+    environment: record.environment,
+    vendorId: record.vendorId,
+    systemUses,
+    informationUses: normalizedInformationTypeIds(record.dataTypes, informationTypes).map((informationTypeId) => ({
+      informationTypeId,
+      activities: ["process"]
+    })),
+    internetExposed: record.internetExposed,
+    evidenceSourceKinds: record.evidenceSourceKinds,
+    evidenceOwnerIds: record.evidenceOwnerIds,
+    ownerIds: record.ownerIds,
+    classificationId: classifications.get(record.classificationId),
+    continuityObjectives: record.continuityObjectives,
+    statusTransition: record.statusTransition,
+    tags: record.tags,
+    extensions: mergeMigrationExtension(record.extensions, {
+      ...(record.subserviceVendorIds ? { subserviceVendorIds: record.subserviceVendorIds } : {})
+    }),
+    externalIds: record.externalIds
+  });
+}
+
+function componentKind(value, vendorId) {
+  const kind = String(value || "").toLowerCase();
+  if (["infrastructure", "software", "service", "network", "physical", "external-system", "interconnection"].includes(kind)) return kind;
+  if (["application", "platform", "repository", "evidence-source"].includes(kind)) return "software";
+  return vendorId ? "service" : "software";
+}
+
+function migrateV4Vendor(record, informationTypes, classifications, reviewRequired) {
+  const migrated = { ...record };
+  const legacy = {};
+  for (const field of ["service", "subprocessor", "backupVendorId"]) {
+    if (!Object.hasOwn(migrated, field)) continue;
+    legacy[field] = migrated[field];
+    delete migrated[field];
+    reviewRequired.push(classifiedChange(
+      "review-required",
+      record.id,
+      field,
+      field === "service"
+        ? "Confirm that supplied capabilities are represented by factual Component records when they meet the inclusion rules."
+        : field === "backupVendorId"
+          ? "Move any real alternate supplier decision to the relevant Component or continuity plan."
+          : "Decide subprocessor or subservice treatment only in the context where it applies; model v4 does not infer it."
+    ));
+  }
+  migrated.informationTypeIds = normalizedInformationTypeIds(record.dataTypes, informationTypes);
+  delete migrated.dataTypes;
+  if (record.classificationId) migrated.classificationId = classifications.get(record.classificationId);
+  migrated.extensions = mergeMigrationExtension(record.extensions, legacy);
+  if (!Object.keys(migrated.extensions || {}).length) delete migrated.extensions;
+  return migrated;
+}
+
+function rewriteV4SystemRelationships(record, context) {
+  const split = (ids = []) => ({
+    systems: [...new Set(ids.filter((id) => context.systemKinds.get(id) === "system"))],
+    components: [...new Set(ids.filter((id) => context.systemKinds.get(id) === "component"))]
+  });
+  const targetSystems = (componentIds) => [...new Set(componentIds.flatMap((id) => (
+    (context.componentSystemUses.get(id) || []).map(({ systemId }) => systemId)
+  )))];
+  const setDualScope = (field = "systemIds") => {
+    if (!Array.isArray(record[field])) return;
+    const { systems, components } = split(record[field]);
+    record[field] = [...new Set([...systems, ...targetSystems(components)])];
+    if (components.length && !["audit", "commitment"].includes(context.byId.get(record.id)?.type)) {
+      record.componentIds = [...new Set([...(record.componentIds || []), ...components])];
+    }
+  };
+
+  if (record.classificationId) record.classificationId = context.classifications.get(record.classificationId);
+  if (record.type === "audit") record.programId = context.programId;
+  if (record.type === "control-activity" && record.externalActivity?.systemId) {
+    const oldId = record.externalActivity.systemId;
+    if (context.systemKinds.get(oldId) === "component") {
+      record.externalActivity = { ...record.externalActivity, componentId: oldId };
+      delete record.externalActivity.systemId;
+    } else requireComponentDecision(record, "externalActivity.systemId", context, "Choose the external authority Component for this Control Activity.");
+  }
+  if (record.type === "collection-review") {
+    record.scopeResourceIds = [...new Set((record.scopeResourceIds || []).flatMap((id) => (
+      id === context.workspaceId
+        ? [context.programId]
+        : context.systemKinds.get(id) === "component"
+          ? [id]
+          : [id]
+    )))];
+  }
+  if (record.type === "source-coverage") {
+    if (record.coverageKind === "external-system") record.coverageKind = "external-component";
+    if (record.systemId) {
+      if (context.systemKinds.get(record.systemId) === "component") record.componentId = record.systemId;
+      else requireComponentDecision(record, "systemId", context, "Choose the authoritative Component for this source coverage.");
+      delete record.systemId;
+    }
+    record.scopeResourceIds = (record.scopeResourceIds || []).map((id) => id === context.workspaceId ? context.programId : id);
+  }
+  if (record.type === "control") {
+    const systems = split(record.systemIds || []);
+    record.systemIds = [...new Set([...systems.systems, ...targetSystems(systems.components)])];
+    record.componentIds = [...new Set([...(record.componentIds || []), ...systems.components])];
+    const sources = split(record.evidenceSourceIds || []);
+    record.evidenceSourceComponentIds = sources.components;
+    for (const id of sources.systems) requireComponentDecision(record, "evidenceSourceIds", context, `Choose an evidence-source Component for bounded System "${id}".`);
+    delete record.evidenceSourceIds;
+  } else if (record.type === "asset") {
+    const scope = split(record.systemIds || []);
+    record.componentIds = scope.components;
+    for (const id of scope.systems) requireComponentDecision(record, "systemIds", context, `Choose the Component represented by this Asset link to bounded System "${id}".`);
+    delete record.systemIds;
+  } else if (["access-review", "vulnerability-scan"].includes(record.type)) {
+    const scope = split(record.systemIds || []);
+    record.componentIds = scope.components;
+    for (const id of scope.systems) requireComponentDecision(record, "systemIds", context, `Choose the Component for bounded System "${id}".`);
+    delete record.systemIds;
+  } else if (record.type === "access-grant" && record.systemId) {
+    if (context.systemKinds.get(record.systemId) === "component") record.componentId = record.systemId;
+    else requireComponentDecision(record, "systemId", context, "Choose the Component that grants this access.");
+    delete record.systemId;
+  } else if (record.type === "audit-population" && record.sourceSystemId) {
+    if (context.systemKinds.get(record.sourceSystemId) === "component") record.sourceComponentId = record.sourceSystemId;
+    else requireComponentDecision(record, "sourceSystemId", context, "Choose the authoritative source Component for this population.");
+    delete record.sourceSystemId;
+  } else if (record.type === "audit-request" && record.externalAuthoritySystemId) {
+    if (context.systemKinds.get(record.externalAuthoritySystemId) === "component") record.externalAuthorityComponentId = record.externalAuthoritySystemId;
+    else requireComponentDecision(record, "externalAuthoritySystemId", context, "Choose the external authority Component for this request.");
+    delete record.externalAuthoritySystemId;
+  } else if (record.type === "collection-review" && record.authoritativeSystemId) {
+    if (context.systemKinds.get(record.authoritativeSystemId) === "component") record.authoritativeComponentId = record.authoritativeSystemId;
+    else requireComponentDecision(record, "authoritativeSystemId", context, "Choose the authoritative Component for this collection review.");
+    delete record.authoritativeSystemId;
+  } else if (record.type === "evidence") {
+    setDualScope();
+    if (record.sourceSystemId) {
+      if (context.systemKinds.get(record.sourceSystemId) === "component") {
+        record.sourceComponentId = record.sourceSystemId;
+        if (record.sourceKind === "system") record.sourceKind = "component";
+      } else requireComponentDecision(record, "sourceSystemId", context, "Choose the authoritative source Component for this Evidence Artifact.");
+      delete record.sourceSystemId;
+    }
+  } else if (record.type !== "workspace" && record.type !== "system" && record.type !== "component") {
+    setDualScope();
+  }
+  if (record.type === "audit" && (record.subserviceVendorIds || []).length) {
+    const method = record.subserviceMethod;
+    const treatments = [];
+    for (const vendorId of record.subserviceVendorIds) {
+      const componentIds = [...context.systemKinds]
+        .filter(([id, kind]) => kind === "component" && context.byId.get(id)?.vendorId === vendorId)
+        .map(([id]) => id);
+      if (["carve-out", "inclusive"].includes(method) && componentIds.length) {
+        treatments.push({
+          vendorId,
+          componentIds,
+          method,
+          rationale: "Migrated from the explicit v3 Audit subservice scope and method; management must confirm the treatment."
+        });
+        context.reviewRequired.push(classifiedChange("review-required", record.id, "subserviceTreatments", "Confirm each migrated audit-time subservice treatment and rationale."));
+      } else requireComponentDecision(record, "subserviceVendorIds", context, `Choose the Components and audit-time treatment for Vendor "${vendorId}".`);
+    }
+    if (treatments.length) record.subserviceTreatments = treatments;
+    delete record.subserviceVendorIds;
+    delete record.subserviceMethod;
+  }
+  return cleanUndefined(record);
+}
+
+function requireComponentDecision(record, field, context, message) {
+  context.unsupported.push(classifiedChange("unsupported", record.id, field, message));
+  context.manualActions.push({ resourceId: record.id, field, message });
+}
+
+function normalizedInformationTypeIds(values, informationTypes) {
+  return [...new Set((values || []).map((value) => informationTypes.get(String(value).trim().toLowerCase())).filter(Boolean))];
+}
+
+function mergeMigrationExtension(existing, legacy) {
+  const useful = Object.fromEntries(Object.entries(legacy || {}).filter(([, value]) => value !== undefined));
+  if (!Object.keys(useful).length) return existing;
+  return {
+    ...(existing || {}),
+    "filegrc.migration": {
+      ...(existing?.["filegrc.migration"] || {}),
+      v3: useful
+    }
+  };
+}
+
+function cleanUndefined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, current]) => current !== undefined));
+}
+
+function properTitle(value) {
+  return String(value).split(/[-_\s]+/).filter(Boolean).map((part) => `${part[0].toUpperCase()}${part.slice(1)}`).join(" ");
+}
+
 async function postMigrationAssessment(input) {
   const { assessWorkflow } = await import("./workflow.js");
   return assessWorkflow(input);
@@ -1388,9 +2003,10 @@ function migrateInverseArrays(resources, byId, editable, conflicts, mapping) {
 }
 
 function emptyPlan(version, targetVersion = V1_TARGET_MODEL_VERSION) {
-  const currentV3 = targetVersion === ACTIVE_MODEL_VERSION;
+  const classifiedPlan = ["3", "4"].includes(String(targetVersion));
+  const includesPathMoves = String(targetVersion) === "4";
   return {
-    schemaVersion: currentV3 ? 2 : 1,
+    schemaVersion: classifiedPlan ? 2 : 1,
     sourceModelVersion: version,
     targetModelVersion: targetVersion,
     ready: true,
@@ -1398,7 +2014,7 @@ function emptyPlan(version, targetVersion = V1_TARGET_MODEL_VERSION) {
     conflicts: [],
     manualActions: [],
     notes: [],
-    ...(currentV3 ? {
+    ...(classifiedPlan ? {
       classifications: {
         automatic: [],
         reviewRequired: [],
@@ -1406,11 +2022,12 @@ function emptyPlan(version, targetVersion = V1_TARGET_MODEL_VERSION) {
       },
       fileDiff: {
         create: [],
-        update: []
+        update: [],
+        ...(includesPathMoves ? { move: [] } : {})
       }
     } : {}),
-    summary: currentV3
-      ? { create: 0, update: 0, automatic: 0, reviewRequired: 0, unsupported: 0 }
+    summary: classifiedPlan
+      ? { create: 0, update: 0, ...(includesPathMoves ? { move: 0 } : {}), automatic: 0, reviewRequired: 0, unsupported: 0 }
       : { create: 0, update: 0 },
     changes: {
       create: [],

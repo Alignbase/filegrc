@@ -81,7 +81,7 @@ Use a dedicated private repository for your FileGRC workspace. The browser commi
 - In a monorepo, never include application changes in FileGRC-generated commits.
 - Treat detached and feature-branch copies as read-only unless an explicit development override is active.
 
-New workspaces use trunk repository mode with `main` as the authoritative branch and `origin` as the remote. Each browser mutation checks the whole Git worktree, fetches the remote, fast-forwards only, rechecks the edited revision, writes through the normal domain function, validates the workspace, stages only this FileGRC workspace, creates a focused commit, and pushes it. Browser onboarding commits its related workspace, system, and renderer changes together.
+New workspaces use trunk repository mode with `main` as the authoritative branch and `origin` as the remote. Each browser mutation checks the whole Git worktree, fetches the remote, fast-forwards only, rechecks the edited revision, writes through the normal domain function, validates the workspace, stages only this FileGRC workspace, creates a focused commit, and pushes it. Browser onboarding commits its related Workspace, Program, System, Component, and renderer changes together.
 
 The Repository page reports `Synced`, `Syncing`, `Not synced`, `Read-only checkout`, or `Git setup required`. Browser saves return after the validated local commit, then push in the background. Treat `Syncing` as locally durable but not yet durable on the remote, and wait for `Synced` before starting another write. A failed push keeps the local FileGRC commit and offers Retry sync when every ahead commit changes only this workspace. FileGRC never pushes an ahead commit that includes files outside this workspace, and it never merges, rebases, switches branches, resolves conflicts, or changes files outside the workspace.
 
@@ -103,9 +103,9 @@ If the installed CLI reports that this workspace uses an unsupported model, star
 npx filegrc migrate --to-model 3 --preview --json
 ```
 
-Model v1 workspaces migrate to v2 first. Review the v3 preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The migration creates no approvals, holders, evidence, or historical dates.
+Older workspaces migrate one version at a time. Review the v4 preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The migration creates no approvals, holders, Evidence Artifacts, or historical dates.
 
-The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains the classifications, automatic changes, and required post-migration review.
+The [model v4 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v4.md) explains System classification decisions, relationship changes, and required post-migration review.
 
 Run these commands when working with records:
 
@@ -210,7 +210,7 @@ The Evidence Ready gate requires:
 3. Implemented Controls with an owner, actual procedure, scope, operation pattern, mappings, implementation date, and every required linked Work Queue schedule running.
 4. Every selected Control mapped to active authoritative Systems with the required evidence source roles, current access owners, and repeatable extraction instructions in Record Markdown.
 
-Onboarding does not create External Evidence records. Complete authoritative source Systems as part of Control implementation. For every incomplete family in Program Readiness, update the Control with its authoritative evidence source Systems, then give each source the required evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. Use `npx filegrc evidence-map --json` when you want only those source checks. During Step 4, create External Evidence only when a real artifact exists. Select its source System, attach or reference the result, link the Controls and operating record it supports, record its collector and classification, then have another person verify it before audit use.
+Onboarding does not create Evidence Artifacts. Complete authoritative source Components as part of Control implementation. For every incomplete family in Program Readiness, update the Control with its authoritative `evidenceSourceComponentIds`, then give each source Component the required evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. Use `npx filegrc evidence-map --json` when you want only those source checks. During Step 4, create an Evidence Artifact only when a real artifact exists. Select its `sourceComponentId`, attach or reference the result, link the Controls and operating record it supports, record its collector and Classification, then have another person verify it before audit use.
 
 When the gate passes, set `workspace.candidatePeriodStart` to the date reliable evidence collection begins. Do not backdate it. `candidatePeriodStart` and `candidatePeriodEnd` express management’s target. They do not establish the final report period.
 
@@ -235,15 +235,15 @@ The audit record’s `typeOneAsOf`, `periodStart`, and `periodEnd` are the dates
 Review both evidence paths against the exact firm-agreed date or period:
 
 1. filegrc Evidence consists of dated Step 4 operating records. Complete each applicable record, link it to the Controls it supports, record the result in structured fields or Markdown, and link any external artifact needed to support that result.
-2. External Evidence consists of verified `evidence` records from authoritative Systems. Confirm the source System, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
+2. Evidence Artifacts are verified `evidence` records from authoritative Components. Confirm the source Component, audit date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
 
-Audit Readiness reports coverage for both paths. The packet includes the matching filegrc records and Markdown with Git history, plus External Evidence records, retained attachments, delivery indexes, and checksums.
+Audit Readiness reports coverage for both paths. The packet includes the matching filegrc records and Markdown with Git history, plus Evidence Artifacts, retained attachments, delivery indexes, and checksums.
 
 Near the end of fieldwork, link a verified fixed-format copy of the signed management representation letter to its engagement-specific document. Date it on or after the Type 1 date or Type 2 period end. A representation that is still marked for later blocks packet delivery.
 
-Catalog each authoritative source under Systems and assign its `evidenceSourceKinds`. A third-party application is still a System because it operates controls or produces evidence. Create a separate Vendor for its provider and connect the System through `vendorId`; keep contracts, due diligence, and supplier risk on the Vendor. Name the people who can access system reports and keep extraction instructions in the System's Record Markdown. For each Type 2 population, select one source system and export the exact audit period. Split a population when different systems or queries produce its items. Link a verified `population-export` evidence record that names the same source system and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope control cannot be marked not applicable.
+Catalog each authoritative source as a Component and assign its `evidenceSourceKinds`. A third-party application is a Component when it supports a bounded System, a Control, Evidence, or relevant operations. Create a separate Vendor for its provider and connect the Component through `vendorId`; keep contracts, due diligence, and supplier risk on the Vendor. Name the people who can access reports and keep extraction instructions in the Component's Record Markdown. For each Type 2 population, select one source Component and export the exact audit period. Split a population when different Components or queries produce its items. Link a verified `population-export` Evidence Artifact that names the same source Component and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope Control cannot be marked not applicable.
 
-Every evidence record names its collector. Verified evidence also names its verifier and verification date. Use `sourceSystemId` for system exports, `sourceResourceIds` for filegrc records, and `sourceCommit` to bind the evidence to repository state.
+Every Evidence Artifact names its collector. Verified Evidence Artifacts also name their verifier and verification date. Use `sourceComponentId` for source exports, `sourceResourceIds` for FileGRC records, and `sourceCommit` to bind the Evidence Artifact to repository state.
 
 Preview coverage before writing output:
 
@@ -253,7 +253,7 @@ npx filegrc evidence-packet --audit audit-2026-type-2
 npx filegrc evidence-packet --audit audit-2026-type-2 --preview --require-ready
 ```
 
-The packet includes records explicitly related to the selected engagement, its systems, controls, criteria, policies, evidence, and dependencies. It does not include unrelated dated records from the workspace. A Type 2 packet adds filegrc Evidence, recurring obligation occurrences, event workflows, and management population reconciliations. Output includes a control matrix with separate filegrc Evidence and External Evidence columns, source-system index, external-evidence delivery index, population index, evidence index, committed historical source versions, and SHA-256 checksums. Output under `.filegrc/evidence-packets/` is derived and must not be hand-edited or committed.
+The packet includes records explicitly related to the selected engagement, its bounded Systems, Controls, criteria, policies, Evidence, and dependencies. It does not include unrelated dated records from the workspace. A Type 2 packet adds filegrc Evidence, recurring obligation occurrences, event workflows, and management population reconciliations. Output includes a control matrix with separate filegrc Evidence and Evidence Artifact columns, source-Component index, Evidence Artifact delivery index, population index, evidence index, committed historical source versions, and SHA-256 checksums. Output under `.filegrc/evidence-packets/` is derived and must not be hand-edited or committed.
 
 Treat a packet as ready for management delivery only when its status is `delivery-ready`, its review list is clear, and its manifest names a clean Git revision. This means filegrc's management checks passed. It does not mean the engagement team found the evidence sufficient or appropriate. The generator copies raw records, Markdown, and local fixed attachments. It never fetches external references. Reconcile `external-evidence-index.csv` to the auditor portal or other approved delivery system before telling the engagement team that submission is complete.
 

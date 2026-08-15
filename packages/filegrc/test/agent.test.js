@@ -96,7 +96,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "npx filegrc evidence-map --json",
     "npx filegrc program-readiness --json"
   ]);
-  assert.equal(path[2].summary, "Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.");
+  assert.equal(path[2].summary, "Describe each Control and connect its evidence source.");
   assert.ok(path.every(({ summary }) => summary.length <= 120));
   assert.ok(Object.values(RESOURCE_PAGE_SUMMARIES).every((summary) => summary.length <= 100));
   assert.deepEqual(path[3].pages.map(({ utility }) => utility), ["policy-events", "work-queue"]);
@@ -124,7 +124,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").summary, RESOURCE_PAGE_SUMMARIES.system);
   const pathText = await execute(process.execPath, [cli, "program-path", "--root", root]);
-  assert.match(pathText.stdout, /Step 1\.h · Systems[\s\S]*Define the service boundary and the Systems that operate controls or produce evidence\.[\s\S]*Details: npx filegrc guide system --json/);
+  assert.match(pathText.stdout, /Step 1\.g · Systems[\s\S]*Define the service boundary\.[\s\S]*Details: npx filegrc guide system --json/);
   assert.doesNotMatch(pathText.stdout, /Policy basis:|Instructions:/);
   const pathSummaryCommand = await execute(process.execPath, [
     cli,
@@ -206,6 +206,10 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     const mutation = scaffoldResourceMutation(loaded, type, `Agent test ${guide.title}`);
     assert.equal(mutation.record.type, type);
     assert.match(mutation.record.id, new RegExp(`^${type}-`));
+    if (type === "evidence" && String(loaded.model.modelVersion) === "4") {
+      assert.equal(mutation.record.artifactKind, "business-record");
+      assert.equal(mutation.record.sourceKind, "file");
+    }
     for (const field of guide.requiredAtCreation) {
       assert.equal(Object.hasOwn(mutation.record, field.name), true, `${type} scaffold includes ${field.name}`);
     }

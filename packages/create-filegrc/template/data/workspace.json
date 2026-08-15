@@ -1,38 +1,9 @@
 {
-  "dataModelVersion": "3",
+  "dataModelVersion": "4",
   "id": "workspace",
   "type": "workspace",
   "title": "{{program_title}}",
   "organizationName": "{{company_name}}",
   "timezone": "{{timezone}}",
-  "description": "{{program_description}}",
-  "riskMethodology": {
-    "method": "5x5 likelihood and impact",
-    "likelihoodScale": [
-      "Rare",
-      "Unlikely",
-      "Possible",
-      "Likely",
-      "Almost certain"
-    ],
-    "impactScale": [
-      "Negligible",
-      "Minor",
-      "Moderate",
-      "Major",
-      "Severe"
-    ],
-    "ratingBands": {
-      "low": "1-4",
-      "medium": "5-9",
-      "high": "10-16",
-      "critical": "17-25"
-    }
-  },
-  "classificationDefinitions": {
-    "public": "Approved for public release.",
-    "internal": "Intended for the workforce and approved partners.",
-    "confidential": "Disclosure could harm the organization, a customer, or another person.",
-    "restricted": "Disclosure or alteration could cause severe harm or trigger legal duties."
-  }
+  "description": "{{program_description}}"
 }

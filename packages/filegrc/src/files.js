@@ -206,8 +206,9 @@ export async function applyResourceBatch(input, changes) {
 async function applyResourceBatchUnlocked(input, changes = {}) {
   const creates = changes.create || [];
   const updates = changes.update || [];
+  const moves = changes.movePaths || [];
   const expectedRevisions = changes.expectedRevisions || {};
-  if (!Array.isArray(creates) || !Array.isArray(updates) || (!creates.length && !updates.length)) {
+  if (!Array.isArray(creates) || !Array.isArray(updates) || !Array.isArray(moves) || (!creates.length && !updates.length && !moves.length)) {
     throw new Error("A resource batch needs at least one create or update.");
   }
   if (Array.isArray(expectedRevisions) || typeof expectedRevisions !== "object") {
@@ -246,6 +247,7 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
   const existingById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const ids = new Set();
   const writes = [];
+  const allowedPathMoves = new Set();
   for (const record of creates) {
     validateBatchRecord(record, ids);
     if (existingById.has(record.id)) throw new Error(`Resource "${record.id}" already exists.`);
@@ -256,24 +258,75 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     validateBatchRecord(record, ids);
     const existing = existingById.get(record.id);
     if (!existing) throw new Error(`Resource "${record.id}" was not found.`);
-    if (existing.record.type !== record.type) {
+    if (existing.record.type !== record.type && !targetModelVersion) {
       throw new Error(`Resource "${record.id}" cannot change type.`);
     }
+    if (existing.record.type !== record.type) {
+      const targetMarkdownByName = new Map(
+        markdownEntries(writeModel, record).map((entry) => [entry.name, entry.path])
+      );
+      for (const sourceMarkdown of markdownEntries(loaded.model, existing.record)) {
+        const targetMarkdown = targetMarkdownByName.get(sourceMarkdown.name);
+        if (targetMarkdown && targetMarkdown !== sourceMarkdown.path) {
+          allowedPathMoves.add(`${sourceMarkdown.path}\0${targetMarkdown}`);
+        }
+      }
+    }
     const path = resourcePath(loaded.root, writeModel, record);
-    const previous = await readFile(path, "utf8");
-    const mode = (await stat(path)).mode & 0o777;
+    const previousPath = existing.path;
+    const previous = await readFile(previousPath, "utf8");
+    const mode = (await stat(previousPath)).mode & 0o777;
     assertRevision(
       previous,
       expectedRevisions[record.id] || existing.revision,
       `Resource "${record.id}"`
     );
-    writes.push({ operation: "update", path, record, previous, fileMode: mode });
+    if (path !== previousPath) {
+      try {
+        await stat(path);
+        throw new Error(`Migration destination for resource "${record.id}" already exists.`);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    writes.push({ operation: path === previousPath ? "update" : "move-update", path, previousPath, record, previous, fileMode: mode });
+  }
+  const pathMoves = [];
+  const seenMovePaths = new Set();
+  for (const move of moves) {
+    if (!move || Array.isArray(move) || typeof move !== "object") {
+      throw new Error("Every migration path move must name a companion Markdown source and destination.");
+    }
+    const moveKey = `${move.from}\0${move.to}`;
+    if (!targetModelVersion || !allowedPathMoves.has(moveKey)) {
+      throw new Error("A migration path move must match companion Markdown for a resource whose type changes.");
+    }
+    if (seenMovePaths.has(moveKey)) throw new Error("A migration path move may appear only once.");
+    seenMovePaths.add(moveKey);
+    const from = resolveDataPath(loaded.root, move.from);
+    const to = resolveDataPath(loaded.root, move.to);
+    if (from === to) continue;
+    const mode = (await stat(from)).mode & 0o777;
+    try {
+      await stat(to);
+      throw new Error(`Migration destination data/${move.to} already exists.`);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    pathMoves.push({ from, to, mode });
   }
   const written = [];
+  const moved = [];
   try {
     for (const item of writes) {
       await writeAtomic(item.path, item.record, { exclusive: item.operation === "create" });
       written.push(item);
+      if (item.operation === "move-update") await rm(item.previousPath);
+    }
+    for (const item of pathMoves) {
+      await mkdir(dirname(item.to), { recursive: true });
+      await rename(item.from, item.to);
+      moved.push(item);
     }
     let validation = null;
     if (!deferValidation) {
@@ -290,10 +343,21 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     };
   } catch (error) {
     const rollbackErrors = [];
+    for (const item of moved.reverse()) {
+      try {
+        await mkdir(dirname(item.from), { recursive: true });
+        await rename(item.to, item.from);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError.message);
+      }
+    }
     for (const item of written.reverse()) {
       try {
         if (item.operation === "create") await rm(item.path, { force: true });
-        else await writeTextAtomic(item.path, item.previous, { mode: item.fileMode });
+        else if (item.operation === "move-update") {
+          await rm(item.path, { force: true });
+          await writeTextAtomic(item.previousPath, item.previous, { mode: item.fileMode });
+        } else await writeTextAtomic(item.path, item.previous, { mode: item.fileMode });
       } catch (rollbackError) {
         rollbackErrors.push(rollbackError.message);
       }

@@ -36,13 +36,21 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 ## Upgrade an existing workspace
 
-The normal runtime uses data model v3. Start a model v2 upgrade with a read-only preview:
+The normal runtime uses data model v4. Start a model v3 upgrade with a read-only preview:
+
+```sh
+npx filegrc migrate --to-model 4 --preview --json
+```
+
+Review every automatic, review-required, and unsupported item. A v3 System may represent either a bounded System or a Component, so ambiguous records need an explicit decisions file. Resolve unsupported items before applying the same migration with `--yes`. The [model v4 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v4.md) documents the decisions shape and migration result.
+
+A model v2 workspace must migrate to v3 first:
 
 ```sh
 npx filegrc migrate --to-model 3 --preview --json
 ```
 
-Review every automatic, review-required, and unsupported item. Resolve unsupported items before applying the same migration with `--yes`. The migration writes one atomic batch, validates model v3, changes no Git history, and is safe to rerun. The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains every migration class and the review that follows.
+The migration writes one atomic batch, validates model v3, changes no Git history, and is safe to rerun. The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains every migration class and the review that follows. Apply it before previewing model v4.
 
 A model v1 workspace must migrate to v2 first:
 
@@ -50,17 +58,17 @@ A model v1 workspace must migrate to v2 first:
 npx filegrc migrate --to-model 2 --preview --json
 ```
 
-Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3 preview.
+Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3 and v4 previews in order.
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server defaults to `127.0.0.1:8787`; set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
-`filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Add `--preview` to validate and inspect the planned service and workspace writes without saving. Add `--summary --json` for compact agent output. Selecting Type 1 or Type 2 updates the workspace goal and selected systems. Setup does not select framework records, link controls, create evidence, or create an audit record.
+`filegrc setup` provides the headless equivalent of browser onboarding. Run it without arguments for guided terminal setup, or pass all initial service-boundary fields and a management program goal as flags or a JSON payload. Add `--preview` to validate and inspect the planned System and Program writes without saving. Add `--summary --json` for compact agent output. Selecting Type 1 or Type 2 updates the Program goal and selected Systems. Setup does not select Framework records, link Controls, create Evidence Artifacts, or create an Audit record.
 
 `filegrc program-path --next --json` gives an agent the current step and first action without loading the full lifecycle. Use `--summary` for compact status across all five steps, `--current` for the full current-step guide, or no compact flag for every step. `filegrc guide <type>` repeats the matching page guidance and adds fields, relationship candidates, Markdown slots, and timing for that record type.
 
-`filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. The command does not require an audit ID or CPA firm.
+`filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. Pass `--program PROGRAM_ID` when more than one active Program exists. The command does not require an Audit ID or CPA firm.
 
-Control implementation includes each selected Control family’s expected evidence, authoritative source Systems, and source-readiness checks. `filegrc evidence-map --json` provides a focused read-only diagnostic for those checks. Fix gaps in the Control and System records. During Step 4, create External Evidence only when a real artifact exists, then link it to the supporting operating record when applicable.
+Control implementation includes each selected Control family’s expected evidence, authoritative source Components, and source-readiness checks. `filegrc evidence-map --json` provides a focused read-only diagnostic for those checks. Fix gaps in the Control and Component records. During Step 4, create an Evidence Artifact only when a real export, report, screenshot, signed file, or approved external reference exists, then link it to the supporting operating record when applicable.
 
 `filegrc obligations` shows recurring work and a task-level preview for each Policy Event, including owners, deadlines, and requested proof. `filegrc trigger` adds the event and all of its Action Items to the Work Queue atomically, then prints the created task IDs and deadlines.
 
