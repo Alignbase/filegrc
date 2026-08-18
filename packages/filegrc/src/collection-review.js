@@ -1,33 +1,12 @@
 import { createHash } from "node:crypto";
+import { collectionRevision } from "./collection-revision.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
 import { applyResourceBatch } from "./files.js";
 import { getGitSummary } from "./git.js";
 import { loadWorkspace } from "./workspace.js";
-import { resolveProgram, selectedRequirementIds } from "./program.js";
+import { resolveProgram } from "./program.js";
 
-export function collectionRevision(loaded, resourceType, options = {}) {
-  const program = resolveProgram(loaded, options.programId);
-  const scopedIds = new Set(scopedCollectionRecords(loaded, resourceType, program).map(({ id }) => id));
-  const records = loaded.entries
-    .filter(({ record }) => record.type === resourceType && scopedIds.has(record.id))
-    .map(({ record, source }) => ({
-      id: record.id,
-      revision: createHash("sha256").update(source).digest("hex")
-    }))
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const workspaceScope = {
-    programId: program?.id ?? null,
-    assuranceGoal: program?.assuranceGoal ?? null,
-    candidateCoverage: program?.candidateCoverage ?? null,
-    systemIds: [...(program?.systemIds || [])].sort(),
-    frameworkIds: [...(program?.frameworkIds || [])].sort(),
-    requirementIds: [...selectedRequirementIds(program || {}, loaded.model)].sort(),
-    controlIds: [...(program?.controlIds || [])].sort()
-  };
-  return createHash("sha256")
-    .update(JSON.stringify({ resourceType, records, workspaceScope }))
-    .digest("hex");
-}
+export { collectionRevision };
 
 export function assessCollectionReviews(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
@@ -50,7 +29,13 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     && (String(loaded.model.modelVersion) !== "4" || (record.scopeResourceIds || []).includes(program.id))
   ));
   const review = reviewEntry?.record || null;
-  const currentRevision = collectionRevision(loaded, resourceType, { programId: program.id });
+  const authoritativeSourceId = review?.decision === "externally-managed"
+    ? review.authoritativeComponentId || review.authoritativeSystemId
+    : null;
+  const currentRevision = collectionRevision(loaded, resourceType, {
+    programId: program.id,
+    authoritativeSourceId
+  });
   const allowedDecisions = configuration.decisions || ["complete"];
   const allowsEmptyCollection = allowedDecisions.some((decision) => (
     decision === "zero-population" || decision === "externally-managed"
@@ -147,6 +132,10 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     ));
     if (!system) throw new Error(`${configuration.title} review needs an active authoritative ${v4 ? "Component" : "System"}.`);
   }
+  const currentRevision = collectionRevision(loaded, resourceType, {
+    programId: program.id,
+    authoritativeSourceId: decision === "externally-managed" ? authoritativeSourceId : null
+  });
   const existing = assessment.review;
   const record = {
     ...(existing || {
@@ -161,7 +150,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     rationale,
     reviewedByIds,
     reviewedOn,
-    collectionRevision: assessment.collectionRevision,
+    collectionRevision: currentRevision,
     scopeRevision,
     ...(decision === "externally-managed"
       ? { [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: authoritativeSourceId }

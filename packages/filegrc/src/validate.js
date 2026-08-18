@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
+import { collectionRevision } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
@@ -177,14 +178,21 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
     ? (record.scopeResourceIds || []).map((id) => byId.get(id)).find(({ type } = {}) => type === "program")
     : null;
   const recordCount = scopedCollectionRecords(loaded, record.resourceType, program).length;
-  if (!recordCount && record.decision === "complete") {
+  const currentRevision = collectionRevision(loaded, record.resourceType, {
+    program,
+    authoritativeSourceId: record.decision === "externally-managed"
+      ? record.authoritativeComponentId || record.authoritativeSystemId
+      : null
+  });
+  const current = record.collectionRevision === currentRevision;
+  if (current && !recordCount && record.decision === "complete") {
     diagnostics.push(error(
       "invalid-collection-review-decision",
       path,
       `${configuration.title} has no records and cannot use the complete conclusion.`
     ));
   }
-  if (recordCount && record.decision === "zero-population") {
+  if (current && recordCount && record.decision === "zero-population") {
     diagnostics.push(error(
       "invalid-collection-review-decision",
       path,
@@ -192,7 +200,8 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
     ));
   }
   if (
-    record.decision === "externally-managed"
+    current
+    && record.decision === "externally-managed"
     && byId.get(record.authoritativeComponentId || record.authoritativeSystemId)?.status !== "active"
   ) {
     diagnostics.push(error(

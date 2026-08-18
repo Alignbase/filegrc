@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { planApplicabilityReview, scaffoldApplicabilityReview } from "../src/batch-review.js";
 import { buildAgentGuide } from "../src/agent.js";
 import { applyCollectionReview, assessCollectionReview } from "../src/collection-review.js";
-import { createResource, updateResource } from "../src/files.js";
+import { createResource, updateContent, updateResource } from "../src/files.js";
 import { assessProgramReadiness } from "../src/program-readiness.js";
 import { resolveProgram } from "../src/program.js";
+import { markdownEntries } from "../src/resource-markdown.js";
 import { assessWorkflow } from "../src/workflow.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { validateWorkspace } from "../src/validate.js";
@@ -281,6 +282,13 @@ test("v4 Vendor collection revisions track Vendors without Component links", asy
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
 
+  await updateResource(root, "program", program.id, {
+    ...program,
+    candidateCoverage: { kind: "as-of", on: "2026-08-31" }
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
+
   await createResource(root, {
     id: "vendor-corporate-card",
     type: "vendor",
@@ -315,3 +323,294 @@ test("v4 Vendor collection revisions track Vendors without Component links", asy
   assessment = assessCollectionReview(loaded, "vendor", { programId: program.id });
   assert.equal(assessment.status, "stale");
 });
+
+test("v4 collection revisions track authoritative Markdown", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-collection-markdown-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+
+  for (const resourceType of ["system", "component"]) {
+    const program = await confirmCollectionReview(root, resourceType);
+    let loaded = await loadWorkspace(root);
+    const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
+    const record = assessment.records[0];
+    const path = markdownEntries(loaded.model, record)[0].path;
+    const source = await readFile(join(root, "data", path), "utf8");
+    await updateContent(root, path, `${source}\nMaterial review detail changed.`);
+    loaded = await loadWorkspace(root);
+    assert.equal(
+      assessCollectionReview(loaded, resourceType, { programId: program.id }).status,
+      "stale",
+      `${resourceType} review should become stale after its Markdown changes`
+    );
+  }
+});
+
+test("v4 collection revisions track type-specific source dependencies", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-collection-dependencies-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+
+  await confirmCollectionReview(root, "framework");
+  loaded = await loadWorkspace(root);
+  const requirementId = program.requirementApplicability.find(({ decision }) => decision === "applicable").requirementId;
+  const requirement = loaded.resources.find(({ id }) => id === requirementId);
+  await updateResource(root, "requirement", requirement.id, {
+    ...requirement,
+    description: `${requirement.description} Updated criterion wording.`
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "framework", { programId: program.id }).status, "stale");
+
+  await confirmCollectionReview(root, "component");
+  loaded = await loadWorkspace(root);
+  const system = loaded.resources.find(({ type, id }) => type === "system" && program.systemIds.includes(id));
+  await updateResource(root, "system", system.id, {
+    ...system,
+    boundary: `${system.boundary} Expanded service boundary.`
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "stale");
+
+  const component = assessCollectionReview(loaded, "component", { programId: program.id }).records[0];
+  const vendor = loaded.resources.find(({ type }) => type === "vendor");
+  await updateResource(root, "component", component.id, { ...component, vendorId: vendor.id });
+  await confirmCollectionReview(root, "component");
+  loaded = await loadWorkspace(root);
+  const currentVendor = loaded.resources.find(({ id }) => id === vendor.id);
+  await updateResource(root, "vendor", vendor.id, {
+    ...currentVendor,
+    criticality: currentVendor.criticality === "critical" ? "high" : "critical"
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "stale");
+
+  await confirmCollectionReview(root, "complementary-control");
+  loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ type, id }) => type === "control" && program.controlIds.includes(id));
+  await updateResource(root, "control", control.id, {
+    ...control,
+    statement: `${control.statement} Updated customer dependency.`
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "stale");
+});
+
+test("v4 externally managed collection revisions track the authoritative Component", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-authoritative-collection-source-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const component = loaded.resources.find(({ type }) => type === "component");
+  await applyCollectionReview(root, {
+    resourceType: "vendor",
+    decision: "externally-managed",
+    rationale: "The named Component is the authoritative source for the complete Vendor inventory.",
+    reviewedByIds: ["person-example"],
+    reviewedOn: "2026-08-18",
+    scopeRevision: "authoritative-vendor-source",
+    authoritativeComponentId: component.id,
+    confirmed: true
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
+
+  const currentComponent = loaded.resources.find(({ id }) => id === component.id);
+  await updateResource(root, "component", component.id, {
+    ...currentComponent,
+    description: `${currentComponent.description} Inventory source details changed.`
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "stale");
+});
+
+test("v4 collection revisions ignore semantic JSON formatting and relation order", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-collection-canonical-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const vendor = loaded.resources.find(({ type }) => type === "vendor");
+  await updateResource(root, "vendor", vendor.id, {
+    ...vendor,
+    ownerIds: ["person-example", "person-independent-approver-example"],
+    extensions: {
+      "example.review": { orderedChecks: ["contract", "security"] }
+    }
+  });
+  await confirmCollectionReview(root, "vendor");
+
+  loaded = await loadWorkspace(root);
+  const vendorEntry = loaded.entries.find(({ record }) => record.id === vendor.id);
+  await writeFile(vendorEntry.path, JSON.stringify(vendorEntry.record), "utf8");
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
+
+  const currentVendor = loaded.resources.find(({ id }) => id === vendor.id);
+  await updateResource(root, "vendor", vendor.id, {
+    ...currentVendor,
+    ownerIds: [...currentVendor.ownerIds].reverse()
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
+
+  const reorderedVendor = loaded.resources.find(({ id }) => id === vendor.id);
+  await updateResource(root, "vendor", vendor.id, {
+    ...reorderedVendor,
+    extensions: {
+      "example.review": { orderedChecks: ["security", "contract"] }
+    }
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "stale");
+});
+
+test("v4 collection revisions ignore unrelated dependency fields", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-collection-projections-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const system = loaded.resources.find(({ type, id }) => type === "system" && program.systemIds.includes(id));
+  const control = loaded.resources.find(({ type, id }) => type === "control" && program.controlIds.includes(id));
+
+  await confirmCollectionReview(root, "framework");
+  await updateResource(root, "system", system.id, { ...system, title: `${system.title} renamed` });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "framework", { programId: program.id }).status, "current");
+
+  await confirmCollectionReview(root, "component");
+  loaded = await loadWorkspace(root);
+  const currentControl = loaded.resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...currentControl,
+    implementationReviewedOn: "2026-08-18"
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+
+  await confirmCollectionReview(root, "complementary-control");
+  loaded = await loadWorkspace(root);
+  const currentSystem = loaded.resources.find(({ id }) => id === system.id);
+  await updateResource(root, "system", system.id, {
+    ...currentSystem,
+    continuityObjectives: {
+      ...currentSystem.continuityObjectives,
+      recoveryTimeHours: (currentSystem.continuityObjectives?.recoveryTimeHours || 24) + 1
+    }
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "current");
+});
+
+test("v4 Complementary Control reviews exclude retired records", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-complementary-retired-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  const program = await confirmCollectionReview(root, "complementary-control");
+  let loaded = await loadWorkspace(root);
+  const before = assessCollectionReview(loaded, "complementary-control", { programId: program.id });
+  const complementaryControl = before.records[0];
+  await updateResource(root, "complementary-control", complementaryControl.id, {
+    ...complementaryControl,
+    status: "retired",
+    statusTransition: {
+      changedByIds: ["person-example"],
+      changedOn: "2026-08-18",
+      reason: "The customer action no longer applies to the current service."
+    }
+  });
+
+  loaded = await loadWorkspace(root);
+  const after = assessCollectionReview(loaded, "complementary-control", { programId: program.id });
+  assert.equal(after.status, "stale");
+  assert.equal(after.recordCount, before.recordCount - 1);
+  assert.equal(after.records.some(({ id }) => id === complementaryControl.id), false);
+});
+
+test("v4 validation assesses collection reviews scoped to a retired Program", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-retired-review-program-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  await confirmCollectionReview(root, "vendor");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const programEntry = loaded.entries.find(({ record }) => record.id === program.id);
+  await writeJson(programEntry.path, {
+    ...program,
+    status: "retired",
+    statusTransition: {
+      changedByIds: ["person-example"],
+      changedOn: "2026-08-18",
+      reason: "Management retired this Program scope."
+    }
+  });
+
+  const result = await validateWorkspace(root);
+  assert.equal(result.ok, true, result.diagnostics.map(({ message }) => message).join("\n"));
+});
+
+test("v4 Complementary Control reviews exclude records outside the selected Program", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-complementary-scope-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const before = assessCollectionReview(loaded, "complementary-control", { programId: program.id });
+  const system = loaded.resources.find(({ type }) => type === "system");
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const complementaryControl = loaded.resources.find(({ type }) => type === "complementary-control");
+
+  await createResource(root, {
+    ...system,
+    id: "system-outside-program",
+    title: "Outside Program System"
+  });
+  await createResource(root, {
+    id: "control-outside-program",
+    type: "control",
+    title: "Outside Program Control",
+    status: "planned",
+    statement: "A control outside the selected Program.",
+    ownerIds: control.ownerIds,
+    requirementIds: control.requirementIds,
+    activity: control.activity,
+    operationMode: control.operationMode,
+    operationPattern: control.operationPattern,
+    systemIds: ["system-outside-program"]
+  });
+  await createResource(root, {
+    id: "complementary-control-outside-program",
+    type: "complementary-control",
+    title: "Outside Program Customer Action",
+    status: "active",
+    responsibleParty: complementaryControl.responsibleParty,
+    statement: "A customer action used only by the outside Program System.",
+    systemIds: ["system-outside-program"],
+    relatedControlIds: ["control-outside-program"]
+  });
+
+  loaded = await loadWorkspace(root);
+  const after = assessCollectionReview(loaded, "complementary-control", { programId: program.id });
+  assert.equal(after.recordCount, before.recordCount);
+  assert.equal(after.records.some(({ id }) => id === "complementary-control-outside-program"), false);
+});
+
+async function confirmCollectionReview(root, resourceType) {
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
+  await applyCollectionReview(root, {
+    resourceType,
+    decision: assessment.recordCount ? "complete" : "zero-population",
+    rationale: `Confirmed the current ${resourceType} records and material scope inputs.`,
+    reviewedByIds: ["person-example"],
+    reviewedOn: "2026-08-18",
+    scopeRevision: `collection-${resourceType}-revision`,
+    confirmed: true
+  });
+  return program;
+}

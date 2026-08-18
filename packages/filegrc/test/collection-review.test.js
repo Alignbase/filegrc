@@ -15,7 +15,7 @@ import {
 } from "../src/index.js";
 import { makeWorkspace } from "./helpers.js";
 
-test("binds a collection confirmation to the exact records and material scope", async (context) => {
+test("binds a collection confirmation to the exact records and relevant scope", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
@@ -118,7 +118,7 @@ test("binds a collection confirmation to the exact records and material scope", 
     }
   });
   loaded = await loadWorkspace(root);
-  assert.equal(assessCollectionReview(loaded, "person").status, "stale");
+  assert.equal(assessCollectionReview(loaded, "person").status, "current");
 });
 
 test("exposes collection confirmation preview and apply through the browser API", async (context) => {
