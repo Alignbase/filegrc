@@ -23,6 +23,7 @@ import { assessProgramReadiness } from "./program-readiness.js";
 import { resolveProgram } from "./program.js";
 import { planReconciliation } from "./reconciliation.js";
 import { currentCalendarDate } from "./time.js";
+import { measureTiming } from "./timing.js";
 import { validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -77,6 +78,10 @@ const OWNER_FIELDS = [
  * the complete contract for cross-interface workflow guidance.
  */
 export async function assessWorkflow(input, options = {}) {
+  return measureTiming("workflow-assessment", () => assessWorkflowUnmeasured(input, options));
+}
+
+async function assessWorkflowUnmeasured(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
     : await loadWorkspace(input);
@@ -116,7 +121,7 @@ export async function assessWorkflow(input, options = {}) {
     model: loaded.model
   });
   const validation = options.validation || await validateWorkspace(loaded);
-  const reconciliation = options.reconciliation || await planReconciliation(loaded.root);
+  const reconciliation = options.reconciliation || await planReconciliation(loaded);
   const coverage = normalizeCoverage(
     options.coverage
     || (options.auditId ? audits[0]?.coverage : null)

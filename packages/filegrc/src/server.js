@@ -6,7 +6,7 @@ import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
-import { applyApplicabilityReview, planApplicabilityReview } from "./batch-review.js";
+import { applyApplicabilityReviewWithContext, planApplicabilityReview } from "./batch-review.js";
 import { applyCollectionReview, planCollectionReview } from "./collection-review.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import { FAVICON_PNG, LOGO_MARK_PNG } from "./favicon.js";
@@ -174,10 +174,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           message: (result) => `Record ${result.reviewedIds?.length || 0} applicability decisions`,
           fastResponse: prefersFastMutation(request),
           prefetchToken
-        }, (_root, mutationContext) => applyApplicabilityReview(input, {
+        }, (_root, mutationContext) => applyApplicabilityReviewWithContext(input, {
           ...reviewPayload,
-          scopeRevision: mutationContext?.repositorySnapshot?.currentCommit,
           confirmed: payload.confirmed === true
+        }, {
+          repositorySnapshot: mutationContext?.repositorySnapshot
         })));
       }
       if (request.method === "POST" && url.pathname === "/api/collection-review/preview") {

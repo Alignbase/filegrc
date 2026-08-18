@@ -91,7 +91,9 @@ const TRANSITIONS = {
 };
 
 export async function planReconciliation(input = process.cwd()) {
-  const loaded = await loadWorkspace(input);
+  const loaded = input?.resources && input?.model && input?.entries
+    ? input
+    : await loadWorkspace(input);
   if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
     return {
       contractVersion: 1,

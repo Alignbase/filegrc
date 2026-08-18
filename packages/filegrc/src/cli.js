@@ -6,7 +6,7 @@ import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldRes
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
 import {
-  applyApplicabilityReview,
+  applyApplicabilityReviewWithContext,
   planApplicabilityReview,
   scaffoldApplicabilityReview
 } from "./batch-review.js";
@@ -561,7 +561,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const options = { ...payload, confirmed: flags.yes === true };
     const result = flags.preview
       ? await planApplicabilityReview(root, options)
-      : await withWorkflowDelta(root, () => applyApplicabilityReview(root, options));
+      : await applyApplicabilityReviewWithContext(root, options, { includeWorkflowDelta: true });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else if (flags.preview) console.log(`Applicability preview: ${result.reviewedIds.length} decisions.`);
     else console.log(`Recorded ${result.reviewedIds.length} reviewed applicability decisions.`);

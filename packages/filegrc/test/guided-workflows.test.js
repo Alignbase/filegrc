@@ -218,12 +218,14 @@ test("records reviewed applicability decisions as one atomic batch", async (cont
   });
   const scaffold = await scaffoldApplicabilityReview(root, { type: "requirement" });
   assert.equal(Object.hasOwn(scaffold, "scopeRevision"), false);
+  assert.match(scaffold.basis.scopeRevision, /^(?:[a-f0-9]{40}|uncommitted:[a-f0-9]{64})$/);
   assert.deepEqual(scaffold.decisions, [{
     id: "requirement-access",
     decision: null,
     rationale: null
   }]);
   const options = {
+    basis: scaffold.basis,
     reviewedByIds: ["person-owner"],
     reviewedOn: "2026-08-03",
     decisions: [{
@@ -241,7 +243,7 @@ test("records reviewed applicability decisions as one atomic batch", async (cont
     "utf8"
   ));
   assert.equal(requirement.applicability, "applicable");
-  assert.equal(requirement.applicabilityReview.scopeRevision, "uncommitted");
+  assert.match(requirement.applicabilityReview.scopeRevision, /^uncommitted:[a-f0-9]{64}$/);
 });
 
 test("uses one departure event and adds high-risk steps only when selected", async (context) => {

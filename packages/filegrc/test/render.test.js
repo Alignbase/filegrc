@@ -1160,6 +1160,7 @@ test("derives step-page completion from the shared workflow assessment", () => {
   assert.match(APP_SCRIPT, /function derivedStagePageState\(stage, destination\)/);
   assert.match(APP_SCRIPT, /state\.workflow\?\.findings/);
   assert.match(APP_SCRIPT, /Review applicability/);
+  assert.match(APP_SCRIPT, /previewedPayload = \{ \.\.\.payload, basis: preview\.basis \}/);
   assert.doesNotMatch(APP_SCRIPT, /label: "Review"/);
   assert.match(APP_SCRIPT, /return \{ complete: true, label: "Ready" \}/);
   assert.match(APP_SCRIPT, /class="stage-page-card-link" href="' \+ destination\.href/);

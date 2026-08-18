@@ -1511,7 +1511,6 @@ function openApplicabilityReviewDialog(type, entries) {
       decisions,
       reviewedByIds: [form.elements.reviewerId.value],
       reviewedOn: form.elements.reviewedOn.value,
-      scopeRevision: state.git?.commit || undefined,
       expectedRevisions: Object.fromEntries([
         ...entries.filter((entry) => decisionIds.has(entry.record.id)).map((entry) => [entry.record.id, entry.revision]),
         ...(type === "requirement" && String(state.model.modelVersion) === "4"
@@ -1529,7 +1528,7 @@ function openApplicabilityReviewDialog(type, entries) {
         });
         if (!response.ok) throw new Error(await responseMessage(response));
         const preview = await response.json();
-        previewedPayload = payload;
+        previewedPayload = { ...payload, basis: preview.basis };
         dialog.querySelector(".workflow-preview").innerHTML = '<strong>Review before saving</strong><p>' + preview.reviewedIds.length + ' ' + pluralize("decision", preview.reviewedIds.length) + ' will be saved with the reviewer, review date, and current scope recorded automatically.</p>';
         dialog.querySelector("[data-preview-review]").textContent = "Confirm and save";
       } else {

@@ -7,7 +7,7 @@ import { performance } from "node:perf_hooks";
 import { isSafeGitName } from "./git-name.js";
 import { serializeWorkspaceMutation, withDeferredWorkspaceValidation } from "./mutation.js";
 import { resolveWorkspaceRoot } from "./paths.js";
-import { measureTiming, recordTiming, timingEnabled } from "./timing.js";
+import { measureTiming, measureTimingSync, recordTiming, timingEnabled } from "./timing.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -44,7 +44,7 @@ export class GitOperationError extends Error {
 export function getGitSummary(input = process.cwd()) {
   const root = resolveWorkspaceRoot(input);
   try {
-    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const topLevel = measureTimingSync("git-discovery", () => git(root, ["rev-parse", "--show-toplevel"]));
     const status = git(root, ["status", "--porcelain=v1", "--", "."]);
     const commit = tryGit(root, ["rev-parse", "HEAD"]) || null;
     const branch = tryGit(root, ["symbolic-ref", "--short", "HEAD"]) || null;
@@ -181,12 +181,40 @@ export function getRepositorySnapshot(input = process.cwd(), options = {}) {
   return snapshot;
 }
 
+export async function getWorkspaceRevisionSnapshot(input = process.cwd()) {
+  const root = resolveWorkspaceRoot(input);
+  try {
+    const source = await measureTiming("repository-revision", () => runGitCommand(root, [
+      "status",
+      "--porcelain=v2",
+      "--branch",
+      "-z",
+      "--untracked-files=all",
+      "--",
+      "data"
+    ], { operation: "resolve the workspace revision" }));
+    const parsed = parseWorkspaceRevision(source);
+    return {
+      available: true,
+      commit: parsed.commit,
+      shortCommit: parsed.commit?.slice(0, 8) ?? "no commits",
+      clean: parsed.changePaths.length === 0,
+      changes: parsed.changePaths,
+      workspaceChangePaths: parsed.changePaths
+    };
+  } catch (error) {
+    return unavailableSnapshot(error, { workspaceChangePaths: [] });
+  }
+}
+
 async function buildRepositorySnapshot(root) {
   let repositoryPaths;
   try {
-    repositoryPaths = await runGitCommand(root, ["rev-parse", "--show-toplevel", "--absolute-git-dir"], {
-      operation: "locate the repository"
-    });
+    repositoryPaths = await measureTiming("git-discovery", () => runGitCommand(
+      root,
+      ["rev-parse", "--show-toplevel", "--absolute-git-dir"],
+      { operation: "locate the repository" }
+    ));
   } catch (error) {
     return unavailableSnapshot(error);
   }
@@ -1056,6 +1084,27 @@ function parsePorcelainV2(source, topLevel, root) {
     }
   }
   return { commit, branch, upstream, ahead, behind, allChanges, workspaceChanges };
+}
+
+function parseWorkspaceRevision(source) {
+  const fields = source.split("\0").filter(Boolean);
+  let commit = null;
+  const changePaths = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    if (field.startsWith("# branch.oid ")) {
+      commit = field.slice(13) === "(initial)" ? null : field.slice(13);
+    } else if (/^[12u?!] /.test(field)) {
+      changePaths.push(porcelainV2Path(field));
+      if (field.startsWith("2 ")) {
+        changePaths.push(fields[++index]);
+      }
+    }
+  }
+  return {
+    commit,
+    changePaths: [...new Set(changePaths.filter(Boolean))].sort()
+  };
 }
 
 function porcelainV2Path(field) {
