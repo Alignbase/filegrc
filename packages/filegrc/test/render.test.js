@@ -33,7 +33,7 @@ test("builds a self-contained read-only site", async (context) => {
   await access(join(output, "filegrc.css"));
 });
 
-test("uses item-level program readiness for the dashboard lifecycle summary", () => {
+test("uses item-level program readiness for the rendered lifecycle summary", () => {
   assert.deepEqual(dashboardProgramReadiness({
     progress: { percent: 11, complete: 7, total: 62 },
     evidenceReady: false,
@@ -79,7 +79,7 @@ test("uses item-level program readiness for the dashboard lifecycle summary", ()
   });
 });
 
-test("static and editable dashboards receive the same program readiness progress", async (context) => {
+test("static and editable navigation receive the same program readiness progress", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-dashboard-state-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
@@ -532,19 +532,37 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
 });
 
 test("keeps repository and validation status in separate topbar controls", () => {
+  assert.match(APP_SCRIPT, /class="topbar-status">' \+ topbarProgramReadiness\(\)[\s\S]*class="search topbar-search"/);
+  assert.match(APP_SCRIPT, /function topbarProgramReadiness\(\)/);
+  assert.match(APP_SCRIPT, /class="topbar-readiness"/);
   assert.match(APP_SCRIPT, /class="topbar-status"/);
   assert.match(APP_SCRIPT, /class="validation-chip"/);
   assert.match(APP_SCRIPT, /class="repo-chip"/);
   assert.match(APP_SCRIPT, /Data valid/);
   assert.doesNotMatch(APP_SCRIPT, /class="side-validation"/);
-  assert.match(APP_STYLES, /\.topbar-status\{display:flex;align-items:center;gap:8px\}/);
+  assert.match(APP_STYLES, /\.topbar-readiness\{display:grid;grid-template-columns:minmax\(0,1fr\);/);
+  assert.match(APP_STYLES, /\.topbar-readiness>\.progress\{width:100%;height:5px\}/);
+  assert.match(APP_STYLES, /\.topbar-status\{display:flex;flex:1 1 auto;min-width:0;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto\}/);
+  assert.match(APP_STYLES, /\.topbar-status \.topbar-search\{flex:0 1 240px;width:240px;min-width:140px;margin-left:0\}/);
   assert.match(APP_STYLES, /\.repo-chip,\.validation-chip\{display:flex/);
 });
 
 test("uses compact topbar spacing on wide and narrow screens", () => {
   assert.match(APP_STYLES, /\.topbar\{height:63px\}/);
+  assert.match(APP_STYLES, /\.search\{height:39px;max-width:240px/);
+  assert.match(APP_STYLES, /@media\(max-width:920px\)\{\.topbar-status>\.validation-chip,\.topbar-status>\.repo-chip\{display:none\}\}/);
   assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}/);
-  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}\.topbar>div:first-of-type\{display:none\}\.search\{flex:1;min-width:0\}/);
+  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.topbar\{height:56px\}\.topbar>div:first-of-type\{display:none\}\.topbar-readiness/);
+});
+
+test("moves global search into the mobile navigation drawer", () => {
+  assert.match(APP_SCRIPT, /class="search mobile-sidebar-search"/);
+  assert.match(APP_SCRIPT, /class="search topbar-search"/);
+  assert.match(APP_SCRIPT, /const searches = \[\.\.\.root\.querySelectorAll\("\[data-global-search\]"\)\]/);
+  assert.match(APP_SCRIPT, /if \(search\.closest\("\.sidebar"\)\) setNavigation\(false\)/);
+  assert.match(APP_SCRIPT, /const mobile = window\.matchMedia\("\(max-width: 760px\)"\)\.matches/);
+  assert.match(APP_STYLES, /@media\(max-width:1100px\)\{\.topbar-search\{display:none\}/);
+  assert.match(APP_STYLES, /\.sidebar \.mobile-sidebar-search\{display:flex/);
 });
 
 test("uses the larger interface type scale", () => {
@@ -882,7 +900,7 @@ test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_STYLES, /\.sidebar\.shown\+\.nav-scrim\{opacity:1;pointer-events:auto\}/);
   assert.match(APP_STYLES, /\.sidebar\{visibility:hidden;transition:/);
   assert.match(APP_STYLES, /\.topbar h1\{overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/);
-  assert.match(APP_SCRIPT, /const clearSearch = \(\) => \{[\s\S]*if \(search\?\.value\.trim\(\) === query\) search\.value = ""/);
+  assert.match(APP_SCRIPT, /const clearSearch = \(\) => \{[\s\S]*querySelectorAll\("\[data-global-search\]"\)[\s\S]*if \(search\.value\.trim\(\) === query\) search\.value = ""/);
   assert.match(APP_SCRIPT, /querySelector\("\.icon-button"\)\.onclick = \(\) => \{\s+clearSearch\(\)/);
 });
 
@@ -1333,10 +1351,8 @@ test("renders shared obligation and evidence-packet workflows", () => {
 test("keeps the overview focused on readiness, current work, and the audit", () => {
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
   assert.match(APP_SCRIPT, /class="hero overview-hero"/);
-  assert.match(APP_SCRIPT, /class="readiness-progress-summary"/);
   assert.match(APP_SCRIPT, /<span>Program readiness<\/span><strong>' \+ progress\.percent \+ '%<\/strong>/);
   assert.match(APP_SCRIPT, /progress\.complete \+ " of " \+ progress\.total \+ " readiness items complete"/);
-  assert.match(APP_SCRIPT, /class="badge ' \+ esc\(progress\.tone\) \+ '">' \+ esc\(progress\.status\) \+ '<\/b>/);
   assert.match(APP_SCRIPT, /pluralize\(noun, total\) \+ \(complete === 1 \? " is" : " are"\) \+ " ready\."/);
   assert.match(APP_SCRIPT, /function obligationBoardItems\(items, status\)/);
   assert.match(APP_SCRIPT, /function distinctObligationPreviews\(items, limit\)/);
@@ -1357,8 +1373,7 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.doesNotMatch(APP_SCRIPT, /function programSetup\(\)/);
   assert.match(APP_STYLES, /\.overview-hero\{min-height:72px;padding:10px 20px;align-items:center\}/);
   assert.match(APP_STYLES, /\.overview-grid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(APP_STYLES, /\.readiness-progress-summary\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
-  assert.match(APP_STYLES, /\.readiness-progress-summary>div>strong\{font-size:9\.6px;font-weight:700/);
+  assert.match(APP_STYLES, /\.readiness-map-head\{display:flex;justify-content:space-between\}/);
 });
 
 test("uses stage names and routes overview cards through stage pages", () => {
