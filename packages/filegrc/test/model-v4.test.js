@@ -259,16 +259,20 @@ test("model v4 keeps bounded Systems, Components, Vendors, Assets, Controls, and
   assert.deepEqual(records.find(({ id }) => id === control.id).evidenceSourceComponentIds, ["component-platform-logs"]);
 });
 
-test("v4 readiness and collection revisions ignore unrelated inventory", async (context) => {
+test("v4 Vendor collection revisions track Vendors without Component links", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-scope-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeComprehensiveWorkspace(root, "4");
   let loaded = await loadWorkspace(root);
   const program = loaded.resources.find(({ type }) => type === "program");
+  assert.equal(loaded.resources.some(({ type, vendorId }) => (
+    type === "component" && vendorId === "vendor-example"
+  )), false);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).recordCount, 1);
   await applyCollectionReview(root, {
     resourceType: "vendor",
-    decision: "zero-population",
-    rationale: "Confirmed that the selected Program has no provider-linked Components.",
+    decision: "complete",
+    rationale: "Confirmed every material external provider relationship in the Vendor inventory.",
     reviewedByIds: ["person-example"],
     reviewedOn: "2026-07-01",
     scopeRevision: "example-scope-revision",
@@ -276,21 +280,38 @@ test("v4 readiness and collection revisions ignore unrelated inventory", async (
   });
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
-  const before = await assessProgramReadiness(root, { asOf: "2026-07-01" });
 
   await createResource(root, {
-    id: "vendor-unrelated-office",
+    id: "vendor-corporate-card",
     type: "vendor",
     title: "Office supplies provider",
     status: "active",
     category: "office",
     criticality: "low",
-    description: "Corporate inventory outside the selected Program.",
+    description: "A material commercial relationship that does not supply a Component.",
     ownerIds: ["appointment-example"]
   });
   loaded = await loadWorkspace(root);
-  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
-  const after = await assessProgramReadiness(root, { asOf: "2026-07-01" });
-  assert.equal(after.counts.action, before.counts.action);
-  assert.deepEqual(after.scope.componentIds, before.scope.componentIds);
+  let assessment = assessCollectionReview(loaded, "vendor", { programId: program.id });
+  assert.equal(assessment.recordCount, 2);
+  assert.equal(assessment.status, "stale");
+
+  await applyCollectionReview(root, {
+    resourceType: "vendor",
+    decision: "complete",
+    rationale: "Confirmed both material external provider relationships.",
+    reviewedByIds: ["person-example"],
+    reviewedOn: "2026-07-02",
+    scopeRevision: "example-scope-revision-2",
+    confirmed: true
+  });
+  loaded = await loadWorkspace(root);
+  const vendor = loaded.resources.find(({ id }) => id === "vendor-corporate-card");
+  await updateResource(root, "vendor", vendor.id, {
+    ...vendor,
+    criticality: "medium"
+  });
+  loaded = await loadWorkspace(root);
+  assessment = assessCollectionReview(loaded, "vendor", { programId: program.id });
+  assert.equal(assessment.status, "stale");
 });

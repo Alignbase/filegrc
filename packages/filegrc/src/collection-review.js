@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
+import { scopedCollectionRecords } from "./collection-scope.js";
 import { applyResourceBatch } from "./files.js";
 import { getGitSummary } from "./git.js";
 import { loadWorkspace } from "./workspace.js";
-import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
+import { resolveProgram, selectedRequirementIds } from "./program.js";
 
 export function collectionRevision(loaded, resourceType, options = {}) {
   const program = resolveProgram(loaded, options.programId);
@@ -198,26 +199,6 @@ export async function applyCollectionReview(input = process.cwd(), options = {})
     result,
     assessment: assessCollectionReview(loaded, plan.resourceType, { programId: options.programId })
   };
-}
-
-function scopedCollectionRecords(loaded, resourceType, program) {
-  if (String(loaded.model.modelVersion) !== "4") {
-    return loaded.resources.filter((record) => record.type === resourceType);
-  }
-  const components = programComponents(loaded, program);
-  const componentIds = new Set(components.map(({ id }) => id));
-  const selected = {
-    system: new Set(program.systemIds || []),
-    component: componentIds,
-    framework: new Set(program.frameworkIds || []),
-    vendor: new Set(components.map(({ vendorId }) => vendorId).filter(Boolean)),
-    asset: new Set(loaded.resources.filter((record) => (
-      record.type === "asset" && (record.componentIds || []).some((id) => componentIds.has(id))
-    )).map(({ id }) => id))
-  }[resourceType];
-  return loaded.resources.filter((record) => (
-    record.type === resourceType && (!selected || selected.has(record.id))
-  ));
 }
 
 function requiredType(loaded, value) {

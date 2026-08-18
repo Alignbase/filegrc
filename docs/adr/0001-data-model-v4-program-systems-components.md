@@ -253,7 +253,7 @@ Rejected because Component `systemUses` carries the required role and rationale 
 
 ## Consequences
 
-Readiness, workflow, collection revisions, browser pickers, onboarding, audit preparation, population checks, evidence mapping, and packets must resolve scope from Program and Component uses. Unrelated corporate Vendors, Components, and Assets do not affect a Program. Vendor inventory review stays separate. A scoped collection review hashes only the selected Program and the records in its calculated population, so unrelated inventory changes do not make it stale.
+Readiness, workflow, browser pickers, onboarding, audit preparation, population checks, evidence mapping, and packets must resolve operational scope from Program and Component uses. Unrelated Components and Assets do not affect a Program. Vendor inventory review stays separate and hashes every Vendor because a material external relationship does not need to supply a Component. Other scoped collection reviews hash only the selected Program and the records in their calculated population, so unrelated inventory changes do not make them stale.
 
 The starter workspace creates one planned Program and one bounded System. It creates only Components that meet the positive inclusion rules. Starter records are prompts and do not assert that a provider, subservice treatment, or evidence source exists.
 

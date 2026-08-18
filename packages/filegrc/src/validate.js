@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
+import { scopedCollectionRecords } from "./collection-scope.js";
 import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
@@ -78,7 +79,7 @@ async function validateWorkspaceUnmeasured(input) {
     if (record.type === "control") validateControlComponents(record, byId, displayPath, diagnostics);
     if (record.type === "audit") validateAuditSubservices(record, byId, displayPath, diagnostics);
     if (record.type === "collection-review") {
-      validateCollectionReview(record, loaded.model, loaded.resources, byId, displayPath, diagnostics);
+      validateCollectionReview(record, loaded, byId, displayPath, diagnostics);
     }
     if (record.type === "obligation") validateObligation(record, loaded.model, byId, displayPath, diagnostics);
     if (record.type === "action-item") {
@@ -158,8 +159,9 @@ async function validateWorkspaceUnmeasured(input) {
   };
 }
 
-function validateCollectionReview(record, model, resources, byId, path, diagnostics) {
+function validateCollectionReview(record, loaded, byId, path, diagnostics) {
   if (record.status !== "active") return;
+  const { model } = loaded;
   const configuration = model.collectionReviews?.[record.resourceType];
   if (!configuration) return;
   const allowedDecisions = configuration.decisions || ["complete"];
@@ -174,21 +176,7 @@ function validateCollectionReview(record, model, resources, byId, path, diagnost
   const program = String(model.modelVersion) === "4"
     ? (record.scopeResourceIds || []).map((id) => byId.get(id)).find(({ type } = {}) => type === "program")
     : null;
-  const programSystemIds = new Set(program?.systemIds || []);
-  const componentIds = new Set(resources.filter((candidate) => (
-    candidate.type === "component"
-    && (candidate.systemUses || []).some(({ systemId }) => programSystemIds.has(systemId))
-  )).map(({ id }) => id));
-  const selectedIds = {
-    system: programSystemIds,
-    component: componentIds,
-    framework: new Set(program?.frameworkIds || []),
-    vendor: new Set(resources.filter(({ id }) => componentIds.has(id)).map(({ vendorId }) => vendorId).filter(Boolean)),
-    asset: new Set(resources.filter(({ type, componentIds: ids }) => type === "asset" && (ids || []).some((id) => componentIds.has(id))).map(({ id }) => id))
-  }[record.resourceType];
-  const recordCount = resources.filter(({ type, id }) => (
-    type === record.resourceType && (!program || !selectedIds || selectedIds.has(id))
-  )).length;
+  const recordCount = scopedCollectionRecords(loaded, record.resourceType, program).length;
   if (!recordCount && record.decision === "complete") {
     diagnostics.push(error(
       "invalid-collection-review-decision",
