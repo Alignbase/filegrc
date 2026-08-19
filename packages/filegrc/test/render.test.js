@@ -665,6 +665,11 @@ test("places source attributes first in record metadata", () => {
   assert.doesNotMatch(APP_SCRIPT, /<h3>Source<\/h3>/);
 });
 
+test("keeps long metadata labels separate from their values", () => {
+  assert.match(APP_STYLES, /\.metadata>div\{grid-template-columns:minmax\(140px,1fr\) minmax\(0,2\.5fr\)\}/);
+  assert.match(APP_STYLES, /\.metadata dt\{min-width:0;overflow-wrap:anywhere\}/);
+});
+
 test("renders nested relationship values without exposing raw JSON", () => {
   assert.match(APP_SCRIPT, /function formatObjectArray\(items, objectType, compact = false\)/);
   assert.match(APP_SCRIPT, /definition\?\.items === "object"\) return formatObjectArray/);
