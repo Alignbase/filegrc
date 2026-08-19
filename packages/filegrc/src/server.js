@@ -43,6 +43,7 @@ import {
   setupExternalReviewerGovernance
 } from "./external-reviewer.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
+import { activatePolicies } from "./policy-activation.js";
 import { applyReconciliation, planReconciliation } from "./reconciliation.js";
 import { createAppState, createResourceDetail } from "./state.js";
 import { setupWorkspace } from "./setup.js";
@@ -321,6 +322,13 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           }, () => setupWorkspace(input, payload));
         };
         return json(response, 200, await completeSetup());
+      }
+      if (request.method === "POST" && url.pathname === "/api/policy-activations") {
+        const payload = await readJson(request);
+        const result = await browserMutation(input, options, {
+          message: (activation) => `Activate ${activation.policyIds.length} ${activation.policyIds.length === 1 ? "Policy" : "Policies"}`
+        }, () => activatePolicies(input, { ...payload, confirmed: true }));
+        return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
         const payload = normalizeResourceMutation(await readJson(request));

@@ -32,7 +32,7 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 181,
+    total: 163,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -42,15 +42,15 @@ test("creates a complete generic repository with one dependency", async (context
       program: 1,
       classification: 4,
       component: 1,
-      policy: 6,
-      document: 12,
-      training: 4,
+      policy: 1,
+      document: 6,
+      training: 1,
       framework: 2,
       "collection-review": 6,
       requirement: 42,
       "source-coverage": 14,
-      control: 29,
-      obligation: 54
+      control: 28,
+      obligation: 51
     }
   });
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
@@ -119,14 +119,14 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(appointmentRecords.length, 2);
   assert.deepEqual(
     new Set(appointmentRecords.map(({ appointmentKind }) => appointmentKind)),
-    new Set(Object.keys(loadModel("3").appointmentTemplates))
+    new Set(Object.keys(loadModel(workspace.dataModelVersion).appointmentTemplates))
   );
   assert.equal(appointmentRecords.every(({ scopeResourceIds }) => (
     scopeResourceIds.length === 1 && scopeResourceIds[0] === "workspace"
   )), true);
   assert.equal(appointmentRecords.filter(({ status }) => status === "active").length, 1);
   assert.equal(appointmentRecords.filter(({ status }) => status === "planned").length, 1);
-  const model = loadModel("3");
+  const model = loadModel(workspace.dataModelVersion);
   assert.deepEqual(
     new Set(generatedRecords
       .filter(({ type }) => type === "source-coverage")
@@ -149,14 +149,15 @@ test("creates a complete generic repository with one dependency", async (context
   const starterActivityTypes = new Set(generatedRecords
     .filter(({ type }) => type === "obligation")
     .map(({ activityType }) => activityType));
-  for (const profileId of Object.keys(model.completionProfiles)) {
-    assert.equal(
-      Object.entries(model.obligationActivities).some(([activityType, activity]) => (
-        activity.completionProfile === profileId && starterActivityTypes.has(activityType)
-      )),
-      true,
-      `No starter Obligation exercises completion profile ${profileId}`
-    );
+  for (const activityType of starterActivityTypes) {
+    const activity = model.obligationActivities[activityType];
+    assert.ok(activity, `Starter Obligation uses unknown activity ${activityType}`);
+    if (activity.completionProfile) {
+      assert.ok(
+        model.completionProfiles[activity.completionProfile],
+        `Starter Obligation activity ${activityType} uses unknown completion profile ${activity.completionProfile}`
+      );
+    }
   }
   await assert.rejects(
     access(join(target, "data", "people", "person-independent-approver.json")),
@@ -180,42 +181,63 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal("contentPath" in informationSecurityPolicy, false);
   await access(join(target, "data", "policies", "policy-information-security.md"));
   assert.deepEqual(informationSecurityPolicy.relatedDocumentIds, [
-    "document-business-continuity-disaster-recovery",
-    "document-incident-response-plan",
+    "document-security-incident-recovery-plan",
     "document-data-retention-schedule"
   ]);
   assert.equal("approverIds" in informationSecurityPolicy, false);
   const informationSecurityContent = await readFile(join(target, "data", "policies", "policy-information-security.md"), "utf8");
-  assert.match(informationSecurityContent, /The remediation clock starts when Example "Engineering" confirms the finding/);
-  assert.match(informationSecurityContent, /\| Low \| 90 days \|/);
-  const dataProtectionContent = await readFile(join(target, "data", "policies", "policy-data-protection-handling.md"), "utf8");
-  assert.match(dataProtectionContent, /Confidential and Restricted data must be encrypted in transit[\s\S]*and at rest/);
-  const continuityContent = await readFile(join(target, "data", "documents", "document-business-continuity-disaster-recovery.md"), "utf8");
-  assert.match(continuityContent, /maximum tolerable downtime/);
-  assert.doesNotMatch(continuityContent, /\| Low \| Within 12 hours \|/);
-  assert.doesNotMatch(continuityContent, /within four hours/);
-  const incidentResponseContent = await readFile(join(target, "data", "documents", "document-incident-response-plan.md"), "utf8");
-  assert.match(incidentResponseContent, /A \*\*material incident\*\* is an incident that/);
-  assert.match(incidentResponseContent, /The triggering law, contract, policy, or commitment/);
-  assert.match(incidentResponseContent, /representative security alert from generation through receipt, acknowledgement, escalation, and a fallback route/);
+  assert.doesNotMatch(informationSecurityContent, /\| Low \| 90 days \|/);
+  assert.match(informationSecurityContent, /does not infer technical implementation/);
+  assert.match(informationSecurityContent, /risk-appropriate compensating or post-deployment review/);
+  assert.match(informationSecurityContent, /selects scanning coverage, penetration-testing applicability, remediation targets, and review cadence/);
+  assert.match(informationSecurityContent, /Vendors already in use|Vendor already in use/);
+  assert.match(informationSecurityContent, /continuous native malware and application protection/);
+  assert.match(informationSecurityContent, /periodic process that verifies configuration, update, and compliance state/);
+  assert.match(informationSecurityContent, /retaliation for a good-faith report are prohibited/);
+  assert.match(informationSecurityContent, /fraud and misconduct risk/);
+  assert.match(informationSecurityContent, /time-bound Exception with risk assessment, compensating Controls/);
+  await assert.rejects(access(join(target, "data", "policies", "policy-clear-desk-screen.json")), /ENOENT/);
+  await assert.rejects(access(join(target, "data", "policies", "policy-mobile-computing-communications.json")), /ENOENT/);
+  for (const removedPolicy of [
+    "policy-anti-bribery-corruption",
+    "policy-data-protection-handling",
+    "policy-employee-handbook",
+    "policy-endpoint-remote-work"
+  ]) {
+    await assert.rejects(access(join(target, "data", "policies", `${removedPolicy}.json`)), /ENOENT/);
+  }
+  const recoveryContent = await readFile(join(target, "data", "documents", "document-security-incident-recovery-plan.md"), "utf8");
+  assert.match(recoveryContent, /maximum tolerable downtime/);
+  assert.match(recoveryContent, /\[Complete before activation: Link every important System/);
+  assert.match(recoveryContent, /starter proposal for important production data is a daily backup, 30-day retention period, and annual restore validation/);
+  assert.match(recoveryContent, /protected alternate location and access method/);
+  assert.match(recoveryContent, /does not require pre-arranged counsel, in-house counsel, or a standing legal retainer/);
+  assert.match(recoveryContent, /the triggering law, contract, Policy, commitment, or management decision/);
+  assert.match(recoveryContent, /representative security alert from generation through receipt, acknowledgement, escalation, and fallback/);
+  assert.match(recoveryContent, /\[Complete before activation: Name a usable alternate reporting route/);
   const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
   assert.equal("approverIds" in retentionSchedule, false);
   const retentionScheduleContent = await readFile(join(target, "data", "documents", "document-data-retention-schedule.md"), "utf8");
-  assert.match(retentionScheduleContent, /Security logs for important systems[\s\S]*At least 12 months/);
-  assert.match(retentionScheduleContent, /Important production backups[\s\S]*At least 30 days/);
+  assert.match(retentionScheduleContent, /Security logs for important Systems[\s\S]*proposed default before approval: 12 months/);
+  assert.match(retentionScheduleContent, /Production backups or alternate recovery copies[\s\S]*proposed default before approval: 30 days/);
+  assert.match(retentionScheduleContent, /detects the bracketed prompts as approval blockers/);
   const trainingFiles = (await readdir(join(target, "data", "training"))).filter((file) => file.endsWith(".json"));
-  assert.equal(trainingFiles.length, 4);
-  assert.ok(trainingFiles.includes("training-secure-development.json"));
-  assert.ok(trainingFiles.includes("training-privileged-sensitive-roles.json"));
-  assert.ok(trainingFiles.includes("training-anti-bribery-high-risk-roles.json"));
-  const employeeHandbook = await readFile(join(target, "data", "policies", "policy-employee-handbook.md"), "utf8");
-  assert.match(employeeHandbook, /optional handbook template/);
-  assert.match(employeeHandbook, /designated people contact/);
-  const employeePolicyAcknowledgement = await readFile(join(target, "data", "documents", "document-employee-policy-acknowledgement.md"), "utf8");
-  assert.doesNotMatch(employeePolicyAcknowledgement, /- Employee Handbook/);
-  assert.match(employeePolicyAcknowledgement, /Content Git commit:/);
-  const handbookAcknowledgement = await readFile(join(target, "data", "documents", "document-employee-handbook-acknowledgement.md"), "utf8");
-  assert.match(handbookAcknowledgement, /Handbook Git commit:/);
+  assert.deepEqual(trainingFiles, ["training-security-awareness.json"]);
+  const awarenessTrainingContent = await readFile(join(target, "data", "training", "training-security-awareness.md"), "utf8");
+  assert.match(awarenessTrainingContent, /## Building and changing systems/);
+  assert.match(awarenessTrainingContent, /compensating or post-deployment review/);
+  assert.doesNotMatch(awarenessTrainingContent, /no more than 15 minutes/);
+  for (const removedDocument of [
+    "document-business-continuity-disaster-recovery",
+    "document-incident-response-plan",
+    "document-employee-policy-acknowledgement",
+    "document-contractor-policy-acknowledgement",
+    "document-employee-training-acknowledgement",
+    "document-contractor-training-acknowledgement",
+    "document-employee-handbook-acknowledgement"
+  ]) {
+    await assert.rejects(access(join(target, "data", "documents", `${removedDocument}.json`)), /ENOENT/);
+  }
   await assert.rejects(access(join(target, "data", "content")), /ENOENT/);
   const framework = JSON.parse(await readFile(join(target, "data", "frameworks", "framework-aicpa-trust-services-criteria.json"), "utf8"));
   assert.equal(framework.version, "2017 with revised points of focus (2022)");
@@ -239,8 +261,12 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(incidentDescriptionCriterion.title, "DC4: System incidents");
   const changeDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc9.json"), "utf8"));
   assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
-  assert.equal(controlFiles.length, 29);
-  assert.equal(obligationFiles.length, 54);
+  assert.equal(controlFiles.length, 28);
+  assert.equal(obligationFiles.length, 51);
+  assert.equal(obligationFiles.includes("obligation-monthly-malware-scan.json"), false);
+  assert.equal(obligationFiles.includes("obligation-monthly-endpoint-protection-verification.json"), true);
+  assert.equal(obligationFiles.includes("obligation-quarterly-vulnerability-scan.json"), true);
+  assert.equal(obligationFiles.includes("obligation-annual-penetration-test.json"), true);
   const programRepository = JSON.parse(await readFile(join(target, "data", "components", "component-filegrc-program-repository.json"), "utf8"));
   const filegrcSourceFamilyIds = generatedRecords
     .filter(({ type, coverageKind }) => type === "source-coverage" && coverageKind === "filegrc")
@@ -269,6 +295,12 @@ test("creates a complete generic repository with one dependency", async (context
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
+  assert.equal(
+    controls.every((control) => (
+      control.policyIds.length === 1 && control.policyIds[0] === "policy-information-security"
+    )),
+    true
+  );
   assert.equal(controls.every((control) => control.ownerIds.includes(policyOwnerAppointment.id)), true);
   const filegrcSourceControlCodes = new Set(model.evidenceSourceFamilies
     .filter(({ id }) => filegrcSourceFamilyIds.includes(id))
@@ -288,23 +320,38 @@ test("creates a complete generic repository with one dependency", async (context
     true
   );
   const obligationsById = new Map(obligations.map((obligation) => [obligation.id, obligation]));
+  assert.equal(obligations.every(({ status }) => status === "proposed"), true);
+  assert.equal(
+    obligations.every((obligation) => (
+      obligation.policyIds.length === 1 && obligation.policyIds[0] === "policy-information-security"
+    )),
+    true
+  );
+  assert.deepEqual(obligationsById.get("obligation-monthly-endpoint-protection-verification").recurrence, {
+    mode: "calendar",
+    unit: "month",
+    interval: 1,
+    anchorDate: "2026-07-25"
+  });
+  assert.equal(obligationsById.get("obligation-monthly-endpoint-protection-verification").activityType, "endpoint-verification");
+  assert.equal(obligationsById.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);
+  assert.equal(obligationsById.get("obligation-annual-penetration-test").recurrence.unit, "year");
+  assert.equal(obligationsById.get("obligation-quarterly-log-review").recurrence.interval, 3);
+  assert.equal(obligationsById.get("obligation-annual-backup-restoration-test").recurrence.unit, "year");
+  assert.equal(obligationsById.get("obligation-annual-continuity-exercise").recurrence.unit, "year");
   const eventObligationCounts = obligations
     .filter((obligation) => obligation.recurrence.mode === "event")
     .reduce((counts, obligation) => {
       counts[obligation.recurrence.eventType] = (counts[obligation.recurrence.eventType] || 0) + 1;
       return counts;
     }, {});
-  assert.equal(eventObligationCounts["person-started"], 5);
-  assert.equal(eventObligationCounts["person-role-changed"], 2);
+  assert.equal(eventObligationCounts["person-started"], 4);
+  assert.equal(eventObligationCounts["person-role-changed"], 1);
   assert.equal(eventObligationCounts["personal-device-access-planned"], 2);
   assert.equal(eventObligationCounts["vendor-reassessment-needed"], 2);
   assert.equal(eventObligationCounts["system-material-change"], 5);
-  assert.deepEqual(obligationsById.get("obligation-worker-start-role-training").scopeResourceIds, [
-    "training-secure-development",
-    "training-privileged-sensitive-roles",
-    "training-anti-bribery-high-risk-roles"
-  ]);
-  assert.equal(obligationsById.get("obligation-worker-role-change-training").window.dueAfter, 30);
+  assert.equal(obligationsById.has("obligation-worker-start-role-training"), false);
+  assert.equal(obligationsById.has("obligation-worker-role-change-training"), false);
   assert.equal(obligationsById.get("obligation-personal-device-approval").window.dueAfter, 0);
   assert.equal(obligationsById.get("obligation-personal-device-registration").window.dueAfter, 0);
   assert.equal(obligationsById.get("obligation-vendor-material-change-review").window.dueAfter, 30);
@@ -339,7 +386,11 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 181, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 163, errors: 0, warnings: 3 });
+  assert.equal(
+    validation.diagnostics.filter(({ code }) => code === "past-proposed-effective-date").length,
+    3
+  );
   const workflow = await assessWorkflow(target, { asOf: "2026-07-25" });
   const reviewerFinding = workflow.findings.find(({ code }) => (
     code === "governance.appointment.independent-policy-reviewer"
@@ -382,6 +433,11 @@ test("creates a complete generic repository with one dependency", async (context
     );
   }
   const programReadiness = await assessProgramReadiness(target, { asOf: "2026-07-25" });
+  const recoveryPlanReadiness = programReadiness.stages
+    .find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === "document-document-security-incident-recovery-plan");
+  assert.equal(recoveryPlanReadiness.checks.systemContinuityObjectives, false);
+  assert.deepEqual(recoveryPlanReadiness.continuityObjectiveSystemIds, []);
   assert.match(
     programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "criteria").message,
     /42 criteria remain undetermined/
@@ -768,7 +824,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 181 records, including 42 requirements, 29 controls, and 54 obligations/);
+  assert.match(output, /Program baseline: 163 records, including 42 requirements, 28 controls, and 51 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -920,12 +976,12 @@ test("creates and configures a service from one JSON config", async (context) =>
     configPath
   ], { encoding: "utf8" });
   assert.match(output, /Stage foundation: created \(12 records\)/);
-  assert.match(output, /Stage soc2-security: created \(169 records\)/);
+  assert.match(output, /Stage soc2-security: created \(151 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 183, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 165, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.systemIds, undefined);
   const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));

@@ -40,12 +40,16 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 ![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
 1. **Define scope.** Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.
-2. **Approve policies.** Turn the starter policy set into approved rules that match how the organization works.
-3. **Implement controls.** Define how each control works, where its evidence comes from, and whether customers or providers have responsibilities.
+2. **Approve policies.** Tailor the Policy, then have someone other than its owner approve the exact content. Approval does not mean the linked Controls are implemented.
+3. **Implement controls.** Define how each Control works, where its Evidence comes from, enable its schedules, and complete governed plans. Then review the approved Policies together and activate the selected cutover set.
 4. **Operate the program.** Run scheduled and event-driven work, maintain risk, and retain dated evidence.
 5. **Audit.** Set up the CPA engagement, support fieldwork, and prepare the evidence packet.
 
-Control implementation includes evidence-source readiness. Use `npx filegrc program-readiness --json` to find incomplete Control or Component records. `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create an Evidence Artifact during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists.
+A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
+
+FileGRC does not infer technical implementation from Policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence. A Control may be implemented while its governing Policy is approved but inactive. Enabled Obligations remain dormant until the Policy is active and effective.
+
+Control implementation includes evidence-source and schedule readiness. Use `npx filegrc program-readiness --json` to review incomplete Control or Component records and each per-Policy activation assessment. At the end of Step 3, use the Controls-page review or `npx filegrc activate-policies --scaffold` to choose which approved Policies take effect. You can activate with a documented gap or approved Exception, but Evidence Readiness still requires active Policies, implemented Controls, configured evidence sources, and enabled schedules before the candidate period can begin. `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create an Evidence Artifact during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists.
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 
@@ -53,14 +57,14 @@ The Program Overview shows what is done, what is blocked, and what to do next.
 
 - **Work Queue** turns policy schedules and follow-up into upcoming, blocked, due, and overdue work, with named blockers when a task cannot proceed.
 - **Policy Events** create the right tasks for hiring, departures, incidents, vendor changes, and other events.
-- **Program Readiness** checks whether management can begin a reliable evidence period.
+- **Program Readiness** checks whether you can begin a reliable evidence period.
 - **Period Health** checks role, policy, control, source, obligation, and Git-history continuity across candidate and formal Type 2 dates.
 - **Audit Readiness** checks the engagement, period, documents, evidence, and Type 2 populations.
 - **Evidence packets** collect the scoped records, attachments, history, indexes, and checksums for delivery.
 
 ![filegrc audit readiness](docs/filegrc-audit.png)
 
-Starter records connect policies, controls, owners, systems, evidence, and schedules. They are proposals, so review them against how your company actually works before approval.
+The Security starter is intentionally small: one Information Security Policy, one Security Incident and Recovery Plan, one focused Data Retention Schedule, one Security Awareness Training record, and the Controls and Obligations needed for the Security common criteria. They are proposals, so review them against how your company actually works. Suggested retention periods and schedule cadences are starting points, not adopted requirements. Add Privacy, Confidentiality, Availability, Processing Integrity, employment, anti-bribery, or other broader GRC material only when the company chooses to expand the scope.
 
 ## Built for engineers and agents
 

@@ -594,6 +594,31 @@ test("binds approvals to exact Markdown revisions and requires reapproval after 
   );
 });
 
+test("rejects a new Policy approval while detected content blockers remain", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-policy-content-blocker-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await createResource(root, {
+    id: "policy-employment",
+    type: "policy",
+    title: "Employment Policy",
+    status: "draft",
+    ownerIds: ["person-owner"]
+  }, {
+    content: {
+      content: "# Employment Policy\n\n[Confirm before approval: qualified counsel and jurisdiction-specific reporting routes.]"
+    }
+  });
+  const draft = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-employment");
+  await assert.rejects(updateResource(root, "policy", draft.id, {
+    ...draft,
+    status: "approved",
+    approverIds: ["person-approver"],
+    approvedOn: "2026-08-02"
+  }), /Cannot approve or activate Employment Policy.*open placeholder/);
+  assert.equal((await loadWorkspace(root)).resources.find(({ id }) => id === draft.id).status, "draft");
+});
+
 test("binds active training to its effective Markdown revision", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-training-binding-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -866,6 +891,7 @@ test("requires procedure Markdown before a control becomes implemented", async (
     ...control,
     policyIds: [policy.id]
   });
+  assert.equal((await validateWorkspace(root)).ok, true);
   const obligation = {
     id: "obligation-procedure-test",
     type: "obligation",
@@ -882,19 +908,14 @@ test("requires procedure Markdown before a control becomes implemented", async (
     controlIds: [control.id],
     policyIds: [policy.id]
   };
-  await assert.rejects(
-    createResource(root, obligation),
-    /enabled schedule is waiting for governing policy to become active and effective: Procedure test policy \(draft\)\. Complete Step 2 first/
-  );
   await updateResource(root, "policy", policy.id, {
     ...policy,
-    status: "active",
-    approvedOn: "2026-07-01",
-    effectiveOn: "2026-07-01"
+    status: "approved",
+    approvedOn: "2026-07-01"
   });
   await createResource(root, obligation);
-  await updateResource(root, "control", control.id, { ...control, status: "planned" });
-  await updateResource(root, "control", control.id, control);
+  await updateResource(root, "control", control.id, { ...control, policyIds: [policy.id], status: "planned" });
+  await updateResource(root, "control", control.id, { ...control, policyIds: [policy.id] });
   assert.equal(
     (await loadWorkspace(root)).resources.find(({ id }) => id === control.id).status,
     "implemented"

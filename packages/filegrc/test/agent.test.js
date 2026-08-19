@@ -67,6 +67,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "prepareAudit",
     "reconcile",
     "externalReviewerSetup",
+    "policyActivation",
     "nextAuditCycle",
     "reviewApplicability",
     "reviewCollection",

@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessCollectionReviews } from "./collection-review.js";
+import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
-import { obligationIsRunning } from "./program-lifecycle.js";
+import { obligationIsEnabled, obligationIsRunning } from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
 import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -30,13 +31,25 @@ export async function assessProgramReadiness(input, options = {}) {
     return markdown.get(record.id);
   };
 
+  const policyStage = await policiesStage(scope, records, byId, readMarkdown);
   const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model);
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
-  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, and complete authoritative source ${String(loaded.model.modelVersion) === "4" ? "Components" : "Systems"} with the required evidence roles, access owners, and retrieval instructions.`;
+  controlStage.items.push(...await governedContentItems(scope, records, byId, readMarkdown, asOf));
+  const policyActivations = await assessPolicyActivations(
+    requiredPolicies(scope, byId),
+    scope.controls,
+    records,
+    byId,
+    readMarkdown,
+    asOf,
+    loaded.model
+  );
+  controlStage.items.push(...policyActivations.map(policyActivationItem));
+  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled schedules, and complete authoritative source ${String(loaded.model.modelVersion) === "4" ? "Components" : "Systems"}. Activate approved Policies at the implementation cutover after reviewing each activation assessment.`;
   const evidenceGateStages = [
     scopeStage(
       program,
@@ -46,7 +59,7 @@ export async function assessProgramReadiness(input, options = {}) {
       loaded.model,
       collectionReviews.filter(({ resourceType }) => resourceType !== "complementary-control")
     ),
-    await policiesStage(scope, records, byId, readMarkdown, asOf),
+    policyStage,
     controlStage
   ];
   for (const current of evidenceGateStages) finalizeStage(current);
@@ -89,6 +102,8 @@ export async function assessProgramReadiness(input, options = {}) {
     operating,
     canStartCandidatePeriod,
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
+    policyActivations,
+    policyLibraryProposals: policyLibraryProposals(records),
     progress: {
       complete,
       total: managedItems.length,
@@ -451,11 +466,8 @@ function ownershipResolutionReasons(ownerIds, byId) {
   });
 }
 
-async function policiesStage(scope, records, byId, readMarkdown, asOf) {
-  const linkedPolicyIds = new Set(scope.controls.flatMap((control) => control.policyIds || []));
-  const policies = [...linkedPolicyIds].map((id) => byId.get(id)).filter((record) => (
-    record?.type === "policy" && !["superseded", "retired"].includes(record.status)
-  ));
+async function policiesStage(scope, records, byId, readMarkdown) {
+  const policies = requiredPolicies(scope, byId);
   const appointedReviewer = policies
     .filter((policy) => partiesIndependent(policy.ownerIds, policy.approverIds, byId))
     .flatMap((policy) => [...currentPartyPeople(policy.approverIds || [], byId)])
@@ -515,11 +527,9 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
     const source = await readMarkdown(policy);
     const placeholderCount = openPlaceholderCount(source);
     const checks = {
-      reviewed: ["in-review", "approved", "active"].includes(policy.status),
       independentlyApproved: ["approved", "active"].includes(policy.status)
         && policy.approvedOn
         && partiesIndependent(policy.ownerIds, policy.approverIds, byId),
-      effective: policy.status === "active" && policy.effectiveOn && policy.effectiveOn <= asOf,
       linkedControls: scope.controls.some((control) => (control.policyIds || []).includes(policy.id)),
       contentComplete: Boolean(source.trim()) && placeholderCount === 0
     };
@@ -529,8 +539,8 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
       missing.length ? "action" : "complete",
       policy.title,
       missing.length
-        ? `Remaining adoption work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}.`
-        : `Reviewed, independently approved, effective ${policy.effectiveOn}, linked to controls, with no open organization placeholders.`,
+        ? `Remaining approval work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}. Approval accepts the policy requirements; it does not assert Control implementation.`
+        : `Independently approved on ${policy.approvedOn}, bound to the approved content revision, linked to Controls, and free of open organization placeholders. Activation remains in Step 3.`,
       policy,
       {
         checks,
@@ -543,11 +553,29 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
       }
     ));
   }
-  const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
-  const activeObligations = records.filter((record) => (
-    record.type === "obligation" && obligationIsRunning(record, byId, asOf)
+  return stage(
+    "policies",
+    "Approve Policies",
+    "A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.",
+    items
+  );
+}
+
+function requiredPolicies(scope, byId) {
+  const linkedPolicyIds = new Set(scope.controls.flatMap((control) => control.policyIds || []));
+  return [...linkedPolicyIds].map((id) => byId.get(id)).filter((record) => (
+    record?.type === "policy"
+    && record.programRole !== "conditional"
+    && !["superseded", "retired"].includes(record.status)
   ));
-  const requiredGovernedIds = new Set(activeObligations.flatMap((record) => [
+}
+
+async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
+  const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
+  const enabledObligations = records.filter((record) => (
+    record.type === "obligation" && obligationIsEnabled(record)
+  ));
+  const requiredGovernedIds = new Set(enabledObligations.flatMap((record) => [
     ...(record.scopeResourceIds || []),
     ...(record.templateResourceId ? [record.templateResourceId] : [])
   ]));
@@ -564,9 +592,16 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
     )
     || (record.type === "training" && requiredGovernedIds.has(record.id))
   ));
+  const items = [];
   for (const record of governedRecords) {
     const source = await readMarkdown(record);
     const placeholderCount = openPlaceholderCount(source);
+    const isSecurityIncidentRecoveryPlan = record.id === "document-security-incident-recovery-plan";
+    const systemsWithCompleteContinuityObjectives = scope.systems.filter(({ continuityObjectives }) => (
+      Number.isInteger(continuityObjectives?.recoveryTimeHours)
+      && Number.isInteger(continuityObjectives?.recoveryPointHours)
+      && Number.isInteger(continuityObjectives?.maximumTolerableDowntimeHours)
+    ));
     const checks = record.type === "document"
       ? {
           active: record.status === "active",
@@ -576,7 +611,10 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
             && partiesIndependent(record.ownerIds, record.approverIds, byId)
           ),
           effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
-          contentComplete: substantiveMarkdown(source) && placeholderCount === 0
+          contentComplete: substantiveMarkdown(source) && placeholderCount === 0,
+          ...(isSecurityIncidentRecoveryPlan
+            ? { systemContinuityObjectives: systemsWithCompleteContinuityObjectives.length === scope.systems.length && scope.systems.length > 0 }
+            : {})
         }
       : {
           active: record.status === "active",
@@ -596,12 +634,20 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
       missing.length
         ? `Remaining governed-content work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}.`
         : record.type === "document"
-          ? `Active, independently approved, effective ${record.effectiveOn}, and ready for the selected controls or running schedule.`
+          ? `Active, approved by a separate reviewer, effective ${record.effectiveOn}, and ready for the selected Controls or running schedule.`
           : `Active, approved, effective ${record.effectiveOn}, revision-bound, and ready for the running training schedule.`,
       record,
       {
         checks,
         placeholderCount,
+        ...(isSecurityIncidentRecoveryPlan
+          ? {
+              continuityObjectiveSystemIds: systemsWithCompleteContinuityObjectives.map(({ id }) => id),
+              missingContinuityObjectiveSystemIds: scope.systems
+                .filter(({ id }) => !systemsWithCompleteContinuityObjectives.some((system) => system.id === id))
+                .map(({ id }) => id)
+            }
+          : {}),
         commands: [
           `npx filegrc get ${shellArgument(record.id)} --mutation`,
           `npx filegrc update ${record.type} ${shellArgument(record.id)} MUTATION.json --json`,
@@ -610,12 +656,176 @@ async function policiesStage(scope, records, byId, readMarkdown, asOf) {
       }
     ));
   }
-  return stage(
-    "policies",
-    "Approve Policies",
-    "Review and approve the policies, governed plans, and training content required by selected controls and running schedules.",
-    items
+  return items;
+}
+
+async function assessPolicyActivations(policies, controls, records, byId, readMarkdown, asOf, model) {
+  const sourceType = String(model.modelVersion) === "4" ? "component" : "system";
+  const sourceField = String(model.modelVersion) === "4" ? "evidenceSourceComponentIds" : "evidenceSourceIds";
+  const assessments = [];
+  for (const policy of policies.filter((record) => ["approved", "active"].includes(record.status))) {
+    const linkedControls = controls.filter((control) => (control.policyIds || []).includes(policy.id));
+    const linkedControlIds = linkedControls.map(({ id }) => id);
+    const plannedOrPartialControlIds = linkedControls
+      .filter((control) => ["planned", "partially-implemented"].includes(control.status))
+      .map(({ id }) => id);
+    const missingComponentControlIds = String(model.modelVersion) === "4"
+      ? linkedControls.filter((control) => ![
+          ...(control.componentIds || []),
+          ...(control.evidenceSourceComponentIds || [])
+        ].some((id) => (
+          byId.get(id)?.type === "component" && byId.get(id).status === "active"
+        ))).map(({ id }) => id)
+      : [];
+    const missingEvidenceSourceControlIds = [];
+    for (const control of linkedControls) {
+      const readySources = [];
+      for (const id of control[sourceField] || []) {
+        const source = byId.get(id);
+        if (source?.type !== sourceType || source.status !== "active") continue;
+        const instructions = await readMarkdown(source);
+        if (
+          (source.evidenceSourceKinds || []).length
+          && (source.evidenceOwnerIds || []).length
+          && substantiveMarkdown(instructions)
+          && openPlaceholderCount(instructions) === 0
+        ) readySources.push(source);
+      }
+      if (!readySources.length) missingEvidenceSourceControlIds.push(control.id);
+    }
+    const missingScheduleControlIds = linkedControls.filter((control) => (
+      ["scheduled", "event-driven", "mixed"].includes(control.operationPattern)
+      && !records.some((record) => (
+        record.type === "obligation"
+        && obligationIsEnabled(record)
+        && (record.controlIds || []).includes(control.id)
+        && (record.policyIds || []).includes(policy.id)
+      ))
+    )).map(({ id }) => id);
+    const relevantExceptions = records.filter((record) => (
+      record.type === "exception"
+      && (record.scopeResourceIds || []).some((id) => id === policy.id || linkedControlIds.includes(id))
+      && !["revoked", "closed"].includes(record.status)
+    ));
+    const unresolvedExceptionIds = relevantExceptions.filter((record) => (
+      record.status !== "approved"
+      || !record.approval?.expiresOn
+      || record.approval.expiresOn < asOf
+    )).map(({ id }) => id);
+    const documentedExceptionIds = relevantExceptions.filter((record) => (
+      record.status === "approved"
+      && record.approval?.expiresOn
+      && record.approval.expiresOn >= asOf
+    )).map(({ id }) => id);
+    const timingWarnings = [
+      policy.proposedEffectiveOn && policy.proposedEffectiveOn < asOf
+        ? `The proposed effective date ${policy.proposedEffectiveOn} has passed. Choose a current or future activation date; do not backdate adoption.`
+        : null,
+      policy.status === "active" && (!policy.effectiveOn || policy.effectiveOn > asOf)
+        ? policy.effectiveOn
+          ? `The Policy is marked active but does not become effective until ${policy.effectiveOn}. Governed Obligations remain dormant until then.`
+          : "The Policy is marked active without an effective date."
+        : null
+    ].filter(Boolean);
+    const gapCount = plannedOrPartialControlIds.length
+      + missingComponentControlIds.length
+      + missingEvidenceSourceControlIds.length
+      + missingScheduleControlIds.length
+      + unresolvedExceptionIds.length
+      + timingWarnings.length;
+    const activeNow = policy.status === "active" && policy.effectiveOn && policy.effectiveOn <= asOf;
+    const state = activeNow
+      ? gapCount ? "active-with-implementation-gaps" : "active-and-operating"
+      : policy.status === "approved" && gapCount === 0
+        ? "ready-to-activate"
+        : policy.status === "approved"
+          ? "approved-implementation-pending"
+          : "active-with-implementation-gaps";
+    assessments.push({
+      policyId: policy.id,
+      title: policy.title,
+      state,
+      label: policyActivationLabel(state),
+      approvedOn: policy.approvedOn || null,
+      effectiveOn: policy.effectiveOn || null,
+      proposedEffectiveOn: policy.proposedEffectiveOn || null,
+      linkedControlIds,
+      plannedOrPartialControlIds,
+      missingComponentControlIds,
+      missingEvidenceSourceControlIds,
+      missingScheduleControlIds,
+      unresolvedExceptionIds,
+      documentedExceptionIds,
+      timingWarnings,
+      gapCount,
+      canActivateWithDocumentedGaps: policy.status === "approved",
+      activationWarning: gapCount
+        ? policy.status === "approved"
+          ? "You can activate the Policy with a documented gap or approved Exception. Activation does not mark a Control implemented, and Evidence Readiness stays incomplete until the remaining work is done."
+          : "The Policy is active, but the remaining gaps keep Evidence Readiness incomplete. Resolve them or record the applicable time-bound Exception."
+        : null
+    });
+  }
+  return assessments;
+}
+
+function policyActivationLabel(state) {
+  return ({
+    "approved-implementation-pending": "Approved, implementation pending",
+    "ready-to-activate": "Ready to activate",
+    "active-with-implementation-gaps": "Active with implementation gaps",
+    "active-and-operating": "Active and operating"
+  })[state] || state;
+}
+
+function policyActivationItem(assessment) {
+  const counts = [
+    [assessment.plannedOrPartialControlIds.length, "planned or partial Controls"],
+    [assessment.missingComponentControlIds.length, "Controls missing active Components"],
+    [assessment.missingEvidenceSourceControlIds.length, "Controls missing ready evidence sources"],
+    [assessment.missingScheduleControlIds.length, "Controls missing enabled schedules"],
+    [assessment.unresolvedExceptionIds.length, "unresolved Exceptions"]
+  ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
+  const message = assessment.state === "active-and-operating"
+    ? `Active and effective ${assessment.effectiveOn}; all ${assessment.linkedControlIds.length} linked Controls are implemented with Components, evidence sources, and enabled schedules.`
+    : assessment.state === "ready-to-activate"
+      ? "Implementation checks are complete. Include this approved Policy in the Step 3 cutover when you are ready for it to take effect."
+      : `${assessment.label}: ${counts.join(", ") || assessment.timingWarnings.join(" ")}. ${assessment.activationWarning || ""}`.trim();
+  return item(
+    `policy-activation-${assessment.policyId}`,
+    assessment.state === "active-and-operating" ? "complete" : "action",
+    `${assessment.title}: ${assessment.label}`,
+    message,
+    { type: "policy", id: assessment.policyId },
+    {
+      activationAssessment: assessment,
+      commands: [
+        "npx filegrc activate-policies --scaffold > policy-activation.json",
+        "npx filegrc activate-policies policy-activation.json --preview --json",
+        "npx filegrc program-readiness --json"
+      ]
+    }
   );
+}
+
+function policyLibraryProposals(records) {
+  const legacyIds = [
+    "policy-anti-bribery-corruption",
+    "policy-clear-desk-screen",
+    "policy-data-protection-handling",
+    "policy-employee-handbook",
+    "policy-endpoint-remote-work",
+    "policy-mobile-computing-communications"
+  ];
+  const presentIds = legacyIds.filter((id) => records.some((record) => record.type === "policy" && record.id === id));
+  if (!presentIds.length) return [];
+  return [{
+    id: "consolidate-soc2-security-policy",
+    title: "Review the minimal SOC 2 Security Policy consolidation",
+    policyIds: presentIds,
+    status: "review",
+    message: "New Security-core workspaces use one Information Security Policy. Review a proposed replacement and Control remapping before superseding absorbed Policies. Keep employment, anti-bribery, privacy, or other broader records outside the SOC 2 Security scope when the organization still uses them. FileGRC never rewrites established content during an upgrade."
+  }];
 }
 
 async function controlsStage(scope, byId, readMarkdown, asOf, model) {
@@ -659,7 +869,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       criteriaMapping: (control.requirementIds || []).length > 0,
       ...(["scheduled", "event-driven", "mixed"].includes(control.operationPattern) ? {
         workQueue: queueSchedules.length > 0
-          && queueSchedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))
+          && queueSchedules.some(obligationIsEnabled)
       } : {})
     };
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
@@ -683,13 +893,14 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
           `npx filegrc get ${shellArgument(control.id)} --mutation`
         ],
         workQueue: queueSchedules.length ? {
+          enabled: queueSchedules.filter(obligationIsEnabled).length,
           running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf)).length,
           total: queueSchedules.length
         } : null
       }
     ));
   }
-  return stage("controls", "Implement Controls", "Each implemented control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Work Queue schedules running.", items);
+  return stage("controls", "Implement Controls", "Each implemented Control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Work Queue schedules enabled. An enabled schedule stays dormant until its governing Policy is active and effective.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
@@ -993,18 +1204,6 @@ function controlIdsForRecord(record, byId, seen = new Set()) {
   return ids;
 }
 
-function openPlaceholderCount(source) {
-  if (!source) return 0;
-  const matches = source.match(
-    /\{\{[^}\n]+\}\}|\b(?:TODO|TBD)\b|\[(?:complete|confirm|describe|insert|name|replace|select|specify|todo|tbd)[^\]\n]*\]/giu
-  );
-  return matches?.length || 0;
-}
-
-function substantiveMarkdown(source) {
-  return (source.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length >= 10;
-}
-
 function policyCheckLabel(name) {
   return ({
     reviewed: "draft review",
@@ -1023,7 +1222,8 @@ function governedContentCheckLabel(name) {
     approved: "approval and approval date",
     effective: "effective date",
     effectiveContent: "effective content revision",
-    contentComplete: "content and organization placeholders"
+    contentComplete: "content and organization placeholders",
+    systemContinuityObjectives: "RTO, RPO, and maximum tolerable downtime for every in-scope System"
   })[name] || name;
 }
 

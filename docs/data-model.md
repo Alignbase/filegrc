@@ -47,8 +47,7 @@ Headless commands:
 
 Adapt and approve the starter policies.
 
-- **Policies** (`policy`): Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.
-- **Documents** (`document`): Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
+- **Policies** (`policy`): Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.
 
 Headless commands:
 
@@ -62,6 +61,7 @@ Describe each Control and connect its evidence source.
 
 - **Controls** (`control`): Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
 - **Complementary controls** (`complementary-control`): Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
+- **Documents** (`document`): Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
 
 Headless commands:
 
@@ -69,6 +69,7 @@ Headless commands:
 - `npx filegrc list control --json`
 - `npx filegrc get CONTROL_ID --mutation`
 - `npx filegrc review-collection complementary-control --scaffold`
+- `npx filegrc activate-policies --scaffold`
 - `npx filegrc evidence-map --json`
 - `npx filegrc program-readiness --json`
 
@@ -199,6 +200,7 @@ The model owns each activity name, allowed recurrence modes and scope types, its
 | `exception-review` | Exception review | `calendar`, `event` | `exception` | `exception` | `exception`, `evidence` |
 | `exercise` | Exercise | `calendar`, `event` | `document`, `system`, `team`, `component` | `exercise` | `exercise` |
 | `incident-retrospective` | Incident retrospective | `event` | `incident` | `incident` | `incident`, `document`, `evidence` |
+| `endpoint-verification` | Endpoint verification | `calendar`, `event` | `system`, `asset`, `component` | `control-activity` | `control-activity` |
 | `inventory-review` | Inventory review | `calendar`, `event` | `service-account`, `system`, `asset`, `vendor`, `component` | `control-activity` | `control-activity` |
 | `log-review` | Log review | `calendar`, `event` | `system`, `component` | `control-activity` | `control-activity` |
 | `meeting` | Meeting | `calendar`, `event` | `team` | `meeting` | `meeting` |
@@ -672,7 +674,7 @@ When reviewing:
 - Confirm which parts of the service the promise or objective affects.
 - Use an external, zero-population, or not-applicable conclusion only when it is factually true for the current scope.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/commitments/<id>.json`
 
@@ -710,7 +712,7 @@ When reviewing:
 - Make the statement specific enough for the responsible party to perform and for the system description to explain.
 - Before marking it not applicable, confirm that management is not responsible for the action.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/complementary-controls/<id>.json`
 
@@ -738,9 +740,9 @@ Management's actual Control implementation, mapped to Requirements, bounded Syst
 
 Instructions: Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
 
-Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. Policy text alone does not show implementation.
+Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence.
 
-Timing: Before marking a Control implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, and implementation date. Put every calendar or event schedule in a linked Obligation. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. FileGRC-managed Controls also require enabled schedules with effective governing Policies. Marking the Control implemented starts eligible schedules.
+Timing: A Control may be implemented while its governing Policy is approved but inactive. Before marking it implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event schedules. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled schedules remain dormant until their governing Policies are active and effective.
 
 When reviewing:
 
@@ -748,7 +750,7 @@ When reviewing:
 - Confirm the procedure describes what people actually do.
 - Use a not-applicable, external, or zero-population conclusion only when it is factually true for the current scope.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/controls/<id>.json`
 
@@ -902,7 +904,7 @@ Policy basis: The information security policy assigns named authority and accoun
 
 Timing: Create when management assigns a named responsibility. End the Appointment and create a new one when the holder changes. Reassign every linked responsibility before a holder departs.
 
-Default sources: `policy-information-security`, `policy-employee-handbook`
+Default sources: `policy-information-security`
 
 Path: `data/appointments/<id>.json`
 
@@ -932,7 +934,7 @@ Policy basis: The information security policy establishes security and risk over
 
 Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.
 
-Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 The UI labels the common `title` field as **Name**.
 
@@ -959,7 +961,7 @@ Policy basis: Policies rely on governed documents for detailed plans, procedures
 
 Timing: Follow the linked review Obligation. Starter governed documents are reviewed at least annually and after material changes or use, with an approver who is separate from the owner.
 
-Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/documents/<id>.json`
 
@@ -994,13 +996,13 @@ Markdown companions:
 
 #### `policy`
 
-Management-approved rules for the program. Store the policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.
+Management-approved requirements for the program. Approval accepts the requirements; activation makes them effective. Store the Policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.
 
-Instructions: Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.
+Instructions: Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.
 
-Policy basis: Policies state management’s required behavior. Controls, Obligations, Documents, Training, and Attestations put that behavior into operation and preserve proof.
+Policy basis: A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
 
-Timing: Move a draft through review and approval, set the effective date, link its controls, and clear organization-specific placeholders before activation. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.
+Timing: Move a draft through independent review and approval without requiring every linked Control to be implemented. During Step 3, finish Controls, Components, evidence sources, governed plans, and schedules, review the per-Policy activation assessment, then activate the approved revision on its real effective date. Do not backdate adoption. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.
 
 Default sources: `policy-information-security`
 
@@ -1038,7 +1040,7 @@ The result of a scheduled or change-driven review of Policies or governed Docume
 
 Instructions: Record scheduled and change-driven reviews of policies and governed documents, including the decision and any follow-up.
 
-Policy basis: Each starter Policy and the continuity plan requires periodic review and another review after specified material changes.
+Policy basis: The Information Security Policy and Security Incident and Recovery Plan require periodic review and another review after specified material changes.
 
 Timing: Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.
 
@@ -1048,7 +1050,7 @@ When reviewing:
 - Confirm it still matches the service, current requirements, and actual practice.
 - Record any needed change or follow-up.
 
-Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/policy-reviews/<id>.json`
 
@@ -1075,11 +1077,11 @@ One person’s acknowledgement, training completion, certification, or assigned-
 
 Instructions: Record each person’s completion or acknowledgement against the exact policy or training revision.
 
-Policy basis: The information security policy, data handling policy, and workforce materials require people to complete assigned training and acknowledge applicable responsibilities.
+Policy basis: The information security policy requires people to complete assigned training and acknowledge applicable responsibilities.
 
 Timing: Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`, `policy-employee-handbook`
+Default sources: `policy-information-security`
 
 Path: `data/attestations/<id>.json`
 
@@ -1111,11 +1113,11 @@ One governance meeting, including its chair, attendees, agenda, minutes, decisio
 
 Instructions: Record required oversight meetings, including attendees, decisions, minutes, and follow-up work.
 
-Policy basis: The information security policy requires recorded security and risk oversight. The continuity plan requires management review of exercises and unresolved risks.
+Policy basis: The information security policy requires recorded security and risk oversight. The Security Incident and Recovery Plan requires management review of exercises and unresolved risks.
 
 Timing: Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.
 
-Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/meetings/<id>.json`
 
@@ -1147,11 +1149,11 @@ Reusable training content and assignment rules, including audience, trigger, com
 
 Instructions: Maintain the training content people must complete, along with its audience, timing, and passing requirements.
 
-Policy basis: The information security and data handling policies require security training and added role-based training when a person’s responsibilities or data access warrant it.
+Policy basis: The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.
 
 Timing: Assign security training at onboarding, complete it within 30 days, repeat at least annually, and reassign after relevant material changes or incidents.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 The UI labels the common `title` field as **Name**.
 
@@ -1184,11 +1186,11 @@ One privacy, contractual, or other data request tracked by opaque reference, wit
 
 Instructions: Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.
 
-Policy basis: The data handling policy requires applicable requests to reach a responsible owner, meet the governing deadline, and keep erasable personal data out of immutable Git history.
+Policy basis: The information security policy requires applicable requests to reach a responsible owner, meet the governing deadline, and keep erasable personal data out of immutable Git history.
 
 Timing: Create on receipt, set the deadline from applicable law or contract, verify identity outside this repository when needed, and record completion.
 
-Default sources: `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/data-requests/<id>.json`
 
@@ -1223,11 +1225,11 @@ An approved, time-bound departure from a Policy or Control. Record its scope, re
 
 Instructions: Record and approve any time-limited departure from a policy or control before the departure begins.
 
-Policy basis: The information security and data handling policies allow departures only with a business reason, assessed risk, compensating safeguards, approval, and an expiry or review date.
+Policy basis: The information security policy allows departures only with a business reason, assessed risk, compensating safeguards, approval, and an expiry or review date.
 
 Timing: Approve before the departure begins, follow its linked review Obligation or expiry, and close or renew it through a new risk decision.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/exceptions/<id>.json`
 
@@ -1252,11 +1254,11 @@ One identified threat or business impact that needs treatment or ongoing trackin
 
 Instructions: Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.
 
-Policy basis: The information security and data handling policies require identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.
+Policy basis: The information security policy requires identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.
 
 Timing: Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/risks/<id>.json`
 
@@ -1289,7 +1291,7 @@ One approved evaluation of a defined scope using the program’s risk method. It
 
 Instructions: Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.
 
-Policy basis: The information security and data handling policies require periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.
+Policy basis: The information security policy requires periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.
 
 Timing: Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.
 
@@ -1299,7 +1301,7 @@ When reviewing:
 - Confirm the ratings and responses match management's current view of each risk.
 - Confirm no material risk was left out.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/risk-assessments/<id>.json`
 
@@ -1338,11 +1340,11 @@ People who own, approve, review, or perform program work, or receive access and 
 
 Instructions: Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
 
-Policy basis: The information security policy and employee handbook assign work to named people and require onboarding, training, role-change, and offboarding records.
+Policy basis: The information security policy assigns work to named people and requires onboarding, training, role-change, and offboarding records.
 
 Timing: Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training is due within 30 days of starting and annually.
 
-Default sources: `policy-information-security`, `policy-employee-handbook`
+Default sources: `policy-information-security`
 
 The UI labels the common `title` field as **Name**.
 
@@ -1404,11 +1406,11 @@ One Person’s or Service Account’s access to one System, including business n
 
 Instructions: Record each person’s or service account’s access to a Component, including approval, provisioning, changes, and removal.
 
-Policy basis: The information security and data handling policies require unique identity, documented business need, least privilege, approval, authorized provisioning, and prompt removal.
+Policy basis: The information security policy requires unique identity, documented business need, least privilege, approval, authorized provisioning, and prompt removal.
 
 Timing: Record every grant and material change. Remove access at or before notice for involuntary or high-risk departures and within 24 hours for other departures.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/access-grants/<id>.json`
 
@@ -1441,7 +1443,7 @@ One review of a defined access population for a date or period, including System
 
 Instructions: Review access on schedule, record each decision, and assign any access changes that result.
 
-Policy basis: The information security and data handling policies require System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.
+Policy basis: The information security policy requires System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.
 
 Timing: Review privileged and production access at least quarterly and other important-system access at least annually.
 
@@ -1451,7 +1453,7 @@ When reviewing:
 - Decide whether each person and service account still needs its exact access and privilege level.
 - Confirm every removal, change, or exception has follow-up.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/access-reviews/<id>.json`
 
@@ -1484,7 +1486,7 @@ The complete bounded system being governed or examined, including its services, 
 
 Instructions: Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and continuity objectives.
 
-Policy basis: A SOC 2 program starts with the bounded System whose service commitments and system requirements management intends to meet.
+Policy basis: A SOC 2 program starts with the bounded System and the service commitments and system requirements the company has chosen to meet.
 
 Timing: Define before selecting Components and Controls. Review after material service, boundary, architecture, information, continuity, or audit-scope changes.
 
@@ -1521,11 +1523,11 @@ Important devices, media, software, records, and other items tracked through acq
 
 Instructions: Keep the inventory of important devices, software, media, and records current, including ownership, custody, and status.
 
-Policy basis: The information security, mobile computing, and data handling policies require important assets to have owners and custodians, protection based on classification, and secure return or disposal.
+Policy basis: The information security policy requires important assets to have owners and custodians, protection based on classification, and secure return or disposal.
 
 Timing: Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.
 
-Default sources: `policy-information-security`, `policy-mobile-computing-communications`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 The UI labels the common `title` field as **Name**.
 
@@ -1556,11 +1558,11 @@ External organizations and commercial relationships, including contracts, due di
 
 Instructions: Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.
 
-Policy basis: The information security and data handling policies require an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.
+Policy basis: The information security policy requires an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.
 
 Timing: Create for a material external provider relationship. Review critical and high-risk Vendors at least annually and after material relationship, service, access, or incident changes. Do not create a Component unless a supplied capability also meets the Component inclusion rules.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 The UI labels the common `title` field as **Name**.
 
@@ -1589,7 +1591,7 @@ One due-diligence or periodic review of a Vendor, covering the service, data, ac
 
 Instructions: Document due diligence before relying on a provider, then repeat the review on schedule or after a material change.
 
-Policy basis: The information security and data handling policies require review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.
+Policy basis: The information security policy requires review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.
 
 Timing: Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.
 
@@ -1599,7 +1601,7 @@ When reviewing:
 - Evaluate current assurance reports, security and privacy terms, incident history, resilience, access model, and material changes.
 - Make the approve, conditional, or reject decision match the risks and assign any needed follow-up.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/vendor-reviews/<id>.json`
 
@@ -1797,11 +1799,11 @@ One suspected or confirmed security or privacy event, with severity, timeline, s
 
 Instructions: Record qualifying security or privacy events and manage their response and follow-up.
 
-Policy basis: The information security and data handling policies require prompt reporting, investigation, containment, recovery, evidence preservation, and review of notification duties.
+Policy basis: The information security policy requires prompt reporting, investigation, containment, recovery, evidence preservation, and review of notification duties.
 
 Timing: Create on report or detection, update material events as they progress, and complete a retrospective within one week after a material incident.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/incidents/<id>.json`
 
@@ -1884,11 +1886,11 @@ One continuity, recovery, incident, or privacy simulation, including scenario, o
 
 Instructions: Record each incident or continuity exercise, including its objective, participants, result, and follow-up.
 
-Policy basis: The information security policy requires incident-response testing. The continuity plan requires exercises and another review after material change or disruption.
+Policy basis: The information security policy requires incident-response testing. The Security Incident and Recovery Plan requires exercises and another review after material change or disruption.
 
 Timing: Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.
 
-Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/exercises/<id>.json`
 
@@ -1918,7 +1920,7 @@ One restore or recovery test, including the Systems and operators involved, timi
 
 Instructions: Record each restore test, including the Systems tested, result, timing, evidence, and follow-up.
 
-Policy basis: The information security policy and continuity plan require protected backups, monitored failures, and tested proof that important data can be restored and used.
+Policy basis: The information security policy and Security Incident and Recovery Plan require protected backups, monitored failures, and tested proof that important data can be restored and used.
 
 Timing: Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.
 
@@ -1928,7 +1930,7 @@ When reviewing:
 - Confirm the restored data was usable and the recovery targets were met.
 - Record any failure, missed target, or needed follow-up.
 
-Default sources: `policy-information-security`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/backup-tests/<id>.json`
 
@@ -1958,11 +1960,11 @@ A retained export, report, screenshot, signed record, fixed file, or approved ex
 
 Instructions: Create an Evidence Artifact when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source Component, link the Controls and operating records it supports, retain the fixed artifact or reference, and have another person verify it before audit use.
 
-Policy basis: The information security and data handling policies require retained proof from authoritative Components when FileGRC operating records do not contain the full result.
+Policy basis: The information security policy requires retained proof from authoritative Components when FileGRC operating records do not contain the full result.
 
 Timing: Create an Evidence Artifact only for a real retained artifact or approved reference. Identify its source Component or source records, Controls, collection and verification facts, coverage, revision, and classification.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`
+Default sources: `policy-information-security`
 
 Path: `data/evidence/<id>/evidence.json`
 
@@ -2075,7 +2077,7 @@ Record Markdown: shown by default as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `complete`, `externally-managed`, `canceled` |
-| `profileId` | enum | Yes | Completion profile Values: `inventory-review`, `log-review`, `network-review`, `continuity-review`, `performance-review`, `personal-device-approval`, `security-scan` |
+| `profileId` | enum | Yes | Completion profile Values: `endpoint-verification`, `inventory-review`, `log-review`, `network-review`, `continuity-review`, `performance-review`, `personal-device-approval`, `security-scan` |
 | `obligationId` | id | No | References: `obligation` |
 | `controlIds` | array of id | No | References: `control` |
 | `scopeResourceIds` | array of id | Yes | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage` |
@@ -2099,11 +2101,11 @@ Reusable schedules for recurring or event-driven work. Obligations feed the Work
 
 Instructions: Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
 
-Policy basis: filegrc uses Obligations to turn policy and control cadence into owned, dated work linked to its scope and required proof.
+Policy basis: FileGRC uses Obligations to turn approved schedules into owned, dated work linked to scope and required proof. An enabled Obligation remains dormant until every governing Policy is active and effective.
 
-Timing: Treat starter work as proposed until every governing policy is active and effective and, when the obligation names controls, at least one linked control is implemented. Then use the recurrence and activation date, and create a separate completion record for every period.
+Timing: Configure and enable the schedule during Control implementation. Do not create occurrences while a governing Policy is approved but inactive. When the Policy becomes active and effective, use the later of the recurrence anchor and activation date, then create a separate completion record for every period.
 
-Default sources: `policy-information-security`, `policy-data-protection-handling`, `document-business-continuity-disaster-recovery`
+Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/obligations/<id>.json`
 
@@ -2114,7 +2116,7 @@ Markdown companions:
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `proposed`, `active`, `paused`, `retired` |
-| `activityType` | enum | Yes | Values: `access-change`, `access-provisioning`, `access-removal`, `access-review`, `alert-path-test`, `asset-recovery`, `asset-registration`, `backup-test`, `change-review`, `continuity-review`, `document-review`, `exception-review`, `exercise`, `incident-retrospective`, `inventory-review`, `log-review`, `meeting`, `network-review`, `oversight-meeting`, `penetration-test`, `performance-review`, `personal-device-approval`, `policy-review`, `remediation`, `retention-review`, `risk-assessment`, `role-training`, `security-scan`, `training`, `vendor-contract`, `vendor-remediation`, `vendor-review`, `vulnerability-scan`, `workforce-acknowledgement` Values come from the `obligationActivities` registry. |
+| `activityType` | enum | Yes | Values: `access-change`, `access-provisioning`, `access-removal`, `access-review`, `alert-path-test`, `asset-recovery`, `asset-registration`, `backup-test`, `change-review`, `continuity-review`, `document-review`, `exception-review`, `exercise`, `incident-retrospective`, `endpoint-verification`, `inventory-review`, `log-review`, `meeting`, `network-review`, `oversight-meeting`, `penetration-test`, `performance-review`, `personal-device-approval`, `policy-review`, `remediation`, `retention-review`, `risk-assessment`, `role-training`, `security-scan`, `training`, `vendor-contract`, `vendor-remediation`, `vendor-review`, `vulnerability-scan`, `workforce-acknowledgement` Values come from the `obligationActivities` registry. |
 | `recurrence` | object (`recurrence`) | Yes |  |
 | `triggerPrompt` | string | No |  |
 | `window` | object (`obligation-window`) | No |  |

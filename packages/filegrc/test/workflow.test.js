@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -106,6 +106,43 @@ test("returns one reproducible workflow contract with stable findings", async (c
   });
   assert.equal(previewResponse.status, 200);
   assert.equal((await previewResponse.json()).operation, "update");
+});
+
+test("offers legacy Policy consolidation as a review proposal without changing established content", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-policy-library-review-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  await mkdir(join(root, "data", "policies"), { recursive: true });
+  const records = [
+    ["policy-clear-desk-screen", "Clear Desk and Clear Screen Policy"],
+    ["policy-mobile-computing-communications", "Mobile Computing and Communications Policy"],
+    ["policy-data-protection-handling", "Data Protection and Handling Policy"],
+    ["policy-employee-handbook", "Employee Handbook"]
+  ];
+  for (const [id, title] of records) {
+    await writeJson(join(root, "data", "policies", `${id}.json`), {
+      id,
+      type: "policy",
+      title,
+      status: "draft",
+      ownerIds: ["person-owner"]
+    });
+    await writeFile(join(root, "data", "policies", `${id}.md`), `# ${title}\n\nOrganization-authored content that must remain unchanged.\n`, "utf8");
+  }
+  const before = await Promise.all(records.map(([id]) => readFile(join(root, "data", "policies", `${id}.md`), "utf8")));
+  const workflow = await assessWorkflow(root, {
+    asOf: "2026-08-03",
+    evaluatedAt: "2026-08-03T12:00:00Z"
+  });
+  assert.equal(workflow.assessments.policyLibraryReview.status, "review");
+  assert.equal(workflow.assessments.policyLibraryReview.proposals[0].id, "consolidate-soc2-security-policy");
+  assert.deepEqual(
+    new Set(workflow.assessments.policyLibraryReview.proposals[0].policyIds),
+    new Set(records.map(([id]) => id))
+  );
+  assert.match(workflow.assessments.policyLibraryReview.proposals[0].message, /never rewrites established content/);
+  const after = await Promise.all(records.map(([id]) => readFile(join(root, "data", "policies", `${id}.md`), "utf8")));
+  assert.deepEqual(after, before);
 });
 
 test("keeps planned record dates proposed instead of presenting them as due work", async (context) => {

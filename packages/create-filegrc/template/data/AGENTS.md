@@ -116,6 +116,8 @@ Status is an assertion. Before moving a record to a completed, approved, impleme
 
 Do not mark a control implemented because a policy says it should exist. Do not mark evidence verified because it was merely collected. Do not mark a task done without the completion record type requested by its obligation.
 
+Policy approval accepts the reviewed requirements. It does not prove implementation or start governed work. A Control may be implemented while its governing Policy is approved but inactive. Enable its schedules during implementation. At the end of Step 3, run `activate-policies --scaffold`, review the approved Policies together, select the cutover set, and record the real effective date. FileGRC does not infer technical implementation from Policy prose, so put configuration facts in Controls, Components, Systems, governed schedules, and Evidence.
+
 ## Delete and replace
 
 Before deletion:
@@ -169,14 +171,15 @@ Finish each applicable Control and its authoritative source Components together.
 npx filegrc program-readiness --json
 ```
 
-The Control stage reports both Control implementation items and evidence-family source checks. Resolve them through the source records:
+The Control stage reports Control implementation items, evidence-family source checks, governed-plan blockers, and per-Policy activation assessments. Resolve them through the source records:
 
 1. Choose an existing System or scaffold the System that is authoritative for the family.
 2. Set the System to `active`, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
 3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the System’s Record Markdown.
 4. Add the Component ID to `evidenceSourceComponentIds` on every Control in the family that it supports.
 5. Finish the Control’s owner, procedure, scope, operation pattern, mappings, and implementation date. Put every calendar or event schedule in an Obligation.
-6. Run `program-readiness --json` again and resolve every failed Control or source check before marking the Controls implemented or starting the candidate period.
+6. Enable each required Obligation. It stays dormant while a governing Policy is inactive.
+7. Run `program-readiness --json`, then use `activate-policies --scaffold` to review and atomically activate the selected approved Policies at implementation cutover. A documented gap or approved Exception may support activation, but the candidate period cannot start until Policies are active and Controls are fully implemented and evidence-ready.
 
 Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. `evidence-map --json` remains available when you want only the evidence-family checks. Do not create an Evidence Artifact while designing or implementing a Control. Create one during Step 4 only when the real export, report, screenshot, signed file, or approved external reference exists.
 
@@ -203,7 +206,7 @@ npx filegrc audit-readiness AUDIT_ID --json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 ```
 
-Run Program Readiness before creating the normal audit engagement. It checks scope, effective policies, implemented controls, and evidence mapping without an audit ID. Fix readiness errors in the Control and System records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
+Run Program Readiness before creating the normal audit engagement. Step 2 checks independent Policy approval without requiring activation. Evidence Readiness separately checks active Policies, implemented Controls, enabled schedules, and evidence mapping without an audit ID. Fix readiness errors in Policy, Control, Component, System, governed schedule, and Evidence records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
 
 ## Finish every change
 

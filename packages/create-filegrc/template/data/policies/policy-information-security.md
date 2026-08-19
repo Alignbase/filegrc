@@ -1,233 +1,98 @@
 # Information Security Policy
 
-## Purpose
+## Purpose and scope
 
-This policy defines the information security program for {{company_name}}. Its goals are to protect the confidentiality, integrity, and availability of company and customer information and to support reliable operation of in-scope services.
+This Policy defines the information security requirements for {{company_name}} and its in-scope services. It applies to employees, contractors, authorized users, Systems, Components, devices, code, data, facilities, and Vendors used to provide or protect those services. Vendor requirements apply through approved contracts and oversight.
 
-## Scope
+A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof. FileGRC does not infer technical implementation from this prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence.
 
-This policy applies to:
+## Integrity, accountability, and reporting
 
-- Employees, contractors, vendors, and other authorized users
-- Company-managed and personally owned devices used for company work
-- Applications, infrastructure, repositories, networks, data, and business processes managed by or for {{company_name}}
-- Vendors that store, process, transmit, secure, or recover company or customer data
+Everyone in scope must act honestly, protect company and customer information, follow approved security processes, disclose conflicts that could affect security decisions, and preserve accurate records. Fraud, deliberate control bypass, false evidence, credential sharing, unauthorized access, concealment of a security event, and retaliation for a good-faith report are prohibited.
 
-More specific standards and procedures may set stricter requirements.
+Suspected security events, control failures, fraud, or policy violations must be reported promptly through the primary route at {{security_contact_email}} or the usable alternate route documented in the Security Incident and Recovery Plan. A person may use the alternate route when the primary route is unavailable, compromised, or involved in the concern. Management investigates credible reports, limits disclosure to people who need the information, preserves relevant records, and records corrective action.
 
-## Governance and responsibilities
+Management evaluates conduct against these requirements and addresses violations consistently. Contractors and Vendor personnel follow equivalent requirements when their work or access can affect the in-scope service.
 
-The current Policy Owner owns the information security program and this policy. Questions and incident reports should be sent to {{security_contact_email}}.
+## Governance and risk management
 
-The policy owner:
+The current Policy Owner maintains this Policy, the risk program, Controls, governed plans, Exceptions, and improvement work. System and process owners approve access, maintain safeguards, keep inventories and recovery facts current, and resolve findings. An independent reviewer who is separate from the Policy owner approves the Policy and challenges management's assessment of Control operation.
 
-- Maintains security policies, risks, controls, and improvement plans.
-- Reports material security matters to company leadership.
-- Coordinates incidents, exercises, reviews, and audit work.
-- Approves security exceptions or obtains the required approval.
+Management reviews the security program on its approved governed schedule and after material change. Reviews cover objectives, service commitments, fraud and misconduct risk, threats, system and Vendor changes, incidents, findings, Exceptions, overdue work, and Control results. Risks receive an owner, response, target date, approval when accepted, and a review date. The Risk Assessment Control and Obligations record the actual method and cadence.
 
-An independent reviewer chairs the security and risk oversight group. This person must be separate from the policy owner and able to challenge the owner's decisions. The reviewer will usually be another leader or manager in the organization, but may be external. The reviewer approves policies and governed plans, challenges management's assessment of control operation, and records independent decisions.
+## Workforce security and acceptable use
 
-The security and risk oversight group meets at least quarterly to review the risk register, material incidents, significant findings, vendor and access review results, policy changes, exercises, and overdue work. Each meeting has formal minutes, decisions, and assigned actions. When no suitable internal independent reviewer is available, the organization appoints a qualified external person to fill the role.
+Workers must accept applicable confidentiality, acceptable-use, and security responsibilities before receiving access. They receive security training on the approved onboarding and recurring schedules. Role-specific instruction is assigned when a person's access or duties require it.
 
-System and process owners classify their systems and data, approve access, maintain safeguards, respond to findings, and keep recovery information current.
+Users must:
 
-Managers ensure that workers complete required onboarding, training, access changes, offboarding, and a documented performance review at least annually. Every user must follow policy, protect credentials and devices, and report suspected security events.
+- Use approved identities, devices, applications, storage, messaging, meeting, and transfer services.
+- Protect credentials, authentication devices, company equipment, customer information, and security records.
+- Keep company data out of personal accounts and unapproved applications.
+- Lock unattended devices and protect papers, screens, and conversations from unauthorized access.
+- Report lost, stolen, compromised, or unexpectedly reconfigured devices promptly.
+- Return company property and stop using company access when employment, services, or the business need ends.
 
-## Risk management
+Managers notify access administrators of starts, role changes, and departures. The Access Control and Offboarding Controls and their event windows record the approved timing, evidence, and escalation rules.
 
-{{company_name}} performs an information security risk assessment at least annually and after a material change that could alter risk. The assessment identifies threats, affected assets and obligations, existing controls, likelihood, impact, treatment, owners, and target dates.
+## Assets, data, and retention
 
-Risks are tracked until they are mitigated, transferred, avoided, or accepted by a person with suitable authority. Accepted risks need a reason, approval, and review date. High and critical risks are reviewed at least quarterly.
+{{company_name}} inventories important Systems, Components, devices, software, service accounts, Vendors, and data stores. Records identify an owner, purpose, lifecycle state, classification, dependencies, and recovery needs where relevant.
 
-## Asset and system management
+Data owners classify information as Public, Internal, Confidential, or Restricted and approve its collection, use, access, storage, sharing, retention, and disposal. When classification is uncertain, users protect the data as Confidential until an owner decides. Collect and retain only information needed for an approved purpose.
 
-{{company_name}} maintains inventories of important systems, devices, software, service accounts, vendors, and data stores. Each item has an owner and, when relevant, a criticality, data classification, lifecycle status, and recovery objective.
+Confidential and Restricted data must use approved Systems, encryption in transit over untrusted networks, encryption at rest, least-privilege access, and protected transfer methods. Credentials, private keys, tokens, and recovery codes belong in approved secrets-management Systems and must not appear in source files, tickets, chat, logs, or FileGRC records.
 
-Owners must approve new systems before they process Confidential or Restricted data. Unsupported or unneeded assets must be upgraded, isolated, or retired.
+Production data must not enter development or test Systems unless an owner approves the use and equivalent protection. Public links and exports of Confidential or Restricted data require explicit authorization. Legal holds and active investigations suspend normal disposal for affected records.
 
-Company data and software must be removed from retired devices through an approved process. Disposal records must identify the asset, method, date, and responsible person.
+The Data Retention Schedule records the approved period and disposal method for important in-scope record classes. Systems, Controls, and Components record the actual implementation. Disposal must address active copies, local copies, media, backups, and Vendor-held copies where practical, with dated proof when the Control requires it.
 
-## Workforce security
+## Identity and access
 
-Where lawful and appropriate to the role, {{company_name}} may perform background checks before granting sensitive access. Workers must agree to applicable confidentiality, acceptable-use, and intellectual-property terms.
+Access requires a documented business need, owner approval, a unique identity, and least privilege. Authorized administrators provision, change, and remove access. Shared accounts require a documented technical need, named owner, restricted use, and logging.
 
-Workers complete security training within 30 days of starting and at least annually. People with privileged access or security, engineering, finance, privacy, or people-operations duties complete applicable role-based training within 30 days of starting those duties or changing roles. The onboarding or role-change checklist records the assigned training or why a module does not apply.
+Multi-factor authentication is required for administrative, production, source-control, email, identity, and Confidential or Restricted data access. When a System cannot support MFA, management must approve a time-bound Exception with risk assessment, compensating Controls, an accountable owner, and a review or expiration date.
 
-Managers notify access administrators promptly of role changes and departures. Access for an involuntary or high-risk departure must be removed at or before notification. All other departing-worker access must be removed within 24 hours after employment or services end. Company property and active credentials must be recovered or disabled.
+Authentication settings, privileged roles, service-account ownership, credential protection, access-review populations, review cadence, and removal deadlines belong in the applicable Controls, Components, Systems, and Obligations.
 
-## Identity and access control
+## Endpoint, remote work, and physical protection
 
-Access is based on business need and least privilege.
+Devices used for company work must run supported software, install security updates, require authentication, lock automatically, use encryption and host protections appropriate to the platform, and permit remote removal when company-managed and technically supported. Users must not disable management, security, logging, encryption, or remote-removal safeguards.
 
-- Each user receives a unique identity. Shared accounts are prohibited unless a documented technical need, named owner, access control, and logging make them necessary.
-- Multi-factor authentication is required for administrative access, source control, production systems, email, identity systems, and systems containing Confidential or Restricted data when the system supports it.
-- Passwords must be unique, stored in an approved password manager, and never shared in plaintext.
-- Systems must enforce approved password, authentication, and lockout settings appropriate to their risk and technical capability.
-- Only authorized administrators may change password or lockout settings.
-- Default credentials must be changed or disabled before use.
-- Privileged access must use separate administrative roles or accounts where practical.
-- Access requests and material changes require approval from the manager or system owner.
-- Owners review privileged and production access at least quarterly and other important access at least annually.
-- Dormant, expired, or unneeded access must be removed.
+Platforms such as macOS may provide continuous native malware and application protection without a user-triggered full scan. The Endpoint Protection Control describes the continuous protections in use and the periodic process that verifies configuration, update, and compliance state. A scheduled scan applies only when the selected technology and risk decision require one.
 
-Service accounts require a named owner, stated purpose, minimum permissions, and protected credentials. Secrets must not be committed to source control.
+Personal-device access requires prior approval, registration, verified safeguards, defined company-data boundaries, and exit steps. Remote workers must protect devices, paper, screens, calls, home networks, and travel locations. Public or untrusted networks require approved encrypted access. Physical access to nonpublic work areas and protected assets is limited to authorized people.
 
-## Data protection
+## Infrastructure and secure change
 
-The Data Protection and Handling Policy defines classification, approved use, sharing, retention, and disposal. At a minimum:
+Owners restrict network paths and management interfaces to approved business needs, use encrypted administrative protocols, disable unnecessary defaults and services, protect remote production access, and maintain secure configuration baselines. Deviations require review and, when material, an approved Exception.
 
-- Collect and retain only data needed for an approved purpose.
-- Encrypt Confidential and Restricted data in transit over untrusted networks.
-- Encrypt Confidential and Restricted data at rest in approved systems and on devices.
-- Keep production data out of development and test systems unless approved and equally protected.
-- Restrict data exports and public links.
-- Store credentials and cryptographic keys in approved protected systems.
+Software and infrastructure changes must be recorded, tested, approved, deployed through an authorized process, and recoverable in proportion to risk. Use independent pre-deployment review when practical. When team size or urgency makes that separation impossible, record a risk-appropriate compensating or post-deployment review. Use a time-bound Exception when the remaining departure is material.
 
-## Endpoint and mobile security
+Development and deployment Controls address protected branches, controlled credentials, dependency and secret detection, input and authorization checks, production-data restrictions, security testing, emergency change review, and rollback.
 
-Devices used for company work must:
+## Vulnerability, logging, and monitoring
 
-- Run a supported operating system and current security software.
-- Use full-disk encryption when supported.
-- Lock automatically after no more than 15 minutes of inactivity.
-- Require authentication after locking or restarting.
-- Install security updates within the vulnerability-remediation targets in this policy unless an approved exception applies.
-- Use malware protection and host firewall controls appropriate to the platform.
-- Permit remote lock or wipe when company-managed and supported.
+{{company_name}} monitors trusted sources for vulnerabilities affecting in-scope Systems. Management selects scanning coverage, penetration-testing applicability, remediation targets, and review cadence from exposure, change, customer commitments, and risk. The applicable Controls and Obligations record those choices. A missed target requires documented exposure, compensating Controls, a revised date, and risk approval or Exception.
 
-Lost, stolen, compromised, or unexpectedly reconfigured devices must be reported immediately. The Mobile Computing and Communications Policy defines additional requirements.
+Important Systems record and protect the security and operational events needed to investigate misuse and operate the service. Logs use synchronized time, restrict alteration and access, and avoid unnecessary secrets or personal data. Each System's retention period belongs in the approved Data Retention Schedule.
 
-Malware protection must run continuous protection where the platform supports it and a full or equivalent periodic scan at least monthly.
+Owners define risk-based alerts, review paths, thresholds, and response ownership in Controls, Components, Systems, and governed schedules. Representative alert paths are tested from generation through acknowledgement, escalation, and fallback on the approved schedule and after a material path change.
 
-## Network and infrastructure security
+## Incident response, recovery, and continuity
 
-Owners must:
+The Security Incident and Recovery Plan defines reporting, alternate access, severity, declaration, roles, containment, evidence handling, notification assessment, communication, recovery, closure, and exercises. Suspected unauthorized access, malware, data loss, credential exposure, or security-Control failure must be reported promptly.
 
-- Limit inbound and outbound connectivity to approved business needs.
-- Separate production from development, test, and general user environments where practical.
-- Use encrypted administrative protocols and restrict management interfaces.
-- Review firewall rules and other material network access at least annually.
-- Disable unused services, ports, accounts, and default configurations.
-- Protect cloud and infrastructure management interfaces with multi-factor authentication.
-- Record infrastructure configuration in reviewed code or another controlled system where practical.
-
-Important systems use documented secure configuration baselines. Owners review deviations, remove unnecessary defaults, and track approved exceptions. A material change to system behavior, security, availability, or customer commitments must include an appropriate communication plan.
-
-Wireless networks used for company work must use current encryption and authentication. Public or untrusted networks require an approved protected connection.
-
-Remote production access is limited to approved users, requires multi-factor authentication, and must originate from a trusted network or use an approved encrypted connection. Users on public or otherwise untrusted networks must use the additional safeguards approved for remote access.
-
-## Secure development and change management
-
-Software and infrastructure changes must be recorded, reviewed, tested, approved, and recoverable in proportion to risk. The record should identify the reason, author, reviewer, test result, deployment, and rollback method.
-
-Production changes should be made through an approved deployment process. Emergency changes may use an expedited review, but they must be documented and reviewed after service is stable.
-
-Development practices include:
-
-- Peer review for material code and infrastructure changes
-- Automated or manual security tests suited to the change
-- Separation of production duties where practical
-- Protected branches and controlled deployment credentials
-- Dependency and secret scanning where supported
-- No production secrets in source code, test fixtures, or logs
-- Validation of input and authorization at trust boundaries
-
-## Vulnerability and patch management
-
-{{company_name}} monitors trusted sources for vulnerabilities affecting in-scope systems. It scans internet-facing and production systems at least quarterly and after a material change when practical. An independent penetration test is performed at least annually for the external attack surface of the in-scope service.
-
-The security owner assigns the final severity using a recognized technical scoring method together with exploit availability, reachability, affected privileges, data classification, exposure, and business impact. The remediation clock starts when {{company_name}} confirms the finding and assigns an owner. A later severity change must record the reason and date.
-
-Confirmed vulnerabilities are assigned a target based on their final severity:
-
-| Severity | Target remediation time |
-| --- | --- |
-| Critical | 7 days |
-| High | 14 days |
-| Medium | 30 days |
-| Low | 90 days |
-
-If remediation cannot meet the target, the owner must document the reason, exposure, compensating controls, revised date, and risk approval.
-
-## Logging and monitoring
-
-Important systems must record security-relevant activity needed to investigate misuse and support operations. Depending on the system, this includes:
-
-- Authentication success and failure
-- Privileged and administrative actions
-- Access-control and identity changes
-- Production deployments and configuration changes
-- Access to Restricted data
-- Security control failures and alerts
-
-Logs must use synchronized time, restrict alteration and access, and avoid unnecessary secrets or personal data. Security logs for important systems are retained for at least 12 months unless a longer contractual or legal period applies.
-
-Owners review or alert on events based on risk. Alerts must have an assigned response path. The annual incident response exercise tests at least one representative alert from generation through acknowledgement, escalation, and fallback. A material change to an alert or response path receives an appropriate test within 30 days, or the owner records why no test applies.
-
-Owners review important log output and access to logs at least quarterly. They also monitor process health, network use, processor load, memory use, disk capacity, and other indicators needed to detect service degradation. Important systems have documented alert thresholds and response ownership.
-
-## Incident response
-
-Anyone who suspects unauthorized access, malware, data loss, credential exposure, security-control failure, or other security harm must report it immediately to {{security_contact_email}}.
-
-The Incident Response Plan defines severity, materiality, declaration, roles, escalation, evidence handling, notification assessment, recovery, and closure. The incident lead will:
-
-1. Record and assess the report.
-2. Contain the event and preserve evidence.
-3. Remove the cause and recover affected service.
-4. Coordinate legal, contractual, privacy, insurance, customer, and regulatory review.
-5. Communicate through authorized channels.
-6. Document the outcome, lessons, and follow-up work.
-
-The incident lead assigns a severity based on actual or likely harm. High-severity incidents receive immediate leadership and technical escalation, frequent status updates, and review of external notification duties. Lower-severity events still receive an owner, documented resolution, and escalation if impact grows.
-
-{{company_name}} tests its incident process and a representative alert path at least annually. Material incidents receive a retrospective within one week and tracked corrective actions.
-
-## Business continuity, backup, and recovery
-
-Important systems have recovery objectives based on business impact. Unless a system has an approved objective that requires stronger safeguards, important production data is backed up at least daily and retained for at least 30 days. Backups must restrict access, report failures, and be restored in a test at least annually.
-
-The Business Continuity and Disaster Recovery Plan defines activation, response, communication, and recovery duties. Continuity and recovery exercises are recorded with results and follow-up work.
+Each important System records approved continuity objectives, dependencies, a backup or alternate recovery approach, monitoring, and restore-validation needs. The applicable Controls, Components, Systems, and Obligations record the actual frequency, retention, procedures, access owners, and test schedule. Management records incident and recovery exercises, results, findings, and follow-up work.
 
 ## Vendor security
 
-Vendors receive access only after an appropriate security and privacy review. The review considers the service, data, access, availability needs, incident history, independent assurance, recovery capability, and contract terms.
+New Vendors receive a risk-based security review and suitable contractual safeguards before access to Confidential or Restricted data. Reviews consider service scope, data, access, assurance, recovery, incident history, dependencies, and contract terms.
 
-Contracts with vendors that handle Confidential or Restricted data should address:
+For a Vendor already in use when this Policy becomes effective, the owner records a transition review and deadline or an approved risk acceptance. Policy adoption does not imply that a historical pre-access review occurred. Vendor monitoring cadence and change-driven reassessment windows belong in the Vendor Controls and Obligations.
 
-- Permitted data use and confidentiality
-- Security safeguards
-- Incident notification
-- Subprocessor controls
-- Service continuity
-- Data return and deletion
-- Audit or assurance rights when warranted
+## Exceptions, enforcement, and review
 
-Critical and high-risk vendors are reviewed at least annually. A material service change, data-use change, or vendor incident triggers a reassessment within 30 days. The owner updates the vendor, risk, contract, data-use, and follow-up records affected by the reassessment.
+An Exception requires a specific scope and reason, risk assessment, compensating Controls, accountable owner, approval, and expiration or review date. Violations may result in access removal, corrective action, contract remedies, or other action allowed by law and agreement.
 
-## Physical security
-
-Company facilities and equipment must be protected according to their risk. Access to nonpublic work areas is limited to authorized people. Visitors must be controlled and accompanied where sensitive work or information is present.
-
-Remote workers must follow the Clear Desk and Clear Screen Policy and protect devices and conversations from unauthorized viewing or access.
-
-## Compliance, exceptions, and enforcement
-
-{{company_name}} identifies security, privacy, contractual, and regulatory obligations that apply to its work and maps them to responsible controls. Evidence should be retained according to the applicable audit and record-retention period.
-
-An exception to this policy requires:
-
-- A specific scope and business reason
-- A risk assessment
-- Compensating controls
-- An accountable owner
-- An expiration or review date
-- Approval from the current Policy Owner or a person with greater authority
-
-Violations may result in access removal, corrective action, contract remedies, or other action allowed by law and agreement.
-
-## Review
-
-The policy owner reviews this policy at least annually and after a material change to systems, services, risks, or obligations. An independent reviewer who is separate from the policy owner approves this policy and other governed policies and plans. The reviewer may be internal or external. The security and risk oversight group reviews material changes and records its decision in meeting minutes. Git history records approvals and changes.
+The Policy Owner reviews this Policy on the approved governed schedule and after a material change to services, Systems, risks, commitments, or obligations. The independent reviewer approves each revised version. Git history and FileGRC records preserve the reviewed content, approval, activation, and later changes.

@@ -1185,6 +1185,9 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
     && audits.every((audit) => audit.status === "complete")
     && !findings.some((finding) => finding.assessment === "audit-closure" && blockingFinding(finding));
   const deliveryFindingKeys = findingKeys(findings, "delivery-readiness");
+  const policyActivations = program.policyActivations || [];
+  const policiesOperating = policyActivations.length > 0
+    && policyActivations.every(({ state }) => state === "active-and-operating");
   return {
     structuralValidity: assessment(
       validation.ok ? "complete" : "needs-work",
@@ -1203,6 +1206,24 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
       evidenceReady ? "Evidence collection can begin." : "Evidence collection prerequisites remain.",
       findingKeys(findings, "program-configuration", ({ key }) => key.startsWith("program."))
     ),
+    policyActivation: {
+      status: policiesOperating ? "complete" : policyActivations.length ? "needs-work" : "not-started",
+      message: policiesOperating
+        ? "Every required Policy is active and operating."
+        : policyActivations.length
+          ? "Review the per-Policy implementation gaps, select the approved Policies, and confirm the Step 3 activation cutover."
+          : "Approve the required Policies before activation assessment begins.",
+      findingKeys: findingKeys(findings, "program-configuration", ({ key }) => key.includes(".policy-activation-")),
+      policies: policyActivations
+    },
+    policyLibraryReview: {
+      status: program.policyLibraryProposals?.length ? "review" : "current",
+      message: program.policyLibraryProposals?.length
+        ? "Optional starter-library review proposals are available. Existing content is unchanged."
+        : "No starter-library review proposal applies.",
+      findingKeys: [],
+      proposals: program.policyLibraryProposals || []
+    },
     periodHealth: assessment(
       !periodStarted ? "not-started" : periodHealthy ? "complete" : "at-risk",
       !evidenceReady

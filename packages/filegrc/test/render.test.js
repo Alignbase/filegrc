@@ -79,6 +79,33 @@ test("uses item-level program readiness for the rendered lifecycle summary", () 
   });
 });
 
+test("renders the shared Policy lifecycle and activation assessment states", () => {
+  assert.match(APP_SCRIPT, /function renderPolicyApprovalGuidance\(\)/);
+  assert.match(APP_SCRIPT, /Approval means your company reviewed and accepted the Policy/);
+  assert.match(APP_SCRIPT, /Approve what your company is committing to/);
+  assert.doesNotMatch(APP_SCRIPT, /Approve the requirements management expects/);
+  assert.doesNotMatch(APP_SCRIPT, /Approval boundary/);
+  assert.match(APP_SCRIPT, /proposalRows \? "" : "single"/);
+  assert.match(APP_SCRIPT, /function renderPolicyActivationAssessments\(\)/);
+  assert.match(APP_SCRIPT, /esc\(assessment\.label\)/);
+  assert.match(APP_SCRIPT, /Missing ready evidence sources/);
+  assert.match(APP_SCRIPT, /Unresolved Exceptions/);
+  assert.match(APP_SCRIPT, /You do not need to go back to Step 2/);
+  assert.match(APP_SCRIPT, /Review the gaps and turn the Policies on/);
+  assert.match(APP_SCRIPT, /data-review-policy-activation/);
+  assert.match(APP_SCRIPT, /function openPolicyActivationDialog\(\)/);
+  assert.match(APP_SCRIPT, /Activate selected Policies/);
+  assert.match(APP_SCRIPT, /\/api\/policy-activations/);
+  assert.match(APP_SCRIPT, /Approve the Policy in Step 2/);
+  assert.match(APP_SCRIPT, /values\.filter\(\(item\) => item !== "active"\)/);
+  assert.match(APP_SCRIPT, /Approve the Policy here, then activate it from the Step 3 Controls-page cutover/);
+  assert.match(APP_SCRIPT, /The gaps stay open, Controls keep their current status, and Evidence Readiness stays incomplete/);
+  assert.match(APP_STYLES, /\.policy-activation-grid\{/);
+  assert.match(APP_STYLES, /\.policy-activation-selection\{/);
+  assert.doesNotMatch(APP_SCRIPT, /I reviewed the selected Policy assessments/);
+  assert.doesNotMatch(APP_STYLES, /\.policy-activation-confirm\{/);
+});
+
 test("static and editable navigation receive the same program readiness progress", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-dashboard-state-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -702,7 +729,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
     PROGRAM_PATH.map(({ number, title, description }) => ({ number, title, description })),
     [
       { number: 1, title: "Define Scope", description: "Ownership, criteria, and service boundary" },
-      { number: 2, title: "Approve Policies", description: "Tailor, review, approve, and adopt" },
+      { number: 2, title: "Approve Policies", description: "Tailor, review, and approve" },
       { number: 3, title: "Implement Controls", description: "Finish controls and their evidence sources" },
       { number: 4, title: "Operate the Program", description: "Run the work and retain dated proof" },
       { number: 5, title: "Audit", description: "Firm, formal period, fieldwork, and report" }
@@ -715,7 +742,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.deepEqual(section(scopeStage, "System Boundary").types, ["system", "component", "vendor", "classification", "information-type"]);
   assert.equal(section(scopeStage, "Dependencies"), undefined);
   assert.deepEqual(section(scopeStage, "Program and Criteria").types, ["program", "framework", "requirement", "commitment"]);
-  assert.deepEqual(section(PROGRAM_PATH[2], "Control Catalog").types, ["control", "complementary-control"]);
+  assert.deepEqual(section(PROGRAM_PATH[2], "Control Catalog").types, ["control", "complementary-control", "document"]);
   assert.deepEqual(section(operationStage, "Risk").types, ["risk-assessment", "risk"]);
   assert.ok(scopeStage.sections.findIndex(({ id }) => id === "criteria") < scopeStage.sections.findIndex(({ id }) => id === "boundary"));
   assert.equal(scopeStage.resourceTypes.includes("risk"), false);
@@ -1087,7 +1114,7 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
   assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team"]);
   assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment"]);
-  assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control"]);
+  assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control", "document"]);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
   assert.doesNotMatch(APP_SCRIPT, /Working areas/);
   assert.doesNotMatch(APP_SCRIPT, /Complete This Step/);

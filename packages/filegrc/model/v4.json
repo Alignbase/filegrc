@@ -553,7 +553,7 @@
     },
     "framework": {
       "title": "Framework and criteria sources",
-      "description": "Confirm that the active framework records match the SOC 2 categories and description criteria management intends to use.",
+      "description": "Confirm that the active framework records match the SOC 2 categories and description criteria selected for this program.",
       "reviewPoints": [
         "Confirm the selected Trust Services Categories match the service and planned audit.",
         "Confirm any other legal, contractual, privacy, or security framework the service must follow.",
@@ -716,11 +716,10 @@
       "collection": "people",
       "description": "People who own, approve, review, or perform program work, or receive access and training. Record each person’s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.",
       "guidance": {
-        "policyBasis": "The information security policy and employee handbook assign work to named people and require onboarding, training, role-change, and offboarding records.",
+        "policyBasis": "The information security policy assigns work to named people and requires onboarding, training, role-change, and offboarding records.",
         "cadence": "Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training is due within 30 days of starting and annually.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-employee-handbook"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "training",
@@ -817,8 +816,7 @@
         "policyBasis": "The information security policy assigns named authority and accountability, while workforce procedures require responsibility changes and departures to be reviewed and transferred.",
         "cadence": "Create when management assigns a named responsibility. End the Appointment and create a new one when the holder changes. Reassign every linked responsibility before a holder departs.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-employee-handbook"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -1051,7 +1049,7 @@
         "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.",
         "sourceResourceIds": [
           "policy-information-security",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ],
         "obligationActivityTypes": [
           "meeting"
@@ -1130,7 +1128,7 @@
       "collection": "systems",
       "description": "The complete bounded system being governed or examined, including its services, boundary, information, Components, Controls, dependencies, and continuity objectives.",
       "guidance": {
-        "policyBasis": "A SOC 2 program starts with the bounded System whose service commitments and system requirements management intends to meet.",
+        "policyBasis": "A SOC 2 program starts with the bounded System and the service commitments and system requirements the company has chosen to meet.",
         "cadence": "Define before selecting Components and Controls. Review after material service, boundary, architecture, information, continuity, or audit-scope changes.",
         "reviewPoints": [
           "Describe the complete service boundary rather than a single tool or provider.",
@@ -1255,12 +1253,10 @@
       "collection": "assets",
       "description": "Important devices, media, software, records, and other items tracked through acquisition, custody, use, return, and disposal. Assets support controls but do not define the service boundary.",
       "guidance": {
-        "policyBasis": "The information security, mobile computing, and data handling policies require important assets to have owners and custodians, protection based on classification, and secure return or disposal.",
+        "policyBasis": "The information security policy requires important assets to have owners and custodians, protection based on classification, and secure return or disposal.",
         "cadence": "Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-mobile-computing-communications",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "inventory-review"
@@ -1399,7 +1395,7 @@
         "cadence": "Follow the linked review Obligation. Starter governed documents are reviewed at least annually and after material changes or use, with an approver who is separate from the owner.",
         "sourceResourceIds": [
           "policy-information-security",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ],
         "obligationActivityTypes": [
           "policy-review",
@@ -1637,12 +1633,11 @@
       "recordPath": "{id}/evidence.json",
       "description": "A retained export, report, screenshot, signed record, fixed file, or approved external reference. FileGRC operating records may support an audit directly without wrappers.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require retained proof from authoritative Components when FileGRC operating records do not contain the full result.",
+        "policyBasis": "The information security policy requires retained proof from authoritative Components when FileGRC operating records do not contain the full result.",
         "cadence": "Create an Evidence Artifact only for a real retained artifact or approved reference. Identify its source Component or source records, Controls, collection and verification facts, coverage, revision, and classification.",
         "emptyState": "No Evidence Artifacts have been collected. Add one only when a real retained artifact or approved external reference exists.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -2045,12 +2040,11 @@
       "collection": "obligations",
       "description": "Reusable schedules for recurring or event-driven work. Obligations feed the Work Queue; completion records and linked Evidence prove that the work occurred. Obligations are not required for SOC 2.",
       "guidance": {
-        "policyBasis": "filegrc uses Obligations to turn policy and control cadence into owned, dated work linked to its scope and required proof.",
-        "cadence": "Treat starter work as proposed until every governing policy is active and effective and, when the obligation names controls, at least one linked control is implemented. Then use the recurrence and activation date, and create a separate completion record for every period.",
+        "policyBasis": "FileGRC uses Obligations to turn approved schedules into owned, dated work linked to scope and required proof. An enabled Obligation remains dormant until every governing Policy is active and effective.",
+        "cadence": "Configure and enable the schedule during Control implementation. Do not create occurrences while a governing Policy is approved but inactive. When the Policy becomes active and effective, use the later of the recurrence anchor and activation date, then create a separate completion record for every period.",
         "sourceResourceIds": [
           "policy-information-security",
-          "policy-data-protection-handling",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ]
       },
       "required": [
@@ -2403,8 +2397,7 @@
           "Use an external, zero-population, or not-applicable conclusion only when it is factually true for the current scope."
         ],
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -2537,8 +2530,7 @@
           "Before marking it not applicable, confirm that management is not responsible for the action."
         ],
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -2660,16 +2652,15 @@
       "collection": "controls",
       "description": "Management's actual Control implementation, mapped to Requirements, bounded Systems, operating Components, and authoritative evidence-source Components.",
       "guidance": {
-        "policyBasis": "Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. Policy text alone does not show implementation.",
-        "cadence": "Before marking a Control implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, and implementation date. Put every calendar or event schedule in a linked Obligation. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. FileGRC-managed Controls also require enabled schedules with effective governing Policies. Marking the Control implemented starts eligible schedules.",
+        "policyBasis": "Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence.",
+        "cadence": "A Control may be implemented while its governing Policy is approved but inactive. Before marking it implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event schedules. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled schedules remain dormant until their governing Policies are active and effective.",
         "reviewPoints": [
           "Confirm the Control is needed for the applicable Requirements, customer Commitments, and current service boundary.",
           "Confirm the procedure describes what people actually do.",
           "Use a not-applicable, external, or zero-population conclusion only when it is factually true for the current scope."
         ],
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "risk-assessment",
@@ -3218,11 +3209,10 @@
       "collection": "exceptions",
       "description": "An approved, time-bound departure from a Policy or Control. Record its scope, reason, risk, compensating Controls, owner, approval, and expiry. An Exception record is not required for SOC 2 unless a departure is approved.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies allow departures only with a business reason, assessed risk, compensating safeguards, approval, and an expiry or review date.",
+        "policyBasis": "The information security policy allows departures only with a business reason, assessed risk, compensating safeguards, approval, and an expiry or review date.",
         "cadence": "Approve before the departure begins, follow its linked review Obligation or expiry, and close or renew it through a new risk decision.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -3451,10 +3441,10 @@
       "pluralTitle": "Policies",
       "group": "governance",
       "collection": "policies",
-      "description": "Management-approved rules for the program. Store the policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.",
+      "description": "Management-approved requirements for the program. Approval accepts the requirements; activation makes them effective. Store the Policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.",
       "guidance": {
-        "policyBasis": "Policies state management’s required behavior. Controls, Obligations, Documents, Training, and Attestations put that behavior into operation and preserve proof.",
-        "cadence": "Move a draft through review and approval, set the effective date, link its controls, and clear organization-specific placeholders before activation. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.",
+        "policyBasis": "A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.",
+        "cadence": "Move a draft through independent review and approval without requiring every linked Control to be implemented. During Step 3, finish Controls, Components, evidence sources, governed plans, and schedules, review the per-Policy activation assessment, then activate the approved revision on its real effective date. Do not backdate adoption. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -3674,7 +3664,7 @@
       "collection": "policy-reviews",
       "description": "The result of a scheduled or change-driven review of Policies or governed Documents, including reviewers, decision, evidence, and follow-up. Edit the source record separately when changes are approved.",
       "guidance": {
-        "policyBasis": "Each starter Policy and the continuity plan requires periodic review and another review after specified material changes.",
+        "policyBasis": "The Information Security Policy and Security Incident and Recovery Plan require periodic review and another review after specified material changes.",
         "cadence": "Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.",
         "reviewPoints": [
           "Read the current Policy or governed Document.",
@@ -3683,7 +3673,7 @@
         ],
         "sourceResourceIds": [
           "policy-information-security",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ],
         "obligationActivityTypes": [
           "policy-review"
@@ -3811,12 +3801,10 @@
       "collection": "attestations",
       "description": "One person’s acknowledgement, training completion, certification, or assigned-work confirmation. Bind it to the exact content revision and signed Evidence when required.",
       "guidance": {
-        "policyBasis": "The information security policy, data handling policy, and workforce materials require people to complete assigned training and acknowledge applicable responsibilities.",
+        "policyBasis": "The information security policy requires people to complete assigned training and acknowledge applicable responsibilities.",
         "cadence": "Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling",
-          "policy-employee-handbook"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "training"
@@ -3972,11 +3960,11 @@
       "collection": "meetings",
       "description": "One governance meeting, including its chair, attendees, agenda, minutes, decisions, raised issues, Evidence, and assigned follow-up.",
       "guidance": {
-        "policyBasis": "The information security policy requires recorded security and risk oversight. The continuity plan requires management review of exercises and unresolved risks.",
+        "policyBasis": "The information security policy requires recorded security and risk oversight. The Security Incident and Recovery Plan requires management review of exercises and unresolved risks.",
         "cadence": "Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.",
         "sourceResourceIds": [
           "policy-information-security",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ],
         "obligationActivityTypes": [
           "meeting"
@@ -4118,11 +4106,10 @@
       "collection": "training",
       "description": "Reusable training content and assignment rules, including audience, trigger, completion window, passing criteria, and linked Policies and Controls. Obligations define assignment schedules. Individual completions belong in Attestations.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require security training and added role-based training when a person’s responsibilities or data access warrant it.",
+        "policyBasis": "The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.",
         "cadence": "Assign security training at onboarding, complete it within 30 days, repeat at least annually, and reassign after relevant material changes or incidents.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "training"
@@ -4243,11 +4230,10 @@
       "collection": "risks",
       "description": "One identified threat or business impact that needs treatment or ongoing tracking. Record its owner, ratings, response, affected scope, Controls, acceptance, and follow-up.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.",
+        "policyBasis": "The information security policy requires identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.",
         "cadence": "Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "risk-assessment"
@@ -4417,7 +4403,7 @@
       "collection": "risk-assessments",
       "description": "One approved evaluation of a defined scope using the program’s risk method. It records participants, Systems, Vendors, conclusions, Evidence, and the Risks created or reassessed.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.",
+        "policyBasis": "The information security policy requires periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.",
         "cadence": "Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.",
         "reviewPoints": [
           "Confirm the assessment covered the real service, material dependencies, data, commitments, and recent changes.",
@@ -4425,8 +4411,7 @@
           "Confirm no material risk was left out."
         ],
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "risk-assessment"
@@ -4629,11 +4614,10 @@
       "collection": "vendors",
       "description": "External organizations and commercial relationships, including contracts, due diligence, risk reviews, monitoring, assurance reports, dates, and general information-access facts.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.",
+        "policyBasis": "The information security policy requires an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.",
         "cadence": "Create for a material external provider relationship. Review critical and high-risk Vendors at least annually and after material relationship, service, access, or incident changes. Do not create a Component unless a supplied capability also meets the Component inclusion rules.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "inventory-review",
@@ -4750,7 +4734,7 @@
       "collection": "vendor-reviews",
       "description": "One due-diligence or periodic review of a Vendor, covering the service, data, access, assurance, recovery, incidents, contracts, Risks, Evidence, and follow-up.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.",
+        "policyBasis": "The information security policy requires review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.",
         "cadence": "Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.",
         "reviewPoints": [
           "Confirm the review covers the Vendor’s current services, connected Systems, data access, criticality, subservice role, and contract terms.",
@@ -4758,8 +4742,7 @@
           "Make the approve, conditional, or reject decision match the risks and assign any needed follow-up."
         ],
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "vendor-review"
@@ -4887,11 +4870,10 @@
       "collection": "access-grants",
       "description": "One Person’s or Service Account’s access to one System, including business need, privilege, request, approval, provisioning, expiry, removal, ticket, and Evidence.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require unique identity, documented business need, least privilege, approval, authorized provisioning, and prompt removal.",
+        "policyBasis": "The information security policy requires unique identity, documented business need, least privilege, approval, authorized provisioning, and prompt removal.",
         "cadence": "Record every grant and material change. Remove access at or before notice for involuntary or high-risk departures and within 24 hours for other departures.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -5065,7 +5047,7 @@
       "collection": "access-reviews",
       "description": "One review of a defined access population for a date or period, including Systems, reviewers, Access Grant decisions, exceptions, approval, Evidence, and source revision.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.",
+        "policyBasis": "The information security policy requires System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.",
         "cadence": "Review privileged and production access at least quarterly and other important-system access at least annually.",
         "reviewPoints": [
           "Confirm the review population is complete for every System and exact date or period in scope.",
@@ -5073,8 +5055,7 @@
           "Confirm every removal, change, or exception has follow-up."
         ],
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ],
         "obligationActivityTypes": [
           "access-review"
@@ -5586,11 +5567,10 @@
       "collection": "incidents",
       "description": "One suspected or confirmed security or privacy event, with severity, timeline, scope, owner, affected Systems and Vendors, Evidence, Findings, and corrective work. An Incident record is not required for SOC 2 when no incident occurred.",
       "guidance": {
-        "policyBasis": "The information security and data handling policies require prompt reporting, investigation, containment, recovery, evidence preservation, and review of notification duties.",
+        "policyBasis": "The information security policy requires prompt reporting, investigation, containment, recovery, evidence preservation, and review of notification duties.",
         "cadence": "Create on report or detection, update material events as they progress, and complete a retrospective within one week after a material incident.",
         "sourceResourceIds": [
-          "policy-information-security",
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -5773,11 +5753,11 @@
       "collection": "exercises",
       "description": "One continuity, recovery, incident, or privacy simulation, including scenario, objective, participants, scope, result, Evidence, Findings, and follow-up.",
       "guidance": {
-        "policyBasis": "The information security policy requires incident-response testing. The continuity plan requires exercises and another review after material change or disruption.",
+        "policyBasis": "The information security policy requires incident-response testing. The Security Incident and Recovery Plan requires exercises and another review after material change or disruption.",
         "cadence": "Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.",
         "sourceResourceIds": [
           "policy-information-security",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ],
         "obligationActivityTypes": [
           "exercise"
@@ -5911,7 +5891,7 @@
       "collection": "backup-tests",
       "description": "One restore or recovery test, including the Systems and operators involved, timing, recovery result, reviewer, Evidence, Findings, and follow-up.",
       "guidance": {
-        "policyBasis": "The information security policy and continuity plan require protected backups, monitored failures, and tested proof that important data can be restored and used.",
+        "policyBasis": "The information security policy and Security Incident and Recovery Plan require protected backups, monitored failures, and tested proof that important data can be restored and used.",
         "cadence": "Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.",
         "reviewPoints": [
           "Confirm the test restored the intended Systems and data.",
@@ -5920,7 +5900,7 @@
         ],
         "sourceResourceIds": [
           "policy-information-security",
-          "document-business-continuity-disaster-recovery"
+          "document-security-incident-recovery-plan"
         ],
         "obligationActivityTypes": [
           "backup-test"
@@ -6224,10 +6204,10 @@
       "collection": "data-requests",
       "description": "One privacy, contractual, or other data request tracked by opaque reference, with scope, due date, decision, Evidence, and completion. Data Request tracking is not required for a SOC 2 Security-only report.",
       "guidance": {
-        "policyBasis": "The data handling policy requires applicable requests to reach a responsible owner, meet the governing deadline, and keep erasable personal data out of immutable Git history.",
+        "policyBasis": "The information security policy requires applicable requests to reach a responsible owner, meet the governing deadline, and keep erasable personal data out of immutable Git history.",
         "cadence": "Create on receipt, set the deadline from applicable law or contract, verify identity outside this repository when needed, and record completion.",
         "sourceResourceIds": [
-          "policy-data-protection-handling"
+          "policy-information-security"
         ]
       },
       "required": [
@@ -7391,6 +7371,7 @@
         "profileId": {
           "type": "enum",
           "values": [
+            "endpoint-verification",
             "inventory-review",
             "log-review",
             "network-review",
@@ -9318,6 +9299,23 @@
         "incident"
       ]
     },
+    "endpoint-verification": {
+      "title": "Endpoint verification",
+      "completionType": "control-activity",
+      "completionResourceTypes": [
+        "control-activity"
+      ],
+      "recurrenceModes": [
+        "calendar",
+        "event"
+      ],
+      "scopeResourceTypes": [
+        "system",
+        "asset",
+        "component"
+      ],
+      "completionProfile": "endpoint-verification"
+    },
     "inventory-review": {
       "title": "Inventory review",
       "completionType": "control-activity",
@@ -9964,6 +9962,18 @@
     }
   },
   "completionProfiles": {
+    "endpoint-verification": {
+      "title": "Endpoint verification",
+      "resourceType": "control-activity",
+      "requiredFacts": [
+        "performerIds",
+        "scopeResourceIds",
+        "method",
+        "result",
+        "reviewerIds",
+        "completedAt"
+      ]
+    },
     "inventory-review": {
       "title": "Inventory review",
       "resourceType": "control-activity",

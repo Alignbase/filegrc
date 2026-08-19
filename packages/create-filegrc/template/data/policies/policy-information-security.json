@@ -14,14 +14,8 @@
     "vendors"
   ],
   "acknowledgementRequired": true,
-  "relatedPolicyIds": [
-    "policy-clear-desk-screen",
-    "policy-data-protection-handling",
-    "policy-mobile-computing-communications"
-  ],
   "relatedDocumentIds": [
-    "document-business-continuity-disaster-recovery",
-    "document-incident-response-plan",
+    "document-security-incident-recovery-plan",
     "document-data-retention-schedule"
   ],
   "proposedEffectiveOn": "{{effective_date}}",

@@ -92,7 +92,7 @@ Use a company-managed device for company work unless another arrangement is appr
 - Keep the operating system, browser, applications, and security tools supported and updated.
 - Enable automatic security updates when approved.
 - Keep disk encryption, screen locking, malware protection, firewall, logging, and device-management controls enabled.
-- Lock the screen whenever the device is unattended. Company devices lock automatically after no more than 15 minutes.
+- Lock the screen whenever the device is unattended. Company-managed devices use the automatic-lock setting recorded in the applicable Endpoint Control, Component, or System.
 - Use a standard user account for routine work. Use administrative access only when authorized and needed.
 - Install applications and browser extensions only through an approved process.
 - Do not connect unapproved removable media.
@@ -126,7 +126,7 @@ A secure connection protects data in transit. It does not prove that a site, sen
 
 ## Data handling
 
-Follow the Data Protection and Handling Policy and use the highest applicable classification.
+Follow the Information Security Policy and use the highest applicable classification.
 
 - Collect, access, and retain only the data needed for approved work.
 - Store company data only in approved systems.
@@ -135,6 +135,20 @@ Follow the Data Protection and Handling Policy and use the highest applicable cl
 - Do not put credentials, authentication tokens, or cryptographic keys in this repository or another general-purpose system.
 - Dispose of paper, devices, and media through an approved process.
 - Report unintended disclosure, excessive access, improper disposal, or an unexpected public link.
+
+## Building and changing systems
+
+People who design, build, review, deploy, or administer company Systems must:
+
+- Keep code, infrastructure changes, and production access in approved repositories and workflows.
+- Protect branches and deployments with the reviews, tests, and approvals required by the Change Management Control.
+- Keep secrets out of source code, build output, tickets, chat, and logs.
+- Validate input, authorization, error handling, and sensitive-data use at trust boundaries.
+- Review new and changed dependencies, resolve security findings within the approved risk targets, and record Exceptions when a target cannot be met.
+- Separate development and production duties when practical. Record a compensating or post-deployment review when team size or urgency prevents independent pre-deployment review.
+- Record emergency changes, limit their scope, validate the result, and complete the required follow-up review.
+
+The applicable Controls, Components, Systems, and governed schedules record the actual tools, settings, approval paths, and evidence.
 
 ## Physical security and clear workspaces
 

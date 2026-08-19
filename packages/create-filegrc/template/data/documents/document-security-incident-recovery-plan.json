@@ -1,7 +1,7 @@
 {
-  "id": "document-incident-response-plan",
+  "id": "document-security-incident-recovery-plan",
   "type": "document",
-  "title": "Incident Response Plan",
+  "title": "Security Incident and Recovery Plan",
   "status": "draft",
   "documentKind": "plan",
   "ownerIds": [
@@ -17,10 +17,9 @@
     "control-security-communication",
     "control-logging-monitoring",
     "control-incident-response",
-    "control-incident-exercise"
-  ],
-  "relatedDocumentIds": [
-    "document-business-continuity-disaster-recovery"
+    "control-incident-exercise",
+    "control-backup-restoration",
+    "control-continuity-exercise"
   ],
   "evidenceIds": [],
   "classificationId": "internal",

@@ -11,7 +11,7 @@ export const RESOURCE_INSTRUCTIONS = {
   framework: "Confirm the criteria framework and version used for the program.",
   requirement: "Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.",
   commitment: "Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.",
-  policy: "Tailor each policy to match how the organization works. Clear placeholders, assign an owner and separate approver, then record its approval and effective dates. Controls link to their governing Policies.",
+  policy: "Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.",
   document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
   control: "Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.",
   "complementary-control": "Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.",
@@ -58,7 +58,7 @@ export const RESOURCE_PAGE_SUMMARIES = {
   component: "Connect each material Component to a System.",
   classification: "Define handling levels.",
   "information-type": "Define information categories.",
-  policy: "Adapt and approve starter policies.",
+  policy: "Tailor the starter Policy and have someone other than its owner approve it.",
   document: "Adapt and approve plans.",
   control: "Describe each Control and its evidence source.",
   "complementary-control": "Record customer or provider responsibilities, or confirm there are none.",
@@ -77,7 +77,7 @@ export const PROGRAM_PATH = [
     summary: "Name the owners, criteria, service, Systems, and providers in scope.",
     sections: [
       { id: "ownership", title: "Program Ownership", description: "Confirm the people, appointments, and teams that own, approve, review, and operate the program.", steps: ["Confirm the initial program lead’s actual job title and the separate Policy Owner Appointment.", "Add the organization’s real appointments, reviewers, and operators.", "Review the starter Security and Risk Oversight team, its members, and its chair.", "Add other teams only when the organization assigns shared responsibility to them."], types: ["person", "appointment", "team"], defaultOpen: true },
-      { id: "criteria", title: "Program and Criteria", description: "Define the Program, confirm its Frameworks, record Program-scoped Requirement applicability, and connect customer commitments that shape the System or Control design.", steps: ["Confirm the Program goal, owners, risk method, and candidate period.", "Review the included Security criteria references and record each applicability decision on the Program.", "Record customer commitments and keep optional criteria out until management deliberately adds them."], types: ["program", "framework", "requirement", "commitment"], defaultOpen: true },
+      { id: "criteria", title: "Program and Criteria", description: "Define the Program, confirm its Frameworks, record Program-scoped Requirement applicability, and connect customer commitments that shape the System or Control design.", steps: ["Confirm the Program goal, owners, risk method, and candidate period.", "Review the included Security criteria references and record each applicability decision on the Program.", "Record customer commitments and keep optional criteria out until the company chooses to add them."], types: ["program", "framework", "requirement", "commitment"], defaultOpen: true },
       { id: "boundary", title: "System Boundary", description: "Start with the bounded System. Add Components that materially deliver the service, support Controls, produce authoritative Evidence, or support relevant operations. Keep Vendor relationships and specific Assets separate.", steps: ["Create the complete bounded System and select it on the Program.", "Add only relevant Components, with a role and rationale for each System use.", "Create Vendors for material external provider relationships and link supplied Components when factual.", "Normalize Information Types and Classifications used by the System, Components, Vendors, Risks, and Evidence Artifacts."], types: ["system", "component", "vendor", "classification", "information-type"], defaultOpen: false }
     ],
     resourceTypes: ["person", "appointment", "team", "program", "framework", "requirement", "commitment", "system", "component", "vendor", "classification", "information-type"],
@@ -99,12 +99,12 @@ export const PROGRAM_PATH = [
     id: "policies",
     number: 2,
     title: "Approve Policies",
-    description: "Tailor, review, approve, and adopt",
+    description: "Tailor, review, and approve",
     summary: "Adapt and approve the starter policies.",
     sections: [
-      { id: "library", title: "Policy Library", description: "Review, approve, and activate policies and governed plans without treating starter text as adopted practice.", steps: ["Review policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval and effective dates before changing the status to active."], types: ["policy", "document"], defaultOpen: true }
+      { id: "library", title: "Policy Library", description: "Review and approve Policy requirements without treating approval as proof of technical implementation.", steps: ["Review Policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval against the exact reviewed content. Leave the Policy approved and inactive until the Step 3 implementation cutover."], types: ["policy"], defaultOpen: true }
     ],
-    resourceTypes: ["policy", "document"],
+    resourceTypes: ["policy"],
     commands: [
       "filegrc guide policy --json",
       "filegrc list policy --json",
@@ -118,14 +118,15 @@ export const PROGRAM_PATH = [
     description: "Finish controls and their evidence sources",
     summary: "Describe each Control and connect its evidence source.",
     sections: [
-      { id: "catalog", title: "Control Catalog", description: "Finish the starter Controls and their authoritative evidence sources, record applicable complementary controls, and see whether FileGRC tracks operation through Work Queue or operating records.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components.", "Create or confirm every calendar and event schedule as an Obligation.", "Confirm each source Component is active, has an evidence-source role and rationale in the Control's System scope, has current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Resolve every incomplete evidence-family check before marking the Controls implemented.", "Record any required customer or carved-out provider controls as Complementary Controls."], types: ["control", "complementary-control"], defaultOpen: true }
+      { id: "catalog", title: "Control Catalog", description: "Finish the starter Controls, governed plans, schedules, and authoritative evidence sources, then review the approved Policies together at implementation cutover.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components.", "Create or enable every calendar and event schedule as an Obligation. Enabled work remains dormant until its governing Policy is active.", "Confirm each source Component is active, has an evidence-source role and rationale in the Control's System scope, has current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Complete required governed plans, then use Review policy activation on the Controls page to inspect each Policy’s planned or partial Controls, missing Components or sources, missing schedules, and unresolved Exceptions.", "Choose the approved Policies that should take effect, set the real effective date, and confirm the Step 3 cutover. You can activate with a documented gap or approved Exception, but Evidence Readiness still requires active and operating Policies."], types: ["control", "complementary-control", "document"], defaultOpen: true }
     ],
-    resourceTypes: ["control", "complementary-control"],
+    resourceTypes: ["control", "complementary-control", "document"],
     commands: [
       "filegrc guide control --json",
       "filegrc list control --json",
       "filegrc get CONTROL_ID --mutation",
       "filegrc review-collection complementary-control --scaffold",
+      "filegrc activate-policies --scaffold",
       "filegrc evidence-map --json",
       "filegrc program-readiness --json"
     ]
@@ -180,7 +181,7 @@ export const PROGRAM_PATH = [
         summary: "Start a guided checklist when a policy-triggering change occurs.",
         instructions: "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.",
         use: "Preview the full workflow before triggering it, then create the event and every linked task in one validated write.",
-        policyBasis: "Active event obligations translate policy-triggering changes into owned, deadline-bound Action Items. Proposed workflows remain unavailable until their governing policies and linked controls are ready.",
+        policyBasis: "Active event Obligations translate policy-triggering changes into owned, deadline-bound Action Items. They remain dormant until their governing Policies are active and effective.",
         commands: ["filegrc obligations --json", "filegrc trigger EVENT_TYPE (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --subject RESOURCE_ID --json"]
       },
       {
@@ -189,7 +190,7 @@ export const PROGRAM_PATH = [
         summary: "Complete scheduled, event-driven, and assigned work by its due date.",
         instructions: "Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.",
         use: "See proposed, upcoming, blocked, due, and overdue policy work together with every open Action Item. Continuous and per-transaction Controls still operate through their Components and need dated operating records or Evidence.",
-        policyBasis: "Effective policies and implemented linked controls activate reusable obligations. Policy Events and source records create owned Action Items. Each occurrence or task retains its own deadline, completion record, and evidence.",
+        policyBasis: "Active and effective Policies start enabled reusable Obligations. Policy Events and source records create owned Action Items. Each occurrence or task retains its own deadline, completion record, and evidence.",
         commands: [
           "filegrc obligations --json",
           "filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD",

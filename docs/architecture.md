@@ -2,7 +2,7 @@
 
 ## Status
 
-The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, policy obligations, Policy Events, evidence packets, the local web app, static builds, onboarding, the generator, generic policies, training, acknowledgements, and tests all run from this monorepo.
+The first end-to-end implementation is in place. Model v1, validation, Git metadata, search, filtering, atomic CRUD, policy obligations, Policy Events, evidence packets, the local web app, static builds, onboarding, the generator, a minimal SOC 2 Security Policy, training, attestations, and tests all run from this monorepo.
 
 Later passes can add licensed framework content, deeper control mappings, and guided evidence capture.
 
@@ -195,12 +195,12 @@ This is the smallest useful initial prompt set. The company name identifies the 
 - All 33 Common Criteria reference IDs from CC1.1 through CC9.2
 - The AICPA 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
 - All nine Description Criteria reference IDs from DC1 through DC9
-- A planned control catalog mapped to the Common Criteria and starter policies
+- A planned control catalog mapped to the Common Criteria and one starter Information Security Policy
 - A planned security and risk oversight team that still needs a chair and membership.
 - A Person with their actual organization job title, an active Policy Owner Appointment, and a planned Independent Policy Reviewer Appointment scoped to the program
 - Recurring and event Obligations that are the sole authority for review, scan, test, training, and meeting schedules
 - Event obligations for workforce starts, role changes, departures, personal devices, vendor access and reassessment, material system or data-use changes, and incidents
-- General and role-based training, including conditional secure-development, privileged-role, and anti-bribery modules
+- One general Security Awareness Training record. Add role-specific modules only when the current people, access, and duties require them.
 - A governed data retention schedule plus annual and material-change review work
 - Annual incident-response and end-to-end alert-path testing
 - A default 5x5 likelihood-and-impact risk method
@@ -208,7 +208,7 @@ This is the smallest useful initial prompt set. The company name identifies the 
 
 The baseline does not redistribute licensed criteria text. It stores reference IDs and an official source link. It also does not create organization-specific systems, vendors, risks, audit periods, or evidence. Optional renderer onboarding collects one initial system boundary and an optional management goal, stores them on the workspace, and creates one planned service-commitment prompt linked to that system. The prompt does not assert a customer promise and must be replaced with the actual commitment before activation. Onboarding does not create an audit engagement, appoint the independent management reviewer, add optional trust categories, or claim that the initial scope is complete.
 
-Every starter control is `planned`. A user must confirm the owner, system scope, actual procedure, operation pattern, evidence source, implementation date, mappings, and every required Work Queue schedule before marking it implemented. A policy statement alone does not prove that a control operates.
+Every starter control is `planned`. A user must confirm the owner, system scope, actual procedure, operation pattern, evidence source, implementation date, mappings, and every required Work Queue schedule before marking it implemented. Starter calendar Obligations remain `proposed` and carry sensible starting cadences, including the former common scan, testing, review, and recovery intervals. A user may edit those values, and only enabling the Obligation records management's choice. Bracketed retention and recovery values work the same way: the document remains incomplete until management confirms or replaces the proposed value and removes the prompt. A policy statement alone does not prove that a control operates.
 
 ## Storage
 
@@ -270,7 +270,7 @@ Generated or cached data never belongs in these directories.
 
 ## Policy obligations
 
-An `obligation` is a reusable policy rule. It remains a proposal until every governing policy is active and effective and, when it names controls, at least one linked control is implemented. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date. An Obligation may be proposed, active, paused, or retired. Blocking is authoritative only on an assigned Action Item, which must name its blocking resources. The shared planner preserves that state and exposes the same blocker titles and resolution action in browser, CLI, HTTP, and agent output.
+An `obligation` is a reusable policy rule. Its own `active` status means the schedule is enabled and ready for cutover. Work remains dormant until every governing policy is active and effective and, when it names controls, at least one linked control is implemented. Calendar obligations define a recurrence whose anchor is the first day of a compliant cycle. If a governing policy takes effect after the stored recurrence anchor, the policy effective date becomes the first cycle anchor. Unless the policy narrows it, the allowed completion window runs through the day before the next cycle and becomes overdue on the next cycle’s first day. A dated record explicitly linked through `completionResourceIds` satisfies the occurrence whose window contains that date. An Obligation may be proposed, active, paused, or retired. Blocking is authoritative only on an assigned Action Item, which must name its blocking resources. The shared planner preserves that state and exposes the same blocker titles and resolution action in browser, CLI, HTTP, and agent output.
 
 Event obligations define an `eventType`, a prompt, owners, completion record types, and a due window relative to the event. The model-owned activity registry limits each activity’s recurrence modes and scope resource types. The Policy Event registry limits subject resource types and their cardinality, such as exactly one Person for a departure or exactly one Vendor for reassessment. filegrc rejects an event while a governing policy is still a proposal. Starting an active event creates an `obligation-event` and all required `action-item` records as one validated write. Day windows preserve policies such as “within 30 days.” Hour windows preserve exact timestamps for rules such as same-time or 24-hour access removal. The starter obligations use policy-specific cutoffs. filegrc applies a 30-day deadline when a custom event obligation omits one, so every generated action can become overdue.
 
@@ -298,11 +298,13 @@ Domain CRUD operations write files atomically and do not create commits. Record 
 Program Readiness answers whether management can begin a candidate Type 2 period. It has no audit ID or CPA firm requirement. The stages are:
 
 1. Define scope.
-2. Approve policies.
-3. Implement controls and complete their authoritative evidence sources.
+2. Approve policy requirements and their exact content revisions.
+3. Implement controls, complete their authoritative evidence sources, enable schedules, and activate policies at the cutover.
 4. Operate the program.
 
-The Evidence Ready gate requires an assurance goal, selected systems, reviewed criteria and service commitments, effective required policies, governed documents and training needed by the selected controls, and implemented controls with complete authoritative evidence sources. Every selected control family must point to active authoritative Systems with the required evidence roles, current evidence access owners, repeatable retrieval instructions in Record Markdown, and a passed pre-period retrieval dry run for each distinct method. These checks are part of Control implementation in `assessProgramReadiness`. The Step 3 browser overview shows the same source-family results beside the Control pages, and `filegrc evidence-map` remains a focused headless diagnostic. A filegrc-managed control cannot be implemented while a linked non-retired Work Queue schedule is paused or waiting for policy approval. Starter schedules remain enabled but do not run until their governing policies are effective and at least one linked control is implemented. Marking a fully configured control implemented starts its eligible schedules in the same validated state change. `assessProgramReadiness` supplies the same calculation to `filegrc program-readiness`, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
+Policy approval records management's approval of the requirements and exact content. It does not assert that linked Controls are implemented, and an approved Policy may remain inactive while implementation finishes. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence.
+
+The Evidence Ready gate requires an assurance goal, selected systems, reviewed criteria and service commitments, active and effective required policies, approved governed documents and training needed by the selected controls, implemented controls, complete authoritative evidence sources, and enabled schedules. Every selected control family must point to active authoritative Systems with the required evidence roles, current evidence access owners, repeatable retrieval instructions in Record Markdown, and a passed pre-period retrieval dry run for each distinct method. These checks are part of Control implementation in `assessProgramReadiness`. The Step 3 browser overview shows the same source-family results beside the Control pages, and `filegrc evidence-map` remains a focused headless diagnostic. A filegrc-managed Control may become implemented while its governing Policy is approved but inactive. Its linked Work Queue schedules may also be enabled before activation, but they remain dormant until every governing Policy is active and effective. `assessProgramReadiness` supplies this calculation and each Policy's activation assessment to `filegrc program-readiness`, the workflow command and API, the homepage progress tracker, HTTP state, and static state. Current risk assessments and risks belong to program operation, where their conclusions may add or change controls. Audit preparation still requires a current independently reviewed assessment.
 
 Scheduled operating records use `scheduledFor` separately from their actual completion date or timestamp. Completed reviews, assessments, scans, tests, and exercises must name the model-defined actors, result, evidence, review, and coverage fields. Validation rejects missing completion proof, terminal-only fields on unfinished work, and completion or review dates in the wrong order. Each Vendor Review covers one Vendor so its decision, evidence, coverage, and follow-up remain unambiguous.
 
@@ -346,14 +348,14 @@ The homepage includes a program progress tracker and an Evidence Collection Runn
 The sidebar groups records by their job:
 
 - Define Scope: people and the oversight team, criteria, commitments, material vendors, and in-scope systems, including evidence roles, access owners, and retrieval instructions for Systems that produce Control evidence
-- Approve Policies: policies and governed documents
-- Implement Controls: the starter control set, authoritative evidence source mappings and readiness, implementation fields, complementary customer or subservice controls, and operation-tracking status
+- Approve Policies: independent approval of Policy requirements and exact content revisions, without requiring activation
+- Implement Controls: governed documents, the starter control set, authoritative evidence source mappings and readiness, implementation fields, enabled schedules, complementary customer or subservice controls, operation-tracking status, and the Policy activation cutover
 - Operate the Program: risk assessments and risks, the Work Queue, Evidence Artifacts, data requests, asset inventory, vendor reviews, governance, access, security, resilience, training, confirmed findings, and exceptions
 - Audit: engagements and requests, populations, tests, FileGRC Evidence and Evidence Artifact review, packet preparation, fieldwork, and reports
 
 Resource types are nested only when the extra grouping adds meaning. Organization settings remain anchored at the bottom.
 
-The Controls page explains what the generated workspace already supplies and what management must tailor before a planned Control becomes implemented. Its operation-tracking column distinguishes Controls linked to recurring or event work in FileGRC from Controls supported by Evidence Artifacts, and it always shows authoritative evidence-source mappings. The Step 3 overview derives evidence-source readiness from the selected Controls, model evidence families, and their authoritative source Components. Each row shows the expected Evidence, timing, linked Controls, mapped Components, and whether source roles, access owners, and retrieval Markdown are complete. Users fix gaps in the canonical Control and Component records, without duplicate lifecycle pages or placeholder Evidence.
+The Controls page explains what the generated workspace already supplies and what management must tailor before a planned Control becomes implemented. Its operation-tracking column distinguishes Controls linked to recurring or event work in FileGRC from Controls supported by Evidence Artifacts, and it always shows authoritative evidence-source mappings. The Step 3 overview derives evidence-source readiness from the selected Controls, model evidence families, and their authoritative source Components. Each row shows the expected Evidence, timing, linked Controls, mapped Components, and whether source roles, access owners, and retrieval Markdown are complete. Users fix gaps in the canonical Control and Component records, without duplicate lifecycle pages or placeholder Evidence. The Policy editor does not offer an `approved` to `active` transition, so Step 2 ends at approval. At the end of Step 3, the Controls page offers one Review policy activation cutover for the approved, inactive Policies. Management selects the Policies it intends to make effective, reviews their gaps together, records a shared current or future effective date, and activates the selected set. The browser, HTTP API, and CLI use one atomic domain operation for this cutover. The user does not return to Step 2.
 
 Evidence Artifacts belong in Step 4 because management should create one only when a real export, report, screenshot, signed file, or approved external reference exists. The standard page creates and filters these records. Users select the source Component, link Controls and source operating records, attach or reference the result, record collection facts, and obtain verification before audit use. Risk, governance, vendor review, training and acknowledgement, vulnerability testing, backup and recovery testing, exception, and finding evidence stays on the Step 4 operating records. Fixed artifacts remain behind Evidence Artifact records and are linked from those operating records.
 
@@ -365,7 +367,7 @@ Findings are the global register for confirmed gaps that need their own owner, d
 
 Third-party software commonly needs both a `system` and a `vendor`. The application is the System because it operates controls and produces evidence. The provider is the Vendor because contracts, due diligence, and supplier risk belong to the relationship. `system.vendorId` connects them, and evidence names the System as its source.
 
-For enabled obligations whose governing policies are effective and that have an implemented linked control, the dashboard derives the next calendar occurrence from the recurrence rule and applicable policy effective date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence. Starter obligations remain proposals until policy adoption and control implementation.
+For enabled obligations whose governing Policies are active and effective and that have an implemented linked Control, the dashboard derives the next calendar occurrence from the recurrence rule and applicable Policy effective date. Explicit operational due dates take precedence. Each completed occurrence remains a separate operating record with its own evidence. Starter obligations can be enabled during implementation but remain dormant until activation.
 
 Each resource type gets a responsive list page with search and filters, plus a detail page that combines the current record, linked resources, Markdown, and Git history. Progressive disclosure keeps orientation separate from execution: a stage hero states one outcome, each page card states one purpose, and detailed checks appear only in the current record, action, confirmation, or guide. A list row shows that record’s actionable issue and links to the best place to resolve it. Collection-level To-do panels do not repeat those row actions. For model-defined collections where FileGRC cannot infer that management reviewed the complete or empty set, the page shows one Scope Confirmation with type-specific review criteria, conclusion, reviewer, date, scope revision, and calculated collection revision. The confirmation becomes stale after a reviewed record or material Program scope fact changes. List-page guides show Instructions, Use, Policy Basis, and any resource-specific review criteria. The type-specific CLI guide returns the same text and adds timing, fields, relationships, paths, Markdown slots, and collection review state. When the workspace contains the referenced policies, documents, or recurring obligations, the renderer links to those current records and schedules. The dashboard reports data validity, Program Readiness, evidence collection, and Audit Readiness separately, so a valid starter schema is not presented as an operating program or active engagement.
 
@@ -452,7 +454,7 @@ Create one starter Appointment record for every model-defined authority role. St
 - Policy Owner
 - Independent Policy Reviewer
 
-Treat Policy Owner and Independent Policy Reviewer as the core Appointments required by the starter control design. SOC 2 does not prescribe these or any other job titles. The default policies assign program coordination, incident, recovery, executive, legal, privacy, insurance, communications, and audit-coordination functions to the Policy Owner unless management delegates them. Let users create custom Appointments for real delegations, but do not create or require separate role records merely because a plan names a function. One Person may hold several compatible Appointments. Enforce separation only where the workflow requires independent challenge, approval, collection, or verification.
+Treat Policy Owner and Independent Policy Reviewer as the core Appointments required by the starter control design. SOC 2 does not prescribe these or any other job titles. The Policy Owner coordinates incident, recovery, executive, communications, audit, insurance, privacy, and legal input unless the company delegates a function. FileGRC does not require in-house counsel, a standing legal retainer, or separate role records merely because a plan names a function. Let users create custom Appointments for real delegations. One Person may hold several compatible Appointments. Enforce separation only where the workflow requires independent challenge, approval, collection, or verification.
 
 Allow an Appointment to remain `planned` without a holder. Require the holder, effective dates, authority scope, and any required independence before it becomes active. Keep the person's actual job title separate from appointed authority. Do not create placeholder Person records for unfilled slots.
 
@@ -475,9 +477,9 @@ Commitment and complementary-control records need a planned state, or the workfl
 
 Bind each applicability decision to the scope facts and revision it reviewed. When a service, System, policy, Requirement, Commitment, or control changes in a way that affects the decision, mark the decision stale and require re-review rather than silently carrying it forward.
 
-Label starter policies and documents as required, conditional, alternative, or supporting. Anti-bribery and an employee handbook should not appear equally required for every SOC 2 program. Let management use an equivalent policy or control while preserving criterion coverage and recording the decision.
+Keep the default Security starter focused on the earliest audit-ready program for a founder-led technical team: one required Information Security Policy, one combined Security Incident and Recovery Plan, one focused Data Retention Schedule, and one Security Awareness Training record. Do not generate employment, anti-bribery, Privacy, Confidentiality, Availability, Processing Integrity, or other broader GRC records until management deliberately adds that scope. Existing workspaces keep their established records and receive review proposals instead of silent rewrites.
 
-Draft policies and governed documents must not receive a factual `effectiveOn` date before approval. Use no effective date while draft, or model a clearly named proposed date. Approval must bind the exact Markdown revision, use a reviewer separate from the owner, and move changed approved content back through review.
+Draft policies and governed documents must not receive a factual `effectiveOn` date before approval. Use no effective date while draft, or model a clearly named proposed date. Warn when a proposed date has passed and never advise users to backdate adoption. Approval must bind the exact Markdown revision, use a reviewer separate from the owner, and move changed approved content back through review. A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
 
 ### Authoritative systems and external recordkeeping
 
@@ -502,11 +504,13 @@ Track source-system and evidence-mapping history. A control may change systems, 
 
 ### Policies, controls, and training
 
-Add a policy activation flow that creates or resolves:
+The Policy activation assessment has four states: Approved, implementation pending; Ready to activate; Active with implementation gaps; and Active and operating. Before activation it reports planned or partial Controls, missing Components or evidence sources, missing schedules, and unresolved Exceptions. The user may still activate with a documented gap or approved Exception. The warning must remain visible, and Evidence Readiness must remain incomplete while required implementation is missing.
+
+The policy activation flow creates or resolves:
 
 - Owner and independent reviewer appointments
 - Exact revision approval
-- Effective date
+- Effective date and activation cutover
 - Related governed-document approvals
 - Required training and acknowledgement assignments
 - Recurring obligations and Policy Events
@@ -681,7 +685,7 @@ A slice is complete only when domain, CLI, HTTP, browser, static, generated guid
 
 ## Versioning contract
 
-Models v1, v2, and v3 are published and frozen. Model v4 is current. Compatible additions can update the active model with its starter data, generated docs, and tests. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
+Models v1, v2, and v3 are published and frozen. Model v4 is current. Compatible additions can update the active model with its starter data, generated docs, and tests. Starter-library changes apply only to new workspaces. Package upgrades must preserve existing Policy records, mappings, and authored content; they may report findings or offer guided proposals instead of rewriting those records. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
 
 Package versions stay unchanged during normal development and move together when both published packages change. Before 1.0, a release with any breaking published change increments the minor version. A release containing only backward-compatible published changes increments the patch version. A migration path helps users adopt a breaking data-model release, but the release still receives a minor version increment. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 

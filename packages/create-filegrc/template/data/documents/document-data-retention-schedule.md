@@ -10,15 +10,13 @@ Retention periods may come from law, contract, tax, audit, security, or a docume
 
 | Record class | System or location | Owner | Trigger | Retention | End-of-period action | Authority or reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| Security logs for important systems | Complete before approval | Complete before approval | Log event | At least 12 months | Delete through the approved system lifecycle | Information Security Policy |
-| Important production backups | Complete before approval | Complete before approval | Backup creation | At least 30 days | Expire through the protected backup cycle | Information Security Policy |
-| SOC 2 policies, control records, and audit evidence | Git repository and approved evidence locations | Policy owner | End of the relevant audit period | Complete before approval based on audit, contract, and legal needs | Archive or securely delete | Audit and business requirements |
-| Customer and service records | Complete before approval | Complete before approval | Complete before approval | Complete before approval | Delete or anonymize | Contract, law, and business need |
-| Workforce and contractor records | Approved people or payroll system | Complete before approval | End of employment or services | Complete before approval | Securely delete | Employment, tax, and legal requirements |
-| Vendor and contract records | Complete before approval | Complete before approval | End of relationship or contract | Complete before approval | Securely delete | Contract, audit, and legal requirements |
-| Incident and investigation records | Approved incident and evidence systems | Incident owner | Incident closure | Complete before approval | Archive or securely delete | Legal, insurance, contract, and security needs |
+| Security logs for important Systems | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Log event | [Confirm or replace proposed default before approval: 12 months, adjusted for investigation, contract, legal, audit, and risk needs] | [Complete before approval: disposal action] | [Complete before approval: authority or reason] |
+| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery objectives] | [Complete before approval: expiration or disposal action] | [Complete before approval: continuity objective or risk decision] |
+| SOC 2 Policies, Control records, and audit Evidence | Git repository and approved Evidence locations | Policy owner | End of the relevant audit period | [Complete before approval based on audit, contract, and legal needs] | Archive or securely delete | Audit and business requirements |
+| Customer and service records | [Complete before approval: Systems or Components] | [Complete before approval: owner] | [Complete before approval: trigger] | [Complete before approval: retention] | Delete or anonymize | Contract, law, and business need |
+| Incident and investigation records | Approved incident and Evidence Systems | Incident owner | Incident closure | [Complete before approval: retention] | Archive or securely delete | Legal, insurance, contract, and security needs |
 
-Add rows for each important data class in the system and vendor inventories. A row is incomplete until it names the source system, owner, trigger, period, disposal action, and authority.
+Add rows for each important data class in the System and Vendor inventories. A row is incomplete until it names the source System or Component, owner, trigger, period, disposal action, and authority. FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact.
 
 ## Holds and exceptions
 

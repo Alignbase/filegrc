@@ -7,5 +7,5 @@
   "holderId": "person-program-lead",
   "scopeResourceIds": ["workspace"],
   "startsOn": "{{effective_date}}",
-  "responsibilities": "Own the information security program and the starter policies, controls, documents, training, and scheduled work until management assigns more specific accountable parties."
+  "responsibilities": "Own the information security program, its Policy, Controls, governed documents, training, and scheduled work until management assigns more specific accountable parties."
 }

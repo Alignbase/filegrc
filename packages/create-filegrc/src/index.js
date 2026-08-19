@@ -440,7 +440,7 @@ The generated workspace starts with foundational program records:
 
 - Workspace and renderer settings
 - The initial active owner
-- The two core Appointment records: an active Policy Owner plus a planned Independent Policy Reviewer assignment. Create another Appointment only when management actually delegates a named responsibility.
+- The two core Appointment records: an active Policy Owner plus a planned Independent Policy Reviewer assignment. Create another Appointment only when the company actually delegates a named responsibility.
 - A planned security and risk oversight team that still needs an independent chair
 - The filegrc Git repository as a governance system of record
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
@@ -469,23 +469,24 @@ The generated workspace starts with the SOC 2 Security category:
 - Active framework records for the 2017 Trust Services Criteria with revised points of focus (2022) and the 2018 SOC 2 Description Criteria with revised implementation guidance (2022)
 - The 33 Common Criteria reference IDs from CC1.1 through CC9.2, without the licensed criteria text
 - The nine Description Criteria reference IDs from DC1 through DC9, without the licensed criteria text
-- Planned controls mapped to those references and the included policies
-- The two core Appointment records. Policy Owner starts active; Independent Policy Reviewer remains Ready until assigned. Program coordination, incident, recovery, executive, legal, privacy, insurance, communications, and audit-coordination functions stay with the Policy Owner unless management delegates one through a custom Appointment.
+- Planned controls mapped to those references and one required Information Security Policy
+- The two core Appointment records. Policy Owner starts active; Independent Policy Reviewer remains Ready until assigned. The Policy Owner coordinates incident, recovery, executive, communications, audit, insurance, privacy, and legal input unless the company delegates a function through a custom Appointment. FileGRC does not require in-house counsel or a standing legal retainer.
 - A security and risk oversight team chaired by an independent reviewer who may be internal or external
-- Recurring obligations for the reviews, scans, tests, training, and meetings required by the included policies
+- One Security Awareness Training record and proposed recurring obligations for reviews, scans, tests, training, and meetings
+- One combined Security Incident and Recovery Plan plus a focused Data Retention Schedule
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
-Treat every planned control as a proposal until its owner, actual procedure in Record Markdown, system scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. For a control linked to filegrc obligations, every non-retired Work Queue schedule must be enabled and its governing policies effective. Marking the control implemented starts eligible schedules. Do not mark a control implemented because a policy describes it. Add Availability, Processing Integrity, Confidentiality, or Privacy criteria only when they are in scope.
+Treat every planned Control as a proposal until its owner, actual procedure in Record Markdown, System scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. FileGRC does not infer implementation from Policy prose. Enable the applicable Work Queue schedules during implementation; they remain dormant until the Policy is active and effective. Add Availability, Processing Integrity, Confidentiality, Privacy, employment, anti-bribery, or other broader GRC records only when the company chooses to expand the scope.
 
-The recurring obligations mirror the fixed cadences in the starter policies. They remain proposals until every governing policy is active and effective and, when they name controls, at least one linked control is implemented. Update the policy, control, and obligation together when an approved cadence changes. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.`,
+The recurring Obligations contain reviewable starter defaults. They remain proposed until the company confirms their scope, owner, cadence, and proof. Enabling a schedule accepts those operational facts but does not start occurrences until the Information Security Policy is active and effective. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.`,
     audit_preparation_guidance: "Preparation creates a separate system description, management assertion, and management representation document for the engagement from the local starter templates. Type 2 preparation also creates a period completeness statement and one `audit-population` record for each standard population. It is safe to run again and does not approve documents, mark controls implemented, or create evidence. Do not reuse one completed management document across engagements.",
     starter_setup: `## Finish initial setup
 
-The starter policies, controls, and obligations are proposals. They do not state that ${companyName} operates the described controls.
+The starter Policy, Controls, plan, schedule, training, and Obligations are proposals. They do not state that ${companyName} operates the described Controls.
 
 1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding. Then finish Step 1 by adding the real reviewers and operators, finishing the oversight team, and confirming applicable criteria, commitments, material vendors, and in-scope systems.
-2. Review the starter policies, appoint a reviewer who is separate from the policy owner, and activate only the policies that match current practice. The reviewer will usually be another person in the organization, but may be external.
-3. Review the starter control set and implement each applicable Control with its actual procedure, scope, cadence, and authoritative evidence source Systems. Confirm every source is active, has the required evidence role and current access owners, and includes repeatable retrieval instructions in Record Markdown. Add the implementation date, confirm any linked Work Queue schedules are enabled, then record any complementary customer or subservice controls.
+2. Tailor the Information Security Policy and have someone other than its owner approve it. Approval accepts the Policy but does not mean the Controls are implemented.
+3. Review the starter Control set, combined Security Incident and Recovery Plan, Data Retention Schedule, Security Awareness Training, and proposed Obligations. Implement each applicable Control with its actual procedure, scope, cadence, Components, and authoritative evidence sources. Enable the applicable schedules, review the Policy activation assessment, then activate the Policy at the real implementation cutover.
 4. Run \`npx filegrc program-readiness --require-ready\`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions.
 5. Engage a CPA firm, record the separate firm-agreed period in an audit record, review filegrc Evidence and External Evidence, and prepare fieldwork.`
   };
@@ -522,13 +523,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.6.5",
+    version: "0.7.0",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.6.5",
+        version: "0.7.0",
         dependencies: { filegrc: versionRange }
       }
     }

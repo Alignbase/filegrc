@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { getResourceDefinition, loadModel } from "../model/index.js";
+import { openPlaceholderCount } from "./content-readiness.js";
 import { serializeWorkspaceMutation, workspaceValidationDeferred } from "./mutation.js";
 import { isCanonicalDataPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -754,6 +755,10 @@ async function prepareApprovalBinding(loaded, record, contentWrites, previousRec
         if (error.code === "ENOENT") continue;
         throw error;
       }
+    }
+    const placeholders = openPlaceholderCount(source);
+    if (placeholders) {
+      throw new Error(`Cannot approve or activate ${record.title} while its ${item.label} Markdown contains ${placeholders} open ${placeholders === 1 ? "placeholder" : "placeholders"}. Complete the facts and review the exact content first.`);
     }
     revisions[item.path] = contentRevision(source);
   }

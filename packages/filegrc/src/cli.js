@@ -41,6 +41,7 @@ import {
   setupExternalReviewerGovernance
 } from "./external-reviewer.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
+import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import { resolveProgram } from "./program.js";
@@ -432,6 +433,12 @@ export async function runCli(argv = process.argv.slice(2)) {
         console.log(`\n${stage.title}`);
         for (const item of stage.items) console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
       }
+      if (result.policyActivations.length) {
+        console.log("\nPolicy activation assessments");
+        for (const policy of result.policyActivations) {
+          console.log(`${policy.label.toUpperCase()}\t${policy.title}\t${policy.gapCount} implementation gaps`);
+        }
+      }
       if (result.canStartCandidatePeriod && !result.operating) {
         console.log(`\nEvidence Ready: management can start the candidate Type 2 period on or after ${result.suggestedCandidatePeriodStart || result.asOf}.`);
       }
@@ -586,6 +593,27 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else if (flags.preview) console.log(`Collection review preview: ${result.assessment.configuration.title}.`);
     else console.log(`Confirmed ${result.assessment.configuration.title}.`);
+    return result;
+  }
+  if (command === "activate-policies") {
+    if (flags.scaffold) {
+      const result = await scaffoldPolicyActivation(root, { programId: flags.program });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    const payload = await readSetupPayload(positionals[0]);
+    const options = {
+      ...payload,
+      policyIds: flags.policy ? String(flags.policy).split(",").filter(Boolean) : payload.policyIds,
+      effectiveOn: flags["effective-on"] || payload.effectiveOn,
+      confirmed: flags.yes === true
+    };
+    const result = flags.preview
+      ? await planPolicyActivation(root, options)
+      : await withWorkflowDelta(root, () => activatePolicies(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) console.log(`Policy activation preview: ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
+    else console.log(`Activated ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
     return result;
   }
   if (command === "trigger") {
@@ -1025,6 +1053,7 @@ Usage:
   filegrc next-audit-cycle <prior-audit-id> [cycle.json|-] --start YYYY-MM-DD --end YYYY-MM-DD [--preview|--yes] [--json]
   filegrc review-applicability [--scaffold --type requirement|control|commitment|complementary-control] [decisions.json|-] [--preview|--yes] [--json]
   filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--json]
+  filegrc activate-policies [--scaffold | activation.json|-] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
   filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
   filegrc get [resource-type] <id> [--mutation]
@@ -1174,6 +1203,26 @@ Options:
   --help             Show this help`);
     return;
   }
+  if (command === "activate-policies") {
+    console.log(`Usage:
+  filegrc activate-policies --scaffold [--program id]
+  filegrc activate-policies <activation.json|-> [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
+
+Review and atomically activate selected approved Policies at the end of Step 3.
+The scaffold includes every required, approved, inactive Policy and its current
+revision. A past effective date is rejected.
+
+Options:
+  --scaffold             Print a cutover payload without writing
+  --program <id>         Program to assess when more than one active Program exists
+  --effective-on <date>  Shared effective date for the selected Policies
+  --preview              Validate and show the atomic updates without writing
+  --yes                  Confirm and apply the reviewed cutover
+  --json                 Print the result as JSON
+  --root <path>          Workspace path
+  --help                 Show this help`);
+    return;
+  }
   if (command === "evidence-map") {
     console.log(`Usage:
   filegrc evidence-map [options]
@@ -1220,6 +1269,7 @@ function agentOverview(model) {
     prepareAudit: "filegrc prepare-audit <audit-id>",
     reconcile: "filegrc reconcile --preview --json",
     externalReviewerSetup: "filegrc external-reviewer-setup [--scaffold | <reviewer.json|-> --preview] --json",
+    policyActivation: "filegrc activate-policies [--scaffold | <activation.json|-> --preview] --json",
     nextAuditCycle: "filegrc next-audit-cycle <prior-audit-id> --start <date> --end <date> --preview --json",
     reviewApplicability: "filegrc review-applicability <decisions.json|-> --preview --json",
     reviewCollection: "filegrc review-collection <resource-type> [--scaffold | <review.json|-> --preview] --json",
@@ -1371,6 +1421,8 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
     currentStep: { id: currentStep.id, number: currentStep.number, title: currentStep.title },
     evidenceReady: readiness.evidenceReady,
     operating: readiness.operating,
+    policyActivations: readiness.policyActivations,
+    policyLibraryProposals: readiness.policyLibraryProposals,
     stages
   };
 }
@@ -1418,6 +1470,8 @@ function summarizeProgramPath(result) {
     currentStep: result.currentStep,
     evidenceReady: result.evidenceReady,
     operating: result.operating,
+    policyActivations: result.policyActivations,
+    policyLibraryProposals: result.policyLibraryProposals,
     stages: result.stages.map((stage) => ({
       id: stage.id,
       number: stage.number,
@@ -1439,6 +1493,8 @@ function nextProgramPath(result) {
     currentStep: result.currentStep,
     evidenceReady: result.evidenceReady,
     operating: result.operating,
+    policyActivations: result.policyActivations,
+    policyLibraryProposals: result.policyLibraryProposals,
     step: stage ? {
       id: stage.id,
       number: stage.number,
@@ -1562,6 +1618,14 @@ function summarizeProgramReadiness(result) {
     scopeCounts: Object.fromEntries(
       Object.entries(result.scope).map(([name, ids]) => [name.replace(/Ids$/, ""), ids.length])
     ),
+    policyActivations: result.policyActivations.map(({ policyId, title, state, label, gapCount }) => ({
+      policyId,
+      title,
+      state,
+      label,
+      gapCount
+    })),
+    policyLibraryProposals: result.policyLibraryProposals,
     unresolvedOwnership: {
       count: unresolvedOwnership.length,
       byReason: ownershipReasons,

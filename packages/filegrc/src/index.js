@@ -51,6 +51,7 @@ export {
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";
 export { migrateModel, planModelMigration } from "./model-migration.js";
+export { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
 export {
   completeObligationAction,
   completeObligationEvent,

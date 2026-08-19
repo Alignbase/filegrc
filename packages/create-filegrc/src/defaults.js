@@ -7,13 +7,8 @@ const PROGRAM_LEAD_ID = "person-program-lead";
 const POLICY_OWNER_APPOINTMENT_ID = "appointment-policy-owner";
 const OVERSIGHT_TEAM_ID = "team-security-risk-oversight";
 const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
-const DATA_POLICY_ID = "policy-data-protection-handling";
 const RETENTION_SCHEDULE_ID = "document-data-retention-schedule";
-const ROLE_TRAINING_IDS = [
-  "training-secure-development",
-  "training-privileged-sensitive-roles",
-  "training-anti-bribery-high-risk-roles"
-];
+const SECURITY_PLAN_ID = "document-security-incident-recovery-plan";
 const FILEGRC_SOURCE_FAMILIES = [
   "training-acknowledgement",
   "exception-finding",
@@ -109,7 +104,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "scheduled",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-anti-bribery-corruption"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-policy-management",
@@ -121,13 +116,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "mixed",
-    policies: [
-      "policy-anti-bribery-corruption",
-      "policy-clear-desk-screen",
-      DATA_POLICY_ID,
-      INFORMATION_SECURITY_POLICY_ID,
-      "policy-mobile-computing-communications"
-    ]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-security-communication",
@@ -139,7 +128,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-workforce-expectations",
@@ -151,7 +140,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "event-driven",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-anti-bribery-corruption"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-security-training",
@@ -163,18 +152,6 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
-  },
-  {
-    id: "control-performance-review",
-    code: "HR-03",
-    title: "Workforce performance review",
-    statement: "Managers conduct a documented performance review at least annually and address responsibilities, conduct, and corrective action as appropriate to each worker's role.",
-    requirements: ["CC1.5"],
-    activity: "Complete and retain annual performance reviews and resulting corrective work.",
-    controlType: "detective",
-    operationMode: "manual",
-    operationPattern: "scheduled",
     policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -187,7 +164,7 @@ const controls = [
     controlType: "detective",
     operationMode: "manual",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-monitoring-remediation",
@@ -211,7 +188,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "event-driven",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-strong-authentication",
@@ -223,7 +200,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "continuous",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-access-review-offboarding",
@@ -235,7 +212,7 @@ const controls = [
     controlType: "detective",
     operationMode: "manual",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-physical-workspace-security",
@@ -247,7 +224,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "continuous",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-clear-desk-screen", "policy-mobile-computing-communications"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-data-classification-inventory",
@@ -259,7 +236,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "mixed",
-    policies: [DATA_POLICY_ID, INFORMATION_SECURITY_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-encryption-transmission",
@@ -271,7 +248,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "automated",
     operationPattern: "continuous",
-    policies: [DATA_POLICY_ID, INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-data-retention-disposal",
@@ -283,7 +260,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "event-driven",
-    policies: [DATA_POLICY_ID, INFORMATION_SECURITY_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-inventory-configuration",
@@ -303,11 +280,11 @@ const controls = [
     title: "Endpoint protection",
     statement: "Devices that access company systems use approved configuration, encryption, screen locking, supported software, security updates, and continuous malware protection when supported.",
     requirements: ["CC6.6", "CC7.1"],
-    activity: "Manage endpoint safeguards and perform a full or equivalent malware scan at least monthly.",
+    activity: "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the risk-based schedule recorded in an Obligation when periodic work is needed.",
     controlType: "preventive",
     operationMode: "automated",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-network-security",
@@ -319,15 +296,15 @@ const controls = [
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-change-management",
     code: "CHG-01",
     title: "Change management",
-    statement: "Material software and infrastructure changes are recorded, reviewed, tested, approved, deployed through an authorized process, and recoverable; emergency changes receive later review.",
+    statement: "Material software and infrastructure changes are recorded, tested, approved, deployed through an authorized process, and recoverable. Review is independent when practical; a small team records a risk-appropriate compensating or post-deployment review, or an approved Exception, when independent pre-deployment review is not possible.",
     requirements: ["CC6.8", "CC8.1"],
-    activity: "Record the reason, author, reviewer, test result, deployment, and rollback method.",
+    activity: "Record the reason, author, risk, reviewer or compensating review, test result, deployment, and rollback method.",
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "event-driven",
@@ -337,9 +314,9 @@ const controls = [
     id: "control-vulnerability-management",
     code: "VUL-01",
     title: "Vulnerability management",
-    statement: "The organization monitors for vulnerabilities and scans internet-facing and production systems at least quarterly and after material changes when practical. Critical, High, Medium, and Low vulnerabilities are remediated within 7, 14, 30, and 30 days unless an approved exception applies.",
+    statement: "The organization monitors for vulnerabilities, chooses scan coverage and cadence based on exposure and risk, and assigns each confirmed vulnerability an approved risk-based remediation target or time-bound Exception.",
     requirements: ["CC7.1", "CC7.2", "CC7.3"],
-    activity: "Identify, validate, prioritize, remediate, or approve time-bound exceptions for vulnerabilities.",
+    activity: "Choose scan coverage and cadence. Review the starter remediation targets of Critical 7 days, High 14 days, Medium 30 days, and Low 90 days, then record the approved targets or time-bound Exceptions.",
     controlType: "detective",
     operationMode: "hybrid",
     operationPattern: "mixed",
@@ -349,7 +326,7 @@ const controls = [
     id: "control-penetration-testing",
     code: "PEN-01",
     title: "Penetration testing",
-    statement: "An independent penetration test evaluates the external attack surface of the in-scope service at least annually, with findings tracked to resolution or approved risk treatment.",
+    statement: "Management records whether independent penetration testing is needed for the in-scope service, then documents its scope and cadence from exposure, change, customer commitments, and risk decisions. Findings are tracked to resolution or approved risk treatment.",
     requirements: ["CC7.1", "CC7.2"],
     activity: "Define scope, perform independent testing, review results, and track findings.",
     controlType: "detective",
@@ -361,7 +338,7 @@ const controls = [
     id: "control-logging-monitoring",
     code: "LOG-01",
     title: "Logging and monitoring",
-    statement: "Important systems record security and operational events, protect and retain security logs for at least 12 months, and provide risk-based alerting, quarterly review, annual end-to-end alert-path testing, and testing after material alerting changes.",
+    statement: "Important systems record and protect security and operational events, retain them according to the approved Data Retention Schedule, and use risk-based alerting, review, and alert-path testing recorded in the applicable Controls and Obligations.",
     requirements: ["CC7.2", "CC7.3"],
     activity: "Collect, protect, alert on, test, and review important log output and access.",
     controlType: "detective",
@@ -379,7 +356,7 @@ const controls = [
     controlType: "corrective",
     operationMode: "hybrid",
     operationPattern: "event-driven",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-incident-exercise",
@@ -397,9 +374,9 @@ const controls = [
     id: "control-backup-restoration",
     code: "BCP-01",
     title: "Backup and restoration",
-    statement: "Important production data is backed up at least daily and retained for at least 30 days unless an approved stronger objective applies, with failures monitored and restoration tested annually.",
+    statement: "Each important System has backup scope, frequency, retention, monitoring, and restore validation that meet its approved recovery objectives, or a documented alternate recovery approach when backups are not the chosen safeguard.",
     requirements: ["CC7.5", "CC9.1"],
-    activity: "Protect and monitor backups, then test retrieval and use of restored data.",
+    activity: "Record System recovery objectives and backup or alternate recovery procedures, monitor the chosen safeguards, and validate recovery on the approved schedule.",
     controlType: "corrective",
     operationMode: "hybrid",
     operationPattern: "scheduled",
@@ -421,13 +398,13 @@ const controls = [
     id: "control-vendor-due-diligence",
     code: "VEN-01",
     title: "Vendor due diligence and contracting",
-    statement: "Vendors receive access to Confidential or Restricted data only after risk-based security and privacy review and suitable contractual safeguards.",
+    statement: "New Vendors receive risk-based security and privacy review and suitable contractual safeguards before access to Confidential or Restricted data. Vendors that predate Policy adoption receive a documented transition review, deadline, or approved risk acceptance.",
     requirements: ["CC9.2"],
     activity: "Assess service, data, access, assurance, recovery, incidents, and contract terms before access.",
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "event-driven",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-vendor-monitoring",
@@ -439,7 +416,7 @@ const controls = [
     controlType: "detective",
     operationMode: "manual",
     operationPattern: "mixed",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "control-security-exceptions",
@@ -451,7 +428,7 @@ const controls = [
     controlType: "preventive",
     operationMode: "manual",
     operationPattern: "event-driven",
-    policies: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policies: [INFORMATION_SECURITY_POLICY_ID]
   }
 ];
 
@@ -473,13 +450,8 @@ const obligations = [
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     scopeResourceIds: [
-      "policy-anti-bribery-corruption",
-      "policy-clear-desk-screen",
-      DATA_POLICY_ID,
       INFORMATION_SECURITY_POLICY_ID,
-      "policy-mobile-computing-communications",
-      "document-business-continuity-disaster-recovery",
-      "document-incident-response-plan",
+      SECURITY_PLAN_ID,
       RETENTION_SCHEDULE_ID
     ],
     controlIds: ["control-policy-management"],
@@ -492,7 +464,7 @@ const obligations = [
     recurrence: calendar("year", 1),
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-risk-assessment"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-annual-security-training",
@@ -507,15 +479,6 @@ const obligations = [
       "control-workforce-expectations",
       "control-security-training"
     ],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
-  },
-  {
-    id: "obligation-annual-performance-review",
-    title: "Annual workforce performance review",
-    activityType: "performance-review",
-    recurrence: calendar("year", 1),
-    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    controlIds: ["control-performance-review"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -525,7 +488,7 @@ const obligations = [
     recurrence: calendar("month", 3),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-annual-access-review",
@@ -534,7 +497,7 @@ const obligations = [
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-annual-inventory-review",
@@ -543,12 +506,12 @@ const obligations = [
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration", "control-data-classification-inventory"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
-    id: "obligation-monthly-malware-scan",
-    title: "Monthly endpoint malware scan",
-    activityType: "security-scan",
+    id: "obligation-monthly-endpoint-protection-verification",
+    title: "Monthly endpoint protection configuration verification",
+    activityType: "endpoint-verification",
     recurrence: calendar("month", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-endpoint-protection"],
@@ -596,8 +559,8 @@ const obligations = [
     activityType: "exercise",
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    scopeResourceIds: ["document-incident-response-plan"],
-    templateResourceId: "document-incident-response-plan",
+    scopeResourceIds: [SECURITY_PLAN_ID],
+    templateResourceId: SECURITY_PLAN_ID,
     controlIds: ["control-incident-exercise", "control-logging-monitoring"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -616,8 +579,8 @@ const obligations = [
     activityType: "exercise",
     recurrence: calendar("year", 1),
     ownerIds: [OVERSIGHT_TEAM_ID],
-    scopeResourceIds: ["document-business-continuity-disaster-recovery"],
-    templateResourceId: "document-business-continuity-disaster-recovery",
+    scopeResourceIds: [SECURITY_PLAN_ID],
+    templateResourceId: SECURITY_PLAN_ID,
     controlIds: ["control-continuity-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -628,7 +591,7 @@ const obligations = [
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence", "control-vendor-monitoring"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-annual-emergency-contact-review",
@@ -636,7 +599,7 @@ const obligations = [
     activityType: "continuity-review",
     recurrence: calendar("year", 1),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    scopeResourceIds: ["document-business-continuity-disaster-recovery"],
+    scopeResourceIds: [SECURITY_PLAN_ID],
     controlIds: ["control-continuity-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
@@ -660,7 +623,7 @@ const obligations = [
     window: eventWindow(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-worker-start-assets",
@@ -684,19 +647,7 @@ const obligations = [
     scopeResourceIds: ["training-security-awareness"],
     templateResourceId: "training-security-awareness",
     controlIds: ["control-security-training"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
-  },
-  {
-    id: "obligation-worker-start-role-training",
-    title: "Complete or document non-applicability of role-based training",
-    activityType: "role-training",
-    recurrence: event("person-started"),
-    triggerPrompt: "New employee or contractor?",
-    window: eventWindow(30),
-    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    scopeResourceIds: ROLE_TRAINING_IDS,
-    controlIds: ["control-security-training"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-worker-end-access",
@@ -707,7 +658,7 @@ const obligations = [
     window: eventWindowHours(24),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-worker-end-assets",
@@ -730,7 +681,7 @@ const obligations = [
     window: eventWindowHours(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-review-offboarding"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-worker-role-change-access",
@@ -741,19 +692,7 @@ const obligations = [
     window: eventWindow(3),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization", "control-access-review-offboarding"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
-  },
-  {
-    id: "obligation-worker-role-change-training",
-    title: "Complete or document non-applicability of training for the new role",
-    activityType: "role-training",
-    recurrence: event("person-role-changed"),
-    triggerPrompt: "Worker role changed?",
-    window: eventWindow(30),
-    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    scopeResourceIds: ROLE_TRAINING_IDS,
-    controlIds: ["control-security-training"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID, "policy-anti-bribery-corruption"]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-personal-device-approval",
@@ -764,7 +703,7 @@ const obligations = [
     window: eventWindow(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-access-authorization", "control-endpoint-protection"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-personal-device-registration",
@@ -775,7 +714,7 @@ const obligations = [
     window: eventWindow(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration", "control-endpoint-protection"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, "policy-mobile-computing-communications"]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-vendor-access-review",
@@ -786,7 +725,7 @@ const obligations = [
     window: eventWindow(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-vendor-access-contract",
@@ -797,7 +736,7 @@ const obligations = [
     window: eventWindow(0),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-vendor-material-change-review",
@@ -808,7 +747,7 @@ const obligations = [
     window: eventWindow(30),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-vendor-material-change-records",
@@ -819,7 +758,7 @@ const obligations = [
     window: eventWindow(30),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring", "control-data-classification-inventory"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-system-change-risk",
@@ -830,7 +769,7 @@ const obligations = [
     window: eventWindow(30),
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-risk-assessment"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-system-change-scan",
@@ -852,7 +791,7 @@ const obligations = [
     window: eventWindow(30),
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-policy-management", "control-security-communication"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-system-change-retention",
@@ -865,7 +804,7 @@ const obligations = [
     scopeResourceIds: [RETENTION_SCHEDULE_ID],
     templateResourceId: RETENTION_SCHEDULE_ID,
     controlIds: ["control-data-retention-disposal", "control-data-classification-inventory"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-system-change-alert-path",
@@ -920,7 +859,7 @@ const obligations = [
     window: eventWindow(7),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-monitoring", "control-access-review-offboarding"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-data-use-change-assessment",
@@ -931,7 +870,7 @@ const obligations = [
     window: eventWindow(30),
     ownerIds: [OVERSIGHT_TEAM_ID],
     controlIds: ["control-risk-assessment", "control-data-classification-inventory"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-incident-closure-review",
@@ -1030,7 +969,7 @@ const obligations = [
     window: eventWindow(7),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-inventory-configuration", "control-data-retention-disposal"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID, DATA_POLICY_ID]
+    policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
     id: "obligation-continuity-activation-review",

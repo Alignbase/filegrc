@@ -13,10 +13,7 @@
   "assignmentTrigger": "onboarding",
   "completionWindowDays": 30,
   "policyIds": [
-    "policy-clear-desk-screen",
-    "policy-data-protection-handling",
-    "policy-information-security",
-    "policy-mobile-computing-communications"
+    "policy-information-security"
   ],
   "controlIds": [
     "control-security-communication",

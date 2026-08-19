@@ -19,5 +19,5 @@
   ],
   "classificationId": "internal",
   "proposedEffectiveOn": "{{effective_date}}",
-  "programRole": "conditional"
+  "programRole": "required"
 }

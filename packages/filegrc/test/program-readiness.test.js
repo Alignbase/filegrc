@@ -14,6 +14,7 @@ import {
   createResource,
   createResources,
   loadWorkspace,
+  serveWorkspace,
   updateResource
 } from "../src/index.js";
 import { makeWorkspace } from "./helpers.js";
@@ -289,11 +290,16 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   const policy = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-access");
   await updateResource(root, "policy", policy.id, {
     ...policy,
-    status: "active",
+    status: "approved",
     approverIds: ["person-approver"],
-    approvedOn: "2026-05-25",
-    effectiveOn: "2026-06-01"
+    approvedOn: "2026-05-25"
   });
+  const approvalReady = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  assert.equal(approvalReady.stages.find(({ id }) => id === "policies").counts.action, 0);
+  assert.equal(approvalReady.policyActivations[0].state, "approved-implementation-pending");
+  assert.deepEqual(approvalReady.policyActivations[0].plannedOrPartialControlIds, ["control-access"]);
+  assert.deepEqual(approvalReady.policyActivations[0].missingScheduleControlIds, ["control-access"]);
+  assert.equal(approvalReady.evidenceReady, false);
   await createResource(root, {
     id: "obligation-access-request",
     type: "obligation",
@@ -310,6 +316,29 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   await updateResource(root, "control", control.id, {
     ...control,
     status: "implemented"
+  });
+  const inactiveReady = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  assert.equal(inactiveReady.stages.find(({ id }) => id === "policies").counts.action, 0);
+  assert.equal(inactiveReady.policyActivations[0].state, "ready-to-activate");
+  assert.equal(inactiveReady.evidenceReady, false);
+  assert.equal(inactiveReady.policyActivations[0].gapCount, 0);
+  assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "control-control-access").status, "complete");
+  assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "policy-activation-policy-access").status, "action");
+  assert.equal(inactiveReady.policyActivations[0].label, "Ready to activate");
+  assert.equal(inactiveReady.policyActivations[0].canActivateWithDocumentedGaps, true);
+  assert.equal((await assessWorkflow(root, { asOf: "2026-07-01" })).assessments.policyActivation.policies[0].state, "ready-to-activate");
+  const dormant = (await import("../src/obligations.js")).planObligations((await loadWorkspace(root)).resources, {
+    asOf: "2026-07-01",
+    through: "2026-07-01"
+  });
+  assert.equal(dormant.triggers.length, 1);
+  assert.equal(dormant.triggers[0].programStatus, "proposed");
+  assert.equal(dormant.counts.due, 0);
+  const approvedPolicy = (await loadWorkspace(root)).resources.find(({ id }) => id === "policy-access");
+  await updateResource(root, "policy", approvedPolicy.id, {
+    ...approvedPolicy,
+    status: "active",
+    effectiveOn: "2026-06-01"
   });
   const loaded = await loadWorkspace(root);
   await updateResource(root, "workspace", loaded.workspace.id, {
@@ -339,6 +368,8 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     programReadiness: ready
   });
   assert.equal(workflow.assessments.evidenceReadiness.status, "complete");
+  assert.equal(workflow.assessments.policyActivation.status, "complete");
+  assert.equal(workflow.assessments.policyActivation.policies[0].state, "active-and-operating");
   const evidenceMap = await assessEvidenceMap(root, { asOf: "2026-07-01" });
   assert.equal(evidenceMap.status, "complete");
   assert.equal(evidenceMap.items.length, 1);
@@ -395,7 +426,28 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     "--require-ready",
     "--json"
   ]);
-  assert.equal(JSON.parse(cliResult.stdout).canStartCandidatePeriod, true);
+  const cliReadiness = JSON.parse(cliResult.stdout);
+  assert.equal(cliReadiness.canStartCandidatePeriod, true);
+  assert.equal(cliReadiness.policyActivations[0].state, "active-and-operating");
+
+  const running = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => running.server.close(resolve)));
+  const apiState = await fetch(`${running.url}/api/state`).then((response) => response.json());
+  assert.deepEqual(apiState.programReadiness.policyActivations, cliReadiness.policyActivations);
+  assert.deepEqual(apiState.workflow.assessments.policyActivation.policies, cliReadiness.policyActivations);
+
+  const implementedControl = (await loadWorkspace(root)).resources.find(({ id }) => id === "control-access");
+  await updateResource(root, "control", implementedControl.id, {
+    ...implementedControl,
+    status: "partially-implemented"
+  });
+  const activeWithGap = await assessProgramReadiness(root, { asOf: "2026-07-01" });
+  assert.equal(activeWithGap.policyActivations[0].state, "active-with-implementation-gaps");
+  assert.deepEqual(activeWithGap.policyActivations[0].plannedOrPartialControlIds, ["control-access"]);
+  assert.match(activeWithGap.policyActivations[0].activationWarning, /Policy is active/);
+  assert.doesNotMatch(activeWithGap.policyActivations[0].activationWarning, /You can activate/);
+  assert.equal(activeWithGap.evidenceReady, false);
+  await updateResource(root, "control", implementedControl.id, implementedControl);
 
   const compactCliResult = await execute(process.execPath, [
     cli,

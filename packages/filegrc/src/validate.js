@@ -7,7 +7,7 @@ import { collectionRevision } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
-import { obligationIsRunning } from "./program-lifecycle.js";
+import { obligationIsEnabled } from "./program-lifecycle.js";
 import { partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
@@ -74,6 +74,7 @@ async function validateWorkspaceUnmeasured(input) {
     validateLocation(record, definition, entry.relativePath, diagnostics);
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
     validateDateRanges(record, displayPath, diagnostics);
+    validateProposedEffectiveDate(record, asOf, displayPath, diagnostics);
     if (record.type === "appointment") validateAppointment(record, byId, displayPath, diagnostics);
     if (record.type === "program") validateProgram(record, displayPath, diagnostics);
     if (record.type === "component") validateComponent(record, displayPath, diagnostics);
@@ -135,7 +136,7 @@ async function validateWorkspaceUnmeasured(input) {
     }
     validateIndependentApproval(record, byId, displayPath, diagnostics);
     validateCompletedObligationEvent(record, byId, loaded.model, displayPath, diagnostics);
-    validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, displayPath, diagnostics);
+    validateImplementedControlSchedules(record, obligationsByControl, displayPath, diagnostics);
     await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
     await validateApprovalBinding(record, loaded.model, loaded.root, displayPath, diagnostics);
   }
@@ -246,7 +247,7 @@ export async function fingerprintWorkspace(input = process.cwd()) {
   return { fingerprint: hash.digest("hex"), loaded };
 }
 
-function validateImplementedControlSchedules(record, obligationsByControl, byId, asOf, path, diagnostics) {
+function validateImplementedControlSchedules(record, obligationsByControl, path, diagnostics) {
   if (record.type !== "control" || record.status !== "implemented") return;
   const schedules = obligationsByControl.get(record.id) || [];
   if (!schedules.length) {
@@ -258,21 +259,13 @@ function validateImplementedControlSchedules(record, obligationsByControl, byId,
     ));
     return;
   }
-  if (schedules.every((obligation) => obligationIsRunning(obligation, byId, asOf))) return;
-  const stopped = schedules.filter((obligation) => !obligationIsRunning(obligation, byId, asOf));
+  if (schedules.some(obligationIsEnabled)) return;
+  const stopped = schedules.filter((obligation) => !obligationIsEnabled(obligation));
   const paused = stopped.filter((obligation) => obligation.status === "paused");
-  const waiting = stopped.filter((obligation) => obligation.status === "active");
-  const policyBlockers = [...new Set(waiting.flatMap((obligation) => (obligation.policyIds || []).map((id) => {
-    const policy = byId.get(id);
-    if (!policy || policy.type !== "policy") return `${id} (missing)`;
-    if (policy.status !== "active") return `${policy.title} (${policy.status})`;
-    if (!policy.effectiveOn) return `${policy.title} (effective date missing)`;
-    if (policy.effectiveOn > asOf) return `${policy.title} (effective ${policy.effectiveOn})`;
-    return null;
-  })).filter(Boolean))];
+  const proposed = stopped.filter((obligation) => obligation.status === "proposed");
   const reasons = [
-    waiting.length
-      ? `${waiting.length} enabled ${waiting.length === 1 ? "schedule is" : "schedules are"} waiting for governing ${policyBlockers.length === 1 ? "policy" : "policies"} to become active and effective${policyBlockers.length ? `: ${policyBlockers.join(", ")}` : ""}. Complete Step 2 first.`
+    proposed.length
+      ? `${proposed.length} linked ${proposed.length === 1 ? "schedule is" : "schedules are"} still proposed. Enable ${proposed.length === 1 ? "it" : "them"} before implementing the control; the schedule will remain dormant until its governing Policy is active and effective.`
       : "",
     paused.length
       ? `${paused.length} linked ${paused.length === 1 ? "schedule is" : "schedules are"} paused. Enable ${paused.length === 1 ? "it" : "them"} before implementing the control.`
@@ -281,7 +274,7 @@ function validateImplementedControlSchedules(record, obligationsByControl, byId,
   diagnostics.push(error(
     "control-work-queue-not-running",
     path,
-    `This control cannot be marked implemented yet. ${reasons}`
+    `This control cannot be marked implemented yet. ${reasons || "Enable at least one linked schedule."}`
   ));
 }
 
@@ -300,6 +293,19 @@ function validateDateRanges(record, path, diagnostics) {
       ));
     }
   }
+}
+
+function validateProposedEffectiveDate(record, asOf, path, diagnostics) {
+  if (
+    !["policy", "document"].includes(record.type)
+    || !record.proposedEffectiveOn
+    || record.proposedEffectiveOn >= asOf
+  ) return;
+  diagnostics.push(warning(
+    "past-proposed-effective-date",
+    path,
+    `The proposed effective date ${record.proposedEffectiveOn} has passed. Choose a current or future date when management activates the approved content; do not backdate adoption.`
+  ));
 }
 
 function validateAppointment(record, byId, path, diagnostics) {

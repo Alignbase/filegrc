@@ -24,3 +24,7 @@ export function obligationIsRunning(obligation, byId, asOf) {
     && obligation.status === "active"
     && obligationProgramStatus(obligation, byId, asOf) === "accepted";
 }
+
+export function obligationIsEnabled(obligation) {
+  return obligation?.type === "obligation" && obligation.status === "active";
+}

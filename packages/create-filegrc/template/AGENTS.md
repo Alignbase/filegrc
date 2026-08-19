@@ -206,9 +206,14 @@ npx filegrc program-readiness --require-ready --summary --json
 The Evidence Ready gate requires:
 
 1. A management goal, selected systems, criteria, and controls.
-2. Active policies with completed text, separate management approval, real approval and effective dates, and linked controls.
-3. Implemented Controls with an owner, actual procedure, scope, operation pattern, mappings, implementation date, and every required linked Work Queue schedule running.
-4. Every selected Control mapped to active authoritative Systems with the required evidence source roles, current access owners, and repeatable extraction instructions in Record Markdown.
+2. Policy content approved by someone other than its owner in Step 2, followed by active Policies with real effective dates at the Step 3 cutover.
+3. Implemented Controls with an owner, actual procedure, scope, operation pattern, mappings, implementation date, and every required linked Work Queue schedule enabled.
+4. Every selected Control mapped to active authoritative Components with the required evidence source roles, current access owners, and repeatable extraction instructions in Record Markdown.
+5. Required governed plans complete and active, with no unresolved activation blockers.
+
+A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof. A Control may be implemented against an approved inactive Policy, and enabled Obligations remain dormant until that Policy is active and effective.
+
+Review `policyActivations` in Program Readiness before cutover. It shows planned or partial Controls, missing Components or evidence sources, missing schedules, unresolved Exceptions, and dates that need attention. At the end of Step 3, use the Controls-page review or `npx filegrc activate-policies --scaffold` to choose which approved Policies take effect. You can activate with a documented gap or approved Exception, but Evidence Readiness remains incomplete until every required Policy is active and operating. FileGRC does not infer technical implementation from Policy prose. Put configuration facts in Controls, Components, Systems, governed schedules, and Evidence.
 
 Onboarding does not create Evidence Artifacts. Complete authoritative source Components as part of Control implementation. For every incomplete family in Program Readiness, update the Control with its authoritative `evidenceSourceComponentIds`, then give each source Component the required evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. Use `npx filegrc evidence-map --json` when you want only those source checks. During Step 4, create an Evidence Artifact only when a real artifact exists. Select its `sourceComponentId`, attach or reference the result, link the Controls and operating record it supports, record its collector and Classification, then have another person verify it before audit use.
 
