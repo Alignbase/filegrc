@@ -652,10 +652,20 @@ test("uses the full detail width when a record has no authored body", () => {
   assert.match(detailSource, /const hasRecordBody = Boolean\(narrativeContent \|\| markdownContent\)/);
   assert.match(detailSource, /const detailMain = hasRecordBody/);
   assert.match(detailSource, /detail-grid-structured/);
+  assert.match(detailSource, /function renderDetailSupport/);
+  assert.match(detailSource, /name: "guidance", content: workflowPanel \+ reviewPanel/);
+  assert.match(detailSource, /name: "record", content: metadataPanel \+ attachmentPanel \+ historyPanel/);
+  assert.match(detailSource, /name: "relationships", content: participationPanel \+ connectionsPanel/);
+  assert.match(detailSource, /const historyPanel = entry\.history\?\.length/);
+  assert.match(detailSource, /class="panel detail-history-panel"/);
+  assert.doesNotMatch(detailSource, /No committed history for this file/);
+  assert.match(detailSource, /class="detail-support-columns"/);
   assert.doesNotMatch(detailSource, /Add Record Markdown when this record needs context beyond its structured fields/);
   assert.doesNotMatch(detailSource, /<h3>Record<\/h3>/);
   assert.match(APP_STYLES, /\.detail-grid\.detail-grid-structured\{grid-template-columns:1fr\}/);
-  assert.match(APP_STYLES, /\.detail-grid-structured aside\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(320px,1fr\)\)/);
+  assert.match(APP_STYLES, /\.detail-grid-structured \.detail-support-columns\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(APP_STYLES, /@media\(min-width:1300px\)\{\.detail-grid-structured \.detail-support-columns\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}\}/);
+  assert.match(APP_STYLES, /\.detail-support-stack\{display:grid;min-width:0;gap:14px;align-content:start\}/);
 });
 
 test("places source attributes first in record metadata", () => {
@@ -1026,7 +1036,18 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type, collapsed = false\)/);
   assert.match(APP_SCRIPT, /<summary>Review criteria<\/summary>/);
   assert.match(detailSource, /resourceReviewCriteria\(type\)/);
+  assert.match(detailSource, /workflowPanel: workflowGuidance\(\{ type, id, title: "Next steps" \}\)/);
+  assert.match(detailSource, /<h3>Record details<\/h3>/);
+  assert.match(detailSource, /detail-metadata-panel/);
   assert.match(APP_SCRIPT, /resourceReviewCriteria\(type, true\)/);
+  assert.match(APP_SCRIPT, /detail-support-panel detail-review-panel/);
+  assert.match(APP_STYLES, /\.detail-grid aside \.panel\{width:100%;max-height:min\(520px,65vh\);overflow:auto/);
+  assert.match(APP_STYLES, /\.detail-grid aside \.detail-workflow-panel\{max-height:min\(440px,60vh\)\}/);
+  assert.match(APP_STYLES, /\.detail-grid aside \.detail-review-panel\{max-height:min\(300px,50vh\)\}/);
+  assert.match(APP_STYLES, /\.detail-grid aside \.workflow-findings,\.detail-grid aside \.resource-review-criteria ul\{grid-template-columns:1fr\}/);
+  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.detail-grid aside\{order:-1\}\}/);
+  assert.match(APP_STYLES, /\.detail-grid-structured \.detail-support-stack\{display:contents\}/);
+  assert.match(APP_STYLES, /\.detail-grid-structured \.detail-history-panel\{order:1\}/);
   assert.match(APP_STYLES, /\.workflow-findings>a:hover\{/);
   assert.match(APP_STYLES, /\.event-dialog label\[hidden\]\{display:none\}/);
   assert.match(APP_SCRIPT, /function controlOperationTracking\(control\)/);

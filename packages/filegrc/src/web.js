@@ -486,7 +486,7 @@ function workflowGuidance(options = {}) {
     const body = '<span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.message || workflowItemDetail(item)) + '</small></span>';
     return href ? '<a href="' + href + '">' + body + '</a>' : '<div>' + body + '</div>';
   }).join("");
-  return '<section class="workflow-guidance panel"><div class="panel-head"><div><p class="kicker">To-do</p><h3>' + esc(options.title || "Checklist") + '</h3><p>' + esc(status) + '</p></div><span class="badge ' + (blocking.length ? "warn" : "good") + '">' + (blocking.length ? "Needs work" : "Current") + '</span></div><div class="workflow-findings">' + rows + '</div>' + (items.length > visible.length ? '<p class="workflow-guidance-more">Showing ' + visible.length + ' of ' + items.length + ' items. Use <code>filegrc workflow --json</code> for the complete reproducible result.</p>' : "") + '</section>';
+  return '<section class="workflow-guidance panel detail-support-panel detail-workflow-panel"><div class="panel-head"><div><p class="kicker">To-do</p><h3>' + esc(options.title || "Checklist") + '</h3><p>' + esc(status) + '</p></div><span class="badge ' + (blocking.length ? "warn" : "good") + '">' + (blocking.length ? "Needs work" : "Current") + '</span></div><div class="workflow-findings">' + rows + '</div>' + (items.length > visible.length ? '<p class="workflow-guidance-more">Showing ' + visible.length + ' of ' + items.length + ' items. Use <code>filegrc workflow --json</code> for the complete reproducible result.</p>' : "") + '</section>';
 }
 
 function collectionReviewPanel(type) {
@@ -538,10 +538,10 @@ function collectionEmptyState(type, definition) {
 function resourceReviewCriteria(type, collapsed = false) {
   const reviewPoints = state.model.resources[type]?.guidance?.reviewPoints || [];
   if (!reviewPoints.length) return "";
-  const content = '<strong>Review criteria</strong><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>';
+  const points = '<ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>';
   return collapsed
-    ? '<details class="resource-review-criteria compact"><summary>Review criteria</summary><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></details>'
-    : '<section class="resource-review-criteria">' + content + '</section>';
+    ? '<details class="resource-review-criteria compact"><summary>Review criteria</summary>' + points + '</details>'
+    : '<section class="resource-review-criteria panel detail-support-panel detail-review-panel"><div class="panel-head"><h3>Review criteria</h3></div>' + points + '</section>';
 }
 
 function recordWorkflowItems(type, id) {
@@ -2024,8 +2024,20 @@ function renderDetail(main, type, id) {
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
   const attachmentPanel = type === "evidence" ? evidenceAttachmentPanel(entry) : "";
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + auditCycleAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div>' + workflowGuidance({ type, id, title: "Finalization checklist" }) + resourceReviewCriteria(type) + '<div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain +
-    '<aside><section class="panel"><div class="panel-head"><h3>Metadata</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>' + attachmentPanel + personParticipation(entry) + resourceConnections(entry) + '<section class="panel"><div class="panel-head"><h3>File History</h3></div>' + (entry.history?.length ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>' : empty("No committed history for this file.")) + '</section></aside></div></div>';
+  const historyPanel = entry.history?.length
+    ? '<section class="panel detail-history-panel"><div class="panel-head"><h3>File History</h3></div><div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div></section>'
+    : "";
+  const supportPanels = renderDetailSupport({
+    hasRecordBody,
+    workflowPanel: workflowGuidance({ type, id, title: "Next steps" }),
+    reviewPanel: resourceReviewCriteria(type),
+    metadataPanel: '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>',
+    attachmentPanel,
+    participationPanel: personParticipation(entry),
+    connectionsPanel: resourceConnections(entry),
+    historyPanel
+  });
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + auditCycleAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-external-reviewer-governance]")?.addEventListener("click", openExternalReviewerGovernanceDialog);
   main.querySelector("[data-next-audit-cycle]")?.addEventListener("click", () => openNextAuditCycleDialog(entry.record));
@@ -2131,6 +2143,17 @@ function renderDetail(main, type, id) {
       showError(error.message);
     }
   });
+}
+
+function renderDetailSupport({ hasRecordBody, workflowPanel, reviewPanel, metadataPanel, attachmentPanel, participationPanel, connectionsPanel, historyPanel }) {
+  const panels = workflowPanel + reviewPanel + metadataPanel + attachmentPanel + participationPanel + connectionsPanel + historyPanel;
+  if (hasRecordBody) return '<aside>' + panels + '</aside>';
+  const stacks = [
+    { name: "guidance", content: workflowPanel + reviewPanel },
+    { name: "record", content: metadataPanel + attachmentPanel + historyPanel },
+    { name: "relationships", content: participationPanel + connectionsPanel }
+  ].filter(({ content }) => content);
+  return '<aside class="detail-support-columns">' + stacks.map(({ name, content }) => '<div class="detail-support-stack ' + name + '">' + content + '</div>').join("") + '</aside>';
 }
 
 function evidenceAttachmentPanel(entry) {
@@ -4461,10 +4484,14 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 @media(max-width:920px){.topbar-status>.validation-chip,.topbar-status>.repo-chip{display:none}}
 @media(max-width:760px){.shell{display:block}.sidebar{transform:translateX(-100%);transition:.2s;box-shadow:8px 0 30px rgba(0,0,0,.2)}.sidebar.shown{transform:translateX(0)}.workspace{min-width:0}.mobile-nav{display:block;border:0;background:none;font-size:24px}.topbar{height:72px;padding:0 16px}.topbar>div:first-of-type{flex:1;min-width:0}.topbar h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topbar-search,.topbar-status>.validation-chip,.topbar-status>.repo-chip{display:none}.topbar-status{display:flex;margin-left:auto}.sidebar .mobile-sidebar-search{display:flex;flex:0 0 auto;width:100%;max-width:none;min-width:0;margin:0 0 14px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#d5d9ed}.mobile-sidebar-search input{color:#fff}.mobile-sidebar-search input::placeholder{color:#c5cae2}.topbar .eyebrow{display:none}.page{padding:20px 15px 60px}.hero{display:block;padding:23px}.hero-meta{margin-top:22px;flex-wrap:wrap}.metrics,.dashboard-grid,.organization-grid{grid-template-columns:1fr}.span-2{grid-column:auto}.catalog{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}.page-intro,.detail-head{display:block}.page-intro>.button,.actions{margin-top:15px}.page-intro>.list-header-tools{justify-content:flex-start;margin:15px 0 0}.list-header-tools label{max-width:none}.record-table{min-width:720px}.readiness-map{padding:17px}.readiness-map-head{grid-template-columns:1fr;gap:8px}.readiness-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr}.audit-engagement .button{grid-column:auto}.resource-directory{grid-template-columns:1fr}}
 @media(max-width:760px){.setup-banner,.page-guide,.stage-overview-hero,.relationship-note,.group-destination-card,.stage-page-grid,.evidence-map-expectation,.evidence-map-links,.external-evidence-list,.policy-lifecycle-note{grid-template-columns:1fr}.context-workflow,.evidence-map-head{align-items:stretch;flex-direction:column}.evidence-map-actions{flex-wrap:wrap}.page-guide>div{border-left:0;border-top:1px solid var(--line)}.page-guide>div:first-child{border-top:0}.group-overview-head{display:block}.stage-progress-card,.stage-status-link{margin-top:15px}.destination-rollup{text-align:left}.form-grid{grid-template-columns:1fr}.record-table{min-width:0}.record-table thead{display:none}.record-table,.record-table tbody,.record-table tr{display:block}.record-table tr{padding:8px 12px;border-bottom:1px solid var(--line)}.record-table tr:last-child{border-bottom:0}.record-table td:not([data-label]){display:block}.record-table td[data-label]{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;border:0;padding:7px 0;align-items:start}.record-table td[data-label]::before{content:attr(data-label);color:#75817b;text-transform:uppercase;letter-spacing:.07em;font-size:9.6px;font-weight:700}.record-table td[data-primary-field]{display:block;padding:8px 0 10px}.record-table td[data-primary-field]::before{display:none}.content-label{align-items:flex-start}.editor form{padding:18px}.diagnostics>div{grid-template-columns:58px minmax(0,1fr)}.diagnostics p{grid-column:1/-1}.changes code{overflow-wrap:anywhere}.onboarding-dialog{max-height:56vh}}
+.detail-grid aside .panel{width:100%;max-height:min(520px,65vh);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.detail-grid aside .workflow-guidance,.detail-grid aside .resource-review-criteria{margin:0}.detail-grid aside .resource-review-criteria{padding:21px}.detail-grid aside .detail-workflow-panel{max-height:min(440px,60vh)}.detail-grid aside .detail-review-panel{max-height:min(300px,50vh)}.detail-grid aside .workflow-findings,.detail-grid aside .resource-review-criteria ul{grid-template-columns:1fr}.detail-support-stack{display:grid;min-width:0;gap:14px;align-content:start}
+@media(max-width:760px){.detail-grid aside{order:-1}}
+@media(max-width:760px){.detail-grid-structured .detail-support-columns{display:flex;flex-direction:column}.detail-grid-structured .detail-support-stack{display:contents}.detail-grid-structured .detail-history-panel{order:1}}
 @media(max-width:760px){.guide-review ul,.resource-review-criteria ul{grid-template-columns:1fr}.collection-review-head,.collection-review-foot{align-items:stretch;flex-direction:column}.record-workflow-action{min-width:0}}
 @media(max-width:520px){.onboarding-form,.onboarding-sections,.setup-steps{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}.obligation-card-foot{align-items:flex-start;flex-direction:column}.obligation-action{align-self:flex-start}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}
-@media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.detail-grid-structured aside>.panel{align-self:start}}
+@media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1}.detail-grid-structured .detail-support-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1300px){.detail-grid-structured .detail-support-columns{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:24px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 @media(max-width:760px){.topbar{height:56px}.topbar>div:first-of-type{display:none}.topbar-readiness{flex:0 1 220px;min-width:120px}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
 
