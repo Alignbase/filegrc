@@ -272,7 +272,8 @@ test("trunk-mode browser mutations fast-forward, reject stale revisions, commit,
 
 test("trunk-mode browser saves return after the local commit while push continues in the background", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-background-push-");
-  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 3_000 });
+  const push = pauseGitCommand(context, ({ args }) => args[0] === "push");
+  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 100 });
   context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
   const initial = await fetchJson(`${running.url}/api/state`);
   const owner = initial.resources.find(({ record }) => record.id === "person-owner");
@@ -295,12 +296,14 @@ test("trunk-mode browser saves return after the local commit while push continue
     (await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout,
     /Background sync/
   );
+  await push.started;
 
   const statusStarted = Date.now();
   const pending = await fetchJson(`${running.url}/api/git/sync-status`);
   assert.equal(pending.repository.status, "syncing");
   assert.ok(Date.now() - statusStarted < 1_500, "sync status should remain responsive while Git push is running");
 
+  push.release();
   const synchronized = await waitForRepository(running.url, "synced");
   assert.equal(synchronized.ahead, 0);
   assert.match(
@@ -314,7 +317,8 @@ test("remote commits that arrive before a background push are never overwritten"
   const peer = join(fixture.parent, "peer");
   await git(fixture.parent, ["clone", fixture.remote, peer]);
   await configureGit(peer, "Peer User", "peer@example.test");
-  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 3_000 });
+  const push = pauseGitCommand(context, ({ args }) => args[0] === "push");
+  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 100 });
   context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
   const initial = await fetchJson(`${running.url}/api/state`);
   const owner = initial.resources.find(({ record }) => record.id === "person-owner");
@@ -329,12 +333,14 @@ test("remote commits that arrive before a background push are never overwritten"
   });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).synchronization.status, "syncing");
+  await push.started;
 
   await writeFile(join(peer, "remote-note.txt"), "remote change during background sync\n", "utf8");
   await git(peer, ["add", "."]);
   await git(peer, ["commit", "-m", "Commit while FileGRC is syncing"]);
   await git(peer, ["push"]);
 
+  push.release();
   const failed = await waitForRepository(running.url, "not-synced");
   assert.match(failed.backgroundSyncError, /Git could not push/);
   assert.match((await git(fixture.remote, ["show", "main:remote-note.txt"])).stdout, /remote change during background sync/);
@@ -767,7 +773,8 @@ test("trunk mode rejects unsafe configured Git names before synchronization", as
 test("failed trunk pushes remain visible and retry only FileGRC commits", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-retry-");
   const unavailableRemote = `${fixture.remote}.unavailable`;
-  let running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 5_000 });
+  const push = pauseGitCommand(context, ({ args }) => args[0] === "push");
+  let running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 100 });
   context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
   const response = await fetch(`${running.url}/api/setup`, {
     method: "POST",
@@ -789,7 +796,9 @@ test("failed trunk pushes remain visible and retry only FileGRC commits", async 
   assert.equal(result.synchronization.pushError, null);
   assert.equal(result.state.repository.status, "syncing");
   assert.equal(result.state.resources.find(({ record }) => record.id === result.system.id).record.status, "active");
+  await push.started;
   await rename(fixture.remote, unavailableRemote);
+  push.release();
   const failed = await waitForRepository(running.url, "not-synced");
   assert.equal(failed.ahead, 1);
   assert.match(failed.backgroundSyncError, /local FileGRC commit was retained/);
@@ -1083,6 +1092,27 @@ async function waitForRepository(input, expectedStatus = "synced", timeoutMs = 1
     ? (await fetchJson(`${input}/api/git/sync-status`)).repository
     : await getBrowserRepositoryState(input);
   assert.fail(`Expected repository status ${expectedStatus}, received ${repository.status}.`);
+}
+
+function pauseGitCommand(context, predicate) {
+  let release;
+  let markStarted;
+  let paused = false;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const restore = setGitCommandInterceptorForTests(async ({ cwd, args, options, run }) => {
+    if (!paused && predicate({ cwd, args, options })) {
+      paused = true;
+      markStarted();
+      await blocked;
+    }
+    return run();
+  });
+  context.after(() => {
+    release();
+    restore();
+  });
+  return { started, release };
 }
 
 function git(cwd, args) {
