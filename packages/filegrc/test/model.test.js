@@ -369,6 +369,13 @@ test("model versions cannot escape the packaged model registry", () => {
   assert.throws(() => loadModel("/../../package"), /Unsupported data model version/);
 });
 
+test("v4 penetration-testing guidance remains conditional and risk-based", () => {
+  const guidance = loadModel("4").resources["penetration-test"].guidance;
+  assert.match(guidance.policyBasis, /decide whether penetration testing is needed/);
+  assert.match(guidance.cadence, /may conclude that no penetration test is required/);
+  assert.doesNotMatch(`${guidance.policyBasis} ${guidance.cadence}`, /perform at least annually/i);
+});
+
 test("generated model documentation matches the repository file", async () => {
   const actual = await readFile(new URL("../../../docs/data-model.md", import.meta.url), "utf8");
   assert.equal(actual, generateModelDocumentation(loadModel()));

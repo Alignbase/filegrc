@@ -49,7 +49,7 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 - Put policies, plans, charters, procedures, meeting minutes, training, assertions, narratives, templates, and audit responses in Markdown beside their JSON records. filegrc derives the Markdown name, so records do not contain file paths.
 - Put signed forms, screenshots, third-party reports, and immutable exports behind evidence records. These files may be PDF, image, CSV, or another fixed format.
 - Never fetch an external evidence reference automatically.
-- Do not store secrets, credentials, session data, or personal data that may need to be erased from Git history.
+- Do not store plaintext credentials, private keys, tokens, recovery codes, session data, or personal data that may need to be erased from Git history. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions.
 - Keep the editable local server on loopback or behind trusted authentication. Use the read-only static build for audit sharing.
 
 ## Source truth and derived workflow
@@ -233,7 +233,11 @@ npx filegrc audit-readiness audit-2026-type-2
 npx filegrc audit-readiness audit-2026-type-2 --require-ready --json
 ```
 
-The audit record’s `typeOneAsOf`, `periodStart`, and `periodEnd` are the dates agreed with the CPA firm. Keep the workspace candidate dates even when the formal period differs.
+The audit record’s `coverage` object stores the dates agreed with the CPA firm. Use `{ "kind": "as-of", "on": "YYYY-MM-DD" }` for Type 1 or `{ "kind": "range", "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" }` for Type 2. Keep the Program candidate coverage even when the formal date or period differs.
+
+After reviewing the engagement's Program, Systems, criteria, Controls, commitments, subservices, complementary controls, and signatories, record the reviewed Git commit in `scopeRevision`. Update that value only after another complete scope review.
+
+Select a framework containing the complete CC1.1 through CC9.2 Security Common Criteria set, all nine SOC 2 Description Criteria, and any optional Trust Services Categories in scope. Treat every Security Common Criterion as applicable and include Controls that cover every applicable selected Trust Services criterion. For an included optional category, keep a criterion in the framework when management judges it not relevant and record the limited circumstances under DC8. Do not omit a Description Criterion. Record whether subservice organizations are identified in `subserviceConclusion` and explain the decision. If they are identified, use `subserviceTreatments` to connect each Vendor to its supplied Components inside a selected System and record the carve-out or inclusive method and rationale. An inclusive treatment also requires selected Controls linked to those Components.
 
 {{audit_preparation_guidance}}
 
@@ -244,7 +248,9 @@ Review both evidence paths against the exact firm-agreed date or period:
 
 Audit Readiness reports coverage for both paths. The packet includes the matching filegrc records and Markdown with Git history, plus Evidence Artifacts, retained attachments, delivery indexes, and checksums.
 
-Near the end of fieldwork, link a verified fixed-format copy of the signed management representation letter to its engagement-specific document. Date it on or after the Type 1 date or Type 2 period end. A representation that is still marked for later blocks packet delivery.
+Near the end of fieldwork, link a verified fixed-format copy of the signed management representation letter to its engagement-specific document. Record the actual signing timestamp in the Evidence `businessEventAt` field. It must be on or after the Type 1 date or Type 2 period end and must match the CPA report date once `reportDate` is known. A representation that is still marked for later blocks packet delivery.
+
+When the CPA firm issues the report, retain it as verified `third-party-report` Evidence with `artifactSubtype: "soc2-report"` and link that exact Evidence record through `reportEvidenceId`. A draft, screenshot, unrelated business record, or unverified file does not establish report issuance.
 
 Catalog each authoritative source as a Component and assign its `evidenceSourceKinds`. A third-party application is a Component when it supports a bounded System, a Control, Evidence, or relevant operations. Create a separate Vendor for its provider and connect the Component through `vendorId`; keep contracts, due diligence, and supplier risk on the Vendor. Name the people who can access reports and keep extraction instructions in the Component's Record Markdown. For each Type 2 population, select one source Component and export the exact audit period. Split a population when different Components or queries produce its items. Link a verified `population-export` Evidence Artifact that names the same source Component and stores the query or report parameters, generation time, timezone, count, completeness check, and accuracy check. A zero count still requires the source export and query. A population linked to an in-scope Control cannot be marked not applicable.
 

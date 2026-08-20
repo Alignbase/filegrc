@@ -4,9 +4,9 @@
 
 Reporting period: [start date] through [end date]
 
-Management reconciled every audit-population record linked to this engagement to its authoritative source and included every item relevant to the in-scope system and controls. The generated `population-index.csv` is incorporated into this statement by reference and records each population ID, source system, query, timezone, count, validation, reviewer, conclusion, and fixed export.
+Management reconciled every population used for this engagement to its authoritative source and included every item relevant to the in-scope system and controls. The accompanying `population-index.csv` is incorporated into this statement by reference and records each population reference, source system, query, timezone, count, validation, reviewer, conclusion, and fixed export.
 
-| Population | filegrc population ID | Result or exception |
+| Population | Population reference | Result or exception |
 | --- | --- | --- |
 | Workforce starts, role changes, and departures | [Population ID] | [Result] |
 | Access grants, changes, reviews, and removals | [Population ID] | [Result] |
@@ -19,7 +19,7 @@ Management reconciled every audit-population record linked to this engagement to
 | Backup failures and restoration tests | [Population ID] | [Result] |
 | Security exceptions and control findings | [Population ID] | [Result] |
 
-For a population with zero items, retain the source-Component export or report that produced the zero count. Describe any source limitation, omitted item, or reconciliation difference below.
+For a population with zero items, retain the authoritative-source export or report that produced the zero count. Describe any source limitation, omitted item, or reconciliation difference below.
 
 ## Exceptions and Source Limitations
 
@@ -27,6 +27,6 @@ For a population with zero items, retain the source-Component export or report t
 
 ## Management Confirmation
 
-To the best of management's knowledge after the reconciliations above, filegrc and the linked evidence contain the complete populations and reportable events relevant to the engagement period.
+To the best of management's knowledge after the reconciliations above, management's records and linked evidence contain the complete populations and reportable events relevant to the engagement period.
 
 [Identify the responsible signer, title, signature or approval method, and date.]

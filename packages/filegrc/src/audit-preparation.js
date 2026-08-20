@@ -9,11 +9,22 @@ import {
   coverageStart
 } from "./coverage.js";
 import { createResource, createResources, deleteResource, updateResource } from "./files.js";
+import { getChangedDataPathsSinceRevision, getFileAtRevision, hasGitRevision } from "./git.js";
 import { createResourceId } from "./id.js";
 import { currentPartyPeople, partiesIndependent } from "./parties.js";
 import { resolveDataPath } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
+import {
+  auditorWasEngaged,
+  missingSoc2References,
+  personWasActiveOn,
+  recordWasInUseDuringAudit,
+  REQUIRED_SOC2_DESCRIPTION_REFERENCES,
+  REQUIRED_SOC2_SECURITY_REFERENCES,
+  signatoryAppointmentIssue,
+  subsequentEventsReviewIssue
+} from "./soc2.js";
 import { loadWorkspace } from "./workspace.js";
 
 const NON_EVIDENCE_RECORD_TYPES = new Set([
@@ -39,7 +50,6 @@ const NON_EVIDENCE_RECORD_TYPES = new Set([
   "vendor",
   "workspace"
 ]);
-
 export async function assessAuditPreparation(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
@@ -61,7 +71,7 @@ export async function assessAuditPreparation(input, options = {}) {
   const stages = [
     programFoundationStage(programReadiness, loaded.workspace),
     engagementStage(audit, byId, programReadiness),
-    scopeStage(audit, records, byId, programReadiness)
+    scopeStage(loaded, audit, records, byId, programReadiness)
   ];
   const fieldworkSections = audit
     ? [
@@ -71,7 +81,7 @@ export async function assessAuditPreparation(input, options = {}) {
       ]
     : [];
   stages.push(fieldworkStage(audit, fieldworkSections));
-  stages.push(auditorStage());
+  stages.push(auditorStage(audit, byId, loaded.model.modelVersion));
 
   for (const stage of stages) {
     stage.counts = countStatuses(stage.items);
@@ -212,7 +222,7 @@ export async function prepareAuditWorkspace(input, options = {}) {
   };
 }
 
-function scopeStage(audit, records, byId, programReadiness) {
+function scopeStage(loaded, audit, records, byId, programReadiness) {
   const items = [];
   if (!audit) {
     items.push(item(
@@ -259,11 +269,24 @@ function scopeStage(audit, records, byId, programReadiness) {
     ));
   }
 
+  const v4 = String(programReadiness.dataModelVersion) === "4";
+  const engagementStart = coverageStart(audit.coverage);
+  const engagementEnd = coverageEnd(audit.coverage);
+  const scopeRevision = assessScopeRevision(loaded, audit, v4);
+  items.push(item(
+    "scope-revision",
+    scopeRevision.status,
+    "Bind the reviewed engagement scope",
+    scopeRevision.message,
+    audit
+  ));
   const systems = (audit.systemIds || []).map((id) => byId.get(id)).filter(Boolean);
   const completeSystems = systems.filter((system) => (
-    system.status === "active"
-    && system.description
-    && system.classificationId
+    recordWasInUseDuringAudit(system, engagementStart, engagementEnd)
+    && (v4
+      ? system.purpose && system.boundary && (system.servicesProvided || []).length
+      : system.description)
+    && (v4 || system.classificationId)
     && (system.ownerIds || []).length
   ));
   items.push(item(
@@ -271,12 +294,11 @@ function scopeStage(audit, records, byId, programReadiness) {
     systems.length && completeSystems.length === systems.length ? "complete" : "action",
     "Define the service boundary",
     systems.length
-      ? `${completeSystems.length} of ${systems.length} selected systems are active, explicitly in scope, owned, classified, and described.`
+      ? `${completeSystems.length} of ${systems.length} selected systems were in use for the engagement, explicitly in scope, owned, and described${v4 ? "" : ", with a classification"}.`
       : "Select every in-scope service and supporting system, then describe its owner, environment, data, vendors, and boundary.",
     systems[0] || { type: "system" }
   ));
 
-  const engagementStart = coverageStart(audit.coverage);
   const commitments = records.filter((record) => record.type === "commitment"
     && record.status === "active"
     && systems.some((system) => (record.systemIds || []).includes(system.id)));
@@ -304,48 +326,121 @@ function scopeStage(audit, records, byId, programReadiness) {
   const frameworkRequirementIds = records
     .filter((record) => record.type === "requirement" && (audit.frameworkIds || []).includes(record.frameworkId))
     .map((record) => record.id);
+  const program = audit.programId ? byId.get(audit.programId) : null;
+  const v4Decisions = new Map((program?.requirementApplicability || []).map((decision) => [decision.requirementId, decision]));
   const unresolvedRequirements = frameworkRequirementIds
     .map((id) => byId.get(id))
-    .filter((requirement) => (
-      requirement.applicability === "undetermined"
-      || (requirement.applicability === "not-applicable" && !requirement.applicabilityRationale)
-    ));
-  const applicableRequirementIds = frameworkRequirementIds.filter((id) => byId.get(id)?.applicability === "applicable");
+    .filter((requirement) => {
+      if (!v4) {
+        return requirement.applicability === "undetermined"
+          || (requirement.applicability === "not-applicable" && !requirement.applicabilityRationale);
+      }
+      const decision = v4Decisions.get(requirement.id);
+      return !decision
+        || decision.decision === "undetermined"
+        || (decision.decision === "not-applicable" && !decision.rationale);
+    });
+  const applicableRequirementIds = frameworkRequirementIds.filter((id) => (
+    v4 ? v4Decisions.get(id)?.decision === "applicable" : byId.get(id)?.applicability === "applicable"
+  ));
   const missingApplicableRequirements = applicableRequirementIds.filter((id) => !(audit.requirementIds || []).includes(id));
   const selectedRequirements = (audit.requirementIds || []).map((id) => byId.get(id)).filter(Boolean);
   const unexpectedRequirements = selectedRequirements.filter((requirement) => (
     !(audit.frameworkIds || []).includes(requirement.frameworkId)
-    || requirement.applicability !== "applicable"
+    || (v4
+      ? v4Decisions.get(requirement.id)?.decision !== "applicable"
+      : requirement.applicability !== "applicable")
   ));
-  const descriptionCriteriaSelected = selectedRequirements.some((requirement) => (
-    (requirement.tags || []).includes("description-criteria")
-    || /^DC\d+/i.test(requirement.reference || "")
+  const selectedControls = (audit.controlIds || []).map((id) => byId.get(id)).filter(Boolean);
+  const uncoveredRequirements = selectedRequirements.filter((requirement) => (
+    !isDescriptionRequirement(requirement)
+    && !selectedControls.some((control) => (control.requirementIds || []).includes(requirement.id))
   ));
+  const descriptionRequirements = frameworkRequirementIds
+    .map((id) => byId.get(id))
+    .filter(isDescriptionRequirement);
+  const missingDescriptionRequirements = descriptionRequirements.filter((requirement) => (
+    !(audit.requirementIds || []).includes(requirement.id)
+  ));
+  const missingRequiredDescriptionReferences = v4
+    ? missingSoc2References(descriptionRequirements, REQUIRED_SOC2_DESCRIPTION_REFERENCES)
+    : [];
+  const invalidMandatoryDescriptionDecisions = v4
+    ? descriptionRequirements.filter((requirement) => (
+        REQUIRED_SOC2_DESCRIPTION_REFERENCES.includes(String(requirement.reference || "").trim().toUpperCase())
+        && v4Decisions.get(requirement.id)?.decision !== "applicable"
+      ))
+    : [];
+  const securityRequirements = frameworkRequirementIds
+    .map((id) => byId.get(id))
+    .filter(isSecurityRequirement);
+  const missingRequiredSecurityReferences = v4
+    ? missingSoc2References(securityRequirements, REQUIRED_SOC2_SECURITY_REFERENCES)
+    : [];
+  const missingSelectedSecurityReferences = v4
+    ? missingSoc2References(selectedRequirements.filter(isSecurityRequirement), REQUIRED_SOC2_SECURITY_REFERENCES)
+    : [];
+  const invalidMandatorySecurityDecisions = v4
+    ? securityRequirements.filter((requirement) => (
+        REQUIRED_SOC2_SECURITY_REFERENCES.includes(String(requirement.reference || "").trim().toUpperCase())
+        && v4Decisions.get(requirement.id)?.decision !== "applicable"
+      ))
+    : [];
   const criteriaComplete = (audit.frameworkIds || []).length
     && (audit.requirementIds || []).length
     && (audit.controlIds || []).length
     && !unresolvedRequirements.length
     && !missingApplicableRequirements.length
     && !unexpectedRequirements.length
-    && descriptionCriteriaSelected;
+    && !uncoveredRequirements.length
+    && descriptionRequirements.length
+    && !missingDescriptionRequirements.length
+    && !missingRequiredDescriptionReferences.length
+    && !missingRequiredSecurityReferences.length
+    && !missingSelectedSecurityReferences.length
+    && !invalidMandatorySecurityDecisions.length
+    && !invalidMandatoryDescriptionDecisions.length;
   items.push(item(
     "criteria",
     criteriaComplete ? "complete" : "action",
-    "Confirm criteria and controls in scope",
+    "Confirm Trust Services criteria, Description Criteria, and Controls",
     criteriaComplete
-      ? `${audit.requirementIds.length} applicable criteria and ${audit.controlIds.length} controls are selected, with applicability resolved for the selected frameworks.`
+      ? `${selectedRequirements.filter((requirement) => !isDescriptionRequirement(requirement)).length} applicable Trust Services criteria, ${selectedRequirements.filter(isDescriptionRequirement).length} SOC 2 Description Criteria, and ${audit.controlIds.length} Controls are selected. Every applicable Trust Services criterion maps to a selected Control; Description Criteria govern the system description and do not map to Controls.`
       : unresolvedRequirements.length
         ? `Resolve applicability and record a rationale for ${unresolvedRequirements.length} selected-framework criteria.`
-        : missingApplicableRequirements.length
-          ? `Add ${missingApplicableRequirements.length} applicable selected-framework criteria to the engagement.`
-          : unexpectedRequirements.length
-            ? `Remove ${unexpectedRequirements.length} criteria that are not applicable members of the selected frameworks.`
-            : !descriptionCriteriaSelected
-              ? "Select the applicable SOC 2 description criteria as well as the Trust Services Criteria."
-          : "Select the Security criteria, any optional Trust Services Categories, and the controls included in this report.",
-    audit
+        : !descriptionRequirements.length
+          ? "Select the SOC 2 Description Criteria framework and all nine criteria. These govern the system description and do not map to Controls."
+          : missingRequiredDescriptionReferences.length
+            ? `Use the complete SOC 2 Description Criteria set; ${missingRequiredDescriptionReferences.join(", ")} ${missingRequiredDescriptionReferences.length === 1 ? "is" : "are"} missing from the selected framework.`
+            : missingRequiredSecurityReferences.length
+              ? `Use the complete SOC 2 Security Common Criteria set; ${missingRequiredSecurityReferences.join(", ")} ${missingRequiredSecurityReferences.length === 1 ? "is" : "are"} missing from the selected framework.`
+              : invalidMandatoryDescriptionDecisions.length
+                ? `Mark all nine Description Criteria applicable in the selected Program; ${invalidMandatoryDescriptionDecisions.map(({ reference }) => reference).join(", ")} ${invalidMandatoryDescriptionDecisions.length === 1 ? "is" : "are"} missing, undetermined, or not applicable.`
+                : invalidMandatorySecurityDecisions.length
+                  ? `Mark every Security Common Criterion applicable in the selected Program; ${invalidMandatorySecurityDecisions.map(({ reference }) => reference).join(", ")} ${invalidMandatorySecurityDecisions.length === 1 ? "is" : "are"} missing, undetermined, or not applicable.`
+                  : missingSelectedSecurityReferences.length
+                    ? `Add every Security Common Criterion to the engagement; ${missingSelectedSecurityReferences.join(", ")} ${missingSelectedSecurityReferences.length === 1 ? "is" : "are"} missing.`
+                    : missingDescriptionRequirements.length
+                      ? `Add all nine SOC 2 Description Criteria to the engagement; ${missingDescriptionRequirements.length} ${missingDescriptionRequirements.length === 1 ? "is" : "are"} missing.`
+                      : missingApplicableRequirements.length
+                        ? `Add ${missingApplicableRequirements.length} applicable selected-framework Trust Services criteria to the engagement.`
+                        : unexpectedRequirements.length
+                          ? `Remove ${unexpectedRequirements.length} criteria that are not applicable members of the selected frameworks.`
+                          : uncoveredRequirements.length
+                            ? `Map ${uncoveredRequirements.length} selected Trust Services criteria to Controls included in the engagement.`
+                            : "Select the Security criteria, any optional Trust Services Categories, and the Controls included in this report.",
+    audit,
+    {
+      commands: unresolvedRequirements.length
+        ? [
+            "npx filegrc review-applicability --scaffold --type requirement > decisions.json",
+            "npx filegrc review-applicability decisions.json --preview --json"
+          ]
+        : [`npx filegrc get ${audit.id} --mutation`]
+    }
   ));
 
+  const treatments = audit.subserviceTreatments || [];
   const expectedSubserviceVendorIds = new Set(systems.flatMap((system) => system.subserviceVendorIds || []));
   const missingSubserviceVendorIds = [...expectedSubserviceVendorIds].filter((id) => !(audit.subserviceVendorIds || []).includes(id));
   const inclusiveSystemIds = records
@@ -355,16 +450,54 @@ function scopeStage(audit, records, byId, programReadiness) {
     .map((id) => byId.get(id))
     .filter((control) => (control?.systemIds || []).some((id) => inclusiveSystemIds.includes(id)))
     .length;
-  const subserviceComplete = Boolean(audit.subserviceMethod)
-    && !((audit.subserviceVendorIds || []).length && audit.subserviceMethod === "not-applicable")
-    && !missingSubserviceVendorIds.length
-    && !(audit.subserviceMethod === "inclusive" && (!inclusiveSystemIds.length || !inclusiveControlCount));
+  const v4InclusiveTreatments = treatments.filter(({ method }) => method === "inclusive");
+  const treatmentComponentCounts = new Map();
+  for (const treatment of treatments) {
+    for (const componentId of treatment.componentIds || []) {
+      treatmentComponentCounts.set(componentId, (treatmentComponentCounts.get(componentId) || 0) + 1);
+    }
+  }
+  const v4InvalidTreatments = treatments.filter((treatment) => (
+    byId.get(treatment.vendorId)?.type !== "vendor"
+    || !recordWasInUseDuringAudit(byId.get(treatment.vendorId), engagementStart, engagementEnd)
+    || !(treatment.componentIds || []).length
+    || (treatment.componentIds || []).some((componentId) => {
+      const component = byId.get(componentId);
+      return component?.type !== "component"
+        || !recordWasInUseDuringAudit(component, engagementStart, engagementEnd)
+        || component.vendorId !== treatment.vendorId
+        || (treatmentComponentCounts.get(componentId) || 0) > 1
+        || !(component.systemUses || []).some(({ systemId }) => (audit.systemIds || []).includes(systemId));
+    })
+  ));
+  const v4InclusiveWithoutControls = v4InclusiveTreatments.filter((treatment) => !selectedControls.some((control) => (
+    (control.componentIds || []).some((id) => (treatment.componentIds || []).includes(id))
+  )));
+  const subserviceComplete = v4
+    ? Boolean(audit.subserviceConclusion && audit.subserviceConclusionRationale)
+      && (audit.subserviceConclusion === "identified" ? treatments.length > 0 : treatments.length === 0)
+      && v4InvalidTreatments.length === 0
+      && v4InclusiveWithoutControls.length === 0
+    : Boolean(audit.subserviceMethod)
+      && !((audit.subserviceVendorIds || []).length && audit.subserviceMethod === "not-applicable")
+      && !missingSubserviceVendorIds.length
+      && !(audit.subserviceMethod === "inclusive" && (!inclusiveSystemIds.length || !inclusiveControlCount));
   items.push(item(
     "subservices",
     subserviceComplete ? "complete" : "action",
     "Decide how subservice organizations are presented",
     subserviceComplete
-      ? `${displayValue(audit.subserviceMethod)} method selected for ${(audit.subserviceVendorIds || []).length} subservice organizations${audit.subserviceMethod === "inclusive" ? `, with ${inclusiveControlCount} included controls` : ""}.`
+      ? v4
+        ? audit.subserviceConclusion === "identified"
+          ? `${treatments.length} Vendor and Component subservice treatments are recorded with a rationale.`
+          : "Management recorded and explained that no subservice organizations are included in the report scope."
+        : `${displayValue(audit.subserviceMethod)} method selected for ${(audit.subserviceVendorIds || []).length} subservice organizations${audit.subserviceMethod === "inclusive" ? `, with ${inclusiveControlCount} included controls` : ""}.`
+      : v4
+        ? v4InvalidTreatments.length
+          ? `${v4InvalidTreatments.length} subservice ${v4InvalidTreatments.length === 1 ? "treatment does" : "treatments do"} not identify one Vendor's supplied Components in use within the selected System boundary during the engagement, or ${v4InvalidTreatments.length === 1 ? "repeats" : "repeat"} a Component across treatments.`
+          : v4InclusiveWithoutControls.length
+          ? `${v4InclusiveWithoutControls.length} inclusive subservice treatments have no selected Controls linked to their Components.`
+          : "Record whether subservice organizations are identified, explain the conclusion, and record each Vendor, Component, carve-out or inclusive method, and rationale when applicable."
       : missingSubserviceVendorIds.length
         ? `Add ${missingSubserviceVendorIds.length} subservice organizations already identified by the in-scope systems.`
         : audit.subserviceMethod === "inclusive"
@@ -404,6 +537,175 @@ function scopeStage(audit, records, byId, programReadiness) {
   return stage("period", "Confirm the Formal Period", "Record the auditor-agreed report type, date or period, scope, criteria, systems, and dependency treatment.", items);
 }
 
+function isDescriptionRequirement(requirement) {
+  return (requirement.tags || []).includes("description-criteria") || /^DC\d+/i.test(requirement.reference || "");
+}
+
+function isSecurityRequirement(requirement) {
+  const tags = requirement?.tags || [];
+  return tags.includes("security") || tags.includes("common-criteria") || /^CC\d+(?:\.|$)/i.test(requirement?.reference || "");
+}
+
+const AUDIT_SCOPE_REVISION_FIELDS = [
+  "auditKind",
+  "programId",
+  "frameworkIds",
+  "scope",
+  "coverage",
+  "systemIds",
+  "requirementIds",
+  "controlIds",
+  "commitmentIds",
+  "complementaryControlIds",
+  "complementaryControlsConclusion",
+  "subserviceConclusion",
+  "subserviceConclusionRationale",
+  "subserviceTreatments",
+  "subserviceVendorIds",
+  "subserviceMethod",
+  "signatoryAppointmentIds"
+];
+
+function assessScopeRevision(loaded, audit, v4) {
+  if (!v4) {
+    return {
+      status: "complete",
+      message: "The legacy workspace stores the engagement selections directly on the Audit."
+    };
+  }
+  if (!audit.scopeRevision) {
+    return {
+      status: "action",
+      message: "Review the engagement's Program, Systems, criteria, Controls, commitments, subservices, complementary controls, and signatories, then record the reviewed Git revision in scopeRevision."
+    };
+  }
+  if (!hasGitRevision(loaded.root, audit.scopeRevision)) {
+    return {
+      status: "action",
+      message: `${audit.scopeRevision} is not an available Git commit. Commit the reviewed scope and record that exact commit in scopeRevision.`
+    };
+  }
+  const entry = loaded.entries.find(({ record }) => record.id === audit.id);
+  const source = entry
+    ? getFileAtRevision(loaded.root, audit.scopeRevision, `data/${entry.relativePath}`)
+    : null;
+  let historicalAudit = null;
+  try {
+    historicalAudit = source ? JSON.parse(source) : null;
+  } catch {
+    historicalAudit = null;
+  }
+  if (historicalAudit?.id !== audit.id || historicalAudit.type !== "audit") {
+    return {
+      status: "action",
+      message: `${audit.scopeRevision} does not contain this Audit record. Commit the reviewed scope and update scopeRevision.`
+    };
+  }
+  if (auditScopeFingerprint(historicalAudit) !== auditScopeFingerprint(audit)) {
+    return {
+      status: "action",
+      message: "The current engagement scope differs from the scope stored at scopeRevision. Review the diff, commit the accepted scope, and update scopeRevision."
+    };
+  }
+  const changedScopeRecords = scopeRecordsChangedSinceRevision(loaded, audit, historicalAudit);
+  if (changedScopeRecords === null) {
+    return {
+      status: "action",
+      message: "FileGRC could not compare the current engagement scope with scopeRevision. Confirm Git history is available, then review and record the exact scope commit."
+    };
+  }
+  if (changedScopeRecords.length) {
+    return {
+      status: "action",
+      message: `${changedScopeRecords.length} record${changedScopeRecords.length === 1 ? "" : "s"} within the reviewed engagement scope changed after scopeRevision. Review the scope diff, commit the accepted records, and update scopeRevision.`
+    };
+  }
+  return {
+    status: "complete",
+    message: `Management reviewed the current engagement scope at Git revision ${audit.scopeRevision}.`
+  };
+}
+
+function scopeRecordsChangedSinceRevision(loaded, audit, historicalAudit) {
+  const currentByPath = new Map(loaded.entries.map((entry) => [`data/${entry.relativePath}`, entry.record]));
+  const changedPaths = getChangedDataPathsSinceRevision(loaded.root, audit.scopeRevision);
+  if (!changedPaths) return null;
+  const candidatePaths = changedPaths.filter((path) => path.endsWith(".json"));
+  const changed = [];
+  for (const path of candidatePaths) {
+    const current = currentByPath.get(path) || null;
+    let historical = null;
+    const historicalSource = getFileAtRevision(loaded.root, audit.scopeRevision, path);
+    try {
+      historical = historicalSource ? JSON.parse(historicalSource) : null;
+    } catch {
+      historical = null;
+    }
+    if (
+      !scopeRecordIsRelevant(current, audit)
+      && !scopeRecordIsRelevant(historical, historicalAudit)
+    ) continue;
+    if (JSON.stringify(canonicalScopeValue(current)) !== JSON.stringify(canonicalScopeValue(historical))) changed.push(path);
+  }
+  return changed;
+}
+
+function scopeRecordIsRelevant(record, audit) {
+  if (!record || !audit) return false;
+  const selectedSystemIds = new Set(audit.systemIds || []);
+  const selectedFrameworkIds = new Set(audit.frameworkIds || []);
+  const selectedIds = new Set([
+    audit.programId,
+    ...(audit.frameworkIds || []),
+    ...(audit.systemIds || []),
+    ...(audit.requirementIds || []),
+    ...(audit.controlIds || []),
+    ...(audit.commitmentIds || []),
+    ...(audit.complementaryControlIds || []),
+    ...(audit.signatoryAppointmentIds || []),
+    ...auditSubserviceVendorIds(audit),
+    ...auditSubserviceComponentIds(audit)
+  ].filter(Boolean));
+  if (selectedIds.has(record.id)) return true;
+  if (record.type === "requirement") return selectedFrameworkIds.has(record.frameworkId);
+  if (["commitment", "complementary-control"].includes(record.type)) {
+    return (record.systemIds || []).some((id) => selectedSystemIds.has(id));
+  }
+  if (record.type === "component") {
+    return (record.systemUses || []).some(({ systemId }) => selectedSystemIds.has(systemId));
+  }
+  return false;
+}
+
+function auditSubserviceVendorIds(audit) {
+  return [
+    ...(audit.subserviceVendorIds || []),
+    ...(audit.subserviceTreatments || []).map(({ vendorId }) => vendorId)
+  ];
+}
+
+function auditSubserviceComponentIds(audit) {
+  return (audit.subserviceTreatments || []).flatMap(({ componentIds }) => componentIds || []);
+}
+
+function auditScopeFingerprint(audit) {
+  return JSON.stringify(Object.fromEntries(AUDIT_SCOPE_REVISION_FIELDS.map((field) => (
+    [field, canonicalScopeValue(audit[field] ?? null)]
+  ))));
+}
+
+function canonicalScopeValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(canonicalScopeValue)
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalScopeValue(value[key])]));
+  }
+  return value;
+}
+
 function programFoundationStage(programReadiness, workspace) {
   const ready = programReadiness.evidenceReady;
   return stage("program", "Program Readiness", "The management program can be prepared and operated without an audit record or CPA firm.", [
@@ -434,11 +736,32 @@ function engagementStage(audit, byId, programReadiness) {
     ]);
   }
   const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
-  const named = Boolean(auditor);
+  const named = auditorWasEngaged(auditor, audit);
   const currentOwners = [...currentPartyPeople(audit.ownerIds, byId)]
     .map((id) => byId.get(id))
     .filter(Boolean);
-  return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and the current management owner who authorizes and coordinates the engagement.", [
+  const engagementTerms = audit.engagementTermsDocumentId ? byId.get(audit.engagementTermsDocumentId) : null;
+  const engagementTermsComplete = Boolean(
+    engagementTerms?.type === "document"
+    && engagementTerms.documentKind === "soc2-engagement-terms"
+    && engagementTerms.status === "active"
+    && engagementTerms.approvedOn
+    && engagementTerms.effectiveOn
+  );
+  const acknowledgementPeople = (audit.managementAcknowledgedByIds || [])
+    .map((id) => byId.get(id))
+    .filter((record) => personWasActiveOn(record, audit.managementAcknowledgedOn));
+  const acknowledged = Boolean(
+    engagementTermsComplete
+    && acknowledgementPeople.length === (audit.managementAcknowledgedByIds || []).length
+    && acknowledgementPeople.length
+    && audit.managementAcknowledgedOn
+    && audit.managementAcknowledgedOn >= engagementTerms.approvedOn
+    && (!audit.fieldworkStart || audit.managementAcknowledgedOn <= audit.fieldworkStart)
+  );
+  const preliminary = audit.status === "planned";
+  const programGoalAligned = programReadiness.target.goal === audit.auditKind;
+  const items = [
     item(
       "engagement-record",
       "complete",
@@ -447,12 +770,23 @@ function engagementStage(audit, byId, programReadiness) {
       audit
     ),
     item(
+      "program-goal-alignment",
+      programGoalAligned ? "complete" : "action",
+      "Align the Program goal with the engagement",
+      programGoalAligned
+        ? `The Program goal and formal engagement are both ${audit.auditKind === "soc-2-type-2" ? "SOC 2 Type 2" : "SOC 2 Type 1"}.`
+        : `Change the Program goal from ${programReadiness.target.label} to ${audit.auditKind === "soc-2-type-2" ? "SOC 2 Type 2" : "SOC 2 Type 1"}, or correct the Audit type if the engagement record is wrong.`,
+      audit
+    ),
+    item(
       "auditor",
       named ? "complete" : "action",
       "Record the independent CPA firm",
       named
         ? `${auditor.title} is recorded for the engagement.`
-        : "Select the CPA firm and record it here. The independent management policy reviewer is a different role.",
+        : auditor
+          ? `${auditor.title} was not active for the engagement period. Confirm the CPA firm and its engagement dates.`
+          : "Select the CPA firm and record it here. The independent management policy reviewer is a different role.",
       audit
     ),
     item(
@@ -470,7 +804,34 @@ function engagementStage(audit, byId, programReadiness) {
         ]
       }
     )
-  ]);
+  ];
+  if (["3", "4"].includes(String(programReadiness.dataModelVersion))) {
+    items.push(
+      item(
+        "engagement-terms",
+        engagementTermsComplete ? "complete" : preliminary ? "later" : "action",
+        "Link the engagement terms",
+        engagementTermsComplete
+          ? `${engagementTerms.title} records the accepted CPA engagement terms.`
+          : preliminary
+            ? "Link the accepted CPA engagement terms before moving this Audit to in progress."
+            : "Link an active, approved Document with documentKind soc2-engagement-terms that contains the accepted CPA engagement terms.",
+        engagementTerms || { type: "document" }
+      ),
+      item(
+        "management-acknowledgement",
+        acknowledged ? "complete" : preliminary ? "later" : "action",
+        "Record management acknowledgement",
+        acknowledged
+          ? `Management acknowledged the engagement terms on ${audit.managementAcknowledgedOn}.`
+          : preliminary
+            ? "Name the responsible management people and the acknowledgement date before moving this Audit to in progress."
+            : "Name the management people who acknowledged the approved engagement terms and record the actual acknowledgement date on or after approval and no later than fieldwork start. Each person must have been active on that date.",
+        audit
+      )
+    );
+  }
+  return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and the current management owner who authorizes and coordinates the engagement.", items);
 }
 
 function fieldworkStage(audit, sections) {
@@ -520,11 +881,14 @@ async function documentsStage(loaded, audit, byId) {
         .find((record) => (
           record?.type === "evidence"
           && record.status === "verified"
+          && record.artifactKind === "signed-record"
+          && record.artifactSubtype === "signed-management-representation"
           && (record.filePaths || []).length
         ));
-      if (!signedEvidence) contentIssues.push("Link a verified fixed-format copy of the signed representation letter as evidence.");
-      else if (!signedEvidence.collectedOn || (engagementEnd && signedEvidence.collectedOn < engagementEnd)) {
-        contentIssues.push(`The signed representation must be dated on or after the engagement ${audit.auditKind === "soc-2-type-1" ? "date" : "period end"}.`);
+      if (!signedEvidence) contentIssues.push("Link verified signed-record Evidence with subtype signed-management-representation and a fixed-format copy of the signed letter.");
+      else {
+        const dateIssue = signedRepresentationDateIssue(signedEvidence, audit, loaded.model.modelVersion);
+        if (dateIssue) contentIssues.push(dateIssue);
       }
     }
     const complete = Boolean(
@@ -542,7 +906,7 @@ async function documentsStage(loaded, audit, byId) {
     );
     const representationLater = definition.kind === "soc2-management-representation"
       && audit
-      && !["fieldwork", "complete"].includes(audit.status);
+      && ["planned", "in-progress", "fieldwork"].includes(audit.status);
     items.push(item(
       definition.kind,
       complete ? "complete" : representationLater ? "later" : "action",
@@ -556,6 +920,24 @@ async function documentsStage(loaded, audit, byId) {
     ));
   }
   return stage("documents", "Management Documents", "Prepare management's description, assertions, completeness work, and closing representations.", items);
+}
+
+export function signedRepresentationDateIssue(evidence, audit, modelVersion) {
+  const engagementEnd = coverageEnd(audit?.coverage);
+  const timingMessage = `The signed representation must be dated on or after the engagement ${audit?.auditKind === "soc-2-type-1" ? "date" : "period end"}.`;
+  if (String(modelVersion) !== "4") {
+    return !evidence?.collectedOn || (engagementEnd && evidence.collectedOn < engagementEnd)
+      ? timingMessage
+      : null;
+  }
+  const signedOn = evidence?.businessEventAt?.slice(0, 10);
+  if (!signedOn) {
+    return "Record the letter's actual signing timestamp in the signed Evidence businessEventAt field. Collection time does not prove when management made the representations.";
+  }
+  if (audit?.reportDate && signedOn !== audit.reportDate) {
+    return `The written representations are dated ${signedOn}; AT-C 205 requires them to be dated as of the practitioner's report date, ${audit.reportDate}.`;
+  }
+  return engagementEnd && signedOn < engagementEnd ? timingMessage : null;
 }
 
 function evidenceStage(audit, records, byId, model) {
@@ -710,8 +1092,35 @@ function populationsStage(audit, records, byId, model) {
   );
 }
 
-function auditorStage() {
+function auditorStage(audit, byId, modelVersion) {
+  const subsequentEventsIssue = audit ? subsequentEventsReviewIssue(audit) : null;
+  const subsequentEventsStatus = !audit || ["planned", "in-progress", "fieldwork"].includes(audit.status)
+    ? "later"
+    : subsequentEventsIssue ? "action" : "complete";
+  const signatoryIssue = audit && ["report-draft", "issued", "delivered", "complete"].includes(audit.status)
+    ? signatoryAppointmentIssue(audit, byId)
+    : null;
+  const signatoryStatus = !audit || ["planned", "in-progress", "fieldwork"].includes(audit.status)
+    ? "later"
+    : signatoryIssue ? "action" : "complete";
+  const managementItems = String(modelVersion) === "4" ? [
+    item(
+      "subsequent-events",
+      subsequentEventsStatus,
+      "Review subsequent events through the report date",
+      subsequentEventsIssue?.message || "Management recorded the subsequent-events review through the CPA report date.",
+      audit || { type: "audit" }
+    ),
+    item(
+      "signatory-authority",
+      signatoryStatus,
+      "Confirm signatory authority",
+      signatoryIssue?.message || "The linked Appointments establish the signers' authority on the CPA report date.",
+      audit || { type: "audit" }
+    )
+  ] : [];
   return stage("auditor", "Fieldwork and Report", "filegrc prepares the record set but does not make the CPA firm's independent judgments.", [
+    ...managementItems,
     item("firm-eligibility", "external", "Firm eligibility and independence", "Confirm directly with the engagement partner that the firm and signing practitioner meet applicable licensing, peer-review, ethics, and independence requirements. Keep the signed engagement terms with the audit record if management needs a copy."),
     item("sampling", "external", "Sample selection and independent testing", "The auditor chooses samples, performs tests, evaluates exceptions, and decides whether more work is needed."),
     item("report", "external", "Report and opinion", "Management reviews and signs its representations. The auditor issues the final report and opinion."),
@@ -804,8 +1213,9 @@ async function primaryMarkdown(loaded, record) {
   if (!item) return "";
   try {
     return await readFile(resolveDataPath(loaded.root, item.path), "utf8");
-  } catch {
-    return "";
+  } catch (error) {
+    if (error.code === "ENOENT") return "";
+    throw error;
   }
 }
 
@@ -988,7 +1398,13 @@ function materializeManagementMarkdown(source, audit, records) {
     .replaceAll("[selected categories]", categories || "[selected categories]")
     .replaceAll(
       "[Carve-out, inclusive, or not applicable]",
-      audit.subserviceMethod ? displayValue(audit.subserviceMethod) : "[Carve-out, inclusive, or not applicable]"
+      audit.subserviceConclusion
+        ? audit.subserviceConclusion === "not-applicable"
+          ? `Not applicable: ${audit.subserviceConclusionRationale || "[explain the conclusion]"}`
+          : `${[...new Set((audit.subserviceTreatments || []).map(({ method }) => displayValue(method)))].join(" and ") || "[record subservice treatments]"}: ${audit.subserviceConclusionRationale || "[explain the conclusion]"}`
+        : audit.subserviceMethod
+          ? displayValue(audit.subserviceMethod)
+          : "[Carve-out, inclusive, or not applicable]"
     );
 }
 
@@ -1010,14 +1426,15 @@ function stage(id, title, description, items) {
   return { id, title, description, items };
 }
 
-function item(id, status, title, message, resource = {}) {
+function item(id, status, title, message, resource = {}, options = {}) {
   return {
     id,
     status,
     title,
     message,
     ...(resource.type ? { resourceType: resource.type } : {}),
-    ...(resource.id ? { resourceId: resource.id } : {})
+    ...(resource.id ? { resourceId: resource.id } : {}),
+    ...(options.commands?.length ? { commands: options.commands } : {})
   };
 }
 

@@ -195,6 +195,7 @@ The model owns each activity name, allowed recurrence modes and scope types, its
 | `asset-registration` | Asset registration | `event` | `person`, `asset` | `asset` | `asset`, `evidence` |
 | `backup-test` | Backup test | `calendar`, `event` | `system`, `component` | `backup-test` | `backup-test` |
 | `change-review` | Change review | `calendar`, `event` | `system`, `policy`, `document`, `control`, `component` | `meeting` | `meeting`, `policy`, `control`, `evidence` |
+| `control-design-review` | Control design and evidence-path review | `calendar`, `event` | `control`, `program`, `system`, `component` | `control-activity` | `control-activity` |
 | `continuity-review` | Continuity review | `calendar`, `event` | `document`, `system`, `component` | `control-activity` | `control-activity` |
 | `document-review` | Document review | `calendar`, `event` | `document` | `document` | `document`, `evidence` |
 | `exception-review` | Exception review | `calendar`, `event` | `exception` | `exception` | `exception`, `evidence` |
@@ -208,6 +209,7 @@ The model owns each activity name, allowed recurrence modes and scope types, its
 | `oversight-meeting` | Oversight meeting | `calendar`, `event` | `team` | `meeting` | `meeting` |
 | `penetration-test` | Penetration test | `calendar`, `event` | `system`, `component` | `penetration-test` | `penetration-test` |
 | `performance-review` | Performance review | `calendar`, `event` | `person` | `control-activity` | `control-activity` |
+| `workforce-review` | Workforce screening and competence review | `calendar`, `event` | `person` | `control-activity` | `control-activity` |
 | `personal-device-approval` | Personal device approval | `event` | `person`, `asset` | `control-activity` | `control-activity` |
 | `policy-review` | Policy review | `calendar`, `event` | `policy`, `document` | `policy-review` | `policy-review` |
 | `remediation` | Remediation | `calendar`, `event` | `finding`, `action-item`, `incident`, `vulnerability` | `action-item` | `action-item`, `finding` |
@@ -747,7 +749,7 @@ Timing: A Control may be implemented while its governing Policy is approved but 
 When reviewing:
 
 - Confirm the Control is needed for the applicable Requirements, customer Commitments, and current service boundary.
-- Confirm the procedure describes what people actually do.
+- Confirm the procedure describes what people actually do, and keep starter-selection and FileGRC record-entry instructions out of the Control statement and activity. A Control may name FileGRC when FileGRC is an actual operating Component or evidence source.
 - Use a not-applicable, external, or zero-population conclusion only when it is factually true for the current scope.
 
 Default sources: `policy-information-security`
@@ -961,6 +963,12 @@ Policy basis: Policies rely on governed documents for detailed plans, procedures
 
 Timing: Follow the linked review Obligation. Starter governed documents are reviewed at least annually and after material changes or use, with an approver who is separate from the owner.
 
+When reviewing:
+
+- Write companion Markdown as a standalone company artifact. Keep FileGRC commands, record-entry instructions, readiness states, relationship IDs, and starter-library mechanics in guides and calculated work unless FileGRC itself is the document's subject.
+- Replace every bracketed prompt with a reviewed fact before approval, activation, signature, or delivery.
+- Describe the business fact in ordinary terms and keep resource relationships in the Document record and supporting records.
+
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
 Path: `data/documents/<id>.json`
@@ -1152,6 +1160,12 @@ Instructions: Maintain the training content people must complete, along with its
 Policy basis: The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.
 
 Timing: Assign security training at onboarding, complete it within 30 days, repeat at least annually, and reassign after relevant material changes or incidents.
+
+When reviewing:
+
+- Write workforce-facing material as standalone company training. Keep FileGRC commands, record-entry instructions, and data-model terms in guides and assignment records.
+- State required behavior without implying that every user needs a paid product or that customer MFA applies without an approved requirement.
+- Tie each completion to the exact training revision the person reviewed.
 
 Default sources: `policy-information-security`
 
@@ -1840,13 +1854,13 @@ One internal or external penetration test, including provider, scope, period, me
 
 Instructions: Record each penetration test, including its provider, scope, period, result, and evidence.
 
-Policy basis: The information security policy requires independent testing of the in-scope service’s external attack surface and tracked resolution of confirmed results.
+Policy basis: The information security policy requires management to decide whether penetration testing is needed from exposure, material changes, customer commitments, technical capability, and risk, then track confirmed findings when testing is performed.
 
-Timing: Perform at least annually and reconsider scope after material attack-surface or architecture changes.
+Timing: Use the cadence approved in the applicable Control, customer commitment, or risk decision. Review applicability at least annually and after material attack-surface or architecture changes; the review may conclude that no penetration test is required.
 
 When reviewing:
 
-- Confirm the tester was independent and the scope covered the current attack surface.
+- Confirm the testing decision, tester independence when required, scope, method, and cadence match the approved reason for testing.
 - Confirm the report supports the recorded result.
 - Confirm every issue has remediation, an accepted exception, or verified closure.
 
@@ -1964,6 +1978,12 @@ Policy basis: The information security policy requires retained proof from autho
 
 Timing: Create an Evidence Artifact only for a real retained artifact or approved reference. Identify its source Component or source records, Controls, collection and verification facts, coverage, revision, and classification.
 
+When reviewing:
+
+- Use artifactKind signed-record and artifactSubtype signed-management-representation for the fixed signed management representation letter.
+- For a signed management representation, record the actual signing timestamp in businessEventAt; collectedOn records when FileGRC received the artifact, not when management signed it.
+- Use artifactKind third-party-report and artifactSubtype soc2-report for the final report issued by the CPA firm, and record the report's actual issuance timestamp in sourceGeneratedAt.
+
 Default sources: `policy-information-security`
 
 Path: `data/evidence/<id>/evidence.json`
@@ -2077,7 +2097,7 @@ Record Markdown: shown by default as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `complete`, `externally-managed`, `canceled` |
-| `profileId` | enum | Yes | Completion profile Values: `endpoint-verification`, `inventory-review`, `log-review`, `network-review`, `continuity-review`, `performance-review`, `personal-device-approval`, `security-scan` |
+| `profileId` | enum | Yes | Completion profile Values: `endpoint-verification`, `inventory-review`, `log-review`, `network-review`, `continuity-review`, `control-design-review`, `performance-review`, `workforce-review`, `personal-device-approval`, `security-scan` |
 | `obligationId` | id | No | References: `obligation` |
 | `controlIds` | array of id | No | References: `control` |
 | `scopeResourceIds` | array of id | Yes | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage` |
@@ -2116,7 +2136,7 @@ Markdown companions:
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `proposed`, `active`, `paused`, `retired` |
-| `activityType` | enum | Yes | Values: `access-change`, `access-provisioning`, `access-removal`, `access-review`, `alert-path-test`, `asset-recovery`, `asset-registration`, `backup-test`, `change-review`, `continuity-review`, `document-review`, `exception-review`, `exercise`, `incident-retrospective`, `endpoint-verification`, `inventory-review`, `log-review`, `meeting`, `network-review`, `oversight-meeting`, `penetration-test`, `performance-review`, `personal-device-approval`, `policy-review`, `remediation`, `retention-review`, `risk-assessment`, `role-training`, `security-scan`, `training`, `vendor-contract`, `vendor-remediation`, `vendor-review`, `vulnerability-scan`, `workforce-acknowledgement` Values come from the `obligationActivities` registry. |
+| `activityType` | enum | Yes | Values: `access-change`, `access-provisioning`, `access-removal`, `access-review`, `alert-path-test`, `asset-recovery`, `asset-registration`, `backup-test`, `change-review`, `control-design-review`, `continuity-review`, `document-review`, `exception-review`, `exercise`, `incident-retrospective`, `endpoint-verification`, `inventory-review`, `log-review`, `meeting`, `network-review`, `oversight-meeting`, `penetration-test`, `performance-review`, `workforce-review`, `personal-device-approval`, `policy-review`, `remediation`, `retention-review`, `risk-assessment`, `role-training`, `security-scan`, `training`, `vendor-contract`, `vendor-remediation`, `vendor-review`, `vulnerability-scan`, `workforce-acknowledgement` Values come from the `obligationActivities` registry. |
 | `recurrence` | object (`recurrence`) | Yes |  |
 | `triggerPrompt` | string | No |  |
 | `window` | object (`obligation-window`) | No |  |
@@ -2280,6 +2300,8 @@ Record Markdown: available when needed as an implicit companion file.
 | `priorAuditId` | id | No | Prior audit References: `audit` |
 | `programId` | id | Yes | Program References: `program` |
 | `subserviceTreatments` | array of object (`audit-subservice-treatment`) | No | Subservice treatments |
+| `subserviceConclusion` | enum | No | Subservice conclusion Values: `not-applicable`, `identified` |
+| `subserviceConclusionRationale` | string | No | Subservice conclusion rationale |
 
 #### `audit-population`
 

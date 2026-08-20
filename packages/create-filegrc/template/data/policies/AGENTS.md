@@ -10,7 +10,9 @@ Use the `content` Markdown slot for the policy text. Keep ownership and approval
 
 Keep a Policy `draft` until its text, owner, scope, related Requirements and Controls, review Obligation, and acknowledgement requirement are ready for independent review. Move it to `approved` when management accepts the exact content revision. Approval does not require every linked Control to be implemented and does not make the Policy effective.
 
-The Security starter contains one Information Security Policy. Add another Policy only when management expands the program scope or has a distinct approval audience, owner, or legal requirement.
+The Security starter contains one consolidated Information Security Policy. Its section headings use common policy-family names so a customer, auditor, or questionnaire reviewer can locate topics such as access control, personnel security, vulnerability management, incident response, continuity, and Vendor risk. Cite the consolidated Policy and exact section when that accurately answers a request. Do not claim that each section is a separate document, that the heading proves implementation, or that FileGRC supplies a certification.
+
+Add another Policy only when management expands the program scope or has a distinct approval audience, owner, or legal requirement.
 
 During Step 3, implement Controls while the governing Policy is approved but inactive. Configure and enable its schedules, which remain dormant. Use the Controls-page cutover or `activate-policies --scaffold` to review the approved Policy. Before selecting it for activation:
 
@@ -25,3 +27,5 @@ The independent Policy approver is a management reviewer, not the CPA auditor. A
 If a proposed effective date has passed, choose a current or future activation date. Never backdate adoption.
 
 For a material revision, preserve Git history, obtain a new approval, and require a new acknowledgement when the audience’s responsibilities changed. Do not reuse the audit firm as a management approver without confirming independence.
+
+After updating the `filegrc` package, run `npx filegrc policy-library` to review optional starter updates. The command prints exact diffs and skips customized or adopted Policy content. It writes only after you accept the named proposal and exact revision with the printed `--accept`, `--proposal-revision`, and `--yes` command. Acceptance fails if the proposal changed after review. It does not approve the Policy or mark a linked Control implemented.

@@ -173,9 +173,9 @@ npx filegrc program-readiness --json
 
 The Control stage reports Control implementation items, evidence-family source checks, governed-plan blockers, and per-Policy activation assessments. Resolve them through the source records:
 
-1. Choose an existing System or scaffold the System that is authoritative for the family.
-2. Set the System to `active`, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
-3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the System’s Record Markdown.
+1. Choose an existing Component or scaffold the Component that is authoritative for the family.
+2. Set the Component to `active`, connect it to each bounded System through `systemUses` with the `evidence-source` role and a rationale, add the matching `evidenceSourceKinds`, and name current `evidenceOwnerIds`.
+3. Put the exact report, filters, date range, timezone, export format, and reconciliation steps in the Component’s Record Markdown.
 4. Add the Component ID to `evidenceSourceComponentIds` on every Control in the family that it supports.
 5. Finish the Control’s owner, procedure, scope, operation pattern, mappings, and implementation date. Put every calendar or event schedule in an Obligation.
 6. Enable each required Obligation. It stays dormant while a governing Policy is inactive.
@@ -208,6 +208,8 @@ npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 
 Run Program Readiness before creating the normal audit engagement. Step 2 checks independent Policy approval without requiring activation. Evidence Readiness separately checks active Policies, implemented Controls, enabled schedules, and evidence mapping without an audit ID. Fix readiness errors in Policy, Control, Component, System, governed schedule, and Evidence records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
 
+For a real engagement, select the Program and its bounded Systems, a framework containing the complete CC1.1 through CC9.2 Security Common Criteria set, all nine SOC 2 Description Criteria, any optional Trust Services Categories in scope, and Controls that cover every applicable selected Trust Services criterion. Treat every Security Common Criterion as applicable. For an included optional category, keep a criterion in the framework when management judges it not relevant and record the limited circumstances in the System Description's DC8 disclosure. Do not omit any of the nine Description Criteria. Use `coverage.kind: "as-of"` with `on` for Type 1 or `coverage.kind: "range"` with `startsOn` and `endsOn` for Type 2. Record the Git commit for management's complete scope review in `scopeRevision`. Record `subserviceConclusion` and its rationale. When subservice organizations are identified, each `subserviceTreatments` item must connect one Vendor to its supplied Components within a selected System and choose the carve-out or inclusive method. Inclusive treatments also need the selected Controls that operate on those Components.
+
 ## Finish every change
 
 ```sh
@@ -217,6 +219,6 @@ git status --short
 git diff
 ```
 
-Review every changed JSON, Markdown, and attachment. Confirm the diff contains no secrets, temporary files, source exports with prohibited data, or derived `.filegrc/` output. Make one focused commit whose message says why the compliance record changed.
+Review every changed JSON, Markdown, and attachment. Confirm the diff contains no plaintext credentials, private keys, tokens, recovery codes, improperly controlled ciphertext, temporary files, source exports with prohibited data, or derived `.filegrc/` output. Make one focused commit whose message says why the compliance record changed.
 
 These commands are for CLI and agent work, which continues to manage Git explicitly. Browser saves in trunk mode commit automatically from the configured authoritative branch, then push in the background while the UI reports `Syncing`. Do not start another write until it reports `Synced`. Do not use a feature branch as a record approval state, and never include application changes when this workspace lives in a monorepo.

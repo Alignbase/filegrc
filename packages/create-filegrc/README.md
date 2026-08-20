@@ -28,7 +28,7 @@ For one noninteractive run, pass company and service fields together or use `--c
     "serviceName": "Example Service",
     "boundary": "The production service and supporting infrastructure.",
     "criticality": "high",
-    "dataClassification": "Confidential",
+    "classificationId": "confidential",
     "internetExposed": true,
     "programGoal": "type-2"
   }

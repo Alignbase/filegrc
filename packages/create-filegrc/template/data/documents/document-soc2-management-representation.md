@@ -17,4 +17,4 @@ Final letter received from auditor: [Date]
 
 Management signer and title: [Name and title]
 
-Signed letter evidence record: [Evidence ID]
+Signed letter reference: [Approved storage location or evidence reference]

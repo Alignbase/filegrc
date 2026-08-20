@@ -8,11 +8,13 @@ import { planObligations } from "./obligations.js";
 import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { resolveProgram } from "./program.js";
 import { currentCalendarDate } from "./time.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { assessWorkflow } from "./workflow.js";
 import { measureTiming } from "./timing.js";
+import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -82,6 +84,11 @@ async function createAppStateUnlocked(input, options) {
     asOf,
     generatedAt
   }));
+  const activeProgram = resolveProgram(loaded);
+  const applicabilityConstraints = Object.fromEntries(loaded.resources.flatMap((record) => {
+    const constraint = soc2RequirementApplicabilityConstraint(record, activeProgram, loaded.model.modelVersion);
+    return constraint ? [[record.id, constraint]] : [];
+  }));
   const audits = loaded.resources.filter((record) => record.type === "audit");
   const auditPreparations = await measureTiming("state-audit-preparation", async () => Object.fromEntries(await Promise.all(
     (audits.length ? audits : [null]).map(async (audit) => {
@@ -140,6 +147,7 @@ async function createAppStateUnlocked(input, options) {
     },
     obligations,
     collectionReviews,
+    applicabilityConstraints,
     programReadiness,
     auditPreparations,
     workflow,

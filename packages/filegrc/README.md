@@ -36,6 +36,14 @@ npx filegrc evidence-packet --start 2026-01-01 --end 2026-06-30 --audit audit-id
 
 ## Upgrade an existing workspace
 
+Package updates may include optional starter Policy and Control revisions. Review them without writing:
+
+```sh
+npx filegrc policy-library
+```
+
+The command shows an exact diff only when the current text still matches the prior starter default. It skips customized, approved, active, superseded, and retired Policy content. Accept one named proposal revision only with the command printed by the review, which includes `--accept`, `--proposal-revision`, and `--yes`. Acceptance fails if the proposal changed after review. It changes only the listed defaults and does not approve a Policy, activate it, or mark a Control implemented.
+
 The normal runtime uses data model v4. Start a model v3 upgrade with a read-only preview:
 
 ```sh

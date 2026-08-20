@@ -10,6 +10,9 @@ import {
   BROWSER_VALIDATION,
   commitAndPushWorkspace,
   commitWorkspace,
+  getChangedDataPathsSinceRevision,
+  getFileAtRevision,
+  getFileHistory,
   GitOperationError,
   hasGitRevision,
   pullWorkspace,
@@ -31,14 +34,35 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   await makeWorkspace(root);
   await writeFile(join(parent, "outside.txt"), "outside\n", "utf8");
   await writeFile(join(root, "rename-me.txt"), "rename boundary test\n", "utf8");
+  assert.deepEqual(
+    getWorkspaceHistories(root, ["data/people/person-owner.json"])
+      .get("data/people/person-owner.json"),
+    []
+  );
+  assert.throws(
+    () => getWorkspaceHistories(root, ["data/people/person-owner.json"], 12, { strict: true }),
+    /Git history is unavailable/
+  );
   await git(parent, ["init"]);
   await git(parent, ["config", "user.name", "Test User"]);
   await git(parent, ["config", "user.email", "test@example.test"]);
   await git(parent, ["add", "."]);
   await git(parent, ["commit", "-m", "Initialize nested workspace"]);
-  assert.equal(hasGitRevision(root, getGitSummary(root).commit), true);
+  const initialCommit = getGitSummary(root).commit;
+  assert.equal(hasGitRevision(root, initialCommit), true);
+  assert.equal(JSON.parse(getFileAtRevision(root, initialCommit, "data/people/person-owner.json")).title, "Program Owner");
   assert.equal(hasGitRevision(root, "0000000000000000000000000000000000000000"), false);
   assert.equal(hasGitRevision(root, "not-a-commit"), false);
+  assert.equal(getFileHistory(root, "data/../outside.txt"), null);
+  assert.equal(getFileHistory(root, "/data/people/person-owner.json"), null);
+  assert.throws(
+    () => getFileAtRevision(root, initialCommit, "data/../outside.txt"),
+    /Git commit and a data\/ path/
+  );
+  assert.throws(
+    () => getFileAtRevision(root, initialCommit, "data\\people\\person-owner.json"),
+    /Git commit and a data\/ path/
+  );
 
   await git(parent, ["mv", "compliance/rename-me.txt", "renamed-outside.txt"]);
   assert.equal((await getRepositorySnapshot(root, { fresh: true })).clean, false);
@@ -64,6 +88,11 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
 
   const histories = getWorkspaceHistories(root, ["data/people/person-owner.json"]);
   assert.equal(histories.get("data/people/person-owner.json").length, 1);
+  assert.equal(
+    getWorkspaceHistories(root, ["data/people/person-owner.json"], 12, { strict: true })
+      .get("data/people/person-owner.json").length,
+    1
+  );
 
   await assert.rejects(commitWorkspace(root, "Invalid\nmessage"), /one line/);
   const committed = await commitWorkspace(root, "Record program owner department");
@@ -86,6 +115,11 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
     title: "Secondary Reviewer",
     status: "active"
   }, null, 2)}\n`, "utf8");
+  assert.deepEqual(getChangedDataPathsSinceRevision(root, initialCommit).sort(), [
+    "data/people/person-owner.json",
+    "data/people/person-secondary.json"
+  ]);
+  assert.equal(getChangedDataPathsSinceRevision(root, "not-a-revision"), null);
   const running = await serveWorkspace(root, { port: 0 });
   try {
     const invalidResponse = await fetch(`${running.url}/api/commit`, {

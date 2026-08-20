@@ -21,6 +21,7 @@ import {
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { resolveProgram } from "./program.js";
+import { signatoryAppointmentIssue, soc2ReportEvidenceIssue, subsequentEventsReviewIssue } from "./soc2.js";
 import { planReconciliation } from "./reconciliation.js";
 import { currentCalendarDate } from "./time.js";
 import { measureTiming } from "./timing.js";
@@ -304,15 +305,24 @@ function programFindings(program) {
 }
 
 function auditFindings(preparation) {
-  return preparation.stages.flatMap((stage) => stage.items.map((item) => normalizeFinding(
-    `audit.${preparation.audit?.id || "unscoped"}.${stage.id}.${item.id}`,
-    item,
-    {
-      assessment: stage.id === "auditor" ? "audit-closure" : "audit-readiness",
-      stage: stage.id,
-      auditId: preparation.audit?.id || null
-    }
-  )));
+  return preparation.stages.flatMap((stage) => stage.items.map((item) => {
+    const finding = normalizeFinding(
+      `audit.${preparation.audit?.id || "unscoped"}.${stage.id}.${item.id}`,
+      item,
+      {
+        assessment: stage.id === "auditor" ? "audit-closure" : "audit-readiness",
+        stage: stage.id,
+        auditId: preparation.audit?.id || null
+      }
+    );
+    if (
+      finding.state === "ready"
+      && !finding.actions.length
+      && finding.subject?.type === "audit"
+      && preparation.audit
+    ) finding.actions = [mutationAction(preparation.audit)];
+    return finding;
+  }));
 }
 
 function validationFindings(validation, loaded) {
@@ -872,6 +882,7 @@ async function assessPeriodHealth(loaded, options) {
 function auditLifecycleFindings(loaded, audits, program) {
   if (!["3", "4"].includes(String(loaded.model.modelVersion))) return [];
   const target = program || resolveProgram(loaded);
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const findings = [];
   for (const audit of audits) {
     if (!(audit.controlIds || []).length) {
@@ -917,44 +928,53 @@ function auditLifecycleFindings(loaded, audits, program) {
         ));
       }
     }
-    if (!["planning", "draft"].includes(audit.status)) {
-      if (!audit.engagementTermsDocumentId) {
-        findings.push(auditLifecycleFinding(
-          audit,
-          "engagement-terms",
-          "audit-readiness",
-          "Link the engagement terms",
-          "Record the CPA firm's engagement terms without representing its professional judgments as management facts."
-        ));
-      }
-      if (!(audit.managementAcknowledgedByIds || []).length || !audit.managementAcknowledgedOn) {
-        findings.push(auditLifecycleFinding(
-          audit,
-          "management-acknowledgement",
-          "audit-readiness",
-          "Record management acknowledgement",
-          "Name who acknowledged the engagement terms and the actual acknowledgement date."
-        ));
-      }
-    }
     const lateStage = ["report-draft", "issued", "delivered", "complete"].includes(audit.status);
-    if (lateStage && !audit.subsequentEventsReview) {
+    const subsequentEventsIssue = lateStage ? subsequentEventsReviewIssue(audit) : null;
+    if (subsequentEventsIssue) {
       findings.push(auditLifecycleFinding(
         audit,
         "subsequent-events",
         "audit-readiness",
         "Complete the subsequent-events review",
-        "Review incidents, changes, findings, subservice coverage, representations, and system-description disclosures through the report date."
+        subsequentEventsIssue.message
       ));
     }
-    if (["fieldwork", "report-draft", "issued", "delivered", "complete"].includes(audit.status) && !audit.packetDelivery) {
+    const signatoryIssue = String(loaded.model.modelVersion) === "4" && lateStage
+      ? signatoryAppointmentIssue(audit, byId)
+      : null;
+    if (signatoryIssue) {
+      findings.push(auditLifecycleFinding(
+        audit,
+        "signatory-authority",
+        "audit-readiness",
+        "Confirm authorized signatories",
+        signatoryIssue.message
+      ));
+    }
+    const packetIssue = ["fieldwork", "report-draft", "issued", "delivered", "complete"].includes(audit.status)
+      ? packetDeliveryIssue(audit.packetDelivery)
+      : null;
+    if (packetIssue) {
       findings.push(auditLifecycleFinding(
         audit,
         "packet-delivery",
         "delivery-readiness",
         "Approve and record packet delivery",
-        "Record the least-disclosure review, redaction decision, recipient, delivery system, exact packet revision and manifest, management approval, delivery date, and receipt."
+        packetIssue
       ));
+    }
+    if (["issued", "delivered", "complete"].includes(audit.status)) {
+      const reportEvidence = loaded.resources.find((record) => record.id === audit.reportEvidenceId);
+      const reportIssue = soc2ReportEvidenceIssue(reportEvidence, audit, loaded.model.modelVersion);
+      if (reportIssue) {
+        findings.push(auditLifecycleFinding(
+          audit,
+          "report-evidence",
+          "audit-closure",
+          "Link the exact issued SOC 2 report",
+          reportIssue.message
+        ));
+      }
     }
     if (audit.status !== "complete") {
       const nextStep = auditClosureNextStep(audit.status);
@@ -991,16 +1011,49 @@ function auditLifecycleFindings(loaded, audits, program) {
       ));
     }
     for (const [field, title, message] of [
-      ["reportEvidenceId", "Link the issued report", "Link the exact issued report evidence and its coverage."],
       ["retentionDecision", "Record the retention decision", "Record the approved retention and authorized distribution decision."],
-      ["carryForwardActionIds", "Review carry-forward work", "Record the next-period actions, including an explicit empty list when no carry-forward work remains."],
-      ["signatoryAppointmentIds", "Confirm authorized signatories", "Link active authority Appointments for management assertion and representation signers."]
+      ["carryForwardActionIds", "Review carry-forward work", "Record the next-period actions, including an explicit empty list when no carry-forward work remains."]
     ]) {
       if (field === "carryForwardActionIds" ? Array.isArray(audit[field]) : present(audit[field])) continue;
       findings.push(auditLifecycleFinding(audit, field, "audit-closure", title, message));
     }
   }
   return findings;
+}
+
+export function packetDeliveryIssue(delivery) {
+  if (!delivery) {
+    return "Record the least-disclosure review, redaction decision, recipient, delivery system, exact packet revision and manifest, management approval, delivery date, and receipt.";
+  }
+  if (!(delivery.classificationReviewedByIds || []).length || !(delivery.approvedByIds || []).length) {
+    return "Name the people who performed the least-disclosure review and approved the delivery.";
+  }
+  for (const [field, label] of [
+    ["redactionDecision", "redaction decision"],
+    ["recipient", "recipient"],
+    ["deliverySystem", "delivery system"],
+    ["packetCommit", "packet Git revision"],
+    ["manifestChecksum", "manifest checksum"],
+    ["receiptReference", "delivery receipt reference"]
+  ]) {
+    if (!String(delivery[field] || "").trim()) return `Record the ${label} for the delivered packet.`;
+  }
+  if (!/^[a-f0-9]{40}$/i.test(delivery.packetCommit)) {
+    return "Record the delivered packet's exact 40-character Git commit.";
+  }
+  if (!/^(?:sha256:)?[a-f0-9]{64}$/i.test(delivery.manifestChecksum)) {
+    return "Record the packet manifest checksum as a SHA-256 digest.";
+  }
+  if (
+    !delivery.classificationReviewedOn
+    || !delivery.approvedOn
+    || !delivery.deliveredOn
+    || delivery.classificationReviewedOn > delivery.approvedOn
+    || delivery.approvedOn > delivery.deliveredOn
+  ) {
+    return "Record chronological least-disclosure review, management approval, and delivery dates.";
+  }
+  return null;
 }
 
 function normalizeFinding(code, item, context) {
@@ -1451,13 +1504,9 @@ function periodFinding(key, title, message, state, subject, actions, dependencie
 
 function auditClosureNextStep(status) {
   const steps = {
-    planning: {
+    planned: {
       title: "Confirm the engagement and start audit preparation",
       message: "Link the agreed engagement terms, confirm scope and management acknowledgement, then move the audit to in progress."
-    },
-    draft: {
-      title: "Finalize the draft engagement",
-      message: "Resolve the draft scope and ownership, link the agreed engagement terms, then move the audit to in progress."
     },
     "in-progress": {
       title: "Begin fieldwork",

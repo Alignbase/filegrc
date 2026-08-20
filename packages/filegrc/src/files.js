@@ -208,12 +208,25 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
   const creates = changes.create || [];
   const updates = changes.update || [];
   const moves = changes.movePaths || [];
+  const contentUpdates = changes.contentUpdates || {};
   const expectedRevisions = changes.expectedRevisions || {};
-  if (!Array.isArray(creates) || !Array.isArray(updates) || !Array.isArray(moves) || (!creates.length && !updates.length && !moves.length)) {
-    throw new Error("A resource batch needs at least one create or update.");
+  if (
+    !Array.isArray(creates)
+    || !Array.isArray(updates)
+    || !Array.isArray(moves)
+    || (!creates.length && !updates.length && !moves.length && !Object.keys(contentUpdates).length)
+  ) {
+    throw new Error("A resource batch needs at least one create, update, or content update.");
   }
   if (Array.isArray(expectedRevisions) || typeof expectedRevisions !== "object") {
     throw new Error("Batch expected revisions must be keyed by resource ID.");
+  }
+  if (Array.isArray(contentUpdates) || typeof contentUpdates !== "object") {
+    throw new Error("Batch content updates must be keyed by resource ID.");
+  }
+  const expectedContentRevisions = changes.expectedContentRevisions || {};
+  if (Array.isArray(expectedContentRevisions) || typeof expectedContentRevisions !== "object") {
+    throw new Error("Batch expected content revisions must be keyed by resource ID.");
   }
   const loaded = await loadWorkspace(input);
   const workspaceUpdate = updates.find((record) => (
@@ -248,6 +261,8 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
   const existingById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const ids = new Set();
   const writes = [];
+  const contentWrites = [];
+  const preparedContentIds = new Set();
   const allowedPathMoves = new Set();
   for (const record of creates) {
     validateBatchRecord(record, ids);
@@ -290,7 +305,29 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
         if (error.code !== "ENOENT") throw error;
       }
     }
-    writes.push({ operation: path === previousPath ? "update" : "move-update", path, previousPath, record, previous, fileMode: mode });
+    const hasContentUpdate = Object.hasOwn(contentUpdates, record.id);
+    const recordContentWrites = await prepareContentWrites(loaded, record, contentUpdates[record.id], {
+      expectedRevisions: expectedContentRevisions[record.id],
+      requireExpectedRevisions: hasContentUpdate
+    });
+    if (hasContentUpdate) preparedContentIds.add(record.id);
+    contentWrites.push(...recordContentWrites);
+    const nextRecord = hasContentUpdate
+      ? await prepareApprovalBinding(loaded, record, recordContentWrites, existing.record)
+      : record;
+    writes.push({ operation: path === previousPath ? "update" : "move-update", path, previousPath, record: nextRecord, previous, fileMode: mode });
+  }
+  for (const resourceId of Object.keys(contentUpdates)) {
+    if (preparedContentIds.has(resourceId)) continue;
+    const existing = existingById.get(resourceId);
+    if (!existing) throw new Error(`Resource "${resourceId}" was not found.`);
+    if (approvalBound(existing.record)) {
+      throw new Error(`Batch content for approved or active resource "${resourceId}" needs a matching resource update and validation of its approval binding.`);
+    }
+    contentWrites.push(...await prepareContentWrites(loaded, existing.record, contentUpdates[resourceId], {
+      expectedRevisions: expectedContentRevisions[resourceId],
+      requireExpectedRevisions: true
+    }));
   }
   const pathMoves = [];
   const seenMovePaths = new Set();
@@ -317,8 +354,13 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
     pathMoves.push({ from, to, mode });
   }
   const written = [];
+  const writtenContent = [];
   const moved = [];
   try {
+    for (const item of contentWrites) {
+      await writeTextAtomic(item.path, item.source);
+      writtenContent.push(item);
+    }
     for (const item of writes) {
       await writeAtomic(item.path, item.record, { exclusive: item.operation === "create" });
       written.push(item);
@@ -359,6 +401,14 @@ async function applyResourceBatchUnlocked(input, changes = {}) {
           await rm(item.path, { force: true });
           await writeTextAtomic(item.previousPath, item.previous, { mode: item.fileMode });
         } else await writeTextAtomic(item.path, item.previous, { mode: item.fileMode });
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError.message);
+      }
+    }
+    for (const item of writtenContent.reverse()) {
+      try {
+        if (item.previous === null) await rm(item.path, { force: true });
+        else await writeTextAtomic(item.path, item.previous);
       } catch (rollbackError) {
         rollbackErrors.push(rollbackError.message);
       }

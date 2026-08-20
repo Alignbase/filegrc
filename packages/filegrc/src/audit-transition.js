@@ -37,6 +37,8 @@ export async function planNextAuditCycle(input = process.cwd(), options = {}) {
       subserviceVendorIds: [...(prior.subserviceVendorIds || [])],
       ...(prior.subserviceMethod ? { subserviceMethod: prior.subserviceMethod } : {})
     }),
+    ...(prior.subserviceConclusion ? { subserviceConclusion: prior.subserviceConclusion } : {}),
+    ...(prior.subserviceConclusionRationale ? { subserviceConclusionRationale: prior.subserviceConclusionRationale } : {}),
     ...(prior.complementaryControlsConclusion
       ? { complementaryControlsConclusion: prior.complementaryControlsConclusion }
       : {}),
@@ -59,6 +61,9 @@ export async function planNextAuditCycle(input = process.cwd(), options = {}) {
       "requirementIds",
       "controlIds",
       "complementaryControlIds",
+      "subserviceConclusion",
+      "subserviceConclusionRationale",
+      "subserviceTreatments",
       "subserviceVendorIds",
       "subserviceMethod",
       "auditorVendorId",

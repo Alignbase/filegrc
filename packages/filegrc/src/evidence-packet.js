@@ -16,6 +16,16 @@ import { isWithin, resolveDataPath, resolveWorkspacePath } from "./paths.js";
 import { parseCalendarDate } from "./recurrence.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
+import {
+  auditorWasEngaged,
+  missingSoc2References,
+  recordWasInUseDuringAudit,
+  REQUIRED_SOC2_DESCRIPTION_REFERENCES,
+  REQUIRED_SOC2_SECURITY_REFERENCES,
+  signatoryAppointmentIssue,
+  soc2ReportEvidenceIssue,
+  subsequentEventsReviewIssue
+} from "./soc2.js";
 import { validateWorkspace } from "./validate.js";
 
 const NON_EVIDENCE_RECORD_TYPES = new Set([
@@ -42,7 +52,6 @@ const NON_EVIDENCE_RECORD_TYPES = new Set([
   "vendor",
   "workspace"
 ]);
-
 export async function prepareEvidencePacket(input, options = {}) {
   const validation = await validateWorkspace(input);
   if (!validation.ok) throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before generating evidence.`);
@@ -99,7 +108,8 @@ export async function prepareEvidencePacket(input, options = {}) {
       ...(audit.controlIds || []),
       ...(audit.contactIds || []),
       ...(audit.complementaryControlIds || []),
-      ...(audit.subserviceVendorIds || []),
+      ...auditSubserviceVendorIds(audit),
+      ...auditSubserviceComponentIds(audit),
       audit.systemDescriptionDocumentId,
       audit.managementAssertionDocumentId,
       audit.managementRepresentationDocumentId,
@@ -235,7 +245,12 @@ export async function prepareEvidencePacket(input, options = {}) {
     ...markdownEntries(loaded.model, entry.record).map((markdown) => `data/${markdown.path}`)
   ]);
   const historyRevision = getGitSummary(loaded.root);
-  const histories = getWorkspaceHistories(loaded.root, selectedPaths, Number.MAX_SAFE_INTEGER);
+  const histories = getWorkspaceHistories(
+    loaded.root,
+    selectedPaths,
+    Number.MAX_SAFE_INTEGER,
+    { strict: Boolean(historyRevision.commit) }
+  );
   const packetRecords = [...selectedIds]
     .map((id) => byId.get(id))
     .filter(Boolean)
@@ -327,7 +342,9 @@ export async function prepareEvidencePacket(input, options = {}) {
       systemIds: audit.systemIds || [],
       requirementIds: audit.requirementIds || [],
       controlIds: audit.controlIds || [],
-      subserviceMethod: audit.subserviceMethod || null
+      subserviceMethod: auditSubserviceLabel(audit),
+      subserviceConclusion: audit.subserviceConclusion || null,
+      subserviceTreatments: audit.subserviceTreatments || []
     } : null,
     workspace: {
       title: loaded.workspace.title,
@@ -403,7 +420,8 @@ function recordRelevantToAudit(record, audit, byId, seen = new Set()) {
     ...(audit.controlIds || []),
     ...(audit.contactIds || []),
     ...(audit.complementaryControlIds || []),
-    ...(audit.subserviceVendorIds || []),
+    ...auditSubserviceVendorIds(audit),
+    ...auditSubserviceComponentIds(audit),
     audit.systemDescriptionDocumentId,
     audit.managementAssertionDocumentId,
     audit.managementRepresentationDocumentId,
@@ -993,7 +1011,7 @@ function packetGaps({
   if (!audit) {
     gaps.push(gap("error", "missing-audit-scope", "Select an audit record before treating this packet as an auditor delivery."));
   } else {
-    auditGaps(gaps, audit, byId, records, start, end);
+    auditGaps(gaps, audit, byId, records, start, end, model);
   }
   for (const stage of managementPreparation?.stages || []) {
     for (const item of stage.items.filter((entry) => ["action", "later"].includes(entry.status))) {
@@ -1089,7 +1107,7 @@ function packetGaps({
 
   for (const requirementId of requirementIds) {
     const requirement = byId.get(requirementId);
-    if (!requirement || requirement.applicability !== "applicable" || isDescriptionRequirement(requirement)) continue;
+    if (!requirement || !requirementIsApplicable(requirement, audit, byId, model) || isDescriptionRequirement(requirement)) continue;
     const mapped = controlCoverage.some((coverage) => coverage.requirementIds.includes(requirementId));
     if (!mapped) gaps.push(gap("error", "requirement-missing-control", `${requirement.reference || requirement.title} has no control in the packet.`, requirementId));
   }
@@ -1120,11 +1138,11 @@ function packetGaps({
     if (!recentAssessment) {
       gaps.push(gap("error", "missing-risk-assessment", `No completed in-scope risk assessment was found in the year ending ${end}.`, audit.id));
     }
-    for (const vendorId of audit.subserviceVendorIds || []) {
+    for (const vendorId of auditSubserviceVendorIds(audit)) {
       const vendor = byId.get(vendorId);
       if (!vendor) continue;
-      if (vendor.status !== "active") {
-        gaps.push(gap("error", "inactive-subservice-organization", `${vendor.title} is in audit scope but is ${vendor.status}.`, vendor.id));
+      if (!recordWasInUseDuringAudit(vendor, start, end)) {
+        gaps.push(gap("error", "inactive-subservice-organization", `${vendor.title} was not in use during the engagement period.`, vendor.id));
       }
       const reviews = records.filter((record) => (
         record.type === "vendor-review"
@@ -1302,7 +1320,11 @@ function controlNeedsExternalEvidence(control, model) {
   return !families.length || families.some((family) => family.filegrcManaged !== true);
 }
 
-function auditGaps(gaps, audit, byId, records, start, end) {
+function auditGaps(gaps, audit, byId, records, start, end, model) {
+  const program = byId.get(audit.programId);
+  if (String(model.modelVersion) === "4" && program?.assuranceGoal !== audit.auditKind) {
+    gaps.push(gap("error", "audit-program-goal-mismatch", `${audit.title} is ${audit.auditKind}, but its Program goal is ${program?.assuranceGoal || "missing"}. Align the management objective with the formal engagement before delivery.`, audit.id));
+  }
   if (!["soc-2-type-1", "soc-2-type-2"].includes(audit.auditKind)) {
     gaps.push(gap("error", "not-soc2-examination", `${audit.title} is ${audit.auditKind}; a delivery packet requires a SOC 2 Type 1 or Type 2 engagement.`, audit.id));
   } else if (audit.auditKind === "soc-2-type-1") {
@@ -1321,34 +1343,118 @@ function auditGaps(gaps, audit, byId, records, start, end) {
   if (!(audit.requirementIds || []).length) gaps.push(gap("error", "audit-requirements-missing", `${audit.title} has no selected criteria.`, audit.id));
   if (!(audit.controlIds || []).length) gaps.push(gap("error", "audit-controls-missing", `${audit.title} has no selected controls.`, audit.id));
   const selectedRequirements = (audit.requirementIds || []).map((id) => byId.get(id)).filter(Boolean);
-  if (!selectedRequirements.some(isDescriptionRequirement)) {
+  const frameworkRequirements = records.filter((record) => (
+    record.type === "requirement" && (audit.frameworkIds || []).includes(record.frameworkId)
+  ));
+  const descriptionRequirements = frameworkRequirements.filter(isDescriptionRequirement);
+  const missingDescriptionRequirements = descriptionRequirements.filter((requirement) => (
+    !(audit.requirementIds || []).includes(requirement.id)
+  ));
+  const missingRequiredDescriptionReferences = String(model.modelVersion) === "4"
+    ? missingSoc2References(descriptionRequirements, REQUIRED_SOC2_DESCRIPTION_REFERENCES)
+    : [];
+  const securityRequirements = frameworkRequirements.filter(isSecurityRequirement);
+  const missingRequiredSecurityReferences = String(model.modelVersion) === "4"
+    ? missingSoc2References(securityRequirements, REQUIRED_SOC2_SECURITY_REFERENCES)
+    : [];
+  const missingSelectedSecurityReferences = String(model.modelVersion) === "4"
+    ? missingSoc2References(selectedRequirements.filter(isSecurityRequirement), REQUIRED_SOC2_SECURITY_REFERENCES)
+    : [];
+  if (!descriptionRequirements.length) {
     gaps.push(gap("error", "audit-description-criteria-missing", `${audit.title} does not include the SOC 2 description criteria.`, audit.id));
+  } else if (missingDescriptionRequirements.length) {
+    gaps.push(gap("error", "audit-description-criteria-incomplete", `${audit.title} omits ${missingDescriptionRequirements.length} ${missingDescriptionRequirements.length === 1 ? "criterion" : "criteria"} from the selected SOC 2 Description Criteria framework.`, audit.id));
+  } else if (missingRequiredDescriptionReferences.length) {
+    gaps.push(gap("error", "audit-description-criteria-incomplete", `${audit.title} omits ${missingRequiredDescriptionReferences.join(", ")} from the required DC1 through DC9 Description Criteria set.`, audit.id));
+  }
+  if (missingRequiredSecurityReferences.length) {
+    gaps.push(gap("error", "audit-security-criteria-incomplete", `${audit.title}'s selected framework omits ${missingRequiredSecurityReferences.join(", ")} from the required CC1.1 through CC9.2 Security Common Criteria set.`, audit.id));
+  }
+  if (missingSelectedSecurityReferences.length) {
+    gaps.push(gap("error", "audit-security-criteria-incomplete", `${audit.title} omits ${missingSelectedSecurityReferences.join(", ")} from the mandatory Security Common Criteria selected for the engagement.`, audit.id));
   }
   for (const requirement of selectedRequirements) {
-    if (!(audit.frameworkIds || []).includes(requirement.frameworkId) || requirement.applicability !== "applicable") {
+    if (!(audit.frameworkIds || []).includes(requirement.frameworkId) || !requirementIsApplicable(requirement, audit, byId, model)) {
       gaps.push(gap("error", "audit-criteria-scope-conflict", `${requirement.reference || requirement.title} is selected but is not an applicable member of the selected frameworks.`, requirement.id));
     }
   }
-  if (!audit.auditorVendorId) gaps.push(gap("error", "auditor-missing", `${audit.title} does not identify the independent CPA firm.`, audit.id));
-  if (!audit.subserviceMethod) gaps.push(gap("error", "subservice-method-missing", `${audit.title} does not state whether subservice organizations use the carve-out or inclusive method, or are not applicable.`, audit.id));
-  if ((audit.subserviceVendorIds || []).length && audit.subserviceMethod === "not-applicable") {
-    gaps.push(gap("error", "subservice-scope-conflict", `${audit.title} names subservice organizations but marks their treatment not applicable.`, audit.id));
+  const auditor = audit.auditorVendorId ? byId.get(audit.auditorVendorId) : null;
+  if (!auditor) {
+    gaps.push(gap("error", "auditor-missing", `${audit.title} does not identify the independent CPA firm.`, audit.id));
+  } else if (!auditorWasEngaged(auditor, audit)) {
+    gaps.push(gap("error", "auditor-outside-engagement-period", `${auditor.title} was not active during the recorded fieldwork or report period.`, auditor.id));
   }
-  const expectedSubserviceVendorIds = new Set((audit.systemIds || []).flatMap((id) => byId.get(id)?.subserviceVendorIds || []));
-  for (const vendorId of expectedSubserviceVendorIds) {
-    if (!(audit.subserviceVendorIds || []).includes(vendorId)) {
-      gaps.push(gap("error", "subservice-organization-omitted", `${byId.get(vendorId)?.title || vendorId} is identified by an in-scope system but omitted from the engagement's subservice organizations.`, vendorId));
+  if (String(model.modelVersion) === "4" && !audit.scopeRevision) {
+    gaps.push(gap("error", "audit-scope-revision-missing", `${audit.title} does not bind management's reviewed engagement scope to a Git revision.`, audit.id));
+  }
+  if (String(model.modelVersion) === "4") {
+    const treatments = audit.subserviceTreatments || [];
+    const treatmentComponentCounts = new Map();
+    for (const treatment of treatments) {
+      for (const componentId of treatment.componentIds || []) {
+        treatmentComponentCounts.set(componentId, (treatmentComponentCounts.get(componentId) || 0) + 1);
+      }
     }
-  }
-  if (audit.subserviceMethod === "inclusive") {
-    const subserviceSystemIds = records
-      .filter((record) => record.type === "system" && (audit.subserviceVendorIds || []).includes(record.vendorId))
-      .map((record) => record.id);
-    const includedControls = (audit.controlIds || [])
-      .map((id) => byId.get(id))
-      .filter((control) => (control?.systemIds || []).some((id) => subserviceSystemIds.includes(id)));
-    if (!subserviceSystemIds.length || !includedControls.length) {
-      gaps.push(gap("error", "inclusive-subservice-controls-missing", `${audit.title} uses the inclusive method but does not include cataloged subservice systems and their controls.`, audit.id));
+    if (!audit.subserviceConclusion) {
+      gaps.push(gap("error", "subservice-conclusion-missing", `${audit.title} does not state whether subservice organizations are identified.`, audit.id));
+    }
+    if (!audit.subserviceConclusionRationale) {
+      gaps.push(gap("error", "subservice-rationale-missing", `${audit.title} does not explain its subservice conclusion.`, audit.id));
+    }
+    if (audit.subserviceConclusion === "identified" && !treatments.length) {
+      gaps.push(gap("error", "subservice-treatments-missing", `${audit.title} identifies subservice organizations but records no Vendor and Component treatments.`, audit.id));
+    }
+    if (audit.subserviceConclusion === "not-applicable" && treatments.length) {
+      gaps.push(gap("error", "subservice-scope-conflict", `${audit.title} records subservice treatments but marks subservice organizations not applicable.`, audit.id));
+    }
+    for (const treatment of treatments) {
+      const vendor = byId.get(treatment.vendorId);
+      const invalidComponents = (treatment.componentIds || []).filter((componentId) => {
+        const component = byId.get(componentId);
+        return component?.type !== "component"
+          || !recordWasInUseDuringAudit(component, start, end)
+          || component.vendorId !== treatment.vendorId
+          || (treatmentComponentCounts.get(componentId) || 0) > 1
+          || !(component.systemUses || []).some(({ systemId }) => (audit.systemIds || []).includes(systemId));
+      });
+      if (vendor?.type !== "vendor" || !recordWasInUseDuringAudit(vendor, start, end) || !(treatment.componentIds || []).length || invalidComponents.length) {
+        gaps.push(gap(
+          "error",
+          "invalid-subservice-treatment",
+          `${vendor?.title || treatment.vendorId} has a subservice treatment that does not identify that Vendor's supplied Components in use within the selected System boundary during the engagement, or repeats a Component across treatments.`,
+          audit.id
+        ));
+      }
+    }
+    for (const treatment of treatments.filter(({ method }) => method === "inclusive")) {
+      const includedControls = (audit.controlIds || [])
+        .map((id) => byId.get(id))
+        .filter((control) => (control?.componentIds || []).some((id) => (treatment.componentIds || []).includes(id)));
+      if (!includedControls.length) {
+        gaps.push(gap("error", "inclusive-subservice-controls-missing", `${byId.get(treatment.vendorId)?.title || treatment.vendorId} uses the inclusive method but no selected Controls are linked to its included Components.`, audit.id));
+      }
+    }
+  } else {
+    if (!audit.subserviceMethod) gaps.push(gap("error", "subservice-method-missing", `${audit.title} does not state whether subservice organizations use the carve-out or inclusive method, or are not applicable.`, audit.id));
+    if ((audit.subserviceVendorIds || []).length && audit.subserviceMethod === "not-applicable") {
+      gaps.push(gap("error", "subservice-scope-conflict", `${audit.title} names subservice organizations but marks their treatment not applicable.`, audit.id));
+    }
+    const expectedSubserviceVendorIds = new Set((audit.systemIds || []).flatMap((id) => byId.get(id)?.subserviceVendorIds || []));
+    for (const vendorId of expectedSubserviceVendorIds) {
+      if (!(audit.subserviceVendorIds || []).includes(vendorId)) {
+        gaps.push(gap("error", "subservice-organization-omitted", `${byId.get(vendorId)?.title || vendorId} is identified by an in-scope system but omitted from the engagement's subservice organizations.`, vendorId));
+      }
+    }
+    if (audit.subserviceMethod === "inclusive") {
+      const subserviceSystemIds = records
+        .filter((record) => record.type === "system" && (audit.subserviceVendorIds || []).includes(record.vendorId))
+        .map((record) => record.id);
+      const includedControls = (audit.controlIds || [])
+        .map((id) => byId.get(id))
+        .filter((control) => (control?.systemIds || []).some((id) => subserviceSystemIds.includes(id)));
+      if (!subserviceSystemIds.length || !includedControls.length) {
+        gaps.push(gap("error", "inclusive-subservice-controls-missing", `${audit.title} uses the inclusive method but does not include cataloged subservice systems and their controls.`, audit.id));
+      }
     }
   }
   if (!audit.complementaryControlsConclusion) {
@@ -1385,14 +1491,41 @@ function auditGaps(gaps, audit, byId, records, start, end) {
       gaps.push(gap("error", `unapproved-${field}`, `${document.title} is not active with approval and effective dates.`, document.id));
     }
   }
-  if (audit.status === "complete") {
-    const representation = byId.get(audit.managementRepresentationDocumentId);
-    if (!(representation?.evidenceIds || []).length) {
-      gaps.push(gap("error", "unsigned-management-representation", `${representation?.title || audit.title} does not link the signed representation letter evidence.`, representation?.id || audit.id));
+  if (["issued", "delivered", "complete"].includes(audit.status)) {
+    const reportEvidence = audit.reportEvidenceId ? byId.get(audit.reportEvidenceId) : null;
+    if (!reportEvidence) {
+      gaps.push(gap("error", "missing-audit-report", `${audit.title} does not link the final service auditor report.`, audit.id));
+    } else {
+      const reportIssue = soc2ReportEvidenceIssue(reportEvidence, audit, model.modelVersion);
+      if (reportIssue) gaps.push(gap("error", reportIssue.code, reportIssue.message, reportEvidence.id));
     }
-    if (!audit.reportEvidenceId) gaps.push(gap("error", "missing-audit-report", `${audit.title} does not link the final service auditor report.`, audit.id));
     if (!audit.opinion || audit.opinion === "not-issued" || !audit.opinionDate) {
       gaps.push(gap("error", "missing-audit-opinion", `${audit.title} does not record the issued opinion and opinion date.`, audit.id));
+    }
+  }
+  if (String(model.modelVersion) === "4" && ["report-draft", "issued", "delivered", "complete"].includes(audit.status)) {
+    const subsequentEventsIssue = subsequentEventsReviewIssue(audit);
+    if (subsequentEventsIssue) {
+      gaps.push(gap("error", subsequentEventsIssue.code, subsequentEventsIssue.message, audit.id));
+    }
+    const signatoryIssue = signatoryAppointmentIssue(audit, byId);
+    if (signatoryIssue) {
+      gaps.push(gap("error", signatoryIssue.code, signatoryIssue.message, audit.id));
+    }
+  }
+  if (audit.status === "complete") {
+    const representation = byId.get(audit.managementRepresentationDocumentId);
+    const signedRepresentation = (representation?.evidenceIds || [])
+      .map((id) => byId.get(id))
+      .find((record) => (
+        record?.type === "evidence"
+        && record.status === "verified"
+        && record.artifactKind === "signed-record"
+        && record.artifactSubtype === "signed-management-representation"
+        && (record.filePaths || []).length
+      ));
+    if (!signedRepresentation) {
+      gaps.push(gap("error", "unsigned-management-representation", `${representation?.title || audit.title} does not link the signed representation letter evidence.`, representation?.id || audit.id));
     }
     for (const request of records.filter((record) => record.type === "audit-request" && record.auditId === audit.id)) {
       if (!["accepted", "closed"].includes(request.status)) {
@@ -1416,6 +1549,39 @@ function policyCoversPeriod(policy, start, end, byId, seen = new Set()) {
 
 function isDescriptionRequirement(requirement) {
   return (requirement.tags || []).includes("description-criteria") || /^DC\d+/i.test(requirement.reference || "");
+}
+
+function isSecurityRequirement(requirement) {
+  const tags = requirement?.tags || [];
+  return tags.includes("security") || tags.includes("common-criteria") || /^CC\d+(?:\.|$)/i.test(requirement?.reference || "");
+}
+
+function requirementIsApplicable(requirement, audit, byId, model) {
+  if (String(model.modelVersion) !== "4") return requirement.applicability === "applicable";
+  const program = audit?.programId ? byId.get(audit.programId) : null;
+  return (program?.requirementApplicability || []).some((decision) => (
+    decision.requirementId === requirement.id && decision.decision === "applicable"
+  ));
+}
+
+function auditSubserviceVendorIds(audit) {
+  return [...new Set([
+    ...(audit?.subserviceVendorIds || []),
+    ...(audit?.subserviceTreatments || []).map(({ vendorId }) => vendorId)
+  ].filter(Boolean))];
+}
+
+function auditSubserviceComponentIds(audit) {
+  return [...new Set((audit?.subserviceTreatments || []).flatMap(({ componentIds }) => componentIds || []))];
+}
+
+function auditSubserviceLabel(audit) {
+  if (audit?.subserviceConclusion === "not-applicable") return "Not applicable";
+  if (audit?.subserviceConclusion === "identified") {
+    const methods = [...new Set((audit.subserviceTreatments || []).map(({ method }) => method))];
+    return methods.length ? methods.join(" and ") : "Identified, treatments incomplete";
+  }
+  return audit?.subserviceMethod || null;
 }
 
 function shiftYear(value, offset) {

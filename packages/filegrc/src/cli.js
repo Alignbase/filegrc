@@ -42,6 +42,7 @@ import {
 } from "./external-reviewer.js";
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
+import { applyPolicyLibraryUpgrade, assessPolicyLibraryUpgrades } from "./policy-library.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import { resolveProgram } from "./program.js";
@@ -616,6 +617,29 @@ export async function runCli(argv = process.argv.slice(2)) {
     else console.log(`Activated ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
     return result;
   }
+  if (command === "policy-library") {
+    if (flags.yes && !flags.accept) {
+      throw new Error("Pass --accept <proposal-id> with --yes after reviewing the policy-library diff.");
+    }
+    const result = flags.accept
+      ? await withWorkflowDelta(root, () => applyPolicyLibraryUpgrade(root, String(flags.accept), {
+          confirmed: flags.yes === true,
+          proposalRevision: flags["proposal-revision"] ? String(flags["proposal-revision"]) : null
+        }))
+      : await assessPolicyLibraryUpgrades(root);
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.accept) console.log(`Accepted policy-library proposal ${flags.accept}.`);
+    else if (!result.proposals.length) console.log("No starter policy-library update applies. Existing content is unchanged.");
+    else {
+      for (const proposal of result.proposals) {
+        console.log(`${proposal.title} (${proposal.id})`);
+        console.log(proposal.message);
+        for (const change of proposal.changes) console.log(`\n${change.diff}`);
+        console.log(`\nAccept with: filegrc policy-library --accept ${proposal.id} --proposal-revision ${proposal.revision} --yes`);
+      }
+    }
+    return result;
+  }
   if (command === "trigger") {
     const result = await withWorkflowDelta(root, () => createObligationEvent(root, {
       eventType: positionals[0],
@@ -1054,6 +1078,7 @@ Usage:
   filegrc review-applicability [--scaffold --type requirement|control|commitment|complementary-control] [decisions.json|-] [--preview|--yes] [--json]
   filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--json]
   filegrc activate-policies [--scaffold | activation.json|-] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
+  filegrc policy-library [--json | --accept proposal-id --proposal-revision revision --yes]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
   filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
   filegrc get [resource-type] <id> [--mutation]
@@ -1221,6 +1246,24 @@ Options:
   --json                 Print the result as JSON
   --root <path>          Workspace path
   --help                 Show this help`);
+    return;
+  }
+  if (command === "policy-library") {
+    console.log(`Usage:
+  filegrc policy-library [--json]
+  filegrc policy-library --accept <proposal-id> --proposal-revision <revision> --yes [--json]
+
+Review optional starter-library updates for unchanged default Policy and Control
+content. The review prints exact diffs. FileGRC skips customized or adopted Policy
+content and writes nothing until you accept one named proposal revision with --yes.
+
+Options:
+  --accept <id>  Accept one proposal after reviewing its diff
+  --proposal-revision <hash>  Confirm the exact reviewed proposal revision
+  --yes          Confirm the named proposal write
+  --json         Print the versioned proposal or acceptance result
+  --root <path>  Workspace path
+  --help         Show this help`);
     return;
   }
   if (command === "evidence-map") {

@@ -42,4 +42,6 @@ The editable browser uses `main` and pushes saved changes to `origin`. Connect t
 
 {{starter_setup}}
 
+Do not put plaintext credentials, private keys, authentication tokens, recovery codes, session material, or personal data that may need erasure into Git. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation rules.
+
 filegrc manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  assessPolicyLibraryUpgrades,
   assessProgramReadiness,
   assessWorkflow,
   loadModel,
@@ -32,7 +33,7 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 163,
+    total: 167,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -50,7 +51,7 @@ test("creates a complete generic repository with one dependency", async (context
       requirement: 42,
       "source-coverage": 14,
       control: 28,
-      obligation: 51
+      obligation: 55
     }
   });
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
@@ -63,14 +64,26 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(readme, /npx filegrc setup/);
   assert.match(readme, /npx filegrc program-path --next --json/);
   assert.match(readme, /finish Step 1 by adding the real reviewers and operators, finishing the oversight team/);
+  assert.match(readme, /Do not put plaintext credentials, private keys, authentication tokens, recovery codes, session material/);
+  assert.match(readme, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation rules/);
   assert.doesNotMatch(readme, /npx create-filegrc/);
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
   assert.match(agents, /npx filegrc program-path --next --json/);
   assert.match(agents, /adds its full set of Action Items to the Work Queue in a single validated write/);
   assert.match(agents, /`complementary-control\.relatedControlIds` is the source of truth/);
+  assert.match(agents, /The audit record’s `coverage` object stores the dates agreed with the CPA firm/);
+  assert.match(agents, /`subserviceConclusion`/);
+  assert.match(agents, /Do not store plaintext credentials, private keys, tokens, recovery codes, session data/);
+  assert.match(agents, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions/);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
   assert.match(dataGuide, /shared assessments, complete checklist, Work Items, blockers, and recommended next action/);
+  assert.match(dataGuide, /Choose an existing Component or scaffold the Component that is authoritative/);
+  assert.match(dataGuide, /coverage\.kind: "as-of"/);
+  assert.match(dataGuide, /contains no plaintext credentials, private keys, tokens, recovery codes, improperly controlled ciphertext/);
+  const evidenceGuide = await readFile(join(target, "data", "evidence", "AGENTS.md"), "utf8");
+  assert.match(evidenceGuide, /Do not commit plaintext credentials, private keys, tokens, recovery codes, session data/);
+  assert.match(evidenceGuide, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions/);
   assert.equal(result.install, "skipped");
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
@@ -85,6 +98,7 @@ test("creates a complete generic repository with one dependency", async (context
   }
   assert.equal(workspace.organizationName, "Example \"Engineering\"");
   assert.equal(workspace.timezone, "America/Chicago");
+  assert.equal((await assessPolicyLibraryUpgrades(target)).proposals.length, 0);
   const programRecord = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));
   assert.equal(programRecord.riskMethodology.method, "5x5 likelihood and impact");
   assert.deepEqual(
@@ -185,9 +199,24 @@ test("creates a complete generic repository with one dependency", async (context
     "document-data-retention-schedule"
   ]);
   assert.equal("approverIds" in informationSecurityPolicy, false);
+  assert.deepEqual(informationSecurityPolicy.audience, ["employees", "contractors"]);
   const informationSecurityContent = await readFile(join(target, "data", "policies", "policy-information-security.md"), "utf8");
   assert.doesNotMatch(informationSecurityContent, /\| Low \| 90 days \|/);
-  assert.match(informationSecurityContent, /does not infer technical implementation/);
+  assert.doesNotMatch(informationSecurityContent, /FileGRC/i);
+  assert.doesNotMatch(informationSecurityContent, /applicable FileGRC record|belong in the applicable (?:Control|System|Component)|Controls and Obligations record/);
+  assert.match(informationSecurityContent, /Approval does not by itself demonstrate implementation or operation/);
+  assert.match(informationSecurityContent, /documents supporting procedures, configurations, Control operation, and Evidence separately/);
+  assert.match(informationSecurityContent, /^## Consolidated policy index$/m);
+  assert.match(informationSecurityContent, /^\- \*\*Governance and workforce:\*\*/m);
+  assert.match(informationSecurityContent, /^## Definitions$/m);
+  assert.match(informationSecurityContent, /^\- \*\*System:\*\* An application, service, process, or infrastructure/m);
+  assert.match(informationSecurityContent, /^\- \*\*Important System or Component:\*\*/m);
+  assert.doesNotMatch(informationSecurityContent, /In this Policy, a Worker is an employee or contractor/);
+  assert.match(informationSecurityContent, /^\- \*\*Policy Owner:\*\*/m);
+  assert.match(informationSecurityContent, /^\- \*\*Ownership and access:\*\*/m);
+  assert.match(informationSecurityContent, /^\- \*\*Service accounts:\*\*/m);
+  assert.match(informationSecurityContent, /^\- Assurance or audit rights\.$/m);
+  assert.match(informationSecurityContent, /^### Multi-factor authentication$/m);
   assert.match(informationSecurityContent, /risk-appropriate compensating or post-deployment review/);
   assert.match(informationSecurityContent, /selects scanning coverage, penetration-testing applicability, remediation targets, and review cadence/);
   assert.match(informationSecurityContent, /Vendors already in use|Vendor already in use/);
@@ -195,7 +224,52 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(informationSecurityContent, /periodic process that verifies configuration, update, and compliance state/);
   assert.match(informationSecurityContent, /retaliation for a good-faith report are prohibited/);
   assert.match(informationSecurityContent, /fraud and misconduct risk/);
-  assert.match(informationSecurityContent, /time-bound Exception with risk assessment, compensating Controls/);
+  assert.match(informationSecurityContent, /time-bound Exception with a risk assessment, compensating Controls/);
+  assert.match(informationSecurityContent, /\*\*Workforce and administrative access:\*\* MFA is required for access to production, source control, email, identity/);
+  assert.match(informationSecurityContent, /\*\*Customer and external-user access:\*\* MFA is required when an approved Control, customer commitment, or risk decision requires it/);
+  assert.match(informationSecurityContent, /Where required MFA is unavailable/);
+  assert.doesNotMatch(informationSecurityContent, /Multi-factor authentication is required for administrative, production, source-control/);
+  assert.match(informationSecurityContent, /Plaintext credentials, private keys, tokens, and recovery codes must not appear/);
+  assert.match(informationSecurityContent, /Source-controlled ciphertext may be used when management approves the encryption method/);
+  assert.match(informationSecurityContent, /repository access alone cannot decrypt the material/);
+  for (const heading of [
+    "Information Security Governance and Organization Policy",
+    "Risk Management and Compliance Policy",
+    "Personnel and Human Resources Security Policy",
+    "Security Awareness and Training Policy",
+    "Acceptable Use, Clear Desk, and Clear Screen Policy",
+    "Asset Management Policy",
+    "Data Classification, Handling, and Protection Policy",
+    "Cryptography, Encryption, Key, and Secrets Management Policy",
+    "Access Control Policy",
+    "Identification, Authentication, and Password Policy",
+    "Endpoint, Mobile Device, BYOD, and Malware Protection Policy",
+    "Remote Access and Remote Work Policy",
+    "Physical and Environmental Security Policy",
+    "Network and Communications Security Policy",
+    "Configuration Management and System Maintenance Policy",
+    "Secure Development and Change Management Policy",
+    "Vulnerability, Patch, and Penetration Testing Policy",
+    "Logging, Monitoring, and Audit Trail Policy",
+    "Incident Response Policy",
+    "Business Continuity and Disaster Recovery Policy",
+    "Backup and Restoration Policy",
+    "Vendor, Third-Party, and Supply Chain Risk Management Policy"
+  ]) {
+    assert.match(informationSecurityContent, new RegExp(`^## ${heading}$`, "m"));
+  }
+  assert.match(informationSecurityContent, /A questionnaire response may cite this Policy and the applicable section/);
+  assert.match(informationSecurityContent, /Screening or reference checks are performed before sensitive access when lawful, proportionate to the role and risk/);
+  assert.match(informationSecurityContent, /Unsupported or unneeded important assets must be upgraded, isolated, replaced, or retired according to risk/);
+  assert.match(informationSecurityContent, /Default credentials must be changed or disabled before use/);
+  assert.match(informationSecurityContent, /Material or high-risk designs and changes receive a documented security analysis suited to the change/);
+  assert.match(informationSecurityContent, /Systems with availability commitments, recovery objectives, or material operational dependencies monitor the health, capacity, failure, and service indicators/);
+  assert.match(informationSecurityContent, /When applicable to the service and risk, contracts address:/);
+  assert.match(informationSecurityContent, /^\- Security responsibilities and incident notice\.$/m);
+  assert.match(informationSecurityContent, /does not justify answering that a Control is implemented/);
+  assert.match(informationSecurityContent, /retains the reviewed Policy version, approval, effective date, and change history under its document-control process/);
+  assert.match(informationSecurityContent, /This Policy does not require every System to receive an annual penetration test/);
+  assert.doesNotMatch(informationSecurityContent, /must purchase|paid password manager|SIEM product/);
   await assert.rejects(access(join(target, "data", "policies", "policy-clear-desk-screen.json")), /ENOENT/);
   await assert.rejects(access(join(target, "data", "policies", "policy-mobile-computing-communications.json")), /ENOENT/);
   for (const removedPolicy of [
@@ -208,22 +282,34 @@ test("creates a complete generic repository with one dependency", async (context
   }
   const recoveryContent = await readFile(join(target, "data", "documents", "document-security-incident-recovery-plan.md"), "utf8");
   assert.match(recoveryContent, /maximum tolerable downtime/);
-  assert.match(recoveryContent, /\[Complete before activation: Link every important System/);
-  assert.match(recoveryContent, /starter proposal for important production data is a daily backup, 30-day retention period, and annual restore validation/);
+  assert.match(recoveryContent, /\[Complete before activation: Document every important System's approved recovery time objective/);
+  assert.match(recoveryContent, /proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation/);
   assert.match(recoveryContent, /protected alternate location and access method/);
-  assert.match(recoveryContent, /does not require pre-arranged counsel, in-house counsel, or a standing legal retainer/);
+  assert.match(recoveryContent, /standing legal retainer is required only when management determines/);
   assert.match(recoveryContent, /the triggering law, contract, Policy, commitment, or management decision/);
   assert.match(recoveryContent, /representative security alert from generation through receipt, acknowledgement, escalation, and fallback/);
   assert.match(recoveryContent, /\[Complete before activation: Name a usable alternate reporting route/);
+  assert.doesNotMatch(recoveryContent, /FileGRC|Obligation records|governed schedule/);
   const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
   assert.equal("approverIds" in retentionSchedule, false);
   const retentionScheduleContent = await readFile(join(target, "data", "documents", "document-data-retention-schedule.md"), "utf8");
   assert.match(retentionScheduleContent, /Security logs for important Systems[\s\S]*proposed default before approval: 12 months/);
   assert.match(retentionScheduleContent, /Production backups or alternate recovery copies[\s\S]*proposed default before approval: 30 days/);
-  assert.match(retentionScheduleContent, /detects the bracketed prompts as approval blockers/);
+  assert.match(retentionScheduleContent, /Remove each bracketed prompt only after replacing it with a reviewed fact/);
+  assert.doesNotMatch(retentionScheduleContent, /FileGRC/);
   const trainingFiles = (await readdir(join(target, "data", "training"))).filter((file) => file.endsWith(".json"));
   assert.deepEqual(trainingFiles, ["training-security-awareness.json"]);
   const awarenessTrainingContent = await readFile(join(target, "data", "training", "training-security-awareness.md"), "utf8");
+  assert.match(awarenessTrainingContent, /credential-protection method approved for that System/);
+  assert.doesNotMatch(awarenessTrainingContent, /Use an approved password manager/);
+  assert.match(awarenessTrainingContent, /multi-factor authentication when the Policy, Control, customer commitment, or risk decision requires it/);
+  assert.match(awarenessTrainingContent, /Keep plaintext passwords/);
+  assert.match(awarenessTrainingContent, /Approved source-controlled ciphertext must follow the Policy and keep decryption keys separate/);
+  assert.match(awarenessTrainingContent, /Approved source-controlled ciphertext must meet the Policy's separate-key, access, and rotation conditions/);
+  assert.match(awarenessTrainingContent, /Repository access alone must never decrypt approved source-controlled ciphertext/);
+  assert.match(awarenessTrainingContent, /source repositories or general-purpose Systems/);
+  assert.match(awarenessTrainingContent, /Approved supporting standards, procedures, and schedules document/);
+  assert.doesNotMatch(awarenessTrainingContent, /FileGRC|this repository|recorded in the applicable Endpoint Control|governed schedules record the actual/);
   assert.match(awarenessTrainingContent, /## Building and changing systems/);
   assert.match(awarenessTrainingContent, /compensating or post-deployment review/);
   assert.doesNotMatch(awarenessTrainingContent, /no more than 15 minutes/);
@@ -262,7 +348,7 @@ test("creates a complete generic repository with one dependency", async (context
   const changeDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc9.json"), "utf8"));
   assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
   assert.equal(controlFiles.length, 28);
-  assert.equal(obligationFiles.length, 51);
+  assert.equal(obligationFiles.length, 55);
   assert.equal(obligationFiles.includes("obligation-monthly-malware-scan.json"), false);
   assert.equal(obligationFiles.includes("obligation-monthly-endpoint-protection-verification.json"), true);
   assert.equal(obligationFiles.includes("obligation-quarterly-vulnerability-scan.json"), true);
@@ -295,6 +381,31 @@ test("creates a complete generic repository with one dependency", async (context
   const controls = await Promise.all(controlFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "controls", file), "utf8"))));
   const obligations = await Promise.all(obligationFiles.map(async (file) => JSON.parse(await readFile(join(target, "data", "obligations", file), "utf8"))));
   assert.equal(controls.every((control) => control.status === "planned"), true);
+  assert.equal(controls.every(({ activity }) => !/starter remediation targets|recorded in an Obligation/.test(activity)), true);
+  const strongAuthentication = controls.find(({ id }) => id === "control-strong-authentication");
+  assert.match(strongAuthentication.statement, /approved strong-authentication settings, unique identities, protected credentials/);
+  assert.match(strongAuthentication.statement, /changed or disabled default credentials/);
+  assert.match(strongAuthentication.statement, /separate administrative identities or roles when technically supported and appropriate to risk/);
+  assert.match(strongAuthentication.statement, /workforce and administrative access/);
+  assert.match(strongAuthentication.statement, /Customer and external-user authentication requirements follow approved Controls, customer commitments, and risk decisions/);
+  assert.match(strongAuthentication.statement, /Where required MFA is unavailable, management approves a time-bound Exception/);
+  assert.match(strongAuthentication.activity, /approved MFA Exceptions/);
+  assert.doesNotMatch(strongAuthentication.statement, /sensitive-data access when supported/);
+  assert.match(controls.find(({ id }) => id === "control-workforce-expectations").statement, /screened before sensitive access when lawful and appropriate to role risk/);
+  assert.equal(controls.find(({ id }) => id === "control-workforce-expectations").requirementIds.includes("requirement-soc2-cc1-5"), true);
+  assert.match(controls.find(({ id }) => id === "control-policy-management").statement, /selects and develops manual and technology Controls/);
+  assert.match(controls.find(({ id }) => id === "control-security-communication").statement, /relevant and reliable information from internal and external sources/);
+  assert.match(controls.find(({ id }) => id === "control-risk-assessment").statement, /fraud, misconduct, dependency, and change risk/);
+  assert.match(controls.find(({ id }) => id === "control-monitoring-remediation").statement, /at least quarterly and after significant failures/);
+  assert.match(controls.find(({ id }) => id === "control-encryption-transmission").statement, /risk-based key lifecycle controls/);
+  assert.match(controls.find(({ id }) => id === "control-inventory-configuration").statement, /Unsupported or unneeded important assets are upgraded, isolated, replaced, or retired according to risk/);
+  assert.match(controls.find(({ id }) => id === "control-network-security").statement, /separates production and nonproduction environments according to data and risk/);
+  assert.match(controls.find(({ id }) => id === "control-change-management").statement, /security design or threat analysis suited to their risk/);
+  assert.match(controls.find(({ id }) => id === "control-change-management").statement, /protect against unauthorized changes and malicious software/);
+  assert.match(controls.find(({ id }) => id === "control-penetration-testing").activity, /Review and record applicability and cadence\. When testing is required/);
+  assert.equal(controls.find(({ id }) => id === "control-endpoint-protection").requirementIds.includes("requirement-soc2-cc6-8"), true);
+  assert.match(controls.find(({ id }) => id === "control-logging-monitoring").statement, /availability commitments, recovery objectives, or material operational dependencies/);
+  assert.match(controls.find(({ id }) => id === "control-vendor-due-diligence").statement, /permitted use and confidentiality, security responsibilities, incident notice/);
   assert.equal(
     controls.every((control) => (
       control.policyIds.length === 1 && control.policyIds[0] === "policy-information-security"
@@ -336,6 +447,10 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(obligationsById.get("obligation-monthly-endpoint-protection-verification").activityType, "endpoint-verification");
   assert.equal(obligationsById.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);
   assert.equal(obligationsById.get("obligation-annual-penetration-test").recurrence.unit, "year");
+  assert.equal(obligationsById.get("obligation-annual-penetration-test").activityType, "risk-assessment");
+  assert.match(obligationsById.get("obligation-annual-penetration-test").title, /applicability and cadence review/);
+  assert.equal(obligationsById.get("obligation-annual-control-design-review").activityType, "control-design-review");
+  assert.equal(obligationsById.get("obligation-annual-workforce-competence-review").activityType, "performance-review");
   assert.equal(obligationsById.get("obligation-quarterly-log-review").recurrence.interval, 3);
   assert.equal(obligationsById.get("obligation-annual-backup-restoration-test").recurrence.unit, "year");
   assert.equal(obligationsById.get("obligation-annual-continuity-exercise").recurrence.unit, "year");
@@ -345,13 +460,15 @@ test("creates a complete generic repository with one dependency", async (context
       counts[obligation.recurrence.eventType] = (counts[obligation.recurrence.eventType] || 0) + 1;
       return counts;
     }, {});
-  assert.equal(eventObligationCounts["person-started"], 4);
-  assert.equal(eventObligationCounts["person-role-changed"], 1);
+  assert.equal(eventObligationCounts["person-started"], 5);
+  assert.equal(eventObligationCounts["person-role-changed"], 2);
   assert.equal(eventObligationCounts["personal-device-access-planned"], 2);
   assert.equal(eventObligationCounts["vendor-reassessment-needed"], 2);
   assert.equal(eventObligationCounts["system-material-change"], 5);
   assert.equal(obligationsById.has("obligation-worker-start-role-training"), false);
-  assert.equal(obligationsById.has("obligation-worker-role-change-training"), false);
+  assert.equal(obligationsById.get("obligation-worker-start-screening").activityType, "workforce-review");
+  assert.equal(obligationsById.get("obligation-worker-role-change-training").activityType, "role-training");
+  assert.equal(obligationsById.get("obligation-worker-role-change-training").window.dueAfter, 30);
   assert.equal(obligationsById.get("obligation-personal-device-approval").window.dueAfter, 0);
   assert.equal(obligationsById.get("obligation-personal-device-registration").window.dueAfter, 0);
   assert.equal(obligationsById.get("obligation-vendor-material-change-review").window.dueAfter, 30);
@@ -377,7 +494,25 @@ test("creates a complete generic repository with one dependency", async (context
   await access(join(target, "data", "audits", "AGENTS.md"));
   await access(join(target, "data", "audit-populations", "AGENTS.md"));
   await access(join(target, "data", "policies", "AGENTS.md"));
-  await access(join(target, "data", "documents", "document-soc2-system-description.md"));
+  await access(join(target, "data", "documents", "AGENTS.md"));
+  const systemDescription = await readFile(
+    join(target, "data", "documents", "document-soc2-system-description.md"),
+    "utf8"
+  );
+  assert.match(systemDescription, /CC1\.1 through CC9\.2 remain in scope for the mandatory Security category/);
+  assert.doesNotMatch(systemDescription, /FileGRC/i);
+  const periodCompleteness = await readFile(
+    join(target, "data", "documents", "document-soc2-period-completeness.md"),
+    "utf8"
+  );
+  assert.match(periodCompleteness, /management's records and linked evidence contain the complete populations/);
+  assert.doesNotMatch(periodCompleteness, /FileGRC/i);
+  const governedDocumentFiles = (await readdir(join(target, "data", "documents")))
+    .filter((file) => file.endsWith(".md") && file !== "AGENTS.md");
+  for (const file of governedDocumentFiles) {
+    const content = await readFile(join(target, "data", "documents", file), "utf8");
+    assert.doesNotMatch(content, /FileGRC|npx filegrc|\.filegrc\//i, `${file} should remain a standalone governed artifact`);
+  }
   await access(join(target, "data", "documents", "document-soc2-management-assertion.md"));
   await access(join(target, "data", "documents", "document-soc2-period-completeness.md"));
   await access(join(target, "data", "documents", "document-soc2-management-representation.md"));
@@ -386,7 +521,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 163, errors: 0, warnings: 3 });
+  assert.deepEqual(validation.counts, { resources: 167, errors: 0, warnings: 3 });
   assert.equal(
     validation.diagnostics.filter(({ code }) => code === "past-proposed-effective-date").length,
     3
@@ -440,7 +575,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.deepEqual(recoveryPlanReadiness.continuityObjectiveSystemIds, []);
   assert.match(
     programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "criteria").message,
-    /42 criteria remain undetermined/
+    /33 Trust Services applicability decisions and 9 Description Criteria decisions remain undetermined/
   );
   const complementaryReview = programReadiness.stages
     .find(({ id }) => id === "controls")
@@ -824,7 +959,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 163 records, including 42 requirements, 28 controls, and 51 obligations/);
+  assert.match(output, /Program baseline: 167 records, including 42 requirements, 28 controls, and 55 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -898,7 +1033,7 @@ test("warns when creation joins a detached Git worktree", async (context) => {
   assert.doesNotMatch(manualOutput, /browser will open in read-only mode/);
 });
 
-test("documents legal organization, program lead, reporting address, and timezone options", () => {
+test("documents legal organization, program lead, reporting address, and timezone options", async () => {
   const output = execFileSync(process.execPath, [
     fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
     "--help"
@@ -915,6 +1050,8 @@ test("documents legal organization, program lead, reporting address, and timezon
   assert.match(output, /--authoritative-branch <name>\s+Browser write branch/);
   assert.match(output, /--repository-remote <name>\s+Browser sync remote/);
   assert.match(output, /--config <json-file\|->\s+Read creation and optional setup values/);
+  const readme = await readFile(fileURLToPath(new URL("../README.md", import.meta.url)), "utf8");
+  assert.match(readme, /"classificationId": "confidential"/);
 });
 
 test("standalone CLI creation starts on main without a monorepo warning", async (context) => {
@@ -964,7 +1101,7 @@ test("creates and configures a service from one JSON config", async (context) =>
       serviceName: "Example Service",
       boundary: "The production service and supporting infrastructure.",
       criticality: "high",
-      classificationId: "confidential",
+      classificationId: "Confidential",
       internetExposed: true,
       programGoal: "type-2"
     }
@@ -976,12 +1113,12 @@ test("creates and configures a service from one JSON config", async (context) =>
     configPath
   ], { encoding: "utf8" });
   assert.match(output, /Stage foundation: created \(12 records\)/);
-  assert.match(output, /Stage soc2-security: created \(151 records\)/);
+  assert.match(output, /Stage soc2-security: created \(155 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 165, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 169, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.systemIds, undefined);
   const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));
@@ -994,7 +1131,7 @@ test("creates and configures a service from one JSON config", async (context) =>
   ));
   assert.equal(commitment.status, "planned");
   assert.deepEqual(commitment.systemIds, ["system-example-service"]);
-  assert.match(commitment.statement, /Replace this starter/);
+  assert.match(commitment.statement, /\[Complete before activation: State the actual customer promise or approved service requirement\.\]/);
   const evidenceFiles = (await readdir(join(target, "data", "evidence"))).filter((name) => name.endsWith(".json"));
   assert.deepEqual(evidenceFiles, []);
 });

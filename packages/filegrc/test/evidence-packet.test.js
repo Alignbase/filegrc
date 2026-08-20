@@ -161,7 +161,8 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       title: "Test security requirement",
       frameworkId: "framework-test-security",
       reference: "TEST1",
-      applicability: "applicable"
+      applicability: "applicable",
+      tags: ["security"]
     },
     {
       id: "requirement-test-description",
@@ -419,6 +420,24 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   await updateResource(root, "document", representationDocument.id, {
     ...representationDocument,
     evidenceIds: ["evidence-signed-management-representation"]
+  });
+  const signedRepresentation = (await loadWorkspace(root)).resources.find(({ id }) => id === "evidence-signed-management-representation");
+  await updateResource(root, "evidence", signedRepresentation.id, {
+    ...signedRepresentation,
+    artifactSubtype: "unrelated-signed-record"
+  });
+  const wrongRepresentationPacket = await prepareEvidencePacket(root, {
+    start: "2026-01-01",
+    end: "2026-03-31",
+    auditId: "audit-2026-type-2",
+    generatedAt: "2026-04-01T12:00:00Z"
+  });
+  const wrongRepresentationGap = wrongRepresentationPacket.gaps.find(({ message }) => /signed-management-representation/.test(message));
+  assert.equal(wrongRepresentationGap?.code, "management-fieldwork-documents-soc2-management-representation", JSON.stringify(wrongRepresentationPacket.gaps, null, 2));
+  const wrongSignedRepresentation = (await loadWorkspace(root)).resources.find(({ id }) => id === signedRepresentation.id);
+  await updateResource(root, "evidence", wrongSignedRepresentation.id, {
+    ...wrongSignedRepresentation,
+    artifactSubtype: "signed-management-representation"
   });
   await createResources(root, [
     {
@@ -706,6 +725,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   } finally {
     await new Promise((resolve) => running.server.close(resolve));
   }
+
 });
 
 test("never marks an unscoped packet with no evidence delivery-ready", async (context) => {

@@ -6,7 +6,7 @@ import { relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { isSafeGitName } from "./git-name.js";
 import { serializeWorkspaceMutation, withDeferredWorkspaceValidation } from "./mutation.js";
-import { resolveWorkspaceRoot } from "./paths.js";
+import { isCanonicalDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { measureTiming, measureTimingSync, recordTiming, timingEnabled } from "./timing.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
@@ -75,6 +75,7 @@ export function getGitSummary(input = process.cwd()) {
 
 export function getFileHistory(input, relativePath, limit = 50) {
   const root = resolveWorkspaceRoot(input);
+  if (!isSafeDataGitPath(relativePath)) return null;
   try {
     const output = git(root, [
       "log",
@@ -87,11 +88,11 @@ export function getFileHistory(input, relativePath, limit = 50) {
     if (!output) return [];
     return output.split("\n").map(parseLogLine);
   } catch {
-    return [];
+    return null;
   }
 }
 
-export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12) {
+export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, options = {}) {
   const root = resolveWorkspaceRoot(input);
   const wanted = new Set(relativePaths);
   const histories = new Map([...wanted].map((path) => [path, []]));
@@ -99,10 +100,14 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12) {
   const head = tryGit(root, ["rev-parse", "HEAD"]) || null;
   const cached = workspaceHistoryCache.get(root);
   if (cached?.head === head && cached.limitPerFile === limitPerFile) {
+    if (options.strict === true && cached.available === false) {
+      throw new Error("Git history is unavailable for the requested workspace files.");
+    }
     for (const path of wanted) histories.set(path, cached.histories.get(path) ?? []);
     return histories;
   }
   const allHistories = new Map();
+  let available = true;
   try {
     const output = git(root, ["log", "--relative", "--format=%x1e%H%x1f%aI%x1f%an%x1f%s", "--name-only", "--", "data"]);
     for (const block of output.split("\x1e")) {
@@ -116,26 +121,53 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12) {
       }
     }
   } catch {
-    // An uncommitted workspace has no history yet.
+    available = false;
+    if (options.strict === true) {
+      throw new Error("Git history is unavailable for the requested workspace files.");
+    }
+    // Browser and workflow views tolerate an uncommitted workspace with no history yet.
   }
-  workspaceHistoryCache.set(root, { head, limitPerFile, histories: allHistories });
+  workspaceHistoryCache.set(root, { head, limitPerFile, histories: allHistories, available });
   for (const path of wanted) histories.set(path, allHistories.get(path) ?? []);
   return histories;
 }
 
 export function getFileAtRevision(input, revision, relativePath) {
   const root = resolveWorkspaceRoot(input);
-  if (!/^[a-f0-9]{40}$/i.test(String(revision)) || typeof relativePath !== "string" || !relativePath.startsWith("data/")) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)) {
     throw new Error("Historical file exports require a Git commit and a data/ path.");
   }
   try {
-    return execFileSync("git", ["show", `${revision}:${relativePath}`], {
+    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const workspacePrefix = relative(topLevel, root).split(sep).join("/");
+    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return null;
+    const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
+    return execFileSync("git", ["show", `${revision}:${repositoryPath}`], {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
       maxBuffer: 20_000_000
     });
+  } catch {
+    return null;
+  }
+}
+
+function isSafeDataGitPath(value) {
+  return isCanonicalDataPath(value)
+    && value.startsWith("data/")
+    && value !== "data/";
+}
+
+export function getChangedDataPathsSinceRevision(input, revision) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision))) return null;
+  const root = resolveWorkspaceRoot(input);
+  try {
+    return [...new Set([
+      ...lines(git(root, ["diff", "--name-only", "--relative", revision, "--", "data"])),
+      ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", "data"]))
+    ])].filter((path) => path.startsWith("data/"));
   } catch {
     return null;
   }

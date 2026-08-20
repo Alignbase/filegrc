@@ -14,7 +14,30 @@ import {
   workflowForResource,
   WORKFLOW_CONTRACT_VERSION
 } from "../src/index.js";
+import { packetDeliveryIssue } from "../src/workflow.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
+
+test("requires a reviewable, approved, and receipted packet delivery record", () => {
+  assert.match(packetDeliveryIssue(null), /least-disclosure review/);
+  const delivery = {
+    classificationReviewedByIds: ["person-reviewer"],
+    classificationReviewedOn: "2026-07-01",
+    redactionDecision: "No redactions were required.",
+    recipient: "Engagement team portal",
+    deliverySystem: "Approved auditor portal",
+    packetCommit: "a".repeat(40),
+    manifestChecksum: `sha256:${"b".repeat(64)}`,
+    approvedByIds: ["person-approver"],
+    approvedOn: "2026-07-02",
+    deliveredOn: "2026-07-03",
+    receiptReference: "Portal receipt 123"
+  };
+  assert.equal(packetDeliveryIssue(delivery), null);
+  assert.match(packetDeliveryIssue({ ...delivery, receiptReference: "" }), /receipt reference/);
+  assert.match(packetDeliveryIssue({ ...delivery, packetCommit: "draft" }), /40-character Git commit/);
+  assert.match(packetDeliveryIssue({ ...delivery, manifestChecksum: "not-a-digest" }), /SHA-256/);
+  assert.match(packetDeliveryIssue({ ...delivery, approvedOn: "2026-06-30" }), /chronological/);
+});
 
 test("returns one reproducible workflow contract with stable findings", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-"));
@@ -353,7 +376,39 @@ test("keeps audit-only roles out of period coverage and guides every late audit 
   assert.equal(workflow.findings.find(({ key }) => key === "period.appointment.policy-owner.gap")?.state, "ready");
   assert.equal(findingKeys.has("audit.audit-issued.lifecycle.packet-delivery"), true);
   assert.equal(findingKeys.has("audit.audit-issued.lifecycle.subsequent-events"), true);
+  assert.equal(findingKeys.has("audit.audit-issued.lifecycle.report-evidence"), true);
   assert.equal(findingKeys.has("audit.audit-issued.lifecycle.advance"), true);
   assert.equal(workflow.assessments.deliveryReadiness.status, "needs-work");
   assert.equal(workflow.assessments.auditClosure.findingKeys.includes("audit.audit-issued.lifecycle.advance"), true);
+});
+
+test("keeps preliminary audit planning separate from an accepted engagement", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-planned-audit-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  await writeJson(join(root, "data", "workspace.json"), {
+    ...loaded.workspace,
+    dataModelVersion: "3"
+  });
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(join(root, "data", "audits"), { recursive: true }));
+  await writeJson(join(root, "data", "audits", "audit-planned.json"), {
+    id: "audit-planned",
+    type: "audit",
+    title: "Planned audit",
+    status: "planned",
+    auditKind: "soc-2-type-2",
+    frameworkIds: [],
+    scope: "Candidate service scope",
+    ownerIds: ["person-owner"]
+  });
+
+  const workflow = await assessWorkflow(root, {
+    asOf: "2026-08-03",
+    evaluatedAt: "2026-08-03T12:00:00Z"
+  });
+  const findingKeys = new Set(workflow.findings.map(({ key }) => key));
+  assert.equal(findingKeys.has("audit.audit-planned.lifecycle.engagement-terms"), false);
+  assert.equal(findingKeys.has("audit.audit-planned.lifecycle.management-acknowledgement"), false);
+  assert.equal(workflow.findings.find(({ key }) => key === "audit.audit-planned.lifecycle.advance")?.title, "Confirm the engagement and start audit preparation");
 });

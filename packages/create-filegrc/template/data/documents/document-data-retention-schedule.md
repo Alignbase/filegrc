@@ -16,11 +16,11 @@ Retention periods may come from law, contract, tax, audit, security, or a docume
 | Customer and service records | [Complete before approval: Systems or Components] | [Complete before approval: owner] | [Complete before approval: trigger] | [Complete before approval: retention] | Delete or anonymize | Contract, law, and business need |
 | Incident and investigation records | Approved incident and Evidence Systems | Incident owner | Incident closure | [Complete before approval: retention] | Archive or securely delete | Legal, insurance, contract, and security needs |
 
-Add rows for each important data class in the System and Vendor inventories. A row is incomplete until it names the source System or Component, owner, trigger, period, disposal action, and authority. FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact.
+Add rows for each important data class in the System and Vendor inventories. A row is incomplete until it names the source System or Component, owner, trigger, period, disposal action, and authority. Remove each bracketed prompt only after replacing it with a reviewed fact.
 
 ## Holds and exceptions
 
-An approved legal hold, investigation, or preservation duty suspends normal deletion for the affected records. Record the authority, scope, owner, start date, and release decision outside this public template.
+An approved legal hold, investigation, or preservation duty suspends normal deletion for the affected records. Record the authority, scope, owner, start date, and release decision in controlled legal-hold records.
 
 Any retention exception needs a reason, owner, approval, compensating safeguards, and expiration or next review date.
 

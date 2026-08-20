@@ -370,14 +370,34 @@ function validateControlComponents(record, byId, path, diagnostics) {
 }
 
 function validateAuditSubservices(record, byId, path, diagnostics) {
+  const selectedSystemIds = new Set(record.systemIds || []);
+  const seenComponentIds = new Set();
   for (const [index, treatment] of (record.subserviceTreatments || []).entries()) {
     for (const componentId of treatment.componentIds || []) {
       const component = byId.get(componentId);
+      if (seenComponentIds.has(componentId)) {
+        diagnostics.push(error(
+          "duplicate-subservice-component",
+          path,
+          `subserviceTreatments[${index}] repeats Component "${componentId}" in more than one treatment.`
+        ));
+      }
+      seenComponentIds.add(componentId);
       if (component?.type === "component" && component.vendorId !== treatment.vendorId) {
         diagnostics.push(error(
           "subservice-vendor-mismatch",
           path,
           `subserviceTreatments[${index}] Component "${componentId}" is not supplied by Vendor "${treatment.vendorId}".`
+        ));
+      }
+      if (
+        component?.type === "component"
+        && !(component.systemUses || []).some(({ systemId }) => selectedSystemIds.has(systemId))
+      ) {
+        diagnostics.push(error(
+          "subservice-component-outside-audit-scope",
+          path,
+          `subserviceTreatments[${index}] Component "${componentId}" has no use in a System selected by this Audit.`
         ));
       }
     }

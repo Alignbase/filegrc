@@ -390,7 +390,7 @@ test("model v3 setup creates one visible service commitment prompt", async (cont
   const first = await setupWorkspace(root, setup);
   assert.equal(first.commitment.status, "planned");
   assert.deepEqual(first.commitment.systemIds, [first.system.id]);
-  assert.match(first.commitment.statement, /Replace this starter/);
+  assert.match(first.commitment.statement, /\[Complete before activation: State the actual customer promise or approved service requirement\.\]/);
   const second = await setupWorkspace(root, { ...setup, systemId: first.system.id });
   assert.equal(second.commitment, null);
   const commitments = (await loadWorkspace(root)).resources.filter(({ type }) => type === "commitment");
@@ -463,7 +463,7 @@ test("setup accepts all initial scope fields as noninteractive CLI flags", async
     "--criticality",
     "critical",
     "--classification",
-    "restricted",
+    "Restricted",
     "--internet-exposed",
     "false",
     "--program-goal",

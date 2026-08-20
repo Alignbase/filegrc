@@ -14,7 +14,7 @@ import {
   prepareEvidencePacket,
   serveWorkspace
 } from "../src/index.js";
-import { makeWorkspace } from "./helpers.js";
+import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
 
@@ -123,6 +123,17 @@ test("initializes model-owned Type 2 populations and management document links",
     cliResult.stages.find(({ id }) => id === "fieldwork").items.filter(({ section }) => section === "Population Completeness").length,
     10
   );
+
+  const typeTwo = (await loadWorkspace(root)).resources.find(({ id }) => id === "audit-type-2");
+  const typeTwoPath = join(root, "data", "audits", `${typeTwo.id}.json`);
+  await writeJson(typeTwoPath, { ...typeTwo, status: "report-draft" });
+  const reportDraft = await assessAuditPreparation(root, { auditId: typeTwo.id });
+  assert.equal(
+    reportDraft.stages.find(({ id }) => id === "fieldwork").items
+      .find(({ title }) => title === "Management Representation Letter").status,
+    "action"
+  );
+  await writeJson(typeTwoPath, typeTwo);
 
   await createResource(root, {
     id: "audit-type-1",

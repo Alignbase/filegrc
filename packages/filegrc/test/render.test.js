@@ -86,6 +86,11 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.doesNotMatch(APP_SCRIPT, /Approve the requirements management expects/);
   assert.doesNotMatch(APP_SCRIPT, /Approval boundary/);
   assert.match(APP_SCRIPT, /proposalRows \? "" : "single"/);
+  assert.match(APP_SCRIPT, /Review exact diff/);
+  assert.match(APP_SCRIPT, /filegrc policy-library --accept/);
+  assert.match(APP_SCRIPT, /--proposal-revision/);
+  assert.match(APP_STYLES, /\.policy-library-proposals\{min-width:0\}/);
+  assert.match(APP_STYLES, /\.policy-library-proposals pre\{[^}]*overflow:auto/);
   assert.match(APP_SCRIPT, /function renderPolicyActivationAssessments\(\)/);
   assert.match(APP_SCRIPT, /esc\(assessment\.label\)/);
   assert.match(APP_SCRIPT, /Missing ready evidence sources/);
@@ -1010,6 +1015,10 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.doesNotMatch(APP_SCRIPT, />Derived workflow</);
   assert.match(APP_SCRIPT, /function workflowItemHref\(item\)/);
   assert.match(APP_SCRIPT, /workflowItemStatePriority\(left\) - workflowItemStatePriority\(right\)/);
+  assert.match(APP_SCRIPT, /workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
+  assert.match(APP_SCRIPT, /<summary>Show ' \+ remaining\.length \+ ' more/);
+  assert.match(APP_SCRIPT, /workflow-findings workflow-findings-more/);
+  assert.match(APP_SCRIPT, /returns the same checklist for headless review/);
   assert.match(APP_SCRIPT, /if \(!items\.length\) return "";/);
   assert.doesNotMatch(APP_SCRIPT, /No current blockers/);
   assert.doesNotMatch(APP_SCRIPT, /The assessment will add a checklist item here/);
@@ -1020,6 +1029,12 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /params\.get\("work"\)/);
   assert.match(APP_SCRIPT, /card\.classList\.add\("workflow-target"\)/);
   assert.match(APP_SCRIPT, /#\/resources\/" \+ encodeURIComponent\(applicabilityType\) \+ "\?review=1"/);
+  assert.match(APP_SCRIPT, /item\.subject\?\.type === applicabilityType[\s\S]*#\/resource\/" \+ encodeURIComponent\(applicabilityType\)/);
+  assert.match(APP_SCRIPT, /command\.includes\(" get "\) && command\.includes\(" --mutation"\)[\s\S]*"\?edit=1"/);
+  assert.match(APP_SCRIPT, /function renderDetail\(main, type, id, params = new URLSearchParams\(\)\)/);
+  assert.match(APP_SCRIPT, /params\.get\("edit"\) === "1"[\s\S]*main\.querySelector\("#edit-resource"\)\?\.click\(\)/);
+  assert.match(APP_SCRIPT, /item\.auditId === options\.id/);
+  assert.match(APP_SCRIPT, /scheduled or external/);
   assert.match(APP_SCRIPT, /missingType[\s\S]*state\.readOnly \? "" : "\?new=1"/);
   assert.match(APP_SCRIPT, /params\.get\("review"\) === "1"/);
   assert.doesNotMatch(listSource, /workflowGuidance\(/);
@@ -1247,6 +1262,8 @@ test("derives step-page completion from the shared workflow assessment", () => {
 test("runs optional onboarding from committed renderer settings", () => {
   assert.doesNotThrow(() => new Function(APP_SCRIPT));
   assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true && !initialSetupSystem\(\)/);
+  assert.match(APP_SCRIPT, /const setupPending = !setupSystem[\s\S]*setupSystem\.status !== "active"[\s\S]*activeProgram\(\)\.assuranceGoal === "none"/);
+  assert.doesNotMatch(APP_SCRIPT, /const setupPending = rendererSettingsEntry\(\)\?\.record\.showOnboarding === true/);
   assert.match(APP_SCRIPT, /function initialSetupSystem\(\)/);
   assert.match(APP_SCRIPT, /function initialSetupBanner\(\)/);
   assert.match(APP_SCRIPT, /class="setup-draft-state"/);
@@ -1349,6 +1366,17 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_STYLES, /\.onboarding-git-status\{display:flex/);
   assert.match(APP_STYLES, /\.commit-dialog\{width:min\(560px/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.onboarding-form,\.onboarding-sections,\.setup-steps\{grid-template-columns:1fr\}/);
+});
+
+test("constrains required SOC 2 criteria to compatible applicability decisions", () => {
+  assert.match(APP_SCRIPT, /state\.applicabilityConstraints\?\.\[entry\.record\.id\]/);
+  assert.match(APP_SCRIPT, /required baseline/);
+  assert.match(APP_SCRIPT, /constraint\?\.allowedDecisions/);
+  assert.match(APP_SCRIPT, /constraint\?\.requiredDecision/);
+  assert.match(APP_SCRIPT, /constraint\?\.defaultRationale/);
+  assert.match(APP_STYLES, /\.applicability-baseline-note/);
+  assert.match(APP_STYLES, /\.applicability-constraint/);
+  assert.match(APP_SCRIPT, /noun === "criterion"\) return "criteria"/);
 });
 
 test("renders shared obligation and evidence-packet workflows", () => {

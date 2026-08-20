@@ -7,8 +7,14 @@ import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
 import { obligationIsEnabled, obligationIsRunning } from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
+import { assessPolicyLibraryUpgrades } from "./policy-library.js";
 import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
+import {
+  missingSoc2References,
+  REQUIRED_SOC2_DESCRIPTION_REFERENCES,
+  REQUIRED_SOC2_SECURITY_REFERENCES
+} from "./soc2.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
@@ -75,6 +81,7 @@ export async function assessProgramReadiness(input, options = {}) {
     && coverageStart(program.candidateCoverage) <= asOf
   );
   const obligations = planObligations(records, { asOf, through: asOf, model: loaded.model });
+  const policyLibrary = await assessPolicyLibraryUpgrades(loaded);
   const operating = evidenceReady && candidateStarted && stages.at(-1).counts.action === 0;
   const canStartCandidatePeriod = Boolean(
     evidenceReady
@@ -103,7 +110,10 @@ export async function assessProgramReadiness(input, options = {}) {
     canStartCandidatePeriod,
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
     policyActivations,
-    policyLibraryProposals: policyLibraryProposals(records),
+    policyLibraryProposals: [
+      ...policyLibrary.proposals,
+      ...legacyPolicyLibraryProposals(records)
+    ],
     progress: {
       complete,
       total: managedItems.length,
@@ -217,7 +227,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const completeSystems = scope.systems.filter((system) => (
     system.status === "active"
     && (String(model.modelVersion) === "4" ? system.purpose && system.boundary && (system.servicesProvided || []).length : system.description)
-    && system.classificationId
+    && (String(model.modelVersion) === "4" || system.classificationId)
     && (system.ownerIds || []).length
   ));
   items.push(item(
@@ -225,7 +235,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     scope.systems.length && completeSystems.length === scope.systems.length ? "complete" : "action",
     "Define the service boundary",
     scope.systems.length
-      ? `${completeSystems.length} of ${scope.systems.length} program systems are active, explicitly in scope, owned, classified, and described.`
+      ? `${completeSystems.length} of ${scope.systems.length} program systems are active, explicitly in scope, owned, and described${String(model.modelVersion) === "4" ? "" : ", with a classification"}.`
       : "Select and describe every service and supporting system in the program boundary.",
     scope.systems[0] || { type: "system" }
   ));
@@ -281,22 +291,69 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     && (String(model.modelVersion) === "4" ? !v4Decisions.has(record.id) || v4Decisions.get(record.id) === "undetermined" : record.applicability === "undetermined")
   ));
   const missingRequirements = applicableRequirements.filter((record) => !selectedRequirementIds.has(record.id));
+  const selectedDescriptionRequirements = scope.requirements.filter(isDescriptionRequirement);
+  const selectedTrustServicesRequirements = scope.requirements.filter((requirement) => !isDescriptionRequirement(requirement));
+  const unresolvedDescriptionRequirements = unresolvedRequirements.filter(isDescriptionRequirement);
+  const unresolvedTrustServicesRequirements = unresolvedRequirements.filter((requirement) => !isDescriptionRequirement(requirement));
+  const uncoveredRequirements = scope.requirements.filter((requirement) => (
+    !isDescriptionRequirement(requirement)
+    && !scope.controls.some((control) => (control.requirementIds || []).includes(requirement.id))
+  ));
+  const enforceSoc2Baseline = String(model.modelVersion) === "4"
+    && ["readiness", "soc-2-type-1", "soc-2-type-2"].includes(goal);
+  const selectedFrameworkRequirements = records.filter((record) => (
+    record.type === "requirement"
+    && scope.frameworks.some((framework) => framework.id === record.frameworkId)
+  ));
+  const securityRequirements = selectedFrameworkRequirements.filter(isSecurityRequirement);
+  const descriptionRequirements = selectedFrameworkRequirements.filter(isDescriptionRequirement);
+  const missingRequiredSecurityReferences = enforceSoc2Baseline
+    ? missingSoc2References(securityRequirements, REQUIRED_SOC2_SECURITY_REFERENCES)
+    : [];
+  const missingRequiredDescriptionReferences = enforceSoc2Baseline
+    ? missingSoc2References(descriptionRequirements, REQUIRED_SOC2_DESCRIPTION_REFERENCES)
+    : [];
+  const mandatoryRequirements = enforceSoc2Baseline
+    ? [...securityRequirements, ...descriptionRequirements].filter(({ reference }) => (
+        REQUIRED_SOC2_SECURITY_REFERENCES.includes(String(reference || "").toUpperCase())
+        || REQUIRED_SOC2_DESCRIPTION_REFERENCES.includes(String(reference || "").toUpperCase())
+      ))
+    : [];
+  const invalidMandatoryDecisions = mandatoryRequirements.filter((requirement) => (
+    v4Decisions.get(requirement.id) !== "applicable"
+  ));
   const criteriaComplete = Boolean(
     scope.frameworks.length
     && scope.requirements.length
     && scope.controls.length
     && !unresolvedRequirements.length
     && !missingRequirements.length
+    && !uncoveredRequirements.length
+    && !missingRequiredSecurityReferences.length
+    && !missingRequiredDescriptionReferences.length
+    && !invalidMandatoryDecisions.length
   );
   items.push(item(
     "criteria",
     criteriaComplete ? "complete" : "action",
-    "Confirm criteria and controls in scope",
+    "Confirm Trust Services criteria, Description Criteria, and Controls",
     criteriaComplete
-      ? `${scope.requirements.length} applicable criteria and ${scope.controls.length} controls are in the management program scope.`
-      : `Resolve the program criteria and controls. ${unresolvedRequirements.length} criteria remain undetermined and ${missingRequirements.length} applicable criteria are not selected.`,
+      ? `${selectedTrustServicesRequirements.length} applicable Trust Services criteria, ${selectedDescriptionRequirements.length} SOC 2 Description Criteria, and ${scope.controls.length} Controls are in scope. Every applicable Trust Services criterion has at least one selected Control; Description Criteria govern the system description and do not map to Controls.`
+      : missingRequiredSecurityReferences.length || missingRequiredDescriptionReferences.length
+        ? `Use the complete SOC 2 baseline. The selected Frameworks omit ${[
+            ...missingRequiredSecurityReferences,
+            ...missingRequiredDescriptionReferences
+          ].join(", ")}.`
+        : invalidMandatoryDecisions.length
+          ? `Mark all 33 Security Common Criteria and all nine Description Criteria applicable for this SOC 2 Program. ${invalidMandatoryDecisions.length} required ${invalidMandatoryDecisions.length === 1 ? "decision is" : "decisions are"} missing, undetermined, or not applicable.`
+          : `Resolve the program criteria and Controls. ${unresolvedTrustServicesRequirements.length} Trust Services applicability decisions and ${unresolvedDescriptionRequirements.length} Description Criteria decisions remain undetermined, ${missingRequirements.length} applicable criteria are not selected, and ${uncoveredRequirements.length} selected applicable Trust Services criteria have no selected Control. Description Criteria govern the system description and do not map to Controls.`,
     workspace || { type: "workspace" },
     {
+      unresolvedRequirementIds: unresolvedRequirements.map(({ id }) => id),
+      missingRequirementIds: missingRequirements.map(({ id }) => id),
+      uncoveredRequirementIds: uncoveredRequirements.map(({ id }) => id),
+      invalidMandatoryRequirementIds: invalidMandatoryDecisions.map(({ id }) => id),
+      missingRequiredReferences: [...missingRequiredSecurityReferences, ...missingRequiredDescriptionReferences],
       commands: [
         "npx filegrc review-applicability --scaffold --type requirement > decisions.json",
         "npx filegrc review-applicability decisions.json --preview --json",
@@ -808,7 +865,7 @@ function policyActivationItem(assessment) {
   );
 }
 
-function policyLibraryProposals(records) {
+function legacyPolicyLibraryProposals(records) {
   const legacyIds = [
     "policy-anti-bribery-corruption",
     "policy-clear-desk-screen",
@@ -1251,6 +1308,16 @@ function assuranceGoalLabel(goal) {
   if (goal === "soc-2-type-2") return "SOC 2 Type 2";
   if (goal === "readiness") return "SOC 2 program readiness";
   return "No assurance goal selected";
+}
+
+function isDescriptionRequirement(requirement) {
+  return (requirement?.tags || []).includes("description-criteria")
+    || /^DC\d+/i.test(requirement?.reference || "");
+}
+
+function isSecurityRequirement(requirement) {
+  const tags = requirement?.tags || [];
+  return tags.includes("security") || tags.includes("common-criteria") || /^CC\d+(?:\.|$)/i.test(requirement?.reference || "");
 }
 
 function stage(id, title, description, items) {

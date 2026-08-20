@@ -29,4 +29,4 @@ For a signed acknowledgement, bind the attestation to the exact content Git revi
 
 For a `population-export`, also record the authoritative `sourceComponentId`, exact period, generation timestamp, timezone, query or report parameters, item count, completeness check, and accuracy check. A zero-item population still needs its source export and query.
 
-Do not commit secrets, session data, regulated data, or personal data that may need erasure. Use an approved external reference when Git is not an appropriate store.
+Do not commit plaintext credentials, private keys, tokens, recovery codes, session data, regulated data, or personal data that may need erasure. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions. Use an approved external reference when Git is not an appropriate store.

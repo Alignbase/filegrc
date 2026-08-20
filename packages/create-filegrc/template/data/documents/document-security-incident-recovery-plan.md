@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This plan coordinates reporting, response, recovery, and continuity when a security event or disruption affects {{company_name}} or an in-scope service. Controls, Components, Systems, Obligations, and Evidence hold the actual technical configuration and proof of operation.
+This plan coordinates reporting, response, recovery, and continuity when a security event or disruption affects {{company_name}} or an in-scope service. Supporting procedures, system records, and retained evidence document the actual technical configuration and operation.
 
 ## Reporting routes
 
 The primary reporting route is {{security_contact_email}}.
 
-[Complete before activation: Name a usable alternate reporting route, its owner, protected location, and how workers can find it when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not put secrets in this plan.]
+[Complete before activation: Name a usable alternate reporting route, its owner, protected location, and how workers can find it when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not put plaintext credentials, private keys, tokens, or recovery codes in this plan.]
 
 Reports may describe suspected unauthorized access, malware, data loss, credential exposure, security-Control failure, service disruption, fraud affecting the service, or another policy violation. The recipient records the report, protects confidentiality, preserves relevant information, and assigns an initial owner.
 
@@ -22,7 +22,7 @@ The Policy Owner maintains this plan and ensures that the organization assigns t
 - Executive decision-maker for major business, customer, insurance, or legal decisions
 - Communication owner for workforce, customer, Vendor, and public messages
 
-If an incident raises a legal, privacy, or insurance question, the incident lead gets suitable advice at that time. FileGRC does not require pre-arranged counsel, in-house counsel, or a standing legal retainer.
+If an incident raises a legal, privacy, or insurance question, the incident lead obtains suitable advice at that time. A pre-arranged counsel relationship or standing legal retainer is required only when management determines that the organization's obligations and risk warrant one.
 
 [Complete before activation: Record the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]
 
@@ -49,24 +49,24 @@ The team does not destroy Evidence, promise external notification, or make publi
 
 ## Recovery priorities and procedures
 
-[Complete before activation: Link every important System and record its approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments in the System record.]
+[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]
 
-For each important System, the applicable Control, Component, System, and Obligation records must identify:
+Supporting recovery documentation for each important System must identify:
 
 - The backup or alternate recovery approach
 - Scope, frequency, retention, monitoring, and failure response
 - Recovery and restoration procedure
 - People who can access the procedure and required Systems
-- Restore-validation method and governed schedule
+- Restore-validation method and approved schedule
 - Dependencies, fallback paths, and validation steps
 
-[Confirm or replace before activation: The starter proposal for important production data is a daily backup, 30-day retention period, and annual restore validation. Record the approved choice for every important System in its Control, Component, System, Retention Schedule, and Obligation records.]
+[Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]
 
 If no approved objective or procedure exists during an event, the incident lead records an interim decision based on customer impact, data risk, and dependencies, then assigns the missing permanent decision as follow-up work.
 
 ## Alternate plan access
 
-[Complete before activation: Record the protected alternate location and access method responders will use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing secrets.]
+[Complete before activation: Record the protected alternate location and access method responders will use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]
 
 ## Closure and follow-up
 
@@ -74,6 +74,6 @@ The incident lead closes the incident only after affected Systems are stable, se
 
 ## Exercises and maintenance
 
-Management tests a representative security alert from generation through receipt, acknowledgement, escalation, and fallback on the approved governed schedule. It also exercises incident coordination, alternate plan access, emergency contacts, and recovery of selected important Systems on their approved schedules.
+Management tests a representative security alert from generation through receipt, acknowledgement, escalation, and fallback on the approved schedule. It also exercises incident coordination, alternate plan access, emergency contacts, and recovery of selected important Systems on their approved schedules.
 
 Each exercise records scope, participants, objectives, result, Evidence, Exceptions, findings, and follow-up. The owner reviews this plan after a material incident, failed exercise, important System change, or reporting-path change and on the approved Policy-review schedule.

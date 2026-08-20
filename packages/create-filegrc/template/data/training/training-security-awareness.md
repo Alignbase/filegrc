@@ -76,9 +76,9 @@ Report a lost or stolen device, badge, authentication token, paper record, or re
 ## Identity and authentication
 
 - Use a unique identity for company work. Do not share accounts.
-- Use an approved password manager to generate and store a unique password for each account.
+- Use a unique password for each account and store it only through the credential-protection method approved for that System.
 - Prefer long, randomly generated passwords or long passphrases. Do not make predictable substitutions or reuse passwords.
-- Keep passwords, recovery codes, private keys, and authentication tokens out of email, chat, tickets, source code, and general-purpose documents.
+- Keep plaintext passwords, recovery codes, private keys, and authentication tokens out of email, chat, tickets, source code, and general-purpose documents. Approved source-controlled ciphertext must follow the Policy and keep decryption keys separate.
 - Use multi-factor authentication when required.
 - Protect authentication devices and report an unexpected prompt, lost factor, or suspected credential exposure.
 - Never disclose a password or authentication code to someone who asks for it.
@@ -92,7 +92,7 @@ Use a company-managed device for company work unless another arrangement is appr
 - Keep the operating system, browser, applications, and security tools supported and updated.
 - Enable automatic security updates when approved.
 - Keep disk encryption, screen locking, malware protection, firewall, logging, and device-management controls enabled.
-- Lock the screen whenever the device is unattended. Company-managed devices use the automatic-lock setting recorded in the applicable Endpoint Control, Component, or System.
+- Lock the screen whenever the device is unattended. Company-managed devices must use the approved automatic-lock setting.
 - Use a standard user account for routine work. Use administrative access only when authorized and needed.
 - Install applications and browser extensions only through an approved process.
 - Do not connect unapproved removable media.
@@ -105,7 +105,7 @@ Do not wipe, reset, power off, or materially alter a suspected compromised devic
 
 - Use trusted networks or an approved encrypted connection.
 - Treat public and shared networks as untrusted.
-- Use approved remote-access methods and multi-factor authentication.
+- Use approved remote-access methods and multi-factor authentication when the Policy, Control, customer commitment, or risk decision requires it.
 - Do not discuss or display confidential information where another person can see or hear it.
 - Keep work data out of personal accounts and unapproved applications.
 - Use approved mobile applications, device encryption, screen locking, and remote lock or wipe where supported.
@@ -132,7 +132,7 @@ Follow the Information Security Policy and use the highest applicable classifica
 - Store company data only in approved systems.
 - Use least privilege and approved sharing settings.
 - Do not use production data in development or testing unless approved and equally protected.
-- Do not put credentials, authentication tokens, or cryptographic keys in this repository or another general-purpose system.
+- Do not put plaintext credentials, authentication tokens, or cryptographic keys in source repositories or general-purpose Systems. Approved source-controlled ciphertext must meet the Policy's separate-key, access, and rotation conditions.
 - Dispose of paper, devices, and media through an approved process.
 - Report unintended disclosure, excessive access, improper disposal, or an unexpected public link.
 
@@ -142,13 +142,13 @@ People who design, build, review, deploy, or administer company Systems must:
 
 - Keep code, infrastructure changes, and production access in approved repositories and workflows.
 - Protect branches and deployments with the reviews, tests, and approvals required by the Change Management Control.
-- Keep secrets out of source code, build output, tickets, chat, and logs.
+- Keep plaintext secrets out of source code, build output, tickets, chat, and logs. Repository access alone must never decrypt approved source-controlled ciphertext.
 - Validate input, authorization, error handling, and sensitive-data use at trust boundaries.
 - Review new and changed dependencies, resolve security findings within the approved risk targets, and record Exceptions when a target cannot be met.
 - Separate development and production duties when practical. Record a compensating or post-deployment review when team size or urgency prevents independent pre-deployment review.
 - Record emergency changes, limit their scope, validate the result, and complete the required follow-up review.
 
-The applicable Controls, Components, Systems, and governed schedules record the actual tools, settings, approval paths, and evidence.
+Approved supporting standards, procedures, and schedules document the tools, settings, approval paths, and evidence.
 
 ## Physical security and clear workspaces
 

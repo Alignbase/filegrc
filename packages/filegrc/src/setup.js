@@ -9,6 +9,7 @@ const CRITICALITIES = new Set(["low", "medium", "high", "critical"]);
 export async function setupWorkspace(input = process.cwd(), payload = {}) {
   const loaded = await loadWorkspace(input);
   const setup = normalizeSetupPayload(payload);
+  setup.classificationId = resolveClassificationId(loaded, setup.classificationId);
   validateSetup(loaded, setup);
   const plan = buildSetupRecords(loaded, setup);
   const updates = [
@@ -44,6 +45,7 @@ export async function setupWorkspace(input = process.cwd(), payload = {}) {
 export async function planWorkspaceSetup(input = process.cwd(), payload = {}) {
   const loaded = await loadWorkspace(input);
   const setup = normalizeSetupPayload(payload);
+  setup.classificationId = resolveClassificationId(loaded, setup.classificationId);
   validateSetup(loaded, setup);
   const plan = buildSetupRecords(loaded, setup);
   return {
@@ -137,6 +139,21 @@ function validateSetup(loaded, setup) {
   }
 }
 
+function resolveClassificationId(loaded, value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return value;
+  const candidates = String(loaded.model.modelVersion) === "4"
+    ? loaded.resources
+      .filter(({ type, status }) => type === "classification" && status === "active")
+      .map(({ id, title }) => ({ id, label: title }))
+    : Object.entries(loaded.workspace.classificationDefinitions || {})
+      .map(([id, label]) => ({ id, label }));
+  const matches = candidates.filter(({ id, label }) => (
+    id.toLowerCase() === normalized || String(label || "").trim().toLowerCase() === normalized
+  ));
+  return matches.length === 1 ? matches[0].id : value;
+}
+
 function findSetupSystem(resources, target, setup) {
   const scopedSystemIds = new Set(target.systemIds || []);
   return (setup.systemId && resources.find(({ type, id }) => type === "system" && id === setup.systemId))
@@ -227,7 +244,7 @@ function buildSetupRecords(loaded, setup) {
         title: `${setup.serviceName} service commitment`,
         status: "planned",
         commitmentKind: "service",
-        statement: "Replace this starter with the actual customer promise or approved service requirement before activation.",
+        statement: "[Complete before activation: State the actual customer promise or approved service requirement.]",
         systemIds: [systemId],
         ownerIds: [setup.ownerId],
         customerFacing: true,

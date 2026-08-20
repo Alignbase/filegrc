@@ -64,7 +64,9 @@ The Program Overview shows what is done, what is blocked, and what to do next.
 
 ![filegrc audit readiness](docs/filegrc-audit.png)
 
-The Security starter is intentionally small: one Information Security Policy, one Security Incident and Recovery Plan, one focused Data Retention Schedule, one Security Awareness Training record, and the Controls and Obligations needed for the Security common criteria. They are proposals, so review them against how your company actually works. Suggested retention periods and schedule cadences are starting points, not adopted requirements. Add Privacy, Confidentiality, Availability, Processing Integrity, employment, anti-bribery, or other broader GRC material only when the company chooses to expand the scope.
+The Security starter uses one consolidated Information Security Policy with familiar policy-family headings, one Security Incident and Recovery Plan, one focused Data Retention Schedule, one Security Awareness Training record, and the Controls and Obligations needed for the Security common criteria. The headings make common customer and Vendor questionnaire topics easy to locate, but they do not prove implementation or create separate policy documents. Confirm the applicable Control status and Evidence before answering a questionnaire.
+
+These records are proposals, so review them against how your company actually works. Suggested retention periods and schedule cadences are starting points, not adopted requirements. Add Privacy, Confidentiality, Availability, Processing Integrity, employment, anti-bribery, or other broader GRC material only when the company chooses to expand the scope.
 
 ## Built for engineers and agents
 
@@ -94,6 +96,8 @@ filegrc manages GRC records and audit evidence. Your workforce, identity, source
 
 The independent CPA firm still selects samples, tests controls, evaluates exceptions, decides whether evidence is sufficient, and issues the SOC 2 report.
 
-Do not put secrets or personal data that may need erasure into Git. The editable local server has no authentication and binds to loopback by default.
+For a SOC 2 engagement, scope all 33 Security Common Criteria, all nine Description Criteria, and any optional Trust Services Categories included in the report. The Security Common Criteria remain mandatory. Record any criterion from an optional category judged not relevant under DC8 instead of omitting a Description Criterion.
+
+Do not put plaintext credentials, private keys, tokens, recovery codes, or personal data that may need erasure into Git. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions. The editable local server has no authentication and binds to loopback by default.
 
 Learn more at [filegrc.com](https://filegrc.com) or [view the source on GitHub](https://github.com/Alignbase/filegrc).

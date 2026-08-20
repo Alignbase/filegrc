@@ -6,6 +6,7 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { resolveDataPath } from "./paths.js";
 import { resolveProgram } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 import { assessWorkflow, buildWorkflowDelta } from "./workflow.js";
 import { loadWorkspace } from "./workspace.js";
 
@@ -44,11 +45,15 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     reviewedOn: null,
     decisions: records
       .sort((left, right) => `${left.type}:${left.title}:${left.id}`.localeCompare(`${right.type}:${right.title}:${right.id}`))
-      .map((record) => ({
-        id: record.id,
-        decision: null,
-        rationale: null
-      }))
+      .map((record) => {
+        const constraint = soc2RequirementApplicabilityConstraint(record, program, loaded.model.modelVersion);
+        return {
+          id: record.id,
+          decision: constraint?.requiredDecision || null,
+          rationale: constraint?.defaultRationale || null,
+          ...(constraint ? { constraint } : {})
+        };
+      })
   };
 }
 
@@ -88,6 +93,10 @@ function planApplicabilityReviewWithContext(context, options) {
     }
     if (!reviewedByIds.length || !reviewedOn || !rationale) {
       throw new Error(`Decision for "${record.id}" needs a reviewer, review date, and rationale.`);
+    }
+    const constraint = soc2RequirementApplicabilityConstraint(record, program, loaded.model.modelVersion);
+    if (constraint && !constraint.allowedDecisions.includes(result)) {
+      throw new Error(`${record.reference || record.title} must be applicable because it is required for the selected SOC 2 Security program.`);
     }
     const next = {
       ...record,
