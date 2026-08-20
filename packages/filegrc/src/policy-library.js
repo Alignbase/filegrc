@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { modelSupports } from "../model/index.js";
 import { applyResourceBatch, contentRevision } from "./files.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { resolveDataPath } from "./paths.js";
@@ -658,7 +659,7 @@ async function buildPolicyLibraryPlan(loaded) {
     });
   }
 
-  for (const addition of String(loaded.model.modelVersion) === "4" ? OBLIGATION_ADDITIONS : []) {
+  for (const addition of modelSupports(loaded.model, "program-scope") ? OBLIGATION_ADDITIONS : []) {
     if (byId.has(addition.id)) {
       skipped.push(skippedItem(addition.id, "present", "An Obligation with this ID already exists, so FileGRC will not replace it."));
       continue;

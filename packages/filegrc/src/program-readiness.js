@@ -1,17 +1,25 @@
 import { readFile } from "node:fs/promises";
+import { modelSupports } from "../model/index.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessCollectionReviews } from "./collection-review.js";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
 import { resolveDataPath } from "./paths.js";
-import { obligationIsEnabled, obligationIsRunning } from "./program-lifecycle.js";
+import {
+  contentRevisionBindingsMatch,
+  documentIsAuditSpecific,
+  governedDocumentIsOperating,
+  obligationIsEnabled,
+  obligationIsRunning
+} from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
 import { assessPolicyLibraryUpgrades } from "./policy-library.js";
 import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import {
   missingSoc2References,
+  personWasActiveOn,
   REQUIRED_SOC2_DESCRIPTION_REFERENCES,
   REQUIRED_SOC2_SECURITY_REFERENCES
 } from "./soc2.js";
@@ -37,14 +45,15 @@ export async function assessProgramReadiness(input, options = {}) {
     return markdown.get(record.id);
   };
 
-  const policyStage = await policiesStage(scope, records, byId, readMarkdown);
+  const policyStage = await policiesStage(scope, records, byId, readMarkdown, loaded.model);
   const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model);
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
-  controlStage.items.push(...await governedContentItems(scope, records, byId, readMarkdown, asOf));
+  const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
+  controlStage.items.push(...governedContent.items);
   const policyActivations = await assessPolicyActivations(
     requiredPolicies(scope, byId),
     scope.controls,
@@ -55,7 +64,7 @@ export async function assessProgramReadiness(input, options = {}) {
     loaded.model
   );
   controlStage.items.push(...policyActivations.map(policyActivationItem));
-  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled schedules, and complete authoritative source ${String(loaded.model.modelVersion) === "4" ? "Components" : "Systems"}. Activate approved Policies at the implementation cutover after reviewing each activation assessment.`;
+  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled schedules, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. Activate the unchanged approved governed Documents after their requirements are implemented, then activate approved Policies at the implementation cutover.`;
   const evidenceGateStages = [
     scopeStage(
       program,
@@ -110,6 +119,7 @@ export async function assessProgramReadiness(input, options = {}) {
     canStartCandidatePeriod,
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
     policyActivations,
+    documentActivations: governedContent.documentActivations,
     policyLibraryProposals: [
       ...policyLibrary.proposals,
       ...legacyPolicyLibraryProposals(records)
@@ -145,9 +155,9 @@ export async function assessEvidenceMap(input, options = {}) {
     status: counts.action ? "action" : "complete",
     counts,
     workflow: [
-      `Choose an existing ${String(readiness.dataModelVersion) === "4" ? "Component" : "System"} or create one that is authoritative for each evidence family.`,
-      `On every source ${String(readiness.dataModelVersion) === "4" ? "Component" : "System"}, set an evidence source role, name current evidence access owners, and write repeatable retrieval instructions in Record Markdown.`,
-      `Map each selected Control to the authoritative source ${String(readiness.dataModelVersion) === "4" ? "Components with evidenceSourceComponentIds" : "Systems with evidenceSourceIds"} that produce its evidence.`,
+      `Choose an existing ${modelSupports(readiness.dataModelVersion, "component-sources") ? "Component" : "System"} or create one that is authoritative for each evidence family.`,
+      `On every source ${modelSupports(readiness.dataModelVersion, "component-sources") ? "Component" : "System"}, set an evidence source role, name current evidence access owners, and write repeatable retrieval instructions in Record Markdown.`,
+      `Map each selected Control to the authoritative source ${modelSupports(readiness.dataModelVersion, "component-sources") ? "Components with evidenceSourceComponentIds" : "Systems with evidenceSourceIds"} that produce its evidence.`,
       "Run program-readiness again and resolve every incomplete source check and control mapping before marking the Controls implemented."
     ],
     items: evidenceItems
@@ -169,7 +179,7 @@ function programScope(program, records, byId, model, loaded) {
     )),
     requirements: select(selectedRequirementIds(program, model), "requirement", (record) => (
       record.type === "requirement" && record.applicability === "applicable"
-    )).filter((record) => String(model.modelVersion) === "4" || record.applicability === "applicable"),
+    )).filter((record) => modelSupports(model, "program-scope") || record.applicability === "applicable"),
     controls: select(program?.controlIds, "control", (record) => (
       record.type === "control" && !["not-applicable", "retired"].includes(record.status)
     )).filter((record) => !["not-applicable", "retired"].includes(record.status))
@@ -195,7 +205,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     }
   ));
 
-  if (String(model.modelVersion) === "4") {
+  if (modelSupports(model, "program-scope")) {
     const completeComponents = scope.components.filter((component) => (
       component.status === "active"
       && component.description
@@ -226,8 +236,8 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
 
   const completeSystems = scope.systems.filter((system) => (
     system.status === "active"
-    && (String(model.modelVersion) === "4" ? system.purpose && system.boundary && (system.servicesProvided || []).length : system.description)
-    && (String(model.modelVersion) === "4" || system.classificationId)
+    && (modelSupports(model, "program-scope") ? system.purpose && system.boundary && (system.servicesProvided || []).length : system.description)
+    && (modelSupports(model, "program-scope") || system.classificationId)
     && (system.ownerIds || []).length
   ));
   items.push(item(
@@ -235,12 +245,12 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     scope.systems.length && completeSystems.length === scope.systems.length ? "complete" : "action",
     "Define the service boundary",
     scope.systems.length
-      ? `${completeSystems.length} of ${scope.systems.length} program systems are active, explicitly in scope, owned, and described${String(model.modelVersion) === "4" ? "" : ", with a classification"}.`
+      ? `${completeSystems.length} of ${scope.systems.length} program systems are active, explicitly in scope, owned, and described${modelSupports(model, "program-scope") ? "" : ", with a classification"}.`
       : "Select and describe every service and supporting system in the program boundary.",
     scope.systems[0] || { type: "system" }
   ));
 
-  if (["3", "4"].includes(String(model.modelVersion))) {
+  if (modelSupports(model, "guided-workflow")) {
     const commitments = records.filter((record) => (
       record.type === "commitment"
       && !["superseded", "retired"].includes(record.status)
@@ -250,7 +260,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
       record.status === "active"
       && record.statement
       && record.effectiveOn
-      && (String(model.modelVersion) === "4" || record.applicabilityReview?.decision === "applicable")
+      && (modelSupports(model, "program-scope") || record.applicabilityReview?.decision === "applicable")
       && currentPartyPeople(record.ownerIds, byId).size > 0
       && (record.requirementIds || []).length > 0
       && (record.controlIds || []).length > 0
@@ -283,12 +293,12 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const applicableRequirements = records.filter((record) => (
     record.type === "requirement"
     && scope.frameworks.some((framework) => framework.id === record.frameworkId)
-    && (String(model.modelVersion) === "4" ? v4Decisions.get(record.id) === "applicable" : record.applicability === "applicable")
+    && (modelSupports(model, "program-scope") ? v4Decisions.get(record.id) === "applicable" : record.applicability === "applicable")
   ));
   const unresolvedRequirements = records.filter((record) => (
     record.type === "requirement"
     && scope.frameworks.some((framework) => framework.id === record.frameworkId)
-    && (String(model.modelVersion) === "4" ? !v4Decisions.has(record.id) || v4Decisions.get(record.id) === "undetermined" : record.applicability === "undetermined")
+    && (modelSupports(model, "program-scope") ? !v4Decisions.has(record.id) || v4Decisions.get(record.id) === "undetermined" : record.applicability === "undetermined")
   ));
   const missingRequirements = applicableRequirements.filter((record) => !selectedRequirementIds.has(record.id));
   const selectedDescriptionRequirements = scope.requirements.filter(isDescriptionRequirement);
@@ -299,7 +309,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     !isDescriptionRequirement(requirement)
     && !scope.controls.some((control) => (control.requirementIds || []).includes(requirement.id))
   ));
-  const enforceSoc2Baseline = String(model.modelVersion) === "4"
+  const enforceSoc2Baseline = modelSupports(model, "program-scope")
     && ["readiness", "soc-2-type-1", "soc-2-type-2"].includes(goal);
   const selectedFrameworkRequirements = records.filter((record) => (
     record.type === "requirement"
@@ -523,15 +533,19 @@ function ownershipResolutionReasons(ownerIds, byId) {
   });
 }
 
-async function policiesStage(scope, records, byId, readMarkdown) {
+async function policiesStage(scope, records, byId, readMarkdown, model) {
   const policies = requiredPolicies(scope, byId);
-  const appointedReviewer = policies
-    .filter((policy) => partiesIndependent(policy.ownerIds, policy.approverIds, byId))
-    .flatMap((policy) => [...currentPartyPeople(policy.approverIds || [], byId)])
+  const documents = modelSupports(model, "governed-document-activation")
+    ? requiredGovernedDocuments(scope, records, byId, model)
+    : [];
+  const governedRecords = [...policies, ...documents];
+  const appointedReviewer = governedRecords
+    .filter((record) => partiesIndependent(record.ownerIds, record.approverIds, byId))
+    .flatMap((record) => [...currentPartyPeople(record.approverIds || [], byId)])
     .map((id) => byId.get(id))
     .find(Boolean);
-  const policyOwnerIds = new Set(policies.flatMap((policy) => (
-    [...partyPeople(policy.ownerIds || [], byId)]
+  const policyOwnerIds = new Set(governedRecords.flatMap((record) => (
+    [...partyPeople(record.ownerIds || [], byId)]
   )));
   const oversight = byId.get("team-security-risk-oversight");
   const availableReviewer = oversight?.type === "team" && oversight.status === "active"
@@ -540,7 +554,7 @@ async function policiesStage(scope, records, byId, readMarkdown) {
       .map((id) => byId.get(id))
       .find(Boolean)
     : null;
-  const reviewerNeedsAssignment = !appointedReviewer && availableReviewer && policies.length;
+  const reviewerNeedsAssignment = !appointedReviewer && availableReviewer && governedRecords.length;
   const items = [
     item(
       "independent-reviewer",
@@ -553,7 +567,7 @@ async function policiesStage(scope, records, byId, readMarkdown) {
         : reviewerNeedsAssignment
           ? `${availableReviewer.title} chairs Security and Risk Oversight. Assign this person as approver on each policy after review.`
           : "Appoint a reviewer who is separate from the policy owner. The reviewer may be another person in the organization or an external person, and is separate from the CPA firm that may later perform the audit.",
-      appointedReviewer || (reviewerNeedsAssignment ? policies[0] : { type: "person" }),
+      appointedReviewer || (reviewerNeedsAssignment ? governedRecords[0] : { type: "person" }),
       {
         commands: [
           "npx filegrc list appointment --workflow --json",
@@ -610,10 +624,61 @@ async function policiesStage(scope, records, byId, readMarkdown) {
       }
     ));
   }
+  for (const document of documents) {
+    const source = await readMarkdown(document);
+    const placeholderCount = openPlaceholderCount(source);
+    const isSecurityIncidentRecoveryPlan = document.id === "document-security-incident-recovery-plan";
+    const systemsWithCompleteContinuityObjectives = scope.systems.filter(({ continuityObjectives }) => (
+      Number.isInteger(continuityObjectives?.recoveryTimeHours)
+      && Number.isInteger(continuityObjectives?.recoveryPointHours)
+      && Number.isInteger(continuityObjectives?.maximumTolerableDowntimeHours)
+    ));
+    const checks = {
+      independentlyApproved: ["approved", "active"].includes(document.status)
+        && Boolean(document.approvedOn)
+        && Boolean(document.approvedContentRevisions)
+        && partiesIndependent(document.ownerIds, document.approverIds, byId),
+      owner: currentPartyPeople(document.ownerIds, byId).size > 0,
+      linkedControls: (document.controlIds || []).some((id) => scope.controls.some((control) => control.id === id)),
+      contentComplete: substantiveMarkdown(source) && placeholderCount === 0,
+      ...(isSecurityIncidentRecoveryPlan
+        ? { systemContinuityObjectives: systemsWithCompleteContinuityObjectives.length === scope.systems.length && scope.systems.length > 0 }
+        : {})
+    };
+    const missing = Object.entries(checks)
+      .filter(([, value]) => !value)
+      .map(([name]) => governedApprovalCheckLabel(name));
+    items.push(item(
+      `document-approval-${document.id}`,
+      missing.length ? "action" : "complete",
+      document.title,
+      missing.length
+        ? `Remaining Step 2 approval work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}. Complete and approve the intended values before implementation.`
+        : `Independently approved on ${document.approvedOn} and bound to the exact intended values and Markdown revision. Activation remains in Step 3.`,
+      document,
+      {
+        checks,
+        placeholderCount,
+        ...(isSecurityIncidentRecoveryPlan
+          ? {
+              continuityObjectiveSystemIds: systemsWithCompleteContinuityObjectives.map(({ id }) => id),
+              missingContinuityObjectiveSystemIds: scope.systems
+                .filter(({ id }) => !systemsWithCompleteContinuityObjectives.some((system) => system.id === id))
+                .map(({ id }) => id)
+            }
+          : {}),
+        commands: [
+          `npx filegrc get ${shellArgument(document.id)} --mutation`,
+          `npx filegrc update document ${shellArgument(document.id)} MUTATION.json --json`,
+          "npx filegrc program-readiness --json"
+        ]
+      }
+    ));
+  }
   return stage(
     "policies",
-    "Approve Policies",
-    "A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.",
+    "Approve Policies and Plans",
+    "Approve Policy requirements and the intended values in required governed plans and schedules. Approval binds exact revisions but does not prove implementation or activate the content.",
     items
   );
 }
@@ -627,8 +692,31 @@ function requiredPolicies(scope, byId) {
   ));
 }
 
-async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
+function requiredGovernedDocuments(scope, records, byId, model) {
   const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
+  const linkedDocumentIds = new Set(requiredPolicies(scope, byId).flatMap((policy) => policy.relatedDocumentIds || []));
+  const obligationDocumentIds = new Set(records
+    .filter((record) => record.type === "obligation")
+    .flatMap((record) => [
+      ...(record.scopeResourceIds || []),
+      ...(record.templateResourceId ? [record.templateResourceId] : [])
+    ]));
+  return records.filter((record) => (
+    record.type === "document"
+    && !documentIsAuditSpecific(record, model)
+    && !["superseded", "retired"].includes(record.status)
+    && (
+      linkedDocumentIds.has(record.id)
+      || obligationDocumentIds.has(record.id)
+      || (
+        record.programRole === "required"
+        && (record.controlIds || []).some((id) => selectedControlIds.has(id))
+      )
+    )
+  ));
+}
+
+async function governedContentItems(scope, records, byId, readMarkdown, asOf, model) {
   const enabledObligations = records.filter((record) => (
     record.type === "obligation" && obligationIsEnabled(record)
   ));
@@ -636,31 +724,39 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
     ...(record.scopeResourceIds || []),
     ...(record.templateResourceId ? [record.templateResourceId] : [])
   ]));
-  const governedRecords = records.filter((record) => (
-    (
-      record.type === "document"
-      && (
-        requiredGovernedIds.has(record.id)
-        || (
-          record.programRole === "required"
-          && (record.controlIds || []).some((id) => selectedControlIds.has(id))
-        )
-      )
-    )
-    || (record.type === "training" && requiredGovernedIds.has(record.id))
-  ));
+  const documents = requiredGovernedDocuments(scope, records, byId, model);
+  const governedRecords = [
+    ...documents,
+    ...records.filter((record) => record.type === "training" && requiredGovernedIds.has(record.id))
+  ];
   const items = [];
+  const documentActivations = [];
   for (const record of governedRecords) {
     const source = await readMarkdown(record);
     const placeholderCount = openPlaceholderCount(source);
-    const isSecurityIncidentRecoveryPlan = record.id === "document-security-incident-recovery-plan";
-    const systemsWithCompleteContinuityObjectives = scope.systems.filter(({ continuityObjectives }) => (
-      Number.isInteger(continuityObjectives?.recoveryTimeHours)
-      && Number.isInteger(continuityObjectives?.recoveryPointHours)
-      && Number.isInteger(continuityObjectives?.maximumTolerableDowntimeHours)
-    ));
+    const linkedControlIds = (record.controlIds || []).filter((id) => scope.controls.some((control) => control.id === id));
+    const missingImplementationControlIds = linkedControlIds.filter((id) => byId.get(id)?.status !== "implemented");
     const checks = record.type === "document"
-      ? {
+      ? modelSupports(model, "governed-document-activation") ? {
+          approvalBound: ["approved", "active"].includes(record.status)
+            && Boolean(record.approvedOn)
+            && Boolean(record.approvedContentRevisions)
+            && partiesIndependent(record.ownerIds, record.approverIds, byId),
+          owner: currentPartyPeople(record.ownerIds, byId).size > 0,
+          active: record.status === "active",
+          requirementsImplemented: linkedControlIds.length > 0 && missingImplementationControlIds.length === 0,
+          activationRecorded: record.activationBasis === "recorded",
+          activated: Boolean(record.activatedOn),
+          activator: Boolean((record.activatedByIds || []).length)
+            && record.activatedByIds.every((id) => personWasActiveOn(byId.get(id), record.activatedOn)),
+          activatedContent: Boolean(record.activatedContentRevisions),
+          activationMatchesApproval: contentRevisionBindingsMatch(
+            record.approvedContentRevisions,
+            record.activatedContentRevisions
+          ),
+          effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
+          contentComplete: substantiveMarkdown(source) && placeholderCount === 0
+        } : {
           active: record.status === "active",
           owner: currentPartyPeople(record.ownerIds, byId).size > 0,
           independentlyApproved: Boolean(
@@ -668,10 +764,7 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
             && partiesIndependent(record.ownerIds, record.approverIds, byId)
           ),
           effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
-          contentComplete: substantiveMarkdown(source) && placeholderCount === 0,
-          ...(isSecurityIncidentRecoveryPlan
-            ? { systemContinuityObjectives: systemsWithCompleteContinuityObjectives.length === scope.systems.length && scope.systems.length > 0 }
-            : {})
+          contentComplete: substantiveMarkdown(source) && placeholderCount === 0
         }
       : {
           active: record.status === "active",
@@ -684,6 +777,39 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
     const missing = Object.entries(checks)
       .filter(([, value]) => !value)
       .map(([name]) => governedContentCheckLabel(name));
+    if (record.type === "document" && modelSupports(model, "governed-document-activation")) {
+      const activationComplete = Object.values(checks).every(Boolean);
+      const preActivationCheckNames = ["approvalBound", "owner", "requirementsImplemented", "contentComplete"];
+      const preActivationGapCount = preActivationCheckNames.filter((name) => !checks[name]).length;
+      const readyToActivate = record.status === "approved"
+        && checks.approvalBound
+        && checks.owner
+        && checks.requirementsImplemented
+        && checks.contentComplete;
+      const state = record.status === "active" && activationComplete
+        ? "active-and-operating"
+        : record.status === "active"
+          ? "active-with-gaps"
+          : readyToActivate
+          ? "ready-to-activate"
+          : record.status === "approved"
+            ? "approved-implementation-pending"
+            : "approval-pending";
+      documentActivations.push({
+        documentId: record.id,
+        title: record.title,
+        state,
+        label: documentActivationLabel(state),
+        approvedOn: record.approvedOn || null,
+        activatedOn: record.activatedOn || null,
+        effectiveOn: record.effectiveOn || null,
+        linkedControlIds,
+        missingImplementationControlIds,
+        activationRevisionBound: Boolean(record.activatedContentRevisions),
+        activatedByIds: record.activatedByIds || [],
+        gapCount: record.status === "active" ? missing.length : preActivationGapCount
+      });
+    }
     items.push(item(
       `${record.type}-${record.id}`,
       missing.length ? "action" : "complete",
@@ -691,20 +817,15 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
       missing.length
         ? `Remaining governed-content work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}.`
         : record.type === "document"
-          ? `Active, approved by a separate reviewer, effective ${record.effectiveOn}, and ready for the selected Controls or running schedule.`
+          ? modelSupports(model, "governed-document-activation")
+            ? `Approved on ${record.approvedOn}, activated separately on ${record.activatedOn}, effective ${record.effectiveOn}, revision-bound at both events, and ready for operation.`
+            : `Active, approved by a separate reviewer, effective ${record.effectiveOn}, and ready for the selected Controls or running schedule.`
           : `Active, approved, effective ${record.effectiveOn}, revision-bound, and ready for the running training schedule.`,
       record,
       {
         checks,
         placeholderCount,
-        ...(isSecurityIncidentRecoveryPlan
-          ? {
-              continuityObjectiveSystemIds: systemsWithCompleteContinuityObjectives.map(({ id }) => id),
-              missingContinuityObjectiveSystemIds: scope.systems
-                .filter(({ id }) => !systemsWithCompleteContinuityObjectives.some((system) => system.id === id))
-                .map(({ id }) => id)
-            }
-          : {}),
+        ...(record.type === "document" ? { linkedControlIds, missingImplementationControlIds } : {}),
         commands: [
           `npx filegrc get ${shellArgument(record.id)} --mutation`,
           `npx filegrc update ${record.type} ${shellArgument(record.id)} MUTATION.json --json`,
@@ -713,12 +834,22 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf) {
       }
     ));
   }
-  return items;
+  return { items, documentActivations };
+}
+
+function documentActivationLabel(state) {
+  return ({
+    "approval-pending": "Approval pending in Step 2",
+    "approved-implementation-pending": "Approved, implementation pending",
+    "ready-to-activate": "Ready to activate",
+    "active-with-gaps": "Active with activation or implementation gaps",
+    "active-and-operating": "Active and operating"
+  })[state] || state;
 }
 
 async function assessPolicyActivations(policies, controls, records, byId, readMarkdown, asOf, model) {
-  const sourceType = String(model.modelVersion) === "4" ? "component" : "system";
-  const sourceField = String(model.modelVersion) === "4" ? "evidenceSourceComponentIds" : "evidenceSourceIds";
+  const sourceType = modelSupports(model, "component-sources") ? "component" : "system";
+  const sourceField = modelSupports(model, "component-sources") ? "evidenceSourceComponentIds" : "evidenceSourceIds";
   const assessments = [];
   for (const policy of policies.filter((record) => ["approved", "active"].includes(record.status))) {
     const linkedControls = controls.filter((control) => (control.policyIds || []).includes(policy.id));
@@ -726,7 +857,7 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
     const plannedOrPartialControlIds = linkedControls
       .filter((control) => ["planned", "partially-implemented"].includes(control.status))
       .map(({ id }) => id);
-    const missingComponentControlIds = String(model.modelVersion) === "4"
+    const missingComponentControlIds = modelSupports(model, "component-sources")
       ? linkedControls.filter((control) => ![
           ...(control.componentIds || []),
           ...(control.evidenceSourceComponentIds || [])
@@ -759,6 +890,18 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
         && (record.policyIds || []).includes(policy.id)
       ))
     )).map(({ id }) => id);
+    const linkedGovernedDocumentIds = modelSupports(model, "governed-document-activation")
+      ? (policy.relatedDocumentIds || []).filter((id) => {
+          const document = byId.get(id);
+          return document?.type === "document"
+            && !["superseded", "retired"].includes(document.status)
+            && !documentIsAuditSpecific(document, model);
+        })
+      : [];
+    const missingGovernedDocumentIds = linkedGovernedDocumentIds.filter((id) => {
+      const document = byId.get(id);
+      return !governedDocumentIsOperating(document, asOf, model);
+    });
     const relevantExceptions = records.filter((record) => (
       record.type === "exception"
       && (record.scopeResourceIds || []).some((id) => id === policy.id || linkedControlIds.includes(id))
@@ -788,6 +931,7 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
       + missingComponentControlIds.length
       + missingEvidenceSourceControlIds.length
       + missingScheduleControlIds.length
+      + missingGovernedDocumentIds.length
       + unresolvedExceptionIds.length
       + timingWarnings.length;
     const activeNow = policy.status === "active" && policy.effectiveOn && policy.effectiveOn <= asOf;
@@ -811,6 +955,8 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
       missingComponentControlIds,
       missingEvidenceSourceControlIds,
       missingScheduleControlIds,
+      linkedGovernedDocumentIds,
+      missingGovernedDocumentIds,
       unresolvedExceptionIds,
       documentedExceptionIds,
       timingWarnings,
@@ -841,6 +987,7 @@ function policyActivationItem(assessment) {
     [assessment.missingComponentControlIds.length, "Controls missing active Components"],
     [assessment.missingEvidenceSourceControlIds.length, "Controls missing ready evidence sources"],
     [assessment.missingScheduleControlIds.length, "Controls missing enabled schedules"],
+    [assessment.missingGovernedDocumentIds?.length || 0, "required governed Documents not active"],
     [assessment.unresolvedExceptionIds.length, "unresolved Exceptions"]
   ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
   const message = assessment.state === "active-and-operating"
@@ -893,10 +1040,10 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
   for (const control of scope.controls) {
     const source = await readMarkdown(control);
     const sourceSystems = (
-      String(model.modelVersion) === "4"
+      modelSupports(model, "component-sources")
         ? control.evidenceSourceComponentIds || []
         : control.evidenceSourceIds || []
-    ).map((id) => byId.get(id)).filter((record) => record?.type === (String(model.modelVersion) === "4" ? "component" : "system"));
+    ).map((id) => byId.get(id)).filter((record) => record?.type === (modelSupports(model, "component-sources") ? "component" : "system"));
     const queueSchedules = [...byId.values()].filter((record) => (
       record.type === "obligation"
       && record.status !== "retired"
@@ -951,20 +1098,20 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
         ],
         workQueue: queueSchedules.length ? {
           enabled: queueSchedules.filter(obligationIsEnabled).length,
-          running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf)).length,
+          running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf, model)).length,
           total: queueSchedules.length
         } : null
       }
     ));
   }
-  return stage("controls", "Implement Controls", "Each implemented Control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Work Queue schedules enabled. An enabled schedule stays dormant until its governing Policy is active and effective.", items);
+  return stage("controls", "Implement Controls", "Each implemented Control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Work Queue schedules enabled. An enabled schedule stays dormant until its governing Policy and required governed Documents are active and effective.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   const families = selectedControlFamilies(scope.controls, model);
   const items = [];
   for (const family of families) {
-    const componentSources = String(model.modelVersion) === "4";
+    const componentSources = modelSupports(model, "component-sources");
     const sourceField = componentSources ? "evidenceSourceComponentIds" : "evidenceSourceIds";
     const sourceType = componentSources ? "component" : "system";
     const selectedSources = [...new Set(family.controls.flatMap((control) => control[sourceField] || []))]
@@ -1056,7 +1203,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       }
     ));
   }
-  return stage("sources", "Control Evidence Sources", `Complete the authoritative ${String(model.modelVersion) === "4" ? "Components" : "Systems"} for every selected control family before marking the Controls implemented.`, items);
+  return stage("sources", "Control Evidence Sources", `Complete the authoritative ${modelSupports(model, "component-sources") ? "Components" : "Systems"} for every selected control family before marking the Controls implemented.`, items);
 }
 
 function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model) {
@@ -1271,14 +1418,31 @@ function policyCheckLabel(name) {
   })[name] || name;
 }
 
+function governedApprovalCheckLabel(name) {
+  return ({
+    independentlyApproved: "independent approval and approval date",
+    owner: "current owner",
+    linkedControls: "linked Controls",
+    contentComplete: "intended values, content, and organization placeholders",
+    systemContinuityObjectives: "RTO, RPO, and maximum tolerable downtime for every in-scope System"
+  })[name] || name;
+}
+
 function governedContentCheckLabel(name) {
   return ({
+    approvalBound: "Step 2 independent approval and approved revision",
     active: "active status",
     owner: "current owner",
     independentlyApproved: "independent approval and approval date",
     approved: "approval and approval date",
     effective: "effective date",
     effectiveContent: "effective content revision",
+    requirementsImplemented: "implemented linked requirements",
+    activationRecorded: "recorded activation basis",
+    activated: "separate activation date",
+    activator: "named activation Person",
+    activatedContent: "separate activated content revision",
+    activationMatchesApproval: "unchanged approved revision at activation",
     contentComplete: "content and organization placeholders",
     systemContinuityObjectives: "RTO, RPO, and maximum tolerable downtime for every in-scope System"
   })[name] || name;

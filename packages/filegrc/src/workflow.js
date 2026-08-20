@@ -1,6 +1,7 @@
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { modelSupports } from "../model/index.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
@@ -93,7 +94,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
   if (options.auditId && selectedAuditRecords[0]?.programId && selectedAuditRecords[0].programId !== programRecord.id) {
     throw new Error(`Audit "${options.auditId}" belongs to Program "${selectedAuditRecords[0].programId}", not "${programRecord.id}".`);
   }
-  const audits = String(loaded.model.modelVersion) === "4"
+  const audits = modelSupports(loaded.model, "program-scope")
     ? selectedAuditRecords.filter(({ programId }) => programId === programRecord.id)
     : selectedAuditRecords;
   const timezone = options.timezone || workspace?.timezone || "UTC";
@@ -633,7 +634,7 @@ function appointmentFinding(kind, template, record, state, requiredness) {
 }
 
 function sourceCoverageFindings(loaded, program) {
-  const selected = String(loaded.model.modelVersion) === "4"
+  const selected = modelSupports(loaded.model, "program-scope")
     ? new Set(program?.controlIds || [])
     : null;
   const selectedControlIds = loaded.resources
@@ -880,7 +881,7 @@ async function assessPeriodHealth(loaded, options) {
 }
 
 function auditLifecycleFindings(loaded, audits, program) {
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) return [];
+  if (!modelSupports(loaded.model, "guided-workflow")) return [];
   const target = program || resolveProgram(loaded);
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const findings = [];
@@ -939,7 +940,7 @@ function auditLifecycleFindings(loaded, audits, program) {
         subsequentEventsIssue.message
       ));
     }
-    const signatoryIssue = String(loaded.model.modelVersion) === "4" && lateStage
+    const signatoryIssue = modelSupports(loaded.model, "program-scope") && lateStage
       ? signatoryAppointmentIssue(audit, byId)
       : null;
     if (signatoryIssue) {
@@ -1239,6 +1240,7 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
     && !findings.some((finding) => finding.assessment === "audit-closure" && blockingFinding(finding));
   const deliveryFindingKeys = findingKeys(findings, "delivery-readiness");
   const policyActivations = program.policyActivations || [];
+  const documentActivations = program.documentActivations || [];
   const policiesOperating = policyActivations.length > 0
     && policyActivations.every(({ state }) => state === "active-and-operating");
   return {
@@ -1268,6 +1270,18 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
           : "Approve the required Policies before activation assessment begins.",
       findingKeys: findingKeys(findings, "program-configuration", ({ key }) => key.includes(".policy-activation-")),
       policies: policyActivations
+    },
+    documentActivation: {
+      status: documentActivations.length && documentActivations.every(({ state }) => state === "active-and-operating")
+        ? "complete"
+        : documentActivations.length ? "needs-work" : "not-started",
+      message: documentActivations.length && documentActivations.every(({ state }) => state === "active-and-operating")
+        ? "Every required governed Document is separately approved, activated, effective, and operating."
+        : documentActivations.length
+          ? "Approve required plans and schedules in Step 2, implement their linked requirements, then activate their exact revisions in Step 3."
+          : "No required governed Document activation is configured.",
+      findingKeys: findingKeys(findings, "program-configuration", ({ key }) => key.includes(".document-")),
+      documents: documentActivations
     },
     policyLibraryReview: {
       status: program.policyLibraryProposals?.length ? "review" : "current",

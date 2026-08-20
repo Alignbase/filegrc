@@ -2,10 +2,12 @@ export {
   ACTIVE_MODEL_VERSION,
   getResourceDefinition,
   loadModel,
+  MODEL_CAPABILITY_VERSIONS,
+  modelSupports,
   SUPPORTED_MODEL_VERSIONS
 } from "../model/index.js";
 export { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
-export { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
+export { assessAuditDocumentActivations, assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 export { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
 export {
   applyApplicabilityReview,
@@ -52,6 +54,7 @@ export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";
 export { migrateModel, planModelMigration } from "./model-migration.js";
 export { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
+export { activateDocuments, planDocumentActivation, scaffoldDocumentActivation } from "./document-activation.js";
 export {
   applyPolicyLibraryUpgrade,
   assessPolicyLibraryUpgrades,

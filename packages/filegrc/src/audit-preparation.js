@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { modelSupports } from "../model/index.js";
+import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import {
   coverageContains,
   coverageEnd,
@@ -15,6 +17,7 @@ import { currentPartyPeople, partiesIndependent } from "./parties.js";
 import { resolveDataPath } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { contentRevisionBindingsMatch, governedDocumentIsOperating } from "./program-lifecycle.js";
 import {
   auditorWasEngaged,
   missingSoc2References,
@@ -25,6 +28,7 @@ import {
   signatoryAppointmentIssue,
   subsequentEventsReviewIssue
 } from "./soc2.js";
+import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 
 const NON_EVIDENCE_RECORD_TYPES = new Set([
@@ -65,9 +69,13 @@ export async function assessAuditPreparation(input, options = {}) {
   if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
 
   const programReadiness = options.programReadiness || await assessProgramReadiness(loaded, {
+    asOf: options.asOf,
     generatedAt: options.generatedAt,
     programId: audit?.programId
   });
+  const documentActivations = audit && modelSupports(loaded.model, "governed-document-activation")
+    ? await auditDocumentActivationAssessments(loaded, audit, byId, programReadiness.asOf)
+    : [];
   const stages = [
     programFoundationStage(programReadiness, loaded.workspace),
     engagementStage(audit, byId, programReadiness),
@@ -75,7 +83,7 @@ export async function assessAuditPreparation(input, options = {}) {
   ];
   const fieldworkSections = audit
     ? [
-        await documentsStage(loaded, audit, byId),
+        await documentsStage(loaded, audit, byId, programReadiness.asOf),
         evidenceStage(audit, records, byId, loaded.model),
         populationsStage(audit, records, byId, loaded.model)
       ]
@@ -107,8 +115,21 @@ export async function assessAuditPreparation(input, options = {}) {
       && coverageStart(audit.coverage)
       && coverageEnd(audit.coverage)
       && initializationNeeded(audit, records, loaded.model)),
+    documentActivations,
     stages
   };
+}
+
+export async function assessAuditDocumentActivations(input = process.cwd(), options = {}) {
+  const loaded = input?.resources && input?.model && input?.entries
+    ? input
+    : await loadWorkspace(input);
+  if (!modelSupports(loaded.model, "governed-document-activation")) return [];
+  const audit = loaded.resources.find((record) => record.type === "audit" && record.id === options.auditId);
+  if (!audit) throw new Error(`Audit "${options.auditId || ""}" was not found.`);
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const asOf = options.asOf || currentCalendarDate(loaded.workspace.timezone);
+  return auditDocumentActivationAssessments(loaded, audit, byId, asOf);
 }
 
 export async function prepareAuditWorkspace(input, options = {}) {
@@ -168,7 +189,7 @@ export async function prepareAuditWorkspace(input, options = {}) {
   const selectedControls = (audit.controlIds || [])
     .map((id) => loaded.resources.find((record) => record.id === id))
     .filter(Boolean);
-  const v4 = String(loaded.model.modelVersion) === "4";
+  const v4 = modelSupports(loaded.model, "program-scope");
   const sourceSystems = loaded.resources.filter((record) => record.type === (v4 ? "component" : "system"));
   const populations = (audit.auditKind === "soc-2-type-2" ? model.populationTemplates || [] : [])
     .filter((template) => !existingKinds.has(template.kind))
@@ -269,7 +290,7 @@ function scopeStage(loaded, audit, records, byId, programReadiness) {
     ));
   }
 
-  const v4 = String(programReadiness.dataModelVersion) === "4";
+  const v4 = modelSupports(programReadiness.dataModelVersion, "program-scope");
   const engagementStart = coverageStart(audit.coverage);
   const engagementEnd = coverageEnd(audit.coverage);
   const scopeRevision = assessScopeRevision(loaded, audit, v4);
@@ -744,9 +765,12 @@ function engagementStage(audit, byId, programReadiness) {
   const engagementTermsComplete = Boolean(
     engagementTerms?.type === "document"
     && engagementTerms.documentKind === "soc2-engagement-terms"
-    && engagementTerms.status === "active"
+    && governedDocumentIsOperating(
+      engagementTerms,
+      programReadiness.asOf,
+      { modelVersion: programReadiness.dataModelVersion }
+    )
     && engagementTerms.approvedOn
-    && engagementTerms.effectiveOn
   );
   const acknowledgementPeople = (audit.managementAcknowledgedByIds || [])
     .map((id) => byId.get(id))
@@ -805,7 +829,7 @@ function engagementStage(audit, byId, programReadiness) {
       }
     )
   ];
-  if (["3", "4"].includes(String(programReadiness.dataModelVersion))) {
+  if (modelSupports(programReadiness.dataModelVersion, "guided-workflow")) {
     items.push(
       item(
         "engagement-terms",
@@ -853,51 +877,160 @@ function fieldworkStage(audit, sections) {
   );
 }
 
-async function documentsStage(loaded, audit, byId) {
+async function auditDocumentActivationAssessments(loaded, audit, byId, asOf) {
+  const links = new Map();
+  const addLink = (documentId, role, definition = null) => {
+    if (!documentId) return;
+    const current = links.get(documentId) || { documentId, roles: [], definitions: [] };
+    current.roles.push(role);
+    if (definition) current.definitions.push(definition);
+    links.set(documentId, current);
+  };
+  addLink(audit.engagementTermsDocumentId, "engagement-terms");
+  for (const definition of applicableManagementDocuments(audit, loaded.model.auditReadiness || {})) {
+    addLink(audit[definition.field], definition.field, definition);
+  }
+  for (const documentId of audit.supplementalDocumentIds || []) addLink(documentId, "supplemental");
+
+  const assessments = [];
+  for (const link of links.values()) {
+    const document = byId.get(link.documentId);
+    if (document?.type !== "document") continue;
+    if (link.roles.every((role) => role === "supplemental") && document.workflowScope !== "engagement") continue;
+    const source = await primaryMarkdown(loaded, document);
+    const issues = [];
+    if (document.workflowScope !== "engagement") issues.push("Set workflowScope to engagement.");
+    if (document.template === true) issues.push("Replace the starter template with the completed engagement Document.");
+    if (!substantiveMarkdown(source)) issues.push("Complete the Document Markdown.");
+    const placeholders = openPlaceholderCount(source);
+    if (placeholders) issues.push(`Resolve ${placeholders} open ${placeholders === 1 ? "placeholder" : "placeholders"}.`);
+    if (link.roles.includes("engagement-terms") && document.documentKind !== "soc2-engagement-terms") {
+      issues.push("Use documentKind soc2-engagement-terms for the accepted engagement terms.");
+    }
+    for (const definition of link.definitions) {
+      issues.push(...await managementDocumentLifecycleIssues(loaded, audit, definition, document, source, asOf, byId));
+    }
+    const approvalComplete = Boolean(
+      ["approved", "active"].includes(document.status)
+      && document.approvedOn
+      && document.approvedContentRevisions
+      && (document.activationBasis === "legacy-v4"
+        ? (document.ownerIds || []).length
+        : currentPartyPeople(document.ownerIds || [], byId).size)
+      && (document.approverIds || []).length
+      && partiesIndependent(document.ownerIds, document.approverIds, byId)
+    );
+    if (!approvalComplete) issues.push("Complete the independent approval and bind the approved Markdown revision first.");
+    if (document.status === "active" && document.activationBasis !== "legacy-v4") {
+      if (document.activationBasis !== "recorded") issues.push("Record the Step 5 activation basis.");
+      if (!document.activatedOn) issues.push("Record the separate Step 5 activation date.");
+      else if (document.activatedOn > asOf) issues.push(`The activation date ${document.activatedOn} is after ${asOf}.`);
+      if (!(document.activatedByIds || []).length) issues.push("Name the active Person who performed activation.");
+      else {
+        const invalidActorIds = document.activatedByIds.filter((id) => !personWasActiveOn(byId.get(id), document.activatedOn));
+        if (invalidActorIds.length) issues.push(`Activation actors were not active on ${document.activatedOn}: ${invalidActorIds.join(", ")}.`);
+      }
+      if (!document.activatedContentRevisions) issues.push("Bind activation to the exact Document Markdown revision.");
+      else if (!contentRevisionBindingsMatch(document.approvedContentRevisions, document.activatedContentRevisions)) {
+        issues.push("The activated revision must match the unchanged approved revision.");
+      }
+      if (!document.effectiveOn) issues.push("Record the effective date.");
+      else if (document.effectiveOn > asOf) issues.push(`The Document does not become effective until ${document.effectiveOn}.`);
+    }
+    const operating = governedDocumentIsOperating(document, asOf, loaded.model) && issues.length === 0;
+    const state = operating
+      ? "active-and-operating"
+      : document.status === "active"
+        ? "active-with-gaps"
+        : document.status === "approved" && issues.length === 0
+          ? "ready-to-activate"
+          : document.status === "approved"
+            ? "approved-not-ready"
+            : "approval-pending";
+    assessments.push({
+      auditId: audit.id,
+      documentId: document.id,
+      title: document.title,
+      roles: [...new Set(link.roles)],
+      state,
+      label: auditDocumentActivationLabel(state),
+      issues: [...new Set(issues)],
+      approvedOn: document.approvedOn || null,
+      activatedOn: document.activatedOn || null,
+      activatedByIds: document.activatedByIds || [],
+      effectiveOn: document.effectiveOn || null,
+      approvalRevisionBound: Boolean(document.approvedContentRevisions),
+      activationRevisionBound: Boolean(document.activatedContentRevisions),
+      gapCount: [...new Set(issues)].length
+    });
+  }
+  return assessments.sort((left, right) => left.title.localeCompare(right.title));
+}
+
+function auditDocumentActivationLabel(state) {
+  return ({
+    "approval-pending": "Approval pending in Step 5",
+    "approved-not-ready": "Approved, engagement facts incomplete",
+    "ready-to-activate": "Ready to activate in Step 5",
+    "active-with-gaps": "Active with lifecycle or engagement gaps",
+    "active-and-operating": "Active and ready for the engagement"
+  })[state] || state;
+}
+
+async function managementDocumentLifecycleIssues(loaded, audit, definition, document, source, asOf, byId) {
+  const issues = managementDocumentContentIssues(source, definition, audit);
+  if (document.documentKind !== definition.kind) {
+    issues.push(`Use documentKind ${definition.kind} for this Audit field.`);
+  }
+  const engagementEnd = coverageEnd(audit?.coverage);
+  if (document.approvedOn && engagementEnd && document.approvedOn < engagementEnd) {
+    issues.push(`Approve the final document on or after the engagement ${audit.auditKind === "soc-2-type-1" ? "date" : "period end"}.`);
+  }
+  if (definition.kind === "soc2-period-completeness" && document.approvedOn) {
+    const latestReconciliation = loaded.resources
+      .filter((record) => record.type === "audit-population" && record.auditId === audit.id)
+      .map((record) => record.reconciledOn)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    if (latestReconciliation && document.approvedOn < latestReconciliation) {
+      issues.push("Approve the period completeness statement after the last population reconciliation.");
+    }
+  }
+  if (definition.kind === "soc2-management-representation") {
+    const signedEvidence = (document.evidenceIds || [])
+      .map((id) => byId.get(id))
+      .find((record) => (
+        record?.type === "evidence"
+        && record.status === "verified"
+        && record.artifactKind === "signed-record"
+        && record.artifactSubtype === "signed-management-representation"
+        && (record.filePaths || []).length
+      ));
+    if (!signedEvidence) issues.push("Link verified signed-record Evidence with subtype signed-management-representation and a fixed-format copy of the signed letter.");
+    else {
+      const dateIssue = signedRepresentationDateIssue(signedEvidence, audit, loaded.model.modelVersion);
+      if (dateIssue) issues.push(dateIssue);
+    }
+  }
+  return issues;
+}
+
+async function documentsStage(loaded, audit, byId, asOf) {
   const definitions = applicableManagementDocuments(audit, loaded.model.auditReadiness || {});
   const items = [];
   for (const definition of definitions) {
     const document = audit?.[definition.field] ? byId.get(audit[definition.field]) : null;
     const source = document ? await primaryMarkdown(loaded, document) : "";
-    const contentIssues = managementDocumentContentIssues(source, definition, audit);
-    const engagementEnd = coverageEnd(audit?.coverage);
-    if (document?.approvedOn && engagementEnd && document.approvedOn < engagementEnd) {
-      contentIssues.push(`Approve the final document on or after the engagement ${audit.auditKind === "soc-2-type-1" ? "date" : "period end"}.`);
-    }
-    if (definition.kind === "soc2-period-completeness" && document?.approvedOn && audit) {
-      const latestReconciliation = loaded.resources
-        .filter((record) => record.type === "audit-population" && record.auditId === audit.id)
-        .map((record) => record.reconciledOn)
-        .filter(Boolean)
-        .sort()
-        .at(-1);
-      if (latestReconciliation && document.approvedOn < latestReconciliation) {
-        contentIssues.push("Approve the period completeness statement after the last population reconciliation.");
-      }
-    }
-    if (definition.kind === "soc2-management-representation" && document) {
-      const signedEvidence = (document.evidenceIds || [])
-        .map((id) => byId.get(id))
-        .find((record) => (
-          record?.type === "evidence"
-          && record.status === "verified"
-          && record.artifactKind === "signed-record"
-          && record.artifactSubtype === "signed-management-representation"
-          && (record.filePaths || []).length
-        ));
-      if (!signedEvidence) contentIssues.push("Link verified signed-record Evidence with subtype signed-management-representation and a fixed-format copy of the signed letter.");
-      else {
-        const dateIssue = signedRepresentationDateIssue(signedEvidence, audit, loaded.model.modelVersion);
-        if (dateIssue) contentIssues.push(dateIssue);
-      }
-    }
+    const contentIssues = document
+      ? await managementDocumentLifecycleIssues(loaded, audit, definition, document, source, asOf, byId)
+      : [];
     const complete = Boolean(
       document
       && document.type === "document"
       && document.template !== true
-      && document.status === "active"
+      && governedDocumentIsOperating(document, asOf, loaded.model)
       && document.approvedOn
-      && document.effectiveOn
       && (document.ownerIds || []).length
       && (document.approverIds || []).length
       && partiesIndependent(document.ownerIds, document.approverIds, byId)
@@ -912,7 +1045,11 @@ async function documentsStage(loaded, audit, byId) {
       complete ? "complete" : representationLater ? "later" : "action",
       definition.title,
       complete
-        ? "Linked Markdown is complete, active, approved, and effective."
+        ? document.activationBasis === "legacy-v4"
+          ? "Linked Markdown is complete and effective. Its active state is preserved from model v4, which did not record approval and activation as separate events."
+          : modelSupports(loaded.model, "governed-document-activation")
+            ? "Linked Markdown is complete, independently approved, separately activated by a named Person, revision-bound at both events, and effective."
+          : "Linked Markdown is complete, active, approved, and effective."
         : document
           ? `${definition.timing} ${contentIssues[0] || "Complete and approve the engagement-specific document."}`
           : `Link the starter ${definition.title.toLowerCase()} to this audit. ${definition.timing}`,
@@ -925,7 +1062,7 @@ async function documentsStage(loaded, audit, byId) {
 export function signedRepresentationDateIssue(evidence, audit, modelVersion) {
   const engagementEnd = coverageEnd(audit?.coverage);
   const timingMessage = `The signed representation must be dated on or after the engagement ${audit?.auditKind === "soc-2-type-1" ? "date" : "period end"}.`;
-  if (String(modelVersion) !== "4") {
+  if (!modelSupports(modelVersion, "program-scope")) {
     return !evidence?.collectedOn || (engagementEnd && evidence.collectedOn < engagementEnd)
       ? timingMessage
       : null;
@@ -999,7 +1136,7 @@ function evidenceStage(audit, records, byId, model) {
       externalEvidence[0] || { type: "evidence" }
     )
   ];
-  const v4 = String(model.modelVersion) === "4";
+  const v4 = modelSupports(model, "program-scope");
   const systems = records.filter((record) => record.type === (v4 ? "component" : "system") && record.status === "active");
   const sourceId = (record) => v4 ? record.sourceComponentId : record.sourceSystemId;
   for (const source of model.evidenceSourceFamilies || []) {
@@ -1103,7 +1240,7 @@ function auditorStage(audit, byId, modelVersion) {
   const signatoryStatus = !audit || ["planned", "in-progress", "fieldwork"].includes(audit.status)
     ? "later"
     : signatoryIssue ? "action" : "complete";
-  const managementItems = String(modelVersion) === "4" ? [
+  const managementItems = modelSupports(modelVersion, "program-scope") ? [
     item(
       "subsequent-events",
       subsequentEventsStatus,

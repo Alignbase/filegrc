@@ -4,11 +4,11 @@
   "title": "SOC 2 Management Representation Letter",
   "status": "draft",
   "documentKind": "soc2-management-representation",
+  "workflowScope": "engagement",
   "template": true,
   "ownerIds": [
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classificationId": "confidential",
-  "programRole": "required"
+  "classificationId": "confidential"
 }

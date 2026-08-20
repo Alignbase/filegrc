@@ -1,3 +1,4 @@
+import { modelSupports } from "../model/index.js";
 import { applyResourceBatch } from "./files.js";
 import { createResourceId } from "./id.js";
 import { currentCalendarDate } from "./time.js";
@@ -5,8 +6,8 @@ import { loadWorkspace } from "./workspace.js";
 
 export async function scaffoldExternalReviewerGovernance(input = process.cwd()) {
   const loaded = await loadWorkspace(input);
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
-    throw new Error("External reviewer setup requires a model v3 or v4 workspace.");
+  if (!modelSupports(loaded.model, "guided-workflow")) {
+    throw new Error("External reviewer setup requires a model v3 or newer workspace.");
   }
   return {
     reviewerName: null,
@@ -22,8 +23,8 @@ export async function scaffoldExternalReviewerGovernance(input = process.cwd()) 
 
 export async function planExternalReviewerGovernance(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
-    throw new Error("External reviewer setup requires a model v3 or v4 workspace.");
+  if (!modelSupports(loaded.model, "guided-workflow")) {
+    throw new Error("External reviewer setup requires a model v3 or newer workspace.");
   }
   const name = required(options.reviewerName, "External reviewer name");
   const startsOn = required(options.startsOn, "Appointment start date");

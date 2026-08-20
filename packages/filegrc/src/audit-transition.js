@@ -1,11 +1,12 @@
+import { modelSupports } from "../model/index.js";
 import { createResource } from "./files.js";
 import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
 
 export async function planNextAuditCycle(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
-    throw new Error("Audit-cycle carry-forward requires a model v3 or v4 workspace.");
+  if (!modelSupports(loaded.model, "guided-workflow")) {
+    throw new Error("Audit-cycle carry-forward requires a model v3 or newer workspace.");
   }
   const prior = loaded.resources.find((record) => (
     record.type === "audit" && record.id === options.priorAuditId

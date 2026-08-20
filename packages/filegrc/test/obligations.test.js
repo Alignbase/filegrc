@@ -22,6 +22,7 @@ import { makeWorkspace } from "./helpers.js";
 
 const execute = promisify(execFile);
 const MODEL_V2 = loadModel("2");
+const MODEL_V5 = loadModel("5");
 const planObligations = (resources, options = {}) => planObligationsWithModel(resources, {
   model: MODEL_V2,
   ...options
@@ -218,6 +219,90 @@ test("keeps work linked only to draft policies as starter proposals", () => {
   assert.equal(accepted.counts.due, 1);
   assert.equal(accepted.items[0].status, "due");
   assert.equal(accepted.items[0].dueWindowStart, "2026-02-01");
+});
+
+test("starts governed work only after program Documents are active and anchors it to the later effective date", () => {
+  const policy = {
+    id: "policy-security",
+    type: "policy",
+    title: "Security policy",
+    status: "active",
+    effectiveOn: "2026-02-01",
+    relatedDocumentIds: ["document-recovery-plan"]
+  };
+  const control = {
+    id: "control-recovery",
+    type: "control",
+    title: "Recovery testing",
+    status: "implemented"
+  };
+  const approvedDocument = {
+    id: "document-recovery-plan",
+    type: "document",
+    title: "Recovery plan",
+    documentKind: "plan",
+    workflowScope: "program",
+    programRole: "required",
+    status: "approved",
+    controlIds: [control.id],
+    approvedOn: "2026-01-20",
+    approvedContentRevisions: { content: "approved-revision" }
+  };
+  const obligation = {
+    id: "obligation-quarterly-recovery-test",
+    type: "obligation",
+    title: "Quarterly recovery test",
+    status: "active",
+    activityType: "inventory-review",
+    recurrence: {
+      mode: "calendar",
+      unit: "month",
+      interval: 3,
+      anchorDate: "2026-01-01"
+    },
+    ownerIds: [ACTIVE_OWNER.id],
+    policyIds: [policy.id],
+    controlIds: [control.id]
+  };
+  const resources = [ACTIVE_OWNER, policy, control, approvedDocument, obligation];
+  const dormant = planObligations(resources, {
+    model: MODEL_V5,
+    asOf: "2026-04-15",
+    through: "2026-06-30"
+  });
+  assert.ok(dormant.counts.proposed > 0);
+  assert.ok(dormant.items.every(({ programStatus }) => programStatus === "proposed"));
+
+  const activeDocument = {
+    ...approvedDocument,
+    status: "active",
+    activationBasis: "recorded",
+    activatedByIds: [ACTIVE_OWNER.id],
+    activatedOn: "2026-04-10",
+    effectiveOn: "2026-04-10",
+    activatedContentRevisions: { content: "approved-revision" }
+  };
+  const operating = planObligations(
+    resources.map((record) => record.id === activeDocument.id ? activeDocument : record),
+    { model: MODEL_V5, asOf: "2026-04-15", through: "2026-06-30" }
+  );
+  assert.equal(operating.counts.proposed, 0);
+  assert.equal(operating.counts.due, 1);
+  assert.equal(operating.items[0].programStatus, "accepted");
+  assert.equal(operating.items[0].dueWindowStart, "2026-04-10");
+
+  const auditDocument = {
+    ...approvedDocument,
+    documentKind: "soc2-management-assertion",
+    workflowScope: "engagement"
+  };
+  const auditWorkStaysInStepFive = planObligations(
+    resources.map((record) => record.id === auditDocument.id ? auditDocument : record),
+    { model: MODEL_V5, asOf: "2026-04-15", through: "2026-06-30" }
+  );
+  assert.equal(auditWorkStaysInStepFive.counts.proposed, 0);
+  assert.equal(auditWorkStaysInStepFive.counts.due, 1);
+  assert.equal(auditWorkStaysInStepFive.items[0].dueWindowStart, "2026-02-01");
 });
 
 test("includes proposed obligation records as visible but unavailable starter work", () => {

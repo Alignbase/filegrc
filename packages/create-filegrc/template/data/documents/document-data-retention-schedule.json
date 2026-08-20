@@ -4,6 +4,7 @@
   "title": "Data Retention Schedule",
   "status": "draft",
   "documentKind": "schedule",
+  "workflowScope": "program",
   "ownerIds": [
     "appointment-policy-owner"
   ],

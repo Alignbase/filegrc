@@ -1,4 +1,5 @@
 import { createResourceId } from "./id.js";
+import { MODEL_CAPABILITY_VERSIONS } from "../model/index.js";
 import {
   calendarOccurrence,
   calendarOccurrenceIndex,
@@ -52,6 +53,8 @@ export function renderIndex(state = null) {
 export const APP_SCRIPT = String.raw`
 const root = document.querySelector("#app");
 let state;
+const MODEL_CAPABILITY_VERSIONS = ${JSON.stringify(MODEL_CAPABILITY_VERSIONS)};
+const modelSupports = (capability) => Number(state?.model?.modelVersion || 0) >= MODEL_CAPABILITY_VERSIONS[capability];
 const LIST_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 25;
 const NAV_GROUP_STORAGE_KEY = "filegrc.sidebar.groups.v3";
@@ -242,7 +245,9 @@ function topbar(route) {
           ? "Work Queue"
           : route.name === "audit-packet"
             ? "Audit Readiness"
-            : state.model.resources[route.type]?.pluralTitle || "filegrc";
+            : route.name === "list" && route.type === "document"
+              ? documentListTitle(route.params)
+              : state.model.resources[route.type]?.pluralTitle || "filegrc";
   const repositoryLabel = state.repository?.mode === "trunk"
     ? state.repository.label
     : state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable";
@@ -353,12 +358,16 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    (stage.id === "policies" ? renderPolicyApprovalGuidance() : "") + renderStagePageIndex(stage) + (stage.id === "controls" ? renderPolicyActivationAssessments() + renderEvidenceReadiness() : "") + '</div>';
+    (stage.id === "policies" ? renderPolicyApprovalGuidance() : "") + renderStagePageIndex(stage) + (stage.id === "controls" ? renderDocumentActivationAssessments() + renderPolicyActivationAssessments() + renderEvidenceReadiness() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
   main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
     main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
     event.currentTarget.remove();
   });
   main.querySelector("[data-review-policy-activation]")?.addEventListener("click", openPolicyActivationDialog);
+  main.querySelector("[data-review-document-activation]")?.addEventListener("click", () => openDocumentActivationDialog());
+  main.querySelector("[data-review-audit-document-activation]")?.addEventListener("click", (event) => {
+    openDocumentActivationDialog(event.currentTarget.dataset.reviewAuditDocumentActivation);
+  });
 }
 
 function renderPolicyApprovalGuidance() {
@@ -370,7 +379,107 @@ function renderPolicyApprovalGuidance() {
       : "";
     return '<article><strong>' + esc(proposal.title) + '</strong><p>' + esc(proposal.message) + '</p>' + review + '<div class="evidence-map-references">' + proposal.policyIds.map((id) => formatReference(id)).join("") + '</div></article>';
   }).join("");
-  return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Policy approval</p><h3>Approve what your company is committing to</h3><p>Approval means your company reviewed and accepted the Policy. It does not mean the linked Controls are implemented yet.</p><p>Approve the Policy in Step 2. Build the Controls in Step 3, then activate the Policy from the Controls page when you are ready for it to take effect.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
+  return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Step 2 approval</p><h3>Approve the requirements and intended values</h3><p>Approval means your company reviewed and accepted the Policy requirements and the intended values in each required governed plan or schedule. It does not mean the linked Controls are implemented yet.</p><p>Bind each approval to the exact Markdown revision here. Build the Controls in Step 3, activate the unchanged governed Documents with a separate date and revision, then activate the Policies.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
+}
+
+function renderDocumentActivationAssessments() {
+  const assessments = state.programReadiness?.documentActivations || [];
+  if (!assessments.length) return "";
+  const candidates = assessments.filter(({ state }) => state === "ready-to-activate");
+  const cards = assessments.map((assessment) => {
+    const operating = assessment.state === "active-and-operating";
+    const controls = assessment.missingImplementationControlIds.length
+      ? '<div class="policy-activation-gaps"><div><small>Controls still being implemented</small><div class="evidence-map-references">' + assessment.missingImplementationControlIds.map((id) => formatReference(id, "control")).join("") + '</div></div></div>'
+      : "";
+    return '<article class="policy-activation-card ' + esc(assessment.state) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (operating ? "good" : "warn") + '">' + esc(assessment.label) + '</span><h3><a href="#/resource/document/' + encodeURIComponent(assessment.documentId) + '?stage=controls&documentScope=program">' + esc(assessment.title) + '</a></h3></div><small>' + assessment.gapCount + ' ' + pluralize("gap", assessment.gapCount) + '</small></div>' + controls + '<div class="policy-activation-actions"><a class="button" href="#/resource/document/' + encodeURIComponent(assessment.documentId) + '?stage=controls&documentScope=program">View Document</a></div></article>';
+  }).join("");
+  const action = candidates.length && !state.readOnly
+    ? '<div class="evidence-map-actions"><button class="button primary" type="button" data-review-document-activation>Review Document activation</button></div>'
+    : "";
+  return '<section class="policy-activation"><div class="evidence-map-head"><div><p class="kicker">Governed Document cutover</p><h2>Activate the approved plans and schedules</h2><p>After the linked requirements are implemented, activate each unchanged approved Document. FileGRC records a separate activation date and binds the exact activated revision.</p></div>' + action + '</div><div class="policy-activation-grid">' + cards + '</div></section>';
+}
+
+function renderAuditDocumentActivationAssessments() {
+  const audits = resourcesOfType("audit").map(({ record }) => record);
+  const audit = audits.find(({ status }) => !["complete", "closed", "canceled"].includes(status)) || audits[0];
+  const preparation = audit ? state.auditPreparations?.[audit.id] : null;
+  const assessments = preparation?.documentActivations || [];
+  if (!audit || !assessments.length) return "";
+  const candidates = assessments.filter(({ state }) => state === "ready-to-activate");
+  const cards = assessments.map((assessment) => {
+    const operating = assessment.state === "active-and-operating";
+    const issues = assessment.issues.length
+      ? '<ul class="policy-activation-warning">' + assessment.issues.map((issue) => '<li>' + esc(issue) + '</li>').join("") + '</ul>'
+      : "";
+    return '<article class="policy-activation-card ' + esc(assessment.state) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (operating ? "good" : "warn") + '">' + esc(assessment.label) + '</span><h3><a href="#/resource/document/' + encodeURIComponent(assessment.documentId) + '?stage=audit&documentScope=audit">' + esc(assessment.title) + '</a></h3></div><small>' + assessment.gapCount + ' ' + pluralize("gap", assessment.gapCount) + '</small></div>' + issues + '<div class="policy-activation-actions"><a class="button" href="#/resource/document/' + encodeURIComponent(assessment.documentId) + '?stage=audit&documentScope=audit">View Document</a></div></article>';
+  }).join("");
+  const action = candidates.length && !state.readOnly
+    ? '<div class="evidence-map-actions"><button class="button primary" type="button" data-review-audit-document-activation="' + esc(audit.id) + '">Review Step 5 activation</button></div>'
+    : "";
+  return '<section class="policy-activation audit-document-activation"><div class="evidence-map-head"><div><p class="kicker">Step 5 Document lifecycle</p><h2>Activate the engagement Documents</h2><p>After each engagement Document is complete and independently approved, record the Person who activates the unchanged approved revision for this Audit.</p></div>' + action + '</div><div class="policy-activation-grid">' + cards + '</div></section>';
+}
+
+function openDocumentActivationDialog(auditId = null) {
+  const candidates = (auditId
+    ? state.auditPreparations?.[auditId]?.documentActivations || []
+    : state.programReadiness?.documentActivations || []).filter(({ state }) => state === "ready-to-activate");
+  const entryById = new Map(state.resources
+    .filter(({ record }) => record.type === "document" && record.status === "approved")
+    .map((entry) => [entry.record.id, entry]));
+  const ready = candidates.filter(({ documentId }) => entryById.has(documentId));
+  if (!ready.length) return;
+  const activators = state.resources
+    .filter(({ record }) => record.type === "person" && record.status === "active")
+    .map(({ record }) => record);
+  const today = currentDate();
+  const dialog = document.createElement("dialog");
+  dialog.className = "commit-dialog event-dialog policy-activation-dialog";
+  dialog.setAttribute("aria-labelledby", "document-activation-dialog-title");
+  const step = auditId ? "Step 5" : "Step 3";
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + step + ' activation</p><h2 id="document-activation-dialog-title">Review governed Document activation</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' +
+    '<p>' + (auditId ? 'These engagement Documents are complete and independently approved for the selected Audit.' : 'These Documents already have independent Step 2 approvals and implemented linked requirements.') + ' Activation records the Person who puts each unchanged approved revision into use.</p>' +
+    '<div class="policy-activation-selections">' + ready.map((assessment) => '<label class="policy-activation-selection"><input type="checkbox" name="documentId" value="' + esc(assessment.documentId) + '" checked><span><strong>' + esc(assessment.title) + '</strong><small>Approved ' + esc(assessment.approvedOn) + (auditId ? ' · Engagement facts complete' : ' · All linked Controls implemented') + '</small></span></label>').join("") + '</div>' +
+    '<label><span>Activated by</span><select name="activatedById" required><option value="">Select the Person who performs this activation</option>' + activators.map((person) => '<option value="' + esc(person.id) + '">' + esc(person.title) + '</option>').join("") + '</select></label>' +
+    '<label><span>Activation date</span><input name="activatedOn" type="date" value="' + esc(today) + '" readonly required></label>' +
+    '<label><span>Effective date</span><input name="effectiveOn" type="date" min="' + esc(today) + '" value="' + esc(today) + '" required></label>' +
+    '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Activate selected Documents</button></div></form>';
+  document.body.append(dialog);
+  const close = () => dialog.close();
+  dialog.querySelector(".icon-button").addEventListener("click", close);
+  dialog.querySelector('[data-event="cancel"]').addEventListener("click", close);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity() || dialog.dataset.mutationBusy === "true") return;
+    const documentIds = [...event.currentTarget.querySelectorAll('[name="documentId"]:checked')].map(({ value }) => value);
+    if (!documentIds.length) {
+      dialog.querySelector(".dialog-error").textContent = "Select at least one approved Document to activate.";
+      return;
+    }
+    setMutationBusy(dialog, true, "Activating…", "Activate selected Documents");
+    try {
+      const response = await localFetch("/api/document-activations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          documentIds,
+          ...(auditId ? { auditId } : {}),
+          activatedByIds: [event.currentTarget.elements.activatedById.value],
+          activatedOn: event.currentTarget.elements.activatedOn.value,
+          effectiveOn: event.currentTarget.elements.effectiveOn.value,
+          expectedRevisions: Object.fromEntries(documentIds.map((documentId) => [documentId, entryById.get(documentId).revision]))
+        })
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      applyMutationState(await response.json());
+      dialog.close();
+      render();
+    } catch (error) {
+      setMutationBusy(dialog, false, "", "Activate selected Documents");
+      dialog.querySelector(".dialog-error").textContent = error.message;
+    }
+  });
+  dialog.showModal();
 }
 
 function renderPolicyActivationAssessments() {
@@ -391,6 +500,7 @@ function renderPolicyActivationAssessments() {
       gapGroup("Missing active Components", assessment.missingComponentControlIds, "control") +
       gapGroup("Missing ready evidence sources", assessment.missingEvidenceSourceControlIds, "control") +
       gapGroup("Missing enabled schedules", assessment.missingScheduleControlIds, "control") +
+      gapGroup("Inactive governed Documents", assessment.missingGovernedDocumentIds || [], "document") +
       gapGroup("Unresolved Exceptions", assessment.unresolvedExceptionIds, "exception") +
       gapGroup("Documented Exceptions", assessment.documentedExceptionIds, "exception") + '</div>' +
       (assessment.activationWarning ? '<p class="policy-activation-warning">' + esc(assessment.activationWarning) + '</p>' : "") +
@@ -418,6 +528,7 @@ function openPolicyActivationDialog() {
       [assessment.missingComponentControlIds.length, "missing Components"],
       [assessment.missingEvidenceSourceControlIds.length, "missing evidence sources"],
       [assessment.missingScheduleControlIds.length, "missing schedules"],
+      [(assessment.missingGovernedDocumentIds || []).length, "inactive governed Documents"],
       [assessment.unresolvedExceptionIds.length, "unresolved Exceptions"]
     ].filter(([count]) => count).map(([count, label]) => count + " " + label).join(" · ");
     return '<label class="policy-activation-selection"><input type="checkbox" name="policyId" value="' + esc(assessment.policyId) + '" checked><span><strong>' + esc(assessment.title) + '</strong><small>' + esc(assessment.label) + (details ? " · " + details : " · No implementation gaps") + '</small></span></label>';
@@ -426,7 +537,7 @@ function openPolicyActivationDialog() {
   dialog.className = "commit-dialog event-dialog policy-activation-dialog";
   dialog.setAttribute("aria-labelledby", "policy-activation-dialog-title");
   dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Step 3 cutover</p><h2 id="policy-activation-dialog-title">Review policy activation</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' +
-    '<p>Choose which approved Policies should take effect. Enabled schedules stay dormant until the effective date and until their linked Controls are implemented.</p>' +
+    '<p>Choose which approved Policies should take effect. Enabled schedules stay dormant until the effective date, their linked Controls are implemented, and required governed Documents are active and effective.</p>' +
     '<div class="policy-activation-selections">' + candidateRows + '</div>' +
     '<section class="policy-activation-review-warning"><strong>Activation with gaps</strong><p>You can activate a Policy with documented gaps or Exceptions. The gaps stay open, Controls keep their current status, and Evidence Readiness stays incomplete.</p></section>' +
     '<label><span>Effective date</span><input name="effectiveOn" type="date" min="' + esc(today) + '" value="' + esc(today) + '" required></label>' +
@@ -593,7 +704,7 @@ function openCollectionReviewDialog(type) {
   if (!assessment) return;
   const configuration = assessment.configuration;
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
-  const v4 = String(state.model.modelVersion) === "4";
+  const v4 = modelSupports("program-scope");
   const sourceType = v4 ? "component" : "system";
   const systems = resourcesOfType(sourceType).filter(({ record }) => record.status === "active");
   const allowedDecisions = configuration.decisions || ["complete"];
@@ -830,6 +941,9 @@ function stagePageDestinations(stage) {
 }
 
 function stagePageSummary(destination) {
+  if (destination.section && !destination.section.types.includes(destination.type)) {
+    return destination.description || destination.section.description || "";
+  }
   const summaryKey = destination.type || "utility:" + destination.utility;
   const section = destination.section || (destination.type
     ? readinessStageForType(destination.type)?.sections.find((candidate) => candidate.types.includes(destination.type))
@@ -1031,6 +1145,9 @@ function sectionDestinations(section) {
     const definition = state.model.resources[type];
     if (!definition) continue;
     destinations.push({ type, kind: "Record page", label: titleCase(definition.pluralTitle), href: "#/resources/" + encodeURIComponent(type), description: definition.description });
+  }
+  for (const link of section.relatedLinks || []) {
+    destinations.push({ type: link.type, kind: "Record page", label: link.label, href: link.href, description: section.description });
   }
   if (section.utility === "obligation-board") destinations.push({ utility: section.utility, kind: "Working page", label: "Work Queue", href: "#/stage/run", description: "Complete recurring work, Policy Event tasks, and assigned follow-up with its due windows and linked proof." });
   if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Evidence & Packet", href: "#/audit-packet", description: "Review filegrc Evidence and Evidence Artifacts, prepare fieldwork, and build the indexed packet." });
@@ -1590,7 +1707,7 @@ function openApplicabilityReviewDialog(type, entries) {
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
   const reviewedRequirements = reviewedRequirementIds();
   const pending = entries.filter(({ record }) => (
-    type === "requirement" && String(state.model.modelVersion) === "4"
+    type === "requirement" && modelSupports("program-scope")
       ? !reviewedRequirements.has(record.id)
       : !record.applicabilityReview
     || type === "requirement" && record.applicability === "undetermined"
@@ -1662,7 +1779,7 @@ function openApplicabilityReviewDialog(type, entries) {
       reviewedOn: form.elements.reviewedOn.value,
       expectedRevisions: Object.fromEntries([
         ...entries.filter((entry) => decisionIds.has(entry.record.id)).map((entry) => [entry.record.id, entry.revision]),
-        ...(type === "requirement" && String(state.model.modelVersion) === "4"
+        ...(type === "requirement" && modelSupports("program-scope")
           ? state.resources.filter(({ record }) => record.id === activeProgram().id).map((entry) => [entry.record.id, entry.revision])
           : [])
       ])
@@ -1910,8 +2027,15 @@ function eventStepSummary(step) {
 function renderList(main, type, params = new URLSearchParams()) {
   const definition = state.model.resources[type];
   if (!definition) return renderNotFound(main);
-  const listStage = readinessStageForType(type);
-  const entries = resourcesOfType(type);
+  const listStage = READINESS_STAGES.find(({ id }) => id === params.get("stage")) || readinessStageForType(type);
+  const documentScope = type === "document" ? params.get("documentScope") : null;
+  const listTitle = type === "document" ? documentListTitle(params) : definition.pluralTitle;
+  const entries = resourcesOfType(type).filter(({ record }) => (
+    !documentScope || (documentScope === "audit") === auditSpecificDocument(record)
+  ));
+  const detailContext = params.get("stage")
+    ? "?stage=" + encodeURIComponent(params.get("stage")) + (documentScope ? "&documentScope=" + encodeURIComponent(documentScope) : "")
+    : "";
   const requestedPage = Number(params.get("page"));
   let pageNumber = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const fields = [...new Set([
@@ -1929,7 +2053,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const createButton = !state.readOnly && !definition.singleton && !collectionNeedsFirstRecord(type) && resourceCreationAllowed(type) ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "";
   const reviewedRequirements = reviewedRequirementIds();
   const hasPendingApplicability = entries.some(({ record }) => (
-    type === "requirement" && String(state.model.modelVersion) === "4"
+    type === "requirement" && modelSupports("program-scope")
       ? !reviewedRequirements.has(record.id)
       : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
   ));
@@ -1941,7 +2065,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + applicabilityButton + createButton + '</div>';
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(definition.pluralTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(listTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
     collectionReviewPanel(type) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Next action</th><th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
@@ -1959,7 +2083,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + detailContext + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -1971,6 +2095,8 @@ function renderList(main, type, params = new URLSearchParams()) {
   main.querySelectorAll(".field-filter").forEach((select) => { select.value = params.get(select.dataset.field) || ""; });
   const syncRoute = (mode = "replace") => {
     const next = new URLSearchParams();
+    if (params.get("stage")) next.set("stage", params.get("stage"));
+    if (documentScope) next.set("documentScope", documentScope);
     const query = main.querySelector("#list-search").value.trim();
     if (query) next.set("q", query);
     main.querySelectorAll(".field-filter").forEach((select) => { if (select.value) next.set(select.dataset.field, select.value); });
@@ -2008,6 +2134,22 @@ function renderList(main, type, params = new URLSearchParams()) {
   if (params.get("review-collection") === "1" && !state.readOnly) {
     queueMicrotask(() => main.querySelector("[data-review-collection]")?.click());
   }
+}
+
+function auditSpecificDocument(record) {
+  if (record.type !== "document") return false;
+  if (modelSupports("document-workflow-scope")) return record.workflowScope === "engagement";
+  const kinds = new Set([
+    ...(state.model.auditReadiness?.managementDocuments || []).map(({ kind }) => kind),
+    "soc2-engagement-terms"
+  ]);
+  return kinds.has(record.documentKind);
+}
+
+function documentListTitle(params = new URLSearchParams()) {
+  if (params.get("documentScope") === "audit") return "Audit-specific Documents";
+  if (params.get("documentScope") === "program") return "Governed Plans and Schedules";
+  return "Documents";
 }
 
 function renderDetail(main, type, id, params = new URLSearchParams()) {
@@ -3393,12 +3535,15 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   }
   if (field.type === "enum" || field.type === "rating" || field.type === "outcome") {
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
-    const availableValues = type === "policy" && name === "status" && value !== "active"
+    const activationManagedType = ["policy", "document"].includes(type);
+    const availableValues = activationManagedType && name === "status" && value !== "active"
       ? values.filter((item) => item !== "active")
       : values;
     control = '<select><option value="">Select</option>' + availableValues.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
-    const enumHelp = type === "policy" && name === "status"
-      ? "Step 2 ends at Approved. Activate approved Policies from the Step 3 Controls-page cutover."
+    const enumHelp = activationManagedType && name === "status"
+      ? type === "document"
+        ? "Approval ends at Approved. Activate program Documents from Step 3 after implementation, and engagement Documents from Step 5 after their Audit facts are complete."
+        : "Step 2 ends at Approved. Activate approved Policies from the Step 3 Controls-page cutover."
       : help;
     return fieldWrap(name, "string", label, requiredMark, control, enumHelp, required);
   }

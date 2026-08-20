@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { modelSupports } from "../model/index.js";
 import { collectionRevision } from "./collection-revision.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
 import { applyResourceBatch } from "./files.js";
@@ -26,7 +27,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     record.type === "collection-review"
     && record.resourceType === resourceType
     && record.status !== "retired"
-    && (String(loaded.model.modelVersion) !== "4" || (record.scopeResourceIds || []).includes(program.id))
+    && (!modelSupports(loaded.model, "program-scope") || (record.scopeResourceIds || []).includes(program.id))
   ));
   const review = reviewEntry?.record || null;
   const authoritativeSourceId = review?.decision === "externally-managed"
@@ -86,7 +87,7 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
     rationale: null,
     reviewedByIds: [],
     reviewedOn: null,
-    ...(String(loaded.model.modelVersion) === "4"
+    ...(modelSupports(loaded.model, "program-scope")
       ? { authoritativeComponentId: null }
       : { authoritativeSystemId: null })
   };
@@ -103,7 +104,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   const reviewedByIds = [...new Set((options.reviewedByIds || []).map(String).filter(Boolean))];
   const reviewedOn = String(options.reviewedOn || "").trim();
   const scopeRevision = String(options.scopeRevision || getGitSummary(loaded.root).commit || "uncommitted").trim();
-  const v4 = String(loaded.model.modelVersion) === "4";
+  const v4 = modelSupports(loaded.model, "program-scope");
   const authoritativeSourceId = String(v4 ? options.authoritativeComponentId : options.authoritativeSystemId || "").trim();
   if (!(configuration.decisions || ["complete"]).includes(decision)) {
     throw new Error(

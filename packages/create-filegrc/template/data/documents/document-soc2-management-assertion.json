@@ -4,11 +4,11 @@
   "title": "SOC 2 Management Assertion",
   "status": "draft",
   "documentKind": "soc2-management-assertion",
+  "workflowScope": "engagement",
   "template": true,
   "ownerIds": [
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classificationId": "confidential",
-  "programRole": "required"
+  "classificationId": "confidential"
 }

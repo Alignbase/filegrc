@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { modelSupports } from "../model/index.js";
 import { createObligationEvent } from "./obligations.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
@@ -94,13 +95,13 @@ export async function planReconciliation(input = process.cwd()) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
     : await loadWorkspace(input);
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
+  if (!modelSupports(loaded.model, "guided-workflow")) {
     return {
       contractVersion: 1,
       gitRevision: gitRevision(loaded.root),
       changedPaths: [],
       candidates: [],
-      message: "Direct-file transition reconciliation is available in model v3 and v4 workspaces."
+      message: "Direct-file transition reconciliation is available in model v3 and newer workspaces."
     };
   }
   const changedPaths = gitChangedPaths(loaded.root);

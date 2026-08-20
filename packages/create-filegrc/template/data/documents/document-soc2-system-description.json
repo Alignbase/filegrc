@@ -4,11 +4,11 @@
   "title": "SOC 2 System Description",
   "status": "draft",
   "documentKind": "soc2-system-description",
+  "workflowScope": "engagement",
   "template": true,
   "ownerIds": [
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classificationId": "internal",
-  "programRole": "required"
+  "classificationId": "internal"
 }

@@ -88,7 +88,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "4");
+  assert.equal(workspace.dataModelVersion, "5");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
   const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
     JSON.parse(await readFile(path, "utf8"))
@@ -569,8 +569,8 @@ test("creates a complete generic repository with one dependency", async (context
   }
   const programReadiness = await assessProgramReadiness(target, { asOf: "2026-07-25" });
   const recoveryPlanReadiness = programReadiness.stages
-    .find(({ id }) => id === "controls")
-    .items.find(({ id }) => id === "document-document-security-incident-recovery-plan");
+    .find(({ id }) => id === "policies")
+    .items.find(({ id }) => id === "document-approval-document-security-incident-recovery-plan");
   assert.equal(recoveryPlanReadiness.checks.systemContinuityObjectives, false);
   assert.deepEqual(recoveryPlanReadiness.continuityObjectiveSystemIds, []);
   assert.match(

@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { loadModel } from "../model/index.js";
+import { ACTIVE_MODEL_VERSION, loadModel, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
 import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
@@ -16,6 +16,7 @@ import {
   scaffoldCollectionReview
 } from "./collection-review.js";
 import { buildWorkspace } from "./build.js";
+import { activateDocuments, planDocumentActivation, scaffoldDocumentActivation } from "./document-activation.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import {
   addEvidenceAttachment,
@@ -183,15 +184,16 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "migrate") {
     const targetModel = String(flags["to-model"] || "");
-    if (!["2", "3", "4"].includes(targetModel)) throw new Error("Pass --to-model 2, --to-model 3, or --to-model 4.");
-    const systemDecisions = flags.decisions
+    if (!["2", "3", "4", "5"].includes(targetModel)) throw new Error("Pass --to-model 2, --to-model 3, --to-model 4, or --to-model 5.");
+    const migrationDecisions = flags.decisions
       ? JSON.parse(await readFile(resolve(String(flags.decisions)), "utf8"))
       : undefined;
     const options = {
       jobTitle: flags["job-title"],
       startsOn: flags["starts-on"],
       targetModelVersion: targetModel,
-      systemDecisions: systemDecisions?.systemDecisions || systemDecisions
+      systemDecisions: migrationDecisions?.systemDecisions || (targetModel === "4" ? migrationDecisions : undefined),
+      documentScopes: migrationDecisions?.documentScopes || (targetModel === "5" ? migrationDecisions : undefined)
     };
     const plan = await planModelMigration(root, options);
     if (!flags.preview && plan.sourceModelVersion !== plan.targetModelVersion && !flags.yes) {
@@ -615,6 +617,31 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else if (flags.preview) console.log(`Policy activation preview: ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
     else console.log(`Activated ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
+    return result;
+  }
+  if (command === "activate-documents") {
+    if (flags.scaffold) {
+      const result = await scaffoldDocumentActivation(root, { programId: flags.program, auditId: flags.audit });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    const payload = await readSetupPayload(positionals[0]);
+    const options = {
+      ...payload,
+      documentIds: flags.document ? String(flags.document).split(",").filter(Boolean) : payload.documentIds,
+      activatedByIds: flags["activated-by"] ? String(flags["activated-by"]).split(",").filter(Boolean) : payload.activatedByIds,
+      activatedOn: flags["activated-on"] || payload.activatedOn,
+      effectiveOn: flags["effective-on"] || payload.effectiveOn,
+      programId: flags.program || payload.programId,
+      auditId: flags.audit || payload.auditId,
+      confirmed: flags.yes === true
+    };
+    const result = flags.preview
+      ? await planDocumentActivation(root, options)
+      : await withWorkflowDelta(root, () => activateDocuments(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) console.log(`Document activation preview: ${result.documentIds.length} governed Documents effective ${result.effectiveOn}.`);
+    else console.log(`Activated ${result.documentIds.length} governed Documents effective ${result.effectiveOn}.`);
     return result;
   }
   if (command === "policy-library") {
@@ -1055,7 +1082,7 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
-  filegrc migrate --to-model <2|3|4> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
+  filegrc migrate --to-model <2|3|4|5> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--program program-id] [--json]
@@ -1078,6 +1105,7 @@ Usage:
   filegrc review-applicability [--scaffold --type requirement|control|commitment|complementary-control] [decisions.json|-] [--preview|--yes] [--json]
   filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--json]
   filegrc activate-policies [--scaffold | activation.json|-] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
+  filegrc activate-documents [--scaffold | activation.json|-] [--program id | --audit id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc policy-library [--json | --accept proposal-id --proposal-revision revision --yes]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
   filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
@@ -1145,19 +1173,20 @@ Options:
   }
   if (command === "migrate") {
     console.log(`Usage:
-  filegrc migrate --to-model <2|3|4> [options]
+  filegrc migrate --to-model <${SUPPORTED_MODEL_VERSIONS.join("|")}> [options]
 
 Upgrade a workspace through an explicit, reviewable model boundary. Model v1
-workspaces migrate to v2 first. Model v2 workspaces migrate to v3, then v4. v4 separates
+workspaces migrate to v2 first. Continue one version at a time through v${ACTIVE_MODEL_VERSION}. v4 separates
 the repository Workspace, management Program, bounded Systems, operational Components,
-specific Assets, Vendors, normalized information, and Evidence Artifacts. v3 migration
+specific Assets, Vendors, normalized information, and Evidence Artifacts. Model v5 separates
+Document approval from activation and records program-versus-engagement scope. v3 migration
 previews may require a decisions JSON file for ambiguous old Systems. v3 still creates planned
 core Appointments, removal of obsolete manual page state, classified review work,
 and dataModelVersion changed last. The command writes no Git commit.
 
 Options:
-  --to-model <version>  Required target model; migrations must run in order through 2, 3, and 4
-  --decisions <path>    v4 JSON object keyed by old System ID with system/component decisions
+  --to-model <version>  Required target model; migrations must run in order through ${SUPPORTED_MODEL_VERSIONS.join(", ")}
+  --decisions <path>    JSON systemDecisions for v4 or documentScopes for ambiguous v5 Documents
   --preview             Show the complete atomic record plan without writing
   --job-title <title>   Actual job title for the former Policy Owner seed person
   --starts-on <date>    Effective date of a new Policy Owner Appointment
@@ -1167,7 +1196,7 @@ Options:
   --help                Show this help
 
 Start with:
-  npx filegrc migrate --to-model 4 --preview --json`);
+  npx filegrc migrate --to-model ${ACTIVE_MODEL_VERSION} --preview --json`);
     return;
   }
   if (command === "program-readiness") {
@@ -1248,6 +1277,30 @@ Options:
   --help                 Show this help`);
     return;
   }
+  if (command === "activate-documents") {
+    console.log(`Usage:
+  filegrc activate-documents --scaffold [--program id | --audit id]
+  filegrc activate-documents <activation.json|-> [--audit id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
+
+Activate required governed plans and schedules in Step 3 after their linked
+Controls are implemented, or activate engagement Documents in Step 5 after
+their audit-specific facts are complete. Approval, activation, and effective
+dates remain separate, and activation binds its own exact Markdown revision.
+
+Options:
+  --scaffold             Print the ready activation payload without writing
+  --program <id>         Program to assess when more than one active Program exists
+  --audit <id>           Audit whose engagement Documents should be activated in Step 5
+  --activated-by <id>    Active Person who performs the activation
+  --activated-on <date>  Actual activation date, which must be today
+  --effective-on <date>  Effective date on or after activation
+  --preview              Validate and show the atomic updates without writing
+  --yes                  Confirm and apply the reviewed activation
+  --json                 Print the result as JSON
+  --root <path>          Workspace path
+  --help                 Show this help`);
+    return;
+  }
   if (command === "policy-library") {
     console.log(`Usage:
   filegrc policy-library [--json]
@@ -1294,7 +1347,7 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
-    migrate: "filegrc migrate --to-model 4 --preview --json",
+    migrate: "filegrc migrate --to-model 5 --preview --json",
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",
@@ -1313,6 +1366,7 @@ function agentOverview(model) {
     reconcile: "filegrc reconcile --preview --json",
     externalReviewerSetup: "filegrc external-reviewer-setup [--scaffold | <reviewer.json|-> --preview] --json",
     policyActivation: "filegrc activate-policies [--scaffold | <activation.json|-> --preview] --json",
+    documentActivation: "filegrc activate-documents [--scaffold | <activation.json|-> --preview] --json",
     nextAuditCycle: "filegrc next-audit-cycle <prior-audit-id> --start <date> --end <date> --preview --json",
     reviewApplicability: "filegrc review-applicability <decisions.json|-> --preview --json",
     reviewCollection: "filegrc review-collection <resource-type> [--scaffold | <review.json|-> --preview] --json",
@@ -1465,6 +1519,7 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
     evidenceReady: readiness.evidenceReady,
     operating: readiness.operating,
     policyActivations: readiness.policyActivations,
+    documentActivations: readiness.documentActivations,
     policyLibraryProposals: readiness.policyLibraryProposals,
     stages
   };
@@ -1663,6 +1718,13 @@ function summarizeProgramReadiness(result) {
     ),
     policyActivations: result.policyActivations.map(({ policyId, title, state, label, gapCount }) => ({
       policyId,
+      title,
+      state,
+      label,
+      gapCount
+    })),
+    documentActivations: result.documentActivations.map(({ documentId, title, state, label, gapCount }) => ({
+      documentId,
       title,
       state,
       label,

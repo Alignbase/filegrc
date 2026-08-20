@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { scaffoldResourceMutation } from "./agent.js";
 import { createResourceId } from "./id.js";
 import { createResourceAndLink, createResources, updateResource } from "./files.js";
-import { loadModel } from "../model/index.js";
+import { loadModel, modelSupports } from "../model/index.js";
 import { coverageEnd } from "./coverage.js";
 import {
   addCalendarDays,
@@ -14,7 +14,7 @@ import {
 } from "./recurrence.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
-import { obligationProgramStatus } from "./program-lifecycle.js";
+import { obligationGovernedDocuments, obligationProgramStatus } from "./program-lifecycle.js";
 import { resolveProgram } from "./program.js";
 
 const COMPLETION_DATE_FIELDS = [
@@ -75,7 +75,7 @@ export function planObligations(resources, options = {}) {
   for (const obligation of obligations) {
     const activity = obligationActivity(model, obligation.activityType);
     const expectedCompletionTypes = activity.completionResourceTypes;
-    const programStatus = obligationProgramStatus(obligation, byId, asOf);
+    const programStatus = obligationProgramStatus(obligation, byId, asOf, model);
     if (obligation.recurrence?.mode === "event" && obligation.recurrence.eventType) {
       const eventType = obligation.recurrence.eventType;
       const group = triggerGroups.get(eventType) ?? {
@@ -111,7 +111,7 @@ export function planObligations(resources, options = {}) {
     }
 
     const configuredAnchor = obligation.recurrence?.anchorDate || obligation.startsOn;
-    const activationDate = obligationActivationDate(obligation, byId);
+    const activationDate = obligationActivationDate(obligation, byId, model);
     const recurrence = {
       ...(obligation.recurrence || {}),
       anchorDate: configuredAnchor && activationDate
@@ -258,8 +258,8 @@ export async function createObligationEvent(input, options) {
     )
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
-  if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn) === "proposed")) {
-    throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing policy effective and implement at least one linked control before starting this workflow.`);
+  if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn, loaded.model) === "proposed")) {
+    throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing Policy and required governed Document active and effective, then implement at least one linked Control before starting this workflow.`);
   }
   if (templates.some((record) => normalizedEventWindow(record.window).precision === "timestamp") && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
@@ -720,7 +720,7 @@ function completionTeam(resources, ownerIds) {
 }
 
 function defaultClassificationId(loaded) {
-  if (String(loaded.model.modelVersion) === "4") {
+  if (modelSupports(loaded.model, "program-scope")) {
     return loaded.resources.find(({ type, id, status }) => type === "classification" && id === "internal" && status === "active")?.id
       || loaded.resources.find(({ type, status }) => type === "classification" && status === "active")?.id
       || "";
@@ -792,7 +792,7 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
       const completionProfile = obligation?.type === "obligation"
         ? obligationActivity(model, obligation.activityType).completionProfile || null
         : null;
-      const completionIds = ["3", "4"].includes(String(model.modelVersion))
+      const completionIds = modelSupports(model, "guided-workflow")
         ? record.completionResourceIds || []
         : [...(record.completionResourceIds || []), ...(record.evidenceIds || [])];
       const linkedCompletionIds = [...new Set(completionIds)];
@@ -991,13 +991,16 @@ function occurrenceStatus(window, asOf, complete) {
   return "upcoming";
 }
 
-function obligationActivationDate(obligation, byId) {
-  const dates = (obligation.policyIds || [])
+function obligationActivationDate(obligation, byId, model) {
+  const policyDates = (obligation.policyIds || [])
     .map((id) => byId.get(id))
     .filter((policy) => policy?.type === "policy")
     .map((policy) => policy.effectiveOn)
     .filter(Boolean);
-  return dates.sort().at(-1) || null;
+  const documentDates = obligationGovernedDocuments(obligation, byId, model)
+    .map((document) => document.effectiveOn)
+    .filter(Boolean);
+  return [...policyDates, ...documentDates].sort().at(-1) || null;
 }
 
 function relativeTiming(window, asOf) {

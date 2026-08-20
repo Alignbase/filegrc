@@ -4,11 +4,11 @@
   "title": "SOC 2 Period Completeness Statement",
   "status": "draft",
   "documentKind": "soc2-period-completeness",
+  "workflowScope": "engagement",
   "template": true,
   "ownerIds": [
     "appointment-policy-owner"
   ],
   "version": "0.1",
-  "classificationId": "confidential",
-  "programRole": "conditional"
+  "classificationId": "confidential"
 }

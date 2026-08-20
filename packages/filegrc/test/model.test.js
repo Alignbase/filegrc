@@ -4,13 +4,15 @@ import test from "node:test";
 import {
   generateModelDocumentation,
   loadModel,
+  MODEL_CAPABILITY_VERSIONS,
+  modelSupports,
   PROGRAM_PATH,
   RESOURCE_INSTRUCTIONS
 } from "../src/index.js";
 
-test("v4 model exposes the complete resource registry", () => {
+test("v5 model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "4");
+  assert.equal(model.modelVersion, "5");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -20,7 +22,7 @@ test("v4 model exposes the complete resource registry", () => {
   assert.ok(model.obligationActivities["vendor-review"].scopeResourceTypes.includes("vendor"));
   assert.deepEqual(PROGRAM_PATH.map(({ title }) => title), [
     "Define Scope",
-    "Approve Policies",
+    "Approve Policies and Plans",
     "Implement Controls",
     "Operate the Program",
     "Audit"
@@ -272,8 +274,18 @@ test("v4 model exposes the complete resource registry", () => {
     status: ["in-review", "approved", "active", "superseded", "retired"]
   });
   assert.deepEqual(model.resources.document.fields.approverIds.requiredWhen, {
-    status: ["active", "superseded", "retired"]
+    status: ["approved", "active", "superseded", "retired"]
   });
+  assert.deepEqual(model.resources.document.fields.status.values, ["draft", "approved", "active", "superseded", "retired"]);
+  assert.deepEqual(model.resources.document.fields.approvedContentRevisions.requiredWhen, {
+    status: ["approved", "active", "superseded", "retired"]
+  });
+  assert.ok(model.resources.document.required.includes("workflowScope"));
+  assert.deepEqual(model.resources.document.fields.workflowScope.values, ["program", "engagement"]);
+  assert.deepEqual(model.resources.document.fields.activationBasis.values, ["recorded", "legacy-v4"]);
+  assert.deepEqual(model.resources.document.fields.activatedContentRevisions.requiredWhen, { activationBasis: "recorded" });
+  assert.deepEqual(model.resources.document.fields.activatedOn.requiredWhen, { activationBasis: "recorded" });
+  assert.deepEqual(model.resources.document.fields.activatedByIds.requiredWhen, { activationBasis: "recorded" });
   assert.deepEqual(model.resources.policy.fields.approvedContentRevisions.requiredWhen, {
     status: ["approved", "active", "superseded", "retired"]
   });
@@ -301,7 +313,7 @@ test("v4 model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "4");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "5");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");
@@ -357,6 +369,16 @@ test("v4 model exposes the complete resource registry", () => {
   ]) {
     assert.match(model.resources[type].description, /not required for (?:a )?SOC 2/, `${type} states that it is optional`);
   }
+});
+
+test("uses named model capabilities at compatibility boundaries", () => {
+  assert.equal(MODEL_CAPABILITY_VERSIONS["guided-workflow"], 3);
+  assert.equal(MODEL_CAPABILITY_VERSIONS["program-scope"], 4);
+  assert.equal(MODEL_CAPABILITY_VERSIONS["governed-document-activation"], 5);
+  assert.equal(modelSupports(loadModel("4"), "program-scope"), true);
+  assert.equal(modelSupports("4", "governed-document-activation"), false);
+  assert.equal(modelSupports(loadModel("5"), "document-workflow-scope"), true);
+  assert.throws(() => modelSupports("5", "unknown-capability"), /Unknown model capability/);
 });
 
 test("model versions cannot escape the packaged model registry", () => {

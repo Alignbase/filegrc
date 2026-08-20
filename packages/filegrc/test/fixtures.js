@@ -118,6 +118,9 @@ export async function makeComprehensiveWorkspace(root, version) {
       if (name === "status" && STATUS_OVERRIDES[type]) record[name] = STATUS_OVERRIDES[type];
       else if (required.has(name)) record[name] = sampleValue(name, field, ids, model, type);
     }
+    if (type === "document" && record.status === "active" && fields.activationBasis) {
+      record.activationBasis = "recorded";
+    }
     for (const [name, field] of Object.entries(fields)) {
       if (field.requiredWhen && Object.entries(field.requiredWhen).every(([key, value]) => (
         Array.isArray(value) ? value.includes(record[key]) : record[key] === value
@@ -320,6 +323,9 @@ async function writeRecord(root, definition, record, model) {
         if (error.code !== "ENOENT") throw error;
       }
     }
+    if (record.type === "document" && model.resources.document.fields.activatedContentRevisions && record.status === "active") {
+      record.activatedContentRevisions = structuredClone(record.approvedContentRevisions);
+    }
   }
   if (record.type === "evidence" && record.filePaths) {
     for (const relativePath of record.filePaths) {
@@ -355,7 +361,7 @@ async function subjectContentRevisions(root, model, recordsById, subjectResource
 
 function approvalBound(record) {
   if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
-  if (record.type === "document") return ["active", "superseded", "retired"].includes(record.status);
+  if (record.type === "document") return ["approved", "active", "superseded", "retired"].includes(record.status);
   return false;
 }
 

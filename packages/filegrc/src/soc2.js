@@ -1,3 +1,4 @@
+import { modelSupports } from "../model/index.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 
 export const REQUIRED_SOC2_DESCRIPTION_REFERENCES = Array.from(
@@ -49,7 +50,7 @@ const SOC2_PROGRAM_GOALS = new Set([
 
 export function soc2RequirementApplicabilityConstraint(requirement, program, modelVersion = "4") {
   if (
-    String(modelVersion) !== "4"
+    !modelSupports(modelVersion, "program-scope")
     || requirement?.type !== "requirement"
     || !SOC2_PROGRAM_GOALS.has(program?.assuranceGoal)
   ) return null;
@@ -171,7 +172,7 @@ export function soc2ReportEvidenceIssue(evidence, audit, modelVersion = "4") {
       message: `${evidence?.title || audit?.title || "The audit"} must be verified third-party-report Evidence with subtype soc2-report for the issued SOC 2 report.`
     };
   }
-  const issuedOn = (String(modelVersion) === "4"
+  const issuedOn = (modelSupports(modelVersion, "program-scope")
     ? evidence.sourceGeneratedAt
     : evidence.sourceGeneratedAt || evidence.businessEventAt || evidence.collectedOn
   )?.slice(0, 10);

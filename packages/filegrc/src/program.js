@@ -1,5 +1,7 @@
+import { modelSupports } from "../model/index.js";
+
 export function resolveProgram(loaded, requestedId) {
-  if (String(loaded.model.modelVersion) !== "4") return loaded.workspace;
+  if (!modelSupports(loaded.model, "program-scope")) return loaded.workspace;
   const programs = loaded.resources.filter((record) => record.type === "program" && record.status !== "retired");
   if (requestedId) {
     const program = programs.find(({ id }) => id === requestedId);
@@ -33,7 +35,7 @@ export function resolveProgram(loaded, requestedId) {
 }
 
 export function selectedRequirementIds(program, model) {
-  if (String(model.modelVersion) === "4") {
+  if (modelSupports(model, "program-scope")) {
     return (program.requirementApplicability || [])
       .filter(({ decision }) => decision === "applicable")
       .map(({ requirementId }) => requirementId);
@@ -42,7 +44,7 @@ export function selectedRequirementIds(program, model) {
 }
 
 export function programComponents(loaded, program) {
-  if (String(loaded.model.modelVersion) !== "4") return [];
+  if (!modelSupports(loaded.model, "program-scope")) return [];
   const systemIds = new Set(program.systemIds || []);
   return loaded.resources.filter((record) => (
     record.type === "component"

@@ -18,7 +18,7 @@ During Step 3, implement Controls while the governing Policy is approved but ina
 
 1. Review the per-Policy activation assessment.
 2. Review linked Controls that are planned or partial, missing Components or evidence sources, missing schedules, and unresolved Exceptions.
-3. Complete required governed plans and assign Training or Attestations.
+3. Confirm required governed plans and schedules have independent Step 2 approval, implement their linked requirements, and activate their exact approved revisions separately in Step 3.
 4. Set the real effective date and change the approved Policy to `active` at implementation cutover.
 5. If management activates with a known gap, document the decision, follow-up, and any time-bound Exception. Activation does not mark a Control implemented, and Evidence Readiness still requires active and operating Policies.
 

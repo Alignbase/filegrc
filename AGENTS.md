@@ -73,7 +73,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 
 ## Data rules
 
-The active authoritative model registry is the standalone `packages/filegrc/model/v4.json`. Models v1, v2, and v3 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
+The active authoritative model registry is the standalone `packages/filegrc/model/v5.json`. Models v1, v2, v3, and v4 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.

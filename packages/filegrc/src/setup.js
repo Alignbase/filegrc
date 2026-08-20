@@ -1,3 +1,4 @@
+import { modelSupports } from "../model/index.js";
 import { applyResourceBatch } from "./files.js";
 import { createResourceId } from "./id.js";
 import { resolveProgram, selectedRequirementIds } from "./program.js";
@@ -79,7 +80,9 @@ export function summarizeSetupResult(result) {
       commitment: result.commitment ? "saved" : "unchanged"
     },
     system: setupSystemSummary(result.system),
-    target: setupTargetSummary(result.program || result.workspace, { modelVersion: result.program ? "4" : "3" }),
+    target: setupTargetSummary(result.program || result.workspace, {
+      modelVersion: result.workspace?.dataModelVersion || (result.program ? "5" : "3")
+    }),
     renderer: result.renderer ? setupRendererSummary(result.renderer) : null,
     commitment: result.commitment || null,
     onboardingComplete: result.onboardingComplete
@@ -131,7 +134,7 @@ function validateSetup(loaded, setup) {
       throw new Error(`System "${setup.systemId}" cannot be used for initial scope because it is ${system.status}.`);
     }
   }
-  const classifications = String(loaded.model.modelVersion) === "4"
+  const classifications = modelSupports(loaded.model, "program-scope")
     ? loaded.resources.filter(({ type, status }) => type === "classification" && status === "active").map(({ id }) => id)
     : Object.keys(loaded.workspace.classificationDefinitions || {});
   if (classifications.length && !classifications.includes(setup.classificationId)) {
@@ -142,7 +145,7 @@ function validateSetup(loaded, setup) {
 function resolveClassificationId(loaded, value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return value;
-  const candidates = String(loaded.model.modelVersion) === "4"
+  const candidates = modelSupports(loaded.model, "program-scope")
     ? loaded.resources
       .filter(({ type, status }) => type === "classification" && status === "active")
       .map(({ id, title }) => ({ id, label: title }))
@@ -167,7 +170,7 @@ function findSetupSystem(resources, target, setup) {
 
 function buildSetupRecords(loaded, setup) {
   const target = resolveProgram(loaded);
-  const v4 = String(loaded.model.modelVersion) === "4";
+  const v4 = modelSupports(loaded.model, "program-scope");
   const existingSystem = findSetupSystem(loaded.resources, target, setup);
   const systemId = existingSystem?.id || createResourceId(
     "system",
@@ -233,7 +236,7 @@ function buildSetupRecords(loaded, setup) {
     && !["superseded", "retired"].includes(record.status)
     && (record.systemIds || []).includes(systemId)
   ));
-  const commitment = ["3", "4"].includes(String(loaded.model.modelVersion)) && !existingCommitment
+  const commitment = modelSupports(loaded.model, "guided-workflow") && !existingCommitment
     ? {
         id: createResourceId(
           "commitment",

@@ -11,6 +11,7 @@ import {
   createObligationEvent,
   createResource,
   createResources,
+  applyResourceBatch,
   generateEvidencePacket,
   getGitSummary,
   loadModel,
@@ -22,6 +23,43 @@ import {
 } from "../src/index.js";
 import { serializeWorkspaceMutation } from "../src/mutation.js";
 import { makeWorkspace } from "./helpers.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
+
+test("exports approval and activation facts for governed Audit Documents", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-document-lifecycle-packet-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "5");
+  const loaded = await loadWorkspace(root);
+  const audit = loaded.resources.find(({ type }) => type === "audit");
+  const source = loaded.resources.find(({ type }) => type === "document");
+  const document = {
+    ...source,
+    title: "Accepted engagement terms",
+    documentKind: "soc2-engagement-terms",
+    workflowScope: "engagement"
+  };
+  delete document.programRole;
+  await applyResourceBatch(root, {
+    update: [document, { ...audit, engagementTermsDocumentId: document.id }],
+    validateWholeWorkspace: true
+  });
+  const packet = await prepareEvidencePacket(root, { auditId: audit.id });
+  assert.equal(packet.summary.documents, 1);
+  assert.deepEqual(packet.documentLifecycles[0].roles, ["Engagement Terms"]);
+  assert.equal(packet.documentLifecycles[0].approvedOn, document.approvedOn);
+  assert.equal(packet.documentLifecycles[0].activatedOn, document.activatedOn);
+  assert.deepEqual(packet.documentLifecycles[0].approvedContentRevisions, document.approvedContentRevisions);
+  assert.deepEqual(packet.documentLifecycles[0].activatedContentRevisions, document.activatedContentRevisions);
+  const result = await writeEvidencePacket(root, packet, { output: ".filegrc/document-lifecycle-packet" });
+  assert.ok(result.files.includes("document-lifecycle-index.csv"));
+  const csv = await readFile(join(result.output, "document-lifecycle-index.csv"), "utf8");
+  assert.match(csv, /Accepted engagement terms/);
+  assert.match(csv, /person-independent-approver-example/);
+  assert.match(csv, /person-example/);
+  const html = await readFile(join(result.output, "index.html"), "utf8");
+  assert.match(html, /Document lifecycle/);
+  assert.match(html, /Download Document lifecycle index CSV/);
+});
 
 const execute = promisify(execFile);
 
@@ -110,6 +148,8 @@ test("derives complementary controls from their related controls", async (contex
     generatedAt: "2026-02-01T00:00:00Z"
   });
 
+  assert.equal(Object.hasOwn(packet.summary, "documents"), false);
+  assert.equal(Object.hasOwn(packet, "documentLifecycles"), false);
   assert.equal(packet.records.some(({ id }) => id === "complementary-control-customer-admin"), true);
 });
 

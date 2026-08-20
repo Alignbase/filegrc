@@ -1,7 +1,8 @@
+import { modelSupports } from "../model/index.js";
 import { programComponents, selectedRequirementIds } from "./program.js";
 
 export function scopedCollectionRecords(loaded, resourceType, program) {
-  if (String(loaded.model.modelVersion) !== "4") {
+  if (!modelSupports(loaded.model, "program-scope")) {
     return loaded.resources.filter((record) => record.type === resourceType);
   }
   if (resourceType === "vendor") {
@@ -37,7 +38,7 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
 
 export function collectionRevisionInputs(loaded, resourceType, program) {
   const reviewed = scopedCollectionRecords(loaded, resourceType, program);
-  if (String(loaded.model.modelVersion) !== "4") {
+  if (!modelSupports(loaded.model, "program-scope")) {
     return reviewed.map((record) => ({ record, value: record }));
   }
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
@@ -94,7 +95,7 @@ export function collectionRevisionInputs(loaded, resourceType, program) {
 }
 
 export function collectionScopeRevisionFacts(loaded, resourceType, program) {
-  if (String(loaded.model.modelVersion) !== "4") {
+  if (!modelSupports(loaded.model, "program-scope")) {
     const common = { programId: program?.id ?? null };
     if (resourceType === "framework") {
       return {

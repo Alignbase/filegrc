@@ -1,8 +1,8 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v4.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v5.json. Do not edit by hand. -->
 
-Model version: `4`
+Model version: `5`
 
 Program-scoped GRC records using bounded Systems, operational Components, normalized information, and retained Evidence Artifacts.
 
@@ -43,16 +43,19 @@ Headless commands:
 - `npx filegrc review-collection component --scaffold`
 - `npx filegrc list system --json`
 
-### Step 2. Approve Policies
+### Step 2. Approve Policies and Plans
 
-Adapt and approve the starter policies.
+Adapt and independently approve Policies and required governed Documents.
 
 - **Policies** (`policy`): Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.
+- **Documents** (`document`): Complete required governed plans and schedules in Step 2, assign an owner and separate approver, and bind approval to the intended values and exact Markdown. Implement the linked requirements and activate that approved revision in Step 3. Prepare audit-specific Documents in Step 5.
 
 Headless commands:
 
 - `npx filegrc guide policy --json`
+- `npx filegrc guide document --json`
 - `npx filegrc list policy --json`
+- `npx filegrc list document --json`
 - `npx filegrc get POLICY_ID --mutation`
 
 ### Step 3. Implement Controls
@@ -61,7 +64,6 @@ Describe each Control and connect its evidence source.
 
 - **Controls** (`control`): Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
 - **Complementary controls** (`complementary-control`): Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
-- **Documents** (`document`): Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
 
 Headless commands:
 
@@ -69,6 +71,7 @@ Headless commands:
 - `npx filegrc list control --json`
 - `npx filegrc get CONTROL_ID --mutation`
 - `npx filegrc review-collection complementary-control --scaffold`
+- `npx filegrc activate-documents --scaffold`
 - `npx filegrc activate-policies --scaffold`
 - `npx filegrc evidence-map --json`
 - `npx filegrc program-readiness --json`
@@ -744,7 +747,7 @@ Instructions: Finish each applicable starter Control with the procedure people f
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence.
 
-Timing: A Control may be implemented while its governing Policy is approved but inactive. Before marking it implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event schedules. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled schedules remain dormant until their governing Policies are active and effective.
+Timing: A Control may be implemented while its governing Policy or required program Document is approved but inactive. Before marking it implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event schedules. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled schedules remain dormant until their governing Policies and required program Documents are active and effective.
 
 When reviewing:
 
@@ -955,13 +958,13 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `document`
 
-Governed plans, charters, procedures, standards, reports, and templates that are not Policies or another filegrc record type. A general document catalog is not required for SOC 2.
+Governed plans, schedules, charters, procedures, standards, reports, and templates that are not Policies or another filegrc record type. A general Document catalog is not required for SOC 2. Required program Documents are approved before implementation and activated only after their requirements are implemented. Audit-specific Documents stay with the engagement in Step 5.
 
-Instructions: Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.
+Instructions: Complete required governed plans and schedules in Step 2, assign an owner and separate approver, and bind approval to the intended values and exact Markdown. Implement the linked requirements and activate that approved revision in Step 3. Prepare audit-specific Documents in Step 5.
 
-Policy basis: Policies rely on governed documents for detailed plans, procedures, charters, and reports. Git preserves the approved text and its revision history.
+Policy basis: Policies rely on governed documents for detailed plans, schedules, procedures, charters, and reports. Approval accepts the intended values and exact content. Activation records that the linked requirements were implemented and the approved Document was put into use.
 
-Timing: Follow the linked review Obligation. Starter governed documents are reviewed at least annually and after material changes or use, with an approver who is separate from the owner.
+Timing: Complete required program plans and schedules in Step 2, obtain approval from a reviewer who is separate from the owner, implement their linked requirements in Step 3, then activate the unchanged approved revision. Follow the linked review Obligation after activation. Prepare audit-specific Documents in Step 5, then approve and activate each one there as separate revision-bound updates.
 
 When reviewing:
 
@@ -979,13 +982,14 @@ Markdown companions:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `draft`, `active`, `superseded`, `retired` |
+| `status` | enum | Yes | Values: `draft`, `approved`, `active`, `superseded`, `retired` |
 | `documentKind` | string | Yes |  |
+| `workflowScope` | enum | Yes | Workflow scope Values: `program`, `engagement` |
 | `template` | boolean | No |  |
-| `approverIds` | array of id | Conditional | References: `person` Must not overlap `ownerIds`. Required when `status` is one of `active`, `superseded`, `retired`. |
+| `approverIds` | array of id | Conditional | References: `person` Must not overlap `ownerIds`. Required when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `version` | string | No |  |
 | `effectiveOn` | date | Conditional | Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
-| `approvedOn` | date | Conditional | Required when `status` is one of `active`, `superseded`, `retired`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
+| `approvedOn` | date | Conditional | Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `supersedesId` | id | No | References: `document` |
 | `systemIds` | array of id | No | References: `system` |
 | `controlIds` | array of id | No | References: `control` |
@@ -996,10 +1000,14 @@ Markdown companions:
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `trainingIds` | array of id | No | Related training References: `training` |
 | `classificationId` | id | No | Classification References: `classification` |
-| `approvedContentRevisions` | object (`content-revisions`) | Conditional | Approved content revisions Managed by filegrc. Required when `status` is one of `active`, `superseded`, `retired`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
+| `approvedContentRevisions` | object (`content-revisions`) | Conditional | Approved content revisions Managed by filegrc. Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
+| `activatedOn` | date | Conditional | Activation date Required when `activationBasis` is `recorded`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
+| `activationBasis` | enum | Conditional | Activation basis Values: `recorded`, `legacy-v4` Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
+| `activatedByIds` | array of id | Conditional | Activated by References: `person` Required when `activationBasis` is `recorded`. Allowed when `activationBasis` is `recorded`. |
+| `activatedContentRevisions` | object (`content-revisions`) | Conditional | Activated content revisions Managed by filegrc. Required when `activationBasis` is `recorded`. Allowed when `activationBasis` is `recorded`. |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
-| `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`. |
-| `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` |
+| `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`, `approved`. |
+| `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` Allowed when `workflowScope` is `program`. |
 | `componentIds` | array of id | No | Components References: `component` |
 
 #### `policy`
@@ -2121,9 +2129,9 @@ Reusable schedules for recurring or event-driven work. Obligations feed the Work
 
 Instructions: Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
 
-Policy basis: FileGRC uses Obligations to turn approved schedules into owned, dated work linked to scope and required proof. An enabled Obligation remains dormant until every governing Policy is active and effective.
+Policy basis: FileGRC uses Obligations to turn approved schedules into owned, dated work linked to scope and required proof. An enabled Obligation remains dormant until every governing Policy and required program Document is active and effective.
 
-Timing: Configure and enable the schedule during Control implementation. Do not create occurrences while a governing Policy is approved but inactive. When the Policy becomes active and effective, use the later of the recurrence anchor and activation date, then create a separate completion record for every period.
+Timing: Configure and enable the schedule during Control implementation. Do not create occurrences while a governing Policy or required program Document is inactive. Start with the latest of the stored recurrence anchor, Policy effective dates, and governed Document effective dates, then create a separate completion record for every period.
 
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 

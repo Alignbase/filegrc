@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { getResourceDefinition } from "../model/index.js";
+import { getResourceDefinition, modelSupports } from "../model/index.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
 import { collectionRevision } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
@@ -12,6 +12,7 @@ import { partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { recordTiming } from "./timing.js";
+import { personWasActiveOn } from "./soc2.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -147,6 +148,9 @@ async function validateWorkspaceUnmeasured(input) {
     pathById,
     diagnostics
   );
+  if (modelSupports(loaded.model, "document-workflow-scope")) {
+    validateDocumentWorkflowScopes(loaded.resources, loaded.model, byId, pathById, diagnostics);
+  }
 
   diagnostics.sort((a, b) => `${a.severity}:${a.path}:${a.code}`.localeCompare(`${b.severity}:${b.path}:${b.code}`));
   return {
@@ -159,6 +163,116 @@ async function validateWorkspaceUnmeasured(input) {
     },
     loaded
   };
+}
+
+function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagnostics) {
+  const managementFields = [
+    "engagementTermsDocumentId",
+    ...(model.auditReadiness?.managementDocuments || []).map(({ field }) => field)
+  ];
+  const auditReferences = new Map();
+  const governedAuditReferences = new Map();
+  const addAuditReference = (map, documentId, audit, field) => {
+    if (!documentId) return;
+    if (!map.has(documentId)) map.set(documentId, []);
+    map.get(documentId).push({ audit, field });
+  };
+  for (const audit of resources.filter(({ type }) => type === "audit")) {
+    for (const field of managementFields) {
+      const documentId = audit[field];
+      if (!documentId) continue;
+      addAuditReference(auditReferences, documentId, audit, field);
+      addAuditReference(governedAuditReferences, documentId, audit, field);
+      const document = byId.get(documentId);
+      if (document?.type === "document" && document.workflowScope !== "engagement") {
+        diagnostics.push(error(
+          "invalid-document-workflow-scope",
+          pathById.get(audit.id) || `data/${audit.id}`,
+          `${field} must reference an engagement-scoped Document; "${document.title}" is scoped to the program workflow.`
+        ));
+      }
+    }
+    for (const documentId of audit.supplementalDocumentIds || []) {
+      addAuditReference(auditReferences, documentId, audit, "supplementalDocumentIds");
+    }
+  }
+
+  const programDocumentReferences = new Map();
+  const addProgramReference = (documentId, record, field) => {
+    if (!documentId) return;
+    if (!programDocumentReferences.has(documentId)) programDocumentReferences.set(documentId, []);
+    programDocumentReferences.get(documentId).push({ record, field });
+  };
+  for (const policy of resources.filter(({ type }) => type === "policy")) {
+    for (const documentId of policy.relatedDocumentIds || []) addProgramReference(documentId, policy, "relatedDocumentIds");
+  }
+  for (const obligation of resources.filter(({ type }) => type === "obligation")) {
+    for (const documentId of obligation.scopeResourceIds || []) {
+      if (byId.get(documentId)?.type === "document") addProgramReference(documentId, obligation, "scopeResourceIds");
+    }
+    if (byId.get(obligation.templateResourceId)?.type === "document") {
+      addProgramReference(obligation.templateResourceId, obligation, "templateResourceId");
+    }
+  }
+
+  for (const document of resources.filter(({ type }) => type === "document")) {
+    const path = pathById.get(document.id) || `data/${document.id}`;
+    const auditRefs = auditReferences.get(document.id) || [];
+    const auditIds = new Set(auditRefs.map(({ audit }) => audit.id));
+    const programRefs = programDocumentReferences.get(document.id) || [];
+    if (document.workflowScope === "engagement" && programRefs.length) {
+      const references = programRefs.map(({ record, field }) => `${record.id}.${field}`).join(", ");
+      diagnostics.push(error(
+        "engagement-document-in-program-workflow",
+        path,
+        `Engagement-scoped Document "${document.title}" cannot govern reusable program work through ${references}. Split the engagement deliverable from the program Document.`
+      ));
+    }
+    if (
+      document.workflowScope === "engagement"
+      && ["approved", "active"].includes(document.status)
+      && auditIds.size !== 1
+    ) {
+      diagnostics.push(error(
+        "invalid-engagement-document-audit-count",
+        path,
+        `Approved or active engagement Document "${document.title}" must belong to exactly one Audit; found ${auditIds.size}.`
+      ));
+    }
+    if (document.workflowScope === "program" && (governedAuditReferences.get(document.id) || []).length) {
+      diagnostics.push(error(
+        "program-document-in-engagement-workflow",
+        path,
+        `Program-scoped Document "${document.title}" cannot fill an Audit engagement or management-Document field.`
+      ));
+    }
+    if (document.activationBasis !== "legacy-v4") continue;
+    const historicalAuditIds = new Set(auditRefs
+      .filter(({ audit }) => ["issued", "delivered", "complete"].includes(audit.status))
+      .map(({ audit }) => audit.id));
+    if (document.workflowScope !== "engagement" || historicalAuditIds.size !== 1 || auditIds.size !== 1) {
+      diagnostics.push(error(
+        "invalid-legacy-document-activation",
+        path,
+        `activationBasis legacy-v4 is reserved for an engagement Document tied to exactly one issued, delivered, or completed Audit.`
+      ));
+    }
+  }
+
+  for (const document of resources.filter(({ type, activationBasis }) => (
+    type === "document" && activationBasis === "recorded"
+  ))) {
+    const invalidActorIds = (document.activatedByIds || []).filter((id) => (
+      !personWasActiveOn(byId.get(id), document.activatedOn)
+    ));
+    if (invalidActorIds.length) {
+      diagnostics.push(error(
+        "invalid-document-activation-actor",
+        pathById.get(document.id) || `data/${document.id}`,
+        `Document activation actors must have been active on ${document.activatedOn}: ${invalidActorIds.join(", ")}.`
+      ));
+    }
+  }
 }
 
 function validateCollectionReview(record, loaded, byId, path, diagnostics) {
@@ -175,7 +289,7 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
     ));
     return;
   }
-  const program = String(model.modelVersion) === "4"
+  const program = modelSupports(model, "program-scope")
     ? (record.scopeResourceIds || []).map((id) => byId.get(id)).find(({ type } = {}) => type === "program")
     : null;
   const recordCount = scopedCollectionRecords(loaded, record.resourceType, program).length;
@@ -208,7 +322,7 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
     diagnostics.push(error(
       "inactive-authoritative-system",
       path,
-      `${configuration.title} must name an active authoritative ${String(model.modelVersion) === "4" ? "Component" : "System"} for an externally managed conclusion.`
+      `${configuration.title} must name an active authoritative ${modelSupports(model, "component-sources") ? "Component" : "System"} for an externally managed conclusion.`
     ));
   }
 }
@@ -436,7 +550,7 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
       ? model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || []
       : [];
     if (!expectedTypes.length) continue;
-    const completionIds = ["3", "4"].includes(String(model.modelVersion))
+    const completionIds = modelSupports(model, "guided-workflow")
       ? action.completionResourceIds || []
       : [...(action.completionResourceIds || []), ...(action.evidenceIds || [])];
     const linked = [...new Set(completionIds)]
@@ -454,7 +568,7 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
 
 function validateCompletedObligationAction(record, byId, model, path, diagnostics) {
   if (
-    !["3", "4"].includes(String(model.modelVersion))
+    !modelSupports(model, "guided-workflow")
     || record.status !== "done"
     || !record.obligationId
   ) return;
@@ -672,6 +786,9 @@ function validateCompletionDates(record, path, diagnostics) {
   ]);
   validateOrderedDates(record, path, diagnostics, ["startedAt", "endedAt"]);
   validateOrderedDates(record, path, diagnostics, ["fieldworkStart", "fieldworkEnd", "reportDate"]);
+  if (record.type === "document") {
+    validateOrderedDates(record, path, diagnostics, ["approvedOn", "activatedOn", "effectiveOn"]);
+  }
   if (record.acceptance) {
     validateOrderedDates(record.acceptance, path, diagnostics, ["acceptedOn", "expiresOn"], "acceptance.");
   }
@@ -766,8 +883,15 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
 }
 
 async function validateApprovalBinding(record, model, root, path, diagnostics) {
-  const bindingField = approvalBindingField(record, model);
-  if (!bindingField || !approvalBound(record) || !record[bindingField]) return;
+  const bindingFields = contentBindingFields(record, model);
+  for (const binding of bindingFields) {
+    await validateContentBinding(record, model, root, path, diagnostics, binding);
+  }
+}
+
+async function validateContentBinding(record, model, root, path, diagnostics, binding) {
+  const { field: bindingField, bound, label } = binding;
+  if (!bound(record) || !record[bindingField]) return;
   const actual = {};
   for (const item of markdownEntries(model, record)) {
     try {
@@ -787,24 +911,34 @@ async function validateApprovalBinding(record, model, root, path, diagnostics) {
     diagnostics.push(error(
       "approval-content-changed",
       path,
-      `Approved content no longer matches ${invalid.map((item) => `data/${item}`).join(", ")}. Move the record to draft or in-review, review the change, then approve it again.`
+      `${label} content no longer matches ${invalid.map((item) => `data/${item}`).join(", ")}. Move the record to draft or in-review, review the change, then approve and activate it again.`
     ));
   }
 }
 
 function approvalBound(record) {
   if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
-  if (record.type === "document") return ["active", "superseded", "retired"].includes(record.status);
+  if (record.type === "document") return ["approved", "active", "superseded", "retired"].includes(record.status);
   if (record.type === "training") return ["active", "retired"].includes(record.status);
   return false;
 }
 
-function approvalBindingField(record, model) {
-  if (["policy", "document"].includes(record.type)) return "approvedContentRevisions";
-  if (record.type === "training" && model.resources.training?.fields?.effectiveContentRevisions) {
-    return "effectiveContentRevisions";
+function contentBindingFields(record, model) {
+  const fields = [];
+  if (["policy", "document"].includes(record.type)) {
+    fields.push({ field: "approvedContentRevisions", bound: approvalBound, label: "Approved" });
   }
-  return null;
+  if (record.type === "document" && model.resources.document?.fields?.activatedContentRevisions) {
+    fields.push({
+      field: "activatedContentRevisions",
+      bound: (candidate) => ["active", "superseded", "retired"].includes(candidate?.status),
+      label: "Activated"
+    });
+  }
+  if (record.type === "training" && model.resources.training?.fields?.effectiveContentRevisions) {
+    fields.push({ field: "effectiveContentRevisions", bound: approvalBound, label: "Approved" });
+  }
+  return fields;
 }
 
 function validateCoverage(record, path, diagnostics) {
@@ -858,7 +992,7 @@ function validateCoverage(record, path, diagnostics) {
 
 function validateClassification(record, loaded, path, diagnostics) {
   if (!record.classificationId) return;
-  if (String(loaded.model.modelVersion) === "4") {
+  if (modelSupports(loaded.model, "program-scope")) {
     if (!loaded.resources.some(({ id, type }) => id === record.classificationId && type === "classification")) {
       diagnostics.push(error(
         "unknown-classification",

@@ -1,3 +1,4 @@
+import { modelSupports } from "../model/index.js";
 import { createResourceId } from "./id.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { RESOURCE_INSTRUCTIONS, resourceProgramContext } from "./program-path.js";
@@ -116,7 +117,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
       recommendedMarkdown.length
         ? "Keep model fields in JSON and use the recommended Markdown companion for the detailed work, decisions, results, exceptions, and follow-up that apply to this record."
         : "Keep the current facts and lifecycle state in JSON. Add optional Record Markdown only when the model fields cannot explain the record clearly.",
-      ...(type === "program" && String(loaded.model.modelVersion) === "4"
+      ...(type === "program" && modelSupports(loaded.model, "program-scope")
         ? ["Review Requirement applicability with npx filegrc review-applicability --type requirement --scaffold, then preview and apply the reviewed decisions as one validated batch."]
         : []),
       "Run npx filegrc validate, review the full Git diff, and commit the JSON, Markdown, and attachments together with a message that explains why the record changed."
@@ -125,7 +126,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
       "Required and status-dependent fields are complete, and the lifecycle status matches the facts.",
       "Every relationship resolves to the intended existing record.",
       "Dates describe the business event in the workspace time zone, not the file edit time.",
-      ...(type === "program" && String(loaded.model.modelVersion) === "4"
+      ...(type === "program" && modelSupports(loaded.model, "program-scope")
         ? ["Every selected Requirement has an applicable or not-applicable decision reviewed against the current Program scope."]
         : []),
       ...(recommendedMarkdown.length
@@ -217,7 +218,7 @@ function applyModelScaffoldDefaults(record, loaded, options = {}) {
     }[program?.assuranceGoal];
     if (kind) record.auditKind = kind;
     for (const field of ["frameworkIds", "systemIds", "requirementIds", "controlIds"]) {
-      if (field === "requirementIds" && String(loaded.model.modelVersion) === "4") {
+      if (field === "requirementIds" && modelSupports(loaded.model, "program-scope")) {
         record[field] = (program.requirementApplicability || []).filter(({ decision }) => decision === "applicable").map(({ requirementId }) => requirementId);
       } else if (program?.[field]?.length) record[field] = [...program[field]];
     }

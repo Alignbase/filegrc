@@ -12,7 +12,7 @@ export const RESOURCE_INSTRUCTIONS = {
   requirement: "Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.",
   commitment: "Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.",
   policy: "Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.",
-  document: "Tailor the governed plans and other supporting documents the program needs. Assign owners and approvers, then keep the approved Markdown in Git.",
+  document: "Complete required governed plans and schedules in Step 2, assign an owner and separate approver, and bind approval to the intended values and exact Markdown. Implement the linked requirements and activate that approved revision in Step 3. Prepare audit-specific Documents in Step 5.",
   control: "Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.",
   "complementary-control": "Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.",
   evidence: "Create an Evidence Artifact when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source Component, link the Controls and operating records it supports, retain the fixed artifact or reference, and have another person verify it before audit use.",
@@ -98,16 +98,20 @@ export const PROGRAM_PATH = [
   {
     id: "policies",
     number: 2,
-    title: "Approve Policies",
-    description: "Tailor, review, and approve",
-    summary: "Adapt and approve the starter policies.",
+    title: "Approve Policies and Plans",
+    description: "Tailor requirements, intended values, and approvals",
+    summary: "Adapt and independently approve Policies and required governed Documents.",
     sections: [
-      { id: "library", title: "Policy Library", description: "Review and approve Policy requirements without treating approval as proof of technical implementation.", steps: ["Review Policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval against the exact reviewed content. Leave the Policy approved and inactive until the Step 3 implementation cutover."], types: ["policy"], defaultOpen: true }
+      { id: "library", title: "Policy Library", description: "Review and approve Policy requirements without treating approval as proof of technical implementation.", steps: ["Review Policy Markdown and replace every organization placeholder.", "Confirm the owner, separate approver, audience, review Obligation, and Controls that point to the Policy.", "Record approval against the exact reviewed content. Leave the Policy approved and inactive until the Step 3 implementation cutover."], types: ["policy"], defaultOpen: true },
+      { id: "governed-documents", title: "Governed Plans and Schedules", description: "Complete the intended values in each required program plan or schedule and obtain independent approval of the exact revision before implementation.", steps: ["Review each required plan or schedule and replace every organization placeholder with the intended owner, timing, threshold, scope, or response value.", "Confirm the Document owner, separate approver, linked Controls, and review schedule.", "Record approval and its date against the exact Markdown revision. Leave the Document approved until its linked requirements are implemented in Step 3."], types: [], relatedLinks: [{ type: "document", label: "Governed plans and schedules", href: "#/resources/document?stage=policies&documentScope=program" }], defaultOpen: true }
     ],
     resourceTypes: ["policy"],
+    supportingResourceTypes: ["document"],
     commands: [
       "filegrc guide policy --json",
+      "filegrc guide document --json",
       "filegrc list policy --json",
+      "filegrc list document --json",
       "filegrc get POLICY_ID --mutation"
     ]
   },
@@ -118,14 +122,15 @@ export const PROGRAM_PATH = [
     description: "Finish controls and their evidence sources",
     summary: "Describe each Control and connect its evidence source.",
     sections: [
-      { id: "catalog", title: "Control Catalog", description: "Finish the starter Controls, governed plans, schedules, and authoritative evidence sources, then review the approved Policies together at implementation cutover.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components.", "Create or enable every calendar and event schedule as an Obligation. Enabled work remains dormant until its governing Policy is active.", "Confirm each source Component is active, has an evidence-source role and rationale in the Control's System scope, has current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Complete required governed plans, then use Review policy activation on the Controls page to inspect each Policy’s planned or partial Controls, missing Components or sources, missing schedules, and unresolved Exceptions.", "Choose the approved Policies that should take effect, set the real effective date, and confirm the Step 3 cutover. You can activate with a documented gap or approved Exception, but Evidence Readiness still requires active and operating Policies."], types: ["control", "complementary-control", "document"], defaultOpen: true }
+      { id: "catalog", title: "Control Catalog", description: "Implement the approved requirements, activate required governed Documents, finish the authoritative evidence sources, then review the approved Policies together at implementation cutover.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components.", "Create or enable every calendar and event schedule as an Obligation. Enabled work remains dormant until its governing Policy is active.", "Confirm each source Component is active, has an evidence-source role and rationale in the Control's System scope, has current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Implement every requirement linked from an approved governed plan or schedule, then activate the unchanged approved Document with a separate activation date and revision.", "Use Review policy activation on the Controls page to inspect each Policy’s planned or partial Controls, inactive governed Documents, missing Components or sources, missing schedules, and unresolved Exceptions.", "Choose the approved Policies that should take effect, set the real effective date, and confirm the Step 3 cutover. You can activate with a documented gap or approved Exception, but Evidence Readiness still requires active and operating Policies and Documents."], types: ["control", "complementary-control"], relatedLinks: [{ type: "document", label: "Activate governed plans and schedules", href: "#/resources/document?stage=controls&documentScope=program" }], defaultOpen: true }
     ],
-    resourceTypes: ["control", "complementary-control", "document"],
+    resourceTypes: ["control", "complementary-control"],
     commands: [
       "filegrc guide control --json",
       "filegrc list control --json",
       "filegrc get CONTROL_ID --mutation",
       "filegrc review-collection complementary-control --scaffold",
+      "filegrc activate-documents --scaffold",
       "filegrc activate-policies --scaffold",
       "filegrc evidence-map --json",
       "filegrc program-readiness --json"
@@ -217,7 +222,7 @@ export const PROGRAM_PATH = [
     summary: "Track the CPA engagement, fieldwork, and evidence packet.",
     sections: [
       { id: "engagement", title: "Engagement", description: "Record the actual CPA engagement, formal scope and dates, requests, and management responses.", steps: ["Create the Audit after the CPA firm is engaged.", "Record the firm-agreed type, scope, systems, criteria, and dates.", "Track incoming requests and approved response material."], types: ["audit", "audit-request"], defaultOpen: true },
-      { id: "fieldwork", title: "Fieldwork", description: "Prepare management documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize engagement-specific management documents and populations.", "Review dated FileGRC operating records and verified Evidence Artifacts for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and Findings.", "Build the packet from a clean Git revision; it includes FileGRC records, Markdown, Evidence Artifacts, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], utility: "audit-packet", defaultOpen: true }
+      { id: "fieldwork", title: "Fieldwork", description: "Prepare audit-specific Documents, reconcile Type 2 populations, review both evidence paths, support testing, and build the indexed packet.", steps: ["Initialize and complete engagement-specific management Documents and populations.", "Approve and activate each audit-specific Document only when its engagement facts and timing are final.", "Review dated FileGRC operating records and verified Evidence Artifacts for the formal period.", "Reconcile complete populations, link samples, and resolve fieldwork requests and Findings.", "Build the packet from a clean Git revision; it includes FileGRC records, Markdown, Evidence Artifacts, attachments, indexes, history, and checksums."], types: ["audit-population", "control-test"], relatedLinks: [{ type: "document", label: "Audit-specific Documents", href: "#/resources/document?stage=audit&documentScope=audit" }], utility: "audit-packet", defaultOpen: true }
     ],
     resourceTypes: ["audit", "audit-request", "audit-population", "control-test"],
     utilities: [

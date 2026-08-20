@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v3 workspaces must run `npx filegrc migrate --to-model 4 --preview --json` after installing a model v4 package. Review each automatic, review-required, and unsupported item, supply explicit System classification decisions where needed, then apply the same migration with `--yes`. Older workspaces migrate one model version at a time. See the [model v4 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v4.md).
+Existing model v4 workspaces must run `npx filegrc migrate --to-model 5 --preview --json` after installing a model v5 package. The migration assigns each Document to the program or engagement workflow, preserves each known approval, moves active Documents that still need a distinct activation back to approved, and keeps the old effective date as proposed. It preserves management Documents from issued and completed Audits with a visible legacy basis instead of rewriting history. Review the result, implement or confirm the linked requirements, then activate the exact approved revisions in Step 3. Older workspaces migrate one model version at a time. See the [model v5 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v5.md).
 
 ## How it works
 
@@ -40,16 +40,16 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 ![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
 1. **Define scope.** Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.
-2. **Approve policies.** Tailor the Policy, then have someone other than its owner approve the exact content. Approval does not mean the linked Controls are implemented.
-3. **Implement controls.** Define how each Control works, where its Evidence comes from, enable its schedules, and complete governed plans. Then review the approved Policies together and activate the selected cutover set.
+2. **Approve policies and plans.** Tailor each Policy and complete the intended values in required governed plans and schedules. Have someone other than the owner approve each exact revision. Approval does not mean the linked Controls are implemented.
+3. **Implement controls.** Implement the approved requirements, define how each Control works, connect its Evidence sources, and enable its schedules. Activate each unchanged approved plan or schedule with a separate activation date and revision, then activate the selected Policy cutover set.
 4. **Operate the program.** Run scheduled and event-driven work, maintain risk, and retain dated evidence.
 5. **Audit.** Set up the CPA engagement, support fieldwork, and prepare the evidence packet.
 
 A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
 
-FileGRC does not infer technical implementation from Policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence. A Control may be implemented while its governing Policy is approved but inactive. Enabled Obligations remain dormant until the Policy is active and effective.
+FileGRC does not infer technical implementation from Policy prose. Configuration facts belong in Controls, Components, Systems, governed schedules, and Evidence. A Control may be implemented while its governing Policy or required program Document is approved but inactive. Enabled Obligations remain dormant until the Policy and required program Documents are active and effective.
 
-Control implementation includes evidence-source and schedule readiness. Use `npx filegrc program-readiness --json` to review incomplete Control or Component records and each per-Policy activation assessment. At the end of Step 3, use the Controls-page review or `npx filegrc activate-policies --scaffold` to choose which approved Policies take effect. You can activate with a documented gap or approved Exception, but Evidence Readiness still requires active Policies, implemented Controls, configured evidence sources, and enabled schedules before the candidate period can begin. `npx filegrc evidence-map --json` remains available as a focused diagnostic. Create an Evidence Artifact during Step 4 only when a real export, report, screenshot, signed file, or approved external reference exists.
+Control implementation includes evidence-source, schedule, and governed-Document readiness. Use `npx filegrc program-readiness --json` to review incomplete Control or Component records plus `documentActivations` and `policyActivations`. Activate ready plans and schedules with `npx filegrc activate-documents --scaffold`; name the active Person who performs activation, and keep approval and activation as separate dates and content-revision bindings. Then use the Controls-page review or `npx filegrc activate-policies --scaffold` to choose which approved Policies take effect. Evidence Readiness requires active Policies and required program Documents, implemented Controls, configured evidence sources, and enabled schedules before the candidate period can begin. Create Evidence during Step 4 only after operation produces a real record or artifact. Create engagement terms, management assertions, representation letters, and other audit-specific Documents in Step 5, link each to one Audit, approve it, then activate it with `npx filegrc activate-documents --audit AUDIT_ID --scaffold`. Evidence packets include the separate approval and activation facts and exact content revisions in `document-lifecycle-index.csv`.
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 

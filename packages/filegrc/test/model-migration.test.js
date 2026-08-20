@@ -564,3 +564,123 @@ test("blocks an ambiguous v3 System until an explicit v4 decision is supplied", 
   });
   assert.equal(decided.classifications.unsupported.some(({ resourceId, field }) => resourceId === "system-ambiguous-tool" && field === "type"), false);
 });
+
+test("migrates v4 active Documents to approved without inventing activation facts", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v5-migration-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  const before = await loadWorkspace(root);
+  const activeDocument = before.resources.find(({ type, status }) => type === "document" && status === "active");
+
+  const preview = await planModelMigration(root, { targetModelVersion: "5" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  assert.equal(preview.sourceModelVersion, "4");
+  assert.equal(preview.targetModelVersion, "5");
+  assert.ok(preview.migrationReport.resetDocumentIds.includes(activeDocument.id));
+  const documentDiff = preview.fileDiff.update.find(({ id }) => id === activeDocument.id);
+  assert.equal(documentDiff.after.status, "approved");
+  assert.equal(documentDiff.after.workflowScope, "program");
+  assert.equal(documentDiff.after.approvedOn, activeDocument.approvedOn);
+  assert.deepEqual(documentDiff.after.approvedContentRevisions, activeDocument.approvedContentRevisions);
+  assert.equal(documentDiff.after.proposedEffectiveOn, activeDocument.effectiveOn);
+  assert.equal(documentDiff.after.effectiveOn, undefined);
+  assert.equal(documentDiff.after.activatedOn, undefined);
+  assert.equal(documentDiff.after.activatedContentRevisions, undefined);
+  assert.ok(preview.classifications.reviewRequired.some(({ resourceId }) => resourceId === activeDocument.id));
+
+  const result = await migrateModel(root, { targetModelVersion: "5" });
+  assert.equal(result.applied, true);
+  const migrated = await loadWorkspace(root);
+  assert.equal(migrated.workspace.dataModelVersion, "5");
+  const document = migrated.resources.find(({ id }) => id === activeDocument.id);
+  assert.equal(document.status, "approved");
+  assert.equal(document.activatedOn, undefined);
+  assert.equal(document.activatedContentRevisions, undefined);
+  assert.equal(document.workflowScope, "program");
+  assert.equal((await validateWorkspace(root)).ok, true);
+});
+
+test("preserves issued audit Documents without inventing a second historical event", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v5-historical-document-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  const loaded = await loadWorkspace(root);
+  const documentEntry = loaded.entries.find(({ record }) => record.type === "document");
+  const auditEntry = loaded.entries.find(({ record }) => record.type === "audit");
+  const policyEntry = loaded.entries.find(({ record }) => record.type === "policy");
+  const obligationEntries = loaded.entries.filter(({ record }) => record.type === "obligation");
+  const document = {
+    ...documentEntry.record,
+    documentKind: "soc2-management-assertion"
+  };
+  const audit = {
+    ...auditEntry.record,
+    status: "issued",
+    supplementalDocumentIds: [document.id]
+  };
+  const policy = {
+    ...policyEntry.record,
+    relatedDocumentIds: (policyEntry.record.relatedDocumentIds || []).filter((id) => id !== document.id)
+  };
+  await writeJson(documentEntry.path, document);
+  await writeJson(auditEntry.path, audit);
+  await writeJson(policyEntry.path, policy);
+  for (const entry of obligationEntries) {
+    await writeJson(entry.path, {
+      ...entry.record,
+      scopeResourceIds: (entry.record.scopeResourceIds || []).filter((id) => id !== document.id),
+      ...(entry.record.templateResourceId === document.id ? { templateResourceId: undefined } : {})
+    });
+  }
+
+  const preview = await planModelMigration(root, { targetModelVersion: "5" });
+  const migrated = preview.fileDiff.update.find(({ id }) => id === document.id).after;
+  assert.equal(migrated.workflowScope, "engagement");
+  assert.equal(migrated.status, "active");
+  assert.equal(migrated.activationBasis, "legacy-v4");
+  assert.equal(migrated.effectiveOn, document.effectiveOn);
+  assert.equal(migrated.activatedOn, undefined);
+  assert.equal(migrated.activatedByIds, undefined);
+  assert.equal(migrated.activatedContentRevisions, undefined);
+  assert.ok(preview.migrationReport.legacyDocumentIds.includes(document.id));
+});
+
+test("requires an explicit v5 workflow scope for a Document used by both the program and an Audit", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v5-document-scope-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  const loaded = await loadWorkspace(root);
+  const document = loaded.resources.find(({ type }) => type === "document");
+  const auditEntry = loaded.entries.find(({ record }) => record.type === "audit");
+  const policyEntry = loaded.entries.find(({ record }) => record.type === "policy");
+  await writeJson(auditEntry.path, {
+    ...auditEntry.record,
+    managementAssertionDocumentId: document.id
+  });
+  await writeJson(policyEntry.path, {
+    ...policyEntry.record,
+    relatedDocumentIds: [...new Set([...(policyEntry.record.relatedDocumentIds || []), document.id])]
+  });
+
+  const ambiguous = await planModelMigration(root, { targetModelVersion: "5" });
+  assert.equal(ambiguous.ready, false);
+  assert.ok(ambiguous.classifications.unsupported.some(({ resourceId, field }) => (
+    resourceId === document.id && field === "workflowScope"
+  )));
+
+  const decided = await planModelMigration(root, {
+    targetModelVersion: "5",
+    documentScopes: { [document.id]: "engagement" }
+  });
+  assert.equal(decided.classifications.unsupported.some(({ resourceId, field }) => (
+    resourceId === document.id && field === "workflowScope"
+  )), false);
+  assert.equal(decided.fileDiff.update.find(({ id }) => id === document.id).after.workflowScope, "engagement");
+});
+
+test("keeps current migration help aligned with all supported model versions", async () => {
+  const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
+  assert.match(stdout, /--to-model <2\|3\|4\|5>/);
+  assert.match(stdout, /documentScopes/);
+  assert.match(stdout, /model v5/i);
+});

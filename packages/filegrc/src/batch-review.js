@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { modelSupports } from "../model/index.js";
 import { applyResourceBatch } from "./files.js";
 import { getWorkspaceRevisionSnapshot } from "./git.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -20,8 +21,8 @@ const REVIEWABLE_TYPES = new Set([
 export async function scaffoldApplicabilityReview(input = process.cwd(), options = {}) {
   const context = await applicabilityReviewContext(input);
   const { loaded } = context;
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
-    throw new Error("Batch applicability review requires a model v3 or v4 workspace.");
+  if (!modelSupports(loaded.model, "guided-workflow")) {
+    throw new Error("Batch applicability review requires a model v3 or newer workspace.");
   }
   const requestedType = options.type ? String(options.type) : null;
   if (requestedType && !REVIEWABLE_TYPES.has(requestedType)) {
@@ -34,7 +35,7 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
   const records = loaded.resources.filter((record) => (
     REVIEWABLE_TYPES.has(record.type)
     && (!requestedType || record.type === requestedType)
-    && (record.type === "requirement" && String(loaded.model.modelVersion) === "4"
+    && (record.type === "requirement" && modelSupports(loaded.model, "program-scope")
       ? !reviewedRequirementIds.has(record.id)
       : !record.applicabilityReview)
     && !["retired", "superseded"].includes(record.status)
@@ -64,8 +65,8 @@ export async function planApplicabilityReview(input = process.cwd(), options = {
 
 function planApplicabilityReviewWithContext(context, options) {
   const { basis, loaded } = context;
-  if (!["3", "4"].includes(String(loaded.model.modelVersion))) {
-    throw new Error("Batch applicability review requires a model v3 or v4 workspace.");
+  if (!modelSupports(loaded.model, "guided-workflow")) {
+    throw new Error("Batch applicability review requires a model v3 or newer workspace.");
   }
   if (!Array.isArray(options.decisions) || !options.decisions.length) {
     throw new Error("Applicability review needs at least one decision.");
@@ -112,7 +113,7 @@ function planApplicabilityReviewWithContext(context, options) {
       if (!["applicable", "not-applicable"].includes(result)) {
         throw new Error(`Requirement "${record.id}" must be applicable or not-applicable.`);
       }
-      if (String(loaded.model.modelVersion) === "4") {
+      if (modelSupports(loaded.model, "program-scope")) {
         v4RequirementDecisions.push({
           requirementId: record.id,
           decision: result,

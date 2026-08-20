@@ -1,5 +1,5 @@
 import { createResourceId } from "./id.js";
-import { applyResourceBatch, contentRevision } from "./files.js";
+import { applyModelMigrationBatch, applyResourceBatch, contentRevision } from "./files.js";
 import { loadWorkspace } from "./workspace.js";
 import { ACTIVE_MODEL_VERSION, loadModel } from "../model/index.js";
 import { legacyCoverage } from "./coverage.js";
@@ -882,7 +882,7 @@ async function migrateV1ToV2(input = process.cwd(), options = {}) {
       + "and resolve every missing value, conflict, and manual action."
     );
   }
-  const result = await applyResourceBatch(input, plan.changes);
+  const result = await applyModelMigrationBatch(input, plan.changes);
   return { ...plan, applied: true, result };
 }
 
@@ -891,7 +891,7 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   const sourceVersion = String(loaded.workspace?.dataModelVersion || "");
   const requestedTarget = options.targetModelVersion
     ? String(options.targetModelVersion)
-    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION : sourceVersion === "2" ? "3" : ACTIVE_MODEL_VERSION;
+    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION : sourceVersion === "2" ? "3" : sourceVersion === "3" ? "4" : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -899,13 +899,16 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "2" && requestedTarget === "3") {
     return planV2ToV3Migration(loaded);
   }
-  if (sourceVersion === "3" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "3" && requestedTarget === "4") {
     return planV3ToV4Migration(loaded, options);
+  }
+  if (sourceVersion === "4" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV4ToV5Migration(loaded, options);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
       "Model v1 workspaces must migrate to model v2 first. "
-      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate to model v3 and v4."
+      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate one version at a time through model v5."
     );
   }
   throw new Error(`Model migration does not support v${sourceVersion} to v${requestedTarget}.`);
@@ -925,7 +928,7 @@ export async function migrateModel(input = process.cwd(), options = {}) {
   if (plan.sourceModelVersion === "1" && plan.targetModelVersion === "2") {
     return migrateV1ToV2(input, options);
   }
-  const result = await applyResourceBatch(input, plan.changes);
+  const result = await applyModelMigrationBatch(input, plan.changes);
   return {
     ...plan,
     applied: true,
@@ -1498,6 +1501,214 @@ async function planV3ToV4Migration(loaded, options = {}) {
   };
 }
 
+async function planV4ToV5Migration(loaded, options = {}) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("5");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+  const documentScopeDecisions = options.documentScopes && typeof options.documentScopes === "object"
+    ? options.documentScopes
+    : {};
+  const auditDocumentFields = [
+    "engagementTermsDocumentId",
+    ...(targetModel.auditReadiness?.managementDocuments || []).map(({ field }) => field)
+  ];
+  const auditsByDocumentId = new Map();
+  const allAuditsByDocumentId = new Map();
+  const addAuditReference = (map, documentId, audit) => {
+    if (!documentId) return;
+    if (!map.has(documentId)) map.set(documentId, new Map());
+    map.get(documentId).set(audit.id, audit);
+  };
+  for (const audit of loaded.resources.filter(({ type }) => type === "audit")) {
+    for (const field of auditDocumentFields) {
+      const documentId = audit[field];
+      if (!documentId) continue;
+      addAuditReference(auditsByDocumentId, documentId, audit);
+      addAuditReference(allAuditsByDocumentId, documentId, audit);
+    }
+    for (const documentId of audit.supplementalDocumentIds || []) {
+      addAuditReference(allAuditsByDocumentId, documentId, audit);
+    }
+  }
+  const programDocumentIds = new Set([
+    ...loaded.resources.filter(({ type }) => type === "policy").flatMap(({ relatedDocumentIds }) => relatedDocumentIds || []),
+    ...loaded.resources.filter(({ type }) => type === "obligation").flatMap((record) => [
+      ...(record.scopeResourceIds || []),
+      ...(record.templateResourceId ? [record.templateResourceId] : [])
+    ])
+  ]);
+  const auditDocumentKinds = new Set([
+    ...(targetModel.auditReadiness?.managementDocuments || []).map(({ kind }) => kind),
+    "soc2-engagement-terms"
+  ]);
+  const resetDocumentIds = [];
+  const legacyDocumentIds = [];
+  const documentIds = new Set(loaded.resources.filter(({ type }) => type === "document").map(({ id }) => id));
+
+  for (const documentId of Object.keys(documentScopeDecisions)) {
+    if (!documentIds.has(documentId)) {
+      unsupported.push(classifiedChange(
+        "unsupported",
+        documentId,
+        "workflowScope",
+        `Document scope decision "${documentId}" does not match a Document in this workspace.`
+      ));
+    }
+  }
+
+  for (const original of loaded.resources) {
+    if (original.type === "workspace") {
+      updates.push({ ...original, dataModelVersion: "5" });
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "dataModelVersion",
+        "Select model v5 and enable the separate governed Document approval and activation lifecycle."
+      ));
+      continue;
+    }
+    if (original.type !== "document") continue;
+    const governedAuditReferences = [...(auditsByDocumentId.get(original.id)?.values() || [])];
+    const auditReferences = [...(allAuditsByDocumentId.get(original.id)?.values() || [])];
+    const explicitScope = normalizeDocumentScopeDecision(documentScopeDecisions[original.id]);
+    if (Object.hasOwn(documentScopeDecisions, original.id) && !explicitScope) {
+      unsupported.push(classifiedChange(
+        "unsupported",
+        original.id,
+        "workflowScope",
+        `Document scope decision for "${original.id}" must be "program" or "engagement".`
+      ));
+    }
+    const engagementSignal = governedAuditReferences.length > 0 || auditDocumentKinds.has(original.documentKind);
+    const programSignal = programDocumentIds.has(original.id);
+    if (!explicitScope && engagementSignal && programSignal) {
+      unsupported.push(classifiedChange(
+        "unsupported",
+        original.id,
+        "workflowScope",
+        `Document "${original.title}" is linked to both program governance and an Audit. Choose program or engagement in documentScopes.${original.id}.`
+      ));
+    }
+    const workflowScope = explicitScope || (engagementSignal && !programSignal ? "engagement" : "program");
+    const record = { ...original, workflowScope };
+    if (workflowScope === "engagement") delete record.programRole;
+    automatic.push(classifiedChange(
+      "automatic",
+      original.id,
+      "workflowScope",
+      explicitScope
+        ? `Use the reviewed ${workflowScope} workflow scope.`
+        : `Classify this Document as ${workflowScope} from its model kind and authoritative relationships.`
+    ));
+    const historicalEngagement = workflowScope === "engagement" && auditReferences.some(({ status }) => (
+      ["issued", "delivered", "complete"].includes(status)
+    ));
+    if (["superseded", "retired"].includes(record.status)) {
+      if (historicalEngagement) {
+        record.activationBasis = "legacy-v4";
+        legacyDocumentIds.push(record.id);
+      } else delete record.activationBasis;
+      delete record.activatedOn;
+      delete record.activatedByIds;
+      delete record.activatedContentRevisions;
+    } else if (record.status === "active" && historicalEngagement) {
+      record.activationBasis = "legacy-v4";
+      delete record.activatedOn;
+      delete record.activatedByIds;
+      delete record.activatedContentRevisions;
+      legacyDocumentIds.push(record.id);
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "activationBasis",
+        "Preserve this historical engagement Document as active with a visible legacy-v4 basis. Model v4 recorded one combined approval and activation state, so the migration does not invent an activation date, actor, or second revision."
+      ));
+    } else if (record.status === "active") {
+      record.status = "approved";
+      if (record.effectiveOn) record.proposedEffectiveOn = record.effectiveOn;
+      delete record.effectiveOn;
+      delete record.activationBasis;
+      delete record.activatedOn;
+      delete record.activatedByIds;
+      delete record.activatedContentRevisions;
+      resetDocumentIds.push(record.id);
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "status",
+        workflowScope === "engagement"
+          ? "Model v4 recorded one combined approval and activation state. Preserve the approval and approved revision, then record a separate Step 5 activation after confirming the current engagement facts."
+          : "Model v4 recorded one combined approval and activation state. Preserve the approval and approved revision, confirm the linked requirements, then record a separate Step 3 activation."
+      ));
+    }
+    updates.push(record);
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Resolve ${item.field} before applying the model v5 migration.`
+    ));
+  }
+  const ready = unsupported.length === 0;
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "4",
+    targetModelVersion: "5",
+    ready,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: reviewRequired,
+    migrationReport: {
+      resetDocumentIds,
+      legacyDocumentIds
+    },
+    summary: {
+      create: 0,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "5"
+    }
+  };
+}
+
+function normalizeDocumentScopeDecision(value) {
+  const candidate = typeof value === "object" && value
+    ? value.workflowScope || value.scope
+    : value;
+  return ["program", "engagement"].includes(candidate) ? candidate : null;
+}
+
 async function collectTargetValidationActions(loaded, records, model, missing, manualActions) {
   const { validateWorkspace } = await import("./validate.js");
   const existingById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
@@ -2003,7 +2214,7 @@ function migrateInverseArrays(resources, byId, editable, conflicts, mapping) {
 }
 
 function emptyPlan(version, targetVersion = V1_TARGET_MODEL_VERSION) {
-  const classifiedPlan = ["3", "4"].includes(String(targetVersion));
+  const classifiedPlan = Number(targetVersion) >= 3;
   const includesPathMoves = String(targetVersion) === "4";
   return {
     schemaVersion: classifiedPlan ? 2 : 1,

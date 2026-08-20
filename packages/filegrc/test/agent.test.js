@@ -36,7 +36,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(parsedOverview.programPath.length, 5);
   assert.deepEqual(parsedOverview.programPath.map(({ title }) => title), [
     "Define Scope",
-    "Approve Policies",
+    "Approve Policies and Plans",
     "Implement Controls",
     "Operate the Program",
     "Audit"
@@ -68,6 +68,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "reconcile",
     "externalReviewerSetup",
     "policyActivation",
+    "documentActivation",
     "nextAuditCycle",
     "reviewApplicability",
     "reviewCollection",
@@ -207,7 +208,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     const mutation = scaffoldResourceMutation(loaded, type, `Agent test ${guide.title}`);
     assert.equal(mutation.record.type, type);
     assert.match(mutation.record.id, new RegExp(`^${type}-`));
-    if (type === "evidence" && String(loaded.model.modelVersion) === "4") {
+    if (type === "evidence" && Number(loaded.model.modelVersion) >= 4) {
       assert.equal(mutation.record.artifactKind, "business-record");
       assert.equal(mutation.record.sourceKind, "file");
     }

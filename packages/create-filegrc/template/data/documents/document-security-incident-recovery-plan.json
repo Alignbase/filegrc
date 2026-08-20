@@ -4,6 +4,7 @@
   "title": "Security Incident and Recovery Plan",
   "status": "draft",
   "documentKind": "plan",
+  "workflowScope": "program",
   "ownerIds": [
     "appointment-policy-owner"
   ],
