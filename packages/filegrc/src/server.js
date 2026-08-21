@@ -551,13 +551,8 @@ function browserMutation(input, options, mutationOptions, task) {
       includeDetails: false,
       validationProof: result?.[BROWSER_VALIDATION]
     }));
-    if (result?.synchronization?.status === "syncing" && state.repository.status !== "syncing") {
-      result.synchronization = {
-        ...result.synchronization,
-        status: state.repository.status === "synced" ? "synced" : "not-synced",
-        synchronizedAt: state.repository.lastSuccessfulSynchronization ?? null,
-        pushError: state.repository.backgroundSyncError ?? null
-      };
+    if (result?.synchronization) {
+      result.synchronization = reconcileMutationSynchronization(result.synchronization, state.repository);
     }
     return {
       ...result,
@@ -570,6 +565,25 @@ function browserMutation(input, options, mutationOptions, task) {
     console.error(`[filegrc timing] ${JSON.stringify({ operation: "browser-mutation", ...timings })}`);
     return result;
   });
+}
+
+export function reconcileMutationSynchronization(synchronization, repository) {
+  if (synchronization?.status !== "syncing" || repository.status === "syncing") return synchronization;
+  const backgroundFailed = repository.backgroundSynchronization?.status === "failed";
+  if (repository.status !== "synced" && !backgroundFailed) {
+    // A repository snapshot can finish just before a fast background push while
+    // its state is inspected just after the push. Keep the queued result until
+    // a verified success or failure replaces it.
+    return synchronization;
+  }
+  return {
+    ...synchronization,
+    status: repository.status === "synced" ? "synced" : "not-synced",
+    synchronizedAt: repository.lastSuccessfulSynchronization ?? null,
+    pushError: repository.backgroundSyncError
+      ?? repository.backgroundSynchronization?.error
+      ?? null
+  };
 }
 
 function prefersFastMutation(request) {

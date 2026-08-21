@@ -22,11 +22,38 @@ import {
   sanitizeGitErrorMessage,
   setGitCommandInterceptorForTests
 } from "../src/git.js";
+import { reconcileMutationSynchronization } from "../src/server.js";
 import { collectTimings } from "../src/timing.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
+
+test("keeps a queued synchronization result when repository state came from an overlapping snapshot", () => {
+  const synchronization = {
+    status: "syncing",
+    commit: "a".repeat(40),
+    shortCommit: "aaaaaaaa",
+    synchronizedAt: null,
+    pushError: null
+  };
+  assert.equal(reconcileMutationSynchronization(synchronization, {
+    status: "not-synced",
+    backgroundSynchronization: null,
+    backgroundSyncError: null,
+    lastSuccessfulSynchronization: "2026-08-20T00:00:00.000Z"
+  }), synchronization);
+  assert.deepEqual(reconcileMutationSynchronization(synchronization, {
+    status: "not-synced",
+    backgroundSynchronization: { status: "failed", error: "push failed" },
+    backgroundSyncError: "push failed",
+    lastSuccessfulSynchronization: null
+  }), {
+    ...synchronization,
+    status: "not-synced",
+    pushError: "push failed"
+  });
+});
 
 test("scopes Git status and file histories to a workspace nested in a larger repository", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "filegrc-nested-git-"));
