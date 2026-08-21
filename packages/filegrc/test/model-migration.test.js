@@ -12,6 +12,7 @@ import { applyResourceBatch, createResource } from "../src/files.js";
 import { migrateModel, planModelMigration } from "../src/model-migration.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { validateWorkspace } from "../src/validate.js";
+import { assessWorkflow } from "../src/workflow.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
@@ -679,7 +680,45 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
+});
+
+test("migrates v5 Training into separate approval, activation, and Obligation scheduling", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v6-training-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "5");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "training");
+  await writeJson(entry.path, {
+    ...entry.record,
+    approvedByIds: ["person-independent-approver-example"],
+    approvedOn: "2026-06-30",
+    effectiveOn: "2026-06-30",
+    assignmentTrigger: "onboarding",
+    completionWindowDays: 30
+  });
+
+  const preview = await planModelMigration(root, { targetModelVersion: "6" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  const migrated = preview.fileDiff.update.find(({ id }) => id === entry.record.id).after;
+  assert.deepEqual(migrated.approverIds, ["person-independent-approver-example"]);
+  assert.deepEqual(migrated.approvedContentRevisions, entry.record.effectiveContentRevisions);
+  assert.equal(migrated.activationBasis, "legacy-v5");
+  assert.equal(migrated.assignmentTrigger, undefined);
+  assert.equal(migrated.completionWindowDays, undefined);
+  assert.ok(preview.classifications.reviewRequired.some(({ field }) => field === "assignmentSchedule"));
+
+  const result = await migrateModel(root, { targetModelVersion: "6" });
+  assert.equal(result.applied, true);
+  const current = await loadWorkspace(root);
+  assert.equal(current.workspace.dataModelVersion, "6");
+  assert.equal(current.resources.find(({ id }) => id === entry.record.id).activationBasis, "legacy-v5");
+  assert.equal((await validateWorkspace(root)).ok, true);
+  const workflow = await assessWorkflow(root, { asOf: "2026-06-30" });
+  assert.equal(workflow.findings.some(({ key, message }) => (
+    key === `record.training.${entry.record.id}.finalize`
+    && message.includes("activatedContentRevisions")
+  )), false);
 });

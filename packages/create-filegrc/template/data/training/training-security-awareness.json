@@ -10,8 +10,6 @@
     "employees",
     "contractors"
   ],
-  "assignmentTrigger": "onboarding",
-  "completionWindowDays": 30,
   "policyIds": [
     "policy-information-security"
   ],

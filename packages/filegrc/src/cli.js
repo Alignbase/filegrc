@@ -16,7 +16,14 @@ import {
   scaffoldCollectionReview
 } from "./collection-review.js";
 import { buildWorkspace } from "./build.js";
-import { activateDocuments, planDocumentActivation, scaffoldDocumentActivation } from "./document-activation.js";
+import {
+  activateDocuments,
+  activateGovernedContent,
+  planDocumentActivation,
+  planGovernedContentActivation,
+  scaffoldDocumentActivation,
+  scaffoldGovernedContentActivation
+} from "./document-activation.js";
 import { generateEvidencePacket, prepareEvidencePacket } from "./evidence-packet.js";
 import {
   addEvidenceAttachment,
@@ -184,7 +191,9 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "migrate") {
     const targetModel = String(flags["to-model"] || "");
-    if (!["2", "3", "4", "5"].includes(targetModel)) throw new Error("Pass --to-model 2, --to-model 3, --to-model 4, or --to-model 5.");
+    if (!SUPPORTED_MODEL_VERSIONS.filter((version) => version !== "1").includes(targetModel)) {
+      throw new Error(`Pass --to-model ${SUPPORTED_MODEL_VERSIONS.filter((version) => version !== "1").join(", --to-model ")}.`);
+    }
     const migrationDecisions = flags.decisions
       ? JSON.parse(await readFile(resolve(String(flags.decisions)), "utf8"))
       : undefined;
@@ -644,6 +653,30 @@ export async function runCli(argv = process.argv.slice(2)) {
     else console.log(`Activated ${result.documentIds.length} governed Documents effective ${result.effectiveOn}.`);
     return result;
   }
+  if (command === "activate-content") {
+    if (flags.scaffold) {
+      const result = await scaffoldGovernedContentActivation(root, { programId: flags.program });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    const payload = await readSetupPayload(positionals[0]);
+    const options = {
+      ...payload,
+      resourceIds: flags.resource ? String(flags.resource).split(",").filter(Boolean) : payload.resourceIds,
+      activatedByIds: flags["activated-by"] ? String(flags["activated-by"]).split(",").filter(Boolean) : payload.activatedByIds,
+      activatedOn: flags["activated-on"] || payload.activatedOn,
+      effectiveOn: flags["effective-on"] || payload.effectiveOn,
+      programId: flags.program || payload.programId,
+      confirmed: flags.yes === true
+    };
+    const result = flags.preview
+      ? await planGovernedContentActivation(root, options)
+      : await withWorkflowDelta(root, () => activateGovernedContent(root, options));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (flags.preview) console.log(`Governed-content activation preview: ${result.resourceIds.length} records effective ${result.effectiveOn}.`);
+    else console.log(`Activated ${result.resourceIds.length} governed-content records effective ${result.effectiveOn}.`);
+    return result;
+  }
   if (command === "policy-library") {
     if (flags.yes && !flags.accept) {
       throw new Error("Pass --accept <proposal-id> with --yes after reviewing the policy-library diff.");
@@ -1082,7 +1115,7 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
-  filegrc migrate --to-model <2|3|4|5> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
+  filegrc migrate --to-model <2|3|4|5|6> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--program program-id] [--json]
@@ -1105,6 +1138,7 @@ Usage:
   filegrc review-applicability [--scaffold --type requirement|control|commitment|complementary-control] [decisions.json|-] [--preview|--yes] [--json]
   filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--json]
   filegrc activate-policies [--scaffold | activation.json|-] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
+  filegrc activate-content [--scaffold | activation.json|-] [--program id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc activate-documents [--scaffold | activation.json|-] [--program id | --audit id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc policy-library [--json | --accept proposal-id --proposal-revision revision --yes]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
@@ -1179,7 +1213,8 @@ Upgrade a workspace through an explicit, reviewable model boundary. Model v1
 workspaces migrate to v2 first. Continue one version at a time through v${ACTIVE_MODEL_VERSION}. v4 separates
 the repository Workspace, management Program, bounded Systems, operational Components,
 specific Assets, Vendors, normalized information, and Evidence Artifacts. Model v5 separates
-Document approval from activation and records program-versus-engagement scope. v3 migration
+Document approval from activation and records program-versus-engagement scope. Model v6 gives
+Training the same approval and activation split and moves its schedule into Obligations. v3 migration
 previews may require a decisions JSON file for ambiguous old Systems. v3 still creates planned
 core Appointments, removal of obsolete manual page state, classified review work,
 and dataModelVersion changed last. The command writes no Git commit.
@@ -1282,7 +1317,7 @@ Options:
   filegrc activate-documents --scaffold [--program id | --audit id]
   filegrc activate-documents <activation.json|-> [--audit id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
 
-Activate required governed plans and schedules in Step 3 after their linked
+Activate required program Documents in Step 3 after their linked
 Controls are implemented, or activate engagement Documents in Step 5 after
 their audit-specific facts are complete. Approval, activation, and effective
 dates remain separate, and activation binds its own exact Markdown revision.
@@ -1291,6 +1326,30 @@ Options:
   --scaffold             Print the ready activation payload without writing
   --program <id>         Program to assess when more than one active Program exists
   --audit <id>           Audit whose engagement Documents should be activated in Step 5
+  --activated-by <id>    Active Person who performs the activation
+  --activated-on <date>  Actual activation date, which must be today
+  --effective-on <date>  Effective date on or after activation
+  --preview              Validate and show the atomic updates without writing
+  --yes                  Confirm and apply the reviewed activation
+  --json                 Print the result as JSON
+  --root <path>          Workspace path
+  --help                 Show this help`);
+    return;
+  }
+  if (command === "activate-content") {
+    console.log(`Usage:
+  filegrc activate-content --scaffold [--program id]
+  filegrc activate-content <activation.json|-> [--resource id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
+
+Activate approved program Documents and Training in Step 3 after their linked
+Controls are implemented and Training has an enabled assignment Obligation.
+Approval, activation, and effective dates remain separate, and activation binds
+the exact approved Markdown revision.
+
+Options:
+  --scaffold             Print the ready activation payload without writing
+  --program <id>         Program to assess when more than one active Program exists
+  --resource <id>        Comma-separated Document or Training IDs
   --activated-by <id>    Active Person who performs the activation
   --activated-on <date>  Actual activation date, which must be today
   --effective-on <date>  Effective date on or after activation
@@ -1347,7 +1406,7 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
-    migrate: "filegrc migrate --to-model 5 --preview --json",
+    migrate: "filegrc migrate --to-model 6 --preview --json",
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",
@@ -1367,6 +1426,7 @@ function agentOverview(model) {
     externalReviewerSetup: "filegrc external-reviewer-setup [--scaffold | <reviewer.json|-> --preview] --json",
     policyActivation: "filegrc activate-policies [--scaffold | <activation.json|-> --preview] --json",
     documentActivation: "filegrc activate-documents [--scaffold | <activation.json|-> --preview] --json",
+    governedContentActivation: "filegrc activate-content [--scaffold | <activation.json|-> --preview] --json",
     nextAuditCycle: "filegrc next-audit-cycle <prior-audit-id> --start <date> --end <date> --preview --json",
     reviewApplicability: "filegrc review-applicability <decisions.json|-> --preview --json",
     reviewCollection: "filegrc review-collection <resource-type> [--scaffold | <review.json|-> --preview] --json",
@@ -1520,6 +1580,7 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
     operating: readiness.operating,
     policyActivations: readiness.policyActivations,
     documentActivations: readiness.documentActivations,
+    trainingActivations: readiness.trainingActivations,
     policyLibraryProposals: readiness.policyLibraryProposals,
     stages
   };
@@ -1729,6 +1790,14 @@ function summarizeProgramReadiness(result) {
       state,
       label,
       gapCount
+    })),
+    trainingActivations: result.trainingActivations.map(({ trainingId, title, state, label, gapCount, assignmentScheduled }) => ({
+      trainingId,
+      title,
+      state,
+      label,
+      gapCount,
+      assignmentScheduled
     })),
     policyLibraryProposals: result.policyLibraryProposals,
     unresolvedOwnership: {

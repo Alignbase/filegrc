@@ -891,7 +891,11 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   const sourceVersion = String(loaded.workspace?.dataModelVersion || "");
   const requestedTarget = options.targetModelVersion
     ? String(options.targetModelVersion)
-    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION : sourceVersion === "2" ? "3" : sourceVersion === "3" ? "4" : ACTIVE_MODEL_VERSION;
+    : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION
+      : sourceVersion === "2" ? "3"
+        : sourceVersion === "3" ? "4"
+          : sourceVersion === "4" ? "5"
+            : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -902,13 +906,16 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "3" && requestedTarget === "4") {
     return planV3ToV4Migration(loaded, options);
   }
-  if (sourceVersion === "4" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "4" && requestedTarget === "5") {
     return planV4ToV5Migration(loaded, options);
+  }
+  if (sourceVersion === "5" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV5ToV6Migration(loaded);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
       "Model v1 workspaces must migrate to model v2 first. "
-      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate one version at a time through model v5."
+      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate one version at a time through model v6."
     );
   }
   throw new Error(`Model migration does not support v${sourceVersion} to v${requestedTarget}.`);
@@ -1698,6 +1705,144 @@ async function planV4ToV5Migration(loaded, options = {}) {
       expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
       validateWholeWorkspace: true,
       targetModelVersion: "5"
+    }
+  };
+}
+
+async function planV5ToV6Migration(loaded) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("6");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+  const legacyTrainingIds = [];
+  const removedTrainingScheduleFields = [];
+  const obligations = loaded.resources.filter(({ type }) => type === "obligation");
+
+  for (const original of loaded.resources) {
+    if (original.type === "workspace") {
+      updates.push({ ...original, dataModelVersion: "6" });
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "dataModelVersion",
+        "Select model v6 and enable separate Training approval and activation."
+      ));
+      continue;
+    }
+    if (original.type !== "training") continue;
+    const record = { ...original };
+    if (record.approvedByIds) {
+      record.approverIds = record.approvedByIds;
+      delete record.approvedByIds;
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        "approverIds",
+        "Use the common governed-content approver field."
+      ));
+    }
+    if (record.effectiveContentRevisions) {
+      record.approvedContentRevisions = record.effectiveContentRevisions;
+      delete record.effectiveContentRevisions;
+      automatic.push(classifiedChange(
+        "automatic",
+        record.id,
+        "approvedContentRevisions",
+        "Preserve the exact Training revision previously bound to approval and activation as the approved revision."
+      ));
+    }
+    const removedSchedule = {};
+    for (const field of ["assignmentTrigger", "completionWindowDays"]) {
+      if (record[field] === undefined) continue;
+      removedSchedule[field] = record[field];
+      delete record[field];
+    }
+    if (Object.keys(removedSchedule).length) {
+      const obligationIds = obligations.filter((obligation) => (
+        obligation.templateResourceId === record.id
+        || (obligation.scopeResourceIds || []).includes(record.id)
+      )).map(({ id }) => id);
+      removedTrainingScheduleFields.push({ trainingId: record.id, values: removedSchedule, obligationIds });
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "assignmentSchedule",
+        `Training assignment schedules now belong only in Obligations. Confirm the removed ${Object.keys(removedSchedule).join(" and ")} values against ${obligationIds.length ? obligationIds.join(", ") : "a new Step 3 Obligation"}.`
+      ));
+    }
+    if (record.status === "draft" && record.effectiveOn) {
+      record.proposedEffectiveOn = record.effectiveOn;
+      delete record.effectiveOn;
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "proposedEffectiveOn",
+        "Keep the draft Training date as proposed until the approved revision is activated in Step 3."
+      ));
+    }
+    if (["active", "retired"].includes(record.status) && record.approvedContentRevisions) {
+      record.activationBasis = "legacy-v5";
+      legacyTrainingIds.push(record.id);
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "activationBasis",
+        "Preserve the combined model v5 Training approval and activation as legacy-v5. The migration does not invent a separate activation actor, date, or revision."
+      ));
+    }
+    updates.push(record);
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Resolve ${item.field} before applying the model v6 migration.`
+    ));
+  }
+  const ready = unsupported.length === 0;
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "5",
+    targetModelVersion: "6",
+    ready,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: reviewRequired,
+    migrationReport: { legacyTrainingIds, removedTrainingScheduleFields },
+    summary: {
+      create: 0,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "6"
     }
   };
 }

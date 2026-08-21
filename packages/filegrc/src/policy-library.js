@@ -515,8 +515,11 @@ async function buildPolicyLibraryPlan(loaded) {
     const source = await readResourceSource(loaded, TRAINING_CONTENT_PATH);
     const rawSourceRevision = contentRevision(source);
     const sourceRevision = normalizedTrainingRevision(source, loaded.workspace?.organizationName);
-    if (["active", "retired"].includes(trainingEntry.record.status)) {
-      skipped.push(skippedItem(TRAINING_ID, "adopted", "Active and retired Training content is never changed by a starter-library proposal."));
+    const adoptedStatuses = modelSupports(loaded.model, "governed-training-activation")
+      ? ["approved", "active", "superseded", "retired"]
+      : ["active", "retired"];
+    if (adoptedStatuses.includes(trainingEntry.record.status)) {
+      skipped.push(skippedItem(TRAINING_ID, "adopted", "Approved, active, superseded, and retired Training content is never changed by a starter-library proposal."));
     } else if (sourceRevision === CURRENT_TRAINING_REVISION) {
       skipped.push(skippedItem(TRAINING_ID, "current", "The Security Awareness Training already contains the current starter language."));
     } else if (!PRIOR_TRAINING_REVISIONS.has(sourceRevision)) {

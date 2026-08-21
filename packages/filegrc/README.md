@@ -4,7 +4,7 @@ filegrc is a zero-dependency Node.js engine for Git-native GRC workspaces. It va
 
 Program Readiness checks management-owned scope, policy adoption, control implementation, and authoritative evidence mapping without requiring an audit record. Audit Readiness starts after CPA engagement and checks the firm-agreed date or period, engagement-specific management documents, operating evidence, and Type 2 population completeness.
 
-Controls linked to filegrc obligations show whether their Work Queue schedules are waiting for policy approval, ready for implementation, running, paused, or mixed. Marking a fully configured control implemented starts its enabled schedules when their governing policies are effective.
+Controls linked to filegrc Obligations show whether their scheduled work is waiting for policy approval, ready for implementation, running, paused, or mixed. Marking a fully configured Control implemented starts its enabled work when the governing content is effective.
 
 Most users should create a complete workspace:
 
@@ -44,13 +44,13 @@ npx filegrc policy-library
 
 The command shows an exact diff only when the current text still matches the prior starter default. It skips customized, approved, active, superseded, and retired Policy content. Accept one named proposal revision only with the command printed by the review, which includes `--accept`, `--proposal-revision`, and `--yes`. Acceptance fails if the proposal changed after review. It changes only the listed defaults and does not approve a Policy, activate it, or mark a Control implemented.
 
-The normal runtime uses data model v5. Start a model v4 upgrade with a read-only preview:
+The normal runtime uses data model v6. Start a model v5 upgrade with a read-only preview:
 
 ```sh
-npx filegrc migrate --to-model 5 --preview --json
+npx filegrc migrate --to-model 6 --preview --json
 ```
 
-Review every automatic, review-required, and unsupported item. Model v4 combined Document approval and activation, so the migration preserves approval facts, assigns program or engagement scope, and moves active Documents that still need a distinct cutover to approved without inventing an activation actor, date, or revision. It preserves historical management Documents from issued or completed Audits with a visible legacy basis. Resolve unsupported items before applying the same migration with `--yes`. The [model v5 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v5.md) documents the migration and required Step 3 review.
+Review every automatic, review-required, and unsupported item. Model v6 gives Training the same separate approval and activation lifecycle as other governed content. It preserves active model v5 Training with a visible legacy basis and removes Training schedule fields, because Obligations now own assignment timing. Resolve unsupported items before applying the same migration with `--yes`. The [model v6 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v6.md) documents the review.
 
 A model v2 workspace must migrate to v3 first:
 
@@ -58,7 +58,7 @@ A model v2 workspace must migrate to v3 first:
 npx filegrc migrate --to-model 3 --preview --json
 ```
 
-The migration writes one atomic batch, validates model v3, changes no Git history, and is safe to rerun. The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains every migration class and the review that follows. Apply it before previewing model v4, then model v5.
+The migration writes one atomic batch, validates model v3, changes no Git history, and is safe to rerun. The [model v3 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v3.md) explains every migration class and the review that follows. Apply it before previewing models v4, v5, and v6 in order.
 
 A model v1 workspace must migrate to v2 first:
 
@@ -66,7 +66,7 @@ A model v1 workspace must migrate to v2 first:
 npx filegrc migrate --to-model 2 --preview --json
 ```
 
-Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3, v4, and v5 previews in order.
+Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3, v4, v5, and v6 previews in order.
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server prefers `127.0.0.1:8787` and chooses another available port when that port is occupied. Set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
@@ -76,7 +76,7 @@ Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/ma
 
 `filegrc program-readiness` reports whether management can start a candidate Type 2 period. Add `--summary --json` for compact stage counts and next actions, or omit `--summary` for every readiness item. Use `--require-ready` in automation. Pass `--program PROGRAM_ID` when more than one active Program exists. The command does not require an Audit ID or CPA firm.
 
-Step 2 completes and independently approves the intended values and exact revisions of required program plans and schedules. Step 3 implements their linked requirements and uses `filegrc activate-documents --scaffold` to record the active Person, separate activation date, and revision. Control implementation also checks expected evidence, authoritative source Components, and source readiness. During Step 4, create Evidence only when operation produces a real record or artifact. Keep engagement-scoped terms, management assertions, representation letters, and other audit-specific Documents in Step 5. Link each one to one Audit and use `filegrc activate-documents --audit AUDIT_ID --scaffold` after approval. Model v5 evidence packets export both lifecycle events and their exact revisions in `document-lifecycle-index.csv`.
+Step 2 uses one Policies page to review Policies, program Documents, and Training, while keeping their record types separate. Step 3 implements linked requirements, defines schedules as Obligations, and uses `filegrc activate-content --scaffold` to record the active Person, separate activation date, and revision for approved Documents and Training. Control implementation also checks expected evidence, authoritative source Components, and source readiness. During Step 4, create Evidence only when operation produces a real record or artifact. Keep engagement-scoped terms, management assertions, representation letters, and other Audit Documents in Step 5. Link each one to one Audit and use `filegrc activate-documents --audit AUDIT_ID --scaffold` after approval.
 
 `filegrc obligations` shows recurring work and a task-level preview for each Policy Event, including owners, deadlines, and requested proof. `filegrc trigger` adds the event and all of its Action Items to the Work Queue atomically, then prints the created task IDs and deadlines.
 

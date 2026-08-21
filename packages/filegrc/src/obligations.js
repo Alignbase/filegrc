@@ -14,7 +14,7 @@ import {
 } from "./recurrence.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
-import { obligationGovernedDocuments, obligationProgramStatus } from "./program-lifecycle.js";
+import { obligationGovernedContent, obligationProgramStatus } from "./program-lifecycle.js";
 import { resolveProgram } from "./program.js";
 
 const COMPLETION_DATE_FIELDS = [
@@ -259,7 +259,7 @@ export async function createObligationEvent(input, options) {
   ));
   if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
   if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn, loaded.model) === "proposed")) {
-    throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing Policy and required governed Document active and effective, then implement at least one linked Control before starting this workflow.`);
+    throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing Policy and required governed-content record active and effective, then implement at least one linked Control before starting this workflow.`);
   }
   if (templates.some((record) => normalizedEventWindow(record.window).precision === "timestamp") && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
@@ -997,10 +997,10 @@ function obligationActivationDate(obligation, byId, model) {
     .filter((policy) => policy?.type === "policy")
     .map((policy) => policy.effectiveOn)
     .filter(Boolean);
-  const documentDates = obligationGovernedDocuments(obligation, byId, model)
-    .map((document) => document.effectiveOn)
+  const governedContentDates = obligationGovernedContent(obligation, byId, model)
+    .map((record) => record.effectiveOn)
     .filter(Boolean);
-  return [...policyDates, ...documentDates].sort().at(-1) || null;
+  return [...policyDates, ...governedContentDates].sort().at(-1) || null;
 }
 
 function relativeTiming(window, asOf) {

@@ -38,6 +38,31 @@ export function governedDocumentIsOperating(document, asOf, model) {
   );
 }
 
+export function governedTrainingIsOperating(training, asOf, model) {
+  if (training?.type !== "training" || training.status !== "active") return false;
+  if (!training.effectiveOn || training.effectiveOn > asOf) return false;
+  if (!modelSupports(model, "governed-training-activation")) return true;
+  if (training.activationBasis === "legacy-v5") {
+    return Boolean(training.approvedOn && training.approvedContentRevisions);
+  }
+  return Boolean(
+    training.activationBasis === "recorded"
+    && training.approvedOn
+    && training.approvedContentRevisions
+    && training.activatedOn
+    && training.activatedOn <= asOf
+    && (training.activatedByIds || []).length
+    && training.activatedContentRevisions
+    && contentRevisionBindingsMatch(training.approvedContentRevisions, training.activatedContentRevisions)
+  );
+}
+
+export function governedContentIsOperating(record, asOf, model) {
+  if (record?.type === "document") return governedDocumentIsOperating(record, asOf, model);
+  if (record?.type === "training") return governedTrainingIsOperating(record, asOf, model);
+  return false;
+}
+
 export function contentRevisionBindingsMatch(left, right) {
   if (!left || !right || Array.isArray(left) || Array.isArray(right)) return false;
   const normalize = (value) => Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
@@ -64,6 +89,19 @@ export function obligationGovernedDocuments(obligation, byId, model) {
       && !["superseded", "retired"].includes(record.status)
       && !documentIsAuditSpecific(record, model)
     ));
+}
+
+export function obligationGovernedContent(obligation, byId, model) {
+  const documents = obligationGovernedDocuments(obligation, byId, model);
+  if (!modelSupports(model, "governed-training-activation")) return documents;
+  const directIds = [
+    ...(obligation.scopeResourceIds || []),
+    ...(obligation.templateResourceId ? [obligation.templateResourceId] : [])
+  ];
+  const training = [...new Set(directIds)]
+    .map((id) => byId.get(id))
+    .filter((record) => record?.type === "training" && !["superseded", "retired"].includes(record.status));
+  return [...documents, ...training];
 }
 
 function indexRequiredDocumentsByControl(byId, model) {
@@ -99,9 +137,9 @@ export function obligationProgramStatus(obligation, byId, asOf, model) {
       && policy.effectiveOn <= asOf;
   });
   if (!policiesReady) return "proposed";
-  const governedDocumentsReady = obligationGovernedDocuments(obligation, byId, model)
-    .every((document) => governedDocumentIsOperating(document, asOf, model));
-  if (!governedDocumentsReady) return "proposed";
+  const governedContentReady = obligationGovernedContent(obligation, byId, model)
+    .every((record) => governedContentIsOperating(record, asOf, model));
+  if (!governedContentReady) return "proposed";
   const controlIds = obligation.controlIds || [];
   if (!controlIds.length) return "accepted";
   return controlIds.some((id) => byId.get(id)?.type === "control" && byId.get(id).status === "implemented")

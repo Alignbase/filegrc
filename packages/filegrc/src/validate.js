@@ -273,6 +273,20 @@ function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagno
       ));
     }
   }
+  for (const training of resources.filter(({ type, activationBasis }) => (
+    type === "training" && activationBasis === "recorded"
+  ))) {
+    const invalidActorIds = (training.activatedByIds || []).filter((id) => (
+      !personWasActiveOn(byId.get(id), training.activatedOn)
+    ));
+    if (invalidActorIds.length) {
+      diagnostics.push(error(
+        "invalid-training-activation-actor",
+        pathById.get(training.id) || `data/${training.id}`,
+        `Training activation actors must have been active on ${training.activatedOn}: ${invalidActorIds.join(", ")}.`
+      ));
+    }
+  }
 }
 
 function validateCollectionReview(record, loaded, byId, path, diagnostics) {
@@ -786,7 +800,7 @@ function validateCompletionDates(record, path, diagnostics) {
   ]);
   validateOrderedDates(record, path, diagnostics, ["startedAt", "endedAt"]);
   validateOrderedDates(record, path, diagnostics, ["fieldworkStart", "fieldworkEnd", "reportDate"]);
-  if (record.type === "document") {
+  if (["document", "training"].includes(record.type) && record.activatedOn) {
     validateOrderedDates(record, path, diagnostics, ["approvedOn", "activatedOn", "effectiveOn"]);
   }
   if (record.acceptance) {
@@ -916,17 +930,21 @@ async function validateContentBinding(record, model, root, path, diagnostics, bi
   }
 }
 
-function approvalBound(record) {
+function approvalBound(record, model) {
   if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
   if (record.type === "document") return ["approved", "active", "superseded", "retired"].includes(record.status);
-  if (record.type === "training") return ["active", "retired"].includes(record.status);
+  if (record.type === "training") {
+    return (modelSupports(model, "governed-training-activation")
+      ? ["approved", "active", "superseded", "retired"]
+      : ["active", "retired"]).includes(record.status);
+  }
   return false;
 }
 
 function contentBindingFields(record, model) {
   const fields = [];
   if (["policy", "document"].includes(record.type)) {
-    fields.push({ field: "approvedContentRevisions", bound: approvalBound, label: "Approved" });
+    fields.push({ field: "approvedContentRevisions", bound: (candidate) => approvalBound(candidate, model), label: "Approved" });
   }
   if (record.type === "document" && model.resources.document?.fields?.activatedContentRevisions) {
     fields.push({
@@ -936,7 +954,17 @@ function contentBindingFields(record, model) {
     });
   }
   if (record.type === "training" && model.resources.training?.fields?.effectiveContentRevisions) {
-    fields.push({ field: "effectiveContentRevisions", bound: approvalBound, label: "Approved" });
+    fields.push({ field: "effectiveContentRevisions", bound: (candidate) => approvalBound(candidate, model), label: "Approved" });
+  }
+  if (record.type === "training" && model.resources.training?.fields?.approvedContentRevisions) {
+    fields.push({ field: "approvedContentRevisions", bound: (candidate) => approvalBound(candidate, model), label: "Approved" });
+  }
+  if (record.type === "training" && model.resources.training?.fields?.activatedContentRevisions) {
+    fields.push({
+      field: "activatedContentRevisions",
+      bound: (candidate) => ["active", "superseded", "retired"].includes(candidate?.status),
+      label: "Activated"
+    });
   }
   return fields;
 }

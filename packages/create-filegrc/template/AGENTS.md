@@ -100,12 +100,12 @@ Do not rewrite or remove committed records that explain prior audit periods. Clo
 If the installed CLI reports that this workspace uses an unsupported model, start with:
 
 ```sh
-npx filegrc migrate --to-model 5 --preview --json
+npx filegrc migrate --to-model 6 --preview --json
 ```
 
-Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v5 migration adds explicit program or engagement scope, preserves known Document approval facts, and creates no activation event, actor, revision, or date. It keeps historical Documents from issued or completed Audits active with a visible `legacy-v4` activation basis.
+Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v6 migration separates Training approval from activation, preserves existing active Training with a visible `legacy-v5` activation basis, and removes Training schedule fields because Obligations now own assignment timing.
 
-The [model v5 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v5.md) explains the separate Document approval and activation review.
+The [model v6 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v6.md) explains the Training lifecycle and Obligation review.
 
 Run these commands when working with records:
 
@@ -206,14 +206,14 @@ npx filegrc program-readiness --require-ready --summary --json
 The Evidence Ready gate requires:
 
 1. A management goal, selected systems, criteria, and controls.
-2. Policy content and required program plans and schedules independently approved in Step 2, with approval dates and exact approved content revisions.
-3. Implemented Controls with an owner, actual procedure, scope, operation pattern, mappings, implementation date, and every required linked Work Queue schedule enabled. Required governed Documents must then be activated in Step 3 with separate activation dates and exact activation revisions.
+2. Policies, required program Documents, and Training independently approved in Step 2, with approval dates and exact approved content revisions.
+3. Implemented Controls with an owner, actual procedure, scope, operation pattern, mappings, implementation date, and every required linked Obligation enabled. Required program Documents and Training must then be activated in Step 3 with separate activation dates and exact activation revisions.
 4. Every selected Control mapped to active authoritative Components with the required evidence source roles, current access owners, and repeatable extraction instructions in Record Markdown.
-5. Required governed plans and schedules active and effective, with no unresolved activation blockers. Audit-specific Documents remain in Step 5 and do not satisfy this program gate.
+5. Required governed content active and effective, with no unresolved activation blockers. Audit Documents remain in Step 5 and do not satisfy this program gate.
 
-A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof. A Control may be implemented against an approved inactive Policy or required program Document. Enabled Obligations remain dormant until the Policy and required program Documents are active and effective.
+A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof. A Control may be implemented against an approved inactive Policy, required program Document, or Training record. Enabled Obligations remain dormant until all of their governing content is active and effective.
 
-Review `documentActivations` and `policyActivations` in Program Readiness before cutover. Complete and approve intended Document values in Step 2. After the linked Controls are implemented, use `npx filegrc activate-documents --scaffold` to record the active Person who performs the cutover plus the actual Step 3 activation and effective dates against the unchanged approved revision. Then use the Controls-page review or `npx filegrc activate-policies --scaffold` to choose which approved Policies take effect. Evidence Readiness remains incomplete until every required program Document and Policy is active and operating. Operate and collect Evidence in Step 4. Keep engagement terms, management assertions, representation letters, and other audit-specific Documents in Step 5. Approve and activate each audit-specific Document there as separate writes after its engagement facts are complete.
+Review `documentActivations`, `trainingActivations`, and `policyActivations` in Program Readiness before cutover. Approve Policies, program Documents, and Training in Step 2. Define schedules as Obligations and implement the linked Controls in Step 3, then use `npx filegrc activate-content --scaffold` to record the active Person and actual activation and effective dates against each unchanged approved revision. Use the Controls-page review or `npx filegrc activate-policies --scaffold` to choose which approved Policies take effect. Evidence Readiness remains incomplete until every required program artifact is active and operating. Operate and collect Evidence in Step 4. Keep engagement terms, management assertions, representation letters, and other Audit Documents in Step 5. Approve and activate each Audit Document there as separate writes after its engagement facts are complete.
 
 Onboarding does not create Evidence Artifacts. Complete authoritative source Components as part of Control implementation. For every incomplete family in Program Readiness, update the Control with its authoritative `evidenceSourceComponentIds`, then give each source Component the required evidence role, current access owners, and repeatable retrieval instructions in Record Markdown. Use `npx filegrc evidence-map --json` when you want only those source checks. During Step 4, create an Evidence Artifact only when a real artifact exists. Select its `sourceComponentId`, attach or reference the result, link the Controls and operating record it supports, record its collector and Classification, then have another person verify it before audit use.
 

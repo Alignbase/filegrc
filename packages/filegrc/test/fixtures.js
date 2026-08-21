@@ -118,7 +118,7 @@ export async function makeComprehensiveWorkspace(root, version) {
       if (name === "status" && STATUS_OVERRIDES[type]) record[name] = STATUS_OVERRIDES[type];
       else if (required.has(name)) record[name] = sampleValue(name, field, ids, model, type);
     }
-    if (type === "document" && record.status === "active" && fields.activationBasis) {
+    if (["document", "training"].includes(type) && record.status === "active" && fields.activationBasis) {
       record.activationBasis = "recorded";
     }
     for (const [name, field] of Object.entries(fields)) {
@@ -313,17 +313,22 @@ async function writeRecord(root, definition, record, model) {
       await writeMarkdown(root, entry.path, `${record.title} ${entry.label.toLowerCase()}`);
     }
   }
-  if (approvalBound(record)) {
-    record.approvedContentRevisions = {};
+  const approvalRevisionField = definition.fields.approvedContentRevisions
+    ? "approvedContentRevisions"
+    : record.type === "training" && definition.fields.effectiveContentRevisions
+      ? "effectiveContentRevisions"
+      : null;
+  if (approvalBound(record) && approvalRevisionField) {
+    record[approvalRevisionField] = {};
     for (const entry of entries) {
       try {
         const source = await readFile(join(root, "data", entry.path), "utf8");
-        record.approvedContentRevisions[entry.path] = createHash("sha256").update(source).digest("hex");
+        record[approvalRevisionField][entry.path] = createHash("sha256").update(source).digest("hex");
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
     }
-    if (record.type === "document" && model.resources.document.fields.activatedContentRevisions && record.status === "active") {
+    if (["document", "training"].includes(record.type) && definition.fields.activatedContentRevisions && record.status === "active") {
       record.activatedContentRevisions = structuredClone(record.approvedContentRevisions);
     }
   }
@@ -362,6 +367,7 @@ async function subjectContentRevisions(root, model, recordsById, subjectResource
 function approvalBound(record) {
   if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
   if (record.type === "document") return ["approved", "active", "superseded", "retired"].includes(record.status);
+  if (record.type === "training") return ["approved", "active", "superseded", "retired"].includes(record.status);
   return false;
 }
 

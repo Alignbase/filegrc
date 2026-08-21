@@ -64,7 +64,7 @@ export async function assessProgramReadiness(input, options = {}) {
     loaded.model
   );
   controlStage.items.push(...policyActivations.map(policyActivationItem));
-  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled schedules, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. Activate the unchanged approved governed Documents after their requirements are implemented, then activate approved Policies at the implementation cutover.`;
+  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. Activate unchanged approved program Documents and Training after their requirements are implemented, then activate approved Policies at the implementation cutover.`;
   const evidenceGateStages = [
     scopeStage(
       program,
@@ -120,6 +120,7 @@ export async function assessProgramReadiness(input, options = {}) {
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
     policyActivations,
     documentActivations: governedContent.documentActivations,
+    trainingActivations: governedContent.trainingActivations,
     policyLibraryProposals: [
       ...policyLibrary.proposals,
       ...legacyPolicyLibraryProposals(records)
@@ -538,7 +539,10 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
   const documents = modelSupports(model, "governed-document-activation")
     ? requiredGovernedDocuments(scope, records, byId, model)
     : [];
-  const governedRecords = [...policies, ...documents];
+  const trainings = modelSupports(model, "governed-training-activation")
+    ? records.filter(({ type, status }) => type === "training" && !["superseded", "retired"].includes(status))
+    : [];
+  const governedRecords = [...policies, ...documents, ...trainings];
   const appointedReviewer = governedRecords
     .filter((record) => partiesIndependent(record.ownerIds, record.approverIds, byId))
     .flatMap((record) => [...currentPartyPeople(record.approverIds || [], byId)])
@@ -675,10 +679,46 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
       }
     ));
   }
+  if (modelSupports(model, "governed-training-activation")) {
+    for (const training of trainings) {
+      const source = await readMarkdown(training);
+      const placeholderCount = openPlaceholderCount(source);
+      const checks = {
+        independentlyApproved: ["approved", "active"].includes(training.status)
+          && Boolean(training.approvedOn)
+          && Boolean(training.approvedContentRevisions)
+          && partiesIndependent(training.ownerIds, training.approverIds, byId),
+        owner: currentPartyPeople(training.ownerIds, byId).size > 0,
+        linkedControls: (training.controlIds || []).some((id) => scope.controls.some((control) => control.id === id)),
+        contentComplete: substantiveMarkdown(source) && placeholderCount === 0
+      };
+      const missing = Object.entries(checks)
+        .filter(([, value]) => !value)
+        .map(([name]) => governedApprovalCheckLabel(name));
+      items.push(item(
+        `training-approval-${training.id}`,
+        missing.length ? "action" : "complete",
+        training.title,
+        missing.length
+          ? `Remaining Step 2 approval work: ${missing.join(", ")}${placeholderCount ? ` (${placeholderCount} open placeholders)` : ""}. Review and approve the exact Training content before implementation.`
+          : `Independently approved on ${training.approvedOn} and bound to the exact Training revision. Activation remains in Step 3.`,
+        training,
+        {
+          checks,
+          placeholderCount,
+          commands: [
+            `npx filegrc get ${shellArgument(training.id)} --mutation`,
+            `npx filegrc update training ${shellArgument(training.id)} MUTATION.json --json`,
+            "npx filegrc program-readiness --json"
+          ]
+        }
+      ));
+    }
+  }
   return stage(
     "policies",
-    "Approve Policies and Plans",
-    "Approve Policy requirements and the intended values in required governed plans and schedules. Approval binds exact revisions but does not prove implementation or activate the content.",
+    "Approve Policies",
+    "Approve the exact Policy, program Document, and Training content that defines what the organization intends to require. Approval does not prove implementation or activate the content.",
     items
   );
 }
@@ -727,10 +767,18 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
   const documents = requiredGovernedDocuments(scope, records, byId, model);
   const governedRecords = [
     ...documents,
-    ...records.filter((record) => record.type === "training" && requiredGovernedIds.has(record.id))
+    ...records.filter((record) => (
+      record.type === "training"
+      && !["superseded", "retired"].includes(record.status)
+      && (
+        requiredGovernedIds.has(record.id)
+        || (record.controlIds || []).some((id) => scope.controls.some((control) => control.id === id))
+      )
+    ))
   ];
   const items = [];
   const documentActivations = [];
+  const trainingActivations = [];
   for (const record of governedRecords) {
     const source = await readMarkdown(record);
     const placeholderCount = openPlaceholderCount(source);
@@ -766,7 +814,30 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
           effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
           contentComplete: substantiveMarkdown(source) && placeholderCount === 0
         }
-      : {
+      : modelSupports(model, "governed-training-activation") ? {
+          approvalBound: ["approved", "active"].includes(record.status)
+            && Boolean(record.approvedOn)
+            && Boolean(record.approvedContentRevisions)
+            && partiesIndependent(record.ownerIds, record.approverIds, byId),
+          owner: currentPartyPeople(record.ownerIds, byId).size > 0,
+          active: record.status === "active",
+          requirementsImplemented: linkedControlIds.length > 0 && missingImplementationControlIds.length === 0,
+          assignmentScheduled: enabledObligations.some((obligation) => (
+            obligation.templateResourceId === record.id
+            || (obligation.scopeResourceIds || []).includes(record.id)
+          )),
+          activationRecorded: ["recorded", "legacy-v5"].includes(record.activationBasis),
+          activated: record.activationBasis === "legacy-v5" || Boolean(record.activatedOn),
+          activator: record.activationBasis === "legacy-v5" || Boolean((record.activatedByIds || []).length)
+            && record.activatedByIds.every((id) => personWasActiveOn(byId.get(id), record.activatedOn)),
+          activatedContent: record.activationBasis === "legacy-v5" || Boolean(record.activatedContentRevisions),
+          activationMatchesApproval: record.activationBasis === "legacy-v5" || contentRevisionBindingsMatch(
+            record.approvedContentRevisions,
+            record.activatedContentRevisions
+          ),
+          effective: Boolean(record.effectiveOn && record.effectiveOn <= asOf),
+          contentComplete: substantiveMarkdown(source) && placeholderCount === 0
+        } : {
           active: record.status === "active",
           owner: currentPartyPeople(record.ownerIds, byId).size > 0,
           approved: Boolean(record.approvedOn && (record.approvedByIds || []).length),
@@ -810,6 +881,37 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
         gapCount: record.status === "active" ? missing.length : preActivationGapCount
       });
     }
+    if (record.type === "training" && modelSupports(model, "governed-training-activation")) {
+      const activationComplete = Object.values(checks).every(Boolean);
+      const preActivationCheckNames = ["approvalBound", "owner", "requirementsImplemented", "assignmentScheduled", "contentComplete"];
+      const preActivationGapCount = preActivationCheckNames.filter((name) => !checks[name]).length;
+      const readyToActivate = record.status === "approved"
+        && preActivationCheckNames.every((name) => checks[name]);
+      const state = record.status === "active" && activationComplete
+        ? "active-and-operating"
+        : record.status === "active"
+          ? "active-with-gaps"
+          : readyToActivate
+            ? "ready-to-activate"
+            : record.status === "approved"
+              ? "approved-implementation-pending"
+              : "approval-pending";
+      trainingActivations.push({
+        trainingId: record.id,
+        title: record.title,
+        state,
+        label: documentActivationLabel(state),
+        approvedOn: record.approvedOn || null,
+        activatedOn: record.activatedOn || null,
+        effectiveOn: record.effectiveOn || null,
+        linkedControlIds,
+        missingImplementationControlIds,
+        assignmentScheduled: checks.assignmentScheduled,
+        activationRevisionBound: Boolean(record.activatedContentRevisions),
+        activatedByIds: record.activatedByIds || [],
+        gapCount: record.status === "active" ? missing.length : preActivationGapCount
+      });
+    }
     items.push(item(
       `${record.type}-${record.id}`,
       missing.length ? "action" : "complete",
@@ -825,7 +927,7 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
       {
         checks,
         placeholderCount,
-        ...(record.type === "document" ? { linkedControlIds, missingImplementationControlIds } : {}),
+        ...(["document", "training"].includes(record.type) ? { linkedControlIds, missingImplementationControlIds } : {}),
         commands: [
           `npx filegrc get ${shellArgument(record.id)} --mutation`,
           `npx filegrc update ${record.type} ${shellArgument(record.id)} MUTATION.json --json`,
@@ -834,7 +936,7 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
       }
     ));
   }
-  return { items, documentActivations };
+  return { items, documentActivations, trainingActivations };
 }
 
 function documentActivationLabel(state) {
@@ -986,12 +1088,12 @@ function policyActivationItem(assessment) {
     [assessment.plannedOrPartialControlIds.length, "planned or partial Controls"],
     [assessment.missingComponentControlIds.length, "Controls missing active Components"],
     [assessment.missingEvidenceSourceControlIds.length, "Controls missing ready evidence sources"],
-    [assessment.missingScheduleControlIds.length, "Controls missing enabled schedules"],
+    [assessment.missingScheduleControlIds.length, "Controls missing enabled Obligations"],
     [assessment.missingGovernedDocumentIds?.length || 0, "required governed Documents not active"],
     [assessment.unresolvedExceptionIds.length, "unresolved Exceptions"]
   ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
   const message = assessment.state === "active-and-operating"
-    ? `Active and effective ${assessment.effectiveOn}; all ${assessment.linkedControlIds.length} linked Controls are implemented with Components, evidence sources, and enabled schedules.`
+    ? `Active and effective ${assessment.effectiveOn}; all ${assessment.linkedControlIds.length} linked Controls are implemented with Components, evidence sources, and enabled Obligations.`
     : assessment.state === "ready-to-activate"
       ? "Implementation checks are complete. Include this approved Policy in the Step 3 cutover when you are ready for it to take effect."
       : `${assessment.label}: ${counts.join(", ") || assessment.timingWarnings.join(" ")}. ${assessment.activationWarning || ""}`.trim();
@@ -1104,7 +1206,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       }
     ));
   }
-  return stage("controls", "Implement Controls", "Each implemented Control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Work Queue schedules enabled. An enabled schedule stays dormant until its governing Policy and required governed Documents are active and effective.", items);
+  return stage("controls", "Implement Controls", "Each implemented Control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Obligations enabled. Scheduled work stays dormant until its governing Policy, program Documents, and Training are active and effective.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
@@ -1438,6 +1540,7 @@ function governedContentCheckLabel(name) {
     effective: "effective date",
     effectiveContent: "effective content revision",
     requirementsImplemented: "implemented linked requirements",
+    assignmentScheduled: "enabled Training assignment schedule",
     activationRecorded: "recorded activation basis",
     activated: "separate activation date",
     activator: "named activation Person",
@@ -1463,7 +1566,7 @@ function controlCheckLabel(name) {
     implementationReview: "independent implementation review",
     policyMapping: "policy mapping",
     criteriaMapping: "criteria mapping",
-    workQueue: "running Work Queue schedules"
+    workQueue: "running Obligation schedules"
   })[name] || name;
 }
 

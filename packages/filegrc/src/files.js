@@ -211,6 +211,12 @@ export async function applyDocumentActivationBatch(input, changes) {
   ));
 }
 
+export async function applyGovernedContentActivationBatch(input, changes) {
+  return serializeWorkspaceMutation(input, (root) => (
+    applyResourceBatchUnlocked(root, changes, "governed-content-activation")
+  ));
+}
+
 export async function applyModelMigrationBatch(input, changes) {
   return serializeWorkspaceMutation(input, (root) => (
     applyResourceBatchUnlocked(root, changes, "model-migration")
@@ -270,10 +276,10 @@ async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperatio
     throw new Error("The model-migration lifecycle operation requires a cross-model resource batch.");
   }
   if (
-    lifecycleOperation === "document-activation"
+    ["document-activation", "governed-content-activation"].includes(lifecycleOperation)
     && (targetModelVersion || changes.validateWholeWorkspace !== true)
   ) {
-    throw new Error("The document-activation lifecycle operation requires same-model whole-workspace validation.");
+    throw new Error("The governed-content activation lifecycle operation requires same-model whole-workspace validation.");
   }
   const writeModel = targetModelVersion ? loadModel(targetModelVersion) : loaded.model;
   const deferValidation = workspaceValidationDeferred();
@@ -347,14 +353,14 @@ async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperatio
     const nextRecord = hasContentUpdate
       ? await prepareApprovalBinding(loaded, record, recordContentWrites, existing.record)
       : record;
-    assertDocumentLifecycleMutation(existing.record, nextRecord, loaded.model, lifecycleOperation);
+    assertGovernedContentLifecycleMutation(existing.record, nextRecord, loaded.model, lifecycleOperation);
     writes.push({ operation: path === previousPath ? "update" : "move-update", path, previousPath, record: nextRecord, previous, fileMode: mode });
   }
   for (const resourceId of Object.keys(contentUpdates)) {
     if (preparedContentIds.has(resourceId)) continue;
     const existing = existingById.get(resourceId);
     if (!existing) throw new Error(`Resource "${resourceId}" was not found.`);
-    if (approvalBound(existing.record)) {
+    if (approvalBound(existing.record, loaded.model)) {
       throw new Error(`Batch content for approved or active resource "${resourceId}" needs a matching resource update and validation of its approval binding.`);
     }
     contentWrites.push(...await prepareContentWrites(loaded, existing.record, contentUpdates[resourceId], {
@@ -607,7 +613,7 @@ async function updateResourceUnlocked(input, type, id, record, options) {
   });
   const existing = loaded.entries.find(({ record: candidate }) => candidate.id === id)?.record;
   const nextRecord = await prepareApprovalBinding(loaded, record, contentWrites, existing);
-  assertDocumentLifecycleMutation(existing, nextRecord, loaded.model, null);
+  assertGovernedContentLifecycleMutation(existing, nextRecord, loaded.model, null);
   try {
     for (const item of contentWrites) await writeTextAtomic(item.path, item.source);
     await writeAtomic(path, nextRecord);
@@ -820,13 +826,16 @@ async function prepareApprovalBinding(loaded, record, contentWrites, previousRec
   const bindingFields = contentBindingFields(record, loaded.model);
   if (!bindingFields.length) return record;
   if (
-    record.type === "document"
-    && modelSupports(loaded.model, "governed-document-activation")
+    (
+      record.type === "document" && modelSupports(loaded.model, "governed-document-activation")
+      || record.type === "training" && modelSupports(loaded.model, "governed-training-activation")
+    )
     && record.status === "active"
     && previousRecord?.status !== "active"
   ) {
-    const step = documentIsAuditSpecific(record, loaded.model) ? "Step 5" : "Step 3";
-    throw new Error(`Document "${record.id}" must use the dedicated ${step} Document activation operation after approval.`);
+    const step = record.type === "document" && documentIsAuditSpecific(record, loaded.model) ? "Step 5" : "Step 3";
+    const title = getResourceDefinition(loaded.model, record.type).title;
+    throw new Error(`${title} "${record.id}" must use the dedicated ${step} ${title} activation operation after approval.`);
   }
   const nextRecord = structuredClone(record);
   const proposed = new Map(contentWrites.map((item) => [item.dataRelativePath, item.source]));
@@ -861,14 +870,19 @@ async function prepareApprovalBinding(loaded, record, contentWrites, previousRec
   return nextRecord;
 }
 
-function assertDocumentLifecycleMutation(previousRecord, nextRecord, model, lifecycleOperation) {
+function assertGovernedContentLifecycleMutation(previousRecord, nextRecord, model, lifecycleOperation) {
   if (lifecycleOperation === "model-migration") return;
+  const governedTraining = previousRecord?.type === "training"
+    && nextRecord?.type === "training"
+    && modelSupports(model, "governed-training-activation");
+  const governedDocument = previousRecord?.type === "document"
+    && nextRecord?.type === "document"
+    && modelSupports(model, "governed-document-activation");
   if (
     !previousRecord
-    || previousRecord.type !== "document"
-    || nextRecord?.type !== "document"
-    || !modelSupports(model, "governed-document-activation")
+    || (!governedDocument && !governedTraining)
   ) return;
+  const title = getResourceDefinition(model, nextRecord.type).title;
   const approvedStatuses = new Set(["approved", "active", "superseded", "retired"]);
   const activatedStatuses = new Set(["active", "superseded", "retired"]);
   if (approvedStatuses.has(previousRecord.status) && approvedStatuses.has(nextRecord.status)) {
@@ -876,7 +890,7 @@ function assertDocumentLifecycleMutation(previousRecord, nextRecord, model, life
       "approverIds",
       "approvedOn",
       "approvedContentRevisions"
-    ], "approval");
+    ], "approval", title);
   }
   if (activatedStatuses.has(previousRecord.status) && activatedStatuses.has(nextRecord.status)) {
     assertLifecycleFieldsUnchanged(previousRecord, nextRecord, [
@@ -885,26 +899,26 @@ function assertDocumentLifecycleMutation(previousRecord, nextRecord, model, life
       "activatedOn",
       "activatedContentRevisions",
       "effectiveOn"
-    ], "activation");
+    ], "activation", title);
   }
   if (
     nextRecord.status === "active"
     && previousRecord.status !== "active"
-    && lifecycleOperation !== "document-activation"
+    && !["document-activation", "governed-content-activation"].includes(lifecycleOperation)
   ) {
-    const step = documentIsAuditSpecific(nextRecord, model) ? "Step 5" : "Step 3";
-    throw new Error(`Document "${nextRecord.id}" must use the dedicated ${step} Document activation operation after approval.`);
+    const step = governedDocument && documentIsAuditSpecific(nextRecord, model) ? "Step 5" : "Step 3";
+    throw new Error(`${title} "${nextRecord.id}" must use the dedicated ${step} ${title} activation operation after approval.`);
   }
 }
 
-function assertLifecycleFieldsUnchanged(previousRecord, nextRecord, fields, eventLabel) {
+function assertLifecycleFieldsUnchanged(previousRecord, nextRecord, fields, eventLabel, resourceTitle) {
   const changed = fields.filter((field) => (
     JSON.stringify(previousRecord[field] ?? null) !== JSON.stringify(nextRecord[field] ?? null)
   ));
   if (!changed.length) return;
   throw new Error(
-    `Document "${nextRecord.id}" ${eventLabel} facts are immutable after the event: ${changed.join(", ")}. `
-    + `Move the Document back to ${eventLabel === "approval" ? "draft" : "approved"} and record a new lifecycle event.`
+    `${resourceTitle} "${nextRecord.id}" ${eventLabel} facts are immutable after the event: ${changed.join(", ")}. `
+    + `Move the ${resourceTitle} back to ${eventLabel === "approval" ? "draft" : "approved"} and record a new lifecycle event.`
   );
 }
 
@@ -940,13 +954,15 @@ async function prepareAttestationBinding(loaded, record, previousRecord = null) 
   return nextRecord;
 }
 
-function approvalBound(record) {
+function approvalBound(record, model) {
   if (!record || !["policy", "document", "training"].includes(record.type)) return false;
   const statuses = record.type === "policy"
     ? ["approved", "active", "superseded", "retired"]
     : record.type === "document"
       ? ["approved", "active", "superseded", "retired"]
-      : ["active", "retired"];
+      : modelSupports(model || 0, "governed-training-activation")
+        ? ["approved", "active", "superseded", "retired"]
+        : ["active", "retired"];
   return statuses.includes(record.status);
 }
 
@@ -955,7 +971,7 @@ function contentBindingFields(record, model) {
   if (["policy", "document"].includes(record?.type)) {
     fields.push({
       field: "approvedContentRevisions",
-      bound: approvalBound,
+      bound: (candidate) => approvalBound(candidate, model),
       label: record.type === "policy" ? "approve or activate" : "approve"
     });
   }
@@ -970,7 +986,20 @@ function contentBindingFields(record, model) {
     });
   }
   if (record?.type === "training" && model.resources.training?.fields?.effectiveContentRevisions) {
-    fields.push({ field: "effectiveContentRevisions", bound: approvalBound, label: "approve or activate" });
+    fields.push({ field: "effectiveContentRevisions", bound: (candidate) => approvalBound(candidate, model), label: "approve or activate" });
+  }
+  if (record?.type === "training" && model.resources.training?.fields?.approvedContentRevisions) {
+    fields.push({ field: "approvedContentRevisions", bound: (candidate) => approvalBound(candidate, model), label: "approve" });
+  }
+  if (record?.type === "training" && model.resources.training?.fields?.activatedContentRevisions) {
+    fields.push({
+      field: "activatedContentRevisions",
+      bound: (candidate) => (
+        ["active", "superseded", "retired"].includes(candidate?.status)
+        && candidate.activationBasis === "recorded"
+      ),
+      label: "activate"
+    });
   }
   return fields;
 }

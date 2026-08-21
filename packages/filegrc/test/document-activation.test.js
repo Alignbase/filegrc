@@ -6,12 +6,15 @@ import test from "node:test";
 import { runCli } from "../src/cli.js";
 import {
   activateDocuments,
+  activateGovernedContent,
   applyResourceBatch,
   assessAuditDocumentActivations,
   assessProgramReadiness,
   assessWorkflow,
   loadWorkspace,
+  planObligations,
   scaffoldDocumentActivation,
+  scaffoldGovernedContentActivation,
   updateResource,
   validateWorkspace
 } from "../src/index.js";
@@ -171,6 +174,81 @@ test("keeps governed Document approval and activation as separate lifecycle even
       .find(({ id }) => id === `document-${activeDocument.id}`).checks.activationMatchesApproval,
     false
   );
+});
+
+test("approves Training in Step 2 and activates it with its Step 3 Obligation", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-training-activation-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "6");
+
+  let loaded = await loadWorkspace(root);
+  const training = loaded.resources.find(({ type }) => type === "training");
+  const obligation = loaded.resources.find(({ type }) => type === "obligation");
+  const draft = { ...training, status: "draft" };
+  for (const field of [
+    "approverIds", "approvedOn", "approvedContentRevisions", "activationBasis",
+    "activatedByIds", "activatedOn", "activatedContentRevisions", "effectiveOn"
+  ]) delete draft[field];
+  await updateResource(root, "training", training.id, draft);
+  await updateResource(root, "obligation", obligation.id, {
+    ...obligation,
+    activityType: "training",
+    recurrence: { mode: "calendar", unit: "month", interval: 1, anchorDate: "2026-08-21" },
+    scopeResourceIds: [training.id],
+    templateResourceId: training.id
+  });
+
+  const approved = await updateResource(root, "training", training.id, {
+    ...draft,
+    status: "approved",
+    approverIds: ["person-independent-approver-example"],
+    approvedOn: "2026-08-20"
+  });
+  assert.ok(Object.keys(approved.record.approvedContentRevisions).length);
+  assert.equal(approved.record.activatedOn, undefined);
+
+  await assert.rejects(
+    updateResource(root, "training", training.id, {
+      ...approved.record,
+      status: "active",
+      activationBasis: "recorded",
+      activatedByIds: ["person-example"],
+      activatedOn: "2026-08-21",
+      effectiveOn: "2026-08-21"
+    }),
+    /dedicated Step 3 Training activation operation/
+  );
+
+  const readiness = await assessProgramReadiness(root, { asOf: "2026-08-21" });
+  const assessment = readiness.trainingActivations.find(({ trainingId }) => trainingId === training.id);
+  assert.equal(assessment.assignmentScheduled, true);
+  assert.equal(assessment.state, "ready-to-activate");
+  loaded = await loadWorkspace(root);
+  const dormant = planObligations(loaded.resources, { model: loaded.model, from: "2026-08-21", through: "2026-12-31", asOf: "2026-08-21" });
+  assert.equal(dormant.items.find(({ obligationId }) => obligationId === obligation.id)?.programStatus, "proposed");
+  const scaffold = await scaffoldGovernedContentActivation(root);
+  assert.ok(scaffold.trainingIds.includes(training.id));
+  assert.ok(scaffold.resourceIds.includes(training.id));
+  const cliScaffold = JSON.parse((await execute(process.execPath, [
+    cli,
+    "activate-content",
+    "--scaffold",
+    "--root",
+    root
+  ])).stdout);
+  assert.ok(cliScaffold.trainingIds.includes(training.id));
+  scaffold.activatedByIds = ["person-example"];
+  const result = await activateGovernedContent(root, { ...scaffold, confirmed: true });
+  assert.ok(result.trainingIds.includes(training.id));
+
+  loaded = await loadWorkspace(root);
+  const active = loaded.resources.find(({ id }) => id === training.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.activationBasis, "recorded");
+  assert.deepEqual(active.activatedContentRevisions, active.approvedContentRevisions);
+  const running = planObligations(loaded.resources, { model: loaded.model, from: "2026-08-21", through: "2026-12-31", asOf: "2026-08-21" });
+  assert.equal(running.items.find(({ obligationId }) => obligationId === obligation.id)?.programStatus, "accepted");
+  assert.equal((await validateWorkspace(root)).ok, true);
 });
 
 test("does not activate an approved governed Document before its linked Controls are implemented", async (context) => {

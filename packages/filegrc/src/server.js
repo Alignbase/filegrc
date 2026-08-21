@@ -5,7 +5,7 @@ import { extname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
-import { activateDocuments } from "./document-activation.js";
+import { activateDocuments, activateGovernedContent } from "./document-activation.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
 import { applyApplicabilityReviewWithContext, planApplicabilityReview } from "./batch-review.js";
 import { applyCollectionReview, planCollectionReview } from "./collection-review.js";
@@ -336,6 +336,13 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const result = await browserMutation(input, options, {
           message: (activation) => `Activate ${activation.documentIds.length} governed ${activation.documentIds.length === 1 ? "Document" : "Documents"}`
         }, () => activateDocuments(input, { ...payload, confirmed: true }));
+        return json(response, 200, result);
+      }
+      if (request.method === "POST" && url.pathname === "/api/governed-content-activations") {
+        const payload = await readJson(request);
+        const result = await browserMutation(input, options, {
+          message: (activation) => `Activate ${activation.resourceIds.length} governed-content ${activation.resourceIds.length === 1 ? "record" : "records"}`
+        }, () => activateGovernedContent(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {

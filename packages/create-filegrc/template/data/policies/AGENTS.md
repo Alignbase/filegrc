@@ -2,7 +2,7 @@
 
 A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
 
-FileGRC does not infer technical implementation from Policy prose. Put configuration facts in Controls, Components, Systems, governed schedules, and Evidence.
+FileGRC does not infer technical implementation from Policy prose. Put configuration facts in Controls, Components, Systems, Obligations, and Evidence.
 
 Keep durable mandatory outcomes in Policy prose. Put adjustable values such as retention periods, scan cadence, recovery frequency, and review windows in the linked Control, System, Document schedule, or Obligation. Starter values are proposals: management must confirm or replace each value before it counts as configured.
 
@@ -14,11 +14,11 @@ The Security starter contains one consolidated Information Security Policy. Its 
 
 Add another Policy only when management expands the program scope or has a distinct approval audience, owner, or legal requirement.
 
-During Step 3, implement Controls while the governing Policy is approved but inactive. Configure and enable its schedules, which remain dormant. Use the Controls-page cutover or `activate-policies --scaffold` to review the approved Policy. Before selecting it for activation:
+During Step 3, implement Controls while the governing Policy is approved but inactive. Configure and enable its Obligations, which remain dormant. Use the Controls-page cutover or `activate-policies --scaffold` to review the approved Policy. Before selecting it for activation:
 
 1. Review the per-Policy activation assessment.
 2. Review linked Controls that are planned or partial, missing Components or evidence sources, missing schedules, and unresolved Exceptions.
-3. Confirm required governed plans and schedules have independent Step 2 approval, implement their linked requirements, and activate their exact approved revisions separately in Step 3.
+3. Confirm required program Documents and Training have independent Step 2 approval, implement their linked requirements and Obligations, and activate their exact approved revisions separately in Step 3.
 4. Set the real effective date and change the approved Policy to `active` at implementation cutover.
 5. If management activates with a known gap, document the decision, follow-up, and any time-bound Exception. Activation does not mark a Control implemented, and Evidence Readiness still requires active and operating Policies.
 

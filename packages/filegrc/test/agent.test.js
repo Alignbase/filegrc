@@ -46,7 +46,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(parsedOverview.programPath.length, 5);
   assert.deepEqual(parsedOverview.programPath.map(({ title }) => title), [
     "Define Scope",
-    "Approve Policies and Plans",
+    "Approve Policies",
     "Implement Controls",
     "Operate the Program",
     "Audit"
@@ -79,6 +79,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "externalReviewerSetup",
     "policyActivation",
     "documentActivation",
+    "governedContentActivation",
     "nextAuditCycle",
     "reviewApplicability",
     "reviewCollection",

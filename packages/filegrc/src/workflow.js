@@ -540,7 +540,11 @@ function finalizationFields(record, model) {
       ["reviewDueOn", record.status === "active"],
       ["nonExpiringRationale", record.status === "active" && !record.expiresOn]
     ],
-    training: [
+    training: modelSupports(model, "governed-training-activation") ? [
+      ["approvedContentRevisions", ["approved", "active"].includes(record.status)],
+      ["activatedContentRevisions", record.status === "active" && record.activationBasis !== "legacy-v5"],
+      ["effectiveOn", record.status === "active"]
+    ] : [
       ["effectiveContentRevisions", record.status === "active"],
       ["effectiveOn", record.status === "active"]
     ],
@@ -1241,6 +1245,7 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
   const deliveryFindingKeys = findingKeys(findings, "delivery-readiness");
   const policyActivations = program.policyActivations || [];
   const documentActivations = program.documentActivations || [];
+  const trainingActivations = program.trainingActivations || [];
   const policiesOperating = policyActivations.length > 0
     && policyActivations.every(({ state }) => state === "active-and-operating");
   return {
@@ -1278,10 +1283,22 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
       message: documentActivations.length && documentActivations.every(({ state }) => state === "active-and-operating")
         ? "Every required governed Document is separately approved, activated, effective, and operating."
         : documentActivations.length
-          ? "Approve required plans and schedules in Step 2, implement their linked requirements, then activate their exact revisions in Step 3."
+          ? "Approve required program Documents in Step 2, implement their linked requirements, then activate their exact revisions in Step 3."
           : "No required governed Document activation is configured.",
       findingKeys: findingKeys(findings, "program-configuration", ({ key }) => key.includes(".document-")),
       documents: documentActivations
+    },
+    trainingActivation: {
+      status: trainingActivations.length && trainingActivations.every(({ state }) => state === "active-and-operating")
+        ? "complete"
+        : trainingActivations.length ? "needs-work" : "not-started",
+      message: trainingActivations.length && trainingActivations.every(({ state }) => state === "active-and-operating")
+        ? "Every required Training record is separately approved, activated, effective, scheduled, and operating."
+        : trainingActivations.length
+          ? "Approve Training in Step 2, implement its Controls and assignment Obligation, then activate its exact revision in Step 3."
+          : "No required Training activation is configured.",
+      findingKeys: findingKeys(findings, "program-configuration", ({ key }) => key.includes(".training-")),
+      training: trainingActivations
     },
     policyLibraryReview: {
       status: program.policyLibraryProposals?.length ? "review" : "current",
@@ -1648,7 +1665,7 @@ function shellArgument(value) {
 
 function recordAssessment(type) {
   if (["audit", "audit-request", "audit-population"].includes(type)) return "audit-readiness";
-  if (["action-item", "obligation", "obligation-event", "control-activity"].includes(type)) return "period-health";
+  if (["action-item", "obligation-event", "control-activity"].includes(type)) return "period-health";
   return "program-configuration";
 }
 
@@ -1657,7 +1674,7 @@ function recordStage(type) {
     return "scope";
   }
   if (["policy", "document", "training"].includes(type)) return "policies";
-  if (["control", "complementary-control", "source-coverage"].includes(type)) return "controls";
+  if (["control", "complementary-control", "source-coverage", "obligation"].includes(type)) return "controls";
   if (["audit", "audit-request", "audit-population"].includes(type)) return "audit";
   return "operate";
 }

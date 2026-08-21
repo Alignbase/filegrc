@@ -1,4 +1,4 @@
-import { applyDocumentActivationBatch, contentRevision } from "./files.js";
+import { applyDocumentActivationBatch, applyGovernedContentActivationBatch, contentRevision } from "./files.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { modelSupports } from "../model/index.js";
 import { assessAuditDocumentActivations } from "./audit-preparation.js";
@@ -10,16 +10,16 @@ import { loadWorkspace } from "./workspace.js";
 export async function scaffoldDocumentActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
   requireDocumentLifecycle(loaded);
-  const candidates = await activationCandidates(loaded, options);
+  const candidates = await activationCandidates(loaded, { ...options, documentsOnly: true });
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   const today = currentCalendarDate(loaded.workspace.timezone);
   return {
-    documentIds: candidates.map(({ documentId }) => documentId),
+    documentIds: candidates.filter(({ resourceType }) => resourceType === "document").map(({ resourceId }) => resourceId),
     ...(options.auditId ? { auditId: options.auditId, workflowScope: "engagement" } : { workflowScope: "program" }),
     activatedByIds: [],
     activatedOn: today,
     effectiveOn: today,
-    expectedRevisions: Object.fromEntries(candidates.map(({ documentId }) => [documentId, revisionById.get(documentId)])),
+    expectedRevisions: Object.fromEntries(candidates.map(({ resourceId }) => [resourceId, revisionById.get(resourceId)])),
     confirmed: false
   };
 }
@@ -27,8 +27,8 @@ export async function scaffoldDocumentActivation(input = process.cwd(), options 
 export async function planDocumentActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
   requireDocumentLifecycle(loaded);
-  const documentIds = [...new Set((options.documentIds || []).map(String))];
-  if (!documentIds.length) throw new Error("Document activation needs at least one approved governed Document.");
+  const resourceIds = [...new Set((options.resourceIds || options.documentIds || []).map(String))];
+  if (!resourceIds.length) throw new Error("Governed-content activation needs at least one approved program Document or Training record.");
   const activatedByIds = [...new Set((options.activatedByIds || []).map(String))];
   if (!activatedByIds.length) throw new Error("Document activation needs the Person who performed the activation.");
   const activatedOn = String(options.activatedOn || "").trim();
@@ -44,11 +44,12 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
   }
   const expectedRevisions = options.expectedRevisions || {};
   if (Array.isArray(expectedRevisions) || !expectedRevisions || typeof expectedRevisions !== "object") {
-    throw new Error("Document activation expected revisions must be keyed by Document ID.");
+    throw new Error("Governed-content activation expected revisions must be keyed by resource ID.");
   }
   const workflowScope = options.auditId ? "engagement" : "program";
+  const governedContentOperation = workflowScope === "program" && options.resourceIds !== undefined;
   const candidates = await activationCandidates(loaded, options);
-  const assessmentById = new Map(candidates.map((item) => [item.documentId, item]));
+  const assessmentById = new Map(candidates.map((item) => [item.resourceId, item]));
   const entryById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const invalidActivatorIds = activatedByIds.filter((id) => {
     const person = entryById.get(id)?.record;
@@ -57,26 +58,28 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
   if (invalidActivatorIds.length) {
     throw new Error(`Document activation needs active People as activators: ${invalidActivatorIds.join(", ")}.`);
   }
-  const update = documentIds.map((documentId) => {
-    const entry = entryById.get(documentId);
-    if (!entry || entry.record.type !== "document") throw new Error(`Document "${documentId}" was not found.`);
+  const update = resourceIds.map((resourceId) => {
+    const entry = entryById.get(resourceId);
+    const allowedTypes = governedContentOperation ? ["document", "training"] : ["document"];
+    if (!entry || !allowedTypes.includes(entry.record.type)) throw new Error(`Governed content "${resourceId}" was not found in the ${workflowScope} workflow.`);
+    const resourceTitle = loaded.model.resources[entry.record.type].title;
     if (entry.record.status !== "approved") {
-      throw new Error(`Document "${documentId}" must be independently approved before its separate ${workflowScope === "engagement" ? "Step 5" : "Step 3"} activation.`);
+      throw new Error(`${resourceTitle} "${resourceId}" must be independently approved before its separate ${workflowScope === "engagement" ? "Step 5" : "Step 3"} activation.`);
     }
-    if (entry.record.workflowScope !== workflowScope) {
-      throw new Error(`Document "${documentId}" belongs to the ${entry.record.workflowScope} workflow, not ${workflowScope}.`);
+    if (entry.record.type === "document" && entry.record.workflowScope !== workflowScope) {
+      throw new Error(`Document "${resourceId}" belongs to the ${entry.record.workflowScope} workflow, not ${workflowScope}.`);
     }
-    const assessment = assessmentById.get(documentId);
+    const assessment = assessmentById.get(resourceId);
     if (assessment?.state !== "ready-to-activate") {
       const missing = assessment?.missingImplementationControlIds || [];
       throw new Error(
         missing.length
-          ? `Document "${documentId}" cannot be activated until linked Controls are implemented: ${missing.join(", ")}.`
-          : `Document "${documentId}" is not ready for ${workflowScope === "engagement" ? "Step 5" : "Step 3"} activation.`
+          ? `${resourceTitle} "${resourceId}" cannot be activated until linked Controls are implemented: ${missing.join(", ")}.`
+          : `${resourceTitle} "${resourceId}" is not ready for ${workflowScope === "engagement" ? "Step 5" : "Step 3"} activation.`
       );
     }
-    if (!/^[a-f0-9]{64}$/.test(expectedRevisions[documentId] || "")) {
-      throw new Error(`Document activation needs the current record revision for "${documentId}". Regenerate the activation review and try again.`);
+    if (!/^[a-f0-9]{64}$/.test(expectedRevisions[resourceId] || "")) {
+      throw new Error(`Governed-content activation needs the current record revision for "${resourceId}". Regenerate the activation review and try again.`);
     }
     const record = {
       ...entry.record,
@@ -91,16 +94,18 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
     return record;
   });
   return {
-    operation: "document-activation",
+    operation: governedContentOperation ? "governed-content-activation" : "document-activation",
     workflowScope,
     ...(options.auditId ? { auditId: options.auditId } : {}),
-    documentIds,
+    resourceIds,
+    documentIds: update.filter(({ type }) => type === "document").map(({ id }) => id),
+    trainingIds: update.filter(({ type }) => type === "training").map(({ id }) => id),
     activatedByIds,
     activatedOn,
     effectiveOn,
     changes: {
       update,
-      expectedRevisions: Object.fromEntries(documentIds.map((documentId) => [documentId, expectedRevisions[documentId]])),
+      expectedRevisions: Object.fromEntries(resourceIds.map((resourceId) => [resourceId, expectedRevisions[resourceId]])),
       validateWholeWorkspace: true
     }
   };
@@ -111,20 +116,51 @@ async function activationCandidates(loaded, options) {
     return (await assessAuditDocumentActivations(loaded, {
       auditId: options.auditId,
       asOf: currentCalendarDate(loaded.workspace.timezone)
-    })).filter(({ state }) => state === "ready-to-activate");
+    })).filter(({ state }) => state === "ready-to-activate")
+      .map((item) => ({ ...item, resourceType: "document", resourceId: item.documentId }));
   }
   const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
-  return readiness.documentActivations.filter(({ state }) => state === "ready-to-activate");
+  return [
+    ...readiness.documentActivations.map((item) => ({ ...item, resourceType: "document", resourceId: item.documentId })),
+    ...(!options.documentsOnly ? (readiness.trainingActivations || []).map((item) => ({ ...item, resourceType: "training", resourceId: item.trainingId })) : [])
+  ].filter(({ state }) => state === "ready-to-activate");
 }
 
 export async function activateDocuments(input = process.cwd(), options = {}) {
   if (options.confirmed !== true) throw new Error("Review the governed Document activation and confirm the write.");
   return serializeWorkspaceMutation(input, async (root) => {
     const plan = await planDocumentActivation(root, options);
-    const result = await applyDocumentActivationBatch(root, plan.changes);
+    const result = plan.operation === "governed-content-activation"
+      ? await applyGovernedContentActivationBatch(root, plan.changes)
+      : await applyDocumentActivationBatch(root, plan.changes);
     return { ...plan, result };
   });
 }
+
+export async function scaffoldGovernedContentActivation(input = process.cwd(), options = {}) {
+  const loaded = await loadWorkspace(input);
+  requireDocumentLifecycle(loaded);
+  if (!modelSupports(loaded.model, "governed-training-activation")) {
+    throw new Error("Unified governed-content activation requires a model v6 workspace.");
+  }
+  const candidates = await activationCandidates(loaded, { ...options, auditId: undefined });
+  const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const today = currentCalendarDate(loaded.workspace.timezone);
+  return {
+    resourceIds: candidates.map(({ resourceId }) => resourceId),
+    documentIds: candidates.filter(({ resourceType }) => resourceType === "document").map(({ resourceId }) => resourceId),
+    trainingIds: candidates.filter(({ resourceType }) => resourceType === "training").map(({ resourceId }) => resourceId),
+    workflowScope: "program",
+    activatedByIds: [],
+    activatedOn: today,
+    effectiveOn: today,
+    expectedRevisions: Object.fromEntries(candidates.map(({ resourceId }) => [resourceId, revisionById.get(resourceId)])),
+    confirmed: false
+  };
+}
+
+export const planGovernedContentActivation = planDocumentActivation;
+export const activateGovernedContent = activateDocuments;
 
 function requireDocumentLifecycle(loaded) {
   if (!modelSupports(loaded.model, "governed-document-activation")) {

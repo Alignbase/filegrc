@@ -176,7 +176,8 @@ function buildNavigation(route) {
         const current = route.type === type && (!contextualStageId || contextualStageId === stage.id);
         return '<a class="' + (direct ? "nav-direct " : "") + (current ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
       }).join("") + (section.relatedLinks || []).map((link) => {
-        const current = route.type === link.type && contextualStageId === stage.id;
+        const current = route.type === link.type && contextualStageId === stage.id
+          || link.href === "#/stage/" + route.stageId;
         return '<a class="' + (direct ? "nav-direct " : "") + (current ? "current" : "") + '" href="' + esc(link.href) + '"><span>' + esc(link.label) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
       }).join("") + renderSidebarUtility(section.utility, route, direct);
       if (direct) return links;
@@ -358,7 +359,7 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    (stage.id === "policies" ? renderPolicyApprovalGuidance() : "") + renderStagePageIndex(stage) + (stage.id === "controls" ? renderDocumentActivationAssessments() + renderPolicyActivationAssessments() + renderEvidenceReadiness() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
+    (stage.id === "policies" ? renderPolicyApprovalGuidance() + renderPoliciesTable() : renderStagePageIndex(stage)) + (stage.id === "controls" ? renderDocumentActivationAssessments() + renderPolicyActivationAssessments() + renderEvidenceReadiness() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
   main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
     main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
     event.currentTarget.remove();
@@ -379,11 +380,92 @@ function renderPolicyApprovalGuidance() {
       : "";
     return '<article><strong>' + esc(proposal.title) + '</strong><p>' + esc(proposal.message) + '</p>' + review + '<div class="evidence-map-references">' + proposal.policyIds.map((id) => formatReference(id)).join("") + '</div></article>';
   }).join("");
-  return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Step 2 approval</p><h3>Approve the requirements and intended values</h3><p>Approval means your company reviewed and accepted the Policy requirements and the intended values in each required governed plan or schedule. It does not mean the linked Controls are implemented yet.</p><p>Bind each approval to the exact Markdown revision here. Build the Controls in Step 3, activate the unchanged governed Documents with a separate date and revision, then activate the Policies.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
+  return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Step 2 approval</p><h3>Approve the governed content</h3><p>Approval means your company reviewed and accepted the requirements and intended values in each Policy, program Document, and Training record. It does not mean the linked Controls are implemented yet.</p><p>Bind each approval to the exact Markdown revision here. Implement Controls and configure Obligations in Step 3, then activate each unchanged approved revision at implementation cutover.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
+}
+
+function renderPoliciesTable() {
+  const entries = state.resources.filter(({ record }) => (
+    record.type === "policy"
+    || record.type === "training"
+    || record.type === "document" && !auditSpecificDocument(record)
+  )).sort((left, right) => (
+    ["policy", "document", "training"].indexOf(left.record.type) - ["policy", "document", "training"].indexOf(right.record.type)
+    || left.record.title.localeCompare(right.record.title)
+  ));
+  const ownerNames = (record) => (record.ownerIds || []).map((id) => (
+    state.resources.find(({ record: candidate }) => candidate.id === id)?.record.title || id
+  ));
+  const approverNames = (record) => (record.approverIds || record.approvedByIds || []).map((id) => (
+    state.resources.find(({ record: candidate }) => candidate.id === id)?.record.title || id
+  ));
+  const typeLabel = (record) => record.type === "document" && record.documentKind
+    ? '<span>' + esc(state.model.resources.document.title) + '<small>' + esc(properCase(record.documentKind)) + '</small></span>'
+    : esc(state.model.resources[record.type].title);
+  const approval = (record) => {
+    const approvers = approverNames(record);
+    const bound = Boolean(record.approvedContentRevisions || record.effectiveContentRevisions);
+    if (!record.approvedOn || !approvers.length) return '<span class="muted">Not approved</span>';
+    return '<span>' + esc(record.approvedOn) + '<small>' + esc(approvers.join(", ")) + (bound ? ' · Revision bound' : '') + '</small></span>';
+  };
+  const row = (entry) => {
+    const record = entry.record;
+    const detail = '#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '?stage=policies' + (record.type === "document" ? '&documentScope=program' : '');
+    const owners = ownerNames(record);
+    return '<tr data-policy-content-row data-history="' + (["superseded", "retired"].includes(record.status) ? 'true' : 'false') + '"><td data-label="Name" data-primary-field><a class="record-title" href="' + detail + '">' + esc(record.title) + '</a><small><code>' + esc(record.id) + '</code></small></td><td data-label="Type" class="policy-content-type">' + typeLabel(record) + '</td><td data-label="Owner">' + (owners.length ? esc(owners.join(", ")) : '<span class="muted">Missing</span>') + '</td><td data-label="Status">' + formatValue(displayStatus(record), "status", record.type, true) + '</td><td data-label="Approval" class="policy-content-approval">' + approval(record) + '</td><td data-label="Next action">' + policyContentWorkflowCell(entry) + '</td></tr>';
+  };
+  const add = !state.readOnly
+    ? '<details class="policy-content-add"><summary class="button primary">Add</summary><div><button type="button" data-add-policy-content="policy">Policy</button><button type="button" data-add-policy-content="document">Document</button><button type="button" data-add-policy-content="training">Training</button></div></details>'
+    : '';
+  const emptyRow = '<tr><td colspan="6">' + empty('No governed content has been created.') + '</td></tr>';
+  const html = '<section class="policy-content-table"><div class="section-head"><div><p class="kicker">Governed content</p><h2>Policies</h2><p>Review every program artifact in one place. Each row keeps its own type-specific fields and Git file.</p></div><div class="policy-content-tools"><label><span class="sr-only">Filter policies</span><input type="search" data-policy-content-search placeholder="Filter policies"></label><label class="history-toggle"><input type="checkbox" data-policy-content-history> Show retired</label>' + add + '</div></div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>Name</th><th>Type</th><th>Owner</th><th>Status</th><th>Approval</th><th>Next action</th></tr></thead><tbody data-policy-content-body>' + (entries.length ? entries.map(row).join('') : emptyRow) + '</tbody></table></div><p class="policy-content-count" data-policy-content-count></p></section>';
+  queueMicrotask(() => wirePoliciesTable(entries.length));
+  return html;
+}
+
+function wirePoliciesTable(total) {
+  const table = root.querySelector('.policy-content-table');
+  if (!table) return;
+  const search = table.querySelector('[data-policy-content-search]');
+  const history = table.querySelector('[data-policy-content-history]');
+  const count = table.querySelector('[data-policy-content-count]');
+  const filter = () => {
+    const query = search.value.trim().toLowerCase();
+    let visible = 0;
+    table.querySelectorAll('[data-policy-content-row]').forEach((row) => {
+      const show = (history.checked || row.dataset.history !== 'true')
+        && (!query || row.textContent.toLowerCase().includes(query));
+      row.hidden = !show;
+      if (show) visible += 1;
+    });
+    count.textContent = visible + ' of ' + total + ' ' + pluralize('artifact', total);
+  };
+  search.addEventListener('input', filter);
+  history.addEventListener('change', filter);
+  table.querySelectorAll('[data-add-policy-content]').forEach((button) => {
+    button.addEventListener('click', () => openEditor(button.dataset.addPolicyContent));
+  });
+  filter();
+}
+
+function policyContentWorkflowCell(entry) {
+  const record = entry.record;
+  const items = recordWorkflowItems(record.type, record.id);
+  if (!items.length) return '<span class="record-workflow-clear">No calculated action</span>';
+  const item = items[0];
+  const href = workflowItemHref(item) || '#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '?stage=policies';
+  const title = ["draft", "in-review"].includes(record.status)
+    ? "Complete and approve"
+    : record.status === "approved"
+      ? "Implement and activate"
+      : "Resolve readiness gaps";
+  return '<a class="record-workflow-action policy-content-next-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(title) + '</strong><small>' + items.length + ' ' + pluralize('check', items.length) + '</small></span></a>';
 }
 
 function renderDocumentActivationAssessments() {
-  const assessments = state.programReadiness?.documentActivations || [];
+  const assessments = [
+    ...(state.programReadiness?.documentActivations || []).map((item) => ({ ...item, resourceType: "document", resourceId: item.documentId })),
+    ...(state.programReadiness?.trainingActivations || []).map((item) => ({ ...item, resourceType: "training", resourceId: item.trainingId }))
+  ];
   if (!assessments.length) return "";
   const candidates = assessments.filter(({ state }) => state === "ready-to-activate");
   const cards = assessments.map((assessment) => {
@@ -391,12 +473,16 @@ function renderDocumentActivationAssessments() {
     const controls = assessment.missingImplementationControlIds.length
       ? '<div class="policy-activation-gaps"><div><small>Controls still being implemented</small><div class="evidence-map-references">' + assessment.missingImplementationControlIds.map((id) => formatReference(id, "control")).join("") + '</div></div></div>'
       : "";
-    return '<article class="policy-activation-card ' + esc(assessment.state) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (operating ? "good" : "warn") + '">' + esc(assessment.label) + '</span><h3><a href="#/resource/document/' + encodeURIComponent(assessment.documentId) + '?stage=controls&documentScope=program">' + esc(assessment.title) + '</a></h3></div><small>' + assessment.gapCount + ' ' + pluralize("gap", assessment.gapCount) + '</small></div>' + controls + '<div class="policy-activation-actions"><a class="button" href="#/resource/document/' + encodeURIComponent(assessment.documentId) + '?stage=controls&documentScope=program">View Document</a></div></article>';
+    const schedule = assessment.resourceType === "training" && !assessment.assignmentScheduled
+      ? '<p class="policy-activation-warning">Enable at least one assignment Obligation before activating this Training.</p>'
+      : '';
+    const detail = '#/resource/' + assessment.resourceType + '/' + encodeURIComponent(assessment.resourceId) + '?stage=controls' + (assessment.resourceType === "document" ? '&documentScope=program' : '');
+    return '<article class="policy-activation-card ' + esc(assessment.state) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (operating ? "good" : "warn") + '">' + esc(assessment.label) + '</span><h3><a href="' + detail + '">' + esc(assessment.title) + '</a></h3></div><small>' + assessment.gapCount + ' ' + pluralize("gap", assessment.gapCount) + '</small></div>' + controls + schedule + '<div class="policy-activation-actions"><a class="button" href="' + detail + '">View ' + esc(properCase(assessment.resourceType)) + '</a></div></article>';
   }).join("");
   const action = candidates.length && !state.readOnly
-    ? '<div class="evidence-map-actions"><button class="button primary" type="button" data-review-document-activation>Review Document activation</button></div>'
+    ? '<div class="evidence-map-actions"><button class="button primary" type="button" data-review-document-activation>Review content activation</button></div>'
     : "";
-  return '<section class="policy-activation"><div class="evidence-map-head"><div><p class="kicker">Governed Document cutover</p><h2>Activate the approved plans and schedules</h2><p>After the linked requirements are implemented, activate each unchanged approved Document. FileGRC records a separate activation date and binds the exact activated revision.</p></div>' + action + '</div><div class="policy-activation-grid">' + cards + '</div></section>';
+  return '<section class="policy-activation"><div class="evidence-map-head"><div><p class="kicker">Program content cutover</p><h2>Activate approved program content</h2><p>After linked requirements are implemented and Training assignment Obligations are ready, activate each unchanged approved Document and Training record. FileGRC records a separate activation date and binds the exact activated revision.</p></div>' + action + '</div><div class="policy-activation-grid">' + cards + '</div></section>';
 }
 
 function renderAuditDocumentActivationAssessments() {
@@ -422,11 +508,16 @@ function renderAuditDocumentActivationAssessments() {
 function openDocumentActivationDialog(auditId = null) {
   const candidates = (auditId
     ? state.auditPreparations?.[auditId]?.documentActivations || []
-    : state.programReadiness?.documentActivations || []).filter(({ state }) => state === "ready-to-activate");
+    : [
+        ...(state.programReadiness?.documentActivations || []).map((item) => ({ ...item, resourceType: "document", resourceId: item.documentId })),
+        ...(state.programReadiness?.trainingActivations || []).map((item) => ({ ...item, resourceType: "training", resourceId: item.trainingId }))
+      ]).filter(({ state }) => state === "ready-to-activate");
   const entryById = new Map(state.resources
-    .filter(({ record }) => record.type === "document" && record.status === "approved")
+    .filter(({ record }) => (auditId ? record.type === "document" : ["document", "training"].includes(record.type)) && record.status === "approved")
     .map((entry) => [entry.record.id, entry]));
-  const ready = candidates.filter(({ documentId }) => entryById.has(documentId));
+  const ready = candidates.map((item) => auditId
+    ? { ...item, resourceType: "document", resourceId: item.documentId }
+    : item).filter(({ resourceId }) => entryById.has(resourceId));
   if (!ready.length) return;
   const activators = state.resources
     .filter(({ record }) => record.type === "person" && record.status === "active")
@@ -436,13 +527,13 @@ function openDocumentActivationDialog(auditId = null) {
   dialog.className = "commit-dialog event-dialog policy-activation-dialog";
   dialog.setAttribute("aria-labelledby", "document-activation-dialog-title");
   const step = auditId ? "Step 5" : "Step 3";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + step + ' activation</p><h2 id="document-activation-dialog-title">Review governed Document activation</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' +
-    '<p>' + (auditId ? 'These engagement Documents are complete and independently approved for the selected Audit.' : 'These Documents already have independent Step 2 approvals and implemented linked requirements.') + ' Activation records the Person who puts each unchanged approved revision into use.</p>' +
-    '<div class="policy-activation-selections">' + ready.map((assessment) => '<label class="policy-activation-selection"><input type="checkbox" name="documentId" value="' + esc(assessment.documentId) + '" checked><span><strong>' + esc(assessment.title) + '</strong><small>Approved ' + esc(assessment.approvedOn) + (auditId ? ' · Engagement facts complete' : ' · All linked Controls implemented') + '</small></span></label>').join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + step + ' activation</p><h2 id="document-activation-dialog-title">Review governed content activation</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' +
+    '<p>' + (auditId ? 'These Audit Documents are complete and independently approved for the selected Audit.' : 'These program Documents and Training records already have independent Step 2 approvals, implemented linked requirements, and any required schedules.') + ' Activation records the Person who puts each unchanged approved revision into use.</p>' +
+    '<div class="policy-activation-selections">' + ready.map((assessment) => '<label class="policy-activation-selection"><input type="checkbox" name="resourceId" value="' + esc(assessment.resourceId) + '" checked><span><strong>' + esc(assessment.title) + '</strong><small>' + esc(properCase(assessment.resourceType)) + ' · Approved ' + esc(assessment.approvedOn) + (auditId ? ' · Engagement facts complete' : ' · Implementation ready') + '</small></span></label>').join("") + '</div>' +
     '<label><span>Activated by</span><select name="activatedById" required><option value="">Select the Person who performs this activation</option>' + activators.map((person) => '<option value="' + esc(person.id) + '">' + esc(person.title) + '</option>').join("") + '</select></label>' +
     '<label><span>Activation date</span><input name="activatedOn" type="date" value="' + esc(today) + '" readonly required></label>' +
     '<label><span>Effective date</span><input name="effectiveOn" type="date" min="' + esc(today) + '" value="' + esc(today) + '" required></label>' +
-    '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Activate selected Documents</button></div></form>';
+    '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Activate selected content</button></div></form>';
   document.body.append(dialog);
   const close = () => dialog.close();
   dialog.querySelector(".icon-button").addEventListener("click", close);
@@ -451,23 +542,23 @@ function openDocumentActivationDialog(auditId = null) {
   dialog.querySelector("form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!event.currentTarget.reportValidity() || dialog.dataset.mutationBusy === "true") return;
-    const documentIds = [...event.currentTarget.querySelectorAll('[name="documentId"]:checked')].map(({ value }) => value);
-    if (!documentIds.length) {
-      dialog.querySelector(".dialog-error").textContent = "Select at least one approved Document to activate.";
+    const resourceIds = [...event.currentTarget.querySelectorAll('[name="resourceId"]:checked')].map(({ value }) => value);
+    if (!resourceIds.length) {
+      dialog.querySelector(".dialog-error").textContent = "Select at least one approved artifact to activate.";
       return;
     }
-    setMutationBusy(dialog, true, "Activating…", "Activate selected Documents");
+    setMutationBusy(dialog, true, "Activating…", "Activate selected content");
     try {
-      const response = await localFetch("/api/document-activations", {
+      const response = await localFetch(auditId ? "/api/document-activations" : "/api/governed-content-activations", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          documentIds,
+          ...(auditId ? { documentIds: resourceIds } : { resourceIds }),
           ...(auditId ? { auditId } : {}),
           activatedByIds: [event.currentTarget.elements.activatedById.value],
           activatedOn: event.currentTarget.elements.activatedOn.value,
           effectiveOn: event.currentTarget.elements.effectiveOn.value,
-          expectedRevisions: Object.fromEntries(documentIds.map((documentId) => [documentId, entryById.get(documentId).revision]))
+          expectedRevisions: Object.fromEntries(resourceIds.map((resourceId) => [resourceId, entryById.get(resourceId).revision]))
         })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
@@ -475,7 +566,7 @@ function openDocumentActivationDialog(auditId = null) {
       dialog.close();
       render();
     } catch (error) {
-      setMutationBusy(dialog, false, "", "Activate selected Documents");
+      setMutationBusy(dialog, false, "", "Activate selected content");
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });
@@ -499,7 +590,7 @@ function renderPolicyActivationAssessments() {
       gapGroup("Planned or partial Controls", assessment.plannedOrPartialControlIds, "control") +
       gapGroup("Missing active Components", assessment.missingComponentControlIds, "control") +
       gapGroup("Missing ready evidence sources", assessment.missingEvidenceSourceControlIds, "control") +
-      gapGroup("Missing enabled schedules", assessment.missingScheduleControlIds, "control") +
+      gapGroup("Missing enabled Obligations", assessment.missingScheduleControlIds, "control") +
       gapGroup("Inactive governed Documents", assessment.missingGovernedDocumentIds || [], "document") +
       gapGroup("Unresolved Exceptions", assessment.unresolvedExceptionIds, "exception") +
       gapGroup("Documented Exceptions", assessment.documentedExceptionIds, "exception") + '</div>' +
@@ -1031,6 +1122,13 @@ function stagePageItems(stage, destination) {
         && item.code === "governance.appointment.independent-policy-reviewer"
     )
   ));
+  if (stage.id === "policies" && destination.href === "#/stage/policies") {
+    return items.sort((left, right) => (
+      workflowItemStatePriority(left) - workflowItemStatePriority(right)
+      || (left.priority ?? workflowItemPriority(left)) - (right.priority ?? workflowItemPriority(right))
+      || left.key.localeCompare(right.key)
+    ));
+  }
   return items.filter((item) => {
     if (
       destination.type === "requirement"
@@ -2147,8 +2245,8 @@ function auditSpecificDocument(record) {
 }
 
 function documentListTitle(params = new URLSearchParams()) {
-  if (params.get("documentScope") === "audit") return "Audit-specific Documents";
-  if (params.get("documentScope") === "program") return "Governed Plans and Schedules";
+  if (params.get("documentScope") === "audit") return "Audit Documents";
+  if (params.get("documentScope") === "program") return "Program Documents";
   return "Documents";
 }
 
@@ -3535,7 +3633,8 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   }
   if (field.type === "enum" || field.type === "rating" || field.type === "outcome") {
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
-    const activationManagedType = ["policy", "document"].includes(type);
+    const activationManagedType = ["policy", "document"].includes(type)
+      || (type === "training" && Boolean(state.model.resources.training?.fields?.activatedContentRevisions));
     const availableValues = activationManagedType && name === "status" && value !== "active"
       ? values.filter((item) => item !== "active")
       : values;
@@ -3543,6 +3642,8 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     const enumHelp = activationManagedType && name === "status"
       ? type === "document"
         ? "Approval ends at Approved. Activate program Documents from Step 3 after implementation, and engagement Documents from Step 5 after their Audit facts are complete."
+        : type === "training"
+          ? "Step 2 ends at Approved. Activate Training from Step 3 after its Controls and assignment Obligation are ready."
         : "Step 2 ends at Approved. Activate approved Policies from the Step 3 Controls-page cutover."
       : help;
     return fieldWrap(name, "string", label, requiredMark, control, enumHelp, required);
@@ -4648,6 +4749,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .workflow-findings>a:hover{border-color:var(--accent-light);box-shadow:0 3px 9px rgba(21,40,33,.05)}.workflow-findings>a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.stage-page-card-head{align-items:flex-start}.stage-page-completion-state{flex:0 0 auto;max-width:150px;padding:5px 8px;border-radius:99px;background:#f7e9cf;color:#855717;font-size:9.6px;font-weight:750;line-height:1.25;text-align:right}.stage-page-completion-state.complete{background:#ddefe5;color:#176143}.obligation-card.workflow-target{outline:2px solid var(--focus);outline-offset:3px}.obligation-card-foot{flex-wrap:wrap}.obligation-card-foot .obligation-links{flex:1 1 120px}
 .evidence-attachments .panel-head{align-items:flex-start}.evidence-attachments .panel-head h3{margin:0}.evidence-attachments .panel-head p{margin:4px 0 0;color:var(--muted);font-size:10px}.evidence-attachments ul{list-style:none;margin:0;padding:0}.evidence-attachments li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.evidence-attachments li:first-child{border-top:0}.evidence-attachments strong,.evidence-attachments small{display:block}.evidence-attachments strong{font-size:11px}.evidence-attachments small{margin-top:2px;color:var(--muted);font-size:9px;overflow-wrap:anywhere}.evidence-attachments .attachment-empty{display:block;color:var(--muted);font-size:10px;line-height:1.45}.danger-text{color:var(--red)}
 .policy-lifecycle-note.single{grid-template-columns:1fr}
+.policy-content-table{margin-top:22px}.policy-content-table>.section-head{align-items:end}.policy-content-table>.section-head h2{font:500 27.6px Georgia,serif;margin:5px 0 6px}.policy-content-table>.section-head p:not(.kicker){max-width:720px;margin:0;color:var(--muted);font-size:12px;line-height:1.5}.policy-content-tools{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.policy-content-tools input[type="search"]{min-width:210px;border:1px solid var(--line);border-radius:7px;background:var(--field);padding:9px 11px}.history-toggle{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}.policy-content-add{position:relative}.policy-content-add>summary{list-style:none}.policy-content-add>summary::-webkit-details-marker{display:none}.policy-content-add>div{position:absolute;right:0;z-index:5;display:grid;min-width:150px;margin-top:6px;padding:5px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow)}.policy-content-add button{border:0;border-radius:5px;background:transparent;padding:8px 10px;color:var(--ink);text-align:left;cursor:pointer}.policy-content-add button:hover{background:var(--accent-soft)}.policy-content-type span,.policy-content-approval span{display:block}.policy-content-type small,.policy-content-approval small{display:block;margin-top:3px;color:var(--muted);font-size:9.6px}.policy-content-count{margin:9px 2px 0;color:var(--muted);font-size:10.8px;text-align:right}
 .policy-library-proposals{min-width:0}.policy-library-proposals article,.policy-library-proposals details{min-width:0}.policy-library-proposals pre{box-sizing:border-box;max-width:100%;overflow:auto;padding:9px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:9px;line-height:1.45}
 .policy-activation-actions{display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .policy-activation-review-warning{margin-top:14px;padding:12px 14px;border:1px solid #d8bd78;border-radius:8px;background:#fff8e8}.policy-activation-review-warning>strong{font-size:12px}.policy-activation-review-warning ul{display:grid;gap:5px;margin:9px 0;padding-left:20px;font-size:10.8px}.policy-activation-review-warning p{margin:9px 0 0;color:#6d4917;font-size:11px;line-height:1.5}
