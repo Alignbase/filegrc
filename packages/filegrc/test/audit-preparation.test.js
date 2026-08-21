@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import {
   assessAuditPreparation,
   createResource,
@@ -14,9 +13,9 @@ import {
   prepareEvidencePacket,
   serveWorkspace
 } from "../src/index.js";
-import { makeWorkspace, writeJson } from "./helpers.js";
+import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 
 test("initializes model-owned Type 2 populations and management document links", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-audit-preparation-"));

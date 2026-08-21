@@ -2,8 +2,13 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { loadModel } from "../model/index.js";
 import { resolveWorkspaceRoot } from "./paths.js";
+import { measureTiming } from "./timing.js";
 
 export async function loadWorkspace(input = process.cwd()) {
+  return measureTiming("workspace-load", () => loadWorkspaceUnmeasured(input));
+}
+
+async function loadWorkspaceUnmeasured(input) {
   const root = resolveWorkspaceRoot(input);
   const dataRoot = join(root, "data");
   const diagnostics = [];

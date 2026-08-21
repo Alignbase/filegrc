@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import {
   completeObligationOccurrence,
   createAppState,
@@ -18,9 +17,9 @@ import {
   updateResource,
   validateWorkspace
 } from "../src/index.js";
-import { makeWorkspace } from "./helpers.js";
+import { executeCli, makeWorkspace } from "./helpers.js";
 
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 const MODEL_V2 = loadModel("2");
 const MODEL_V5 = loadModel("5");
 const planObligations = (resources, options = {}) => planObligationsWithModel(resources, {

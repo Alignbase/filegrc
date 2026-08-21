@@ -12,6 +12,7 @@ import {
   commitWorkspace,
   getChangedDataPathsSinceRevision,
   getFileAtRevision,
+  getFilesAtRevisions,
   getFileHistory,
   GitOperationError,
   hasGitRevision,
@@ -51,6 +52,18 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   const initialCommit = getGitSummary(root).commit;
   assert.equal(hasGitRevision(root, initialCommit), true);
   assert.equal(JSON.parse(getFileAtRevision(root, initialCommit, "data/people/person-owner.json")).title, "Program Owner");
+  const historicalFiles = getFilesAtRevisions(root, [
+    { revision: initialCommit, relativePath: "data/people/person-owner.json" },
+    { revision: initialCommit, relativePath: "data/people/missing.json" },
+    { revision: initialCommit, relativePath: "data/workspace.json" }
+  ]);
+  assert.equal(JSON.parse(historicalFiles[0]).title, "Program Owner");
+  assert.equal(historicalFiles[1], null);
+  assert.equal(JSON.parse(historicalFiles[2]).id, "workspace");
+  assert.throws(
+    () => getFilesAtRevisions(root, [{ revision: initialCommit, relativePath: "data/people/person-owner.json\nHEAD:package.json" }]),
+    /require a Git commit and a data\/ path/
+  );
   assert.equal(hasGitRevision(root, "0000000000000000000000000000000000000000"), false);
   assert.equal(hasGitRevision(root, "not-a-commit"), false);
   assert.equal(getFileHistory(root, "data/../outside.txt"), null);

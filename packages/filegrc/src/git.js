@@ -133,29 +133,88 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, o
 }
 
 export function getFileAtRevision(input, revision, relativePath) {
+  return getFilesAtRevisions(input, [{ revision, relativePath }])[0];
+}
+
+export function getFilesAtRevisions(input, requests) {
   const root = resolveWorkspaceRoot(input);
-  if (!/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)) {
+  const invalid = Array.isArray(requests) && requests.find(({ revision, relativePath } = {}) => (
+    !/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)
+  ));
+  if (!Array.isArray(requests) || invalid) {
     throw new Error("Historical file exports require a Git commit and a data/ path.");
   }
+  if (!requests.length) return [];
   try {
     const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
     const workspacePrefix = relative(topLevel, root).split(sep).join("/");
-    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return null;
-    const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
-    return execFileSync("git", ["show", `${revision}:${repositoryPath}`], {
+    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return requests.map(() => null);
+    const results = [];
+    for (let offset = 0; offset < requests.length; offset += 4) {
+      const batch = requests.slice(offset, offset + 4);
+      const specifications = batch.map(({ revision, relativePath }) => {
+        const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
+        return `${revision}:${repositoryPath}`;
+      });
+      try {
+        const output = measureTimingSync("git-history-export", () => execFileSync("git", ["cat-file", "--batch"], {
+          cwd: root,
+          input: `${specifications.join("\n")}\n`,
+          stdio: ["pipe", "pipe", "ignore"],
+          timeout: 10_000,
+          maxBuffer: 80_000_000
+        }));
+        results.push(...parseBatchObjects(output, batch.length));
+      } catch {
+        results.push(...specifications.map((specification) => readHistoricalFile(root, specification)));
+      }
+    }
+    return results;
+  } catch {
+    return requests.map(() => null);
+  }
+}
+
+function readHistoricalFile(root, specification) {
+  try {
+    return measureTimingSync("git-history-export", () => execFileSync("git", ["show", specification], {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
       maxBuffer: 20_000_000
-    });
+    }));
   } catch {
     return null;
   }
 }
 
+function parseBatchObjects(output, expected) {
+  const results = [];
+  let offset = 0;
+  for (let index = 0; index < expected; index += 1) {
+    const headerEnd = output.indexOf(10, offset);
+    if (headerEnd < 0) throw new Error("Git returned an incomplete historical object header.");
+    const header = output.subarray(offset, headerEnd).toString("utf8");
+    offset = headerEnd + 1;
+    if (header.endsWith(" missing")) {
+      results.push(null);
+      continue;
+    }
+    const size = Number(header.split(" ").at(-1));
+    if (!Number.isSafeInteger(size) || size < 0 || offset + size >= output.length) {
+      throw new Error("Git returned an invalid historical object size.");
+    }
+    results.push(output.subarray(offset, offset + size).toString("utf8"));
+    offset += size;
+    if (output[offset++] !== 10) throw new Error("Git returned an incomplete historical object.");
+  }
+  return results;
+}
+
 function isSafeDataGitPath(value) {
   return isCanonicalDataPath(value)
+    && !/[\r\n]/.test(value)
     && value.startsWith("data/")
     && value !== "data/";
 }
@@ -230,6 +289,7 @@ export async function getWorkspaceRevisionSnapshot(input = process.cwd()) {
       available: true,
       commit: parsed.commit,
       shortCommit: parsed.commit?.slice(0, 8) ?? "no commits",
+      branch: parsed.branch,
       clean: parsed.changePaths.length === 0,
       changes: parsed.changePaths,
       workspaceChangePaths: parsed.changePaths
@@ -1121,11 +1181,14 @@ function parsePorcelainV2(source, topLevel, root) {
 function parseWorkspaceRevision(source) {
   const fields = source.split("\0").filter(Boolean);
   let commit = null;
+  let branch = null;
   const changePaths = [];
   for (let index = 0; index < fields.length; index += 1) {
     const field = fields[index];
     if (field.startsWith("# branch.oid ")) {
       commit = field.slice(13) === "(initial)" ? null : field.slice(13);
+    } else if (field.startsWith("# branch.head ")) {
+      branch = field.slice(14) === "(detached)" ? null : field.slice(14);
     } else if (/^[12u?!] /.test(field)) {
       changePaths.push(porcelainV2Path(field));
       if (field.startsWith("2 ")) {
@@ -1135,6 +1198,7 @@ function parseWorkspaceRevision(source) {
   }
   return {
     commit,
+    branch,
     changePaths: [...new Set(changePaths.filter(Boolean))].sort()
   };
 }
@@ -1290,13 +1354,13 @@ async function tryGitAsync(cwd, args, operation) {
 }
 
 function git(cwd, args) {
-  return execFileSync("git", args, {
+  return measureTimingSync("git-command-sync", () => execFileSync("git", args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 10_000,
     maxBuffer: 20_000_000
-  }).trim();
+  }).trim());
 }
 
 function tryGit(cwd, args) {

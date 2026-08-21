@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -21,9 +22,13 @@ import {
   scaffoldResourceMutation,
   setupExternalReviewerGovernance
 } from "../src/index.js";
-import { makeWorkspace, writeJson } from "./helpers.js";
+import { runCli } from "../src/cli.js";
+import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
-const execute = promisify(execFile);
+const executeProcess = promisify(execFile);
+const execute = (executable, args, options) => executable === process.execPath
+  ? executeCli(runCli, executable, args, options)
+  : executeProcess(executable, args, options);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("reconciles a direct-file role change only after explicit event facts", async (context) => {
@@ -89,6 +94,7 @@ test("does not treat initial draft policy adoption as a policy revision event", 
 });
 
 test("previews and applies the external-reviewer bundle without inferring company size", async (context) => {
+  const started = performance.now();
   const root = await modelThreeWorkspace(context, "filegrc-external-reviewer-");
   const scaffold = await scaffoldExternalReviewerGovernance(root);
   assert.equal(scaffold.reviewerName, null);
@@ -153,6 +159,9 @@ test("previews and applies the external-reviewer bundle without inferring compan
     workflow.findings.find(({ code }) => code === "governance.appointment.independent-policy-reviewer")?.state,
     "complete"
   );
+  const elapsed = performance.now() - started;
+  context.diagnostic(`external reviewer workflow ${elapsed.toFixed(1)} ms`);
+  assert.ok(elapsed < 3_000, `expected the external reviewer workflow under 3 seconds, received ${elapsed.toFixed(1)} ms`);
 });
 
 test("carries a Type 1 scope into a reviewable Type 2 planning record", async (context) => {

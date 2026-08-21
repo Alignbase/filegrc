@@ -13,6 +13,7 @@ import {
   scaffoldCollectionReview,
   validateWorkspace
 } from "../../filegrc/src/index.js";
+import { runCli } from "../src/cli.js";
 import { createFilegrc } from "../src/index.js";
 
 test("creates a complete generic repository with one dependency", async (context) => {
@@ -935,8 +936,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   const target = join(parent, "program");
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
   execFileSync("git", ["init"], { cwd: parent, stdio: "ignore" });
-  const output = execFileSync(process.execPath, [
-    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+  const output = await runCreateCli([
     target,
     "--company-name",
     "Example Company",
@@ -951,7 +951,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
     "--filegrc-version",
     "1.2.3",
     "--no-install"
-  ], { encoding: "utf8" });
+  ]);
   assert.match(output, /filegrc 1\.2\.3: installation skipped/);
   assert.match(output, /Use a dedicated private repository for your FileGRC workspace/);
   assert.match(output, /Git: joined existing worktree/);
@@ -988,8 +988,7 @@ test("warns when creation joins a detached Git worktree", async (context) => {
     "Initialize worktree"
   ], { cwd: parent, stdio: "ignore" });
   execFileSync("git", ["checkout", "--detach"], { cwd: parent, stdio: "ignore" });
-  const output = execFileSync(process.execPath, [
-    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+  const output = await runCreateCli([
     target,
     "--company-name",
     "Example Company",
@@ -1004,14 +1003,13 @@ test("warns when creation joins a detached Git worktree", async (context) => {
     "--filegrc-version",
     "1.2.3",
     "--no-install"
-  ], { encoding: "utf8" });
+  ]);
   assert.match(output, /Git: joined existing worktree/);
   assert.match(output, /browser will open in read-only mode/);
   assert.match(output, /configured authoritative branch/);
   assert.match(output, /File creation and CLI validation still/);
 
-  const manualOutput = execFileSync(process.execPath, [
-    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+  const manualOutput = await runCreateCli([
     manualTarget,
     "--company-name",
     "Example Company",
@@ -1028,7 +1026,7 @@ test("warns when creation joins a detached Git worktree", async (context) => {
     "--repository-mode",
     "manual",
     "--no-install"
-  ], { encoding: "utf8" });
+  ]);
   assert.match(manualOutput, /Git: joined existing worktree/);
   assert.doesNotMatch(manualOutput, /browser will open in read-only mode/);
 });
@@ -1058,8 +1056,7 @@ test("standalone CLI creation starts on main without a monorepo warning", async 
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-standalone-output-"));
   const target = join(parent, "program");
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
-  const output = execFileSync(process.execPath, [
-    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+  const output = await runCreateCli([
     target,
     "--company-name",
     "Example Company",
@@ -1074,7 +1071,7 @@ test("standalone CLI creation starts on main without a monorepo warning", async 
     "--filegrc-version",
     "1.2.3",
     "--no-install"
-  ], { encoding: "utf8" });
+  ]);
   assert.match(output, /Git: initialized new repository/);
   assert.match(output, /Use a dedicated private repository for your FileGRC workspace/);
   assert.doesNotMatch(output, /joined an existing Git repository/);
@@ -1106,12 +1103,11 @@ test("creates and configures a service from one JSON config", async (context) =>
       programGoal: "type-2"
     }
   }, null, 2)}\n`, "utf8");
-  const output = execFileSync(process.execPath, [
-    fileURLToPath(new URL("../bin/create-filegrc.js", import.meta.url)),
+  const output = await runCreateCli([
     target,
     "--config",
     configPath
-  ], { encoding: "utf8" });
+  ]);
   assert.match(output, /Stage foundation: created \(12 records\)/);
   assert.match(output, /Stage soc2-security: created \(155 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
@@ -1146,4 +1142,27 @@ async function collectTextFiles(directory) {
     }
   }
   return result;
+}
+
+async function runCreateCli(argv) {
+  const lines = [];
+  const originalLog = console.log;
+  const stdinTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  const stdoutTty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+  Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+  console.log = (...args) => lines.push(args.join(" "));
+  try {
+    await runCli(argv);
+    return `${lines.join("\n")}\n`;
+  } finally {
+    console.log = originalLog;
+    restoreProperty(process.stdin, "isTTY", stdinTty);
+    restoreProperty(process.stdout, "isTTY", stdoutTty);
+  }
+}
+
+function restoreProperty(target, name, descriptor) {
+  if (descriptor) Object.defineProperty(target, name, descriptor);
+  else delete target[name];
 }

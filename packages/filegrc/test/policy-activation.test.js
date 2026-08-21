@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import {
   activatePolicies,
   createResource,
@@ -16,9 +15,9 @@ import {
   serveWorkspace,
   updateResource
 } from "../src/index.js";
-import { makeWorkspace, writeJson } from "./helpers.js";
+import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("activates selected approved Policies atomically through the domain and CLI", async (context) => {

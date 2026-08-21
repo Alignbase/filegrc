@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
 import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, renderIndex } from "../src/web.js";
-import { makeWorkspace, writeJson } from "./helpers.js";
+import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
 const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.meta.url), "utf8");
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 const CLI = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("builds a self-contained read-only site", async (context) => {

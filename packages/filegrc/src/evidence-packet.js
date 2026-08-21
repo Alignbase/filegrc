@@ -11,9 +11,9 @@ import {
   coverageOverlaps,
   coverageStart
 } from "./coverage.js";
-import { getFileAtRevision, getGitSummary, getWorkspaceHistories, hasGitRevision } from "./git.js";
+import { getFilesAtRevisions, getGitSummary, getWorkspaceHistories, getWorkspaceRevisionSnapshot, hasGitRevision } from "./git.js";
 import { planObligations } from "./obligations.js";
-import { isWithin, resolveDataPath, resolveWorkspacePath } from "./paths.js";
+import { isWithin, resolveDataPath, resolveWorkspacePath, resolveWorkspaceRoot } from "./paths.js";
 import { parseCalendarDate } from "./recurrence.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -28,6 +28,9 @@ import {
   subsequentEventsReviewIssue
 } from "./soc2.js";
 import { validateWorkspace } from "./validate.js";
+import { measureTiming } from "./timing.js";
+
+const preparedPacketValidations = new WeakMap();
 
 const NON_EVIDENCE_RECORD_TYPES = new Set([
   "appointment",
@@ -246,7 +249,7 @@ export async function prepareEvidencePacket(input, options = {}) {
     `data/${entry.relativePath}`,
     ...markdownEntries(loaded.model, entry.record).map((markdown) => `data/${markdown.path}`)
   ]);
-  const historyRevision = getGitSummary(loaded.root);
+  const historyRevision = await getWorkspaceRevisionSnapshot(loaded.root);
   const histories = getWorkspaceHistories(
     loaded.root,
     selectedPaths,
@@ -326,7 +329,7 @@ export async function prepareEvidencePacket(input, options = {}) {
   });
   const errorCount = gaps.filter(({ severity }) => severity === "error").length;
   const warningCount = gaps.filter(({ severity }) => severity === "warning").length;
-  return {
+  const packet = {
     schemaVersion: 1,
     generatedAt,
     period: { start, end, basis },
@@ -400,6 +403,15 @@ export async function prepareEvidencePacket(input, options = {}) {
     gaps,
     records: packetRecords
   };
+  preparedPacketValidations.set(packet, {
+    validation,
+    revision: {
+      commit: packet.revision.commit,
+      branch: packet.revision.branch,
+      dataDigest: packet.revision.dataDigest
+    }
+  });
+  return packet;
 }
 
 function auditDocumentLifecycleSummaries(audit, model, byId) {
@@ -550,7 +562,17 @@ export async function writeEvidencePacket(input, packet, options = {}) {
   let outputOption = options.output || `.filegrc/evidence-packets/${baseName}`;
   requireDerivedOutputPath(outputOption);
   let output = resolveWorkspacePath(input, outputOption);
-  const validation = await validateWorkspace(input);
+  const prepared = preparedPacketValidations.get(packet);
+  const preparedValidation = prepared
+    && prepared.validation.loaded.root === resolveWorkspaceRoot(input)
+    && prepared.revision.commit === packet.revision?.commit
+    && prepared.revision.branch === packet.revision?.branch
+    && prepared.revision.dataDigest === packet.revision?.dataDigest
+    ? prepared.validation
+    : null;
+  const validation = preparedValidation
+    ? preparedValidation
+    : await validateWorkspace(input);
   if (!validation.ok) throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before writing evidence.`);
   await assertPacketSourceState(packet, validation.loaded);
   const entriesById = new Map(validation.loaded.entries.map((entry) => [entry.record.id, entry]));
@@ -612,11 +634,27 @@ export async function writeEvidencePacket(input, packet, options = {}) {
       }
     }
     const historyIndex = [];
+    const historicalFiles = [];
     for (const item of packet.records) {
-      await exportCommittedVersions(validation.loaded.root, output, item, item.path, item.history, historyIndex, files);
+      collectCommittedVersions(historicalFiles, item, item.path, item.history);
       for (const content of item.contentPaths || []) {
-        await exportCommittedVersions(validation.loaded.root, output, item, content.path, content.history, historyIndex, files);
+        collectCommittedVersions(historicalFiles, item, content.path, content.history);
       }
+    }
+    const historicalSources = getFilesAtRevisions(validation.loaded.root, historicalFiles);
+    for (let index = 0; index < historicalFiles.length; index += 1) {
+      const source = historicalSources[index];
+      if (source === null) continue;
+      const { item, sourcePath, history } = historicalFiles[index];
+      const exportedPath = join("history", item.type, item.id, history.commit, basename(sourcePath));
+      await writePacketFile(output, exportedPath, source, files);
+      historyIndex.push({
+        resourceId: item.id,
+        resourceType: item.type,
+        sourcePath,
+        exportedPath: exportedPath.split("\\").join("/"),
+        ...history
+      });
     }
     await writePacketFile(output, "history/index.json", `${JSON.stringify(historyIndex, null, 2)}\n`, files);
     await assertPacketSourceState(packet, validation.loaded);
@@ -638,30 +676,29 @@ export function generateEvidencePacket(input, options = {}) {
   });
 }
 
-async function exportCommittedVersions(root, output, item, sourcePath, history, historyIndex, files) {
+function collectCommittedVersions(target, item, sourcePath, history) {
   for (const revision of history || []) {
-    const source = getFileAtRevision(root, revision.commit, sourcePath);
-    if (source === null) continue;
-    const exportedPath = join("history", item.type, item.id, revision.commit, basename(sourcePath));
-    await writePacketFile(output, exportedPath, source, files);
-    historyIndex.push({
-      resourceId: item.id,
-      resourceType: item.type,
-      sourcePath,
-      exportedPath: exportedPath.split("\\").join("/"),
-      ...revision
-    });
+    target.push({ item, sourcePath, relativePath: sourcePath, revision: revision.commit, history: revision });
   }
 }
 
 async function writeChecksums(output, files) {
-  const lines = [];
-  for (const relativePath of [...files].sort()) {
-    const hash = createHash("sha256");
-    for await (const chunk of createReadStream(resolvePacketOutputPath(output, relativePath))) hash.update(chunk);
-    lines.push(`${hash.digest("hex")}  ${relativePath}`);
-  }
-  await writeFile(resolvePacketOutputPath(output, "SHA256SUMS"), `${lines.join("\n")}\n`, { encoding: "utf8", flag: "wx" });
+  await measureTiming("packet-output-hash", async () => {
+    const paths = [...files].sort();
+    const lines = new Array(paths.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(4, paths.length) }, async () => {
+      while (next < paths.length) {
+        const index = next++;
+        const relativePath = paths[index];
+        const hash = createHash("sha256");
+        for await (const chunk of createReadStream(resolvePacketOutputPath(output, relativePath))) hash.update(chunk);
+        lines[index] = `${hash.digest("hex")}  ${relativePath}`;
+      }
+    });
+    await Promise.all(workers);
+    await writeFile(resolvePacketOutputPath(output, "SHA256SUMS"), `${lines.join("\n")}\n`, { encoding: "utf8", flag: "wx" });
+  });
 }
 
 function controlMatrixCsv(packet) {
@@ -863,7 +900,7 @@ function requireDerivedOutputPath(value) {
 async function assertPacketSourceState(packet, loaded) {
   await assertLoadedEntriesCurrent(loaded);
   const dataDigest = await dataTreeDigest(loaded.root);
-  const git = getGitSummary(loaded.root);
+  const git = await getWorkspaceRevisionSnapshot(loaded.root);
   if (
     packet.revision?.dataDigest !== dataDigest
     || packet.revision?.commit !== git.commit
@@ -883,36 +920,38 @@ async function assertLoadedEntriesCurrent(loaded) {
 }
 
 async function dataTreeDigest(root) {
-  const hash = createHash("sha256");
-  updateDigestField(hash, "filegrc-data-tree-v1");
-  const visit = async (directory, prefix = "") => {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((a, b) => a.name.localeCompare(b.name));
-    for (const entry of entries) {
-      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) {
-        updateDigestField(hash, "directory");
-        updateDigestField(hash, relativePath);
-        await visit(path, relativePath);
-      } else if (entry.isFile()) {
-        const fileHash = createHash("sha256");
-        for await (const chunk of createReadStream(path)) fileHash.update(chunk);
-        updateDigestField(hash, "file");
-        updateDigestField(hash, relativePath);
-        updateDigestField(hash, fileHash.digest("hex"));
-      } else if (entry.isSymbolicLink()) {
-        updateDigestField(hash, "symlink");
-        updateDigestField(hash, relativePath);
-        updateDigestField(hash, await readlink(path));
-      } else {
-        updateDigestField(hash, "other");
-        updateDigestField(hash, relativePath);
+  return measureTiming("packet-data-hash", async () => {
+    const hash = createHash("sha256");
+    updateDigestField(hash, "filegrc-data-tree-v1");
+    const visit = async (directory, prefix = "") => {
+      const entries = await readdir(directory, { withFileTypes: true });
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          updateDigestField(hash, "directory");
+          updateDigestField(hash, relativePath);
+          await visit(path, relativePath);
+        } else if (entry.isFile()) {
+          const fileHash = createHash("sha256");
+          for await (const chunk of createReadStream(path)) fileHash.update(chunk);
+          updateDigestField(hash, "file");
+          updateDigestField(hash, relativePath);
+          updateDigestField(hash, fileHash.digest("hex"));
+        } else if (entry.isSymbolicLink()) {
+          updateDigestField(hash, "symlink");
+          updateDigestField(hash, relativePath);
+          updateDigestField(hash, await readlink(path));
+        } else {
+          updateDigestField(hash, "other");
+          updateDigestField(hash, relativePath);
+        }
       }
-    }
-  };
-  await visit(resolveDataPath(root, "."));
-  return `sha256:${hash.digest("hex")}`;
+    };
+    await visit(resolveDataPath(root, "."));
+    return `sha256:${hash.digest("hex")}`;
+  });
 }
 
 function updateDigestField(hash, value) {

@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import {
   activateDocuments,
   applyResourceBatch,
@@ -17,9 +16,9 @@ import {
   validateWorkspace
 } from "../src/index.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
-import { writeJson } from "./helpers.js";
+import { executeCli, writeJson } from "./helpers.js";
 
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("keeps governed Document approval and activation as separate lifecycle events", async (context) => {

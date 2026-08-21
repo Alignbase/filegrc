@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { loadModel } from "../model/index.js";
+import { runCli } from "../src/cli.js";
 import { assessAuditPreparation } from "../src/audit-preparation.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
@@ -14,9 +13,9 @@ import { migrateModel, planModelMigration } from "../src/model-migration.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { validateWorkspace } from "../src/validate.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
-import { makeWorkspace, writeJson } from "./helpers.js";
+import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("previews and atomically migrates every model v1 compatibility field", async (context) => {

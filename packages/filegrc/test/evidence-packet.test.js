@@ -5,6 +5,7 @@ import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/pr
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { promisify } from "node:util";
 import {
@@ -21,9 +22,11 @@ import {
   updateResource,
   writeEvidencePacket
 } from "../src/index.js";
+import { runCli } from "../src/cli.js";
 import { serializeWorkspaceMutation } from "../src/mutation.js";
-import { makeWorkspace } from "./helpers.js";
+import { collectTimings } from "../src/timing.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { executeCli, makeWorkspace } from "./helpers.js";
 
 test("exports approval and activation facts for governed Audit Documents", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-document-lifecycle-packet-"));
@@ -61,7 +64,10 @@ test("exports approval and activation facts for governed Audit Documents", async
   assert.match(html, /Download Document lifecycle index CSV/);
 });
 
-const execute = promisify(execFile);
+const executeProcess = promisify(execFile);
+const execute = (executable, args, options) => executable === process.execPath
+  ? executeCli(runCli, executable, args)
+  : executeProcess(executable, args, options);
 
 test("waits for workspace writes before generating a packet", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-serialized-packet-"));
@@ -615,12 +621,20 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "Bind Q1 evidence revision"]);
 
-  const packet = await prepareEvidencePacket(root, {
+  const prepareStarted = performance.now();
+  const prepared = await collectTimings(() => prepareEvidencePacket(root, {
     start: "2026-01-01",
     end: "2026-03-31",
     auditId: "audit-2026-type-2",
     generatedAt: "2026-04-01T12:00:00Z"
-  });
+  }));
+  const prepareElapsed = performance.now() - prepareStarted;
+  const packet = prepared.result;
+  context.diagnostic(`packet prepare ${prepareElapsed.toFixed(1)} ms; ${timingCounts(prepared.timings)}`);
+  assert.ok(prepareElapsed < 5_000, `expected packet preparation under 5 seconds, received ${prepareElapsed.toFixed(1)} ms`);
+  assert.equal(prepared.timings.validation.count, 1);
+  assert.equal(prepared.timings["workspace-load"].count, 1);
+  assert.equal(prepared.timings["packet-data-hash"].count, 1);
   assert.equal(packet.revision.clean, true);
   assert.match(packet.revision.dataDigest, /^sha256:[a-f0-9]{64}$/);
   assert.equal(packet.summary.obligationOccurrences, 1);
@@ -644,7 +658,16 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     writeEvidencePacket(root, packet, { output: "data/packet" }),
     /under \.filegrc/
   );
-  const written = await writeEvidencePacket(root, packet, { output: ".filegrc/test-packet" });
+  const writeStarted = performance.now();
+  const writeProfile = await collectTimings(() => writeEvidencePacket(root, packet, { output: ".filegrc/test-packet" }));
+  const writeElapsed = performance.now() - writeStarted;
+  const written = writeProfile.result;
+  context.diagnostic(`packet write ${writeElapsed.toFixed(1)} ms; ${timingCounts(writeProfile.timings)}`);
+  assert.ok(writeElapsed < 5_000, `expected packet writing under 5 seconds, received ${writeElapsed.toFixed(1)} ms`);
+  assert.equal(writeProfile.timings.validation, undefined);
+  assert.equal(writeProfile.timings["workspace-load"], undefined);
+  assert.equal(writeProfile.timings["packet-data-hash"].count, 2);
+  assert.equal(writeProfile.timings["packet-output-hash"].count, 1);
   const packetIndex = await readFile(join(written.output, "index.html"), "utf8");
   assert.match(packetIndex, /Quarterly risk meeting/);
   assert.match(packetIndex, /Create Q1 compliance records/);
@@ -687,6 +710,15 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     /stay inside the packet directory/
   );
   await assert.rejects(access(join(root, ".filegrc", "unsafe-packet")), /ENOENT/);
+
+  const originalDigest = packet.revision.dataDigest;
+  packet.revision.dataDigest = `sha256:${"0".repeat(64)}`;
+  const tamperedProfile = await collectTimings(() => assert.rejects(
+    writeEvidencePacket(root, packet, { output: ".filegrc/tampered-revision-packet" }),
+    /source changed/
+  ));
+  assert.equal(tamperedProfile.timings.validation.count, 1);
+  packet.revision.dataDigest = originalDigest;
 
   const actionPath = join(root, "data", "action-items", "action-item-q1-risk-review.json");
   const actionSource = await readFile(actionPath, "utf8");
@@ -786,10 +818,15 @@ test("never marks an unscoped packet with no evidence delivery-ready", async (co
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "Create empty program"]);
 
-  const packet = await prepareEvidencePacket(root, {
+  const started = performance.now();
+  const profile = await collectTimings(() => prepareEvidencePacket(root, {
     start: "2026-01-01",
     end: "2026-03-31"
-  });
+  }));
+  const elapsed = performance.now() - started;
+  const packet = profile.result;
+  context.diagnostic(`unscoped packet ${elapsed.toFixed(1)} ms; ${timingCounts(profile.timings)}`);
+  assert.ok(elapsed < 2_000, `expected unscoped packet preparation under 2 seconds, received ${elapsed.toFixed(1)} ms`);
   assert.equal(packet.readiness.status, "draft");
   assert.equal(packet.gaps.some(({ code }) => code === "missing-audit-scope"), true);
   assert.equal(packet.gaps.some(({ code }) => code === "missing-evidence"), true);
@@ -971,6 +1008,18 @@ test("limits event workflow coverage to runs that intersect the audit period", a
 
 function git(cwd, args) {
   return execute("git", args, { cwd });
+}
+
+function timingCounts(timings) {
+  return [
+    "workspace-load",
+    "validation",
+    "repository-revision",
+    "git-command-sync",
+    "git-history-export",
+    "packet-data-hash",
+    "packet-output-hash"
+  ].filter((name) => timings[name]).map((name) => `${name}=${timings[name].count}`).join(", ");
 }
 
 function managementDocumentMarkdown(title, documentKind) {

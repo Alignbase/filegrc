@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import {
   assessAuditPreparation,
   assessEvidenceMap,
@@ -17,9 +16,9 @@ import {
   serveWorkspace,
   updateResource
 } from "../src/index.js";
-import { makeWorkspace } from "./helpers.js";
+import { executeCli, makeWorkspace } from "./helpers.js";
 
-const execute = promisify(execFile);
+const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
 test("requires the starter oversight team to be activated with a separate current chair", async (context) => {

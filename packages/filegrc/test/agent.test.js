@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { runCli } from "../src/cli.js";
 import {
   buildAgentProgramPath,
   buildAgentGuide,
@@ -19,10 +20,19 @@ import {
   updateResource,
   validateWorkspace
 } from "../src/index.js";
-import { makeWorkspace } from "./helpers.js";
+import { executeCli, makeWorkspace } from "./helpers.js";
 
-const execute = promisify(execFile);
+const executeProcess = promisify(execFile);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+const execute = (executable, args) => executeCli(runCli, executable, args);
+
+test("CLI binary dispatches a focused guide smoke test", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-agent-cli-smoke-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const output = await executeProcess(process.execPath, [cli, "guide", "person", "--root", root, "--json"]);
+  assert.equal(JSON.parse(output.stdout).type, "person");
+});
 
 test("agent guides and scaffolds cover every resource type from the model", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-agent-guide-"));
