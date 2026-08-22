@@ -39,7 +39,7 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
 export function collectionRevisionInputs(loaded, resourceType, program) {
   const reviewed = scopedCollectionRecords(loaded, resourceType, program);
   if (!modelSupports(loaded.model, "program-scope")) {
-    return reviewed.map((record) => ({ record, value: record }));
+    return reviewed.map((record) => ({ record, value: record, includeContent: true }));
   }
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const records = new Map(reviewed.map((record) => [record.id, record]));
@@ -90,7 +90,9 @@ export function collectionRevisionInputs(loaded, resourceType, program) {
     record,
     value: reviewedIds.has(record.id)
       ? record
-      : dependencyRevisionValue(resourceType, record)
+      : dependencyRevisionValue(resourceType, record),
+    includeContent: reviewedIds.has(record.id)
+      || dependencyContentAffectsRevision(resourceType, record.type)
   }));
 }
 
@@ -138,9 +140,20 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program) {
   return common;
 }
 
+export function authoritativeSourceRevisionValue(record) {
+  return Object.fromEntries(Object.entries(record).filter(([field]) => (
+    !authoritativeSourceBookkeepingFields.has(field)
+  )));
+}
+
+const authoritativeSourceBookkeepingFields = new Set([
+  "tags",
+  "statusTransition"
+]);
+
 const dependencyFields = {
   framework: {
-    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "informationTypeIds", "classificationId", "internetExposed"],
+    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
     requirement: ["id", "type", "title", "frameworkId", "reference", "description", "parentRequirementId"]
   },
   vendor: {
@@ -154,20 +167,27 @@ const dependencyFields = {
   },
   component: {
     system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
-    control: ["id", "type", "status", "statement", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "componentIds", "evidenceSourceComponentIds"],
-    vendor: ["id", "type", "status", "category", "criticality", "description", "standardAgreement", "agreementDocumentId", "startDate", "endDate", "classificationId", "informationTypeIds"],
+    control: ["id", "type", "status", "systemIds", "componentIds", "evidenceSourceComponentIds"],
+    vendor: ["id", "type", "status", "category", "criticality", "description", "startDate", "endDate"],
     classification: ["id", "type", "status", "rank", "description", "handlingRequirements"],
     "information-type": ["id", "type", "status", "classificationId", "description"]
   },
   "complementary-control": {
-    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "informationTypeIds", "classificationId", "internetExposed"],
-    control: ["id", "type", "status", "statement", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "componentIds", "evidenceSourceComponentIds"],
+    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
+    control: ["id", "type", "status", "statement", "activity", "systemIds", "componentIds", "evidenceSourceComponentIds"],
     vendor: ["id", "type", "status", "category", "criticality", "description", "standardAgreement", "agreementDocumentId", "startDate", "endDate", "classificationId", "informationTypeIds"],
     requirement: ["id", "type", "title", "frameworkId", "reference", "description", "parentRequirementId"],
     commitment: ["id", "type", "status", "commitmentKind", "statement", "systemIds", "requirementIds", "controlIds", "customerFacing", "effectiveOn"],
     document: ["id", "type", "status", "documentKind", "version", "effectiveOn", "approvedOn", "approvedContentRevisions", "systemIds", "controlIds", "componentIds", "classificationId"],
-    component: ["id", "type", "status", "componentKind", "description", "vendorId", "systemUses", "informationUses", "internetExposed"]
+    component: ["id", "type", "status", "componentKind", "description", "criticality", "vendorId", "systemUses", "informationUses", "internetExposed", "classificationId", "continuityObjectives"]
   }
+};
+
+const dependencyContentTypes = {
+  framework: new Set(["system"]),
+  vendor: new Set(["document"]),
+  component: new Set(["system"]),
+  "complementary-control": new Set(["system", "control", "document", "component"])
 };
 
 function dependencyRevisionValue(resourceType, record) {
@@ -176,6 +196,10 @@ function dependencyRevisionValue(resourceType, record) {
   return Object.fromEntries(fields
     .filter((field) => record[field] !== undefined)
     .map((field) => [field, record[field]]));
+}
+
+function dependencyContentAffectsRevision(resourceType, dependencyType) {
+  return dependencyContentTypes[resourceType]?.has(dependencyType) || false;
 }
 
 function sorted(values) {

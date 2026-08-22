@@ -1225,7 +1225,36 @@ test("v4 externally managed collection revisions track the authoritative Compone
   const currentComponent = loaded.resources.find(({ id }) => id === component.id);
   await updateResource(root, "component", component.id, {
     ...currentComponent,
-    description: `${currentComponent.description} Inventory source details changed.`
+    tags: [...(currentComponent.tags || []), "inventory-source"]
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "current");
+
+  const taggedComponent = loaded.resources.find(({ id }) => id === component.id);
+  await updateResource(root, "component", component.id, {
+    ...taggedComponent,
+    extensions: {
+      "example.inventory": { sourceScope: "All material providers" }
+    }
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "stale");
+
+  await applyCollectionReview(root, {
+    resourceType: "vendor",
+    decision: "externally-managed",
+    rationale: "Reconfirmed the authoritative Component after its source scope changed.",
+    reviewedByIds: ["person-example"],
+    reviewedOn: "2026-08-19",
+    scopeRevision: "authoritative-vendor-source-2",
+    authoritativeComponentId: component.id,
+    confirmed: true
+  });
+  loaded = await loadWorkspace(root);
+  const scopedComponent = loaded.resources.find(({ id }) => id === component.id);
+  await updateResource(root, "component", component.id, {
+    ...scopedComponent,
+    description: `${scopedComponent.description} Inventory source details changed.`
   });
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "stale");
@@ -1272,7 +1301,7 @@ test("v4 collection revisions ignore semantic JSON formatting and relation order
   assert.equal(assessCollectionReview(loaded, "vendor", { programId: program.id }).status, "stale");
 });
 
-test("v4 collection revisions ignore unrelated dependency fields", async (context) => {
+test("v4 collection revisions distinguish unrelated dependency fields from scope changes", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-collection-projections-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeComprehensiveWorkspace(root, "4");
@@ -1280,24 +1309,67 @@ test("v4 collection revisions ignore unrelated dependency fields", async (contex
   const program = loaded.resources.find(({ type }) => type === "program");
   const system = loaded.resources.find(({ type, id }) => type === "system" && program.systemIds.includes(id));
   const control = loaded.resources.find(({ type, id }) => type === "control" && program.controlIds.includes(id));
+  const vendor = loaded.resources.find(({ type }) => type === "vendor");
 
   await confirmCollectionReview(root, "framework");
   await updateResource(root, "system", system.id, { ...system, title: `${system.title} renamed` });
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "framework", { programId: program.id }).status, "current");
 
+  const component = loaded.resources.find(({ type }) => type === "component");
+  await updateResource(root, "component", component.id, { ...component, vendorId: vendor.id });
   await confirmCollectionReview(root, "component");
   loaded = await loadWorkspace(root);
   const currentControl = loaded.resources.find(({ id }) => id === control.id);
   await updateResource(root, "control", control.id, {
     ...currentControl,
+    statement: `${currentControl.statement} Clarified wording that does not change Component scope.`,
+    activity: `${currentControl.activity} Clarified operating detail that does not change Component scope.`,
+    controlType: currentControl.controlType === "detective" ? "preventive" : "detective",
+    operationMode: currentControl.operationMode === "manual" ? "hybrid" : "manual",
+    operationPattern: currentControl.operationPattern === "continuous" ? "scheduled" : "continuous",
     implementationReviewedOn: "2026-08-18"
   });
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
 
+  const controlContentPath = markdownEntries(loaded.model, loaded.resources.find(({ id }) => id === control.id))[0].path;
+  const controlContent = await readFile(join(root, "data", controlContentPath), "utf8");
+  await updateContent(root, controlContentPath, `${controlContent}\nUpdated procedure detail that does not change Component scope.`);
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+
+  const currentVendor = loaded.resources.find(({ id }) => id === vendor.id);
+  await updateResource(root, "vendor", vendor.id, {
+    ...currentVendor,
+    standardAgreement: !currentVendor.standardAgreement,
+    agreementDocumentId: "document-example",
+    classificationId: "classification-example",
+    informationTypeIds: ["information-type-example"]
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+
+  const relatedControl = loaded.resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...relatedControl,
+    componentIds: []
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "stale");
+
   await confirmCollectionReview(root, "complementary-control");
   loaded = await loadWorkspace(root);
+  const operatingControl = loaded.resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...operatingControl,
+    controlType: operatingControl.controlType === "corrective" ? "preventive" : "corrective",
+    operationMode: operatingControl.operationMode === "automated" ? "hybrid" : "automated",
+    operationPattern: operatingControl.operationPattern === "event-driven" ? "mixed" : "event-driven"
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "current");
+
   const currentSystem = loaded.resources.find(({ id }) => id === system.id);
   await updateResource(root, "system", system.id, {
     ...currentSystem,
@@ -1307,7 +1379,49 @@ test("v4 collection revisions ignore unrelated dependency fields", async (contex
     }
   });
   loaded = await loadWorkspace(root);
-  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "current");
+  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "stale");
+
+  await confirmCollectionReview(root, "complementary-control");
+  loaded = await loadWorkspace(root);
+
+  const dependencyControl = loaded.resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...dependencyControl,
+    statement: `${dependencyControl.statement} Changed external responsibility.`
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "stale");
+});
+
+test("active-model Component reviews ignore Control operation details but track relationships", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v6-component-review-dependencies-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "6");
+  const program = await confirmCollectionReview(root, "component");
+  let loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ type, id }) => type === "control" && program.controlIds.includes(id));
+
+  await updateResource(root, "control", control.id, {
+    ...control,
+    statement: `${control.statement} Updated wording.`,
+    activity: `${control.activity} Updated operating detail.`
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+
+  const contentPath = markdownEntries(loaded.model, loaded.resources.find(({ id }) => id === control.id))[0].path;
+  const content = await readFile(join(root, "data", contentPath), "utf8");
+  await updateContent(root, contentPath, `${content}\nUpdated procedure detail.`);
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+
+  const currentControl = loaded.resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...currentControl,
+    componentIds: []
+  });
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "stale");
 });
 
 test("v4 Complementary Control reviews exclude retired records", async (context) => {

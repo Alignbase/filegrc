@@ -41,6 +41,7 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 
 - Read `README.md` and run `npm run validate` before broad changes.
 - Treat `data/` as the source of truth. Do not hand-edit `.filegrc/` output.
+- Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject.
 - Use UTF-8 JSON for structured records and Markdown for long-form work.
 - Keep one resource in each JSON file.
 - Let the local app generate IDs from each record’s name or title. When editing JSON directly, keep IDs globally unique, human-readable, and lowercase kebab-case.

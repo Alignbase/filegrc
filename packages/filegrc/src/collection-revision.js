@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
+  authoritativeSourceRevisionValue,
   collectionRevisionInputs,
   collectionScopeRevisionFacts
 } from "./collection-scope.js";
@@ -16,15 +17,19 @@ export function collectionRevision(loaded, resourceType, options = {}) {
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);
   if (authoritativeSource) {
-    inputs.set(authoritativeSource.id, { record: authoritativeSource, value: authoritativeSource });
+    inputs.set(authoritativeSource.id, {
+      record: authoritativeSource,
+      value: authoritativeSourceRevisionValue(authoritativeSource),
+      includeContent: true
+    });
   }
   const records = [...inputs.values()]
-    .map(({ record, value }) => ({
+    .map(({ record, value, includeContent }) => ({
       id: record.id,
       revision: createHash("sha256")
         .update(JSON.stringify(canonicalRecordValue(loaded.model, record.type, value)))
         .digest("hex"),
-      contentRevisions: markdownEntries(loaded.model, record).flatMap(({ path }) => {
+      contentRevisions: (includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
         try {
           const content = readFileSync(resolveDataPath(loaded.root, path), "utf8");
           return [{ path, revision: createHash("sha256").update(content).digest("hex") }];

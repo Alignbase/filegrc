@@ -77,6 +77,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(agents, /`subserviceConclusion`/);
   assert.match(agents, /Do not store plaintext credentials, private keys, tokens, recovery codes, session data/);
   assert.match(agents, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions/);
+  assert.match(agents, /Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence\. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject\./);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
   assert.match(dataGuide, /shared assessments, complete checklist, Work Items, blockers, and recommended next action/);
   assert.match(dataGuide, /Choose an existing Component or scaffold the Component that is authoritative/);
