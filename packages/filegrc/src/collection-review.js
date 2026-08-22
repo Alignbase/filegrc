@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { modelSupports } from "../model/index.js";
-import { collectionRevision } from "./collection-revision.js";
+import {
+  collectionRevision,
+  collectionRevisionMatches
+} from "./collection-revision.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
 import { applyResourceBatch } from "./files.js";
 import { getGitSummary } from "./git.js";
@@ -41,15 +44,25 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
   const allowsEmptyCollection = allowedDecisions.some((decision) => (
     decision === "zero-population" || decision === "externally-managed"
   ));
+  const revisionMatches = collectionRevisionMatches(
+    loaded,
+    resourceType,
+    review?.collectionRevision,
+    {
+      programId: program.id,
+      authoritativeSourceId,
+      currentRevision
+    }
+  );
   const complete = Boolean(
     review?.status === "active"
     && allowedDecisions.includes(review.decision)
-    && review.collectionRevision === currentRevision
+    && revisionMatches
   );
   const stale = Boolean(
     review?.status === "active"
     && review.collectionRevision
-    && review.collectionRevision !== currentRevision
+    && !revisionMatches
   );
   return {
     resourceType,

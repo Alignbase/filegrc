@@ -3,7 +3,10 @@ import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition, modelSupports } from "../model/index.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
-import { collectionRevision } from "./collection-revision.js";
+import {
+  collectionRevision,
+  collectionRevisionMatches
+} from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
@@ -313,7 +316,18 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       ? record.authoritativeComponentId || record.authoritativeSystemId
       : null
   });
-  const current = record.collectionRevision === currentRevision;
+  const current = collectionRevisionMatches(
+    loaded,
+    record.resourceType,
+    record.collectionRevision,
+    {
+      program,
+      authoritativeSourceId: record.decision === "externally-managed"
+        ? record.authoritativeComponentId || record.authoritativeSystemId
+        : null,
+      currentRevision
+    }
+  );
   if (current && !recordCount && record.decision === "complete") {
     diagnostics.push(error(
       "invalid-collection-review-decision",

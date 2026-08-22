@@ -36,7 +36,8 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   ));
 }
 
-export function collectionRevisionInputs(loaded, resourceType, program) {
+export function collectionRevisionInputs(loaded, resourceType, program, options = {}) {
+  const legacy = options.legacy === true;
   const reviewed = scopedCollectionRecords(loaded, resourceType, program);
   if (!modelSupports(loaded.model, "program-scope")) {
     return reviewed.map((record) => ({ record, value: record, includeContent: true }));
@@ -90,8 +91,9 @@ export function collectionRevisionInputs(loaded, resourceType, program) {
     record,
     value: reviewedIds.has(record.id)
       ? record
-      : dependencyRevisionValue(resourceType, record),
-    includeContent: reviewedIds.has(record.id)
+      : dependencyRevisionValue(resourceType, record, legacy),
+    includeContent: legacy
+      || reviewedIds.has(record.id)
       || dependencyContentAffectsRevision(resourceType, record.type)
   }));
 }
@@ -183,6 +185,21 @@ const dependencyFields = {
   }
 };
 
+const legacyDependencyFieldOverrides = {
+  framework: {
+    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "informationTypeIds", "classificationId", "internetExposed"]
+  },
+  component: {
+    control: ["id", "type", "status", "statement", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "componentIds", "evidenceSourceComponentIds"],
+    vendor: ["id", "type", "status", "category", "criticality", "description", "standardAgreement", "agreementDocumentId", "startDate", "endDate", "classificationId", "informationTypeIds"]
+  },
+  "complementary-control": {
+    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "informationTypeIds", "classificationId", "internetExposed"],
+    control: ["id", "type", "status", "statement", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "componentIds", "evidenceSourceComponentIds"],
+    component: ["id", "type", "status", "componentKind", "description", "vendorId", "systemUses", "informationUses", "internetExposed"]
+  }
+};
+
 const dependencyContentTypes = {
   framework: new Set(["system"]),
   vendor: new Set(["document"]),
@@ -190,8 +207,11 @@ const dependencyContentTypes = {
   "complementary-control": new Set(["system", "control", "document", "component"])
 };
 
-function dependencyRevisionValue(resourceType, record) {
-  const fields = dependencyFields[resourceType]?.[record.type];
+function dependencyRevisionValue(resourceType, record, legacy) {
+  const fields = legacy
+    ? legacyDependencyFieldOverrides[resourceType]?.[record.type]
+      || dependencyFields[resourceType]?.[record.type]
+    : dependencyFields[resourceType]?.[record.type];
   if (!fields) return { id: record.id, type: record.type };
   return Object.fromEntries(fields
     .filter((field) => record[field] !== undefined)

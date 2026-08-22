@@ -10,16 +10,36 @@ import { resolveProgram } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 
 export function collectionRevision(loaded, resourceType, options = {}) {
+  return calculateCollectionRevision(loaded, resourceType, options, false);
+}
+
+export function legacyCollectionRevision(loaded, resourceType, options = {}) {
+  return calculateCollectionRevision(loaded, resourceType, options, true);
+}
+
+export function collectionRevisionMatches(loaded, resourceType, storedRevision, options = {}) {
+  if (!storedRevision) return false;
+  const currentRevision = options.currentRevision
+    || collectionRevision(loaded, resourceType, options);
+  // Version 0.9.2 narrowed this hash basis. Keep unchanged 0.9.1 reviews valid
+  // until management records a new review on the current basis.
+  return storedRevision === currentRevision
+    || storedRevision === legacyCollectionRevision(loaded, resourceType, options);
+}
+
+function calculateCollectionRevision(loaded, resourceType, options, legacy) {
   const program = Object.hasOwn(options, "program")
     ? options.program
     : resolveProgram(loaded, options.programId);
-  const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program)
+  const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program, { legacy })
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);
   if (authoritativeSource) {
     inputs.set(authoritativeSource.id, {
       record: authoritativeSource,
-      value: authoritativeSourceRevisionValue(authoritativeSource),
+      value: legacy
+        ? authoritativeSource
+        : authoritativeSourceRevisionValue(authoritativeSource),
       includeContent: true
     });
   }
@@ -29,7 +49,7 @@ export function collectionRevision(loaded, resourceType, options = {}) {
       revision: createHash("sha256")
         .update(JSON.stringify(canonicalRecordValue(loaded.model, record.type, value)))
         .digest("hex"),
-      contentRevisions: (includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
+      contentRevisions: (legacy || includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
         try {
           const content = readFileSync(resolveDataPath(loaded.root, path), "utf8");
           return [{ path, revision: createHash("sha256").update(content).digest("hex") }];

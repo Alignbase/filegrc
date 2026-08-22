@@ -7,6 +7,7 @@ import test from "node:test";
 import { planApplicabilityReview, scaffoldApplicabilityReview } from "../src/batch-review.js";
 import { buildAgentGuide } from "../src/agent.js";
 import { applyCollectionReview, assessCollectionReview } from "../src/collection-review.js";
+import { collectionRevision, legacyCollectionRevision } from "../src/collection-revision.js";
 import { createResource, updateContent, updateResource } from "../src/files.js";
 import { assessAuditPreparation, signedRepresentationDateIssue } from "../src/audit-preparation.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
@@ -1422,6 +1423,61 @@ test("active-model Component reviews ignore Control operation details but track 
   });
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "stale");
+});
+
+test("active-model collection reviews accept 0.9.1 hashes without rewriting management reviews", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v6-legacy-collection-revisions-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "6");
+  let loaded = await loadWorkspace(root);
+  const scopedProgram = loaded.resources.find(({ type }) => type === "program");
+  const scopedSystem = loaded.resources.find(({ type, id }) => (
+    type === "system" && scopedProgram.systemIds.includes(id)
+  ));
+  await updateResource(root, "system", scopedSystem.id, {
+    ...scopedSystem,
+    criticality: "high"
+  });
+  const expectedLegacyRevisions = {
+    framework: "7db4925853fd4155b149cc22269cdd6a8fcd4740712efc2096a0e19b131cebca",
+    component: "90137d5da83862a83e8465a2d981ac87dffe9d0ca6700b697ee2171fc867d73b"
+  };
+
+  for (const resourceType of ["framework", "component"]) {
+    const program = await confirmCollectionReview(root, resourceType);
+    loaded = await loadWorkspace(root);
+    const review = loaded.resources.find((record) => (
+      record.type === "collection-review"
+      && record.resourceType === resourceType
+      && record.status === "active"
+    ));
+    const options = { programId: program.id };
+    const currentRevision = collectionRevision(loaded, resourceType, options);
+    const legacyRevision = legacyCollectionRevision(loaded, resourceType, options);
+    assert.equal(legacyRevision, expectedLegacyRevisions[resourceType]);
+    assert.notEqual(legacyRevision, currentRevision);
+
+    await updateResource(root, "collection-review", review.id, {
+      ...review,
+      collectionRevision: legacyRevision
+    });
+    loaded = await loadWorkspace(root);
+    const assessment = assessCollectionReview(loaded, resourceType, options);
+    assert.equal(assessment.status, "current");
+    assert.equal(assessment.collectionRevision, currentRevision);
+    assert.equal(assessment.review.collectionRevision, legacyRevision);
+  }
+
+  loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const system = loaded.resources.find(({ type, id }) => type === "system" && program.systemIds.includes(id));
+  await updateResource(root, "system", system.id, {
+    ...system,
+    boundary: `${system.boundary} Materially changed after both reviews.`
+  });
+  const changed = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(changed, "framework", { programId: program.id }).status, "stale");
+  assert.equal(assessCollectionReview(changed, "component", { programId: program.id }).status, "stale");
 });
 
 test("v4 Complementary Control reviews exclude retired records", async (context) => {
