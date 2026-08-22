@@ -226,6 +226,21 @@ test("serves state and browser assets", async (context) => {
   const ownerSummary = state.resources.find(({ record }) => record.id === "person-owner");
   assert.equal(ownerSummary.detailsLoaded, false);
   assert.equal(ownerSummary.history, undefined);
+  const bootstrapResponse = await fetch(`${result.url}/api/state/bootstrap`);
+  assert.equal(bootstrapResponse.status, 200);
+  const bootstrap = await bootstrapResponse.json();
+  assert.equal(bootstrap.resources.length, 3);
+  assert.equal(bootstrap.resources.every(({ detailsLoaded, content }) => detailsLoaded === false && Object.keys(content).length === 0), true);
+  assert.equal(bootstrap.sections.program, "idle");
+  assert.equal(bootstrap.sections.repository, "loading");
+  const programResponse = await fetch(`${result.url}/api/state/program?token=${encodeURIComponent(bootstrap.stateToken)}`);
+  assert.equal(programResponse.status, 200);
+  const program = await programResponse.json();
+  assert.equal(program.stateToken, bootstrap.stateToken);
+  assert.equal(program.section, "program");
+  assert.ok(program.state.programReadiness);
+  const expiredResponse = await fetch(`${result.url}/api/state/program?token=expired`);
+  assert.equal(expiredResponse.status, 409);
   const ownerDetailResponse = await fetch(`${result.url}/api/resource/person/person-owner`);
   assert.equal(ownerDetailResponse.status, 200);
   const ownerDetail = await ownerDetailResponse.json();
@@ -1295,10 +1310,20 @@ test("derives step-page completion from the shared workflow assessment", () => {
   assert.match(APP_STYLES, /\.stage-page-tasks\{position:relative;z-index:2/);
 });
 
+test("loads calculated state only for the current browser route", () => {
+  assert.match(APP_SCRIPT, /fetchJson\("\/api\/state\/bootstrap"\)/);
+  assert.match(APP_SCRIPT, /function desiredStateSections\(route\)/);
+  assert.match(APP_SCRIPT, /route\.name === "audit-packet"[\s\S]*"audits"/);
+  assert.match(APP_SCRIPT, /data-load-workflow>Calculate action/);
+  assert.match(APP_SCRIPT, /loadStateSection\("workflow"\)/);
+  assert.doesNotMatch(APP_SCRIPT, /fetchJson\("\/api\/state"\)/);
+});
+
 test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /#resume-setup"\)\?\.addEventListener\("click", \(\) => requestOnboarding\(\{ setupOnly: true \}\)\)/);
   assert.doesNotThrow(() => new Function(APP_SCRIPT));
   assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true && !initialSetupSystem\(\)/);
+  assert.match(APP_SCRIPT, /if \(section === "repository"\) maybeRequestOnboarding\(\)/);
   assert.match(APP_SCRIPT, /const setupPending = !setupSystem[\s\S]*setupSystem\.status !== "active"[\s\S]*activeProgram\(\)\.assuranceGoal === "none"/);
   assert.doesNotMatch(APP_SCRIPT, /const setupPending = rendererSettingsEntry\(\)\?\.record\.showOnboarding === true/);
   assert.match(APP_SCRIPT, /function initialSetupSystem\(\)/);
@@ -1314,11 +1339,12 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /window\.addEventListener\("scroll", positionCurrentOnboarding, true\)/);
   assert.match(APP_SCRIPT, /persistOnboardingPreference\(false\)/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/setup"/);
-  assert.equal((APP_SCRIPT.match(/fetchJson\("\/api\/state"\)/g) || []).length, 1);
+  assert.equal((APP_SCRIPT.match(/fetchJson\("\/api\/state\/bootstrap"\)/g) || []).length, 1);
   const saveOnboardingSource = APP_SCRIPT.match(/async function saveOnboarding[\s\S]*?\n}\n\nfunction showOnboardingError/)?.[0] || "";
   assert.doesNotMatch(saveOnboardingSource, /fetchJson\("\/api\/state"\)/);
   assert.match(saveOnboardingSource, /if \(onboardingBusy\) return/);
   assert.match(saveOnboardingSource, /applyMutationState\(result\)/);
+  assert.match(APP_SCRIPT, /function applyFastMutationPatch\(result\) \{\s+state\.stateToken = null/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/git\/sync-status"\)/);
   assert.match(APP_SCRIPT, /function scheduleRepositorySyncPoll/);
   assert.match(APP_SCRIPT, /function repositorySyncAlert/);

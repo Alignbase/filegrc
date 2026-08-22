@@ -140,6 +140,16 @@ test("reusable validation state invalidates when a source record changes", async
   assert.equal(state.resources.find(({ record }) => record.id === owner.id).record.department, "External source edit");
 });
 
+test("app state reuses the validated workspace for repository configuration", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-state-workspace-reuse-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+
+  const { timings } = await collectTimings(() => createAppState(root, { includeDetails: false }));
+
+  assert.equal(timings["workspace-load"].count, 1);
+});
+
 test("rejects an invalid workspace timezone", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-timezone-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));

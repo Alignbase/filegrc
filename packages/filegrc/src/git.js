@@ -390,8 +390,8 @@ function unavailableSnapshot(error, extra = {}) {
 }
 
 export async function getBrowserRepositoryState(input = process.cwd(), options = {}) {
-  const root = resolveWorkspaceRoot(input);
-  const config = await getRepositoryConfig(root);
+  const root = input?.entries && input?.root ? input.root : resolveWorkspaceRoot(input);
+  const config = await getRepositoryConfig(input);
   const gitSummary = options.repositorySnapshot ?? await getRepositorySnapshot(root);
   if (config.mode !== "trunk") {
     return {
@@ -852,8 +852,8 @@ function syncReadySummary(root, action) {
   return summary;
 }
 
-async function getRepositoryConfig(root) {
-  const loaded = await loadWorkspace(root);
+async function getRepositoryConfig(input) {
+  const loaded = input?.entries && input?.root ? input : await loadWorkspace(input);
   const renderer = loaded.resources.find(({ type, id }) => type === "renderer-settings" && id === "renderer-settings");
   const mode = renderer?.repositoryMode;
   const authoritativeBranch = cleanGitName(renderer?.authoritativeBranch);

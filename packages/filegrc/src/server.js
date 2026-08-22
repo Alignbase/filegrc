@@ -46,7 +46,7 @@ import {
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { activatePolicies } from "./policy-activation.js";
 import { applyReconciliation, planReconciliation } from "./reconciliation.js";
-import { createAppState, createResourceDetail } from "./state.js";
+import { createAppBootstrap, createAppState, createAppStateSection, createResourceDetail } from "./state.js";
 import { setupWorkspace } from "./setup.js";
 import { collectTimings, measureTiming, timingEnabled } from "./timing.js";
 import {
@@ -59,6 +59,8 @@ import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
 export function createFilegrcServer(input = process.cwd(), options = {}) {
+  const stateSessions = new Map();
+  let nextStateSession = 0;
   return createHttpServer(async (request, response) => {
     const requestStarted = performance.now();
     if (timingEnabled()) {
@@ -93,6 +95,31 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
           includeDetails: false
         }));
+      }
+      if (request.method === "GET" && url.pathname === "/api/state/bootstrap") {
+        const loaded = await serializeWorkspaceMutation(input, (root) => loadWorkspace(root));
+        const token = `${Date.now().toString(36)}-${(++nextStateSession).toString(36)}`;
+        const session = {
+          loaded,
+          generatedAt: new Date().toISOString(),
+          promises: new Map()
+        };
+        stateSessions.set(token, session);
+        while (stateSessions.size > 8) stateSessions.delete(stateSessions.keys().next().value);
+        const state = await createAppBootstrap(loaded, { generatedAt: session.generatedAt });
+        state.stateToken = token;
+        return json(response, 200, state);
+      }
+      if (request.method === "GET" && url.pathname.startsWith("/api/state/")) {
+        const section = url.pathname.slice("/api/state/".length);
+        if (!["repository", "program", "obligations", "audits", "workflow"].includes(section)) {
+          return json(response, 404, { error: "Unknown app-state section." });
+        }
+        const token = url.searchParams.get("token");
+        const session = stateSessions.get(token);
+        if (!session) return json(response, 409, { error: "The workspace state expired. Reload it and try again." });
+        const state = await loadStateSessionSection(session, section, options);
+        return json(response, 200, { stateToken: token, section, state });
       }
       if (request.method === "GET" && url.pathname === "/api/history") {
         const path = url.searchParams.get("path");
@@ -592,6 +619,40 @@ export function reconcileMutationSynchronization(synchronization, repository) {
       ?? repository.backgroundSynchronization?.error
       ?? null
   };
+}
+
+function loadStateSessionSection(session, section, serverOptions) {
+  if (session.promises.has(section)) return session.promises.get(section);
+  const dependencies = section === "workflow"
+    ? Promise.all([
+        loadStateSessionSection(session, "repository", serverOptions),
+        loadStateSessionSection(session, "program", serverOptions),
+        loadStateSessionSection(session, "obligations", serverOptions),
+        loadStateSessionSection(session, "audits", serverOptions)
+      ])
+    : section === "audits"
+      ? Promise.all([loadStateSessionSection(session, "program", serverOptions)])
+      : Promise.resolve([]);
+  const promise = dependencies.then((results) => {
+    const repository = section === "workflow" ? results[0] : null;
+    const program = section === "workflow" ? results[1] : section === "audits" ? results[0] : null;
+    const obligations = section === "workflow" ? results[2] : null;
+    const audits = section === "workflow" ? results[3] : null;
+    return createAppStateSection(session.loaded, section, {
+      allowNonAuthoritativeWrites: serverOptions.allowNonAuthoritativeWrites,
+      generatedAt: session.generatedAt,
+      programReadiness: program?.programReadiness,
+      auditPreparations: audits?.auditPreparations,
+      obligations: obligations?.obligations,
+      git: repository?.git,
+      validation: repository?.validation
+    });
+  }).catch((error) => {
+    session.promises.delete(section);
+    throw error;
+  });
+  session.promises.set(section, promise);
+  return promise;
 }
 
 function prefersFastMutation(request) {

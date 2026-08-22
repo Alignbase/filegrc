@@ -88,6 +88,7 @@ let onboardingSetupOnly = false;
 let onboardingStillWorkingTimer = null;
 let onboardingPendingDraft = false;
 const resourceDetailRequests = new Map();
+const stateSectionRequests = new Map();
 let resourceGuideCleanup = null;
 let repositorySyncPollTimer = null;
 let repositorySyncPollInFlight = false;
@@ -101,20 +102,20 @@ start().catch((error) => {
 
 async function start() {
   const embedded = document.querySelector("#filegrc-data");
-  state = embedded ? JSON.parse(embedded.textContent) : await fetchJson("/api/state");
+  state = normalizeAppState(embedded ? JSON.parse(embedded.textContent) : await fetchJson("/api/state/bootstrap"));
   window.addEventListener("hashchange", handleRouteChange);
   window.addEventListener("resize", positionCurrentOnboarding);
   window.addEventListener("scroll", positionCurrentOnboarding, true);
   render();
+  loadStateForRoute();
   scheduleRepositorySyncPoll();
-  if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true && !initialSetupSystem()) {
-    queueMicrotask(requestOnboarding);
-  }
+  maybeRequestOnboarding();
 }
 
 function handleRouteChange() {
   document.querySelectorAll("dialog.editor[open], dialog.commit-dialog[open], dialog.alert-dialog[open]").forEach((dialog) => dialog.close());
   render();
+  loadStateForRoute();
 }
 
 function render() {
@@ -128,7 +129,9 @@ function render() {
   const nextNavigation = root.querySelector(".sidebar-nav");
   if (nextNavigation) nextNavigation.scrollTop = navigationScrollTop;
   const main = root.querySelector("main");
-  if (route.name === "home") renderHome(main);
+  const waitingFor = blockingStateSections(route).filter((section) => state.sections?.[section] !== "complete");
+  if (waitingFor.length) renderStateLoading(main, route, waitingFor);
+  else if (route.name === "home") renderHome(main);
   else if (route.name === "stage") renderStageOverview(main, route.stageId, route.params);
   else if (route.name === "obligations") renderObligations(main, route.params);
   else if (route.name === "audit-packet") renderAuditPacket(main, route.params);
@@ -138,6 +141,82 @@ function render() {
   else if (route.name === "repository") renderRepository(main);
   else renderNotFound(main);
   bindCommon();
+}
+
+function normalizeAppState(next) {
+  if (next.sections) return next;
+  return {
+    ...next,
+    stateToken: null,
+    sections: {
+      repository: "complete",
+      program: "complete",
+      obligations: "complete",
+      audits: "complete",
+      workflow: "complete"
+    }
+  };
+}
+
+function blockingStateSections(route) {
+  if (route.name === "home") return ["program", "obligations", "workflow"];
+  if (route.name === "repository") return ["repository"];
+  if (route.name === "obligations" || route.name === "stage" && route.stageId === "run") return ["program", "obligations"];
+  if (route.name === "audit-packet") return ["repository", "program", "obligations", "audits"];
+  if (route.name === "stage" && route.stageId === "audit") return ["program", "workflow", "audits"];
+  if (route.name === "stage") return ["program", "workflow"];
+  return [];
+}
+
+function desiredStateSections(route) {
+  const sections = new Set(["repository", ...blockingStateSections(route)]);
+  if (route.name === "list" && (route.type === "requirement" || state.model.collectionReviews?.[route.type])) sections.add("program");
+  if (route.name === "detail" && ["policy", "document", "training", "control", "component"].includes(route.type)) sections.add("program");
+  if (route.name === "detail" && ["obligation", "action-item", "obligation-event"].includes(route.type)) sections.add("obligations");
+  if (route.name === "detail" && route.type === "audit") sections.add("audits");
+  return [...sections];
+}
+
+function renderStateLoading(main, route, sections) {
+  const failed = sections.find((section) => state.sections?.[section] === "error");
+  const title = failed ? "Could Not Finish Loading" : route.name === "home" ? "Loading Program Overview" : "Loading Current Workspace State";
+  const message = failed
+    ? state.sectionErrors?.[failed] || "Reload the workspace and try again."
+    : "Records are ready. FileGRC is calculating the information needed for this page.";
+  main.innerHTML = '<div class="page"><section class="panel state-loading" role="status" aria-live="polite"><p class="kicker">' + (failed ? "Loading error" : "One moment") + '</p><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p></section></div>';
+}
+
+function loadStateForRoute() {
+  const route = parseRoute();
+  for (const section of desiredStateSections(route)) loadStateSection(section);
+}
+
+function loadStateSection(section) {
+  if (!state.stateToken || state.sections?.[section] === "complete") return Promise.resolve();
+  if (stateSectionRequests.has(section)) return stateSectionRequests.get(section);
+  state.sections[section] = "loading";
+  const token = state.stateToken;
+  const request = fetchJson("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token))
+    .then((result) => {
+      if (state.stateToken !== result.stateToken) return;
+      Object.assign(state, result.state);
+      state.sections[section] = "complete";
+      render();
+      loadStateForRoute();
+      scheduleRepositorySyncPoll();
+      if (section === "repository") maybeRequestOnboarding();
+    })
+    .catch((error) => {
+      if (state.stateToken !== token) return;
+      state.sections[section] = "error";
+      state.sectionErrors = { ...(state.sectionErrors || {}), [section]: error.message };
+      render();
+    })
+    .finally(() => {
+      if (stateSectionRequests.get(section) === request) stateSectionRequests.delete(section);
+    });
+  stateSectionRequests.set(section, request);
+  return request;
 }
 
 function parseRoute() {
@@ -254,16 +333,33 @@ function topbar(route) {
             : route.name === "list" && route.type === "document"
               ? documentListTitle(route.params)
               : state.model.resources[route.type]?.pluralTitle || "filegrc";
-  const repositoryLabel = state.repository?.mode === "trunk"
+  const repositoryLoading = state.sections?.repository !== "complete";
+  const repositoryError = state.sections?.repository === "error";
+  const repositoryLabel = repositoryError
+    ? "Git check failed"
+    : repositoryLoading
+    ? "Checking Git"
+    : state.repository?.mode === "trunk"
     ? state.repository.label
     : state.git.available ? ((state.git.branch || "detached") + " · " + state.git.shortCommit) : "Git unavailable";
-  const repositoryTone = state.repository?.mode === "trunk"
+  const repositoryTone = repositoryError
+    ? "warn"
+    : repositoryLoading
+    ? "neutral"
+    : state.repository?.mode === "trunk"
     ? repositoryStatusTone(state.repository.status)
     : state.git.clean ? "good" : "warn";
-  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><div class="topbar-status">' + topbarProgramReadiness() + '<label class="search topbar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="validation-chip" href="#/repository"><span class="status-dot ' + (state.validation.ok ? "good" : "bad") + '"></span>' + (state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors") + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + repositoryTone + '"></span>' + esc(repositoryLabel) + '</a></div>';
+  const validationLoading = state.sections?.repository !== "complete";
+  const validationTone = repositoryError ? "warn" : validationLoading ? "neutral" : state.validation.ok ? "good" : "bad";
+  const validationLabel = repositoryError ? "Data check failed" : validationLoading ? "Checking data" : state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors";
+  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><div class="topbar-status">' + topbarProgramReadiness() + '<label class="search topbar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="validation-chip" href="#/repository"><span class="status-dot ' + validationTone + '"></span>' + validationLabel + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + repositoryTone + '"></span>' + esc(repositoryLabel) + '</a></div>';
 }
 
 function topbarProgramReadiness() {
+  if (state.sections?.program !== "complete") {
+    const label = state.sections?.program === "loading" ? "…" : "View";
+    return '<a class="topbar-readiness" href="#/"><span class="topbar-readiness-copy"><span>Program readiness</span><strong>' + label + '</strong></span><span class="progress" aria-hidden="true"><span style="width:0%"></span></span></a>';
+  }
   const progress = dashboardProgramReadiness(state.programReadiness);
   const detail = progress.complete + " of " + progress.total + " readiness items complete";
   return '<a class="topbar-readiness" href="' + nextProgramStageHref() + '" aria-label="' + esc("Program readiness: " + progress.percent + "%. " + detail + ". " + progress.status + ".") + '"><span class="topbar-readiness-copy"><span>Program readiness</span><strong>' + progress.percent + '%</strong></span><span class="progress" aria-hidden="true"><span style="width:' + progress.percent + '%"></span></span></a>';
@@ -792,6 +888,9 @@ function recordWorkflowItems(type, id) {
 }
 
 function recordWorkflowCell(type, entry) {
+  if (state.sections?.workflow !== "complete") {
+    return '<button class="text-button record-workflow-clear" type="button" data-load-workflow>Calculate action</button>';
+  }
   const items = recordWorkflowItems(type, entry.record.id);
   if (!items.length) return '<span class="record-workflow-clear">No calculated action</span>';
   const item = items[0];
@@ -2295,6 +2394,9 @@ function renderList(main, type, params = new URLSearchParams()) {
   renderRows();
   syncRoute();
   main.querySelector("#new-resource")?.addEventListener("click", () => openEditor(type));
+  main.querySelector("#record-rows").addEventListener("click", (event) => {
+    if (event.target.closest("[data-load-workflow]")) loadStateSection("workflow");
+  });
   main.querySelector("#review-applicability")?.addEventListener("click", () => openApplicabilityReviewDialog(type, entries));
   main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog(type));
   if (params.get("new") === "1" && !state.readOnly && !definition.singleton && resourceCreationAllowed(type)) queueMicrotask(() => openEditor(type));
@@ -2958,6 +3060,12 @@ function setupResourceGuide(main) {
 
 function rendererSettingsEntry() {
   return state.resources.find(({ record }) => record.type === "renderer-settings");
+}
+
+function maybeRequestOnboarding() {
+  if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true && !initialSetupSystem()) {
+    queueMicrotask(requestOnboarding);
+  }
 }
 
 function requestOnboarding({ setupOnly = false } = {}) {
@@ -4587,7 +4695,7 @@ function renderNotFound(main) {
 }
 function applyMutationState(result) {
   if (result?.state) {
-    state = result.state;
+    state = normalizeAppState(result.state);
   } else if (result?.stateRefresh) {
     applyFastMutationPatch(result);
     scheduleMutationStateRefresh();
@@ -4598,6 +4706,7 @@ function applyMutationState(result) {
 }
 
 function applyFastMutationPatch(result) {
+  state.stateToken = null;
   if (result.operation === "collection-review" && result.assessment?.resourceType) {
     state.collectionReviews[result.assessment.resourceType] = result.assessment;
   }
@@ -4640,10 +4749,12 @@ async function refreshMutationState() {
   mutationStateRefreshInFlight = true;
   let retry = false;
   try {
-    const response = await fetch("/api/state");
+    const response = await fetch("/api/state/bootstrap");
     if (!response.ok) throw new Error(await responseMessage(response));
-    state = await response.json();
+    state = normalizeAppState(await response.json());
+    stateSectionRequests.clear();
     render();
+    loadStateForRoute();
     scheduleRepositorySyncPoll();
   } catch {
     retry = true;

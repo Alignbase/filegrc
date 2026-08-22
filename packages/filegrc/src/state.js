@@ -37,6 +37,174 @@ export async function createAppState(input = process.cwd(), options = {}) {
   return promise;
 }
 
+export async function createAppBootstrap(input = process.cwd(), options = {}) {
+  const loaded = input?.entries && input?.root ? input : await loadWorkspace(input);
+  const workspace = loaded.workspace ?? {
+    dataModelVersion: loaded.model.modelVersion,
+    id: "workspace",
+    type: "workspace",
+    title: "filegrc workspace",
+    organizationName: "Workspace configuration unavailable",
+    timezone: "UTC"
+  };
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  return {
+    generatedAt,
+    asOf: options.asOf ?? currentCalendarDate(workspace.timezone),
+    readOnly: true,
+    repository: {
+      loading: true,
+      mode: null,
+      status: "loading",
+      label: "Checking Git",
+      writesAllowed: false
+    },
+    workspace,
+    model: loaded.model,
+    resources: loaded.entries.map((entry) => ({
+      record: structuredClone(entry.record),
+      relativePath: `data/${entry.relativePath}`,
+      revision: contentRevision(entry.source),
+      content: {},
+      history: undefined,
+      detailsLoaded: false
+    })),
+    validation: {
+      loading: true,
+      ok: null,
+      counts: { errors: 0, warnings: 0 },
+      diagnostics: []
+    },
+    obligations: { loading: true, items: [], triggers: [], counts: {} },
+    collectionReviews: {},
+    applicabilityConstraints: {},
+    programReadiness: null,
+    auditPreparations: {},
+    workflow: { loading: true, findings: [], workItems: [], assessments: {} },
+    git: {
+      loading: true,
+      available: false,
+      clean: null,
+      changes: [],
+      branch: null,
+      shortCommit: "checking"
+    },
+    sections: {
+      repository: "loading",
+      program: "idle",
+      obligations: "idle",
+      audits: "idle",
+      workflow: "idle"
+    }
+  };
+}
+
+export async function createAppStateSection(input, section, options = {}) {
+  const loaded = input?.entries && input?.root ? input : await loadWorkspace(input);
+  const workspace = loaded.workspace;
+  const asOf = options.asOf ?? currentCalendarDate(workspace?.timezone || "UTC");
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  if (section === "repository") {
+    const [validation, snapshot] = await Promise.all([
+      validateWorkspace(loaded),
+      measureTiming("state-repository-snapshot", () => getRepositorySnapshot(loaded.root))
+    ]);
+    const git = { ...snapshot };
+    delete git.root;
+    const repository = await measureTiming("state-repository", () => getBrowserRepositoryState(loaded, {
+      readOnly: options.readOnly,
+      allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+      repositorySnapshot: git
+    }));
+    return {
+      generatedAt,
+      readOnly: Boolean(options.readOnly || (repository.mode === "trunk" && !repository.writesAllowed)),
+      repository,
+      git,
+      validation: {
+        ok: validation.ok,
+        counts: validation.counts,
+        diagnostics: validation.diagnostics
+      }
+    };
+  }
+  if (section === "program") {
+    const programReadiness = options.programReadiness ?? await assessProgramReadiness(loaded, { asOf, generatedAt });
+    const activeProgram = resolveProgram(loaded);
+    return {
+      generatedAt,
+      asOf,
+      programReadiness,
+      collectionReviews: Object.fromEntries(
+        assessCollectionReviews(loaded).map((assessment) => [
+          assessment.resourceType,
+          {
+            resourceType: assessment.resourceType,
+            configuration: assessment.configuration,
+            recordCount: assessment.recordCount,
+            review: assessment.review,
+            reviewRevision: assessment.reviewRevision,
+            collectionRevision: assessment.collectionRevision,
+            status: assessment.status,
+            complete: assessment.complete,
+            message: assessment.message
+          }
+        ])
+      ),
+      applicabilityConstraints: Object.fromEntries(loaded.resources.flatMap((record) => {
+        const constraint = soc2RequirementApplicabilityConstraint(record, activeProgram, loaded.model.modelVersion);
+        return constraint ? [[record.id, constraint]] : [];
+      }))
+    };
+  }
+  if (section === "obligations") {
+    return {
+      generatedAt,
+      asOf,
+      obligations: planObligations(loaded.resources, {
+        asOf,
+        now: options.now ?? generatedAt,
+        model: loaded.model
+      })
+    };
+  }
+  if (section === "audits") {
+    const programReadiness = options.programReadiness;
+    const audits = loaded.resources.filter((record) => record.type === "audit");
+    return {
+      generatedAt,
+      asOf,
+      auditPreparations: Object.fromEntries(await Promise.all(
+        (audits.length ? audits : [null]).map(async (audit) => [
+          audit?.id || "none",
+          await assessAuditPreparation(loaded, {
+            auditId: audit?.id,
+            asOf,
+            generatedAt,
+            ...(audit || !programReadiness ? {} : { programReadiness })
+          })
+        ])
+      ))
+    };
+  }
+  if (section === "workflow") {
+    return {
+      generatedAt,
+      asOf,
+      workflow: await assessWorkflow(loaded, {
+        asOf,
+        evaluatedAt: generatedAt,
+        programReadiness: options.programReadiness,
+        auditPreparations: options.auditPreparations,
+        obligations: options.obligations,
+        git: options.git,
+        validation: options.validation
+      })
+    };
+  }
+  throw new Error(`Unknown app-state section "${section}".`);
+}
+
 async function createAppStateUnlocked(input, options) {
   let validation;
   if (options.validationProof) {
@@ -65,7 +233,7 @@ async function createAppStateUnlocked(input, options) {
 
   const git = { ...await measureTiming("state-repository-snapshot", () => getRepositorySnapshot(loaded.root)) };
   delete git.root;
-  const repository = await measureTiming("state-repository", () => getBrowserRepositoryState(loaded.root, {
+  const repository = await measureTiming("state-repository", () => getBrowserRepositoryState(loaded, {
     readOnly: options.readOnly,
     allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
     repositorySnapshot: git
