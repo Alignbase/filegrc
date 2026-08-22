@@ -53,7 +53,9 @@ import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from
 import { applyPolicyLibraryUpgrade, assessPolicyLibraryUpgrades } from "./policy-library.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+import { planProgramAmendment } from "./program-amendment.js";
 import { resolveProgram } from "./program.js";
+import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { applyReconciliation, planReconciliation } from "./reconciliation.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { effectiveResourceStatus } from "./resource-status.js";
@@ -461,6 +463,46 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
     return output;
+  }
+  if (command === "program-amendment") {
+    const sourceResourceId = flags.source || positionals[0];
+    if (!sourceResourceId) throw new Error("Pass a source resource ID or --source resource-id.");
+    const result = await planProgramAmendment(root, { sourceResourceId });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`Program amendment review for ${result.source.title}`);
+      for (const [type, ids] of Object.entries(result.byResourceType)) console.log(`${type}\t${ids.join(",")}`);
+      for (const work of result.reviewWork) {
+        console.log(`REVIEW\t${work.resourceType}\t${work.resourceIds?.length ? work.resourceIds.join(",") + "\t" : ""}${work.message}`);
+      }
+    }
+    return result;
+  }
+  if (command === "review-bindings") {
+    const resourceId = positionals[0];
+    if (!resourceId) throw new Error("Pass a Retention Schedule Item or Requirement Mapping ID.");
+    const loaded = await loadWorkspace(root);
+    const record = loaded.resources.find(({ id }) => id === resourceId);
+    if (!record) throw new Error(`Resource "${resourceId}" was not found.`);
+    const dependencyIds = record.type === "retention-schedule-item"
+      ? retentionReviewResourceIds(record, loaded)
+      : record.type === "requirement-mapping"
+        ? [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])]
+        : null;
+    if (!dependencyIds) throw new Error("Review bindings are available for Retention Schedule Items and Requirement Mappings.");
+    const revisions = await resourceReviewRevisions(loaded, dependencyIds);
+    const result = {
+      resource: { type: record.type, id: record.id, title: record.title },
+      dependencyIds,
+      reviewedSourceRevisions: Object.fromEntries(revisions),
+      missingResourceIds: dependencyIds.filter((id) => !revisions.has(id))
+    };
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`Review bindings for ${record.title}`);
+      for (const id of dependencyIds) console.log(`${revisions.has(id) ? "READY" : "MISSING"}\t${id}\t${revisions.get(id) || ""}`);
+    }
+    return result;
   }
   if (command === "evidence-map") {
     const loaded = await loadWorkspace(root);
@@ -1135,6 +1177,8 @@ Usage:
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
+  filegrc program-amendment <source-resource-id> [--json]
+  filegrc review-bindings <retention-or-mapping-id> [--json]
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
   filegrc audit-readiness [audit-id] [--as-of YYYY-MM-DD] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
@@ -1222,7 +1266,8 @@ the repository Workspace, management Program, bounded Systems, operational Compo
 specific Assets, Vendors, normalized information, and Evidence Artifacts. Model v5 separates
 Document approval from activation and records program-versus-engagement scope. Model v6 gives
 Training the same approval and activation split and moves its schedule into Obligations. Model v7
-keeps issued historical Documents neutral and requires a current activation for legacy Training. v3 migration
+keeps issued historical Documents neutral and requires a current activation for legacy Training. Model v8
+adds structured retention schedule items, reviewed requirement mappings, source-linked Commitments, and custom obligations. v3 migration
 previews may require a decisions JSON file for ambiguous old Systems. v3 still creates planned
 core Appointments, removal of obsolete manual page state, classified review work,
 and dataModelVersion changed last. The command writes no Git commit.
@@ -1259,6 +1304,24 @@ Options:
   --json             Print the result as JSON
   --root <path>      Workspace path
   --help             Show this help`);
+    return;
+  }
+  if (command === "program-amendment") {
+    console.log(`Usage:
+  filegrc program-amendment <source-resource-id> [--json]
+
+Trace a Policy, Document, Framework, Requirement, or Commitment through its
+Commitments, mappings, Controls, Obligations, and retention rules. The command
+only reports review work. It does not infer or write management decisions.`);
+    return;
+  }
+  if (command === "review-bindings") {
+    console.log(`Usage:
+  filegrc review-bindings <retention-or-mapping-id> [--json]
+
+Calculate the exact current source revisions required by an active Retention
+Schedule Item or Requirement Mapping. Copy reviewedSourceRevisions into the
+record only after management completes the review.`);
     return;
   }
   if (command === "workflow") {
@@ -1432,6 +1495,8 @@ function agentOverview(model) {
     search: "filegrc search <query> --json",
     obligations: "filegrc obligations --json",
     programReadiness: "filegrc program-readiness --json",
+    programAmendment: "filegrc program-amendment <source-resource-id> --json",
+    reviewBindings: "filegrc review-bindings <retention-or-mapping-id> --json",
     evidenceMap: "filegrc evidence-map --json",
     auditReadiness: "filegrc audit-readiness <audit-id> --json",
     prepareAudit: "filegrc prepare-audit <audit-id>",

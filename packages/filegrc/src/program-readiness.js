@@ -16,7 +16,10 @@ import {
 } from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
 import { assessPolicyLibraryUpgrades } from "./policy-library.js";
+import { assessProgramAmendmentReadiness } from "./program-amendment.js";
 import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
+import { assessRequirementMappingReadiness } from "./requirement-mapping.js";
+import { assessRetentionReadiness } from "./retention.js";
 import { markdownEntries } from "./resource-markdown.js";
 import {
   missingSoc2References,
@@ -53,8 +56,11 @@ export async function assessProgramReadiness(input, options = {}) {
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
+  controlStage.items.push(...await assessRetentionReadiness(loaded, program, {
+    informationTypesReviewed: collectionReviews.find(({ resourceType }) => resourceType === "information-type")?.complete === true
+  }));
   controlStage.items.push(...collectionReviews
-    .filter(({ resourceType }) => resourceType === "component")
+    .filter(({ resourceType }) => ["component", "retention-schedule-item"].includes(resourceType))
     .map(collectionReviewReadinessItem));
   const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
   controlStage.items.push(...governedContent.items);
@@ -69,15 +75,18 @@ export async function assessProgramReadiness(input, options = {}) {
   );
   controlStage.items.push(...policyActivations.map(policyActivationItem));
   controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. Activate unchanged approved program Documents and Training after their requirements are implemented, then activate approved Policies at the implementation cutover.`;
-  const evidenceGateStages = [
-    scopeStage(
+  const scopeReadinessStage = scopeStage(
       program,
       scope,
       records,
       byId,
       loaded.model,
-      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "vendor"].includes(resourceType))
-    ),
+      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "vendor", "information-type"].includes(resourceType))
+    );
+  scopeReadinessStage.items.push(...await assessRequirementMappingReadiness(loaded));
+  scopeReadinessStage.items.push(...await assessProgramAmendmentReadiness(loaded));
+  const evidenceGateStages = [
+    scopeReadinessStage,
     policyStage,
     controlStage
   ];
@@ -85,7 +94,7 @@ export async function assessProgramReadiness(input, options = {}) {
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
     ...evidenceGateStages,
-    operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model)
+    await operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model)
   ];
   finalizeStage(stages.at(-1));
   const candidateStarted = Boolean(
@@ -257,11 +266,14 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   ));
 
   if (modelSupports(model, "guided-workflow")) {
-    const commitments = records.filter((record) => (
+    const allCommitments = records.filter((record) => (
       record.type === "commitment"
       && !["superseded", "retired"].includes(record.status)
-      && (record.systemIds || []).some((id) => scope.systems.some((system) => system.id === id))
     ));
+    const commitments = allCommitments.filter((record) => (
+      (record.systemIds || []).some((id) => scope.systems.some((system) => system.id === id))
+    ));
+    const unscopedCommitments = allCommitments.filter((record) => !(record.systemIds || []).length);
     const completeCommitments = commitments.filter((record) => (
       record.status === "active"
       && record.statement
@@ -279,14 +291,15 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     )));
     items.push(item(
       "commitments",
-      scope.systems.length && uncoveredSystems.length === 0 ? "complete" : "action",
+      scope.systems.length && uncoveredSystems.length === 0 && unscopedCommitments.length === 0 ? "complete" : "action",
       "Record service commitments and system requirements",
       scope.systems.length
-        ? `${completeCommitments.length} complete active ${completeCommitments.length === 1 ? "commitment covers" : "commitments cover"} ${scope.systems.length - uncoveredSystems.length} of ${scope.systems.length} in-scope systems.`
+        ? `${completeCommitments.length} complete active ${completeCommitments.length === 1 ? "commitment covers" : "commitments cover"} ${scope.systems.length - uncoveredSystems.length} of ${scope.systems.length} in-scope systems.${unscopedCommitments.length ? ` ${unscopedCommitments.length} Commitment${unscopedCommitments.length === 1 ? " has" : "s have"} no System scope and must be reviewed explicitly.` : ""}`
         : "Define the service boundary before recording its customer promises and approved system requirements.",
       commitments[0] || { type: "commitment" },
       {
         uncoveredSystemIds: uncoveredSystems.map(({ id }) => id),
+        unscopedCommitmentIds: unscopedCommitments.map(({ id }) => id),
         commands: [
           "npx filegrc guide commitment --json",
           "npx filegrc list commitment --workflow --json",
@@ -1333,7 +1346,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   return stage("sources", "Control Evidence Sources", `Complete the authoritative ${modelSupports(model, "component-sources") ? "Components" : "Systems"} for every selected control family before marking the Controls implemented.`, items);
 }
 
-function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model) {
+async function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model) {
   const goal = workspace?.assuranceGoal || "none";
   if (!evidenceReady) {
     return stage("operation", "Operate the Program", "Run the controls and preserve dated evidence after the Evidence Ready gate passes.", [
@@ -1372,7 +1385,7 @@ function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceR
     ? coverageEnd(workspace.candidateCoverage)
     : null;
   const startStatus = !start ? "action" : start <= asOf ? "complete" : "later";
-  const sourceCoverage = assessSourceCoverageReadiness(loaded, scope.controls.map(({ id }) => id), workspace);
+  const sourceCoverage = await assessSourceCoverageReadiness(loaded, scope.controls.map(({ id }) => id), workspace);
   const incompleteSourceCoverage = sourceCoverage.filter(({ complete }) => !complete);
   return stage("operation", "Operate the Program", "Start the management candidate Type 2 period only after the Evidence Ready gate, then keep collection running.", [
     item(

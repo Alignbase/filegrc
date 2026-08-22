@@ -246,6 +246,10 @@ test("serves state and browser assets", async (context) => {
   const ownerDetail = await ownerDetailResponse.json();
   assert.equal(ownerDetail.detailsLoaded, true);
   assert.deepEqual(ownerDetail.history, []);
+  const revisionsResponse = await fetch(`${result.url}/api/review-revisions?id=person-owner`);
+  assert.equal(revisionsResponse.status, 200);
+  const revisions = await revisionsResponse.json();
+  assert.match(revisions.revisions["person-owner"], /^[a-f0-9]{64}$/);
   const appResponse = await fetch(`${result.url}/filegrc-app.js`);
   assert.equal(appResponse.status, 200);
   assert.equal(appResponse.headers.get("x-frame-options"), "DENY");
@@ -727,10 +731,13 @@ test("uses model-driven controls for fixed-shape object fields", () => {
   assert.match(APP_SCRIPT, /return fieldWrap\(name, "structured-object"/);
   assert.match(APP_STYLES, /\.structured-object-fields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(APP_SCRIPT, /nested\?\.additionalProperties\?\.type === "string"/);
-  assert.match(APP_SCRIPT, /function stringMapEditor\(value = \{\}, name = "item"\)/);
+  assert.match(APP_SCRIPT, /function stringMapEditor\(value = \{\}, name = "item", bindCurrent = false\)/);
+  assert.match(APP_SCRIPT, /Bind current revisions/);
+  assert.match(APP_SCRIPT, /function renderRetentionReadiness\(\)/);
   assert.match(APP_SCRIPT, /function readStringMap\(container\)/);
   assert.match(APP_STYLES, /\.string-map-row\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\) auto/);
   assert.match(APP_SCRIPT, /typeof value === "object" && !Array\.isArray\(value\) && !Object\.keys\(value\)\.length/);
+  assert.match(APP_SCRIPT, /field\.relation \|\| state\.model\.relationGroups\?\.\[field\.relationGroup\]/);
 });
 
 test("uses a concise record edit action", () => {
@@ -788,8 +795,8 @@ test("uses semantic nesting within the readiness sidebar", () => {
   const section = (stage, title) => stage.sections.find((candidate) => candidate.title === title);
   assert.deepEqual(section(scopeStage, "System Boundary").types, ["system", "component", "vendor", "classification", "information-type"]);
   assert.equal(section(scopeStage, "Dependencies"), undefined);
-  assert.deepEqual(section(scopeStage, "Program and Criteria").types, ["program", "framework", "requirement", "commitment"]);
-  assert.deepEqual(section(PROGRAM_PATH[2], "Control Catalog").types, ["control", "complementary-control", "obligation"]);
+  assert.deepEqual(section(scopeStage, "Program and Criteria").types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
+  assert.deepEqual(section(PROGRAM_PATH[2], "Control Catalog").types, ["control", "complementary-control", "retention-schedule-item", "obligation"]);
   assert.equal(section(PROGRAM_PATH[1], "Policies").relatedLinks[0].type, "policy");
   assert.equal(section(auditStage, "Fieldwork").relatedLinks[0].type, "document");
   assert.deepEqual(section(operationStage, "Risk").types, ["risk-assessment", "risk"]);
@@ -886,6 +893,7 @@ test("keeps IDs behind the guided editor and generates them from titles", () => 
   assert.doesNotMatch(APP_SCRIPT, /\[\s*"id",\s*"title"/);
   assert.doesNotMatch(APP_SCRIPT, /state\.model\.resources\[record\.type\]\.title \+ " · " \+ record\.id/);
   assert.match(APP_SCRIPT, /function relationTypeLabel\(field, plural = false\)/);
+  assert.match(APP_SCRIPT, /field\.relation \|\| field\.relationGroup/);
   assert.match(APP_SCRIPT, /field\.relation\.length > 3\) return plural \? "Resources" : "resource"/);
   assert.match(APP_SCRIPT, /field\.relation\.length > 3\) return "References supported records"/);
 });
@@ -1193,8 +1201,8 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.equal(PROGRAM_PATH[3].summary, "Complete scheduled and event work. Keep dated proof.");
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
   assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team"]);
-  assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment"]);
-  assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control", "obligation"]);
+  assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
+  assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control", "retention-schedule-item", "obligation"]);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
   assert.doesNotMatch(APP_SCRIPT, /Working areas/);
   assert.doesNotMatch(APP_SCRIPT, /Complete This Step/);
@@ -1541,7 +1549,18 @@ test("uses stage names and routes overview cards through stage pages", () => {
   assert.doesNotMatch(APP_SCRIPT, /Open checklist/);
   assert.doesNotMatch(APP_STYLES, /\.program-next-action\{/);
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
-  assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type\)\)/);
+  assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type, null, \{ seed \}\)\)/);
+  assert.match(APP_SCRIPT, /informationTypeIds: \[params\.get\("informationTypeId"\)\]/);
+  assert.match(APP_SCRIPT, /scopeResourceIds: \[params\.get\("scopeResourceId"\)\]/);
+  assert.match(APP_SCRIPT, /scheduleDocumentId: params\.get\("scheduleDocumentId"\)/);
+  assert.match(APP_SCRIPT, /scheduleDocuments\.length === 1/);
+  assert.match(APP_SCRIPT, /Show ' \+ \(cards\.length - visibleCount\) \+ ' more retention and mapping items/);
+  assert.match(APP_SCRIPT, /function retentionUseReviewIds\(dialog\)/);
+  assert.match(APP_SCRIPT, /item\.resourceId \|\| item\.subject\?\.id/);
+  assert.match(APP_SCRIPT, /!selected\.sourceResourceIds\.length \|\| !selected\.targetResourceIds\.length/);
+  assert.match(APP_SCRIPT, /!scheduleDocumentId \|\| !selected\.informationTypeIds\.length \|\| !selected\.scopeResourceIds\.length/);
+  assert.match(APP_SCRIPT, /resourceType === "retention-schedule-item" && fieldName === "scheduleDocumentId"/);
+  assert.match(APP_SCRIPT, /\["policy", "document", "framework", "requirement", "commitment", "system", "component", "vendor", "information-type", "source-coverage", "requirement-mapping", "retention-schedule-item"\]\.includes\(route\.type\)\) sections\.add\("workflow"\)/);
   assert.match(APP_STYLES, /\.readiness-state\{/);
 });
 

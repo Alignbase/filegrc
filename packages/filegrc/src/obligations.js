@@ -78,7 +78,7 @@ export function planObligations(resources, options = {}) {
   };
 
   for (const obligation of obligations) {
-    const activity = obligationActivity(model, obligation.activityType);
+    const activity = obligationActivity(model, obligation);
     const expectedCompletionTypes = activity.completionResourceTypes;
     const programStatus = obligationProgramStatus(obligation, byId, asOf, model);
     if (obligation.recurrence?.mode === "event" && obligation.recurrence.eventType) {
@@ -348,7 +348,7 @@ export async function scaffoldObligationCompletion(input, options = {}) {
   const item = action
     ? plannedActionForScaffold(loaded, action, completedOn)
     : plannedOccurrenceForScaffold(loaded, obligation, options.windowStart, completedOn);
-  const activity = obligationActivity(loaded.model, obligation.activityType);
+  const activity = obligationActivity(loaded.model, obligation);
   const type = item.completionType || preferredCompletionType(activity, {
     ...obligation,
     subjectResourceIds: item.subjectResourceIds || []
@@ -462,7 +462,7 @@ function assertExpectedCompletionType(obligation, record, model) {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     throw new Error("A completion resource record is required.");
   }
-  const expected = obligationActivity(model, obligation.activityType).completionResourceTypes;
+  const expected = obligationActivity(model, obligation).completionResourceTypes;
   if (expected.length && !expected.includes(record.type)) {
     throw new Error(
       `Obligation "${obligation.id}" expects a completion resource of type ${expected.join(" or ")}, not "${record.type ?? ""}".`
@@ -842,13 +842,13 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
     .map((record) => {
       const obligation = byId.get(record.obligationId);
       const expectedCompletionTypes = obligation?.type === "obligation"
-        ? obligationActivity(model, obligation.activityType).completionResourceTypes
+        ? obligationActivity(model, obligation).completionResourceTypes
         : [];
       const completionProfile = obligation?.type === "obligation"
-        ? obligationActivity(model, obligation.activityType).completionProfile || null
+        ? obligationActivity(model, obligation).completionProfile || null
         : null;
       const completionType = obligation?.type === "obligation"
-        ? preferredCompletionType(obligationActivity(model, obligation.activityType), {
+        ? preferredCompletionType(obligationActivity(model, obligation), {
             ...obligation,
             subjectResourceIds: event.subjectResourceIds || []
           }, byId)
@@ -1135,17 +1135,23 @@ function comparePlannedItems(a, b) {
 function eventActionDescription(obligation, eventType, model) {
   const policy = obligation.policyIds?.length ? ` Policy sources: ${obligation.policyIds.join(", ")}.` : "";
   const scope = obligation.scopeResourceIds?.length ? ` Review scoped resources: ${obligation.scopeResourceIds.join(", ")}.` : "";
-  const expected = obligationActivity(model, obligation.activityType).completionResourceTypes;
+  const expected = obligationActivity(model, obligation).completionResourceTypes;
   const completion = expected.length
     ? ` Link completion records of type ${expected.join(", ")} and any evidence before marking this done.`
     : " Link the completion record and evidence before marking this done.";
   return `Triggered by ${eventType}.${policy}${scope}${completion}`;
 }
 
-function obligationActivity(model, activityType) {
+function obligationActivity(model, obligation) {
+  const activityType = typeof obligation === "string" ? obligation : obligation?.activityType;
   const activity = model.obligationActivities?.[activityType];
   if (!activity) throw new Error(`Unknown obligation activity type "${activityType ?? ""}".`);
-  return activity;
+  if (activityType !== "custom") return activity;
+  return {
+    ...activity,
+    ...(obligation?.customActivity || {}),
+    completionType: obligation?.customActivity?.completionResourceTypes?.[0] || activity.completionType
+  };
 }
 
 function requireDate(value, label) {

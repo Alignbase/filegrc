@@ -1,7 +1,21 @@
-export function sourceCoverageComplete(record, loaded, program = loaded.workspace) {
-  if (!record?.validFrom || !record.collectionCadence || !record.retention || !record.reconciliationMethod) {
+import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
+
+export async function sourceCoverageComplete(record, loaded, program = loaded.workspace) {
+  const structuredRetention = loaded.model.resources["retention-schedule-item"];
+  if (!record?.validFrom || !record.collectionCadence || !record.reconciliationMethod) {
     return false;
   }
+  if (structuredRetention) {
+    const linkedRules = (record.retentionScheduleItemIds || []).map((id) => (
+      loaded.resources.find((resource) => resource.id === id && resource.type === "retention-schedule-item")
+    ));
+    const revisions = await resourceReviewRevisions(loaded, linkedRules.filter(Boolean).flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
+    if (!linkedRules.some((rule) => (
+      rule?.status === "active"
+      && (rule.scopeResourceIds || []).includes(record.id)
+      && retentionRuleIsCurrent(rule, revisions, new Map(loaded.resources.map((resource) => [resource.id, resource])), loaded)
+    ))) return false;
+  } else if (!record.retention) return false;
   const external = record.coverageKind === "external-system" || record.coverageKind === "external-component";
   const sourceId = record.componentId || record.systemId;
   if (external && (!sourceId || !(record.retrieverIds || []).length)) {
@@ -34,7 +48,7 @@ export function sourceCoverageComplete(record, loaded, program = loaded.workspac
   return true;
 }
 
-export function assessSourceCoverageReadiness(loaded, selectedControlIds = [], program = loaded.workspace) {
+export async function assessSourceCoverageReadiness(loaded, selectedControlIds = [], program = loaded.workspace) {
   if (!loaded.model.resources["source-coverage"]) return [];
   const selected = new Set(selectedControlIds);
   const selectedControlCodes = new Set(loaded.resources
@@ -45,9 +59,9 @@ export function assessSourceCoverageReadiness(loaded, selectedControlIds = [], p
     ))
     .map(({ code }) => code)
     .filter(Boolean));
-  return (loaded.model.evidenceSourceFamilies || [])
+  return Promise.all((loaded.model.evidenceSourceFamilies || [])
     .filter((family) => family.controlCodes.some((code) => selectedControlCodes.has(code)))
-    .map((family) => {
+    .map(async (family) => {
       const records = loaded.resources.filter((record) => (
         record.type === "source-coverage"
         && record.sourceFamilyId === family.id
@@ -59,7 +73,7 @@ export function assessSourceCoverageReadiness(loaded, selectedControlIds = [], p
       return {
         family,
         record,
-        complete: Boolean(record?.status === "active" && sourceCoverageComplete(record, loaded, program))
+        complete: Boolean(record?.status === "active" && await sourceCoverageComplete(record, loaded, program))
       };
-    });
+    }));
 }

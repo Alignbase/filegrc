@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v6 workspaces must run `npx filegrc migrate --to-model 7 --preview --json` after installing a model v7 package. The migration keeps issued historical Audit Documents neutral, returns legacy Training to approved until management records a current activation, and makes old applicability confirmations stale for one scoped review. Older workspaces migrate one model version at a time. See the [model v7 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v7.md).
+Existing model v7 workspaces must run `npx filegrc migrate --to-model 8 --preview --json` after installing a model v8 package. The migration preserves legacy retention prose as notes and creates no retention periods or disposition behavior. Older workspaces migrate one model version at a time. See the [model v8 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v8.md).
 
 ## How it works
 

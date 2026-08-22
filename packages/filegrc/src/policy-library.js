@@ -42,14 +42,18 @@ const DOCUMENT_CONTENT_UPDATES = [
     id: "document-data-retention-schedule",
     path: "documents/document-data-retention-schedule.md",
     priorRevision: "45a408e8139bd57f42dda5ca5ae5c8cd4480b4e7bf08834f60058148a3a63475",
-    additionalPriorRevisions: new Set(["d80b99ce53d1012cc169bbbc2afab8d0597bfbe9f30ac0812a8d5bbeb2ed9f90"]),
-    currentRevision: "dd11857ae7d881f176bd93947ef3031c33c75ee41e3c0435198fd60c67a94cf7",
+    additionalPriorRevisions: new Set([
+      "d80b99ce53d1012cc169bbbc2afab8d0597bfbe9f30ac0812a8d5bbeb2ed9f90",
+      "dd11857ae7d881f176bd93947ef3031c33c75ee41e3c0435198fd60c67a94cf7"
+    ]),
+    currentRevision: "4a48c15a4e20e4f29028cf2ff8597315eb51878814120125b5268356b923c9db",
+    currentSourcePath: "./policy-library/data-retention-schedule-v2.md",
     replacements: [
       ["FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact.", "Remove each bracketed prompt only after replacing it with a reviewed fact."],
       ["Record the authority, scope, owner, start date, and release decision outside this public template.", "Record the authority, scope, owner, start date, and release decision in controlled legal-hold records."],
       ["| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery objectives] | [Complete before approval: expiration or disposal action] | [Complete before approval: continuity objective or risk decision] |", "| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery needs] | [Complete before approval: expiration or disposal action] | [Complete before approval: recovery need, commitment, or risk decision] |"]
     ],
-    summary: "Keep FileGRC prompt handling in document guidance, make the Retention Schedule standalone, and avoid assuming numeric recovery objectives."
+    summary: "Move schedule rows into structured records and keep organization-specific periods and disposition choices under management review."
   },
   {
     id: "document-security-incident-recovery-plan",
@@ -592,31 +596,51 @@ async function buildPolicyLibraryPlan(loaded) {
     }
     if (sourceRevision === documentUpdate.currentRevision) {
       skipped.push(skippedItem(documentUpdate.id, "current", "The governed Document already contains the current standalone starter language."));
-      continue;
-    }
-    if (sourceRevision !== documentUpdate.priorRevision
+    } else if (sourceRevision !== documentUpdate.priorRevision
       && !documentUpdate.additionalPriorRevisions?.has(sourceRevision)) {
       skipped.push(skippedItem(documentUpdate.id, "customized", "The governed Document differs from the recognized prior starter, so FileGRC will not rewrite it."));
-      continue;
+    } else {
+      const nextSource = documentUpdate.currentSourcePath
+        ? materializeDocument(
+            await readFile(new URL(documentUpdate.currentSourcePath, import.meta.url), "utf8"),
+            loaded.workspace?.organizationName
+          )
+        : documentUpdate.replacements.reduce((current, [prior, next]) => current.replace(prior, next), source);
+      if (normalizedDocumentRevision(nextSource, loaded.workspace?.organizationName) !== documentUpdate.currentRevision) {
+        throw new Error(`The ${documentUpdate.id} starter update does not produce the current governed Document.`);
+      }
+      proposalChanges.push({
+        resourceType: "document",
+        resourceId: documentUpdate.id,
+        path: displayPath,
+        summary: documentUpdate.summary,
+        diff: fullReplacementDiff(displayPath, source, nextSource)
+      });
+      contentUpdates[documentUpdate.id] = { content: nextSource };
+      expectedContentRevisions[documentUpdate.id] = {
+        [documentUpdate.path]: rawSourceRevision
+      };
     }
-    const nextSource = documentUpdate.replacements.reduce(
-      (current, [prior, next]) => current.replace(prior, next),
-      source
-    );
-    if (normalizedDocumentRevision(nextSource, loaded.workspace?.organizationName) !== documentUpdate.currentRevision) {
-      throw new Error(`The ${documentUpdate.id} starter update does not produce the current governed Document.`);
+    if (documentUpdate.id === "document-data-retention-schedule") {
+      const expectedControlIds = ["control-logging-monitoring", "control-backup-restoration"];
+      const requiredControlIds = expectedControlIds.filter((id) => byId.get(id)?.record.type === "control");
+      for (const id of expectedControlIds.filter((id) => !requiredControlIds.includes(id))) {
+        skipped.push(skippedItem(id, "missing", `The starter ${id} Control is not present, so FileGRC did not add a dangling schedule relationship.`));
+      }
+      const nextControlIds = [...new Set([...(entry.record.controlIds || []), ...requiredControlIds])];
+      if (!sameValue(entry.record.controlIds || [], nextControlIds)) {
+        updates.push({ ...entry.record, controlIds: nextControlIds });
+        expectedRevisions[entry.record.id] = entry.revision;
+        const jsonPath = "data/documents/document-data-retention-schedule.json";
+        proposalChanges.push({
+          resourceType: "document",
+          resourceId: entry.record.id,
+          path: jsonPath,
+          summary: "Link the schedule to logging and backup Controls while preserving existing Control relationships.",
+          diff: replacementDiff(jsonPath, [["controlIds", entry.record.controlIds || [], nextControlIds]])
+        });
+      }
     }
-    proposalChanges.push({
-      resourceType: "document",
-      resourceId: documentUpdate.id,
-      path: displayPath,
-      summary: documentUpdate.summary,
-      diff: fullReplacementDiff(displayPath, source, nextSource)
-    });
-    contentUpdates[documentUpdate.id] = { content: nextSource };
-    expectedContentRevisions[documentUpdate.id] = {
-      [documentUpdate.path]: rawSourceRevision
-    };
   }
 
   for (const controlUpdate of CONTROL_UPDATES) {
@@ -814,6 +838,10 @@ function materializePolicy(source, organizationName, securityContact) {
   return source
     .replaceAll("{{company_name}}", organizationName || "Organization")
     .replaceAll("{{security_contact_email}}", securityContact || "security@example.com");
+}
+
+function materializeDocument(source, organizationName) {
+  return source.replaceAll("{{company_name}}", organizationName || "Organization");
 }
 
 function securityContactFromPolicy(source) {

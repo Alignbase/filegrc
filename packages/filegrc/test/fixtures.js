@@ -141,6 +141,7 @@ export async function makeComprehensiveWorkspace(root, version) {
     }
 
     addUsefulOptionalFields(record, fields, ids, model, type);
+    if (type === "requirement-mapping") record.targetResourceIds = [ids.control];
     if (
       type === "obligation"
       && model.obligationActivities[record.activityType]?.recurrenceModes?.length === 1
@@ -229,6 +230,9 @@ function sampleValue(name, field, ids, model, type) {
 
 function sampleObject(objectType, ids, model, type) {
   const schema = model.objectTypes[objectType];
+  if (objectType === "custom-obligation-activity") {
+    return { title: "Custom evidence review", completionResourceTypes: ["evidence"] };
+  }
   if (objectType === "recurrence") {
     return { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-15" };
   }

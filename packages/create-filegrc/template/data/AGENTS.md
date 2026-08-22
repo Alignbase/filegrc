@@ -99,6 +99,8 @@ If `guide` marks a Markdown slot recommended, fill it before treating the delive
 
 When `guide` returns a collection review requirement, review the listed type-specific criteria and use `npx filegrc review-collection RESOURCE_TYPE --scaffold`. Fill the management conclusion, rationale, reviewer, and date, then preview and apply the payload. Do not invent `collectionRevision`; FileGRC calculates it from the current records and material Program scope. Any later change makes the confirmation stale and requires another review.
 
+Use Retention Schedule Items as the structured rows of the Data Retention Schedule. Keep a row `planned` until management has approved its Information Types, scope, cutoff, period, disposition action, instructions, sources, approver, date, and reviewed source revisions. Run `npx filegrc program-readiness --json` after changing an information use, source-coverage record, Commitment, Policy, or other source. FileGRC may identify missing or stale decisions, but it must never infer an organization-specific period or deletion behavior.
+
 Store a relationship only on its authoritative record. Control Tests store `auditId`; Evidence Artifacts store `auditIds`; Commitments store `systemIds` and `controlIds`; Controls store `policyIds`, `requirementIds`, `systemIds`, `componentIds`, and `evidenceSourceComponentIds`; Risks store `controlIds`; Components store their `vendorId` and `systemUses`. Use `references` to inspect derived inbound links.
 
 Use explicit business dates. Git records when a file changed, but it does not replace `occurredOn`, `scheduledFor`, `completedOn`, `approvedOn`, or similar fields.

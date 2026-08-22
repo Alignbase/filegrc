@@ -82,6 +82,7 @@ export {
   setupExternalReviewerGovernance
 } from "./external-reviewer.js";
 export { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+export { planProgramAmendment } from "./program-amendment.js";
 export {
   buildAgentProgramPath,
   PROGRAM_PATH,
@@ -99,6 +100,8 @@ export {
 export { searchResources, searchableValues } from "./search.js";
 export { effectiveResourceStatus } from "./resource-status.js";
 export { applyReconciliation, planReconciliation } from "./reconciliation.js";
+export { assessRequirementMappingReadiness } from "./requirement-mapping.js";
+export { assessRetentionReadiness, nearDuplicateInformationTypes, resourceReviewRevision, resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent, retentionUses } from "./retention.js";
 export { createFilegrcServer, serveWorkspace } from "./server.js";
 export { normalizeSetupPayload, planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
 export { createAppState, createResourceDetail } from "./state.js";

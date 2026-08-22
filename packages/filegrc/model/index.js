@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
-export const ACTIVE_MODEL_VERSION = "7";
-export const SUPPORTED_MODEL_VERSIONS = Object.freeze(["2", "3", "4", "5", "6", ACTIVE_MODEL_VERSION]);
+export const ACTIVE_MODEL_VERSION = "8";
+export const SUPPORTED_MODEL_VERSIONS = Object.freeze(["2", "3", "4", "5", "6", "7", ACTIVE_MODEL_VERSION]);
 export const MODEL_CAPABILITY_VERSIONS = Object.freeze({
   "guided-workflow": 3,
   "program-scope": 4,
@@ -9,7 +9,10 @@ export const MODEL_CAPABILITY_VERSIONS = Object.freeze({
   "evidence-artifacts": 4,
   "governed-document-activation": 5,
   "document-workflow-scope": 5,
-  "governed-training-activation": 6
+  "governed-training-activation": 6,
+  "retention-schedule": 8,
+  "requirement-mappings": 8,
+  "custom-obligations": 8
 });
 
 export function modelSupports(modelOrVersion, capability) {
@@ -24,9 +27,9 @@ export function modelSupports(modelOrVersion, capability) {
 export function loadModel(version = ACTIVE_MODEL_VERSION) {
   const requested = String(version);
   if (!SUPPORTED_MODEL_VERSIONS.includes(requested)) {
-    const migrationTarget = requested === "1" ? "2" : requested === "2" ? "3" : requested === "3" ? "4" : requested === "4" ? "5" : requested === "5" ? "6" : "7";
+    const migrationTarget = requested === "1" ? "2" : requested === "2" ? "3" : requested === "3" ? "4" : requested === "4" ? "5" : requested === "5" ? "6" : requested === "6" ? "7" : "8";
     throw new Error(
-      `Unsupported data model version "${requested}". This filegrc release supports models v2, v3, v4, v5, v6, and v7. `
+      `Unsupported data model version "${requested}". This filegrc release supports models v2, v3, v4, v5, v6, v7, and v8. `
       + `Run \`npx filegrc migrate --to-model ${migrationTarget} --preview --json\` from the workspace root.`
     );
   }

@@ -717,9 +717,66 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
+});
+
+test("migrates v7 retention prose and information uses without inventing schedule rules", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v8-retention-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "7");
+  const loaded = await loadWorkspace(root);
+  const component = loaded.resources.find(({ type }) => type === "component");
+  const system = loaded.resources.find(({ type }) => type === "system");
+  const vendor = loaded.resources.find(({ type }) => type === "vendor");
+  const informationType = loaded.resources.find(({ type }) => type === "information-type");
+  const sourceCoverage = loaded.resources.find(({ type }) => type === "source-coverage");
+  const commitment = loaded.resources.find(({ type }) => type === "commitment");
+  const document = loaded.resources.find(({ type }) => type === "document");
+  await writeJson(loaded.entries.find(({ record }) => record.id === component.id).path, {
+    ...component,
+    informationUses: [{ informationTypeId: informationType.id, activities: ["store", "process"] }]
+  });
+  await writeJson(loaded.entries.find(({ record }) => record.id === system.id).path, {
+    ...system,
+    informationTypeIds: [informationType.id]
+  });
+  await writeJson(loaded.entries.find(({ record }) => record.id === vendor.id).path, {
+    ...vendor,
+    informationTypeIds: [informationType.id]
+  });
+  await writeJson(loaded.entries.find(({ record }) => record.id === sourceCoverage.id).path, {
+    ...sourceCoverage,
+    status: "active",
+    retention: "Keep under the approved schedule.",
+    collectionCadence: "Collect when work occurs.",
+    reconciliationMethod: "Reconcile to the complete source population.",
+    validFrom: "2026-01-01"
+  });
+  await writeJson(loaded.entries.find(({ record }) => record.id === commitment.id).path, {
+    ...commitment,
+    sourceDocumentIds: [document.id]
+  });
+
+  const preview = await planModelMigration(root, { targetModelVersion: "8" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  assert.equal(preview.changes.create.length, 0);
+  assert.ok(preview.classifications.reviewRequired.some(({ resourceId, field }) => (
+    resourceId === sourceCoverage.id && field === "retentionScheduleItemIds"
+  )));
+  assert.ok(preview.classifications.reviewRequired.some(({ resourceId, field }) => resourceId === system.id && field === "informationTypeIds"));
+  assert.ok(preview.classifications.reviewRequired.some(({ resourceId, field }) => resourceId === vendor.id && field === "informationTypeIds"));
+  const migratedComponent = preview.fileDiff.update.find(({ id }) => id === component.id).after;
+  assert.deepEqual(migratedComponent.informationUses, [{
+    informationTypeId: informationType.id,
+    processingOperations: ["store", "process"]
+  }]);
+  const migratedCoverage = preview.fileDiff.update.find(({ id }) => id === sourceCoverage.id).after;
+  assert.equal(migratedCoverage.retentionNotes, "Keep under the approved schedule.");
+  assert.equal(migratedCoverage.retentionScheduleItemIds, undefined);
+  const migratedCommitment = preview.fileDiff.update.find(({ id }) => id === commitment.id).after;
+  assert.deepEqual(migratedCommitment.sourceResourceIds, [document.id]);
 });
 
 test("migrates v5 Training into separate approval, activation, and Obligation scheduling", async (context) => {

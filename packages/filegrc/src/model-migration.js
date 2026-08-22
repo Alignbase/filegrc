@@ -896,9 +896,10 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
     : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION
       : sourceVersion === "2" ? "3"
         : sourceVersion === "3" ? "4"
-          : sourceVersion === "4" ? "5"
-            : sourceVersion === "5" ? "6"
-              : ACTIVE_MODEL_VERSION;
+            : sourceVersion === "4" ? "5"
+              : sourceVersion === "5" ? "6"
+                : sourceVersion === "6" ? "7"
+                  : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -915,8 +916,11 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "5" && requestedTarget === "6") {
     return planV5ToV6Migration(loaded);
   }
-  if (sourceVersion === "6" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "6" && requestedTarget === "7") {
     return planV6ToV7Migration(loaded);
+  }
+  if (sourceVersion === "7" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV7ToV8Migration(loaded);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
@@ -2030,6 +2034,158 @@ async function planV6ToV7Migration(loaded) {
       expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
       validateWholeWorkspace: true,
       targetModelVersion: "7"
+    }
+  };
+}
+
+async function planV7ToV8Migration(loaded) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("8");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+
+  for (const original of loaded.resources) {
+    const record = structuredClone(original);
+    let changed = false;
+    if (original.type === "workspace") {
+      record.dataModelVersion = "8";
+      changed = true;
+      automatic.push(classifiedChange("automatic", original.id, "dataModelVersion", "Select model v8."));
+    }
+    if (original.type === "component" && Array.isArray(original.informationUses)) {
+      record.informationUses = original.informationUses.map((use) => {
+        if (!Array.isArray(use.activities)) return use;
+        const migrated = { ...use, processingOperations: use.activities };
+        delete migrated.activities;
+        return migrated;
+      });
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "informationUses",
+        "Rename information-use activities to the standard processingOperations term without changing the recorded values."
+      ));
+    }
+    if (original.type === "commitment" && Array.isArray(original.sourceDocumentIds)) {
+      record.sourceResourceIds = [...new Set([
+        ...(record.sourceResourceIds || []),
+        ...original.sourceDocumentIds
+      ])];
+      delete record.sourceDocumentIds;
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "sourceResourceIds",
+        "Preserve source Document links in the broader source-resource relationship."
+      ));
+    }
+    if (original.type === "source-coverage" && typeof original.retention === "string") {
+      record.retentionNotes = original.retention;
+      delete record.retention;
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "retentionNotes",
+        "Preserve the prior narrative retention statement as notes without treating it as an approved schedule rule."
+      ));
+    }
+    if (original.type === "audit" && typeof original.retentionDecision === "string") {
+      record.retentionNotes = original.retentionDecision;
+      delete record.retentionDecision;
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "retentionNotes",
+        "Preserve the prior audit retention decision as notes without inferring a structured retention rule."
+      ));
+    }
+    if (changed) updates.push(record);
+  }
+
+  for (const record of loaded.resources) {
+    if (record.type === "source-coverage" && record.status === "active") {
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "retentionScheduleItemIds",
+        "Management must select or create an approved retention schedule item for this source coverage."
+      ));
+    }
+    if (record.type === "component" && record.informationUses?.length) {
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "informationUses",
+        "Review every Information Type use against the structured retention schedule."
+      ));
+    }
+    if (["system", "vendor"].includes(record.type) && record.informationTypeIds?.length) {
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "informationTypeIds",
+        `Review every Information Type used by this ${record.type === "system" ? "System" : "Vendor"} against the structured retention schedule.`
+      ));
+    }
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Resolve ${item.field} before applying the model v8 migration.`
+    ));
+  }
+  const ready = unsupported.length === 0;
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "7",
+    targetModelVersion: "8",
+    ready,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: [
+      "The migration never chooses a retention period, cutoff, or disposition action.",
+      "Review-required items remain visible after migration through program readiness."
+    ],
+    migrationReport: {},
+    summary: {
+      create: 0,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "8"
     }
   };
 }

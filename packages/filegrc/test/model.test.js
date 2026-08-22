@@ -12,7 +12,7 @@ import {
 
 test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "7");
+  assert.equal(model.modelVersion, "8");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -27,10 +27,10 @@ test("active model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 49);
-  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component"]);
+  assert.equal(Object.keys(model.resources).length, 51);
+  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "information-type", "retention-schedule-item"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
-  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component"]) {
+  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "information-type", "retention-schedule-item"]) {
     assert.ok(model.collectionReviews[type].description.length >= 60);
     assert.ok(model.collectionReviews[type].reviewPoints.length >= 2);
     assert.ok(model.collectionReviews[type].reviewPoints.length <= 3);
@@ -199,7 +199,10 @@ test("active model exposes the complete resource registry", () => {
   assert.equal(model.resources.obligation.fields.activityType.registry, "obligationActivities");
   assert.ok(model.resources.obligation.formFields.includes("window"));
   assert.equal(model.resources.obligation.fields.recurrence.objectType, "recurrence");
-  assert.equal(model.objectTypes.recurrence.properties.eventType.registry, "policyEvents");
+  assert.equal(model.objectTypes.recurrence.properties.eventType.type, "string");
+  assert.equal(model.objectTypes.recurrence.properties.eventType.format, "id");
+  assert.ok(model.resources.obligation.fields.activityType.registry === "obligationActivities");
+  assert.ok(model.obligationActivities.custom);
   assert.deepEqual(model.objectTypes["obligation-window"].required, ["precision", "dueAfter"]);
   assert.deepEqual(model.resources["vendor-review"].fields.status.values, ["planned", "in-progress", "complete", "canceled"]);
   assert.deepEqual(model.resources["vendor-review"].fields.decision.values, ["approved", "conditional", "rejected"]);
@@ -314,7 +317,7 @@ test("active model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "7");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "8");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");

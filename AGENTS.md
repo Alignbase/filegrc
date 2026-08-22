@@ -35,6 +35,15 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 - Prefer explicit, inspectable behavior over automation that changes audit records without review.
 - UI, HTTP, and CLI workflows must call the same domain functions so headless agents receive the same calculations, validation, and output as browser users.
 
+## Standards alignment
+
+- Use AICPA SOC 2 terms for the assurance subject matter and use NIST OSCAL as the main interoperability reference for machine-readable GRC structure.
+- Preserve OSCAL's useful separation among catalogs and requirements, profile-like applicability and tailoring, bounded Systems, Components, inventory items, control implementation, assessment plans, and assessment results. Keep FileGRC's flat, Git-reviewable records and typed ID relationships instead of reproducing OSCAL's nested document structure.
+- Use OSCAL names only when the FileGRC concept has the same meaning. In particular, reserve `Profile` and `tailoring` for control selection or modification, `parameter` for a defined requirement placeholder and its assigned value, and `Component`, `Information Type`, and `inventory item` for their established model roles. Do not rename a broader FileGRC workflow to an OSCAL term merely because the records overlap.
+- Keep FileGRC IDs canonical. Store OSCAL and other standards identifiers in `externalIds` or model-defined mappings, and preserve source provenance and reviewed mapping rationale rather than copying authoritative source text.
+- Model organization-specific decisions separately from reusable catalog or starter content. A library upgrade may propose catalog, Policy, or template changes, but it must not overwrite management applicability, parameters, Controls, schedules, Commitments, or other organization-owned records.
+- Do not claim OSCAL compatibility from conceptual alignment alone. Claim compatibility only for an explicit import or export path that validates its output against the supported official OSCAL schema and documents any lossy or FileGRC-specific mappings.
+
 ## Source truth and derived workflow axiom
 
 - Files under `data/`, including companion Markdown, are the authoritative program record. Store organization facts, decisions, relationships, status, dates, and evidence references there.
@@ -74,7 +83,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 
 ## Data rules
 
-The active authoritative model registry is the standalone `packages/filegrc/model/v7.json`. Models v1 through v6 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
+The active authoritative model registry is the standalone `packages/filegrc/model/v8.json`. Models v1 through v7 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.

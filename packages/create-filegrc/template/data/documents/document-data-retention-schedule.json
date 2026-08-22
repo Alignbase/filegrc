@@ -16,7 +16,9 @@
   "acknowledgementRequired": false,
   "controlIds": [
     "control-data-classification-inventory",
-    "control-data-retention-disposal"
+    "control-data-retention-disposal",
+    "control-logging-monitoring",
+    "control-backup-restoration"
   ],
   "classificationId": "internal",
   "proposedEffectiveOn": "{{effective_date}}",

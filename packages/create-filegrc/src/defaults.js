@@ -9,6 +9,7 @@ const OVERSIGHT_TEAM_ID = "team-security-risk-oversight";
 const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
 const RETENTION_SCHEDULE_ID = "document-data-retention-schedule";
 const SECURITY_PLAN_ID = "document-security-incident-recovery-plan";
+const FILEGRC_INFORMATION_TYPE_ID = "information-type-grc-records";
 const FILEGRC_SOURCE_FAMILIES = [
   "training-acknowledgement",
   "exception-finding",
@@ -1117,6 +1118,10 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     classificationId: "confidential",
     internetExposed: false,
     systemUses: [],
+    informationUses: [{
+      informationTypeId: FILEGRC_INFORMATION_TYPE_ID,
+      processingOperations: ["collect", "store", "use", "share", "delete"]
+    }],
     evidenceSourceKinds: FILEGRC_SOURCE_FAMILIES,
     evidenceOwnerIds: [POLICY_OWNER_APPOINTMENT_ID]
   };
@@ -1152,14 +1157,36 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
       ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
       ...(filegrcManaged ? {
         collectionCadence: "Record work when it occurs and export the complete population for the audit period.",
-        retention: "Keep records for the period defined in the approved Data Retention Schedule.",
+        retentionScheduleItemIds: [`retention-schedule-item-source-${sourceFamilyId}`],
         reconciliationMethod: "Export the complete filegrc source-family population, compare it with related in-scope records and Work Queue activity, and investigate omissions or duplicates.",
         validFrom: effectiveDate
       } : {})
     };
   });
 
+  const informationType = {
+    id: FILEGRC_INFORMATION_TYPE_ID,
+    type: "information-type",
+    title: "Governance, risk, compliance, and audit records",
+    status: "active",
+    classificationId: "confidential",
+    description: "Structured program records, approvals, work history, and evidence indexes stored in the FileGRC repository."
+  };
+  const retentionScheduleItems = SOURCE_FAMILIES.map(([sourceFamilyId, title]) => ({
+    id: `retention-schedule-item-source-${sourceFamilyId}`,
+    type: "retention-schedule-item",
+    title: `${title} retention review`,
+    status: "planned",
+    description: "Management must select the covered Information Types, cutoff, retention period, and disposition behavior before activation.",
+    informationTypeIds: FILEGRC_SOURCE_FAMILIES.includes(sourceFamilyId) ? [FILEGRC_INFORMATION_TYPE_ID] : [],
+    scopeResourceIds: [`source-coverage-${sourceFamilyId}`],
+    scheduleDocumentId: RETENTION_SCHEDULE_ID,
+    sourceResourceIds: [INFORMATION_SECURITY_POLICY_ID, RETENTION_SCHEDULE_ID],
+    ownerIds: [POLICY_OWNER_APPOINTMENT_ID]
+  }));
+
   const foundation = [
+    recordFile("information-types", informationType),
     recordFile("components", programRepository),
     recordFile("teams", team)
   ];
@@ -1173,6 +1200,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     ...controlRecords.map((record) => recordFile("controls", record)),
     ...foundation,
     ...sourceCoverageRecords.map((record) => recordFile("source-coverage", record)),
+    ...retentionScheduleItems.map((record) => recordFile("retention-schedule-items", record)),
     ...obligationRecords.map((record) => recordFile("obligations", record))
   ];
 }

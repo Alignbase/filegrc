@@ -48,13 +48,13 @@ function loaded(candidateCoverage, records = []) {
   };
 }
 
-test("requires a passed source retrieval test after a candidate period is selected", () => {
-  assert.equal(sourceCoverageComplete(sourceCoverage, loaded()), true);
+test("requires a passed source retrieval test after a candidate period is selected", async () => {
+  assert.equal(await sourceCoverageComplete(sourceCoverage, loaded()), true);
 
   const candidate = { kind: "range", startsOn: "2026-08-03", endsOn: "2027-01-31" };
-  assert.equal(sourceCoverageComplete(sourceCoverage, loaded(candidate)), false);
+  assert.equal(await sourceCoverageComplete(sourceCoverage, loaded(candidate)), false);
   assert.equal(
-    assessSourceCoverageReadiness(loaded(candidate), ["control-access"])[0].complete,
+    (await assessSourceCoverageReadiness(loaded(candidate), ["control-access"]))[0].complete,
     false
   );
 
@@ -75,9 +75,9 @@ test("requires a passed source retrieval test after a candidate period is select
   tested.resources = tested.resources.map((record) => (
     record.id === sourceCoverage.id ? testedCoverage : record
   ));
-  assert.equal(sourceCoverageComplete(testedCoverage, tested), true);
+  assert.equal(await sourceCoverageComplete(testedCoverage, tested), true);
   assert.equal(
-    assessSourceCoverageReadiness(tested, ["control-access"])[0].complete,
+    (await assessSourceCoverageReadiness(tested, ["control-access"]))[0].complete,
     true
   );
 });

@@ -10,6 +10,7 @@ import {
 import { isSafeGitName } from "./git-name.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
+import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { obligationIsEnabled } from "./program-lifecycle.js";
 import { partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
@@ -45,6 +46,15 @@ async function validateWorkspaceUnmeasured(input) {
   ]));
   const asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC");
   const obligationsByControl = new Map();
+  const reviewRecords = loaded.resources.filter((record) => (
+    record.status === "active" && ["retention-schedule-item", "requirement-mapping"].includes(record.type)
+  ));
+  const reviewDependencyIds = reviewRecords.flatMap((record) => (
+    record.type === "retention-schedule-item"
+      ? retentionReviewResourceIds(record, loaded)
+      : [...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])]
+  ));
+  const currentReviewRevisions = await resourceReviewRevisions(loaded, reviewDependencyIds);
   for (const obligation of loaded.resources.filter((record) => record.type === "obligation" && record.status !== "retired")) {
     for (const controlId of obligation.controlIds || []) {
       if (!obligationsByControl.has(controlId)) obligationsByControl.set(controlId, []);
@@ -88,6 +98,8 @@ async function validateWorkspaceUnmeasured(input) {
       validateCollectionReview(record, loaded, byId, displayPath, diagnostics);
     }
     if (record.type === "obligation") validateObligation(record, loaded.model, byId, displayPath, diagnostics);
+    if (record.type === "retention-schedule-item") validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisions, displayPath, diagnostics);
+    if (record.type === "requirement-mapping") validateRequirementMapping(record, currentReviewRevisions, displayPath, diagnostics);
     if (record.type === "action-item") {
       validateCompletedObligationAction(record, byId, loaded.model, displayPath, diagnostics);
     }
@@ -579,7 +591,7 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
     }
     const obligation = byId.get(action.obligationId);
     const expectedTypes = obligation?.type === "obligation"
-      ? model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || []
+      ? obligationCompletionTypes(model, obligation)
       : [];
     if (!expectedTypes.length) continue;
     const completionIds = modelSupports(model, "guided-workflow")
@@ -606,7 +618,7 @@ function validateCompletedObligationAction(record, byId, model, path, diagnostic
   ) return;
   const obligation = byId.get(record.obligationId);
   if (obligation?.type !== "obligation") return;
-  const expectedTypes = model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || [];
+  const expectedTypes = obligationCompletionTypes(model, obligation);
   if (!expectedTypes.length) return;
   const linked = [...new Set(record.completionResourceIds || [])]
     .map((id) => byId.get(id))
@@ -653,7 +665,19 @@ function validateIndependentApproval(record, byId, path, diagnostics) {
 function validateObligation(record, model, byId, path, diagnostics) {
   const recurrence = record.recurrence;
   if (!recurrence || Array.isArray(recurrence) || typeof recurrence !== "object") return;
-  const activity = model.obligationActivities?.[record.activityType];
+  const activity = record.activityType === "custom"
+    ? { ...model.obligationActivities?.custom, ...record.customActivity }
+    : model.obligationActivities?.[record.activityType];
+  if (record.activityType === "custom") {
+    const invalidTypes = (record.customActivity?.completionResourceTypes || []).filter((type) => !model.resources[type]);
+    if (invalidTypes.length) {
+      diagnostics.push(error(
+        "invalid-obligation-activity",
+        path,
+        `customActivity.completionResourceTypes contains unknown resource types: ${invalidTypes.join(", ")}.`
+      ));
+    }
+  }
   if (
     activity
     && Array.isArray(activity.recurrenceModes)
@@ -692,7 +716,7 @@ function validateObligation(record, model, byId, path, diagnostics) {
       ));
     }
   } else if (recurrence.mode === "event") {
-    if (!model.policyEvents?.[recurrence.eventType]) {
+    if (!model.policyEvents?.[recurrence.eventType] && !modelSupports(model, "custom-obligations")) {
       diagnostics.push(error(
         "invalid-obligation-recurrence",
         path,
@@ -753,6 +777,59 @@ function validateObligation(record, model, byId, path, diagnostics) {
   ) {
     diagnostics.push(error("invalid-obligation-window", path, "window.dueAfter must be on or after window.startsAfter."));
   }
+}
+
+function validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisions, path, diagnostics) {
+  if (record.status !== "active") return;
+  const schedule = byId.get(record.scheduleDocumentId);
+  if (schedule?.type !== "document" || schedule.documentKind !== "schedule" || schedule.workflowScope !== "program" || ["superseded", "retired"].includes(schedule.status)) {
+    diagnostics.push(error(
+      "invalid-retention-schedule-document",
+      path,
+      "scheduleDocumentId must reference a current program Document whose documentKind is schedule."
+    ));
+  }
+  const sources = retentionReviewResourceIds(record, loaded);
+  const revisions = record.reviewedSourceRevisions || {};
+  const missing = sources.filter((id) => (
+    !currentReviewRevisions.get(id) || revisions[id] !== currentReviewRevisions.get(id)
+  )).concat(Object.keys(revisions).filter((id) => !sources.includes(id)));
+  if (missing.length) {
+    diagnostics.push(error(
+      "stale-retention-review",
+      path,
+      `reviewedSourceRevisions must bind the schedule Document, Information Types, operational scope, and authority or source records before activation: ${missing.join(", ")}.`
+    ));
+  }
+}
+
+function validateRequirementMapping(record, currentReviewRevisions, path, diagnostics) {
+  const overlap = (record.sourceResourceIds || []).filter((id) => (record.targetResourceIds || []).includes(id));
+  if (overlap.length) {
+    diagnostics.push(error(
+      "invalid-requirement-mapping",
+      path,
+      `A Requirement Mapping cannot place the same record on both sides: ${[...new Set(overlap)].join(", ")}.`
+    ));
+  }
+  if (record.status !== "active") return;
+  const mappedIds = [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])];
+  const revisions = record.reviewedSourceRevisions || {};
+  const missing = mappedIds.filter((id) => (
+    !currentReviewRevisions.get(id) || revisions[id] !== currentReviewRevisions.get(id)
+  )).concat(Object.keys(revisions).filter((id) => !mappedIds.includes(id)));
+  if (missing.length) {
+    diagnostics.push(error(
+      "stale-requirement-mapping",
+      path,
+      `reviewedSourceRevisions must bind every mapped resource before activation: ${missing.join(", ")}.`
+    ));
+  }
+}
+
+function obligationCompletionTypes(model, obligation) {
+  if (obligation.activityType === "custom") return obligation.customActivity?.completionResourceTypes || [];
+  return model.obligationActivities?.[obligation.activityType]?.completionResourceTypes || [];
 }
 
 function validatePolicyEvent(record, model, byId, path, diagnostics) {

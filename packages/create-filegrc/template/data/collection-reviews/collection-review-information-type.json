@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-information-type",
+  "type": "collection-review",
+  "title": "Information Type inventory review",
+  "status": "planned",
+  "resourceType": "information-type",
+  "scopeResourceIds": [
+    "program-soc-2"
+  ]
+}

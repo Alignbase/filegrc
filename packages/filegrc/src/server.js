@@ -46,6 +46,7 @@ import {
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { activatePolicies } from "./policy-activation.js";
 import { applyReconciliation, planReconciliation } from "./reconciliation.js";
+import { resourceReviewRevisions } from "./retention.js";
 import { createAppBootstrap, createAppState, createAppStateSection, createResourceDetail } from "./state.js";
 import { setupWorkspace } from "./setup.js";
 import { collectTimings, measureTiming, timingEnabled } from "./timing.js";
@@ -416,6 +417,17 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           git,
           readOnly: repository.mode === "trunk" && !repository.writesAllowed
         });
+      }
+      if (request.method === "GET" && url.pathname === "/api/review-revisions") {
+        const ids = [...new Set(url.searchParams.getAll("id"))];
+        if (!ids.length || ids.some((id) => !safeSegment(id))) {
+          return json(response, 400, { error: "Pass one or more safe resource IDs." });
+        }
+        const loaded = await loadWorkspace(input);
+        const revisions = await resourceReviewRevisions(loaded, ids);
+        const missing = ids.filter((id) => !revisions.has(id));
+        if (missing.length) return json(response, 404, { error: `Resources not found: ${missing.join(", ")}.` });
+        return json(response, 200, { revisions: Object.fromEntries(revisions) });
       }
       if (request.method === "PUT" && url.pathname === "/api/content") {
         const payload = await readJson(request);

@@ -170,8 +170,9 @@ function blockingStateSections(route) {
 
 function desiredStateSections(route) {
   const sections = new Set(["repository", ...blockingStateSections(route)]);
-  if (route.name === "list" && (route.type === "requirement" || state.model.collectionReviews?.[route.type])) sections.add("program");
-  if (route.name === "detail" && ["policy", "document", "training", "control", "component"].includes(route.type)) sections.add("program");
+  if (route.name === "list" && (["requirement", "requirement-mapping"].includes(route.type) || state.model.collectionReviews?.[route.type])) sections.add("program");
+  if (route.name === "detail" && ["policy", "document", "training", "control", "component", "requirement-mapping", "retention-schedule-item"].includes(route.type)) sections.add("program");
+  if (route.name === "detail" && ["policy", "document", "framework", "requirement", "commitment", "system", "component", "vendor", "information-type", "source-coverage", "requirement-mapping", "retention-schedule-item"].includes(route.type)) sections.add("workflow");
   if (route.name === "detail" && ["obligation", "action-item", "obligation-event"].includes(route.type)) sections.add("obligations");
   if (route.name === "detail" && route.type === "audit") sections.add("audits");
   return [...sections];
@@ -465,7 +466,7 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    (stage.id === "policies" ? renderPolicyApprovalGuidance() + renderPoliciesTable() : renderStagePageIndex(stage)) + (stage.id === "controls" ? renderDocumentActivationAssessments() + renderPolicyActivationAssessments() + renderEvidenceReadiness() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
+    (stage.id === "policies" ? renderPolicyApprovalGuidance() + renderPoliciesTable() : renderStagePageIndex(stage)) + (stage.id === "controls" ? renderDocumentActivationAssessments() + renderPolicyActivationAssessments() + renderRetentionReadiness() + renderEvidenceReadiness() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
   main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
     main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
     event.currentTarget.remove();
@@ -873,7 +874,8 @@ function recordWorkflowItems(type, id) {
   const activeStates = new Set(["blocked", "due", "open", "overdue", "ready", "scheduled", "upcoming", "waiting-external"]);
   return [
     ...(state.workflow?.findings || []),
-    ...(state.workflow?.workItems || [])
+    ...(state.workflow?.workItems || []),
+    ...programReadinessWorkflowItems()
   ].filter((item) => (
     activeStates.has(item.state)
     && (
@@ -985,6 +987,14 @@ function workflowItemHref(item) {
     ...(item.actions || []).map((action) => action.command),
     item.nextAction?.command
   ].filter(Boolean);
+  if (item.createResourceType && state.model.resources[item.createResourceType]) {
+    const params = new URLSearchParams({ new: "1" });
+    if (item.title) params.set("title", item.createResourceType === "commitment"
+      ? item.title.replace(/^Record commitments from\s+/i, "Commitment from ")
+      : item.title.replace(/^Map commitments affected by\s+/i, "Mapping for "));
+    for (const id of item.sourceResourceIds || []) params.append("sourceResourceId", id);
+    return "#/resources/" + encodeURIComponent(item.createResourceType) + "?" + params;
+  }
   const applicabilityCommand = commands.find((command) => command.includes(" review-applicability "));
   const applicabilityType = applicabilityCommand?.match(/--type\s+([a-z0-9-]+)/)?.[1];
   if (
@@ -994,6 +1004,9 @@ function workflowItemHref(item) {
     && state.resources.some(({ record }) => record.type === applicabilityType && record.id === item.subject.id)
   ) {
     return "#/resource/" + encodeURIComponent(applicabilityType) + "/" + encodeURIComponent(item.subject.id);
+  }
+  if (commands.some((command) => command.includes(" scaffold retention-schedule-item"))) {
+    return retentionScheduleItemHref(item);
   }
   if (applicabilityType && state.model.resources[applicabilityType]) {
     return "#/resources/" + encodeURIComponent(applicabilityType) + "?review=1";
@@ -1043,6 +1056,21 @@ function workflowItemHref(item) {
     auditor: "audit"
   }[item.stage];
   return stage ? "#/stage/" + stage : "";
+}
+
+function retentionScheduleItemHref(item) {
+  const params = new URLSearchParams({ new: "1" });
+  if (item.informationTypeId) params.set("informationTypeId", item.informationTypeId);
+  if (item.resourceId || item.subject?.id) params.set("scopeResourceId", item.resourceId || item.subject.id);
+  const informationTypeTitle = String(item.title || "").replace(/^Decide retention for\s+/i, "").trim();
+  if (informationTypeTitle && informationTypeTitle !== item.title) params.set("title", "Retention for " + informationTypeTitle);
+  const scheduleDocuments = resourcesOfType("document").filter(({ record }) => (
+    record.documentKind === "schedule"
+    && record.workflowScope !== "engagement"
+    && !["superseded", "retired"].includes(record.status)
+  ));
+  if (scheduleDocuments.length === 1) params.set("scheduleDocumentId", scheduleDocuments[0].record.id);
+  return "#/resources/retention-schedule-item?" + params;
 }
 
 function workflowItemDetail(item) {
@@ -1117,6 +1145,59 @@ function renderEvidenceReadiness() {
     : "";
   const empty = '<section class="evidence-map-empty"><p class="kicker">Evidence readiness</p><h3>Select the program controls first</h3><p>Control implementation checks are generated from the selected Controls and their authoritative evidence sources.</p><a class="button primary" href="#/resources/control">Review Controls</a></section>';
   return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Control implementation</p><h2>' + completeCount + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' ready</h2><p>Connect each Control to the ' + sourceLabel + ' that produce its evidence.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/' + sourceType + '">Review ' + sourceLabel + '</a><a class="button primary" href="#/resources/control">Review Controls</a></div></div>' + (cards || empty) + more + '</section>';
+}
+
+function retentionReviewItems() {
+  return (state.programReadiness?.stages || []).flatMap((stage) => (
+    (stage.items || []).filter((item) => (
+      item.id?.startsWith("retention-")
+      || item.id?.startsWith("requirement-mapping-")
+      || ["collection-review-information-type", "collection-review-retention-schedule-item"].includes(item.id)
+    )).map((item) => ({ ...item, stage: stage.id }))
+  ));
+}
+
+function programReadinessWorkflowItems() {
+  if (state.sections?.workflow === "complete") return [];
+  return retentionReviewItems()
+    .filter((item) => item.status === "action")
+    .map((item) => ({
+      ...item,
+      key: "program-readiness." + item.id,
+      state: "ready",
+      subject: item.resourceId && item.resourceType ? { type: item.resourceType, id: item.resourceId } : { type: item.resourceType || "unknown" }
+    }));
+}
+
+function renderRetentionReadiness() {
+  const items = retentionReviewItems();
+  if (!items.length) return "";
+  const actions = items.filter((item) => item.status === "action");
+  const cards = actions.map((item) => {
+    const ids = [...new Set([
+      item.resourceId,
+      item.informationTypeId,
+      ...(item.retentionScheduleItemIds || []),
+      ...(item.staleResourceIds || [])
+    ].filter(Boolean))];
+    const references = ids.length
+      ? '<div class="evidence-map-references">' + ids.map((id) => formatReference(id)).join("") + '</div>'
+      : "";
+    const href = item.id?.startsWith("retention-use-")
+      ? retentionScheduleItemHref(item)
+      : item.id?.startsWith("collection-review-")
+      ? '#/resources/' + encodeURIComponent(item.resourceType)
+      : item.resourceId && item.resourceType
+      ? '#/resource/' + encodeURIComponent(item.resourceType) + '/' + encodeURIComponent(item.resourceId)
+      : '#/resources/' + encodeURIComponent(item.resourceType || "retention-schedule-item");
+    return '<article class="evidence-map-card"><div class="evidence-map-card-head"><div><span class="badge warn">Review</span><h3><a href="' + href + '">' + esc(item.title) + '</a></h3></div></div><p>' + esc(item.message) + '</p>' + references + '</article>';
+  });
+  const visibleCount = 6;
+  const visibleCards = cards.slice(0, visibleCount).join("");
+  const moreCards = cards.length > visibleCount
+    ? '<details class="workflow-guidance-more retention-readiness-more"><summary>Show ' + (cards.length - visibleCount) + ' more retention and mapping items</summary><div class="policy-activation-grid workflow-findings-more">' + cards.slice(visibleCount).join("") + '</div></details>'
+    : "";
+  return '<section class="evidence-map retention-readiness"><div class="evidence-map-head"><div><p class="kicker">Information lifecycle</p><h2>' + (items.length - actions.length) + ' of ' + items.length + ' retention and mapping checks current</h2><p>Review Information Types, schedule coverage, and mappings here when source records or processing uses change.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/requirement-mapping">Review mappings</a><a class="button primary" href="#/resources/retention-schedule-item">Review schedule</a></div></div>' + (cards.length ? '<div class="policy-activation-grid">' + visibleCards + '</div>' + moreCards : '<article class="evidence-map-card complete"><span class="badge good">Current</span><p>Every retention decision and Requirement Mapping is bound to its current sources.</p></article>') + '</section>';
 }
 
 function evidenceSourceCheckLabel(name) {
@@ -1221,7 +1302,8 @@ function stagePageItems(stage, destination) {
   const activeStates = new Set(["blocked", "due", "open", "overdue", "ready"]);
   const items = [
     ...(state.workflow?.findings || []),
-    ...(state.workflow?.workItems || [])
+    ...(state.workflow?.workItems || []),
+    ...programReadinessWorkflowItems()
   ].filter((item) => (
     activeStates.has(item.state)
     && (
@@ -2399,7 +2481,21 @@ function renderList(main, type, params = new URLSearchParams()) {
   });
   main.querySelector("#review-applicability")?.addEventListener("click", () => openApplicabilityReviewDialog(type, entries));
   main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog(type));
-  if (params.get("new") === "1" && !state.readOnly && !definition.singleton && resourceCreationAllowed(type)) queueMicrotask(() => openEditor(type));
+  if (params.get("new") === "1" && !state.readOnly && !definition.singleton && resourceCreationAllowed(type)) {
+    const relationshipSeed = params.getAll("sourceResourceId").length
+      ? { sourceResourceIds: params.getAll("sourceResourceId") }
+      : {};
+    const seed = type === "retention-schedule-item" ? {
+      ...(params.get("title") ? { title: params.get("title") } : {}),
+      ...(params.get("informationTypeId") ? { informationTypeIds: [params.get("informationTypeId")] } : {}),
+      ...(params.get("scopeResourceId") ? { scopeResourceIds: [params.get("scopeResourceId")] } : {}),
+      ...(params.get("scheduleDocumentId") ? { scheduleDocumentId: params.get("scheduleDocumentId") } : {})
+    } : {
+      ...(params.get("title") ? { title: params.get("title") } : {}),
+      ...relationshipSeed
+    };
+    queueMicrotask(() => openEditor(type, null, { seed }));
+  }
   if (params.get("review") === "1" && !state.readOnly) {
     queueMicrotask(() => main.querySelector("#review-applicability")?.click());
   }
@@ -3515,6 +3611,7 @@ function openEditor(type, entry = null, options = {}) {
     ...required,
     ...(definition.listFields || []),
     ...(definition.formFields || []),
+    ...Object.entries(fields).filter(([, field]) => field.relation || field.relationGroup).map(([name]) => name),
     ...Object.entries(fields).filter(([, field]) => field.requiredWhen).map(([name]) => name),
     ...oneOf
   ])].filter((name) => !["id", "type"].includes(name) && fields[name]);
@@ -3782,27 +3879,29 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
   const requiredMark = required || field.requiredWhen || oneOfRequired
     ? '<span class="required-mark" ' + (required || oneOfActive ? "" : "hidden") + '>' + (oneOfRequired ? "One Required" : "Required") + '</span>'
     : "";
+  const relation = field.relation || state.model.relationGroups?.[field.relationGroup];
+  const relationField = relation ? { ...field, relation } : field;
   const help = name === "title"
     ? (editing ? "Renaming this record will not change its stable ID." : "A stable ID and file name will be generated from this value.")
-    : field.relation ? relationHelp(field)
+    : relation ? relationHelp(relationField)
     : "";
   let control;
   if (field.managed) {
     control = '<textarea readonly spellcheck="false" placeholder="Filled when approval is saved">' + esc(value === undefined ? "" : JSON.stringify(value, null, 2)) + '</textarea>';
     return fieldWrap(name, "object", label, requiredMark, control, "Managed by filegrc from the exact companion Markdown revisions", false);
   }
-  if (field.relation && field.type === "array") {
-    const candidates = relationCandidates(field);
+  if (relation && field.type === "array") {
+    const candidates = relationCandidates(relationField, type, name);
     control = candidates.length
       ? '<div class="checkbox-list">' + candidates.map(({ record }) => '<label><input type="checkbox" value="' + esc(record.id) + '" ' + ((value || []).includes(record.id) ? "checked" : "") + '><span>' + esc(record.title) + '<small>' + esc(state.model.resources[record.type].title) + '</small></span></label>').join("") + '</div>'
-      : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet.</div>';
+      : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(relationField, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(relationField, true).toLowerCase()) + ' yet.</div>';
     return fieldWrap(name, "relation-array", label, requiredMark, control, help, required);
   }
-  if (field.relation) {
-    const candidates = relationCandidates(field);
+  if (relation) {
+    const candidates = relationCandidates(relationField, type, name);
     control = candidates.length
-      ? '<select><option value="">Select ' + esc(relationTypeLabel(field).toLowerCase()) + '</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + '</option>').join("") + '</select>'
-      : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(field, true).toLowerCase()) + ' yet.</div>';
+      ? '<select><option value="">Select ' + esc(relationTypeLabel(relationField).toLowerCase()) + '</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + '</option>').join("") + '</select>'
+      : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(relationField, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(relationField, true).toLowerCase()) + ' yet.</div>';
     return fieldWrap(name, "relation", label, requiredMark, control, help, required);
   }
   if (name === "classificationId") {
@@ -3837,6 +3936,13 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     if (schema?.additionalProperties === false) {
       control = '<div class="structured-object-fields" data-object-type="' + esc(field.objectType) + '">' + objectPropertyFields(schema, value || {}) + '</div>';
       return fieldWrap(name, "structured-object", label, requiredMark, control, "Fill only the details that apply.", required);
+    }
+    if (schema?.additionalProperties?.type === "string") {
+      control = stringMapEditor(value || {}, name, name === "reviewedSourceRevisions");
+      const mapHelp = name === "reviewedSourceRevisions"
+        ? "Bind the exact current JSON and Markdown revisions after reviewing every selected record."
+        : "Add one named value per row.";
+      return fieldWrap(name, "string-map", label, requiredMark, control, mapHelp, required);
     }
     control = '<textarea spellcheck="false" placeholder="{ }">' + esc(value === undefined ? "" : JSON.stringify(value, null, 2)) + '</textarea>';
     return fieldWrap(name, "object", label, requiredMark, control, "JSON object", required);
@@ -3932,10 +4038,11 @@ function objectArrayItem(schema, value = {}) {
   return '<fieldset class="object-array-item"><legend>' + esc(humanize(schema?.title || "Relationship")) + '</legend><div class="structured-object-fields">' + objectPropertyFields(schema, value) + '</div><button type="button" class="text-button" data-remove-object-item>Remove</button></fieldset>';
 }
 
-function stringMapEditor(value = {}, name = "item") {
+function stringMapEditor(value = {}, name = "item", bindCurrent = false) {
   const entries = Object.entries(value);
   const row = ([key = "", item = ""] = []) => '<div class="string-map-row"><input data-map-key value="' + esc(key) + '" placeholder="Name"><input data-map-value value="' + esc(item) + '" placeholder="Value"><button type="button" class="text-button" data-remove-string-map aria-label="Remove ' + esc(humanize(name).toLowerCase()) + '">Remove</button></div>';
-  return '<div class="string-map-editor"><div class="string-map-items">' + (entries.length ? entries.map(row).join("") : row()) + '</div><button type="button" class="button" data-add-string-map>Add ' + esc(humanize(name).replace(/s$/, "").toLowerCase()) + '</button><template>' + row() + '</template></div>';
+  const bind = bindCurrent ? '<button type="button" class="button" data-bind-review-revisions>Bind current revisions</button>' : "";
+  return '<div class="string-map-editor"><div class="string-map-items">' + (entries.length ? entries.map(row).join("") : row()) + '</div><div class="string-map-actions">' + bind + '<button type="button" class="button" data-add-string-map>Add ' + esc(humanize(name).replace(/s$/, "").toLowerCase()) + '</button></div><template>' + row() + '</template></div>';
 }
 
 function wireStructuredObjectEditors(dialog) {
@@ -3952,6 +4059,17 @@ function wireStructuredObjectEditors(dialog) {
     });
   });
   dialog.querySelector("form").addEventListener("click", (event) => {
+    const bind = event.target.closest("[data-bind-review-revisions]");
+    if (bind) {
+      const previousLabel = bind.textContent;
+      bindCurrentReviewRevisions(dialog, bind).catch((error) => {
+        dialog.querySelector(".dialog-error").textContent = error.message;
+      }).finally(() => {
+        bind.disabled = false;
+        if (bind.textContent === "Binding…") bind.textContent = previousLabel;
+      });
+      return;
+    }
     const add = event.target.closest("[data-add-string-map]");
     if (add) {
       const editor = add.closest(".string-map-editor");
@@ -4008,6 +4126,60 @@ function wireStructuredObjectEditors(dialog) {
     const container = event.target.closest(".structured-object-fields");
     if (container) refresh(container);
   });
+}
+
+async function bindCurrentReviewRevisions(dialog, button) {
+  const selected = Object.fromEntries(["sourceResourceIds", "targetResourceIds", "informationTypeIds", "scopeResourceIds"].map((name) => [
+    name,
+    [...dialog.querySelectorAll('[data-field-group="' + name + '"] input[type="checkbox"]:checked')].map((input) => input.value)
+  ]));
+  const scheduleDocumentId = dialog.querySelector('[data-field-group="scheduleDocumentId"] select')?.value || "";
+  const mapping = Boolean(dialog.querySelector('[data-field-group="targetResourceIds"]'));
+  if (mapping && (!selected.sourceResourceIds.length || !selected.targetResourceIds.length)) {
+    throw new Error("Select records on both sides of the Requirement Mapping before binding their current revisions.");
+  }
+  if (!mapping && (!scheduleDocumentId || !selected.informationTypeIds.length || !selected.scopeResourceIds.length)) {
+    throw new Error("Select the retention schedule, Information Types, and operational scope before binding their current revisions.");
+  }
+  const ids = [...new Set(Object.values(selected).flat().concat(scheduleDocumentId, retentionUseReviewIds(dialog)).filter(Boolean))];
+  button.disabled = true;
+  button.textContent = "Binding…";
+  const query = ids.map((id) => "id=" + encodeURIComponent(id)).join("&");
+  const response = await localFetch("/api/review-revisions?" + query);
+  if (!response.ok) throw new Error(await responseMessage(response));
+  const { revisions } = await response.json();
+  const editor = button.closest(".string-map-editor");
+  const items = editor.querySelector(".string-map-items");
+  items.replaceChildren();
+  for (const [key, value] of Object.entries(revisions)) {
+    items.append(editor.querySelector("template").content.cloneNode(true));
+    const row = items.lastElementChild;
+    row.querySelector("[data-map-key]").value = key;
+    row.querySelector("[data-map-value]").value = value;
+  }
+  button.textContent = "Refresh current revisions";
+  dialog.querySelector(".dialog-error").textContent = "";
+}
+
+function retentionUseReviewIds(dialog) {
+  if (!dialog.querySelector('[data-field-group="scheduleDocumentId"]')) return [];
+  const informationTypeIds = new Set([...dialog.querySelectorAll('[data-field-group="informationTypeIds"] input:checked')].map(({ value }) => value));
+  const scopeIds = new Set([...dialog.querySelectorAll('[data-field-group="scopeResourceIds"] input:checked')].map(({ value }) => value));
+  const records = state.resources.map(({ record }) => record);
+  const programs = records.filter((record) => record.type === "program" && scopeIds.has(record.id));
+  const useIds = [];
+  for (const program of programs) {
+    const systemIds = new Set(program.systemIds || []);
+    const vendorIds = new Set(program.vendorIds || records
+      .filter((record) => record.type === "vendor" && record.status !== "retired")
+      .map(({ id }) => id));
+    for (const record of records) {
+      if (record.type === "system" && systemIds.has(record.id) && (record.informationTypeIds || []).some((id) => informationTypeIds.has(id))) useIds.push(record.id);
+      if (record.type === "component" && record.status !== "retired" && (record.systemUses || []).some(({ systemId }) => systemIds.has(systemId)) && (record.informationUses || []).some(({ informationTypeId }) => informationTypeIds.has(informationTypeId))) useIds.push(record.id);
+      if (record.type === "vendor" && vendorIds.has(record.id) && (record.informationTypeIds || []).some((id) => informationTypeIds.has(id))) useIds.push(record.id);
+    }
+  }
+  return useIds;
 }
 
 function readObjectProperty(field) {
@@ -4182,6 +4354,7 @@ function readGuidedRecord(dialog, base, fields) {
           .filter((item) => Object.keys(item).length);
       }
       else if (kind === "structured-object") value = readStructuredObject(group.querySelector(":scope > .structured-object-fields"));
+      else if (kind === "string-map") value = readStringMap(group.querySelector(":scope > .string-map-editor"));
       else if (kind === "object") value = raw.trim() ? JSON.parse(raw) : undefined;
       else if (kind === "boolean") value = raw === "" ? undefined : raw === "true";
       else if (kind === "integer") value = raw === "" ? undefined : Number(raw);
@@ -4198,8 +4371,16 @@ function readGuidedRecord(dialog, base, fields) {
   return record;
 }
 
-function relationCandidates(field) {
-  return state.resources.filter(({ record }) => field.relation.includes("*") || field.relation.includes(record.type));
+function relationCandidates(field, resourceType, fieldName) {
+  return state.resources.filter(({ record }) => {
+    if (!(field.relation.includes("*") || field.relation.includes(record.type))) return false;
+    if (resourceType === "retention-schedule-item" && fieldName === "scheduleDocumentId") {
+      return record.documentKind === "schedule"
+        && record.workflowScope === "program"
+        && !["superseded", "retired"].includes(record.status);
+    }
+    return true;
+  });
 }
 
 function relationTypeLabel(field, plural = false) {
@@ -5067,6 +5248,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 @media(max-width:520px){.applicability-dialog form{padding:18px}.applicability-row{grid-template-columns:1fr}.applicability-rows{max-height:42vh}}
 @media(max-width:760px){.workflow-findings{grid-template-columns:1fr}}
 .choice-tag{overflow-wrap:normal;font-size:10px}.form-field[data-kind="structured-object"],.string-map-property{grid-column:1/-1}.string-map-row .text-button{text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px}
+.form-field[data-kind="string-map"]{grid-column:1/-1}.string-map-actions{display:flex;flex-wrap:wrap;gap:7px}
 @media(max-width:760px){.setup-banner>.button{justify-self:start}.setup-draft-state{justify-content:flex-start;flex-wrap:wrap;gap:12px 22px}.setup-draft-state .button{width:100%}}
 @media(max-width:760px){.string-map-row{grid-template-columns:1fr 1fr}.string-map-row .text-button{grid-column:1/-1;justify-self:start}}
 

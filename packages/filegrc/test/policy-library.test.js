@@ -102,6 +102,22 @@ const CURRENT_CONTINUITY_POLICY = "Each important System records recovery priori
 const PRIOR_CONTINUITY_POLICY = "Each important System records approved recovery priorities and objectives, dependencies, responsible people, alternate communication and access needs, and a backup or alternate recovery approach. Management selects continuity strategies according to service commitments, business impact, data risk, dependencies, and technical capability.";
 const CURRENT_BACKUP_POLICY = "Important Systems use backups or an approved alternate recovery approach suited to their recovery needs and any approved recovery targets.";
 const PRIOR_BACKUP_POLICY = "Important Systems use backups or an approved alternate recovery approach that meets their recovery objectives.";
+const CURRENT_RETENTION_SECTION = `## Schedule
+
+The structured Retention Schedule Items linked to this document are its schedule rows. Each approved item must name the covered Information Types and operational scope, owner, cutoff, period, disposition action, instructions, and authority. Planned items are review prompts and are not approved retention behavior.
+
+Management must cover important information used by Systems, Components, and Vendors, including security logs, backups or alternate recovery copies, governance records, audit evidence, customer and service records, and incident records when those classes exist. No starter period or disposition action is an approved organization value.`;
+const PRIOR_RETENTION_SECTION = `## Schedule
+
+| Record class | System or location | Owner | Trigger | Retention | End-of-period action | Authority or reason |
+| --- | --- | --- | --- | --- | --- | --- |
+| Security logs for important Systems | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Log event | [Confirm or replace proposed default before approval: 12 months, adjusted for investigation, contract, legal, audit, and risk needs] | [Complete before approval: disposal action] | [Complete before approval: authority or reason] |
+| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery needs] | [Complete before approval: expiration or disposal action] | [Complete before approval: recovery need, commitment, or risk decision] |
+| SOC 2 Policies, Control records, and audit Evidence | Git repository and approved Evidence locations | Policy owner | End of the relevant audit period | [Complete before approval based on audit, contract, and legal needs] | Archive or securely delete | Audit and business requirements |
+| Customer and service records | [Complete before approval: Systems or Components] | [Complete before approval: owner] | [Complete before approval: trigger] | [Complete before approval: retention] | Delete or anonymize | Contract, law, and business need |
+| Incident and investigation records | Approved incident and Evidence Systems | Incident owner | Incident closure | [Complete before approval: retention] | Archive or securely delete | Legal, insurance, contract, and security needs |
+
+Add rows for each important data class in the System and Vendor inventories. A row is incomplete until it names the source System or Component, owner, trigger, period, disposal action, and authority. Remove each bracketed prompt only after replacing it with a reviewed fact.`;
 
 function previousProductSpecificTraining(source) {
   return source
@@ -114,6 +130,7 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-data-retention-schedule": {
     path: "document-data-retention-schedule.md",
     replacements: [
+      [CURRENT_RETENTION_SECTION, PRIOR_RETENTION_SECTION],
       ["| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery needs] | [Complete before approval: expiration or disposal action] | [Complete before approval: recovery need, commitment, or risk decision] |", "| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery objectives] | [Complete before approval: expiration or disposal action] | [Complete before approval: continuity objective or risk decision] |"],
       ["Remove each bracketed prompt only after replacing it with a reviewed fact.", "FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact."],
       ["Record the authority, scope, owner, start date, and release decision in controlled legal-hold records.", "Record the authority, scope, owner, start date, and release decision outside this public template."]
@@ -503,6 +520,14 @@ test("offers standalone governed Documents as a reviewable upgrade and changes n
     install: false,
     effectiveDate: "2026-01-01"
   });
+  const organizationSchedulePath = join(root, "data", "retention-schedule-items", "retention-schedule-item-source-governance.json");
+  const organizationScheduleBefore = await readFile(organizationSchedulePath, "utf8");
+  const scheduleRecordPath = join(root, "data", "documents", "document-data-retention-schedule.json");
+  const scheduleRecord = JSON.parse(await readFile(scheduleRecordPath, "utf8"));
+  await writeJson(scheduleRecordPath, {
+    ...scheduleRecord,
+    controlIds: ["control-data-classification-inventory", "control-data-retention-disposal", "control-policy-management"]
+  });
   const currentSources = new Map();
   const priorSources = new Map();
   for (const [id, update] of Object.entries(PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS)) {
@@ -529,6 +554,17 @@ test("offers standalone governed Documents as a reviewable upgrade and changes n
     confirmed: true,
     proposalRevision: review.proposals[0].revision
   });
+  assert.equal(await readFile(organizationSchedulePath, "utf8"), organizationScheduleBefore);
+  assert.deepEqual(
+    JSON.parse(await readFile(scheduleRecordPath, "utf8")).controlIds,
+    [
+      "control-data-classification-inventory",
+      "control-data-retention-disposal",
+      "control-policy-management",
+      "control-logging-monitoring",
+      "control-backup-restoration"
+    ]
+  );
   for (const [id, update] of Object.entries(PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS)) {
     assert.equal(await readFile(join(root, "data", "documents", update.path), "utf8"), currentSources.get(id));
   }
@@ -568,6 +604,43 @@ test("leaves customized, approved, and active governed Documents untouched", asy
     assert.equal(review.skipped.find(({ resourceId }) => resourceId === "document-soc2-system-description").reason, status === "customized" ? "customized" : "adopted");
     assert.equal(await readFile(path, "utf8"), source);
   }
+});
+
+test("preserves customized retention Markdown while proposing additive Control links", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-policy-library-custom-retention-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const root = join(parent, "program");
+  await createFilegrc({
+    target: root,
+    companyName: "Test Organization",
+    policyOwnerName: "Program Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test",
+    timezone: "UTC",
+    filegrcVersion: "1.2.3",
+    install: false,
+    effectiveDate: "2026-01-01"
+  });
+  const markdownPath = join(root, "data", "documents", "document-data-retention-schedule.md");
+  const recordPath = join(root, "data", "documents", "document-data-retention-schedule.json");
+  const customized = (await readFile(markdownPath, "utf8")) + "\nOrganization-specific retention review note.\n";
+  await writeFile(markdownPath, customized, "utf8");
+  const record = JSON.parse(await readFile(recordPath, "utf8"));
+  await writeJson(recordPath, {
+    ...record,
+    controlIds: (record.controlIds || []).filter((id) => !["control-logging-monitoring", "control-backup-restoration"].includes(id))
+  });
+  await unlink(join(root, "data", "controls", "control-logging-monitoring.json"));
+
+  const review = await assessPolicyLibraryUpgrades(root);
+  const changes = review.proposals.flatMap(({ changes }) => changes)
+    .filter(({ resourceId }) => resourceId === "document-data-retention-schedule");
+  assert.equal(changes.some(({ path }) => path.endsWith(".md")), false);
+  assert.equal(changes.some(({ path, diff }) => path.endsWith(".json") && /control-backup-restoration/.test(diff)), true);
+  assert.equal(changes.some(({ diff }) => /control-logging-monitoring/.test(diff)), false);
+  assert.equal(review.skipped.some(({ resourceId, reason }) => resourceId === "control-logging-monitoring" && reason === "missing"), true);
+  assert.equal(await readFile(markdownPath, "utf8"), customized);
 });
 
 test("reviews and explicitly accepts the consolidated Information Security starter update", async (context) => {

@@ -23,6 +23,7 @@ import {
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { resolveProgram } from "./program.js";
+import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
 import { signatoryAppointmentIssue, soc2ReportEvidenceIssue, subsequentEventsReviewIssue } from "./soc2.js";
 import { planReconciliation } from "./reconciliation.js";
 import { currentCalendarDate } from "./time.js";
@@ -141,10 +142,10 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     ...programFindings(program),
     ...Object.values(auditPreparations).flatMap(auditFindings),
     ...appointmentTemplateFindings(loaded),
-    ...sourceCoverageFindings(loaded, programRecord),
+    ...await sourceCoverageFindings(loaded, programRecord),
     ...reconciliationFindings(reconciliation),
     ...periodFindings,
-    ...auditLifecycleFindings(loaded, audits, programRecord)
+    ...await auditLifecycleFindings(loaded, audits, programRecord)
   ];
   const findings = [
     ...validationFindings(validation, loaded),
@@ -638,7 +639,7 @@ function appointmentFinding(kind, template, record, state, requiredness) {
   };
 }
 
-function sourceCoverageFindings(loaded, program) {
+async function sourceCoverageFindings(loaded, program) {
   const selected = modelSupports(loaded.model, "program-scope")
     ? new Set(program?.controlIds || [])
     : null;
@@ -650,7 +651,7 @@ function sourceCoverageFindings(loaded, program) {
       && (!selected || selected.has(record.id))
     ))
     .map(({ id }) => id);
-  return assessSourceCoverageReadiness(loaded, selectedControlIds, program)
+  return (await assessSourceCoverageReadiness(loaded, selectedControlIds, program))
     .map(({ family, record, complete }) => {
       const state = complete ? "complete" : "ready";
       const code = `evidence-source.${family.id}.coverage`;
@@ -885,10 +886,12 @@ async function assessPeriodHealth(loaded, options) {
   return findings;
 }
 
-function auditLifecycleFindings(loaded, audits, program) {
+async function auditLifecycleFindings(loaded, audits, program) {
   if (!modelSupports(loaded.model, "guided-workflow")) return [];
   const target = program || resolveProgram(loaded);
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const retentionRules = loaded.resources.filter((record) => record.type === "retention-schedule-item");
+  const retentionRevisions = await resourceReviewRevisions(loaded, retentionRules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
   const findings = [];
   for (const audit of audits) {
     if (!(audit.controlIds || []).length) {
@@ -1016,11 +1019,21 @@ function auditLifecycleFindings(loaded, audits, program) {
         `${records.length} ${noun} remain open, so this engagement cannot be treated as closed.`
       ));
     }
+    const linkedRetentionCurrent = (audit.retentionScheduleItemIds || []).some((id) => {
+      const rule = byId.get(id);
+      return rule?.type === "retention-schedule-item"
+        && rule.status === "active"
+        && (rule.scopeResourceIds || []).some((scopeId) => scopeId === audit.id || scopeId === target?.id)
+        && retentionRuleIsCurrent(rule, retentionRevisions, byId, loaded);
+    });
+    const retentionClosure = loaded.model.resources.audit?.fields?.retentionScheduleItemIds
+      ? ["retentionScheduleItemIds", "Link the audit retention schedule", "Link an active, current retention schedule item scoped to this Audit or its Program."]
+      : ["retentionDecision", "Record the retention decision", "Record the approved retention and authorized distribution decision."];
     for (const [field, title, message] of [
-      ["retentionDecision", "Record the retention decision", "Record the approved retention and authorized distribution decision."],
+      retentionClosure,
       ["carryForwardActionIds", "Review carry-forward work", "Record the next-period actions, including an explicit empty list when no carry-forward work remains."]
     ]) {
-      if (field === "carryForwardActionIds" ? Array.isArray(audit[field]) : present(audit[field])) continue;
+      if (field === "retentionScheduleItemIds" ? linkedRetentionCurrent : field === "carryForwardActionIds" ? Array.isArray(audit[field]) : present(audit[field])) continue;
       findings.push(auditLifecycleFinding(audit, field, "audit-closure", title, message));
     }
   }
@@ -1082,6 +1095,12 @@ function normalizeFinding(code, item, context) {
     severity: findingSeverity(state, context.assessment),
     title: item.title,
     message: item.message,
+    ...(item.resourceId ? { resourceId: item.resourceId } : {}),
+    ...(item.createResourceType ? { createResourceType: item.createResourceType } : {}),
+    ...(item.sourceResourceIds ? { sourceResourceIds: item.sourceResourceIds } : {}),
+    ...(item.informationTypeId ? { informationTypeId: item.informationTypeId } : {}),
+    ...(item.retentionScheduleItemIds ? { retentionScheduleItemIds: item.retentionScheduleItemIds } : {}),
+    ...(item.staleResourceIds ? { staleResourceIds: item.staleResourceIds } : {}),
     ...(subject ? { subject } : {}),
     dependencies,
     actions: (item.commands || []).map((command) => ({

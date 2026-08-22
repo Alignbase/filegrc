@@ -131,6 +131,13 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
       addIds((record.informationUses || []).map(({ informationTypeId }) => informationTypeId));
     }
   }
+  if (resourceType === "information-type" && !legacy) {
+    addIds(program?.systemIds);
+    addIds(programComponents(loaded, program || {}).map(({ id }) => id));
+    addIds(loaded.resources
+      .filter((record) => record.type === "vendor" && record.status !== "retired")
+      .map(({ id }) => id));
+  }
   if (resourceType === "complementary-control") {
     addIds(program?.systemIds);
     addIds(program?.controlIds);
@@ -228,6 +235,11 @@ const dependencyFields = {
     vendor: ["id", "type", "status", "category", "criticality", "description", "startDate", "endDate"],
     classification: ["id", "type", "status", "rank", "description", "handlingRequirements"],
     "information-type": ["id", "type", "status", "classificationId", "description"]
+  },
+  "information-type": {
+    system: ["id", "type", "status", "informationTypeIds"],
+    component: ["id", "type", "status", "systemUses", "informationUses"],
+    vendor: ["id", "type", "status", "informationTypeIds"]
   },
   "complementary-control": {
     system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],

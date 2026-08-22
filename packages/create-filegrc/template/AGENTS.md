@@ -16,6 +16,7 @@ npx filegrc program-path --next --json
 npx filegrc guide risk-assessment --json
 npx filegrc list person --json
 npx filegrc program-readiness --summary --json
+npx filegrc program-amendment SOURCE_RESOURCE_ID --json
 ```
 
 `program-path --next --json` gives agents the current step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s page summaries, detailed guidance fields, commands, and next actions. The general guide lists every supported action and record type. A type guide adds the checks needed for that resource, including timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
@@ -98,15 +99,23 @@ Do not rewrite or remove committed records that explain prior audit periods. Clo
 
 `data/workspace.json` selects the model through `dataModelVersion`. The installed `filegrc` package owns the authoritative model. Do not copy or invent a local schema.
 
+### Standards alignment
+
+FileGRC uses AICPA SOC 2 terms for the assurance subject matter and borrows useful structure from NIST OSCAL. A FileGRC System is the bounded system being governed or examined. Components are the logical capabilities that implement or support it, Assets are specific inventory items, Controls describe management's implementation, and Control Tests and Findings hold assessment work. Frameworks and Requirements act like catalog content, while the Program's reviewed applicability decisions perform the control-selection role associated with an OSCAL Profile.
+
+This repository is not a native OSCAL document. Keep using the installed FileGRC model, its flat JSON records, human-readable IDs, companion Markdown, and typed relationships. Do not introduce OSCAL document nesting, UUIDs, back matter, or fields that `filegrc guide` does not support. Store an OSCAL identifier in `externalIds` when a real external mapping exists. Do not claim that this workspace or an audit packet is OSCAL-compatible unless an explicit FileGRC exporter validates that output against the supported official OSCAL schema.
+
+Use standards terms only when their meanings match. Do not call a general program change a Profile or tailoring operation unless it selects or modifies control requirements. Do not put every adjustable policy value into a generic parameter object. Keep retention periods in the approved retention schedule, recurring cadences in Obligations, recovery objectives on Systems or Components, and other decisions in their model-defined records. Organization-specific decisions remain authoritative when starter or policy-library content changes.
+
 If the installed CLI reports that this workspace uses an unsupported model, start with:
 
 ```sh
-npx filegrc migrate --to-model 7 --preview --json
+npx filegrc migrate --to-model 8 --preview --json
 ```
 
-Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v7 migration keeps issued historical Audit Documents neutral, returns legacy Training to approved until management records a current activation, and makes old applicability confirmations stale for one scoped review.
+Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v8 migration preserves legacy retention prose as notes, renames Component processing operations, and creates no retention periods or disposition behavior.
 
-The [model v7 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v7.md) explains the record-purity change.
+The [model v8 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v8.md) explains the structured retention and mapping changes.
 
 Run these commands when working with records:
 

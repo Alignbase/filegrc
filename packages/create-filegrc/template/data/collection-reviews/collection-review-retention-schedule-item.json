@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-retention-schedule-item",
+  "type": "collection-review",
+  "title": "Retention schedule review",
+  "status": "planned",
+  "resourceType": "retention-schedule-item",
+  "scopeResourceIds": [
+    "program-soc-2"
+  ]
+}
