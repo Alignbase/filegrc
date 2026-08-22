@@ -3,6 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { loadModel } from "../model/index.js";
+import { scopedCollectionRecords } from "../src/collection-scope.js";
 import {
   applyCollectionReview,
   assessCollectionReview,
@@ -14,6 +16,41 @@ import {
   updateResource
 } from "../src/index.js";
 import { makeWorkspace } from "./helpers.js";
+
+test("person scope includes operators referenced only by selected Components and Vendors", () => {
+  const program = { id: "program-one", type: "program", systemIds: ["system-one"], controlIds: [] };
+  const people = ["person-component-owner", "person-vendor-owner", "person-payroll-owner", "person-auditor", "person-unrelated"]
+    .map((id) => ({ id, type: "person", title: id }));
+  const loaded = {
+    model: loadModel("7"),
+    resources: [
+      ...people,
+      program,
+      { id: "system-one", type: "system", title: "System one" },
+      {
+        id: "component-one",
+        type: "component",
+        status: "active",
+        vendorId: "vendor-one",
+        ownerIds: ["person-component-owner"],
+        systemUses: [{ systemId: "system-one", roles: ["service-delivery"] }]
+      },
+      { id: "vendor-one", type: "vendor", ownerIds: ["person-vendor-owner"] },
+      { id: "vendor-payroll", type: "vendor", category: "payroll", ownerIds: ["person-payroll-owner"] },
+      { id: "vendor-cpa", type: "vendor", category: "Professional services", ownerIds: ["person-auditor"] },
+      { id: "audit-one", type: "audit", auditorVendorId: "vendor-cpa" }
+    ]
+  };
+
+  assert.deepEqual(
+    scopedCollectionRecords(loaded, "person", program).map(({ id }) => id).sort(),
+    ["person-component-owner", "person-payroll-owner", "person-vendor-owner"]
+  );
+  assert.deepEqual(
+    scopedCollectionRecords(loaded, "vendor", program).map(({ id }) => id).sort(),
+    ["vendor-one", "vendor-payroll"]
+  );
+});
 
 test("binds a collection confirmation to the exact records and relevant scope", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-"));

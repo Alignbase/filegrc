@@ -37,6 +37,11 @@ const COMPLETION_TIMESTAMP_FIELDS = [
   "deprovisionedOn"
 ];
 const MAX_PLANNED_ITEMS = 10_000;
+const SCAFFOLDED_COMPLETION_TYPES = new Set([
+  "access-review", "attestation", "backup-test", "control-activity", "control-test",
+  "evidence", "exercise", "meeting", "penetration-test", "policy-review",
+  "risk-assessment", "vendor-review", "vulnerability-scan"
+]);
 
 export function planObligations(resources, options = {}) {
   const records = resources.map((item) => item?.record ?? item).filter(Boolean);
@@ -101,7 +106,7 @@ export function planObligations(resources, options = {}) {
         eventRiskLevels: obligation.eventRiskLevels || [],
         templateResourceId: obligation.templateResourceId || null,
         completionResourceTypes: expectedCompletionTypes,
-        completionType: activity.completionType,
+        completionType: preferredCompletionType(activity, obligation, byId),
         completionProfile: activity.completionProfile || null,
         programStatus,
         window: normalizedEventWindow(obligation.window)
@@ -155,7 +160,7 @@ export function planObligations(resources, options = {}) {
         controlIds: obligation.controlIds || [],
         scopeResourceIds: obligation.scopeResourceIds || [],
         completionResourceTypes: expectedCompletionTypes,
-        completionType: activity.completionType,
+        completionType: preferredCompletionType(activity, obligation, byId),
         completionProfile: activity.completionProfile || null,
         completionResourceIds: completions.map((record) => record.id),
         status,
@@ -313,6 +318,7 @@ export async function completeObligationOccurrence(input, options) {
   ));
   if (!obligation) throw new Error(`Obligation "${options?.obligationId ?? ""}" was not found.`);
   assertExpectedCompletionType(obligation, options?.record, loaded.model);
+  assertAttestationCompletionScope(obligation, options.record, loaded.resources);
   return createResourceAndLink(loaded.root, options.record, {
     type: "obligation",
     id: obligation.id,
@@ -343,7 +349,10 @@ export async function scaffoldObligationCompletion(input, options = {}) {
     ? plannedActionForScaffold(loaded, action, completedOn)
     : plannedOccurrenceForScaffold(loaded, obligation, options.windowStart, completedOn);
   const activity = obligationActivity(loaded.model, obligation.activityType);
-  const type = activity.completionType;
+  const type = item.completionType || preferredCompletionType(activity, {
+    ...obligation,
+    subjectResourceIds: item.subjectResourceIds || []
+  }, new Map(loaded.resources.map((record) => [record.id, record])));
   if (!type) throw new Error(`Obligation "${obligation.id}" has no configured completion resource type.`);
 
   const mutation = scaffoldResourceMutation(
@@ -369,10 +378,14 @@ export async function scaffoldObligationCompletion(input, options = {}) {
       activityType: obligation.activityType,
       completionResourceType: type,
       completionProfile: activity.completionProfile || null,
+      workItemStatus: item.status,
+      programStatus: item.programStatus || null,
       requiredFacts: loaded.model.completionProfiles?.[activity.completionProfile]?.requiredFacts || [],
       dueWindowStart: item.dueWindowStart || null,
       dueWindowEnd: item.dueWindowEnd || null,
-      instructions: "Replace every null or empty required value with the actual work performed. Keep the actual completion date and time, actors, result, scope, independent review, and supporting evidence. This revision makes the completed write safe against a stale Work Queue item."
+      instructions: item.status === "proposed" || item.programStatus === "proposed"
+        ? "This work is still a proposal. Resolve its governing Policy, Control, owner, and completion profile before recording completion."
+        : "Replace every null or empty required value with the actual work performed. Keep the actual completion date and time, actors, result, scope, independent review, and supporting evidence. This revision makes the completed write safe against a stale Work Queue item."
     }
   };
 }
@@ -394,6 +407,7 @@ export async function completeObligationAction(input, options) {
   assertExpectedCompletionType(obligation, options?.record, loaded.model);
   const completedOn = requireDate(options?.completedOn, "completion date");
   const event = loaded.resources.find((record) => record.type === "obligation-event" && record.id === action.sourceResourceId);
+  assertAttestationCompletionScope(obligation, options.record, loaded.resources, event);
   if (event?.occurredOn && completedOn < event.occurredOn) {
     throw new Error("The action completion date cannot be before its policy event date.");
   }
@@ -456,6 +470,28 @@ function assertExpectedCompletionType(obligation, record, model) {
   }
 }
 
+function assertAttestationCompletionScope(obligation, record, resources, event = null) {
+  if (record?.type !== "attestation") return;
+  const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
+  const eventPeople = (event?.subjectResourceIds || []).filter((id) => byId.get(id)?.type === "person");
+  const expectedPeople = eventPeople.length
+    ? eventPeople
+    : (obligation.scopeResourceIds || []).filter((id) => byId.get(id)?.type === "person");
+  if (expectedPeople.length && !expectedPeople.includes(record.personId)) {
+    throw new Error(`Attestation personId must name the Person in scope for Obligation "${obligation.id}".`);
+  }
+  const primarySubjects = [obligation.templateResourceId, ...(obligation.scopeResourceIds || [])]
+    .filter((id) => ["policy", "document", "training", "action-item"].includes(byId.get(id)?.type));
+  const allowedSubjects = new Set(primarySubjects.length ? primarySubjects : obligation.policyIds || []);
+  const actualSubjects = new Set(record.subjectResourceIds || []);
+  if (
+    actualSubjects.size !== allowedSubjects.size
+    || [...actualSubjects].some((id) => !allowedSubjects.has(id))
+  ) {
+    throw new Error(`Attestation subjects must name the exact authored content in scope for Obligation "${obligation.id}".`);
+  }
+}
+
 function plannedOccurrenceForScaffold(loaded, obligation, windowStart, completedOn) {
   const start = requireDate(windowStart, "occurrence window start");
   const plan = planObligations(loaded.resources, {
@@ -489,6 +525,7 @@ function plannedActionForScaffold(loaded, action, completedOn) {
 function applyCompletionScaffoldDefaults(record, context) {
   const { loaded, item, obligation, completedOn, activity } = context;
   const program = resolveProgram(loaded);
+  const byId = new Map(loaded.resources.map((candidate) => [candidate.id, candidate]));
   const responsiblePeople = currentPeopleForParties(loaded.resources, item.ownerIds || []);
   if (!responsiblePeople.length) {
     throw new Error(`Obligation "${obligation.id}" needs an active owner whose Appointment or Team resolves to a current Person.`);
@@ -554,19 +591,27 @@ function applyCompletionScaffoldDefaults(record, context) {
       evidenceIds: [],
       approvedOn: completedOn
     }),
-    attestation: () => ({
-      status: "completed",
-      subjectResourceIds: [...new Set([
+    attestation: () => {
+      const personId = (item.subjectResourceIds || []).find((id) => byId.get(id)?.type === "person")
+        || (obligation.scopeResourceIds || []).find((id) => byId.get(id)?.type === "person");
+      const primarySubjectIds = [...new Set([
         obligation.templateResourceId,
         ...(obligation.scopeResourceIds || [])
-      ].filter(Boolean))],
-      personId: responsiblePeople[0],
-      attestationKind: obligation.activityType || "completion",
-      assignedOn: item.dueWindowStart || completedOn,
-      dueOn: item.dueWindowEnd || completedOn,
-      completedOn,
-      attestationMethod: "git-approval"
-    }),
+      ].filter((id) => ["policy", "document", "training", "action-item"].includes(byId.get(id)?.type)))];
+      const subjectResourceIds = primarySubjectIds.length ? primarySubjectIds : [...(obligation.policyIds || [])];
+      if (!personId) throw new Error("An Attestation completion needs the Person who made the acknowledgement or completed the training.");
+      if (!subjectResourceIds.length) throw new Error("An Attestation completion needs the exact Policy, Document, Training, or Action Item content acknowledged.");
+      return {
+        status: "completed",
+        subjectResourceIds,
+        personId,
+        attestationKind: obligation.activityType || "completion",
+        assignedOn: item.dueWindowStart || completedOn,
+        dueOn: item.dueWindowEnd || completedOn,
+        completedOn,
+        attestationMethod: "git-approval"
+      };
+    },
     "access-review": () => {
       if (!systemIds.length) throw new Error("An Access Review completion needs an active in-scope System.");
       return {
@@ -621,22 +666,32 @@ function applyCompletionScaffoldDefaults(record, context) {
       evidenceIds: [],
       coverage
     }),
-    "control-activity": () => ({
-      ...common,
-      profileId: activity.completionProfile || obligation.activityType,
-      obligationId: obligation.id,
-      controlIds: item.controlIds || obligation.controlIds || [],
-      scopeResourceIds: (item.scopeResourceIds || obligation.scopeResourceIds || []).length
-        ? (item.scopeResourceIds || obligation.scopeResourceIds)
-        : [program.id],
-      performerIds: responsiblePeople,
-      completedAt: timestamp,
-      method: "",
-      result: "",
-      reviewerIds,
-      reviewedOn: completedOn,
-      ownerIds: item.ownerIds || obligation.ownerIds || []
-    }),
+    "control-activity": () => {
+      const allowedScopeTypes = new Set(
+        loaded.model.resources["control-activity"].fields.scopeResourceIds.relation || []
+      );
+      const requestedScopeIds = item.subjectResourceIds || item.scopeResourceIds || obligation.scopeResourceIds || [];
+      const validScopeIds = requestedScopeIds.filter((id) => allowedScopeTypes.has(byId.get(id)?.type));
+      const fallbackScopeIds = systemIds.length
+        ? systemIds
+        : (item.controlIds || obligation.controlIds || []).filter((id) => allowedScopeTypes.has(byId.get(id)?.type));
+      return {
+        ...common,
+        profileId: activity.completionProfile || obligation.activityType,
+        obligationId: obligation.id,
+        controlIds: item.controlIds || obligation.controlIds || [],
+        scopeResourceIds: validScopeIds.length
+          ? validScopeIds
+          : fallbackScopeIds.length ? fallbackScopeIds : [loaded.workspace.id],
+        performerIds: responsiblePeople,
+        completedAt: timestamp,
+        method: "",
+        result: "",
+        reviewerIds,
+        reviewedOn: completedOn,
+        ownerIds: item.ownerIds || obligation.ownerIds || []
+      };
+    },
     exercise: () => ({
       ...common,
       exerciseKind: item.title.toLowerCase().includes("continuity") ? "business-continuity" : "incident-response",
@@ -792,6 +847,12 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
       const completionProfile = obligation?.type === "obligation"
         ? obligationActivity(model, obligation.activityType).completionProfile || null
         : null;
+      const completionType = obligation?.type === "obligation"
+        ? preferredCompletionType(obligationActivity(model, obligation.activityType), {
+            ...obligation,
+            subjectResourceIds: event.subjectResourceIds || []
+          }, byId)
+        : null;
       const completionIds = modelSupports(model, "guided-workflow")
         ? record.completionResourceIds || []
         : [...(record.completionResourceIds || []), ...(record.evidenceIds || [])];
@@ -801,6 +862,7 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
         || matchingCompletionIds.length > 0;
       const complete = record.status === "done" && completionSatisfied;
       const window = plannedCompletionWindow(record.completionWindow);
+      const lateCompletion = complete && completionWasLate(record, matchingCompletionIds, byId, window);
       const timingStatus = complete
         ? "complete"
         : window.overdueAt && new Date(now) > new Date(window.overdueAt)
@@ -824,14 +886,17 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
         ownerIds: record.assigneeIds || [],
         policyIds: obligation?.policyIds || [],
         controlIds: obligation?.controlIds || [],
+        subjectResourceIds: event.subjectResourceIds || [],
         scopeResourceIds: obligation?.scopeResourceIds || [],
         templateResourceId: obligation?.templateResourceId || null,
         completionResourceIds: record.completionResourceIds || [],
         evidenceIds: record.evidenceIds || [],
         expectedCompletionTypes,
         completionProfile,
+        completionType,
         matchingCompletionIds,
         missingCompletion: record.status === "done" && !completionSatisfied,
+        lateCompletion,
         canceledAction: record.status === "canceled",
         recordedStatus: record.status,
         completedOn: record.completedOn || null,
@@ -868,6 +933,38 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
     completeCount: actions.filter((item) => item.status === "complete").length,
     actions
   };
+}
+
+function completionWasLate(action, completionIds, byId, window) {
+  if (window.dueWindowEndAt) {
+    const completedAt = completionIds
+      .map((id) => completionTimestamp(byId.get(id)))
+      .filter(Boolean)
+      .sort()[0];
+    if (completedAt) return new Date(completedAt) > new Date(window.dueWindowEndAt);
+    return !action.completedOn || action.completedOn >= window.dueWindowEndAt.slice(0, 10);
+  }
+  return Boolean(window.dueWindowEnd && action.completedOn && action.completedOn > window.dueWindowEnd);
+}
+
+function completionTimestamp(record) {
+  if (!record) return null;
+  return record.completedAt || record.occurredAt || record.collectedAt || record.verifiedAt || null;
+}
+
+function preferredCompletionType(activity, item, byId) {
+  const primary = activity.completionType;
+  const hasPersonSubject = [...(item.subjectResourceIds || []), ...(item.scopeResourceIds || [])]
+    .some((id) => byId.get(id)?.type === "person");
+  const hasAuthoredSubject = [item.templateResourceId, ...(item.scopeResourceIds || [])]
+    .some((id) => ["policy", "document", "training", "action-item"].includes(byId.get(id)?.type))
+    || (item.policyIds || []).some((id) => byId.get(id)?.type === "policy");
+  if (primary === "attestation" && (!hasPersonSubject || !hasAuthoredSubject) && activity.completionResourceTypes.includes("evidence")) {
+    return "evidence";
+  }
+  if (SCAFFOLDED_COMPLETION_TYPES.has(primary)) return primary;
+  if (activity.completionResourceTypes.includes("evidence")) return "evidence";
+  return primary;
 }
 
 function planStandaloneAction(record, byId, asOf, now) {

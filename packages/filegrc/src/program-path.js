@@ -87,11 +87,7 @@ export const PROGRAM_PATH = [
       "filegrc guide appointment --json",
       "filegrc guide system --json",
       "filegrc guide component --json",
-      "filegrc review-collection person --scaffold",
-      "filegrc review-collection framework --scaffold",
       "filegrc review-collection vendor --scaffold",
-      "filegrc review-collection system --scaffold",
-      "filegrc review-collection component --scaffold",
       "filegrc list system --json"
     ]
   },
@@ -132,6 +128,7 @@ export const PROGRAM_PATH = [
       "filegrc get CONTROL_ID --mutation",
       "filegrc guide obligation --json",
       "filegrc list obligation --json",
+      "filegrc review-collection component --scaffold",
       "filegrc review-collection complementary-control --scaffold",
       "filegrc activate-content --scaffold",
       "filegrc activate-policies --scaffold",

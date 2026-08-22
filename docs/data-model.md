@@ -1,8 +1,8 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v6.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v7.json. Do not edit by hand. -->
 
-Model version: `6`
+Model version: `7`
 
 Program-scoped GRC records using bounded Systems, operational Components, normalized information, and retained Evidence Artifacts.
 
@@ -36,11 +36,7 @@ Headless commands:
 - `npx filegrc guide appointment --json`
 - `npx filegrc guide system --json`
 - `npx filegrc guide component --json`
-- `npx filegrc review-collection person --scaffold`
-- `npx filegrc review-collection framework --scaffold`
 - `npx filegrc review-collection vendor --scaffold`
-- `npx filegrc review-collection system --scaffold`
-- `npx filegrc review-collection component --scaffold`
 - `npx filegrc list system --json`
 
 ### Step 2. Approve Policies
@@ -76,6 +72,7 @@ Headless commands:
 - `npx filegrc get CONTROL_ID --mutation`
 - `npx filegrc guide obligation --json`
 - `npx filegrc list obligation --json`
+- `npx filegrc review-collection component --scaffold`
 - `npx filegrc review-collection complementary-control --scaffold`
 - `npx filegrc activate-content --scaffold`
 - `npx filegrc activate-policies --scaffold`
@@ -219,13 +216,13 @@ The model owns each activity name, allowed recurrence modes and scope types, its
 | `workforce-review` | Workforce screening and competence review | `calendar`, `event` | `person` | `control-activity` | `control-activity` |
 | `personal-device-approval` | Personal device approval | `event` | `person`, `asset` | `control-activity` | `control-activity` |
 | `policy-review` | Policy review | `calendar`, `event` | `policy`, `document` | `policy-review` | `policy-review` |
-| `remediation` | Remediation | `calendar`, `event` | `finding`, `action-item`, `incident`, `vulnerability` | `action-item` | `action-item`, `finding` |
+| `remediation` | Remediation | `calendar`, `event` | `finding`, `action-item`, `incident`, `vulnerability` | `action-item` | `action-item`, `finding`, `evidence` |
 | `retention-review` | Retention review | `calendar`, `event` | `document`, `system`, `component` | `document` | `document`, `evidence` |
 | `risk-assessment` | Risk assessment | `calendar`, `event` | `workspace`, `system`, `vendor`, `risk`, `control`, `program`, `component` | `risk-assessment` | `risk-assessment`, `risk`, `evidence` |
 | `role-training` | Role training | `calendar`, `event` | `person`, `training` | `attestation` | `attestation`, `evidence` |
 | `security-scan` | Security scan | `calendar`, `event` | `system`, `asset`, `component` | `control-activity` | `control-activity` |
 | `training` | Training | `calendar`, `event` | `person`, `training` | `attestation` | `attestation`, `evidence` |
-| `vendor-contract` | Vendor contract | `calendar`, `event` | `vendor`, `document` | `document` | `document`, `vendor` |
+| `vendor-contract` | Vendor contract | `calendar`, `event` | `vendor`, `document` | `document` | `document`, `vendor`, `evidence` |
 | `vendor-remediation` | Vendor remediation | `calendar`, `event` | `vendor`, `risk`, `finding`, `action-item` | `vendor` | `vendor`, `risk`, `document`, `action-item`, `evidence` |
 | `vendor-review` | Vendor review | `calendar`, `event` | `vendor` | `vendor-review` | `vendor-review`, `evidence` |
 | `vulnerability-scan` | Vulnerability scan | `calendar`, `event` | `system`, `component` | `vulnerability-scan` | `vulnerability-scan`, `evidence` |
@@ -1006,7 +1003,7 @@ Markdown companions:
 | `classificationId` | id | No | Classification References: `classification` |
 | `approvedContentRevisions` | object (`content-revisions`) | Conditional | Approved content revisions Managed by filegrc. Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `activatedOn` | date | Conditional | Activation date Required when `activationBasis` is `recorded`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
-| `activationBasis` | enum | Conditional | Activation basis Values: `recorded`, `legacy-v4` Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
+| `activationBasis` | enum | Conditional | Activation basis Values: `recorded`, `historical` Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
 | `activatedByIds` | array of id | Conditional | Activated by References: `person` Required when `activationBasis` is `recorded`. Allowed when `activationBasis` is `recorded`. |
 | `activatedContentRevisions` | object (`content-revisions`) | Conditional | Activated content revisions Managed by filegrc. Required when `activationBasis` is `recorded`. Allowed when `activationBasis` is `recorded`. |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
@@ -1205,7 +1202,7 @@ Markdown companions:
 | `approvedOn` | date | Conditional | Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `approvedContentRevisions` | object (`content-revisions`) | Conditional | Approved content revisions Managed by filegrc. Required when `status` is one of `approved`, `active`, `superseded`, `retired`. Allowed when `status` is one of `approved`, `active`, `superseded`, `retired`. |
 | `activatedOn` | date | Conditional | Activation date Required when `activationBasis` is `recorded`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
-| `activationBasis` | enum | Conditional | Activation basis Values: `recorded`, `legacy-v5` Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
+| `activationBasis` | enum | Conditional | Activation basis Values: `recorded` Required when `status` is `active`. Allowed when `status` is one of `active`, `superseded`, `retired`. |
 | `activatedByIds` | array of id | Conditional | Activated by References: `person` Required when `activationBasis` is `recorded`. Allowed when `activationBasis` is `recorded`. |
 | `activatedContentRevisions` | object (`content-revisions`) | Conditional | Activated content revisions Managed by filegrc. Required when `activationBasis` is `recorded`. Allowed when `activationBasis` is `recorded`. |
 | `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`, `in-review`, `approved`. |

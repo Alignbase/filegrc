@@ -102,7 +102,7 @@ start().catch((error) => {
 async function start() {
   const embedded = document.querySelector("#filegrc-data");
   state = embedded ? JSON.parse(embedded.textContent) : await fetchJson("/api/state");
-  window.addEventListener("hashchange", render);
+  window.addEventListener("hashchange", handleRouteChange);
   window.addEventListener("resize", positionCurrentOnboarding);
   window.addEventListener("scroll", positionCurrentOnboarding, true);
   render();
@@ -110,6 +110,11 @@ async function start() {
   if (!state.readOnly && rendererSettingsEntry()?.record.showOnboarding === true && !initialSetupSystem()) {
     queueMicrotask(requestOnboarding);
   }
+}
+
+function handleRouteChange() {
+  document.querySelectorAll("dialog.editor[open], dialog.commit-dialog[open], dialog.alert-dialog[open]").forEach((dialog) => dialog.close());
+  render();
 }
 
 function render() {
@@ -287,20 +292,25 @@ function renderHome(main) {
   const setupPending = !setupSystem
     || setupSystem.status !== "active"
     || activeProgram().assuranceGoal === "none";
-  const acceptedEventTriggers = state.obligations.triggers.filter(({ programStatus }) => programStatus !== "proposed");
-  const openObligations = state.obligations.items.filter((item) => item.status !== "complete");
+  const acceptedEventTriggers = activePolicyEventTriggers(state.obligations.triggers);
+  const openObligations = activeOperationItems(state.obligations.items);
   const previewObligations = distinctObligationPreviews(openObligations, 3);
-  const obligationHeading = openObligations.some((item) => item.status !== "proposed") ? "Due Windows" : "Starter Proposals";
   const setupBanner = setupPending ? initialSetupBanner() : "";
   const auditPanel = program.evidenceReady
     ? '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Optional next phase</p><h3>' + esc(activeFirm ? titleCase(activeAudit.record.title) : "Target: " + program.target.label) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Engagements</a>') + '</div>' +
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>'
     : "";
+  const obligationPanel = program.evidenceReady || openObligations.length
+    ? '<section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due Windows</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>'
+    : "";
+  const eventPanel = acceptedEventTriggers.length
+    ? '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">Trigger work</a></div>' + eventReminderPreview(orderedPolicyEventTriggers(acceptedEventTriggers).slice(0, 4)) + '</section>'
+    : "";
+  const operationPanels = obligationPanel + eventPanel;
+  const overviewPanels = operationPanels + auditPanel;
   main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + setupBanner + readinessOverview() +
-    '<div class="overview-grid"><section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>' + obligationHeading + '</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>' +
-    '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">' + (acceptedEventTriggers.length ? "Trigger work" : "Review proposals") + '</a></div>' + eventReminderPreview(orderedPolicyEventTriggers(state.obligations.triggers).slice(0, 4)) + '</section>' +
-    auditPanel + '</div></div>';
-  main.querySelector("#resume-setup")?.addEventListener("click", () => requestOnboarding({ setupOnly: Boolean(initialSetupSystem()) }));
+    (overviewPanels ? '<div class="overview-grid">' + overviewPanels + '</div>' : '') + '</div>';
+  main.querySelector("#resume-setup")?.addEventListener("click", () => requestOnboarding({ setupOnly: true }));
 }
 
 function initialSetupSystem() {
@@ -1116,7 +1126,7 @@ function stagePageItems(stage, destination) {
   ].filter((item) => (
     activeStates.has(item.state)
     && (
-      item.stage === stage.id
+      workflowUiStage(item.stage) === stage.id
       || stage.id === "scope"
         && destination.type === "appointment"
         && item.code === "governance.appointment.independent-policy-reviewer"
@@ -1130,6 +1140,7 @@ function stagePageItems(stage, destination) {
     ));
   }
   return items.filter((item) => {
+    if (destination.type === "program" && item.key === "program.scope.criteria") return false;
     if (
       destination.type === "requirement"
       && item.subject?.type === "requirement"
@@ -1162,6 +1173,10 @@ function stagePageItems(stage, destination) {
   ));
 }
 
+function workflowUiStage(stageId) {
+  return stageId === "operation" ? "run" : stageId;
+}
+
 function operationProgress() {
   const program = state.programReadiness;
   const goal = program?.target?.goal || activeProgram().assuranceGoal || "none";
@@ -1173,7 +1188,7 @@ function operationProgress() {
       : Boolean(program?.evidenceReady);
   const overdue = state.obligations.counts.overdue || 0;
   const blocked = state.obligations.counts.blocked || 0;
-  const complete = Boolean(program?.evidenceReady && candidateStarted && overdue === 0 && blocked === 0);
+  const complete = Boolean(program?.operating);
   if (complete) {
     return {
       percent: 100,
@@ -1212,6 +1227,19 @@ function operationProgress() {
       status: "Ready to start",
       tone: "warn",
       detail: "Record the management candidate period start when evidence collection begins."
+    };
+  }
+  if (program?.evidenceReady && candidateStarted) {
+    const actions = program?.stages?.find((stage) => stage.id === "operation")?.counts?.action || 0;
+    return {
+      percent: 0,
+      complete: 0,
+      total: 1,
+      status: "Needs work",
+      tone: "warn",
+      detail: actions
+        ? actions + " Step 4 " + pluralize("item", actions) + (actions === 1 ? " needs" : " need") + " work."
+        : "Complete the current Step 4 readiness work."
     };
   }
   return {
@@ -1278,42 +1306,67 @@ function renderExternalEvidenceSection() {
 function renderObligations(main, params = new URLSearchParams()) {
   const stage = READINESS_STAGES.find((candidate) => candidate.id === "run");
   const plan = state.obligations;
+  const operationLocked = !state.programReadiness?.evidenceReady;
   const visibleCardLimit = 6;
-  const sections = ["proposed", "upcoming", "blocked", "due", "overdue"].map((status) => {
-    const items = obligationBoardItems(plan.items, status);
-    const cards = items.map((item, index) => obligationCard(item, index >= visibleCardLimit)).join("");
-    const more = items.length > visibleCardLimit
-      ? '<button class="button obligation-more" type="button" data-expand-obligations="' + status + '" data-total="' + items.length + '" aria-expanded="false">Show ' + (items.length - visibleCardLimit) + ' more</button>'
+  const renderBoard = (items, statuses) => statuses.map((status) => {
+    const statusItems = obligationBoardItems(items, status);
+    const cards = statusItems.map((item, index) => obligationCard(item, index >= visibleCardLimit)).join("");
+    const more = statusItems.length > visibleCardLimit
+      ? '<button class="button obligation-more" type="button" data-expand-obligations="' + status + '" data-total="' + statusItems.length + '" aria-expanded="false">Show ' + (statusItems.length - visibleCardLimit) + ' more</button>'
       : "";
-    return '<section class="obligation-column" data-obligation-column="' + status + '"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(properCase(status)) + '</span><strong>' + items.length + '</strong></div><div class="obligation-cards">' + (items.length ? cards : empty("Nothing " + status + ".")) + '</div>' + more + '</section>';
+    return '<section class="obligation-column" data-obligation-column="' + status + '"><div class="obligation-column-head"><span class="badge status-' + status + '">' + esc(properCase(status)) + '</span><strong>' + statusItems.length + '</strong></div><div class="obligation-cards">' + (statusItems.length ? cards : empty("Nothing " + status + ".")) + '</div>' + more + '</section>';
   }).join("");
   const eventTriggerLimit = 6;
   const orderedTriggers = orderedPolicyEventTriggers(plan.triggers);
-  const triggers = orderedTriggers.map((trigger, index) => policyEventTrigger(trigger, index, index >= eventTriggerLimit)).join("");
-  const eventMore = orderedTriggers.length > eventTriggerLimit
-    ? '<button class="button policy-event-more" type="button" data-expand-policy-events aria-expanded="false">Show ' + (orderedTriggers.length - eventTriggerLimit) + ' more events</button>'
-    : "";
+  const acceptedTriggers = activePolicyEventTriggers(orderedTriggers);
+  const proposedTriggers = orderedTriggers.filter(({ programStatus }) => programStatus === "proposed");
+  const currentItems = activeOperationItems(plan.items);
+  const proposedItems = plan.items.filter(({ status }) => status === "proposed");
+  const renderEvents = (items, scope, description) => {
+    const triggers = items.map((trigger, index) => policyEventTrigger(trigger, index, index >= eventTriggerLimit, scope)).join("");
+    const eventMore = items.length > eventTriggerLimit
+      ? '<button class="button policy-event-more" type="button" data-expand-policy-events="' + scope + '" data-total="' + items.length + '" aria-expanded="false">Show ' + (items.length - eventTriggerLimit) + ' more events</button>'
+      : "";
+    return '<section class="workflow-section event-reminders" data-policy-event-section="' + scope + '"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>' + description + '</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div>' + eventMore + '</section>';
+  };
+  const renderQueue = (items, statuses, description) => '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring, event, and assigned work</p><h2>Work Queue</h2><p>' + description + '</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div><div class="obligation-board">' + renderBoard(items, statuses) + '</div></section>';
   const feedback = policyEventFeedback
     ? '<section class="policy-event-feedback" role="status" aria-live="polite"><span class="status-dot good"></span><div><strong>Work added to the Work Queue</strong><p>' + esc(policyEventFeedback.name + " created " + policyEventFeedback.taskCount + " " + pluralize("task", policyEventFeedback.taskCount) + ".") + '</p></div><button class="button" type="button" data-view-added-work>View Work Queue</button><button class="icon-button" type="button" data-dismiss-policy-event-feedback aria-label="Dismiss confirmation">×</button></section>'
+    : "";
+  const operationGate = operationLocked
+    ? '<section class="workflow-section operation-gate"><div><p class="kicker">Finish Step 3 first</p><h2>Get the program Evidence Ready</h2><p>Confirm the remaining Controls, schedules, evidence sources, and governed content. Any adopted work and Policy Events that can happen now stay available below.</p></div><a class="button primary" href="#/stage/controls">Continue Evidence Ready work</a></section>'
+    : "";
+  const activeOperation = operationLocked
+    ? (acceptedTriggers.length ? renderEvents(acceptedTriggers, "active", "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.") : "") +
+      (currentItems.length ? renderQueue(currentItems, ["upcoming", "blocked", "due", "overdue"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
+    : "";
+  const setupTriggers = operationLocked ? proposedTriggers : orderedTriggers;
+  const setupItems = operationLocked ? proposedItems : plan.items;
+  const setupStatuses = operationLocked ? ["proposed"] : ["proposed", "upcoming", "blocked", "due", "overdue"];
+  const operationSetupOpen = operationLocked ? "" : " open";
+  const operationSetupSummary = operationLocked
+    ? '<summary>Preview ' + proposedTriggers.length + ' proposed Policy Events and ' + proposedItems.length + ' proposed Work Queue items</summary>'
     : "";
   main.innerHTML = '<div class="page obligation-board-page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
     feedback +
-    '<section class="workflow-section event-reminders"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div>' + eventMore + '</section>' +
-    '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring, event, and assigned work</p><h2>Work Queue</h2><p>Complete scheduled work and assigned follow-up here. Each card shows its due window, source, and next action.</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div>' +
-    '<div class="obligation-board">' + sections + '</div>' +
-    '</section>' + renderExternalEvidenceSection() + '</div>';
+    operationGate +
+    activeOperation +
+    '<details class="operation-setup-preview"' + operationSetupOpen + '>' + operationSetupSummary +
+    renderEvents(setupTriggers, "setup", operationLocked ? "Review these starter workflows. They become available when their governing work is adopted." : "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.") +
+    renderQueue(setupItems, setupStatuses, operationLocked ? "Review proposed schedules before adopting them." : "Complete scheduled work and assigned follow-up here. Each card shows its due window, source, and next action.") +
+    renderExternalEvidenceSection() + '</details></div>';
   main.querySelectorAll("[data-start-event]").forEach((button) => button.addEventListener("click", () => {
     const trigger = plan.triggers.find((item) => item.eventType === button.dataset.startEvent);
     if (trigger) openObligationEventDialog(trigger);
   }));
-  main.querySelector("[data-expand-policy-events]")?.addEventListener("click", (event) => {
+  main.querySelectorAll("[data-expand-policy-events]").forEach((button) => button.addEventListener("click", (event) => {
     const button = event.currentTarget;
     const expanded = button.getAttribute("aria-expanded") === "true";
-    main.querySelectorAll(".policy-event-row[data-collapsed]").forEach((row) => { row.hidden = expanded; });
+    button.closest("[data-policy-event-section]").querySelectorAll(".policy-event-row[data-collapsed]").forEach((row) => { row.hidden = expanded; });
     button.setAttribute("aria-expanded", String(!expanded));
-    button.textContent = expanded ? "Show " + (orderedTriggers.length - eventTriggerLimit) + " more events" : "Show fewer events";
-  });
+    button.textContent = expanded ? "Show " + (Number(button.dataset.total) - eventTriggerLimit) + " more events" : "Show fewer events";
+  }));
   main.querySelector("[data-view-added-work]")?.addEventListener("click", () => main.querySelector(".work-queue-section")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   main.querySelector("[data-dismiss-policy-event-feedback]")?.addEventListener("click", (event) => {
     policyEventFeedback = null;
@@ -1336,9 +1389,9 @@ function renderObligations(main, params = new URLSearchParams()) {
     const item = plan.items.find((candidate) => candidate.key === button.dataset.completeAction);
     if (item) openActionCompletion(item);
   }));
-  main.querySelector("[data-new-action-item]")?.addEventListener("click", () => openEditor("action-item", null, {
+  main.querySelectorAll("[data-new-action-item]").forEach((button) => button.addEventListener("click", () => openEditor("action-item", null, {
     description: "Create a task only when follow-up from another record needs its own assignee, deadline, and completion proof. Point it to that source record; it will remain in Work Queue until done or canceled."
-  }));
+  })));
   const requestedEvent = params.get("event");
   if (requestedEvent || params.get("section") === "events") {
     queueMicrotask(() => {
@@ -1391,8 +1444,16 @@ function orderedPolicyEventTriggers(triggers) {
   ));
 }
 
-function policyEventTrigger(trigger, index, collapsed = false) {
-  const tooltipId = "policy-event-tooltip-" + index;
+function activePolicyEventTriggers(triggers) {
+  return triggers.filter(({ programStatus }) => programStatus === "accepted");
+}
+
+function activeOperationItems(items) {
+  return items.filter(({ status }) => ["upcoming", "blocked", "due", "overdue"].includes(status));
+}
+
+function policyEventTrigger(trigger, index, collapsed = false, scope = "events") {
+  const tooltipId = "policy-event-tooltip-" + scope + "-" + index;
   const proposed = trigger.programStatus === "proposed";
   const unavailable = state.readOnly || proposed;
   const availability = proposed
@@ -1473,7 +1534,7 @@ function actionCompletionPlan(item) {
       href: "#/resource/action-item/" + encodeURIComponent(action.record.id)
     };
   }
-  const type = state.model.obligationActivities?.[obligation.record.activityType]?.completionType;
+  const type = item.completionType || state.model.obligationActivities?.[obligation.record.activityType]?.completionType;
   if (!type) {
     return {
       blocked: "Review completion type",
@@ -1484,7 +1545,7 @@ function actionCompletionPlan(item) {
 }
 
 function obligationCompletionPlan(item) {
-  const type = state.model.obligationActivities?.[item.activityType]?.completionType || "evidence";
+  const type = item.completionType || state.model.obligationActivities?.[item.activityType]?.completionType || "evidence";
   if (!currentPeopleForParties(item.ownerIds || []).length) {
     return { type, blocked: "Assign current owner", href: "#/resource/obligation/" + encodeURIComponent(item.obligationId) };
   }
@@ -1552,10 +1613,13 @@ function obligationCompletionSeed(type, item, obligation) {
     return { ...common, status: "complete", scopeResourceIds: obligation.scopeResourceIds || [], reviewerIds: reviewerPeople, completedOn: date, outcome: "passed", changesRequired: false, evidenceIds: [], coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
   }
   if (type === "risk-assessment") {
-    return { ...common, status: "complete", completedOn: date, assessmentKind: "enterprise-risk", scope: "In-scope SOC 2 systems and dependencies", assessorIds: responsiblePeople, reviewerIds: reviewerPeople, methodology: state.workspace.riskMethodology?.method || "Documented risk methodology", summary: "Assessment completed; link the supporting evidence and resulting risks.", evidenceIds: [], approvedOn: date };
+    return { ...common, status: "complete", completedOn: date, assessmentKind: "enterprise-risk", scope: "In-scope SOC 2 systems and dependencies", assessorIds: responsiblePeople, reviewerIds: reviewerPeople, methodology: activeProgram().riskMethodology?.method || "Documented risk methodology", summary: "Assessment completed; link the supporting evidence and resulting risks.", evidenceIds: [], approvedOn: date };
   }
   if (type === "attestation") {
-    return { ...common, status: "completed", subjectResourceIds: [...new Set([obligation.templateResourceId, ...(obligation.scopeResourceIds || [])].filter(Boolean))], personId: responsiblePeople[0], attestationKind: item.activityType || "completion", assignedOn: item.dueWindowStart, dueOn: item.dueWindowEnd, completedOn: date, attestationMethod: "git-approval" };
+    const personId = [...(item.subjectResourceIds || []), ...(obligation.scopeResourceIds || [])].find((id) => state.resources.some(({ record }) => record.id === id && record.type === "person"));
+    const primarySubjectIds = [...new Set([obligation.templateResourceId, ...(obligation.scopeResourceIds || [])].filter((id) => state.resources.some(({ record }) => record.id === id && ["policy", "document", "training", "action-item"].includes(record.type))))];
+    const subjectResourceIds = primarySubjectIds.length ? primarySubjectIds : [...(obligation.policyIds || [])];
+    return { ...common, status: "completed", subjectResourceIds, personId, attestationKind: item.activityType || "completion", assignedOn: item.dueWindowStart, dueOn: item.dueWindowEnd, completedOn: date, attestationMethod: "git-approval" };
   }
   if (type === "access-review") {
     return { ...common, status: "complete", completedOn: date, reviewerIds: responsiblePeople, systemIds: inScopeSystems, scope: "Privileged, production, and important-system access", outcome: "passed", evidenceIds: [], approvedByIds: reviewerPeople, approvedOn: date, coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
@@ -1570,15 +1634,23 @@ function obligationCompletionSeed(type, item, obligation) {
     return { ...common, status: "complete", controlId: obligation.controlIds?.[0] || "", testKinds: [item.activityType || "control-operation"], performedBy: "management", testerIds: responsiblePeople, reviewerIds: reviewerPeople, completedOn: date, reviewedOn: date, outcome: "passed", evidenceIds: [], coverage: rangeCoverage(item.dueWindowStart, item.dueWindowEnd) };
   }
   if (type === "control-activity") {
+    const allowedScopeTypes = new Set(state.model.relationGroups?.["obligation-scope"] || []);
+    const requestedScopeIds = item.subjectResourceIds || item.scopeResourceIds || obligation.scopeResourceIds || [];
+    const validScopeIds = requestedScopeIds.filter((id) => state.resources.some(({ record }) => (
+      record.id === id && allowedScopeTypes.has(record.type)
+    )));
+    const fallbackScopeIds = inScopeSystems.length
+      ? inScopeSystems
+      : (item.controlIds || obligation.controlIds || []).length
+        ? (item.controlIds || obligation.controlIds)
+        : [state.workspace.id];
     return {
       ...common,
       status: "complete",
       profileId: item.completionProfile || item.activityType,
       obligationId: item.obligationId,
       controlIds: item.controlIds || obligation.controlIds || [],
-      scopeResourceIds: (item.subjectResourceIds || item.scopeResourceIds || obligation.scopeResourceIds || []).length
-        ? (item.subjectResourceIds || item.scopeResourceIds || obligation.scopeResourceIds)
-        : [state.workspace.id],
+      scopeResourceIds: validScopeIds.length ? validScopeIds : fallbackScopeIds,
       performerIds: responsiblePeople,
       completedAt: timestamp,
       method: "",
@@ -3089,7 +3161,7 @@ async function saveOnboarding(draft = false) {
   try {
     const response = await localFetch("/api/setup", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", prefer: "respond-async" },
       body: JSON.stringify({
         serviceName: onboardingDraft.serviceName,
         boundary: onboardingDraft.scope,
@@ -4538,6 +4610,12 @@ function applyFastMutationPatch(result) {
       state.resources.push({ record, content: {}, history: [], detailsLoaded: false });
     }
   }
+  for (const record of [result.workspace, result.program, result.system, result.renderer, result.commitment].filter(Boolean)) {
+    const entry = state.resources.find(({ record: current }) => current.id === record.id);
+    if (entry) entry.record = record;
+    else state.resources.push({ record, content: {}, history: [], detailsLoaded: false });
+    if (record.type === "workspace") state.workspace = record;
+  }
   if (result.synchronization) {
     state.repository = {
       ...state.repository,
@@ -4548,7 +4626,7 @@ function applyFastMutationPatch(result) {
       backgroundSynchronization: result.synchronization.status === "syncing" ? result.synchronization : null
     };
   }
-  state.readOnly = true;
+  if (result.synchronization?.status === "syncing") state.readOnly = true;
 }
 
 function scheduleMutationStateRefresh(delay = 0) {
@@ -4652,7 +4730,7 @@ function setMutationBusy(dialog, busy, label, idleLabel) {
   if (status) status.textContent = "";
   if (busy) {
     dialog._stillWorkingTimer = setTimeout(() => {
-      if (status) status.textContent = "Still working. Git sync and workspace checks can take a moment.";
+      if (status) status.textContent = "Still working. Recalculating readiness and repository state.";
     }, 1_500);
   }
 }
@@ -4860,7 +4938,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .onboarding-git-status{display:flex;align-items:flex-start;gap:9px;margin:14px 25px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.onboarding-git-status .status-dot{margin-top:4px}.onboarding-git-status strong,.onboarding-git-status small{display:block}.onboarding-git-status strong{font-size:12px}.onboarding-git-status small{color:var(--muted);font-size:10.8px;line-height:1.45;margin-top:3px}.onboarding-git-status code{font-size:10.8px}
 .badge.status-overdue,.badge.status-blocked{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming,.badge.status-proposed{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
 .obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:12px}.obligation-preview small,.event-reminder-preview small{font-size:10.8px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
-.obligation-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 26.4px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue,.obligation-card.status-blocked{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:9.6px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:14.4px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:10.8px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 28.8px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:13.2px;color:var(--muted);margin:0;max-width:720px}.policy-event-feedback{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;margin-top:14px;padding:12px 14px;border:1px solid #9ccfb2;border-radius:8px;background:#e7f5ec}.policy-event-feedback .status-dot{align-self:start;margin-top:4px}.policy-event-feedback strong,.policy-event-feedback p{display:block}.policy-event-feedback strong{font-size:12px}.policy-event-feedback p{margin:3px 0 0;color:#315d44;font-size:10.8px}.policy-event-feedback .icon-button{width:30px;height:30px}.policy-event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.policy-event-more{margin-top:10px}.policy-event-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.policy-event-row[hidden]{display:none}.policy-event-name{min-width:0}.policy-event-title{display:flex;align-items:center;gap:6px;min-width:0}.policy-event-title>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.policy-event-guide{display:inline-flex;flex:0 0 auto}.policy-event-guide .guide-trigger{width:20px;height:20px}.policy-event-guide .guide-trigger svg{width:14px;height:14px}.policy-event-name strong,.policy-event-name>small{display:block}.policy-event-name strong{font-size:12px}.policy-event-name>small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.policy-event-row>.button{flex:none;padding:7px 9px;font-size:10.8px}.policy-event-tooltip{position:absolute;z-index:8;top:calc(100% + 7px);left:0;width:min(420px,calc(100vw - 48px));padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility 0s .12s;pointer-events:none}.policy-event-row:nth-child(3n) .policy-event-tooltip{right:0;left:auto}.policy-event-row:hover,.policy-event-row:focus-within{z-index:9}.policy-event-guide:hover .policy-event-tooltip,.policy-event-guide:focus-within .policy-event-tooltip{opacity:1;visibility:visible;transform:none;transition-delay:0s}.policy-event-tooltip>strong{font-size:12px}.policy-event-tooltip ol{display:grid;gap:7px;margin:9px 0 0;padding-left:20px}.policy-event-tooltip li span,.policy-event-tooltip li small{display:block}.policy-event-tooltip li span{font-size:10.8px}.policy-event-tooltip li small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.4}
+.obligation-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 26.4px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue,.obligation-card.status-blocked{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:9.6px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:14.4px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:10.8px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.operation-gate{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px;border:1px solid var(--accent-light);border-radius:12px;background:var(--accent-wash)}.operation-gate h2{margin:5px 0 7px;font:500 25px Georgia,serif}.operation-gate p:not(.kicker){margin:0;max-width:680px;color:var(--muted)}.operation-setup-preview>summary{margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel);font-weight:700;cursor:pointer}.operation-setup-preview[open]>summary{margin-bottom:0}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 28.8px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:13.2px;color:var(--muted);margin:0;max-width:720px}.policy-event-feedback{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;margin-top:14px;padding:12px 14px;border:1px solid #9ccfb2;border-radius:8px;background:#e7f5ec}.policy-event-feedback .status-dot{align-self:start;margin-top:4px}.policy-event-feedback strong,.policy-event-feedback p{display:block}.policy-event-feedback strong{font-size:12px}.policy-event-feedback p{margin:3px 0 0;color:#315d44;font-size:10.8px}.policy-event-feedback .icon-button{width:30px;height:30px}.policy-event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.policy-event-more{margin-top:10px}.policy-event-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.policy-event-row[hidden]{display:none}.policy-event-name{min-width:0}.policy-event-title{display:flex;align-items:center;gap:6px;min-width:0}.policy-event-title>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.policy-event-guide{display:inline-flex;flex:0 0 auto}.policy-event-guide .guide-trigger{width:20px;height:20px}.policy-event-guide .guide-trigger svg{width:14px;height:14px}.policy-event-name strong,.policy-event-name>small{display:block}.policy-event-name strong{font-size:12px}.policy-event-name>small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.policy-event-row>.button{flex:none;padding:7px 9px;font-size:10.8px}.policy-event-tooltip{position:absolute;z-index:8;top:calc(100% + 7px);left:0;width:min(420px,calc(100vw - 48px));padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility 0s .12s;pointer-events:none}.policy-event-row:nth-child(3n) .policy-event-tooltip{right:0;left:auto}.policy-event-row:hover,.policy-event-row:focus-within{z-index:9}.policy-event-guide:hover .policy-event-tooltip,.policy-event-guide:focus-within .policy-event-tooltip{opacity:1;visibility:visible;transform:none;transition-delay:0s}.policy-event-tooltip>strong{font-size:12px}.policy-event-tooltip ol{display:grid;gap:7px;margin:9px 0 0;padding-left:20px}.policy-event-tooltip li span,.policy-event-tooltip li small{display:block}.policy-event-tooltip li span{font-size:10.8px}.policy-event-tooltip li small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.4}
 .obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:10.8px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
 .event-dialog label{display:block;margin-top:13px}.event-dialog label[hidden]{display:none}.event-dialog label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select,.event-dialog textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.event-dialog textarea{resize:vertical}.commit-dialog .form-grid label.full{grid-column:1/-1}.workflow-preview{margin-top:14px;padding:0 12px;border-radius:7px;background:var(--surface-soft)}.workflow-preview:not(:empty){padding-top:10px;padding-bottom:10px}.workflow-preview strong,.workflow-preview p{display:block;margin:0}.workflow-preview p{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.5}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:12px}.event-dialog-steps small{font-size:9.6px;color:var(--muted);margin-top:2px}
 .applicability-dialog{width:min(980px,calc(100vw - 30px));max-height:calc(100vh - 32px);border:0;border-radius:12px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 25px 80px rgba(0,0,24,.28)}.applicability-dialog form{padding:23px}.applicability-dialog form>p{color:var(--muted);font-size:13.2px}.applicability-dialog form>.applicability-baseline-note{padding:10px 12px;border-radius:7px;background:var(--accent-soft);color:var(--ink)}.review-context label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.review-context input,.review-context select,.applicability-row input,.applicability-row select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:8px 9px;font-size:13.2px}.review-context label.full{grid-column:1/-1}.applicability-rows{display:grid;gap:7px;max-height:46vh;overflow:auto;margin-top:16px;padding-right:4px}.applicability-row{display:grid;grid-template-columns:minmax(210px,1fr) 180px minmax(240px,1.3fr);gap:9px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:8px}.applicability-row strong,.applicability-row small{display:block}.applicability-row small{margin-top:3px;color:var(--muted);font-size:10.8px}.applicability-row .applicability-constraint{color:var(--accent);line-height:1.35}

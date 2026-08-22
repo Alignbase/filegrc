@@ -8,16 +8,15 @@ Treat the installed model as the authority. Do not infer a schema from a nearby 
 
 ```sh
 npx filegrc guide --json
-npx filegrc workflow --json
-npx filegrc reconcile --preview --json
 npx filegrc program-path --next --json
+npx filegrc reconcile --preview --json
 npx filegrc types --json
 npx filegrc guide RESOURCE_TYPE --json
 npx filegrc list RESOURCE_TYPE --json
 npx filegrc search "TERM" --json
 ```
 
-Use `workflow --json` to get the shared assessments, complete checklist, Work Items, blockers, and recommended next action. Use `program-path --next --json` for the current lifecycle step. Use `guide` before any unfamiliar create or status transition. It reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
+Use `program-path --next --json` for the current lifecycle step. Use `workflow --json` when you need the full shared assessments, complete checklist, Work Items, and blockers. Use `guide` before any unfamiliar create or status transition. It reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
 
 After changing a lifecycle fact directly, review `reconcile --preview --json`. A candidate asks whether the change represents a real policy event. Supply the actual event date or timestamp, departure risk when relevant, and explicit confirmation before applying it.
 

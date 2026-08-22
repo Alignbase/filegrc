@@ -14,6 +14,13 @@ export async function scaffoldDocumentActivation(input = process.cwd(), options 
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   const today = currentCalendarDate(loaded.workspace.timezone);
   return {
+    available: candidates.length > 0,
+    message: candidates.length
+      ? `${candidates.length} approved ${candidates.length === 1 ? "Document is" : "Documents are"} ready to activate.`
+      : `No ${options.auditId ? "engagement Document" : "program Document"} is ready to activate. Review the current readiness actions first.`,
+    nextCommand: candidates.length ? null : options.auditId
+      ? `npx filegrc audit-readiness ${options.auditId} --json`
+      : "npx filegrc program-path --next --json",
     documentIds: candidates.filter(({ resourceType }) => resourceType === "document").map(({ resourceId }) => resourceId),
     ...(options.auditId ? { auditId: options.auditId, workflowScope: "engagement" } : { workflowScope: "program" }),
     activatedByIds: [],
@@ -141,12 +148,17 @@ export async function scaffoldGovernedContentActivation(input = process.cwd(), o
   const loaded = await loadWorkspace(input);
   requireDocumentLifecycle(loaded);
   if (!modelSupports(loaded.model, "governed-training-activation")) {
-    throw new Error("Unified governed-content activation requires a model v6 workspace.");
+    throw new Error("Unified governed-content activation requires a model v6 or later workspace.");
   }
   const candidates = await activationCandidates(loaded, { ...options, auditId: undefined });
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   const today = currentCalendarDate(loaded.workspace.timezone);
   return {
+    available: candidates.length > 0,
+    message: candidates.length
+      ? `${candidates.length} approved governed-content ${candidates.length === 1 ? "record is" : "records are"} ready to activate.`
+      : "No program Document or Training record is ready to activate. Review the current readiness actions first.",
+    nextCommand: candidates.length ? null : "npx filegrc program-path --next --json",
     resourceIds: candidates.map(({ resourceId }) => resourceId),
     documentIds: candidates.filter(({ resourceType }) => resourceType === "document").map(({ resourceId }) => resourceId),
     trainingIds: candidates.filter(({ resourceType }) => resourceType === "training").map(({ resourceId }) => resourceId),

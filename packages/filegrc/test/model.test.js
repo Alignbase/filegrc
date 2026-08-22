@@ -10,9 +10,9 @@ import {
   RESOURCE_INSTRUCTIONS
 } from "../src/index.js";
 
-test("v6 model exposes the complete resource registry", () => {
+test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "6");
+  assert.equal(model.modelVersion, "7");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -282,7 +282,8 @@ test("v6 model exposes the complete resource registry", () => {
   });
   assert.ok(model.resources.document.required.includes("workflowScope"));
   assert.deepEqual(model.resources.document.fields.workflowScope.values, ["program", "engagement"]);
-  assert.deepEqual(model.resources.document.fields.activationBasis.values, ["recorded", "legacy-v4"]);
+  assert.deepEqual(model.resources.document.fields.activationBasis.values, ["recorded", "historical"]);
+  assert.deepEqual(model.resources.training.fields.activationBasis.values, ["recorded"]);
   assert.deepEqual(model.resources.document.fields.activatedContentRevisions.requiredWhen, { activationBasis: "recorded" });
   assert.deepEqual(model.resources.document.fields.activatedOn.requiredWhen, { activationBasis: "recorded" });
   assert.deepEqual(model.resources.document.fields.activatedByIds.requiredWhen, { activationBasis: "recorded" });
@@ -313,7 +314,7 @@ test("v6 model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "6");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "7");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");

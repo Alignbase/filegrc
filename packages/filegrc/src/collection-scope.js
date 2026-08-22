@@ -5,8 +5,27 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   if (!modelSupports(loaded.model, "program-scope")) {
     return loaded.resources.filter((record) => record.type === resourceType);
   }
+  if (resourceType === "person") {
+    return scopedProgramPeople(loaded, program);
+  }
   if (resourceType === "vendor") {
-    return loaded.resources.filter((record) => record.type === "vendor");
+    const scopedVendorIds = new Set(programComponents(loaded, program).map(({ vendorId }) => vendorId).filter(Boolean));
+    const auditVendorIds = new Set(loaded.resources
+      .filter((record) => record.type === "audit" && record.auditorVendorId)
+      .map(({ auditorVendorId }) => auditorVendorId));
+    const auditOnlyVendorIds = Number(loaded.model.modelVersion) >= 7
+      ? auditVendorIds
+      : new Set(loaded.resources
+          .filter((record) => (
+            record.type === "vendor"
+            && auditVendorIds.has(record.id)
+            && /(?:audit|accounting|cpa)/i.test(record.category || "")
+          ))
+          .map(({ id }) => id));
+    return loaded.resources.filter((record) => (
+      record.type === "vendor"
+      && (!auditOnlyVendorIds.has(record.id) || scopedVendorIds.has(record.id))
+    ));
   }
   const scopedProgram = program || {};
   const components = programComponents(loaded, scopedProgram);
@@ -34,6 +53,42 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   return loaded.resources.filter((record) => (
     record.type === resourceType && (!selected || selected.has(record.id))
   ));
+}
+
+function scopedProgramPeople(loaded, program = {}) {
+  const personIds = new Set(loaded.resources.filter(({ type }) => type === "person").map(({ id }) => id));
+  const systemIds = new Set(program.systemIds || []);
+  const controlIds = new Set(program.controlIds || []);
+  const policyIds = new Set(loaded.resources
+    .filter(({ type, status, programRole }) => type === "policy" && status !== "retired" && programRole !== "reference")
+    .map(({ id }) => id));
+  const components = programComponents(loaded, program);
+  const componentIds = new Set(components.map(({ id }) => id));
+  const vendorIds = new Set([
+    ...components.map(({ vendorId }) => vendorId).filter(Boolean),
+    ...scopedCollectionRecords(loaded, "vendor", program).map(({ id }) => id)
+  ]);
+  const sources = loaded.resources.filter((record) => (
+    ["workspace", "program", "appointment", "team"].includes(record.type)
+    || record.type === "system" && systemIds.has(record.id)
+    || record.type === "component" && componentIds.has(record.id)
+    || record.type === "vendor" && vendorIds.has(record.id)
+    || record.type === "control" && controlIds.has(record.id)
+    || record.type === "policy" && policyIds.has(record.id)
+    || record.type === "document" && record.workflowScope !== "engagement"
+    || record.type === "obligation" && (
+      (record.controlIds || []).some((id) => controlIds.has(id))
+      || (record.policyIds || []).some((id) => policyIds.has(id))
+    )
+  ));
+  const selected = new Set();
+  const visit = (value) => {
+    if (typeof value === "string" && personIds.has(value)) selected.add(value);
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object") Object.values(value).forEach(visit);
+  };
+  sources.forEach(visit);
+  return loaded.resources.filter((record) => record.type === "person" && selected.has(record.id));
 }
 
 export function collectionRevisionInputs(loaded, resourceType, program, options = {}) {
@@ -169,7 +224,7 @@ const dependencyFields = {
   },
   component: {
     system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
-    control: ["id", "type", "status", "systemIds", "componentIds", "evidenceSourceComponentIds"],
+    control: ["id", "type", "systemIds", "componentIds", "evidenceSourceComponentIds"],
     vendor: ["id", "type", "status", "category", "criticality", "description", "startDate", "endDate"],
     classification: ["id", "type", "status", "rank", "description", "handlingRequirements"],
     "information-type": ["id", "type", "status", "classificationId", "description"]

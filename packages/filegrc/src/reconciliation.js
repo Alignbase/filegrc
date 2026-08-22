@@ -11,7 +11,9 @@ const TRANSITIONS = {
   person: [
     {
       eventType: "person-started",
-      applies: (before, after) => after?.status === "active" && before?.status !== "active",
+      applies: (before, after) => after?.status === "active"
+        && after?.affiliation !== "external"
+        && before?.status !== "active",
       message: "Confirm whether activating this Person represents a workforce start that needs policy-event work."
     },
     {
@@ -95,16 +97,26 @@ export async function planReconciliation(input = process.cwd()) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
     : await loadWorkspace(input);
+  const headRevision = gitRevision(loaded.root);
   if (!modelSupports(loaded.model, "guided-workflow")) {
     return {
       contractVersion: 1,
-      gitRevision: gitRevision(loaded.root),
+      gitRevision: headRevision,
       changedPaths: [],
       candidates: [],
       message: "Direct-file transition reconciliation is available in model v3 and newer workspaces."
     };
   }
   const changedPaths = gitChangedPaths(loaded.root);
+  if (!headRevision) {
+    return {
+      contractVersion: 1,
+      gitRevision: null,
+      changedPaths,
+      candidates: [],
+      message: "Commit the initial workspace before FileGRC checks later direct-file changes for Policy Events."
+    };
+  }
   const currentByPath = new Map(loaded.entries.map((entry) => [
     `data/${entry.relativePath}`,
     entry
@@ -176,7 +188,7 @@ export async function planReconciliation(input = process.cwd()) {
   }
   return {
     contractVersion: 1,
-    gitRevision: gitRevision(loaded.root),
+    gitRevision: headRevision,
     changedPaths,
     candidates: candidates.sort((a, b) => a.id.localeCompare(b.id))
   };

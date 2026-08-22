@@ -647,7 +647,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   assert.equal(packet.records.find(({ id }) => id === "action-item-q1-risk-review").history[0].author, "Test User");
   assert.equal(packet.records.some(({ id }) => id === "finding-risk-review-documentation"), true);
   assert.equal(packet.records.some(({ id }) => id === "action-item-risk-review-documentation"), true);
-  assert.equal(packet.readiness.status, "delivery-ready");
+  assert.equal(packet.readiness.status, "delivery-ready", JSON.stringify(packet.gaps, null, 2));
   assert.equal(packet.controlCoverage[0].evidenceIds.includes("evidence-q1-risk-review"), true);
   assert.deepEqual(packet.controlCoverage[0].riskIds, ["risk-service-availability"]);
   assert.equal(packet.populations.length, 11);

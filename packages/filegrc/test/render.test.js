@@ -1149,6 +1149,8 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   const cardSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function stagePageCard"), APP_SCRIPT.indexOf("function stageProgress"));
   const summarySource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("const STAGE_PAGE_SUMMARIES"), APP_SCRIPT.indexOf("const RECORD_TEXT_FIELDS"));
   assert.match(APP_SCRIPT, /parts\.length === 2 && parts\[0\] === "stage"/);
+  assert.match(APP_SCRIPT, /window\.addEventListener\("hashchange", handleRouteChange\)/);
+  assert.match(APP_SCRIPT, /dialog\.editor\[open\], dialog\.commit-dialog\[open\], dialog\.alert-dialog\[open\]/);
   assert.doesNotMatch(APP_SCRIPT, /parts\.length === 3 && parts\[0\] === "stage"/);
   assert.match(APP_SCRIPT, /function renderStageOverview\(main, stageId, params = new URLSearchParams\(\)\)/);
   assert.match(APP_SCRIPT, /if \(stage\.id === "run"\) return renderObligations\(main, params\)/);
@@ -1156,6 +1158,8 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /function renderStagePageIndex\(stage\)/);
   assert.match(APP_SCRIPT, /function stagePageCard\(stage, destination, index\)/);
   assert.match(APP_SCRIPT, /function stagePageItems\(stage, destination\)/);
+  assert.match(APP_SCRIPT, /workflowUiStage\(item\.stage\) === stage\.id/);
+  assert.match(APP_SCRIPT, /return stageId === "operation" \? "run" : stageId/);
   assert.match(APP_SCRIPT, /function stagePageItemDetail\(item\)/);
   assert.match(APP_SCRIPT, /implementation checks remain\. Open the Control to review them/);
   assert.match(APP_SCRIPT, /class="stage-page-tasks"/);
@@ -1222,7 +1226,7 @@ test("uses the Step 4 page for compact policy-event triggers and the Work Queue"
   assert.match(APP_SCRIPT, /data-new-external-evidence.*openEditor\("evidence"\)/s);
   assert.match(APP_SCRIPT, /field\.showWhenInactive !== true/);
   assert.match(APP_STYLES, /\.external-evidence-list\{/);
-  assert.match(stepFour, /policyEventTrigger\(trigger, index, index >= eventTriggerLimit\)/);
+  assert.match(stepFour, /policyEventTrigger\(trigger, index, index >= eventTriggerLimit, scope\)/);
   assert.match(stepFour, /data-expand-policy-events/);
   assert.match(stepFour, /Trigger Work/);
   assert.doesNotMatch(stepFour, /Trigger Workflow/);
@@ -1238,7 +1242,18 @@ test("uses the Step 4 page for compact policy-event triggers and the Work Queue"
   assert.match(stepFour, /Complete scheduled work and assigned follow-up here/);
   assert.match(stepFour, /Each card shows its due window, source, and next action/);
   assert.match(APP_SCRIPT, /function operationProgress\(\)/);
+  assert.match(APP_SCRIPT, /const complete = Boolean\(program\?\.operating\)/);
+  assert.match(APP_SCRIPT, /find\(\(stage\) => stage\.id === "operation"\)\?\.counts\?\.action/);
   assert.match(APP_SCRIPT, /Evidence collection is running and the Work Queue has no overdue or blocked work/);
+  assert.match(stepFour, /const operationLocked = !state\.programReadiness\?\.evidenceReady/);
+  assert.match(stepFour, /const acceptedTriggers = activePolicyEventTriggers\(orderedTriggers\)/);
+  assert.match(stepFour, /const currentItems = activeOperationItems\(plan\.items\)/);
+  assert.match(stepFour, /activeOperation \+/);
+  assert.match(stepFour, /Any adopted work and Policy Events that can happen now stay available below/);
+  assert.match(stepFour, /setupTriggers = operationLocked \? proposedTriggers : orderedTriggers/);
+  assert.match(stepFour, /Continue Evidence Ready work/);
+  assert.match(stepFour, /class="operation-setup-preview"/);
+  assert.match(APP_STYLES, /\.operation-gate\{display:flex/);
   const issues = PROGRAM_PATH[3].sections.find(({ id }) => id === "issues");
   assert.deepEqual(issues.types, ["finding"]);
   assert.match(stepFour, /data-new-action-item/);
@@ -1264,6 +1279,7 @@ test("derives step-page completion from the shared workflow assessment", () => {
   assert.doesNotMatch(APP_SCRIPT, /Mark complete/);
   assert.doesNotMatch(APP_SCRIPT, /function toggleStagePageCompletion\(button\)/);
   assert.match(APP_SCRIPT, /function derivedStagePageState\(stage, destination\)/);
+  assert.match(APP_SCRIPT, /destination\.type === "program" && item\.key === "program\.scope\.criteria"/);
   assert.match(APP_SCRIPT, /state\.workflow\?\.findings/);
   assert.match(APP_SCRIPT, /Review applicability/);
   assert.match(APP_SCRIPT, /previewedPayload = \{ \.\.\.payload, basis: preview\.basis \}/);
@@ -1280,6 +1296,7 @@ test("derives step-page completion from the shared workflow assessment", () => {
 });
 
 test("runs optional onboarding from committed renderer settings", () => {
+  assert.match(APP_SCRIPT, /#resume-setup"\)\?\.addEventListener\("click", \(\) => requestOnboarding\(\{ setupOnly: true \}\)\)/);
   assert.doesNotThrow(() => new Function(APP_SCRIPT));
   assert.match(APP_SCRIPT, /rendererSettingsEntry\(\)\?\.record\.showOnboarding === true && !initialSetupSystem\(\)/);
   assert.match(APP_SCRIPT, /const setupPending = !setupSystem[\s\S]*setupSystem\.status !== "active"[\s\S]*activeProgram\(\)\.assuranceGoal === "none"/);
@@ -1306,7 +1323,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /function scheduleRepositorySyncPoll/);
   assert.match(APP_SCRIPT, /function repositorySyncAlert/);
   assert.match(APP_SCRIPT, /Saved locally, but Git sync failed/);
-  assert.match(APP_SCRIPT, /Git sync and workspace checks can take a moment/);
+  assert.match(APP_SCRIPT, /Recalculating readiness and repository state/);
   assert.match(APP_SCRIPT, /function retryOnboardingSync/);
   assert.match(APP_SCRIPT, /if \(dialog\.dataset\.mutationBusy === "true"\) return/);
   assert.match(APP_SCRIPT, /setMutationBusy\(dialog, true, "Saving…"/);
@@ -1342,7 +1359,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /Confirm scope activates it/);
   assert.match(APP_SCRIPT, /Both add it to the Program/);
   assert.match(APP_SCRIPT, /data-onboarding="next">Confirm scope/);
-  assert.match(APP_SCRIPT, /requestOnboarding\(\{ setupOnly: Boolean\(initialSetupSystem\(\)\) \}\)/);
+  assert.match(APP_SCRIPT, /requestOnboarding\(\{ setupOnly: true \}\)/);
   assert.match(APP_SCRIPT, /onboardingStep = setupOnly \? onboardingSteps\(\)\.length - 1 : 0/);
   assert.match(APP_SCRIPT, /onboardingSetupOnly \? "Close" : "Skip onboarding"/);
   assert.match(APP_SCRIPT, /onboardingSetupOnly \? closeOnboarding : cancelOnboarding/);
@@ -1401,7 +1418,7 @@ test("constrains required SOC 2 criteria to compatible applicability decisions",
 
 test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function renderObligations\(main, params = new URLSearchParams\(\)\)/);
-  assert.match(APP_SCRIPT, /const sections = \["proposed", "upcoming", "blocked", "due", "overdue"\]\.map/);
+  assert.match(APP_SCRIPT, /const renderBoard = \(items, statuses\) => statuses\.map/);
   assert.doesNotMatch(APP_SCRIPT, /class="metrics obligation-metrics"/);
   assert.match(APP_SCRIPT, /state\.obligations\.counts\.overdue/);
   assert.match(APP_SCRIPT, /state\.obligations\.counts\.blocked/);
@@ -1459,7 +1476,10 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.match(APP_SCRIPT, /function distinctObligationPreviews\(items, limit\)/);
   assert.match(APP_SCRIPT, /const previewObligations = distinctObligationPreviews\(openObligations, 3\)/);
   assert.doesNotMatch(APP_SCRIPT, /obligationPreview\(openObligations\.slice\(0, 3\)\)/);
-  assert.match(APP_SCRIPT, /eventReminderPreview\(orderedPolicyEventTriggers\(state\.obligations\.triggers\)\.slice\(0, 4\)\)/);
+  assert.match(APP_SCRIPT, /const acceptedEventTriggers = activePolicyEventTriggers\(state\.obligations\.triggers\)/);
+  assert.match(APP_SCRIPT, /eventReminderPreview\(orderedPolicyEventTriggers\(acceptedEventTriggers\)\.slice\(0, 4\)\)/);
+  assert.match(APP_SCRIPT, /const eventPanel = acceptedEventTriggers\.length/);
+  assert.match(APP_SCRIPT, /function activeOperationItems\(items\)/);
   assert.match(APP_SCRIPT, /<a class="button primary" href="' \+ nextHref \+ '">Continue<\/a>/);
   assert.doesNotMatch(APP_SCRIPT, /Build and test the management program first/);
   assert.doesNotMatch(APP_SCRIPT, /class="panel program-start-panel"/);

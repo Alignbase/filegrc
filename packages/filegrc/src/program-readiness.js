@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
+import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessCollectionReviews } from "./collection-review.js";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
@@ -52,6 +53,9 @@ export async function assessProgramReadiness(input, options = {}) {
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
+  controlStage.items.push(...collectionReviews
+    .filter(({ resourceType }) => resourceType === "component")
+    .map(collectionReviewReadinessItem));
   const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
   controlStage.items.push(...governedContent.items);
   const policyActivations = await assessPolicyActivations(
@@ -72,7 +76,7 @@ export async function assessProgramReadiness(input, options = {}) {
       records,
       byId,
       loaded.model,
-      collectionReviews.filter(({ resourceType }) => resourceType !== "complementary-control")
+      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "vendor"].includes(resourceType))
     ),
     policyStage,
     controlStage
@@ -103,6 +107,7 @@ export async function assessProgramReadiness(input, options = {}) {
   const firstAction = items.find((current) => current.status === "action") || null;
 
   return {
+    program,
     schemaVersion: 1,
     dataModelVersion: String(loaded.model.modelVersion),
     generatedAt: options.generatedAt || new Date().toISOString(),
@@ -261,7 +266,10 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
       record.status === "active"
       && record.statement
       && record.effectiveOn
-      && (modelSupports(model, "program-scope") || record.applicabilityReview?.decision === "applicable")
+      && (!model.resources.commitment?.fields?.applicabilityReview || (
+        record.applicabilityReview?.decision === "applicable"
+        && applicabilityReviewIsCurrent(record.applicabilityReview, record, workspace, records, model)
+      ))
       && currentPartyPeople(record.ownerIds, byId).size > 0
       && (record.requirementIds || []).length > 0
       && (record.controlIds || []).length > 0
@@ -290,7 +298,15 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   }
 
   const selectedRequirementIds = new Set(scope.requirements.map((record) => record.id));
-  const v4Decisions = new Map((workspace?.requirementApplicability || []).map((decision) => [decision.requirementId, decision.decision]));
+  const requirementById = new Map(records
+    .filter(({ type }) => type === "requirement")
+    .map((record) => [record.id, record]));
+  const v4Decisions = new Map((workspace?.requirementApplicability || [])
+    .filter((decision) => (
+      requirementById.has(decision.requirementId)
+      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), workspace, records, model)
+    ))
+    .map((decision) => [decision.requirementId, decision.decision]));
   const applicableRequirements = records.filter((record) => (
     record.type === "requirement"
     && scope.frameworks.some((framework) => framework.id === record.frameworkId)
@@ -1162,6 +1178,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
     const checks = {
       ...(model.resources.control?.fields?.applicabilityReview ? {
         applicability: control.applicabilityReview?.decision === "applicable"
+          && applicabilityReviewIsCurrent(control.applicabilityReview, control, scope.program, [...byId.values()], model)
       } : {}),
       implemented: control.status === "implemented",
       owner: (control.ownerIds || []).length > 0,

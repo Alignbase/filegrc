@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
+import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
 import { applyResourceBatch } from "./files.js";
 import { getWorkspaceRevisionSnapshot } from "./git.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -29,15 +30,22 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     throw new Error(`Applicability review type must be one of ${[...REVIEWABLE_TYPES].join(", ")}.`);
   }
   const program = resolveProgram(loaded, options.programId);
+  const requirementById = new Map(loaded.resources
+    .filter(({ type }) => type === "requirement")
+    .map((record) => [record.id, record]));
   const reviewedRequirementIds = new Set((program.requirementApplicability || [])
-    .filter(({ decision }) => ["applicable", "not-applicable"].includes(decision))
+    .filter((review) => (
+      ["applicable", "not-applicable"].includes(review.decision)
+      && requirementById.has(review.requirementId)
+      && applicabilityReviewIsCurrent(review, requirementById.get(review.requirementId), program, loaded.resources, loaded.model)
+    ))
     .map(({ requirementId }) => requirementId));
   const records = loaded.resources.filter((record) => (
     REVIEWABLE_TYPES.has(record.type)
     && (!requestedType || record.type === requestedType)
     && (record.type === "requirement" && modelSupports(loaded.model, "program-scope")
       ? !reviewedRequirementIds.has(record.id)
-      : !record.applicabilityReview)
+      : !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, loaded.resources, loaded.model))
     && !["retired", "superseded"].includes(record.status)
   ));
   return {
@@ -79,8 +87,7 @@ function planApplicabilityReviewWithContext(context, options) {
     throw new Error("Batch expected revisions must be keyed by resource ID.");
   }
   const program = resolveProgram(loaded, options.programId);
-  const v4RequirementDecisions = [];
-  const update = options.decisions.flatMap((decision) => {
+  const reviewedDecisions = options.decisions.map((decision) => {
     const record = byId.get(decision.id);
     if (!record || !REVIEWABLE_TYPES.has(record.type)) {
       throw new Error(`Resource "${decision.id}" is not an applicability-review record.`);
@@ -99,6 +106,33 @@ function planApplicabilityReviewWithContext(context, options) {
     if (constraint && !constraint.allowedDecisions.includes(result)) {
       throw new Error(`${record.reference || record.title} must be applicable because it is required for the selected SOC 2 Security program.`);
     }
+    if (record.type === "requirement" && !["applicable", "not-applicable"].includes(result)) {
+      throw new Error(`Requirement "${record.id}" must be applicable or not-applicable.`);
+    }
+    return { record, result, rationale, reviewedByIds, reviewedOn };
+  });
+  const v4RequirementDecisions = reviewedDecisions
+    .filter(({ record }) => record.type === "requirement" && modelSupports(loaded.model, "program-scope"))
+    .map(({ record, result, rationale, reviewedByIds, reviewedOn }) => ({
+      requirementId: record.id,
+      decision: result,
+      rationale,
+      reviewedByIds,
+      reviewedOn,
+      scopeRevision: applicabilityScopeRevision(record, program, loaded.resources, loaded.model)
+    }));
+  const replacedRequirementIds = new Set(v4RequirementDecisions.map(({ requirementId }) => requirementId));
+  const reviewedProgram = v4RequirementDecisions.length
+    ? {
+        ...program,
+        requirementApplicability: [
+          ...(program.requirementApplicability || []).filter(({ requirementId }) => !replacedRequirementIds.has(requirementId)),
+          ...v4RequirementDecisions
+        ]
+      }
+    : program;
+  const update = reviewedDecisions.flatMap(({ record, result, rationale, reviewedByIds, reviewedOn }) => {
+    const scopeRevision = applicabilityScopeRevision(record, reviewedProgram, loaded.resources, loaded.model);
     const next = {
       ...record,
       applicabilityReview: {
@@ -106,22 +140,11 @@ function planApplicabilityReviewWithContext(context, options) {
         rationale,
         reviewedByIds,
         reviewedOn,
-        scopeRevision: basis.scopeRevision
+        scopeRevision
       }
     };
     if (record.type === "requirement") {
-      if (!["applicable", "not-applicable"].includes(result)) {
-        throw new Error(`Requirement "${record.id}" must be applicable or not-applicable.`);
-      }
       if (modelSupports(loaded.model, "program-scope")) {
-        v4RequirementDecisions.push({
-          requirementId: record.id,
-          decision: result,
-          rationale,
-          reviewedByIds,
-          reviewedOn,
-          scopeRevision: basis.scopeRevision
-        });
         return [];
       }
       next.applicability = result;
@@ -132,14 +155,7 @@ function planApplicabilityReviewWithContext(context, options) {
     return [next];
   });
   if (v4RequirementDecisions.length) {
-    const replaced = new Set(v4RequirementDecisions.map(({ requirementId }) => requirementId));
-    update.push({
-      ...program,
-      requirementApplicability: [
-        ...(program.requirementApplicability || []).filter(({ requirementId }) => !replaced.has(requirementId)),
-        ...v4RequirementDecisions
-      ]
-    });
+    update.push(reviewedProgram);
   }
   return {
     operation: "applicability-review",

@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v5 workspaces must run `npx filegrc migrate --to-model 6 --preview --json` after installing a model v6 package. The migration gives Training separate approval and activation facts, preserves active model v5 Training with a visible legacy basis, and removes Training schedule fields because Obligations now own assignment timing. Review the result and confirm or create each Training Obligation in Step 3. Older workspaces migrate one model version at a time. See the [model v6 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v6.md).
+Existing model v6 workspaces must run `npx filegrc migrate --to-model 7 --preview --json` after installing a model v7 package. The migration keeps issued historical Audit Documents neutral, returns legacy Training to approved until management records a current activation, and makes old applicability confirmations stale for one scoped review. Older workspaces migrate one model version at a time. See the [model v7 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v7.md).
 
 ## How it works
 
@@ -74,8 +74,8 @@ The browser is helpful, but it is not required. An agent can discover the model,
 
 ```sh
 npx filegrc program-path --next --json
-npx filegrc workflow --json
 npx filegrc reconcile --preview --json
+npx filegrc workflow --json # full checklist when needed
 npx filegrc period-health --require-healthy --json
 npx filegrc review-applicability decisions.json --preview --json
 npx filegrc review-collection person --scaffold

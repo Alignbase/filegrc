@@ -156,16 +156,20 @@ async function validateWorkspaceUnmeasured(input) {
   }
 
   diagnostics.sort((a, b) => `${a.severity}:${a.path}:${a.code}`.localeCompare(`${b.severity}:${b.path}:${b.code}`));
-  return {
+  const result = {
     ok: !diagnostics.some(({ severity }) => severity === "error"),
     diagnostics,
     counts: {
       resources: loaded.resources.length,
       errors: diagnostics.filter(({ severity }) => severity === "error").length,
       warnings: diagnostics.filter(({ severity }) => severity === "warning").length
-    },
-    loaded
+    }
   };
+  Object.defineProperty(result, "loaded", {
+    value: loaded,
+    enumerable: false
+  });
+  return result;
 }
 
 function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagnostics) {
@@ -249,7 +253,7 @@ function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagno
         `Program-scoped Document "${document.title}" cannot fill an Audit engagement or management-Document field.`
       ));
     }
-    if (document.activationBasis !== "legacy-v4") continue;
+    if (!["legacy-v4", "historical"].includes(document.activationBasis)) continue;
     const historicalAuditIds = new Set(auditRefs
       .filter(({ audit }) => ["issued", "delivered", "complete"].includes(audit.status))
       .map(({ audit }) => audit.id));
@@ -257,7 +261,7 @@ function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagno
       diagnostics.push(error(
         "invalid-legacy-document-activation",
         path,
-        `activationBasis legacy-v4 is reserved for an engagement Document tied to exactly one issued, delivered, or completed Audit.`
+        `The historical activation basis is reserved for an engagement Document tied to exactly one issued, delivered, or completed Audit.`
       ));
     }
   }

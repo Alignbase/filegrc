@@ -81,7 +81,7 @@ export function summarizeSetupResult(result) {
     },
     system: setupSystemSummary(result.system),
     target: setupTargetSummary(result.program || result.workspace, {
-      modelVersion: result.workspace?.dataModelVersion || (result.program ? "6" : "3")
+      modelVersion: result.workspace?.dataModelVersion || (result.program ? "7" : "3")
     }),
     renderer: result.renderer ? setupRendererSummary(result.renderer) : null,
     commitment: result.commitment || null,

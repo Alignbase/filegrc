@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
 import {
   completeObligationOccurrence,
+  completeObligationAction,
   createAppState,
   createObligationEvent,
   createResource,
@@ -22,6 +23,7 @@ import { executeCli, makeWorkspace } from "./helpers.js";
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const MODEL_V2 = loadModel("2");
 const MODEL_V5 = loadModel("5");
+const MODEL_V7 = loadModel("7");
 const planObligations = (resources, options = {}) => planObligationsWithModel(resources, {
   model: MODEL_V2,
   ...options
@@ -543,6 +545,21 @@ test("creates an event run and its policy checklist as one valid batch", async (
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
   await createResource(root, {
+    id: "person-new-worker",
+    type: "person",
+    title: "New Worker",
+    status: "active",
+    affiliation: "internal",
+    jobTitle: "Engineer"
+  });
+  await createResource(root, {
+    id: "training-worker-security",
+    type: "training",
+    title: "Worker Security Training",
+    status: "draft",
+    ownerIds: ["person-owner"]
+  }, { content: { content: "# Worker Security Training\n\nFollow the approved security practices." } });
+  await createResource(root, {
     id: "obligation-new-worker-assets",
     type: "obligation",
     title: "Register issued device",
@@ -564,8 +581,8 @@ test("creates an event run and its policy checklist as one valid batch", async (
     triggerPrompt: "New worker?",
     window: { precision: "date",
       startsAfter: 0, dueAfter: 30 },
-    scopeResourceIds: ["person-owner"],
-    templateResourceId: "person-owner",
+    scopeResourceIds: ["training-worker-security", "person-owner"],
+    templateResourceId: "training-worker-security",
     ownerIds: ["person-owner"]
   });
   await createResource(root, {
@@ -583,14 +600,14 @@ test("creates an event run and its policy checklist as one valid batch", async (
   const created = await createObligationEvent(root, {
     eventType: "person-started",
     occurredOn: "2026-07-01",
-    subjectResourceIds: ["person-owner"],
+    subjectResourceIds: ["person-new-worker"],
     title: "Onboard platform engineer"
   });
   assert.equal(created.actions.length, 3);
   assert.equal(created.actions[0].sourceResourceId, created.event.id);
   assert.equal(created.event.actionItemIds, undefined);
   const trainingAction = created.actions.find(({ title }) => title === "Complete security training");
-  assert.match(trainingAction.description, /Review scoped resources: person-owner/);
+  assert.match(trainingAction.description, /Review scoped resources: training-worker-security, person-owner/);
   const defaultDeadlineAction = created.actions.find(({ title }) => title === "Review onboarding completion");
   assert.equal(defaultDeadlineAction.completionWindow.dueOn, "2026-07-31");
   assert.equal(defaultDeadlineAction.completionWindow.overdueOn, "2026-08-01");
@@ -603,16 +620,45 @@ test("creates an event run and its policy checklist as one valid batch", async (
   });
   assert.equal(plan.triggers[0].steps.length, 3);
   const trainingStep = plan.triggers[0].steps.find(({ title }) => title === "Complete security training");
-  assert.deepEqual(trainingStep.scopeResourceIds, ["person-owner"]);
-  assert.equal(trainingStep.templateResourceId, "person-owner");
+  assert.deepEqual(trainingStep.scopeResourceIds, ["training-worker-security", "person-owner"]);
+  assert.equal(trainingStep.templateResourceId, "training-worker-security");
   assert.equal(plan.triggers[0].steps.find(({ title }) => title === "Review onboarding completion").window.dueAfter, 30);
   assert.equal(plan.eventRuns[0].actions.length, 3);
+  assert.deepEqual(plan.eventRuns[0].actions[0].subjectResourceIds, ["person-new-worker"]);
   assert.deepEqual(
     plan.eventRuns[0].actionItemIds.toSorted(),
     created.actions.map(({ id }) => id).toSorted()
   );
-  assert.deepEqual(plan.eventRuns[0].actions.find(({ title }) => title === "Complete security training").scopeResourceIds, ["person-owner"]);
+  assert.deepEqual(plan.eventRuns[0].actions.find(({ title }) => title === "Complete security training").scopeResourceIds, ["training-worker-security", "person-owner"]);
   assert.equal(plan.eventRuns[0].actions.find(({ title }) => title === "Register issued device").daysUntilOverdue, 2);
+  const trainingScaffold = await scaffoldObligationCompletion(root, {
+    actionItemId: trainingAction.id,
+    completedOn: "2026-07-02"
+  });
+  assert.equal(trainingScaffold.record.type, "attestation");
+  assert.equal(trainingScaffold.record.personId, "person-new-worker");
+  assert.deepEqual(trainingScaffold.record.subjectResourceIds, ["training-worker-security"]);
+  await assert.rejects(
+    completeObligationAction(root, {
+      actionItemId: trainingAction.id,
+      record: { ...trainingScaffold.record, id: "attestation-wrong-person", personId: "person-owner" },
+      completedOn: "2026-07-02",
+      expectedRevision: trainingScaffold.revision
+    }),
+    /Person in scope/
+  );
+  await completeObligationAction(root, {
+    actionItemId: trainingAction.id,
+    record: trainingScaffold.record,
+    completedOn: "2026-07-02",
+    expectedRevision: trainingScaffold.revision
+  });
+  const assetAction = created.actions.find(({ title }) => title === "Register issued device");
+  const assetScaffold = await scaffoldObligationCompletion(root, {
+    actionItemId: assetAction.id,
+    completedOn: "2026-07-02"
+  });
+  assert.equal(assetScaffold.record.type, "evidence");
 
   const obligationsCli = await execute(process.execPath, [
     fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)),
@@ -672,6 +718,65 @@ test("creates an event run and its policy checklist as one valid batch", async (
   assert.match(triggerText.stdout, /Event: obligation-event\//);
   assert.equal((triggerText.stdout.match(/^Task: action-item\//gm) || []).length, 3);
   assert.equal((await loadWorkspace(root)).resources.filter(({ type }) => type === "obligation-event").length, 3);
+});
+
+test("preserves late event completion for period continuity checks", () => {
+  const obligation = {
+    id: "obligation-event-control-operation",
+    type: "obligation",
+    title: "Review event control",
+    status: "active",
+    activityType: "control-design-review",
+    recurrence: { mode: "event", eventType: "person-started" },
+    ownerIds: ["person-owner"],
+    controlIds: ["control-one"]
+  };
+  const event = {
+    id: "event-one",
+    type: "obligation-event",
+    title: "New worker",
+    status: "complete",
+    eventType: "person-started",
+    occurredOn: "2026-01-01",
+    subjectResourceIds: ["person-owner"]
+  };
+  const action = {
+    id: "action-one",
+    type: "action-item",
+    title: "Review event control",
+    status: "done",
+    obligationId: obligation.id,
+    sourceResourceId: event.id,
+    assigneeIds: ["person-owner"],
+    completionResourceIds: ["activity-one"],
+    completedOn: "2026-02-01",
+    completionWindow: {
+      precision: "date",
+      startsOn: "2026-01-01",
+      dueOn: "2026-01-02",
+      overdueOn: "2026-01-03"
+    }
+  };
+  const completion = {
+    id: "activity-one",
+    type: "control-activity",
+    title: "Late event control review",
+    status: "complete",
+    profileId: "control-design-review",
+    obligationId: obligation.id,
+    controlIds: ["control-one"],
+    scopeResourceIds: ["control-one"],
+    performerIds: ["person-owner"],
+    completedAt: "2026-02-01T12:00:00.000Z"
+  };
+  const plan = planObligationsWithModel([ACTIVE_OWNER, obligation, event, action, completion], {
+    asOf: "2026-02-01",
+    through: "2026-02-01",
+    includeComplete: true,
+    model: MODEL_V7
+  });
+  assert.equal(plan.eventRuns[0].actions[0].status, "complete");
+  assert.equal(plan.eventRuns[0].actions[0].lateCompletion, true);
 });
 
 test("headless completion helpers enforce expected types and update links atomically", async (context) => {

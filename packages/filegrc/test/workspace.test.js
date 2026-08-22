@@ -126,6 +126,7 @@ test("reusable validation state invalidates when a source record changes", async
   await makeWorkspace(root);
   const validation = await validateWorkspace(root);
   const fingerprint = (await fingerprintWorkspace(validation.loaded)).fingerprint;
+  assert.equal(JSON.stringify(validation).includes('"loaded"'), false);
   const ownerPath = join(root, "data", "people", "person-owner.json");
   const owner = JSON.parse(await readFile(ownerPath, "utf8"));
   await writeFile(ownerPath, `${JSON.stringify({ ...owner, department: "External source edit" }, null, 2)}\n`, "utf8");

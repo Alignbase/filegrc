@@ -156,7 +156,7 @@ Each relationship has one stored authority. Inbound references and reverse lists
 
 Generated repositories contain only their records and one required `dataModelVersion` in `data/workspace.json`. Individual records do not repeat a schema version. Unknown top-level record fields are errors; organization-specific values belong under `extensions`. Generated repositories do not receive copied schema files.
 
-`docs/data-model.md` is generated from the active model v6. `npm run validate` fails when the generated document differs from the registry. The migration command previews and applies each model upgrade as a separate atomic step, including the explicit v3-to-v4 System classification and relationship rewrite, the v4-to-v5 governed Document lifecycle split, and the v5-to-v6 Training lifecycle and scheduling split.
+`docs/data-model.md` is generated from the active model v7. `npm run validate` fails when the generated document differs from the registry. The migration command previews and applies each model upgrade as a separate atomic step, including the explicit v3-to-v4 System classification and relationship rewrite, the v4-to-v5 governed Document lifecycle split, the v5-to-v6 Training lifecycle and scheduling split, and the v6-to-v7 cleanup of model-version lifecycle labels.
 
 The registry may expose a JSON Schema projection for editors and outside tools, but that projection is generated output. It is not a second schema authority.
 
@@ -632,13 +632,14 @@ Do not require a separate Commitment for every supporting System. Support servic
 
 ### Model and release boundary
 
-The guided workflow first shipped in model v3. Model v4 separated Workspace identity, Program scope, bounded Systems, operational Components, Vendors, Assets, and Evidence Artifacts. Model v5 separated governed Document approval from activation and assigned Documents to program or engagement workflow scope. Model v6 is current. It applies the same approval and activation split to Training and makes Obligations the only source for assignment timing. Active model v5 Training migrates with `activationBasis: legacy-v5`, so migration preserves the historical state without inventing an activation actor, date, or revision.
+The guided workflow first shipped in model v3. Model v4 separated Workspace identity, Program scope, bounded Systems, operational Components, Vendors, Assets, and Evidence Artifacts. Model v5 separated governed Document approval from activation and assigned Documents to program or engagement workflow scope. Model v6 applied the same approval and activation split to Training and made Obligations the only source for assignment timing. Model v7 is current. It gives issued legacy engagement Documents the neutral `historical` basis, returns legacy Training to approved until a current activation is recorded, and keeps migration mechanics out of compliance entities.
 
 The v2-to-v3 migration must provide preview and explicit apply modes. Classify every proposed change as automatic, review required, or unsupported. Preserve source facts and historical records. Never invent an approval, Appointment holder, applicability decision, evidence-source conclusion, control operation, event, or historical date.
 
 The migration should:
 
 - Add only facts that are mechanically derivable from existing records
+- Keep migration mechanics, model versions, and FileGRC guidance in the preview, result, and Git history. Generated resource descriptions, rationales, summaries, purpose, boundary, and Markdown must state only compliance facts.
 - Leave new decisions unreviewed and expose them through derived checklist items
 - Preserve questionable draft effective dates and other ambiguous facts for human review rather than silently deleting or reinterpreting them
 - Convert compatible existing source mappings, obligations, and audit scope without widening their coverage
@@ -687,7 +688,7 @@ A slice is complete only when domain, CLI, HTTP, browser, static, generated guid
 
 ## Versioning contract
 
-Models v1, v2, v3, v4, and v5 are published and frozen. Model v6 is current. Compatible additions can update the active model with its starter data, generated docs, and tests. New workspaces receive current starter-library content. Existing workspaces receive exact, reviewable diffs only for unchanged starter defaults, and FileGRC requires explicit acceptance of the named proposal and its exact revision before writing them. Acceptance fails when the proposal changes after review. Customized or adopted Policy content remains untouched. Accepting a starter proposal does not approve governed content, activate it, or mark a Control implemented. Keep packaged policy-library Markdown byte-identical to the corresponding create-workspace template and enforce that relationship in tests. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
+Models v1, v2, v3, v4, v5, and v6 are published and frozen. Model v7 is current. Compatible additions can update the active model with its starter data, generated docs, and tests. New workspaces receive current starter-library content. Existing workspaces receive exact, reviewable diffs only for unchanged starter defaults, and FileGRC requires explicit acceptance of the named proposal and its exact revision before writing them. Acceptance fails when the proposal changes after review. Customized or adopted Policy content remains untouched. Accepting a starter proposal does not approve governed content, activate it, or mark a Control implemented. Keep packaged policy-library Markdown byte-identical to the corresponding create-workspace template and enforce that relationship in tests. A change that would make an existing workspace invalid needs a new model version, an explicit preview and apply migration, and agent-discoverable upgrade guidance.
 
 Package versions stay unchanged during normal development and move together when both published packages change. Before 1.0, a release with any breaking published change increments the minor version. A release containing only backward-compatible published changes increments the patch version. A migration path helps users adopt a breaking data-model release, but the release still receives a minor version increment. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 

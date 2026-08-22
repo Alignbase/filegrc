@@ -3,7 +3,9 @@ import { applyModelMigrationBatch, applyResourceBatch, contentRevision } from ".
 import { loadWorkspace } from "./workspace.js";
 import { ACTIVE_MODEL_VERSION, loadModel } from "../model/index.js";
 import { legacyCoverage } from "./coverage.js";
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { resolveDataPath } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 
@@ -895,7 +897,8 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
       : sourceVersion === "2" ? "3"
         : sourceVersion === "3" ? "4"
           : sourceVersion === "4" ? "5"
-            : ACTIVE_MODEL_VERSION;
+            : sourceVersion === "5" ? "6"
+              : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -909,20 +912,24 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "4" && requestedTarget === "5") {
     return planV4ToV5Migration(loaded, options);
   }
-  if (sourceVersion === "5" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "5" && requestedTarget === "6") {
     return planV5ToV6Migration(loaded);
+  }
+  if (sourceVersion === "6" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV6ToV7Migration(loaded);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
       "Model v1 workspaces must migrate to model v2 first. "
-      + "Preview and apply `npx filegrc migrate --to-model 2`, then migrate one version at a time through model v6."
+      + `Preview and apply \`npx filegrc migrate --to-model 2\`, then migrate one version at a time through model v${ACTIVE_MODEL_VERSION}.`
     );
   }
   throw new Error(`Model migration does not support v${sourceVersion} to v${requestedTarget}.`);
 }
 
 export async function migrateModel(input = process.cwd(), options = {}) {
-  const plan = await planModelMigration(input, options);
+  const loaded = await loadWorkspace(input);
+  const plan = await planModelMigration(loaded.root, options);
   if (plan.sourceModelVersion === plan.targetModelVersion) {
     return { ...plan, applied: false };
   }
@@ -932,16 +939,42 @@ export async function migrateModel(input = process.cwd(), options = {}) {
       + "and resolve every missing value, conflict, manual action, and unsupported change."
     );
   }
+  const migrationReportPath = await persistMigrationReport(loaded.root, plan);
   if (plan.sourceModelVersion === "1" && plan.targetModelVersion === "2") {
-    return migrateV1ToV2(input, options);
+    return { ...await migrateV1ToV2(loaded.root, options), migrationReportPath };
   }
-  const result = await applyModelMigrationBatch(input, plan.changes);
+  const result = await applyModelMigrationBatch(loaded.root, plan.changes);
   return {
     ...plan,
     applied: true,
+    migrationReportPath,
     result,
-    postMigrationAssessment: await postMigrationAssessment(input)
+    postMigrationAssessment: await postMigrationAssessment(loaded.root)
   };
+}
+
+async function persistMigrationReport(root, plan) {
+  const relativePath = `.filegrc/migrations/model-v${plan.sourceModelVersion}-to-v${plan.targetModelVersion}.json`;
+  const directory = join(root, ".filegrc", "migrations");
+  const path = join(root, relativePath);
+  const temporaryPath = `${path}.${randomUUID()}.tmp`;
+  await mkdir(directory, { recursive: true });
+  try {
+    await writeFile(temporaryPath, `${JSON.stringify({
+      schemaVersion: 1,
+      sourceModelVersion: plan.sourceModelVersion,
+      targetModelVersion: plan.targetModelVersion,
+      summary: plan.summary,
+      classifications: plan.classifications,
+      migrationReport: plan.migrationReport || null,
+      fileDiff: plan.fileDiff
+    }, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await rename(temporaryPath, path);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => {});
+    throw error;
+  }
+  return relativePath;
 }
 
 async function planV2ToV3Migration(loaded) {
@@ -1312,7 +1345,7 @@ async function planV3ToV4Migration(loaded, options = {}) {
         ? [{
             systemId: targetIds[0],
             roles: derivedComponentRoles(record, loaded.resources),
-            rationale: `Migrated from v3 System "${record.title}" because it was recorded as part of or support for this bounded System.`
+            rationale: `Supports the bounded System "${byId.get(targetIds[0])?.title || targetIds[0]}".`
           }]
         : [];
     if (!uses.length) {
@@ -1477,6 +1510,7 @@ async function planV3ToV4Migration(loaded, options = {}) {
       componentIds: [...systemKinds].filter(([, kind]) => kind === "component").map(([id]) => id),
       classificationIds: [...classifications.values()],
       informationTypeIds: [...informationTypes.values()],
+      unmappedLegacyFields: collectV4LegacyFields(loaded.resources, systemKinds),
       relationshipUpdates: updates.filter((record) => record.type !== "workspace").map(({ id, type }) => ({ id, type }))
     },
     summary: {
@@ -1847,6 +1881,159 @@ async function planV5ToV6Migration(loaded) {
   };
 }
 
+async function planV6ToV7Migration(loaded) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("7");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+  const historicalActivationIds = [];
+  const trainingReactivation = [];
+  const preservedTrainingHistoryIds = [];
+  const purifiedNarrativeIds = [];
+  const removedMigrationExtensions = [];
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+
+  for (const original of loaded.resources) {
+    const record = structuredClone(original);
+    let changed = false;
+    if (original.type === "workspace") {
+      record.dataModelVersion = "7";
+      changed = true;
+      automatic.push(classifiedChange("automatic", original.id, "dataModelVersion", "Select model v7 and keep upgrade mechanics out of compliance entities."));
+    }
+    if (original.type === "document" && original.activationBasis === "legacy-v4") {
+      record.activationBasis = "historical";
+      changed = true;
+      historicalActivationIds.push(original.id);
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "activationBasis",
+        "Replace the model-version label with the equivalent historical activation basis."
+      ));
+    }
+    if (original.type === "training" && original.activationBasis === "legacy-v5") {
+      delete record.activationBasis;
+      delete record.activatedByIds;
+      delete record.activatedOn;
+      delete record.activatedContentRevisions;
+      if (original.status === "active") {
+        trainingReactivation.push({ resourceId: original.id, priorEffectiveOn: original.effectiveOn || null });
+        record.status = "approved";
+        delete record.effectiveOn;
+      } else {
+        preservedTrainingHistoryIds.push(original.id);
+      }
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        original.status === "active" ? "status" : "activationBasis",
+        original.status === "active"
+          ? "Keep the approved Training content and require management to record its next activation explicitly."
+          : "Keep the closed Training lifecycle facts without a model-version activation label."
+      ));
+    }
+    if (
+      original.type === "information-type"
+      && /^Information category migrated from the v3 dataTypes value ".+"\.$/.test(original.description || "")
+    ) {
+      record.description = `Information handled by in-scope Systems or Components under the "${original.title}" category.`;
+      changed = true;
+      purifiedNarrativeIds.push(original.id);
+      automatic.push(classifiedChange("automatic", original.id, "description", "Replace generated upgrade prose with the underlying information-handling fact."));
+    }
+    if (original.type === "component" && Array.isArray(original.systemUses)) {
+      let systemUsesPurified = false;
+      record.systemUses = original.systemUses.map((use) => {
+        if (!/^Migrated from v3 System ".+" because it was recorded as part of or support for this bounded System\.$/.test(use.rationale || "")) return use;
+        changed = true;
+        systemUsesPurified = true;
+        purifiedNarrativeIds.push(original.id);
+        return { ...use, rationale: `Supports the bounded System "${byId.get(use.systemId)?.title || use.systemId}".` };
+      });
+      if (systemUsesPurified) automatic.push(classifiedChange("automatic", original.id, "systemUses", "Replace generated upgrade prose with the existing Component-to-System fact."));
+    }
+    if (original.type === "audit" && Array.isArray(original.subserviceTreatments)) {
+      let treatmentsPurified = false;
+      record.subserviceTreatments = original.subserviceTreatments.map((treatment) => {
+        if (treatment.rationale !== "Migrated from the explicit v3 Audit subservice scope and method; management must confirm the treatment.") return treatment;
+        changed = true;
+        treatmentsPurified = true;
+        purifiedNarrativeIds.push(original.id);
+        return { ...treatment, rationale: `This Vendor is subject to the ${treatment.method} method for this engagement.` };
+      });
+      if (treatmentsPurified) automatic.push(classifiedChange("automatic", original.id, "subserviceTreatments", "Replace generated upgrade prose with the existing engagement treatment fact."));
+    }
+    if (record.extensions?.["filegrc.migration"] !== undefined) {
+      removedMigrationExtensions.push({ resourceId: original.id, details: record.extensions["filegrc.migration"] });
+      delete record.extensions["filegrc.migration"];
+      if (!Object.keys(record.extensions).length) delete record.extensions;
+      changed = true;
+      automatic.push(classifiedChange("automatic", original.id, "extensions", "Move prior upgrade details out of the compliance record and into this migration report."));
+    }
+    if (changed) updates.push(record);
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Resolve ${item.field} before applying the model v7 migration.`
+    ));
+  }
+  const ready = unsupported.length === 0;
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "6",
+    targetModelVersion: "7",
+    ready,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired: [], unsupported },
+    notes: [],
+    migrationReport: {
+      historicalActivationIds,
+      trainingReactivation,
+      preservedTrainingHistoryIds,
+      purifiedNarrativeIds: [...new Set(purifiedNarrativeIds)],
+      removedMigrationExtensions
+    },
+    summary: {
+      create: 0,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: 0,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "7"
+    }
+  };
+}
+
 function normalizeDocumentScopeDecision(value) {
   const candidate = typeof value === "object" && value
     ? value.workflowScope || value.scope
@@ -2085,7 +2272,7 @@ function migrateV4InformationTypes(loaded, creates, automatic, reviewRequired, u
       type: "information-type",
       title: value.title,
       status: classificationIds.length === 1 ? "active" : "planned",
-      description: `Information category migrated from the v3 dataTypes value "${value.title}".`,
+      description: `Information handled by in-scope Systems or Components under the "${value.title}" category.`,
       ...(classificationIds.length === 1 ? { classificationId: classificationIds[0] } : {})
     });
     result.set(key, id);
@@ -2113,13 +2300,7 @@ function migrateBoundedSystem(record, informationTypes, classifications) {
     continuityObjectives: record.continuityObjectives,
     statusTransition: record.statusTransition,
     tags: record.tags,
-    extensions: mergeMigrationExtension(record.extensions, {
-      ...(record.environment ? { environment: record.environment } : {}),
-      ...(record.vendorId ? { vendorId: record.vendorId } : {}),
-      ...(record.subserviceVendorIds ? { subserviceVendorIds: record.subserviceVendorIds } : {}),
-      ...(record.evidenceSourceKinds ? { evidenceSourceKinds: record.evidenceSourceKinds } : {}),
-      ...(record.evidenceOwnerIds ? { evidenceOwnerIds: record.evidenceOwnerIds } : {})
-    }),
+    extensions: complianceExtensions(record.extensions),
     externalIds: record.externalIds
   });
 }
@@ -2149,9 +2330,7 @@ function migrateComponent(record, systemUses, informationTypes, classifications)
     continuityObjectives: record.continuityObjectives,
     statusTransition: record.statusTransition,
     tags: record.tags,
-    extensions: mergeMigrationExtension(record.extensions, {
-      ...(record.subserviceVendorIds ? { subserviceVendorIds: record.subserviceVendorIds } : {})
-    }),
+    extensions: complianceExtensions(record.extensions),
     externalIds: record.externalIds
   });
 }
@@ -2165,10 +2344,8 @@ function componentKind(value, vendorId) {
 
 function migrateV4Vendor(record, informationTypes, classifications, reviewRequired) {
   const migrated = { ...record };
-  const legacy = {};
   for (const field of ["service", "subprocessor", "backupVendorId"]) {
     if (!Object.hasOwn(migrated, field)) continue;
-    legacy[field] = migrated[field];
     delete migrated[field];
     reviewRequired.push(classifiedChange(
       "review-required",
@@ -2184,7 +2361,7 @@ function migrateV4Vendor(record, informationTypes, classifications, reviewRequir
   migrated.informationTypeIds = normalizedInformationTypeIds(record.dataTypes, informationTypes);
   delete migrated.dataTypes;
   if (record.classificationId) migrated.classificationId = classifications.get(record.classificationId);
-  migrated.extensions = mergeMigrationExtension(record.extensions, legacy);
+  migrated.extensions = complianceExtensions(record.extensions);
   if (!Object.keys(migrated.extensions || {}).length) delete migrated.extensions;
   return migrated;
 }
@@ -2291,7 +2468,7 @@ function rewriteV4SystemRelationships(record, context) {
           vendorId,
           componentIds,
           method,
-          rationale: "Migrated from the explicit v3 Audit subservice scope and method; management must confirm the treatment."
+          rationale: `This Vendor is subject to the ${method} method for this engagement.`
         });
         context.reviewRequired.push(classifiedChange("review-required", record.id, "subserviceTreatments", "Confirm each migrated audit-time subservice treatment and rationale."));
       } else requireComponentDecision(record, "subserviceVendorIds", context, `Choose the Components and audit-time treatment for Vendor "${vendorId}".`);
@@ -2312,16 +2489,29 @@ function normalizedInformationTypeIds(values, informationTypes) {
   return [...new Set((values || []).map((value) => informationTypes.get(String(value).trim().toLowerCase())).filter(Boolean))];
 }
 
-function mergeMigrationExtension(existing, legacy) {
-  const useful = Object.fromEntries(Object.entries(legacy || {}).filter(([, value]) => value !== undefined));
-  if (!Object.keys(useful).length) return existing;
-  return {
-    ...(existing || {}),
-    "filegrc.migration": {
-      ...(existing?.["filegrc.migration"] || {}),
-      v3: useful
-    }
-  };
+function complianceExtensions(existing) {
+  if (!existing) return undefined;
+  const result = { ...existing };
+  delete result["filegrc.migration"];
+  return Object.keys(result).length ? result : undefined;
+}
+
+function collectV4LegacyFields(resources, systemKinds) {
+  return resources.flatMap((record) => {
+    const fieldNames = record.type === "system"
+      ? systemKinds.get(record.id) === "system"
+        ? ["environment", "vendorId", "subserviceVendorIds", "evidenceSourceKinds", "evidenceOwnerIds"]
+        : ["subserviceVendorIds"]
+      : record.type === "vendor"
+        ? ["service", "subprocessor", "backupVendorId"]
+        : [];
+    const fields = Object.fromEntries(fieldNames
+      .filter((field) => Object.hasOwn(record, field))
+      .map((field) => [field, record[field]]));
+    const priorMigrationDetails = record.extensions?.["filegrc.migration"];
+    if (priorMigrationDetails !== undefined) fields.priorMigrationDetails = priorMigrationDetails;
+    return Object.keys(fields).length ? [{ resourceId: record.id, resourceType: record.type, fields }] : [];
+  });
 }
 
 function cleanUndefined(value) {

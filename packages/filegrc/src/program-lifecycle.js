@@ -22,7 +22,7 @@ export function governedDocumentIsOperating(document, asOf, model) {
   if (document?.type !== "document" || document.status !== "active") return false;
   if (!document.effectiveOn || document.effectiveOn > asOf) return false;
   if (!modelSupports(model, "governed-document-activation")) return true;
-  if (document.activationBasis === "legacy-v4") {
+  if (["legacy-v4", "historical"].includes(document.activationBasis)) {
     return document.workflowScope === "engagement"
       && Boolean(document.approvedOn && document.approvedContentRevisions);
   }

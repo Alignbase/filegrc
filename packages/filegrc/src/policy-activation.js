@@ -12,6 +12,11 @@ export async function scaffoldPolicyActivation(input = process.cwd(), options = 
   ));
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   return {
+    available: approved.length > 0,
+    message: approved.length
+      ? `${approved.length} approved ${approved.length === 1 ? "Policy is" : "Policies are"} available for the Step 3 cutover.`
+      : "No Policy is ready for activation. Finish Step 2 approval, then resolve its Step 3 implementation gaps.",
+    nextCommand: approved.length ? null : "npx filegrc program-path --next --json",
     policyIds: approved.map(({ policyId }) => policyId),
     effectiveOn: currentCalendarDate(loaded.workspace.timezone),
     expectedRevisions: Object.fromEntries(approved.map(({ policyId }) => [policyId, revisionById.get(policyId)])),

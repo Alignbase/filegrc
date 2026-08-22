@@ -24,6 +24,23 @@ import { executeCli, writeJson } from "./helpers.js";
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
+test("model v7 rejects directly authored historical Training activation", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-training-historical-bypass-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "7");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "training");
+  const record = { ...entry.record, status: "active", activationBasis: "historical" };
+  for (const field of ["activatedByIds", "activatedOn", "activatedContentRevisions"]) delete record[field];
+  await writeJson(entry.path, record);
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.diagnostics.some(({ path, message }) => (
+    path === `data/${entry.relativePath}` && /activationBasis/i.test(message)
+  )));
+});
+
 test("keeps governed Document approval and activation as separate lifecycle events", async (context) => {
   const root = await mkdtemp(`${tmpdir()}/filegrc-document-activation-`);
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -246,7 +263,7 @@ test("approves Training in Step 2 and activates it with its Step 3 Obligation", 
   assert.equal(active.status, "active");
   assert.equal(active.activationBasis, "recorded");
   assert.deepEqual(active.activatedContentRevisions, active.approvedContentRevisions);
-  const running = planObligations(loaded.resources, { model: loaded.model, from: "2026-08-21", through: "2026-12-31", asOf: "2026-08-21" });
+  const running = planObligations(loaded.resources, { model: loaded.model, from: "2026-08-21", through: "2026-12-31", asOf: scaffold.activatedOn });
   assert.equal(running.items.find(({ obligationId }) => obligationId === obligation.id)?.programStatus, "accepted");
   assert.equal((await validateWorkspace(root)).ok, true);
 });

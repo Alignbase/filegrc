@@ -57,7 +57,7 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 
 The JSON and Markdown under `data/`, the installed model, policy content, and Git history are the inputs to FileGRC’s shared workflow calculation. Source files hold facts, decisions, relationships, dates, status, and evidence references. They do not each need a copy of the generic audit-readiness instructions or calculated TODO list.
 
-Use `npx filegrc workflow --json` for the complete derived checklist, named readiness assessments, blockers, Work Items, and recommended next action. `guide`, `list --workflow`, `get --workflow`, mutation previews, the HTTP API, and the browser consume the same calculation. Resolve a derived finding by changing its source facts, recording a reviewed applicability decision, accepting an allowed Exception, or completing authoritative assigned work. Never add a separate TODO file or UI-only completion flag for calculated work.
+Start with `npx filegrc program-path --next --json` for the current step and next action. Use `npx filegrc workflow --json` when you need the complete derived checklist, named readiness assessments, blockers, and Work Items. `guide`, `list --workflow`, `get --workflow`, mutation previews, the HTTP API, and the browser consume the same calculation. Resolve a derived finding by changing its source facts, recording a reviewed applicability decision, accepting an allowed Exception, or completing authoritative assigned work. Never add a separate TODO file or UI-only completion flag for calculated work.
 
 FileGRC marks an item `blocked` only when named prerequisite records must be resolved first. A missing record, editable error, or management decision is `ready` when you can act on it now, even when it prevents a readiness assessment from passing.
 
@@ -101,12 +101,12 @@ Do not rewrite or remove committed records that explain prior audit periods. Clo
 If the installed CLI reports that this workspace uses an unsupported model, start with:
 
 ```sh
-npx filegrc migrate --to-model 6 --preview --json
+npx filegrc migrate --to-model 7 --preview --json
 ```
 
-Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v6 migration separates Training approval from activation, preserves existing active Training with a visible `legacy-v5` activation basis, and removes Training schedule fields because Obligations now own assignment timing.
+Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v7 migration keeps issued historical Audit Documents neutral, returns legacy Training to approved until management records a current activation, and makes old applicability confirmations stale for one scoped review.
 
-The [model v6 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v6.md) explains the Training lifecycle and Obligation review.
+The [model v7 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v7.md) explains the record-purity change.
 
 Run these commands when working with records:
 

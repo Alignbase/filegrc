@@ -69,6 +69,17 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   assert.equal((await planReconciliation(root)).candidates.length, 0);
 });
 
+test("treats an uncommitted generated workspace as its baseline", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-baseline-");
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  const preview = await planReconciliation(root);
+
+  assert.equal(preview.gitRevision, null);
+  assert.equal(preview.candidates.length, 0);
+  assert.ok(preview.changedPaths.length > 0);
+  assert.match(preview.message, /Commit the initial workspace/);
+});
+
 test("does not treat initial draft policy adoption as a policy revision event", async (context) => {
   const root = await modelThreeWorkspace(context, "filegrc-policy-adoption-");
   await import("node:fs/promises").then(({ mkdir }) => mkdir(join(root, "data", "policies"), { recursive: true }));
@@ -89,6 +100,22 @@ test("does not treat initial draft policy adoption as a policy revision event", 
   policy.approvedOn = "2026-08-03";
   policy.effectiveOn = "2026-08-03";
   await writeJson(path, policy);
+
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+});
+
+test("does not treat an external reviewer as a workforce start", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-external-reviewer-reconcile-");
+  await commitAll(root, "Create test workspace");
+  await writeJson(join(root, "data", "people", "person-external-reviewer.json"), {
+    id: "person-external-reviewer",
+    type: "person",
+    title: "External Reviewer",
+    status: "active",
+    affiliation: "external",
+    organization: "Independent reviewer",
+    jobTitle: "Principal"
+  });
 
   assert.equal((await planReconciliation(root)).candidates.length, 0);
 });
@@ -252,7 +279,13 @@ test("records reviewed applicability decisions as one atomic batch", async (cont
     "utf8"
   ));
   assert.equal(requirement.applicability, "applicable");
-  assert.match(requirement.applicabilityReview.scopeRevision, /^uncommitted:[a-f0-9]{64}$/);
+  assert.match(requirement.applicabilityReview.scopeRevision, /^scope:[a-f0-9]{64}$/);
+  await writeJson(join(root, "data", "requirements", "requirement-access.json"), {
+    ...requirement,
+    description: "Access now includes the production support boundary."
+  });
+  const stale = await scaffoldApplicabilityReview(root, { type: "requirement" });
+  assert.deepEqual(stale.decisions.map(({ id }) => id), ["requirement-access"]);
 });
 
 test("uses one departure event and adds high-risk steps only when selected", async (context) => {

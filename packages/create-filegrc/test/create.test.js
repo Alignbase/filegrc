@@ -79,7 +79,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(agents, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions/);
   assert.match(agents, /Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence\. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject\./);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
-  assert.match(dataGuide, /shared assessments, complete checklist, Work Items, blockers, and recommended next action/);
+  assert.match(dataGuide, /full shared assessments, complete checklist, Work Items, and blockers/);
   assert.match(dataGuide, /Choose an existing Component or scaffold the Component that is authoritative/);
   assert.match(dataGuide, /coverage\.kind: "as-of"/);
   assert.match(dataGuide, /contains no plaintext credentials, private keys, tokens, recovery codes, improperly controlled ciphertext/);
@@ -90,7 +90,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "6");
+  assert.equal(workspace.dataModelVersion, "7");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
   const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
     JSON.parse(await readFile(path, "utf8"))

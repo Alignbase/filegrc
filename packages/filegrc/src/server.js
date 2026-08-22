@@ -319,7 +319,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const payload = await readJson(request);
         const completeSetup = async () => {
           return browserMutation(input, options, {
-            message: (setupResult) => `${payload.draft === true ? "Save onboarding draft" : "Complete onboarding"} for ${setupResult.workspace.organizationName}`
+            message: (setupResult) => `${payload.draft === true ? "Save onboarding draft" : "Complete onboarding"} for ${setupResult.workspace.organizationName}`,
+            fastResponse: prefersFastMutation(request)
           }, () => setupWorkspace(input, payload));
         };
         return json(response, 200, await completeSetup());

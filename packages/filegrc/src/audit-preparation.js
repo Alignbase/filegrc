@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
+import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import {
   coverageContains,
@@ -13,6 +14,7 @@ import {
 import { createResource, createResources, deleteResource, updateResource } from "./files.js";
 import { getChangedDataPathsSinceRevision, getFileAtRevision, hasGitRevision } from "./git.js";
 import { createResourceId } from "./id.js";
+import { planObligations } from "./obligations.js";
 import { currentPartyPeople, partiesIndependent } from "./parties.js";
 import { resolveDataPath } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
@@ -68,27 +70,31 @@ export async function assessAuditPreparation(input, options = {}) {
       : audits.find((record) => !["complete", "closed", "canceled"].includes(record.status)) || audits[0];
   if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
 
+  const calendarAsOf = options.asOf || currentCalendarDate(loaded.workspace?.timezone || "UTC");
+  const formalPeriodEnd = audit?.auditKind === "soc-2-type-2" ? coverageEnd(audit.coverage) : null;
+  const readinessAsOf = formalPeriodEnd && formalPeriodEnd < calendarAsOf ? formalPeriodEnd : calendarAsOf;
   const programReadiness = options.programReadiness || await assessProgramReadiness(loaded, {
-    asOf: options.asOf,
+    asOf: readinessAsOf,
     generatedAt: options.generatedAt,
     programId: audit?.programId
   });
   const documentActivations = audit && modelSupports(loaded.model, "governed-document-activation")
-    ? await auditDocumentActivationAssessments(loaded, audit, byId, programReadiness.asOf)
+    ? await auditDocumentActivationAssessments(loaded, audit, byId, calendarAsOf)
     : [];
   const stages = [
-    programFoundationStage(programReadiness, loaded.workspace),
+    programFoundationStage(programReadiness, loaded.workspace, audit),
     engagementStage(audit, byId, programReadiness),
     scopeStage(loaded, audit, records, byId, programReadiness)
   ];
   const fieldworkSections = audit
     ? [
-        await documentsStage(loaded, audit, byId, programReadiness.asOf),
+        await documentsStage(loaded, audit, byId, calendarAsOf),
         evidenceStage(audit, records, byId, loaded.model),
-        populationsStage(audit, records, byId, loaded.model)
+        populationsStage(audit, records, byId, loaded.model),
+        occurrenceContinuityStage(audit, records, loaded.model, programReadiness.asOf)
       ]
     : [];
-  stages.push(fieldworkStage(audit, fieldworkSections));
+  stages.push(fieldworkStage(audit, fieldworkSections, programReadiness));
   stages.push(auditorStage(audit, byId, loaded.model.modelVersion));
 
   for (const stage of stages) {
@@ -191,7 +197,9 @@ export async function prepareAuditWorkspace(input, options = {}) {
     .filter(Boolean);
   const v4 = modelSupports(loaded.model, "program-scope");
   const sourceSystems = loaded.resources.filter((record) => record.type === (v4 ? "component" : "system"));
-  const populations = (audit.auditKind === "soc-2-type-2" ? model.populationTemplates || [] : [])
+  const populations = (audit.auditKind === "soc-2-type-2"
+    ? applicablePopulationTemplates(audit, loaded.resources, model.populationTemplates || [])
+    : [])
     .filter((template) => !existingKinds.has(template.kind))
     .map((template) => {
       const id = createResourceId(
@@ -348,7 +356,15 @@ function scopeStage(loaded, audit, records, byId, programReadiness) {
     .filter((record) => record.type === "requirement" && (audit.frameworkIds || []).includes(record.frameworkId))
     .map((record) => record.id);
   const program = audit.programId ? byId.get(audit.programId) : null;
-  const v4Decisions = new Map((program?.requirementApplicability || []).map((decision) => [decision.requirementId, decision]));
+  const requirementById = new Map(records
+    .filter(({ type }) => type === "requirement")
+    .map((record) => [record.id, record]));
+  const v4Decisions = new Map((program?.requirementApplicability || [])
+    .filter((decision) => (
+      requirementById.has(decision.requirementId)
+      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), program, records, loaded.model)
+    ))
+    .map((decision) => [decision.requirementId, decision]));
   const unresolvedRequirements = frameworkRequirementIds
     .map((id) => byId.get(id))
     .filter((requirement) => {
@@ -727,16 +743,21 @@ function canonicalScopeValue(value) {
   return value;
 }
 
-function programFoundationStage(programReadiness, workspace) {
-  const ready = programReadiness.evidenceReady;
+function programFoundationStage(programReadiness, workspace, audit) {
+  const needsOperatingPeriod = audit?.auditKind === "soc-2-type-2";
+  const ready = needsOperatingPeriod ? programReadiness.operating : programReadiness.evidenceReady;
   return stage("program", "Program Readiness", "The management program can be prepared and operated without an audit record or CPA firm.", [
     item(
       "evidence-ready",
       ready ? "complete" : "action",
       "Reach the Evidence Ready gate",
       ready
-        ? `${programReadiness.target.label} is evidence-ready. ${programReadiness.operating ? "Evidence collection is running." : "Management can begin the candidate period."}`
-        : `${programReadiness.counts.action} program-readiness actions remain across scope, policies, controls, and evidence preparation.`,
+        ? needsOperatingPeriod
+          ? `${programReadiness.target.label} is operating for the selected engagement.`
+          : `${programReadiness.target.label} is evidence-ready.`
+        : needsOperatingPeriod && programReadiness.evidenceReady
+          ? "Start the candidate period and finish the current operating-readiness work before treating a Type 2 engagement as management-ready."
+          : `${programReadiness.counts.action} program-readiness actions remain across scope, policies, controls, and evidence preparation.`,
       workspace || { type: "workspace" }
     )
   ]);
@@ -858,14 +879,23 @@ function engagementStage(audit, byId, programReadiness) {
   return stage("engagement", "Engage the Auditor", "Record the independent CPA firm and the current management owner who authorizes and coordinates the engagement.", items);
 }
 
-function fieldworkStage(audit, sections) {
+function fieldworkStage(audit, sections, programReadiness) {
   if (!audit) {
     return stage("fieldwork", "Prepare Fieldwork", "Build engagement-specific documents, exact-period evidence, and Type 2 populations after the firm and period are recorded.", [
       item("fieldwork-later", "later", "Prepare engagement-specific fieldwork", "This work starts after the CPA engagement and formal period exist.", { type: "audit" })
     ]);
   }
+  const formalPeriodReady = Boolean(coverageStart(audit.coverage) && coverageEnd(audit.coverage));
+  const programReady = audit.auditKind === "soc-2-type-2"
+    ? programReadiness.operating
+    : programReadiness.evidenceReady;
+  const available = formalPeriodReady && programReady;
   const items = sections.flatMap((section) => section.items.map((current) => ({
     ...current,
+    ...(available || ["complete", "info", "external"].includes(current.status) ? {} : {
+      status: "later",
+      message: `${current.message} Finish ${formalPeriodReady ? "Program Readiness" : "the formal period and Program Readiness"} before starting this fieldwork item.`
+    }),
     id: `${section.id}-${current.id}`,
     section: section.title
   })));
@@ -874,6 +904,89 @@ function fieldworkStage(audit, sections) {
     "Prepare Fieldwork",
     "Complete management documents, exact-period operating evidence, and Type 2 population reconciliations for the engagement.",
     items
+  );
+}
+
+function occurrenceContinuityStage(audit, records, model, asOf) {
+  if (audit.auditKind !== "soc-2-type-2") {
+    return stage(
+      "occurrences",
+      "Operating Occurrences",
+      "Occurrence continuity applies to Type 2 operating-effectiveness periods.",
+      [item("type-2-only", "info", "No Type 2 occurrence check required", "A Type 1 report evaluates design and implementation as of one date.")]
+    );
+  }
+  const periodStart = coverageStart(audit.coverage);
+  const periodEnd = coverageEnd(audit.coverage);
+  if (!periodStart || !periodEnd) {
+    return stage(
+      "occurrences",
+      "Operating Occurrences",
+      "Check every expected scheduled occurrence across the exact Type 2 period.",
+      [item("period-required", "later", "Select the formal Type 2 period", "The formal period is required before FileGRC can calculate expected occurrences.", audit)]
+    );
+  }
+  const selectedControlIds = new Set(audit.controlIds || []);
+  const periodThrough = [periodEnd, asOf].filter(Boolean).sort()[0] || periodEnd;
+  if (periodThrough < periodStart) {
+    return stage(
+      "occurrences",
+      "Operating Occurrences",
+      "Check every expected scheduled occurrence across the exact Type 2 period.",
+      [item("period-not-started", "later", "Wait for the formal period to begin", `The formal Type 2 period starts on ${periodStart}. No operating occurrences are expected yet.`, audit)]
+    );
+  }
+  const periodResources = records.filter((record) => (
+    record.type !== "obligation"
+    || !(record.controlIds || []).length
+    || record.controlIds.some((id) => selectedControlIds.has(id))
+  ));
+  const plan = planObligations(periodResources, {
+    from: periodStart,
+    asOf: periodThrough,
+    through: periodThrough,
+    now: `${periodThrough}T23:59:59.999Z`,
+    includeComplete: true,
+    model
+  });
+  const gapStatuses = new Set(["overdue", "blocked", "due", "proposed"]);
+  const calendarGaps = plan.calendarItems.filter(({ status }) => gapStatuses.has(status));
+  const eventGaps = plan.eventRuns
+    .filter((run) => run.occurredOn >= periodStart && run.occurredOn <= periodThrough)
+    .flatMap((run) => run.actions)
+    .filter((action) => (
+      (gapStatuses.has(action.status) || action.lateCompletion)
+      && action.controlIds.some((id) => selectedControlIds.has(id))
+    ));
+  const gaps = [...calendarGaps, ...eventGaps];
+  const lateGaps = eventGaps.filter(({ lateCompletion }) => lateCompletion);
+  const firstGap = gaps[0];
+  return stage(
+    "occurrences",
+    "Operating Occurrences",
+    "Check every expected scheduled occurrence across the exact Type 2 period.",
+    [item(
+      "period-occurrences",
+      gaps.length ? "action" : "complete",
+      "Cover every expected operating occurrence",
+      gaps.length
+        ? lateGaps.length
+          ? `${gaps.length} expected ${gaps.length === 1 ? "occurrence needs" : "occurrences need"} review, including ${lateGaps.length} completed after the allowed window. Open the affected Action Item, record a Finding or Exception with management's conclusion, and retain the late completion as historical evidence.`
+          : `${gaps.length} expected ${gaps.length === 1 ? "occurrence is" : "occurrences are"} incomplete, blocked, or still proposed within the formal period. Resolve each Work Queue item before treating management fieldwork as ready.`
+        : `Every expected occurrence through ${periodThrough} has an accepted completion.`,
+      firstGap?.actionItemId
+        ? { type: "action-item", id: firstGap.actionItemId }
+        : firstGap?.obligationId ? { type: "obligation", id: firstGap.obligationId } : audit,
+      {
+        affectedActionItemIds: eventGaps.map(({ actionItemId }) => actionItemId).filter(Boolean),
+        affectedEventIds: [...new Set(eventGaps.map(({ eventId }) => eventId).filter(Boolean))],
+        lateCount: lateGaps.length,
+        commands: firstGap?.actionItemId ? [
+          `npx filegrc get ${firstGap.actionItemId} --json`,
+          `npx filegrc scaffold finding --title "Late operating occurrence review"`
+        ] : []
+      }
+    )]
   );
 }
 
@@ -914,14 +1027,14 @@ async function auditDocumentActivationAssessments(loaded, audit, byId, asOf) {
       ["approved", "active"].includes(document.status)
       && document.approvedOn
       && document.approvedContentRevisions
-      && (document.activationBasis === "legacy-v4"
+      && (["legacy-v4", "historical"].includes(document.activationBasis)
         ? (document.ownerIds || []).length
         : currentPartyPeople(document.ownerIds || [], byId).size)
       && (document.approverIds || []).length
       && partiesIndependent(document.ownerIds, document.approverIds, byId)
     );
     if (!approvalComplete) issues.push("Complete the independent approval and bind the approved Markdown revision first.");
-    if (document.status === "active" && document.activationBasis !== "legacy-v4") {
+    if (document.status === "active" && !["legacy-v4", "historical"].includes(document.activationBasis)) {
       if (document.activationBasis !== "recorded") issues.push("Record the Step 5 activation basis.");
       if (!document.activatedOn) issues.push("Record the separate Step 5 activation date.");
       else if (document.activatedOn > asOf) issues.push(`The activation date ${document.activatedOn} is after ${asOf}.`);
@@ -1045,8 +1158,8 @@ async function documentsStage(loaded, audit, byId, asOf) {
       complete ? "complete" : representationLater ? "later" : "action",
       definition.title,
       complete
-        ? document.activationBasis === "legacy-v4"
-          ? "Linked Markdown is complete and effective. Its active state is preserved from model v4, which did not record approval and activation as separate events."
+        ? ["legacy-v4", "historical"].includes(document.activationBasis)
+          ? "Linked Markdown is complete and effective. Its historical lifecycle basis does not claim a separate activation event that was never recorded."
           : modelSupports(loaded.model, "governed-document-activation")
             ? "Linked Markdown is complete, independently approved, separately activated by a named Person, revision-bound at both events, and effective."
           : "Linked Markdown is complete, active, approved, and effective."
@@ -1209,7 +1322,12 @@ function populationsStage(audit, records, byId, model) {
   const populations = audit
     ? records.filter((record) => record.type === "audit-population" && record.auditId === audit.id)
     : [];
-  const templates = model.auditReadiness?.populationTemplates || [];
+  const templates = applicablePopulationTemplates(
+    audit,
+    records,
+    model.auditReadiness?.populationTemplates || [],
+    populations
+  );
   const items = templates.map((template) => {
     const population = populations.find((record) => record.populationKind === template.kind);
     const result = populationResult(population, audit, byId);
@@ -1368,9 +1486,24 @@ function initializationNeeded(audit, records, model) {
   const populationKinds = new Set(records
     .filter((record) => record.type === "audit-population" && record.auditId === audit.id)
     .map((record) => record.populationKind));
-  const needsPopulation = audit.auditKind === "soc-2-type-2" && (readiness.populationTemplates || [])
+  const needsPopulation = audit.auditKind === "soc-2-type-2"
+    && applicablePopulationTemplates(audit, records, readiness.populationTemplates || [])
     .some((template) => !populationKinds.has(template.kind));
   return needsDocumentLink || needsPopulation;
+}
+
+function applicablePopulationTemplates(audit, records, templates, existingPopulations = []) {
+  const selectedControls = (audit?.controlIds || [])
+    .map((id) => records.find((record) => record.type === "control" && record.id === id))
+    .filter(Boolean);
+  const selectedCodes = new Set(selectedControls.map(({ code }) => code).filter(Boolean));
+  const existingKinds = new Set(existingPopulations.map(({ populationKind }) => populationKind));
+  const recognizedCodes = new Set(templates.flatMap(({ controlCodes }) => controlCodes || []));
+  if (selectedControls.some(({ code }) => !code || !recognizedCodes.has(code))) return templates;
+  return templates.filter((template) => (
+    existingKinds.has(template.kind)
+    || (template.controlCodes || []).some((code) => selectedCodes.has(code))
+  ));
 }
 
 function applicableManagementDocuments(audit, readiness) {
@@ -1571,7 +1704,10 @@ function item(id, status, title, message, resource = {}, options = {}) {
     message,
     ...(resource.type ? { resourceType: resource.type } : {}),
     ...(resource.id ? { resourceId: resource.id } : {}),
-    ...(options.commands?.length ? { commands: options.commands } : {})
+    ...(options.commands?.length ? { commands: options.commands } : {}),
+    ...(options.affectedActionItemIds?.length ? { affectedActionItemIds: options.affectedActionItemIds } : {}),
+    ...(options.affectedEventIds?.length ? { affectedEventIds: options.affectedEventIds } : {}),
+    ...(options.lateCount ? { lateCount: options.lateCount } : {})
   };
 }
 

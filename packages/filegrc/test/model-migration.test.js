@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { loadModel } from "../model/index.js";
 import { runCli } from "../src/cli.js";
+import { applicabilityReviewIsCurrent } from "../src/applicability-scope.js";
 import { assessAuditPreparation } from "../src/audit-preparation.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
@@ -18,6 +19,27 @@ import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+const complianceNarrativeFields = new Set(["description", "rationale", "purpose", "boundary", "summary"]);
+
+function assertPureMigrationNarratives(plan) {
+  const polluted = [];
+  const inspect = (value, path = []) => {
+    if (Array.isArray(value)) return value.forEach((item, index) => inspect(item, [...path, index]));
+    if (!value || typeof value !== "object") return;
+    for (const [key, item] of Object.entries(value)) {
+      const itemPath = [...path, key];
+      if (key === "filegrc.migration") polluted.push(`${itemPath.join(".")}: migration metadata extension`);
+      if (
+        complianceNarrativeFields.has(key)
+        && typeof item === "string"
+        && /\b(?:filegrc|migrat(?:e|ed|es|ing|ion)|model v\d+|legacy-v\d+)\b/i.test(item)
+      ) polluted.push(`${itemPath.join(".")}: ${item}`);
+      inspect(item, itemPath);
+    }
+  };
+  for (const change of [...plan.fileDiff.create, ...plan.fileDiff.update]) inspect(change.after, [change.type, change.id]);
+  assert.deepEqual(polluted, [], `Migration mechanics leaked into compliance narratives:\n${polluted.join("\n")}`);
+}
 
 test("previews and atomically migrates every model v1 compatibility field", async (context) => {
   const root = await mkdtemp(`${tmpdir()}/filegrc-model-migration-`);
@@ -444,6 +466,7 @@ test("classifies and atomically migrates a complete v3 System and Component grap
     systemKind: "infrastructure",
     parentSystemId: rootSystem.id,
     vendorId: "vendor-example",
+    subserviceVendorIds: ["vendor-example"],
     description: "Runs the bounded production application and produces authoritative Evidence.",
     evidenceSourceKinds: [loaded.model.evidenceSourceFamilies[0].sourceKinds[0]],
     evidenceOwnerIds: ["person-example"]
@@ -460,6 +483,8 @@ test("classifies and atomically migrates a complete v3 System and Component grap
     }
     if (record.type === "audit") {
       record.systemIds = [rootSystem.id, child.id];
+      record.subserviceVendorIds = ["vendor-example"];
+      record.subserviceMethod = "carve-out";
       changed = true;
     }
     if (["asset", "access-review", "vulnerability-scan"].includes(record.type) && record.systemIds) {
@@ -501,6 +526,17 @@ test("classifies and atomically migrates a complete v3 System and Component grap
   assert.deepEqual(preview.fileDiff.move, [{ from: `systems/${child.id}.md`, to: `components/${child.id}.md` }]);
   assert.ok(preview.classifications.automatic.length);
   assert.ok(preview.classifications.reviewRequired.length);
+  assertPureMigrationNarratives(preview);
+  const previewComponent = preview.fileDiff.update.find(({ id }) => id === child.id).after;
+  assert.equal(previewComponent.systemUses[0].rationale, `Supports the bounded System "${rootSystem.title}".`);
+  assert.equal(previewComponent.extensions?.["filegrc.migration"], undefined);
+  assert.deepEqual(
+    preview.migrationReport.unmappedLegacyFields.find(({ resourceId }) => resourceId === child.id).fields,
+    { subserviceVendorIds: ["vendor-example"] }
+  );
+  for (const informationType of preview.fileDiff.create.filter(({ type }) => type === "information-type")) {
+    assert.doesNotMatch(informationType.after.description, /migrat|filegrc|model v/i);
+  }
   const unrelatedMove = structuredClone(preview.changes);
   unrelatedMove.movePaths = [{ from: "workspace.json", to: "archive/workspace.json" }];
   await assert.rejects(
@@ -523,6 +559,7 @@ test("classifies and atomically migrates a complete v3 System and Component grap
   const audit = migrated.resources.find(({ type }) => type === "audit");
   assert.deepEqual(audit.systemIds, [rootSystem.id]);
   assert.equal(audit.componentIds, undefined);
+  assert.equal(audit.subserviceTreatments[0].rationale, "This Vendor is subject to the carve-out method for this engagement.");
   const auditReadiness = await assessAuditPreparation(root, { auditId: audit.id });
   assert.equal(auditReadiness.audit.id, audit.id);
   const packet = await prepareEvidencePacket(root, { auditId: audit.id });
@@ -680,7 +717,7 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5\|6>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
 });
@@ -721,4 +758,114 @@ test("migrates v5 Training into separate approval, activation, and Obligation sc
     key === `record.training.${entry.record.id}.finalize`
     && message.includes("activatedContentRevisions")
   )), false);
+});
+
+test("keeps migration mechanics out of model v7 compliance entities", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v7-record-purity-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "6");
+  const loaded = await loadWorkspace(root);
+  const historical = [loaded.entries.find(({ record }) => record.type === "training")];
+  assert.equal(historical.every(Boolean), true);
+  for (const entry of historical) {
+    const record = {
+      ...entry.record,
+      status: "active",
+      activationBasis: "legacy-v5",
+      extensions: {
+        ...(entry.record.extensions || {}),
+        "filegrc.migration": { v3: { assignmentTrigger: "onboarding" } }
+      }
+    };
+    for (const field of ["activatedByIds", "activatedOn", "activatedContentRevisions"]) delete record[field];
+    await writeJson(entry.path, record);
+  }
+  const informationType = loaded.entries.find(({ record }) => record.type === "information-type");
+  await writeJson(informationType.path, {
+    ...informationType.record,
+    description: `Information category migrated from the v3 dataTypes value "${informationType.record.title}".`
+  });
+  const reviewedControl = loaded.entries.find(({ record }) => record.type === "control");
+  await writeJson(reviewedControl.path, {
+    ...reviewedControl.record,
+    applicabilityReview: {
+      decision: "applicable",
+      rationale: "Reviewed against the prior workspace scope.",
+      reviewedByIds: ["person-independent-approver-example"],
+      reviewedOn: "2026-08-21",
+      scopeRevision: "legacy-workspace-revision"
+    }
+  });
+
+  const preview = await planModelMigration(root, { targetModelVersion: "7" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  assertPureMigrationNarratives(preview);
+  assert.deepEqual(
+    preview.fileDiff.update.filter(({ type }) => ["document", "training"].includes(type)).map(({ after }) => after.activationBasis),
+    [undefined]
+  );
+  assert.deepEqual(preview.migrationReport.historicalActivationIds, []);
+  assert.deepEqual(preview.migrationReport.trainingReactivation, [{
+    resourceId: historical[0].record.id,
+    priorEffectiveOn: historical[0].record.effectiveOn
+  }]);
+  assert.ok(preview.migrationReport.purifiedNarrativeIds.includes(informationType.record.id));
+  assert.deepEqual(preview.migrationReport.removedMigrationExtensions, [{
+    resourceId: historical[0].record.id,
+    details: { v3: { assignmentTrigger: "onboarding" } }
+  }]);
+  const migratedTraining = preview.fileDiff.update.find(({ id }) => id === historical[0].record.id).after;
+  assert.equal(migratedTraining.status, "approved");
+  assert.equal(migratedTraining.effectiveOn, undefined);
+  assert.equal(migratedTraining.extensions?.["filegrc.migration"], undefined);
+  assert.equal(
+    preview.fileDiff.update.find(({ id }) => id === informationType.record.id).after.description,
+    `Information handled by in-scope Systems or Components under the "${informationType.record.title}" category.`
+  );
+
+  const result = await migrateModel(root, { targetModelVersion: "7" });
+  assert.equal(result.applied, true);
+  const current = await loadWorkspace(root);
+  assert.equal(current.workspace.dataModelVersion, "7");
+  assert.equal(current.resources.some(({ activationBasis }) => /^legacy-v/.test(activationBasis || "")), false);
+  const migratedProgram = current.resources.find(({ type }) => type === "program");
+  const migratedControl = current.resources.find(({ id }) => id === reviewedControl.record.id);
+  assert.equal(applicabilityReviewIsCurrent(
+    migratedControl.applicabilityReview,
+    migratedControl,
+    migratedProgram,
+    current.resources,
+    current.model
+  ), false);
+  assert.equal((await validateWorkspace(root)).ok, true);
+});
+
+test("preserves closed Training lifecycle status while removing its model-version activation label", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v7-closed-training-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "6");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "training");
+  await writeJson(entry.path, {
+    ...entry.record,
+    status: "superseded",
+    activationBasis: "legacy-v5",
+    statusTransition: {
+      changedByIds: ["person-example"],
+      changedOn: "2026-08-21",
+      reason: "Replaced by updated Training."
+    }
+  });
+
+  const preview = await planModelMigration(root, { targetModelVersion: "7" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  const migrated = preview.fileDiff.update.find(({ id }) => id === entry.record.id).after;
+  assert.equal(migrated.status, "superseded");
+  assert.deepEqual(migrated.statusTransition, {
+    changedByIds: ["person-example"],
+    changedOn: "2026-08-21",
+    reason: "Replaced by updated Training."
+  });
+  assert.equal(migrated.activationBasis, undefined);
+  assert.ok(preview.migrationReport.preservedTrainingHistoryIds.includes(entry.record.id));
 });

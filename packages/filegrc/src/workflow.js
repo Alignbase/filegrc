@@ -2,6 +2,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelSupports } from "../model/index.js";
+import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
@@ -110,8 +111,8 @@ async function assessWorkflowUnmeasured(input, options = {}) {
       audit.id,
       await assessAuditPreparation(loaded, {
         auditId: audit.id,
-        generatedAt: evaluatedAt,
-        programReadiness: program
+        asOf,
+        generatedAt: evaluatedAt
       })
     ])
   ));
@@ -363,7 +364,7 @@ function recordFinalizationFindings(loaded, program) {
     if (incomplete) {
       findings.push(finalizationFinding(record, incomplete));
     }
-    for (const missing of finalizationFields(record, loaded.model)) {
+    for (const missing of finalizationFields(record, loaded.model, loaded.resources, program)) {
       findings.push(fieldFinding(record, missing));
     }
   }
@@ -498,16 +499,16 @@ function recordFinalizationRequiredness(record, loaded, program) {
   return "conditional";
 }
 
-function finalizationFields(record, model) {
+function finalizationFields(record, model, resources, program) {
   const fields = [];
   const needsReview = ["requirement", "commitment", "complementary-control", "control"].includes(record.type)
     && model.resources[record.type]?.fields?.applicabilityReview
-    && !record.applicabilityReview;
+    && !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, resources, model);
   if (needsReview) {
     fields.push({
       field: "applicabilityReview",
       requiredness: "required",
-      message: "Record the reviewed applicability decision, rationale, reviewer, and date. FileGRC records the current scope automatically."
+      message: "Record or refresh the reviewed applicability decision, rationale, reviewer, and date. FileGRC records the current material scope automatically."
     });
   }
   if (record.type === "policy" && model.resources.policy?.fields?.programRole && !record.programRole) {

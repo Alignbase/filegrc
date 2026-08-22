@@ -223,6 +223,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         : `Needs review: ${result.missing.length} missing values, ${result.conflicts.length} conflicts, ${result.manualActions.length} manual actions.`);
     } else {
       console.log(`Migrated workspace from model v${result.sourceModelVersion} to v${result.targetModelVersion}.`);
+      if (result.migrationReportPath) console.log(`Migration report: ${result.migrationReportPath}`);
     }
     return result;
   }
@@ -261,7 +262,10 @@ export async function runCli(argv = process.argv.slice(2)) {
     const audit = auditId ? loaded.resources.find(({ id, type }) => id === auditId && type === "audit") : null;
     const programId = flags.program || audit?.programId;
     const readiness = await assessProgramReadiness(loaded, { asOf: flags["as-of"], programId });
-    const auditReadiness = auditId ? await assessAuditPreparation(loaded, { auditId }) : null;
+    const auditReadiness = auditId ? await assessAuditPreparation(loaded, {
+      auditId,
+      asOf: flags["as-of"]
+    }) : null;
     const result = buildProgramPathResult(loaded.model, readiness, auditReadiness);
     const output = selectProgramPathOutput(result, flags);
     if (flags.json) console.log(JSON.stringify(output, null, 2));
@@ -481,7 +485,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "audit-readiness") {
     const loaded = await loadWorkspace(root);
-    const result = await assessAuditPreparation(loaded, { auditId: positionals[0] || flags.audit });
+    const result = await assessAuditPreparation(loaded, {
+      auditId: positionals[0] || flags.audit,
+      asOf: flags["as-of"]
+    });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} management items complete`);
@@ -1115,7 +1122,7 @@ Usage:
   filegrc build [root] [--output .filegrc/site]
   filegrc validate [root] [--json]
   filegrc model [--json|--write-docs|--check-docs]
-  filegrc migrate --to-model <2|3|4|5|6> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
+  filegrc migrate --to-model <${SUPPORTED_MODEL_VERSIONS.join("|")}> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>
   filegrc types [--json]
   filegrc guide [resource-type] [--id resource-id] [--program program-id] [--json]
@@ -1129,7 +1136,7 @@ Usage:
   filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
-  filegrc audit-readiness [audit-id] [--require-ready] [--json]
+  filegrc audit-readiness [audit-id] [--as-of YYYY-MM-DD] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
   filegrc reconcile [--preview|--apply --candidate fingerprint (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --yes] [--risk-level normal|high] [--json]
   filegrc external-reviewer-setup --scaffold
@@ -1214,7 +1221,8 @@ workspaces migrate to v2 first. Continue one version at a time through v${ACTIVE
 the repository Workspace, management Program, bounded Systems, operational Components,
 specific Assets, Vendors, normalized information, and Evidence Artifacts. Model v5 separates
 Document approval from activation and records program-versus-engagement scope. Model v6 gives
-Training the same approval and activation split and moves its schedule into Obligations. v3 migration
+Training the same approval and activation split and moves its schedule into Obligations. Model v7
+keeps issued historical Documents neutral and requires a current activation for legacy Training. v3 migration
 previews may require a decisions JSON file for ambiguous old Systems. v3 still creates planned
 core Appointments, removal of obsolete manual page state, classified review work,
 and dataModelVersion changed last. The command writes no Git commit.
@@ -1231,7 +1239,8 @@ Options:
   --help                Show this help
 
 Start with:
-  npx filegrc migrate --to-model ${ACTIVE_MODEL_VERSION} --preview --json`);
+  npx filegrc guide --json
+  # Use the next model version shown by the guide.`);
     return;
   }
   if (command === "program-readiness") {
@@ -1398,6 +1407,10 @@ Options:
 }
 
 function agentOverview(model) {
+  const currentModelIndex = SUPPORTED_MODEL_VERSIONS.indexOf(String(model.modelVersion));
+  const nextModelVersion = currentModelIndex >= 0 && currentModelIndex < SUPPORTED_MODEL_VERSIONS.length - 1
+    ? SUPPORTED_MODEL_VERSIONS[currentModelIndex + 1]
+    : ACTIVE_MODEL_VERSION;
   const commands = {
     help: "filegrc help",
     version: "filegrc version",
@@ -1406,7 +1419,7 @@ function agentOverview(model) {
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
     model: "filegrc model --json",
-    migrate: "filegrc migrate --to-model 6 --preview --json",
+    migrate: `filegrc migrate --to-model ${nextModelVersion} --preview --json`,
     describe: "filegrc describe <resource-type>",
     types: "filegrc types --json",
     guide: "filegrc guide [resource-type] --json",
