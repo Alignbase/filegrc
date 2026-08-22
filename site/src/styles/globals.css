@@ -698,6 +698,10 @@ figure {
   color: var(--white);
 }
 
+.source-list + p {
+  margin-top: 28px;
+}
+
 .source-dot {
   display: block;
   width: 8px;
