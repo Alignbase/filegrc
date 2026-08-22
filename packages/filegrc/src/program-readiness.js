@@ -632,6 +632,8 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
     const source = await readMarkdown(document);
     const placeholderCount = openPlaceholderCount(source);
     const isSecurityIncidentRecoveryPlan = document.id === "document-security-incident-recovery-plan";
+    const systemContinuityObjectivesRequired = isSecurityIncidentRecoveryPlan
+      && scope.requirements.some(isAvailabilityRequirement);
     const systemsWithCompleteContinuityObjectives = scope.systems.filter(({ continuityObjectives }) => (
       Number.isInteger(continuityObjectives?.recoveryTimeHours)
       && Number.isInteger(continuityObjectives?.recoveryPointHours)
@@ -646,7 +648,10 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
       linkedControls: (document.controlIds || []).some((id) => scope.controls.some((control) => control.id === id)),
       contentComplete: substantiveMarkdown(source) && placeholderCount === 0,
       ...(isSecurityIncidentRecoveryPlan
-        ? { systemContinuityObjectives: systemsWithCompleteContinuityObjectives.length === scope.systems.length && scope.systems.length > 0 }
+        ? {
+            systemContinuityObjectives: !systemContinuityObjectivesRequired
+              || systemsWithCompleteContinuityObjectives.length === scope.systems.length && scope.systems.length > 0
+          }
         : {})
     };
     const missing = Object.entries(checks)
@@ -665,10 +670,13 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
         placeholderCount,
         ...(isSecurityIncidentRecoveryPlan
           ? {
+              systemContinuityObjectivesRequired,
               continuityObjectiveSystemIds: systemsWithCompleteContinuityObjectives.map(({ id }) => id),
-              missingContinuityObjectiveSystemIds: scope.systems
-                .filter(({ id }) => !systemsWithCompleteContinuityObjectives.some((system) => system.id === id))
-                .map(({ id }) => id)
+              missingContinuityObjectiveSystemIds: systemContinuityObjectivesRequired
+                ? scope.systems
+                  .filter(({ id }) => !systemsWithCompleteContinuityObjectives.some((system) => system.id === id))
+                  .map(({ id }) => id)
+                : []
             }
           : {}),
         commands: [
@@ -1580,6 +1588,10 @@ function assuranceGoalLabel(goal) {
 function isDescriptionRequirement(requirement) {
   return (requirement?.tags || []).includes("description-criteria")
     || /^DC\d+/i.test(requirement?.reference || "");
+}
+
+function isAvailabilityRequirement(requirement) {
+  return /^A1\./i.test(requirement?.reference || "");
 }
 
 function isSecurityRequirement(requirement) {

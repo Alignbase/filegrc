@@ -6,7 +6,7 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { resolveDataPath } from "./paths.js";
 import { loadWorkspace } from "./workspace.js";
 
-export const INFORMATION_SECURITY_LIBRARY_PROPOSAL_ID = "consolidated-information-security-policy-v3";
+export const INFORMATION_SECURITY_LIBRARY_PROPOSAL_ID = "consolidated-information-security-policy-v4";
 export const STRONG_AUTHENTICATION_LIBRARY_PROPOSAL_ID = INFORMATION_SECURITY_LIBRARY_PROPOSAL_ID;
 
 const POLICY_ID = "policy-information-security";
@@ -42,28 +42,33 @@ const DOCUMENT_CONTENT_UPDATES = [
     id: "document-data-retention-schedule",
     path: "documents/document-data-retention-schedule.md",
     priorRevision: "45a408e8139bd57f42dda5ca5ae5c8cd4480b4e7bf08834f60058148a3a63475",
-    currentRevision: "d80b99ce53d1012cc169bbbc2afab8d0597bfbe9f30ac0812a8d5bbeb2ed9f90",
+    additionalPriorRevisions: new Set(["d80b99ce53d1012cc169bbbc2afab8d0597bfbe9f30ac0812a8d5bbeb2ed9f90"]),
+    currentRevision: "dd11857ae7d881f176bd93947ef3031c33c75ee41e3c0435198fd60c67a94cf7",
     replacements: [
       ["FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact.", "Remove each bracketed prompt only after replacing it with a reviewed fact."],
-      ["Record the authority, scope, owner, start date, and release decision outside this public template.", "Record the authority, scope, owner, start date, and release decision in controlled legal-hold records."]
+      ["Record the authority, scope, owner, start date, and release decision outside this public template.", "Record the authority, scope, owner, start date, and release decision in controlled legal-hold records."],
+      ["| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery objectives] | [Complete before approval: expiration or disposal action] | [Complete before approval: continuity objective or risk decision] |", "| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery needs] | [Complete before approval: expiration or disposal action] | [Complete before approval: recovery need, commitment, or risk decision] |"]
     ],
-    summary: "Keep FileGRC prompt handling in document guidance and make the Retention Schedule standalone."
+    summary: "Keep FileGRC prompt handling in document guidance, make the Retention Schedule standalone, and avoid assuming numeric recovery objectives."
   },
   {
     id: "document-security-incident-recovery-plan",
     path: "documents/document-security-incident-recovery-plan.md",
     priorRevision: "339ff564fa0ec26503c2498e8d3c44529957113cf782aa03ddb5b4e64c8f0404",
-    currentRevision: "51a19e22f3e0b31196371676297bfa843f96295d2f6c72e81a969ce7bafc36ae",
+    additionalPriorRevisions: new Set(["51a19e22f3e0b31196371676297bfa843f96295d2f6c72e81a969ce7bafc36ae"]),
+    currentRevision: "558b6fa71eaabf4ea3cfe77eaa24f827ad66a19a059085b2090e3c4a4d79cb50",
     replacements: [
       ["Controls, Components, Systems, Obligations, and Evidence hold the actual technical configuration and proof of operation.", "Supporting procedures, system records, and retained evidence document the actual technical configuration and operation."],
       ["If an incident raises a legal, privacy, or insurance question, the incident lead gets suitable advice at that time. FileGRC does not require pre-arranged counsel, in-house counsel, or a standing legal retainer.", "If an incident raises a legal, privacy, or insurance question, the incident lead obtains suitable advice at that time. A pre-arranged counsel relationship or standing legal retainer is required only when management determines that the organization's obligations and risk warrant one."],
       ["[Complete before activation: Link every important System and record its approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments in the System record.]", "[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]"],
+      ["[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]", "[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]"],
       ["For each important System, the applicable Control, Component, System, and Obligation records must identify:", "Supporting recovery documentation for each important System must identify:"],
       ["- Restore-validation method and governed schedule", "- Restore-validation method and approved schedule"],
+      ["- Dependencies, fallback paths, and validation steps", "- Dependencies, fallback paths, and validation steps\n- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision"],
       ["[Confirm or replace before activation: The starter proposal for important production data is a daily backup, 30-day retention period, and annual restore validation. Record the approved choice for every important System in its Control, Component, System, Retention Schedule, and Obligation records.]", "[Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]"],
       ["on the approved governed schedule", "on the approved schedule"]
     ],
-    summary: "Express incident and recovery requirements as a standalone plan and keep FileGRC record-entry guidance outside it."
+    summary: "Express incident and recovery requirements as a standalone plan, keep FileGRC record-entry guidance outside it, and make numeric recovery targets conditional."
   },
   {
     id: "document-soc2-management-representation",
@@ -108,7 +113,8 @@ const PRIOR_STARTER_POLICY_REVISIONS = new Set([
   "18f5e7b7e417b494a5cd241751269b3aafeb3ad9129002308c84c1c84419ee31",
   "432ba5797c2d23e02a6b09d07f1a33db29337b4bcb3ee7d68ce8495dc7c7c01c",
   "6775e6907c2a094c5f48090b12af14cb78b20d1e45178cbb5d3bf02cabde59c6",
-  "992ef090273ae9bd25e729fe4a7a20817926f345cf7a01f242b877f319c4e342"
+  "992ef090273ae9bd25e729fe4a7a20817926f345cf7a01f242b877f319c4e342",
+  "355cad2754691f7a11ec10ae6ef0a6abeab6c428c51b49d32dfa3c12a2262e96"
 ]);
 
 const CONTROL_UPDATES = [
@@ -324,6 +330,28 @@ const CONTROL_UPDATES = [
       activity: "Collect, protect, alert on, test, and review important log output, access, and applicable health, capacity, failure, and service indicators."
     },
     summary: "Add conditional service-health and capacity monitoring without prescribing a monitoring product."
+  },
+  {
+    id: "control-backup-restoration",
+    prior: [{
+      statement: "Each important System has backup scope, frequency, retention, monitoring, and restore validation that meet its approved recovery objectives, or a documented alternate recovery approach when backups are not the chosen safeguard.",
+      activity: "Record System recovery objectives and backup or alternate recovery procedures, monitor the chosen safeguards, and validate recovery on the approved schedule."
+    }],
+    next: {
+      statement: "Each important System has risk-based backup or alternate recovery scope, frequency, retention, monitoring, and restore validation suited to its recovery needs and any approved recovery targets.",
+      activity: "Record backup or alternate recovery procedures, monitor the chosen safeguards, and validate recovery on the approved schedule."
+    },
+    summary: "Keep backup and recovery risk-based without requiring numeric recovery targets for Security-only scope."
+  },
+  {
+    id: "control-continuity-exercise",
+    prior: [{
+      activity: "Maintain the plan, contacts, recovery objectives, exercises, results, and follow-up work."
+    }],
+    next: {
+      activity: "Maintain the plan, contacts, recovery priorities, exercises, results, and follow-up work."
+    },
+    summary: "Keep continuity exercises focused on recovery priorities without assuming numeric recovery targets."
   },
   {
     id: "control-vendor-due-diligence",
@@ -566,7 +594,8 @@ async function buildPolicyLibraryPlan(loaded) {
       skipped.push(skippedItem(documentUpdate.id, "current", "The governed Document already contains the current standalone starter language."));
       continue;
     }
-    if (sourceRevision !== documentUpdate.priorRevision) {
+    if (sourceRevision !== documentUpdate.priorRevision
+      && !documentUpdate.additionalPriorRevisions?.has(sourceRevision)) {
       skipped.push(skippedItem(documentUpdate.id, "customized", "The governed Document differs from the recognized prior starter, so FileGRC will not rewrite it."));
       continue;
     }

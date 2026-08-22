@@ -242,13 +242,13 @@ Reported events receive an owner, assessment, and documented resolution or escal
 
 ## Business Continuity and Disaster Recovery Policy
 
-Each important System records approved recovery priorities and objectives, dependencies, responsible people, alternate communication and access needs, and a backup or alternate recovery approach. Management selects continuity strategies according to service commitments, business impact, data risk, dependencies, and technical capability.
+Each important System records recovery priorities, dependencies, responsible people, alternate communication and access needs, and a backup or alternate recovery approach suited to its commitments, business impact, data risk, dependencies, and technical capability. Numeric recovery targets are required only when an approved customer commitment, included Availability criterion, or management risk decision calls for them.
 
 The Security Incident and Recovery Plan records activation, communication, response, recovery, and return-to-normal responsibilities. Management tests continuity and disaster recovery on the approved schedule, records results and findings, and tracks follow-up work.
 
 ## Backup and Restoration Policy
 
-Important Systems use backups or an approved alternate recovery approach that meets their recovery objectives. Management documents backup or alternate-recovery scope, frequency, retention, encryption and access needs, monitoring, failure response, procedures, and test schedules.
+Important Systems use backups or an approved alternate recovery approach suited to their recovery needs and any approved recovery targets. Management documents backup or alternate-recovery scope, frequency, retention, encryption and access needs, monitoring, failure response, procedures, and test schedules.
 
 Backup or recovery access is limited to authorized people and protected from the failures it is intended to address. Restoration or alternate recovery is validated on the approved schedule and after material change when prior results no longer represent the System. Policy adoption does not assert that every System uses daily backups or a fixed retention period.
 

@@ -31,6 +31,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 - Data files are authoritative. Rendered pages, indexes, caches, and reports are derived output.
 - Never fetch external references automatically. A user may open or import one explicitly.
 - Keep the model generic. Organization-specific fields belong in namespaced extensions.
+- Keep the default starter Security-only and as simple as the Security Common Criteria permit. Do not turn optional Trust Services Categories or common implementation choices into default records or readiness gates. Require category-specific details, including numeric recovery objectives, only when management selects that category or an approved commitment or risk decision requires them.
 - Prefer explicit, inspectable behavior over automation that changes audit records without review.
 - UI, HTTP, and CLI workflows must call the same domain functions so headless agents receive the same calculations, validation, and output as browser users.
 

@@ -282,8 +282,8 @@ test("creates a complete generic repository with one dependency", async (context
     await assert.rejects(access(join(target, "data", "policies", `${removedPolicy}.json`)), /ENOENT/);
   }
   const recoveryContent = await readFile(join(target, "data", "documents", "document-security-incident-recovery-plan.md"), "utf8");
-  assert.match(recoveryContent, /maximum tolerable downtime/);
-  assert.match(recoveryContent, /\[Complete before activation: Document every important System's approved recovery time objective/);
+  assert.doesNotMatch(recoveryContent, /maximum tolerable downtime/);
+  assert.match(recoveryContent, /Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them/);
   assert.match(recoveryContent, /proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation/);
   assert.match(recoveryContent, /protected alternate location and access method/);
   assert.match(recoveryContent, /standing legal retainer is required only when management determines/);
@@ -572,8 +572,10 @@ test("creates a complete generic repository with one dependency", async (context
   const recoveryPlanReadiness = programReadiness.stages
     .find(({ id }) => id === "policies")
     .items.find(({ id }) => id === "document-approval-document-security-incident-recovery-plan");
-  assert.equal(recoveryPlanReadiness.checks.systemContinuityObjectives, false);
+  assert.equal(recoveryPlanReadiness.checks.systemContinuityObjectives, true);
+  assert.equal(recoveryPlanReadiness.systemContinuityObjectivesRequired, false);
   assert.deepEqual(recoveryPlanReadiness.continuityObjectiveSystemIds, []);
+  assert.deepEqual(recoveryPlanReadiness.missingContinuityObjectiveSystemIds, []);
   assert.match(
     programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "criteria").message,
     /33 Trust Services applicability decisions and 9 Description Criteria decisions remain undetermined/
@@ -634,6 +636,61 @@ test("creates a complete generic repository with one dependency", async (context
       familyId
     );
   }
+
+  await mkdir(join(target, "data", "systems"), { recursive: true });
+  await writeFile(
+    join(target, "data", "systems", "system-example-service.json"),
+    `${JSON.stringify({
+      id: "system-example-service",
+      type: "system",
+      title: "Example service",
+      status: "active",
+      purpose: "Provide the in-scope service.",
+      servicesProvided: ["Example service"],
+      boundary: "The production service and its supporting components.",
+      criticality: "high",
+      ownerIds: ["appointment-policy-owner"]
+    }, null, 2)}\n`,
+    "utf8"
+  );
+  await writeFile(
+    join(target, "data", "requirements", "requirement-soc2-a1-1.json"),
+    `${JSON.stringify({
+      id: "requirement-soc2-a1-1",
+      type: "requirement",
+      title: "A1.1: Availability capacity",
+      frameworkId: "framework-aicpa-trust-services-criteria",
+      reference: "A1.1",
+      description: "Maintain and monitor processing capacity to meet approved Availability objectives."
+    }, null, 2)}\n`,
+    "utf8"
+  );
+  await writeFile(
+    join(target, "data", "programs", "program-soc-2.json"),
+    `${JSON.stringify({
+      ...programRecord,
+      systemIds: ["system-example-service"],
+      requirementApplicability: [
+        ...programRecord.requirementApplicability,
+        {
+          requirementId: "requirement-soc2-a1-1",
+          decision: "applicable",
+          rationale: "Management selected the Availability category for this Program.",
+          reviewedByIds: [owner.id],
+          reviewedOn: "2026-07-25",
+          scopeRevision: "availability-test-scope"
+        }
+      ]
+    }, null, 2)}\n`,
+    "utf8"
+  );
+  const availabilityReadiness = await assessProgramReadiness(target, { asOf: "2026-07-25" });
+  const availabilityRecoveryPlan = availabilityReadiness.stages
+    .find(({ id }) => id === "policies")
+    .items.find(({ id }) => id === "document-approval-document-security-incident-recovery-plan");
+  assert.equal(availabilityRecoveryPlan.systemContinuityObjectivesRequired, true);
+  assert.equal(availabilityRecoveryPlan.checks.systemContinuityObjectives, false);
+  assert.deepEqual(availabilityRecoveryPlan.missingContinuityObjectiveSystemIds, ["system-example-service"]);
 
   await writeFile(
     join(target, "data", "policies", "policy-information-security.json"),

@@ -98,6 +98,10 @@ const CURRENT_POLICY_CONTRACT_LIST = `When applicable to the service and risk, c
 
 Management does not require every term for every Vendor, but records omissions that create material risk or conflict with an approved commitment.`;
 const PRIOR_POLICY_CONTRACT_PARAGRAPH = "When applicable to the service and risk, contracts address permitted use and confidentiality, security responsibilities, incident notice, access and subprocessor restrictions, continuity, data return or deletion, termination, and assurance or audit rights. Management does not require every term for every Vendor, but records omissions that create material risk or conflict with an approved commitment.";
+const CURRENT_CONTINUITY_POLICY = "Each important System records recovery priorities, dependencies, responsible people, alternate communication and access needs, and a backup or alternate recovery approach suited to its commitments, business impact, data risk, dependencies, and technical capability. Numeric recovery targets are required only when an approved customer commitment, included Availability criterion, or management risk decision calls for them.";
+const PRIOR_CONTINUITY_POLICY = "Each important System records approved recovery priorities and objectives, dependencies, responsible people, alternate communication and access needs, and a backup or alternate recovery approach. Management selects continuity strategies according to service commitments, business impact, data risk, dependencies, and technical capability.";
+const CURRENT_BACKUP_POLICY = "Important Systems use backups or an approved alternate recovery approach suited to their recovery needs and any approved recovery targets.";
+const PRIOR_BACKUP_POLICY = "Important Systems use backups or an approved alternate recovery approach that meets their recovery objectives.";
 
 function previousProductSpecificTraining(source) {
   return source
@@ -110,6 +114,7 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-data-retention-schedule": {
     path: "document-data-retention-schedule.md",
     replacements: [
+      ["| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery needs] | [Complete before approval: expiration or disposal action] | [Complete before approval: recovery need, commitment, or risk decision] |", "| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery objectives] | [Complete before approval: expiration or disposal action] | [Complete before approval: continuity objective or risk decision] |"],
       ["Remove each bracketed prompt only after replacing it with a reviewed fact.", "FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact."],
       ["Record the authority, scope, owner, start date, and release decision in controlled legal-hold records.", "Record the authority, scope, owner, start date, and release decision outside this public template."]
     ]
@@ -117,6 +122,8 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-security-incident-recovery-plan": {
     path: "document-security-incident-recovery-plan.md",
     replacements: [
+      ["[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]", "[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]"],
+      ["- Dependencies, fallback paths, and validation steps\n- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision", "- Dependencies, fallback paths, and validation steps"],
       ["Supporting procedures, system records, and retained evidence document the actual technical configuration and operation.", "Controls, Components, Systems, Obligations, and Evidence hold the actual technical configuration and proof of operation."],
       ["If an incident raises a legal, privacy, or insurance question, the incident lead obtains suitable advice at that time. A pre-arranged counsel relationship or standing legal retainer is required only when management determines that the organization's obligations and risk warrant one.", "If an incident raises a legal, privacy, or insurance question, the incident lead gets suitable advice at that time. FileGRC does not require pre-arranged counsel, in-house counsel, or a standing legal retainer."],
       ["[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]", "[Complete before activation: Link every important System and record its approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments in the System record.]"],
@@ -203,6 +210,8 @@ function previousPolicyFormatting(source) {
 
 function previousPolicyDetailLists(source) {
   return source
+    .replace(CURRENT_CONTINUITY_POLICY, PRIOR_CONTINUITY_POLICY)
+    .replace(CURRENT_BACKUP_POLICY, PRIOR_BACKUP_POLICY)
     .replace(CURRENT_POLICY_ROLE_LIST, PRIOR_POLICY_ROLE_PARAGRAPH)
     .replace(CURRENT_POLICY_KEY_LIST, PRIOR_POLICY_KEY_PARAGRAPH)
     .replace(CURRENT_POLICY_ACCOUNT_LIST, PRIOR_POLICY_ACCOUNT_PARAGRAPH)
@@ -904,7 +913,8 @@ test("reviews generic Control activities without changing planned Controls autom
   });
   const priorActivities = {
     "control-endpoint-protection": "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the risk-based schedule recorded in an Obligation when periodic work is needed.",
-    "control-vulnerability-management": "Choose scan coverage and cadence. Review the starter remediation targets of Critical 7 days, High 14 days, Medium 30 days, and Low 90 days, then record the approved targets or time-bound Exceptions."
+    "control-vulnerability-management": "Choose scan coverage and cadence. Review the starter remediation targets of Critical 7 days, High 14 days, Medium 30 days, and Low 90 days, then record the approved targets or time-bound Exceptions.",
+    "control-continuity-exercise": "Maintain the plan, contacts, recovery objectives, exercises, results, and follow-up work."
   };
   const current = new Map();
   for (const [id, activity] of Object.entries(priorActivities)) {
@@ -913,9 +923,20 @@ test("reviews generic Control activities without changing planned Controls autom
     current.set(id, record);
     await writeJson(path, { ...record, activity });
   }
+  const backupPath = join(root, "data", "controls", "control-backup-restoration.json");
+  const currentBackup = JSON.parse(await readFile(backupPath, "utf8"));
+  current.set(currentBackup.id, currentBackup);
+  await writeJson(backupPath, {
+    ...currentBackup,
+    statement: "Each important System has backup scope, frequency, retention, monitoring, and restore validation that meet its approved recovery objectives, or a documented alternate recovery approach when backups are not the chosen safeguard.",
+    activity: "Record System recovery objectives and backup or alternate recovery procedures, monitor the chosen safeguards, and validate recovery on the approved schedule."
+  });
 
   const review = await assessPolicyLibraryUpgrades(root);
-  assert.deepEqual(new Set(review.proposals[0].changes.map(({ resourceId }) => resourceId)), new Set(Object.keys(priorActivities)));
+  assert.deepEqual(
+    new Set(review.proposals[0].changes.map(({ resourceId }) => resourceId)),
+    new Set([...Object.keys(priorActivities), currentBackup.id])
+  );
   for (const [id, activity] of Object.entries(priorActivities)) {
     assert.equal((await readControl(root, id)).activity, activity);
   }

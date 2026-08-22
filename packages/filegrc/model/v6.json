@@ -1128,7 +1128,7 @@
       "pluralTitle": "Systems",
       "group": "systems-vendors",
       "collection": "systems",
-      "description": "The complete bounded system being governed or examined, including its services, boundary, information, Components, Controls, dependencies, and continuity objectives.",
+      "description": "The complete bounded system being governed or examined, including its services, boundary, information, Components, Controls, dependencies, and any applicable continuity objectives.",
       "guidance": {
         "policyBasis": "A SOC 2 program starts with the bounded System and the service commitments and system requirements the company has chosen to meet.",
         "cadence": "Define before selecting Components and Controls. Review after material service, boundary, architecture, information, continuity, or audit-scope changes.",

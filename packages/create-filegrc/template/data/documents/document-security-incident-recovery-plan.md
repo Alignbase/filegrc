@@ -49,7 +49,7 @@ The team does not destroy Evidence, promise external notification, or make publi
 
 ## Recovery priorities and procedures
 
-[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]
+[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]
 
 Supporting recovery documentation for each important System must identify:
 
@@ -59,6 +59,7 @@ Supporting recovery documentation for each important System must identify:
 - People who can access the procedure and required Systems
 - Restore-validation method and approved schedule
 - Dependencies, fallback paths, and validation steps
+- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision
 
 [Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]
 

@@ -23,7 +23,7 @@ Name the owners, criteria, service, Systems, and providers in scope.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.
 - **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
-- **Systems** (`system`): Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and continuity objectives.
+- **Systems** (`system`): Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.
 - **Components** (`component`): Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.
 - **Vendors** (`vendor`): Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.
 - **Classifications** (`classification`): Define an ordered information-handling category used by inventory and Evidence Artifacts.
@@ -1512,9 +1512,9 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `system`
 
-The complete bounded system being governed or examined, including its services, boundary, information, Components, Controls, dependencies, and continuity objectives.
+The complete bounded system being governed or examined, including its services, boundary, information, Components, Controls, dependencies, and any applicable continuity objectives.
 
-Instructions: Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and continuity objectives.
+Instructions: Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.
 
 Policy basis: A SOC 2 program starts with the bounded System and the service commitments and system requirements the company has chosen to meet.
 

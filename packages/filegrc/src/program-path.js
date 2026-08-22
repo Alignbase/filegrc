@@ -3,7 +3,7 @@ export const RESOURCE_INSTRUCTIONS = {
   person: "Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.",
   appointment: "Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.",
   team: "Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.",
-  system: "Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and continuity objectives.",
+  system: "Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.",
   component: "Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.",
   vendor: "Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.",
   classification: "Define an ordered information-handling category used by inventory and Evidence Artifacts.",
