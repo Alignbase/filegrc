@@ -918,6 +918,13 @@ test("proper-cases enum displays and uses native required validation", () => {
   assert.match(APP_SCRIPT, /field\.requiredWhen/);
 });
 
+test("keeps wrapped and unbroken relationship labels readable in record tables", () => {
+  assert.doesNotMatch(APP_SCRIPT, /relationshipTagClass/);
+  assert.match(APP_STYLES, /\.record-table td:has\(\.relation\)\{min-width:150px\}/);
+  assert.match(APP_STYLES, /\.record-table \.relation\{border-radius:7px;line-height:1\.35;overflow-wrap:anywhere;word-break:normal\}/);
+  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.record-table td:has\(\.relation\)\{min-width:0\}\.record-table td\[data-label\]>\.relation\{grid-column:2\}\}/);
+});
+
 test("title-cases multi-word navigation and interface headings", () => {
   assert.match(APP_SCRIPT, /function titleCase\(value\)/);
   assert.doesNotMatch(APP_SCRIPT, /title: "Scope Details"/);

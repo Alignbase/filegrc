@@ -5280,6 +5280,9 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
   .missing-options{border-color:#77612f;background:#382f19;color:#ffdc92}
   .status-dot.neutral{background:#9aabff}
 }
+.record-table td:has(.relation){min-width:150px}
+.record-table .relation{border-radius:7px;line-height:1.35;overflow-wrap:anywhere;word-break:normal}
+@media(max-width:760px){.record-table td:has(.relation){min-width:0}.record-table td[data-label]>.relation{grid-column:2}}
 `;
 
 function safeJson(value) {
