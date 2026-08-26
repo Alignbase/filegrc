@@ -13,6 +13,7 @@ import { loadWorkspace } from "./workspace.js";
 
 const lastSuccessfulSynchronizations = new Map();
 const workspaceHistoryCache = new Map();
+const dataRecordHistoryIndexCache = new Map();
 const backgroundSynchronizations = new Map();
 const browserRemotePrefetches = new Map();
 const browserRemotePrefetchPromises = new Map();
@@ -77,16 +78,285 @@ export function getFileHistory(input, relativePath, limit = 50) {
   const root = resolveWorkspaceRoot(input);
   if (!isSafeDataGitPath(relativePath)) return null;
   try {
+    const countArgs = Number(limit) >= Number.MAX_SAFE_INTEGER
+      ? []
+      : [`--max-count=${Math.max(1, Math.min(Number(limit) || 50, 200))}`];
     const output = git(root, [
       "log",
       "--follow",
-      `--max-count=${Math.max(1, Math.min(Number(limit) || 50, 200))}`,
+      ...countArgs,
       "--format=%H%x1f%aI%x1f%an%x1f%s",
       "--",
       relativePath
     ]);
     if (!output) return [];
     return output.split("\n").map(parseLogLine);
+  } catch {
+    return null;
+  }
+}
+
+export function getFileHistoryWithPaths(input, relativePath, limit = 50) {
+  const root = resolveWorkspaceRoot(input);
+  if (!isSafeDataGitPath(relativePath)) return null;
+  try {
+    const countArgs = Number(limit) >= Number.MAX_SAFE_INTEGER
+      ? []
+      : [`--max-count=${Math.max(1, Math.min(Number(limit) || 50, 200))}`];
+    const output = gitRaw(root, [
+      "log",
+      "--follow",
+      "-z",
+      ...countArgs,
+      "--format=%H%x00%aI%x00%an%x00%s%x00",
+      "--name-status",
+      "-M",
+      "--",
+      relativePath
+    ]);
+    if (!output) return [];
+    const tokens = output.split("\0");
+    let trackedPath = relativePath;
+    const history = [];
+    let index = 0;
+    while (index < tokens.length) {
+      while (index < tokens.length && !/^[a-f0-9]{40}$/i.test(tokens[index].trim())) index += 1;
+      if (index >= tokens.length) break;
+      const summary = {
+        commit: tokens[index++].trim(),
+        timestamp: tokens[index++] || "",
+        author: tokens[index++] || "",
+        subject: tokens[index++] || ""
+      };
+      history.push({ ...summary, path: trackedPath });
+      while (index < tokens.length && !/^[a-f0-9]{40}$/i.test(tokens[index].trim())) {
+        const status = tokens[index++].trim();
+        if (!status) continue;
+        const oldPath = tokens[index++] || "";
+        if (status.startsWith("R") || status.startsWith("C")) {
+          const newPath = tokens[index++] || "";
+          if (status.startsWith("R") && newPath === trackedPath) trackedPath = oldPath;
+        }
+      }
+    }
+    return history;
+  } catch {
+    return null;
+  }
+}
+
+export function getDataCommitHistory(input) {
+  const root = resolveWorkspaceRoot(input);
+  try {
+    return lines(git(root, ["log", "--reverse", "--format=%H", "--", "data"]));
+  } catch {
+    return [];
+  }
+}
+
+export function getChangedDataJsonFilesAtRevision(input, revision) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision))) return [];
+  const root = resolveWorkspaceRoot(input);
+  try {
+    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const workspacePrefix = relative(topLevel, root).split(sep).join("/");
+    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return [];
+    const dataPrefix = workspacePrefix ? `${workspacePrefix}/data` : "data";
+    const output = git(root, [
+      "diff-tree", "--root", "--no-commit-id", "--name-status", "-M", "-m", "-r", revision, "--", dataPrefix
+    ]);
+    const paths = [];
+    for (const line of lines(output)) {
+      const [status, first, second] = line.split("\t");
+      if (status === "D") continue;
+      const repositoryPath = status?.startsWith("R") || status?.startsWith("C") ? second : first;
+      if (!repositoryPath?.startsWith(`${dataPrefix}/`) || !repositoryPath.endsWith(".json")) continue;
+      paths.push(workspacePrefix ? repositoryPath.slice(workspacePrefix.length + 1) : repositoryPath);
+    }
+    return [...new Set(paths)];
+  } catch {
+    return [];
+  }
+}
+
+export function getRecordIdentityHistory(input, id) {
+  return getRecordIdentityHistories(input, [id]).get(id) || [];
+}
+
+export function getRecordIdentityHistories(input, ids) {
+  const index = getDataRecordHistoryIndex(input);
+  return new Map([...new Set(ids)].map((id) => [id, index.historiesById.get(id) || []]));
+}
+
+export function getDataRecordHistoryIndex(input) {
+  const root = resolveWorkspaceRoot(input);
+  const head = tryGit(root, ["rev-parse", "HEAD"]) || null;
+  const cached = dataRecordHistoryIndexCache.get(root);
+  if (cached?.head === head) return cached;
+  const changes = [];
+  const shallow = head && tryGit(root, ["rev-parse", "--is-shallow-repository"]) === "true";
+  let available = Boolean(head) && !shallow;
+  let error = !head
+    ? new Error("Git history is unavailable because the workspace has no committed HEAD.")
+    : shallow ? new Error("Git history is shallow.") : null;
+  try {
+    if (available) {
+      const output = gitRaw(root, [
+        "log", "--reverse", "-m", "-z", "--relative",
+        "--format=%H%x00%aI%x00%an%x00%s%x00", "--name-status", "-M", "--", "data"
+      ]);
+      changes.push(...parseDataRecordHistory(output));
+    }
+  } catch (cause) {
+    available = false;
+    error = cause;
+  }
+  const sources = available
+    ? getFilesAtRevisions(
+      root,
+      changes.map(({ summary, path }) => ({ revision: summary.commit, relativePath: path })),
+      { batchSize: 512 }
+    )
+    : [];
+  if (head && sources.some((source) => source === null)) {
+    available = false;
+    error ||= new Error("Git could not read every historical data record.");
+  }
+  const recordsByCommit = new Map();
+  const historiesById = new Map();
+  for (let index = 0; index < changes.length; index += 1) {
+    const { summary, path } = changes[index];
+    try {
+      const record = JSON.parse(sources[index]);
+      if (!record?.id) continue;
+      if (!recordsByCommit.has(summary.commit)) recordsByCommit.set(summary.commit, new Map());
+      recordsByCommit.get(summary.commit).set(record.id, { record, path });
+      if (!historiesById.has(record.id)) historiesById.set(record.id, []);
+      historiesById.get(record.id).push({ ...summary, path });
+    } catch {
+      // Ignore malformed historical files.
+    }
+  }
+  for (const [id, history] of historiesById) {
+    history.reverse();
+    const seen = new Set();
+    historiesById.set(id, history.filter(({ commit, path }) => {
+      const key = `${commit}\u0000${path}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }));
+  }
+  const result = {
+    head,
+    available,
+    error,
+    commits: [...new Set(changes.map(({ summary }) => summary.commit))],
+    recordsByCommit,
+    historiesById
+  };
+  if (available) {
+    dataRecordHistoryIndexCache.set(root, result);
+    while (dataRecordHistoryIndexCache.size > 16) dataRecordHistoryIndexCache.delete(dataRecordHistoryIndexCache.keys().next().value);
+  }
+  return result;
+}
+
+function parseDataRecordHistory(output) {
+  const fields = output.split("\0");
+  const changes = [];
+  let index = 0;
+  while (index < fields.length) {
+    while (fields[index] === "") index += 1;
+    const commit = fields[index++];
+    if (commit === undefined) break;
+    if (!/^[a-f0-9]{40}$/i.test(commit)) throw new Error("Git returned an invalid data-history commit.");
+    const timestamp = fields[index++];
+    const author = fields[index++];
+    const subject = fields[index++];
+    if (timestamp === undefined || author === undefined || subject === undefined) {
+      throw new Error("Git returned an incomplete data-history header.");
+    }
+    const summary = { commit, shortCommit: commit.slice(0, 8), timestamp, author, subject };
+    while (index < fields.length) {
+      while (fields[index] === "") index += 1;
+      const rawStatus = fields[index];
+      if (rawStatus === undefined || /^[a-f0-9]{40}$/i.test(rawStatus)) break;
+      const status = rawStatus.replace(/^\n+/, "");
+      if (!/^(?:[ACDMRTUXB]|R\d{1,3}|C\d{1,3})$/.test(status)) {
+        throw new Error("Git returned an invalid data-history status.");
+      }
+      index += 1;
+      const first = fields[index++];
+      const renamed = status.startsWith("R") || status.startsWith("C");
+      const second = renamed ? fields[index++] : null;
+      if (!first || (renamed && !second)) throw new Error("Git returned an incomplete data-history path.");
+      if (status === "D") continue;
+      const path = renamed ? second : first;
+      if (path.startsWith("data/") && path.endsWith(".json")) {
+        if (!isSafeDataGitPath(path)) throw new Error("Git returned an unsafe data-history path.");
+        changes.push({ summary, path });
+      }
+    }
+  }
+  return changes;
+}
+
+export function isGitAncestor(input, ancestor, descendant) {
+  if (!/^[a-f0-9]{40}$/i.test(String(ancestor)) || !/^[a-f0-9]{40}$/i.test(String(descendant))) return false;
+  const root = resolveWorkspaceRoot(input);
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
+      cwd: root,
+      stdio: "ignore",
+      timeout: 10_000
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getFileBufferAtRevision(input, revision, relativePath) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)) return null;
+  const root = resolveWorkspaceRoot(input);
+  try {
+    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const workspacePrefix = relative(topLevel, root).split(sep).join("/");
+    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return null;
+    const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
+    return execFileSync("git", ["show", `${revision}:${repositoryPath}`], {
+      cwd: root,
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10_000,
+      maxBuffer: 20_000_000
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function getFileObjectIdAtRevision(input, revision, relativePath) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)) return null;
+  const root = resolveWorkspaceRoot(input);
+  try {
+    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const workspacePrefix = relative(topLevel, root).split(sep).join("/");
+    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return null;
+    const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
+    const objectId = git(root, ["rev-parse", `${revision}:${repositoryPath}`]);
+    return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getWorkingFileObjectId(input, relativePath) {
+  if (!isSafeDataGitPath(relativePath)) return null;
+  const root = resolveWorkspaceRoot(input);
+  try {
+    const objectId = git(root, ["hash-object", "--no-filters", "--", relativePath]);
+    return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
   } catch {
     return null;
   }
@@ -136,7 +406,7 @@ export function getFileAtRevision(input, revision, relativePath) {
   return getFilesAtRevisions(input, [{ revision, relativePath }])[0];
 }
 
-export function getFilesAtRevisions(input, requests) {
+export function getFilesAtRevisions(input, requests, options = {}) {
   const root = resolveWorkspaceRoot(input);
   const invalid = Array.isArray(requests) && requests.find(({ revision, relativePath } = {}) => (
     !/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)
@@ -150,8 +420,9 @@ export function getFilesAtRevisions(input, requests) {
     const workspacePrefix = relative(topLevel, root).split(sep).join("/");
     if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return requests.map(() => null);
     const results = [];
-    for (let offset = 0; offset < requests.length; offset += 4) {
-      const batch = requests.slice(offset, offset + 4);
+    const batchSize = Math.max(1, Math.min(Number(options.batchSize) || 4, 512));
+    for (let offset = 0; offset < requests.length; offset += batchSize) {
+      const batch = requests.slice(offset, offset + batchSize);
       const specifications = batch.map(({ revision, relativePath }) => {
         const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
         return `${revision}:${repositoryPath}`;
@@ -172,6 +443,22 @@ export function getFilesAtRevisions(input, requests) {
     return results;
   } catch {
     return requests.map(() => null);
+  }
+}
+
+export function getDataFilesAtRevision(input, revision) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision))) return [];
+  const root = resolveWorkspaceRoot(input);
+  try {
+    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const workspacePrefix = relative(topLevel, root).split(sep).join("/");
+    if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return [];
+    const dataPrefix = workspacePrefix ? `${workspacePrefix}/data` : "data";
+    return lines(git(root, ["ls-tree", "-r", "--name-only", revision, "--", dataPrefix]))
+      .filter((path) => path.startsWith(`${dataPrefix}/`) && path.endsWith(".json"))
+      .map((path) => workspacePrefix ? path.slice(workspacePrefix.length + 1) : path);
+  } catch {
+    return [];
   }
 }
 

@@ -2,22 +2,32 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition, modelSupports } from "../model/index.js";
-import { scopedCollectionRecords } from "./collection-scope.js";
+import { scopedCollectionRecords, selectScopedCollectionRecords } from "./collection-scope.js";
 import {
   collectionRevision,
   collectionRevisionMatches
 } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
+import { getFileObjectIdAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision } from "./git.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
-import { parseCalendarDate, validCalendarRecurrence } from "./recurrence.js";
+import {
+  addCalendarDays,
+  calendarOccurrence,
+  calendarOccurrenceIndex,
+  parseCalendarDate,
+  validCalendarRecurrence
+} from "./recurrence.js";
 import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { obligationIsEnabled } from "./program-lifecycle.js";
 import { partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
-import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
+import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 import { recordTiming } from "./timing.js";
 import { personWasActiveOn } from "./soc2.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
+import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./collection-review-integrity.js";
+import { reportingRouteRevision } from "./reporting-route-integrity.js";
+import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
@@ -25,6 +35,13 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_OBLIGATION_OFFSET_DAYS = 36_600;
 const MAX_OBLIGATION_OFFSET_HOURS = MAX_OBLIGATION_OFFSET_DAYS * 24;
+const COMPLETION_DATE_FIELDS = [
+  "completedOn", "performedOn", "reviewedOn", "occurredOn", "collectedOn",
+  "verifiedOn", "approvedOn", "submittedOn", "closedOn", "reportDate"
+];
+const COMPLETION_TIMESTAMP_FIELDS = [
+  "completedAt", "endedAt", "closedAt", "provisionedOn", "deprovisionedOn"
+];
 
 export async function validateWorkspace(input = process.cwd()) {
   const timingStarted = performance.now();
@@ -55,6 +72,9 @@ async function validateWorkspaceUnmeasured(input) {
       : [...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])]
   ));
   const currentReviewRevisions = await resourceReviewRevisions(loaded, reviewDependencyIds);
+  if (modelSupports(loaded.model, "rolled-up-obligations")) {
+    await validateWorkflowHistoryIntegrity(loaded, diagnostics);
+  }
   for (const obligation of loaded.resources.filter((record) => record.type === "obligation" && record.status !== "retired")) {
     for (const controlId of obligation.controlIds || []) {
       if (!obligationsByControl.has(controlId)) obligationsByControl.set(controlId, []);
@@ -98,6 +118,10 @@ async function validateWorkspaceUnmeasured(input) {
       validateCollectionReview(record, loaded, byId, displayPath, diagnostics);
     }
     if (record.type === "obligation") validateObligation(record, loaded.model, byId, displayPath, diagnostics);
+    if (record.type === "obligation-rule") validateObligationRule(record, loaded.model, byId, displayPath, diagnostics);
+    if (record.type === "obligation-occurrence") {
+      validateObligationOccurrence(record, loaded.model, loaded.resources, loaded.entries, loaded.root, loaded.workspace.timezone, byId, asOf, displayPath, diagnostics);
+    }
     if (record.type === "retention-schedule-item") validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisions, displayPath, diagnostics);
     if (record.type === "requirement-mapping") validateRequirementMapping(record, currentReviewRevisions, displayPath, diagnostics);
     if (record.type === "action-item") {
@@ -108,6 +132,7 @@ async function validateWorkspaceUnmeasured(input) {
     validateCoverage(record, displayPath, diagnostics);
     validateClassification(record, loaded, displayPath, diagnostics);
     validateCompletionDates(record, displayPath, diagnostics);
+    validateReportingRouteBinding(record, loaded, displayPath, diagnostics);
     await validateAttestationBinding(record, loaded.model, loaded.root, byId, displayPath, diagnostics);
 
     const fields = { ...loaded.model.commonFields, ...definition.fields };
@@ -152,6 +177,7 @@ async function validateWorkspaceUnmeasured(input) {
     }
     validateIndependentApproval(record, byId, displayPath, diagnostics);
     validateCompletedObligationEvent(record, byId, loaded.model, displayPath, diagnostics);
+    validateActionObligationRule(record, byId, displayPath, diagnostics);
     validateImplementedControlSchedules(record, obligationsByControl, displayPath, diagnostics);
     await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
     await validateApprovalBinding(record, loaded.model, loaded.root, displayPath, diagnostics);
@@ -165,6 +191,27 @@ async function validateWorkspaceUnmeasured(input) {
   );
   if (modelSupports(loaded.model, "document-workflow-scope")) {
     validateDocumentWorkflowScopes(loaded.resources, loaded.model, byId, pathById, diagnostics);
+  }
+  if (modelSupports(loaded.model, "rolled-up-obligations")) {
+    validateObligationRuleSet(loaded.resources, pathById, diagnostics);
+    validateAuditPopulationSet(loaded.resources, byId, pathById, diagnostics);
+  }
+  if (modelSupports(loaded.model, "reporting-routes")) {
+    validateReportingRouteSet(loaded.resources, pathById, diagnostics, loaded.workspace?.timezone || "UTC");
+  }
+  if (modelSupports(loaded.model, "temporal-collection-reviews")) {
+    validateCollectionReviewSet(loaded.resources, pathById, diagnostics);
+  }
+  if (modelSupports(loaded.model, "guided-workflow")) {
+    const { planReconciliation } = await import("./reconciliation.js");
+    const reconciliation = await planReconciliation(loaded);
+    for (const candidate of reconciliation.candidates.filter(({ committedRevision }) => committedRevision)) {
+      diagnostics.push(warning(
+        "unreconciled-committed-transition",
+        candidate.sourcePath,
+        `${candidate.eventType} transition in Git commit ${candidate.committedRevision.slice(0, 8)} still needs confirmation or dismissal.`
+      ));
+    }
   }
 
   diagnostics.sort((a, b) => `${a.severity}:${a.path}:${a.code}`.localeCompare(`${b.severity}:${b.path}:${b.code}`));
@@ -308,6 +355,486 @@ function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagno
   }
 }
 
+function validateObligationRule(record, model, byId, path, diagnostics) {
+  const obligation = byId.get(record.obligationId);
+  if (obligation?.type !== "obligation") return;
+  validateObligation({
+    ...obligation,
+    recurrence: record.recurrence,
+    window: record.window
+  }, model, byId, path, diagnostics);
+  if (record.selector?.resourceType) {
+    const activity = obligation.activityType === "custom"
+      ? { ...model.obligationActivities?.custom, ...obligation.customActivity }
+      : model.obligationActivities?.[obligation.activityType];
+    if (!activity?.aggregate?.completionMemberField) {
+      diagnostics.push(error(
+        "unbound-obligation-selector",
+        path,
+        `Selector-based ${obligation.activityType} rules need a model-defined completion member field and passing states.`
+      ));
+    }
+    const selectedDefinition = model.resources[record.selector.resourceType];
+    if (!selectedDefinition) return;
+    const selectedFields = { ...model.commonFields, ...selectedDefinition.fields };
+    const allowedStatuses = selectedFields.status?.values || [];
+    const invalidStatuses = (record.selector.statuses || []).filter((status) => !allowedStatuses.includes(status));
+    if (invalidStatuses.length) {
+      diagnostics.push(error(
+        "invalid-obligation-selector-status",
+        path,
+        `Selector statuses are not valid for ${record.selector.resourceType}: ${invalidStatuses.join(", ")}.`
+      ));
+    }
+    const criticalityField = selectedFields.criticality;
+    if ((record.selector.criticalities || []).length && !criticalityField) {
+      diagnostics.push(error(
+        "invalid-obligation-selector-criticality",
+        path,
+        `${record.selector.resourceType} records do not have a criticality field.`
+      ));
+    }
+  }
+  if (record.status === "active" && obligation.activeRuleId !== record.id) {
+    diagnostics.push(error(
+      "inactive-obligation-rule-binding",
+      path,
+      `Active rule "${record.id}" must be the activeRuleId on Obligation "${obligation.id}".`
+    ));
+  }
+  if (
+    record.approvedOn
+    && record.effectiveAt
+    && currentCalendarDate(record.timezone || "UTC", new Date(record.effectiveAt)) < record.approvedOn
+  ) {
+    diagnostics.push(error("backdated-obligation-rule", path, "effectiveAt cannot be before the management approval date."));
+  }
+  if (record.supersedesId) {
+    const prior = byId.get(record.supersedesId);
+    if (prior?.type === "obligation-rule" && prior.obligationId !== record.obligationId) {
+      diagnostics.push(error("wrong-obligation-rule", path, "A rule may supersede only a rule for the same Obligation."));
+    }
+    if (!record.cutoverDecision) {
+      diagnostics.push(error("missing-rule-cutover", path, "A superseding rule needs an explicit cutover decision for any open occurrence."));
+    }
+  }
+}
+
+function validateObligationOccurrence(record, model, resources, entries, root, workspaceTimezone, byId, asOf, path, diagnostics) {
+  const members = record.members || [];
+  const memberIds = members.map(({ resourceId }) => resourceId);
+  if (new Set(memberIds).size !== memberIds.length) {
+    diagnostics.push(error("duplicate-obligation-member", path, "An occurrence may contain each population member only once."));
+  }
+  const expected = members.filter(({ disposition }) => disposition === "expected");
+  const completed = expected.filter(({ result }) => result === "passed");
+  if (record.expectedCount !== expected.length || record.completedCount !== completed.length) {
+    diagnostics.push(error(
+      "invalid-obligation-occurrence-count",
+      path,
+      `expectedCount and completedCount must equal the reconciled member facts (${expected.length} expected, ${completed.length} passed).`
+    ));
+  }
+  const rule = byId.get(record.ruleId);
+  const obligation = byId.get(record.obligationId);
+  if (record.collectionReviewId) {
+    const review = byId.get(record.collectionReviewId);
+    const reviewEntry = entries.find(({ record: candidate }) => candidate.id === record.collectionReviewId);
+    const historicalSnapshot = historicalCollectionReviewSnapshot(
+      root,
+      review,
+      model,
+      workspaceTimezone,
+      rule?.selector?.resourceType,
+      record.membershipCutoffAt,
+      rule?.selector,
+      reviewEntry?.relativePath,
+      record.collectionReviewCommit
+    );
+    const memberIds = [...(record.members || []).map(({ resourceId }) => resourceId)].sort();
+    const reviewedIds = [...(historicalSnapshot?.selectedIds || [])].sort();
+    const reviewCoversCutoff = review?.coverage?.kind === "as-of"
+      ? review.coverage.on === record.membershipCutoffAt
+      : review?.coverage?.kind === "range"
+        && review.coverage.startsOn <= record.membershipCutoffAt
+        && review.coverage.endsOn >= record.membershipCutoffAt;
+    if (
+      review?.type !== "collection-review"
+      || !(review.scopeResourceIds || []).includes(record.programId)
+      || !historicalSnapshot
+      || record.collectionReviewCommit !== historicalSnapshot.reviewCommit
+      || record.collectionReviewRevision !== collectionReviewRevision(review)
+      || record.collectionRevision !== review.collectionRevision
+      || record.scopeRevision !== review.scopeRevision
+      || !reviewCoversCutoff
+      || JSON.stringify(memberIds) !== JSON.stringify(reviewedIds)
+    ) {
+      diagnostics.push(error(
+        "invalid-obligation-collection-review-binding",
+        path,
+        "A historical occurrence must bind the exact immutable Collection Review revision, scope, cutoff coverage, and reviewed population."
+      ));
+    }
+  } else if (rule?.selector && record.membershipCutoffAt < asOf) {
+    diagnostics.push(error(
+      "missing-obligation-population-provenance",
+      path,
+      "A historical occurrence must bind an immutable Collection Review for its exact population cutoff."
+    ));
+  } else if (rule?.selector) {
+    const selectedIds = selectScopedCollectionRecords(
+      { resources, model },
+      rule.selector,
+      byId.get(record.programId)
+    ).map(({ id }) => id).sort();
+    if (JSON.stringify([...memberIds].sort()) !== JSON.stringify(selectedIds)) {
+      diagnostics.push(error(
+        "invalid-obligation-occurrence-population",
+        path,
+        "An occurrence without a historical Collection Review must contain the exact current selector population."
+      ));
+    }
+  }
+  if (record.supersedesId) {
+    const prior = byId.get(record.supersedesId);
+    if (
+      prior?.type === "obligation-occurrence"
+      && (
+        prior.programId !== record.programId
+        || prior.obligationId !== record.obligationId
+        || prior.ruleId !== record.ruleId
+        || prior.occurrenceKey !== record.occurrenceKey
+        || JSON.stringify(prior.coverage) !== JSON.stringify(record.coverage)
+        || prior.membershipCutoffAt !== record.membershipCutoffAt
+        || prior.collectionReviewId !== record.collectionReviewId
+        || prior.collectionReviewCommit !== record.collectionReviewCommit
+        || prior.collectionReviewRevision !== record.collectionReviewRevision
+        || prior.collectionRevision !== record.collectionRevision
+        || prior.scopeRevision !== record.scopeRevision
+      )
+    ) {
+      diagnostics.push(error(
+        "wrong-obligation-occurrence-supersession",
+        path,
+        "An occurrence correction must preserve its predecessor's Program, Obligation, rule, key, coverage, and membership cutoff."
+      ));
+    }
+  }
+  const activity = obligation?.type === "obligation"
+    ? obligation.activityType === "custom"
+      ? { ...model.obligationActivities?.custom, ...(obligation.customActivity || {}) }
+      : model.obligationActivities?.[obligation.activityType]
+    : null;
+  if (rule?.type === "obligation-rule" && rule.obligationId !== record.obligationId) {
+    diagnostics.push(error("wrong-obligation-rule", path, "The occurrence rule must belong to the same Obligation."));
+  }
+  validateOccurrenceScheduleBinding(record, obligation, rule, resources, path, diagnostics);
+  for (const member of members) {
+    if (!byId.has(member.resourceId)) continue;
+    const validCompletions = [];
+    for (const completionId of member.completionResourceIds || []) {
+      const completion = byId.get(completionId);
+      if (!completion) {
+        diagnostics.push(error("missing-member-completion-record", path, `Completion "${completionId}" does not exist.`));
+        continue;
+      }
+      if (!activity?.completionResourceTypes.includes(completion.type)) {
+        diagnostics.push(error(
+          "wrong-member-completion-type",
+          path,
+          `Completion "${completionId}" has type "${completion.type}", which cannot satisfy ${obligation?.activityType || "this activity"}.`
+        ));
+        continue;
+      }
+      const memberField = activity.aggregate?.completionMemberField;
+      const memberValue = memberField ? completion[memberField] : null;
+      if (!memberField || (Array.isArray(memberValue) ? !memberValue.includes(member.resourceId) : memberValue !== member.resourceId)) {
+        diagnostics.push(error(
+          "wrong-member-completion",
+          path,
+          `Completion "${completionId}" does not belong to population member "${member.resourceId}".`
+        ));
+        continue;
+      }
+      if (!completionFallsInOccurrence(completion, record.coverage, rule?.timezone || "UTC")) {
+        diagnostics.push(error(
+          "completion-outside-occurrence",
+          path,
+          `Completion "${completionId}" does not fall inside this occurrence's coverage.`
+        ));
+        continue;
+      }
+      if (completionPassesObligationActivity(completion, activity)) validCompletions.push(completion);
+    }
+    if (member.result === "passed" && validCompletions.length === 0) {
+      diagnostics.push(error(
+        "missing-passing-member-completion",
+        path,
+        `Passed member "${member.resourceId}" needs a matching completion inside the occurrence window with an allowed passing status and result.`
+      ));
+    }
+    if (member.disposition === "exception") {
+      const exception = byId.get(member.exceptionId);
+      const occurrenceStart = record.coverage?.kind === "as-of" ? record.coverage.on : record.coverage?.startsOn;
+      const occurrenceEnd = record.coverage?.kind === "as-of" ? record.coverage.on : record.coverage?.endsOn;
+      const exceptionCoversMember = exception?.scopeResourceIds?.includes(member.resourceId)
+        || exception?.scopeResourceIds?.includes(record.obligationId);
+      if (
+        exception?.type !== "exception"
+        || exception.status !== "approved"
+        || !exceptionCoversMember
+        || exception.approval?.approvedOn > occurrenceStart
+        || exception.approval?.expiresOn < occurrenceEnd
+      ) {
+        diagnostics.push(error(
+          "invalid-member-exception",
+          path,
+          `Exception member "${member.resourceId}" needs an approved Exception that covers the member or Obligation for the full occurrence.`
+        ));
+      }
+    }
+    if (member.disposition === "not-applicable" && !String(member.rationale || "").trim()) {
+      diagnostics.push(error(
+        "missing-member-non-applicability-rationale",
+        path,
+        `Non-applicable member "${member.resourceId}" needs the reviewed rationale for excluding it.`
+      ));
+    }
+  }
+  if (record.status !== "reconciled") {
+    if (record.status === "open" && (record.conclusion || record.reconciledAt || (record.reviewedByIds || []).length)) {
+      diagnostics.push(error("premature-obligation-conclusion", path, "Only a reconciled occurrence may record a conclusion, reconciliation time, or reviewers."));
+    }
+    return;
+  }
+  const reconciledOn = record.reconciledAt
+    ? currentCalendarDate(rule?.timezone || "UTC", new Date(record.reconciledAt))
+    : null;
+  if (record.reconciledAt && new Date(record.reconciledAt) > new Date()) {
+    diagnostics.push(error(
+      "future-obligation-reconciliation",
+      path,
+      "An occurrence reconciliation time cannot be in the future."
+    ));
+  }
+  const populationStillOpen = reconciledOn <= record.membershipCutoffAt;
+  if (reconciledOn && populationStillOpen) {
+    diagnostics.push(error(
+      "obligation-population-still-open",
+      path,
+      `This occurrence cannot be reconciled before its ${record.membershipCutoffAt} population cutoff.`
+    ));
+  }
+  if (record.conclusion === "zero-population" && members.length !== 0) {
+    diagnostics.push(error("invalid-zero-population", path, "A zero-population conclusion requires an empty frozen population."));
+  }
+  if (record.conclusion === "complete" && record.completedCount !== record.expectedCount) {
+    diagnostics.push(error("incomplete-obligation-occurrence", path, "A complete conclusion requires every expected member to pass."));
+  }
+  if (
+    record.conclusion === "complete-with-exceptions"
+    && members.some((member) => (
+      (member.disposition === "expected" && member.result !== "passed")
+      || (member.disposition === "exception" && !member.exceptionId)
+    ))
+  ) {
+    diagnostics.push(error("incomplete-obligation-occurrence", path, "A complete-with-exceptions conclusion requires every expected member to pass and every exception to name its approved Exception."));
+  }
+}
+
+function validateOccurrenceScheduleBinding(record, obligation, rule, resources, path, diagnostics) {
+  if (obligation?.type !== "obligation" || rule?.type !== "obligation-rule") return;
+  const start = record.coverage?.kind === "range" ? record.coverage.startsOn : null;
+  if (!start || !validCalendarRecurrence(rule.recurrence)) return;
+  const index = calendarOccurrenceIndex(rule.recurrence, start);
+  const occurrence = calendarOccurrence(rule.recurrence, index);
+  const next = calendarOccurrence(rule.recurrence, index + 1);
+  const startOffset = rule.window?.precision === "date" && Number.isInteger(rule.window.startsAfter)
+    ? rule.window.startsAfter
+    : 0;
+  const expectedStart = occurrence ? addCalendarDays(occurrence, startOffset) : null;
+  const expectedEnd = rule.window?.precision === "date" && Number.isInteger(rule.window.dueAfter)
+    ? addCalendarDays(occurrence, rule.window.dueAfter)
+    : next ? addCalendarDays(next, -1) : null;
+  const expectedCutoff = rule.selector?.cutoff === "window-end" ? expectedEnd : expectedStart;
+  const program = resources.find(({ type, id }) => type === "program" && id === record.programId);
+  const expectedKey = `${program?.id || "program"}:${obligation.id}:${expectedStart}`;
+  const governingRule = resources
+    .filter((candidate) => (
+      candidate.type === "obligation-rule"
+      && candidate.obligationId === obligation.id
+      && ["active", "retired"].includes(candidate.status)
+      && candidate.effectiveAt
+      && expectedStart
+      && currentCalendarDate(candidate.timezone || "UTC", new Date(candidate.effectiveAt)) <= expectedStart
+    ))
+    .sort((left, right) => right.effectiveAt.localeCompare(left.effectiveAt))[0];
+  if (
+    expectedStart !== start
+    || record.coverage.endsOn !== expectedEnd
+    || record.membershipCutoffAt !== expectedCutoff
+    || record.occurrenceKey !== expectedKey
+    || record.programId !== program?.id
+    || governingRule?.id !== rule.id
+    || JSON.stringify([...(record.ownerIds || [])].sort()) !== JSON.stringify([...(obligation.ownerIds || [])].sort())
+  ) {
+    diagnostics.push(error(
+      "invalid-obligation-occurrence-schedule-binding",
+      path,
+      "The occurrence must bind the exact governing rule, Program, schedule window, population cutoff, key, and owners."
+    ));
+  }
+}
+
+function completionPassesObligationActivity(record, activity) {
+  const aggregate = activity?.aggregate;
+  if (!aggregate) return true;
+  if (aggregate.passingStatuses?.length && !aggregate.passingStatuses.includes(record.status)) return false;
+  if (aggregate.passingResults?.length) {
+    const result = record.decision ?? record.outcome ?? record.result;
+    if (!aggregate.passingResults.includes(result)) return false;
+  }
+  return true;
+}
+
+function completionFallsInOccurrence(record, coverage, timezone = "UTC") {
+  const date = completionDateForOccurrence(record, timezone);
+  if (!date || !coverage) return false;
+  if (coverage.kind === "as-of") return date === coverage.on;
+  return coverage.kind === "range" && date >= coverage.startsOn && date <= coverage.endsOn;
+}
+
+function completionDateForOccurrence(record, timezone = "UTC") {
+  for (const field of COMPLETION_TIMESTAMP_FIELDS) {
+    if (isRfc3339Timestamp(record[field])) return currentCalendarDate(timezone, new Date(record[field]));
+  }
+  for (const field of COMPLETION_DATE_FIELDS) {
+    if (parseCalendarDate(record[field])) return record[field];
+  }
+  const coverage = record.coverage;
+  const coverageDate = coverage?.kind === "as-of" ? coverage.on : coverage?.endsOn;
+  if (parseCalendarDate(coverageDate)) return coverageDate;
+  return null;
+}
+
+function validateObligationRuleSet(resources, pathById, diagnostics) {
+  const activeByObligation = new Map();
+  const currentOccurrences = new Map();
+  const rulesById = new Map(resources.filter(({ type }) => type === "obligation-rule").map((record) => [record.id, record]));
+  const supersedingRulesByPriorId = new Map();
+  for (const rule of rulesById.values()) {
+    if (!rule.supersedesId) continue;
+    if (!supersedingRulesByPriorId.has(rule.supersedesId)) supersedingRulesByPriorId.set(rule.supersedesId, []);
+    supersedingRulesByPriorId.get(rule.supersedesId).push(rule);
+  }
+  for (const record of resources) {
+    if (record.type === "obligation-rule" && record.status === "active") {
+      const prior = activeByObligation.get(record.obligationId);
+      if (prior) diagnostics.push(error(
+        "multiple-active-obligation-rules",
+        pathById.get(record.id),
+        `Obligation "${record.obligationId}" has multiple active rules: ${prior.id}, ${record.id}.`
+      ));
+      else activeByObligation.set(record.obligationId, record);
+    }
+    if (record.type === "obligation-occurrence" && record.status !== "superseded") {
+      const prior = currentOccurrences.get(record.occurrenceKey);
+      if (prior) diagnostics.push(error(
+        "multiple-current-obligation-occurrences",
+        pathById.get(record.id),
+        `Occurrence key "${record.occurrenceKey}" has multiple current reconciliations: ${prior.id}, ${record.id}.`
+      ));
+      else currentOccurrences.set(record.occurrenceKey, record);
+      if (
+        record.status === "open"
+        && (supersedingRulesByPriorId.get(record.ruleId) || []).some((rule) => (
+          rule.obligationId === record.obligationId && rule.cutoverDecision === "supersede-open-window"
+        ))
+      ) {
+        diagnostics.push(error(
+          "open-occurrence-after-rule-cutover",
+          pathById.get(record.id),
+          `Occurrence "${record.id}" remains open even though its rule cutover selected supersede open occurrences.`
+        ));
+      }
+    }
+  }
+}
+
+function validateAuditPopulationSet(resources, byId, pathById, diagnostics) {
+  const current = new Map();
+  for (const record of resources.filter(({ type }) => type === "audit-population")) {
+    if (record.supersedesId) {
+      const prior = byId.get(record.supersedesId);
+      if (
+        prior?.type === "audit-population"
+        && (prior.auditId !== record.auditId || prior.populationKind !== record.populationKind)
+      ) {
+        diagnostics.push(error(
+          "wrong-audit-population-supersession",
+          pathById.get(record.id),
+          "An Audit population correction must keep the same Audit and population kind as its predecessor."
+        ));
+      }
+    }
+    if (record.status === "superseded") continue;
+    const key = `${record.auditId}:${record.populationKind}`;
+    const prior = current.get(key);
+    if (prior) {
+      diagnostics.push(error(
+        "multiple-current-audit-populations",
+        pathById.get(record.id),
+        `Audit "${record.auditId}" has multiple current ${record.populationKind} populations: ${prior.id}, ${record.id}.`
+      ));
+    } else current.set(key, record);
+  }
+}
+
+function validateReportingRouteSet(resources, pathById, diagnostics, timezone) {
+  const routes = resources.filter((record) => (
+    record.type === "reporting-route" && ["active", "retired"].includes(record.status)
+  ));
+  for (const route of routes) {
+    const effectiveAt = new Date(route.effectiveAt).getTime();
+    const approvedAt = route.approvedOn
+      ? new Date(timestampFromLocalDateTime(`${route.approvedOn}T00:00:00`, timezone)).getTime()
+      : null;
+    const endsAt = route.endsAt ? new Date(route.endsAt).getTime() : null;
+    if (approvedAt !== null && effectiveAt < approvedAt) {
+      diagnostics.push(error("invalid-reporting-route-order", pathById.get(route.id), "A Reporting Route cannot become effective before its approval date."));
+    }
+    if (endsAt !== null && endsAt <= effectiveAt) {
+      diagnostics.push(error("invalid-reporting-route-order", pathById.get(route.id), "A Reporting Route must end after it becomes effective."));
+    }
+    if (
+      !localDateTimeValue(new Date(route.effectiveAt), timezone).endsWith("T00:00:00")
+      || (route.endsAt && !localDateTimeValue(new Date(route.endsAt), timezone).endsWith("T00:00:00"))
+    ) {
+      diagnostics.push(error(
+        "ambiguous-reporting-route-cutover",
+        pathById.get(route.id),
+        `Reporting Route cutovers must use midnight in ${timezone} so date-bound assignments resolve one route for the full day.`
+      ));
+    }
+  }
+  for (let index = 0; index < routes.length; index += 1) {
+    for (let next = index + 1; next < routes.length; next += 1) {
+      const left = routes[index];
+      const right = routes[next];
+      if (left.purpose !== right.purpose || left.priority !== right.priority) continue;
+      const leftEnd = left.endsAt ? new Date(left.endsAt).getTime() : Number.POSITIVE_INFINITY;
+      const rightEnd = right.endsAt ? new Date(right.endsAt).getTime() : Number.POSITIVE_INFINITY;
+      if (new Date(left.effectiveAt).getTime() < rightEnd && new Date(right.effectiveAt).getTime() < leftEnd) {
+        diagnostics.push(error(
+          "overlapping-reporting-routes",
+          pathById.get(right.id),
+          `Reporting routes "${left.id}" and "${right.id}" overlap for ${left.purpose}/${left.priority}.`
+        ));
+      }
+    }
+  }
+}
+
 function validateCollectionReview(record, loaded, byId, path, diagnostics) {
   if (record.status !== "active") return;
   const { model } = loaded;
@@ -326,6 +853,9 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
     ? (record.scopeResourceIds || []).map((id) => byId.get(id)).find(({ type } = {}) => type === "program")
     : null;
   const recordCount = scopedCollectionRecords(loaded, record.resourceType, program).length;
+  const currentPopulationIds = scopedCollectionRecords(loaded, record.resourceType, program)
+    .map(({ id }) => id)
+    .sort();
   const currentRevision = collectionRevision(loaded, record.resourceType, {
     program,
     authoritativeSourceId: record.decision === "externally-managed"
@@ -344,6 +874,47 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       currentRevision
     }
   );
+  if (modelSupports(model, "temporal-collection-reviews")) {
+    const temporalValues = [record.coverage, record.knowledgeCutoffAt, record.populationResourceIds];
+    const hasTemporalBinding = temporalValues.every((value) => value !== undefined && value !== null);
+    if (temporalValues.some((value) => value !== undefined && value !== null) && !hasTemporalBinding) {
+      diagnostics.push(error(
+        "incomplete-collection-review-binding",
+        path,
+        "A temporal Collection Review must record coverage, a knowledge cutoff, and the reviewed population together."
+      ));
+    } else if (hasTemporalBinding && (
+      !hasGitRevision(loaded.root, record.scopeRevision)
+      || record.coverage.kind !== "as-of"
+      || record.coverage.on !== record.reviewedOn
+      || !isRfc3339Timestamp(record.knowledgeCutoffAt)
+      || currentCalendarDate(loaded.workspace.timezone, new Date(record.knowledgeCutoffAt)) !== record.reviewedOn
+      || (current && JSON.stringify([...record.populationResourceIds].sort()) !== JSON.stringify(currentPopulationIds))
+    )) {
+      diagnostics.push(error(
+        "invalid-current-collection-review",
+        path,
+        "A temporal Collection Review must bind its review date to a retrievable Git scope revision and the exact reviewed population."
+      ));
+    }
+    if (hasTemporalBinding) {
+      const head = getGitSummary(loaded.root).commit;
+      const committed = head
+        && getFileObjectIdAtRevision(loaded.root, head, path) === getWorkingFileObjectId(loaded.root, path);
+      const cutoff = new Date(record.knowledgeCutoffAt);
+      const now = new Date();
+      if (!committed && (
+        currentCalendarDate(loaded.workspace.timezone, now) !== record.reviewedOn
+        || now.getTime() - cutoff.getTime() > 86_400_000
+      )) {
+        diagnostics.push(error(
+          "stale-uncommitted-collection-review",
+          path,
+          "Commit a temporal Collection Review on its review date and within 24 hours of its knowledge cutoff, or create a new current review."
+        ));
+      }
+    }
+  }
   if (current && !recordCount && record.decision === "complete") {
     diagnostics.push(error(
       "invalid-collection-review-decision",
@@ -368,6 +939,24 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       path,
       `${configuration.title} must name an active authoritative ${modelSupports(model, "component-sources") ? "Component" : "System"} for an externally managed conclusion.`
     ));
+  }
+}
+
+function validateCollectionReviewSet(resources, pathById, diagnostics) {
+  const current = new Map();
+  for (const review of resources.filter((record) => record.type === "collection-review" && record.status !== "retired")) {
+    const programId = (review.scopeResourceIds || []).find((id) => (
+      resources.find((record) => record.id === id)?.type === "program"
+    )) || "workspace";
+    const key = `${programId}:${review.resourceType}`;
+    const prior = current.get(key);
+    if (prior) {
+      diagnostics.push(error(
+        "multiple-current-collection-reviews",
+        pathById.get(review.id),
+        `Program "${programId}" has multiple current ${review.resourceType} Collection Reviews: ${prior.id}, ${review.id}. Retire or supersede the duplicate.`
+      ));
+    } else current.set(key, review);
   }
 }
 
@@ -607,6 +1196,33 @@ function validateCompletedObligationEvent(record, byId, model, path, diagnostics
         `Action item "${actionId}" needs a linked completion of type ${expectedTypes.join(" or ")}.`
       ));
     }
+  }
+}
+
+function validateActionObligationRule(record, byId, path, diagnostics) {
+  if (record.type !== "action-item" || !record.obligationId) return;
+  const event = byId.get(record.sourceResourceId);
+  const obligation = byId.get(record.obligationId);
+  if (event?.type !== "obligation-event" || obligation?.type !== "obligation" || obligation.scheduleMode !== "rule") return;
+  const rule = byId.get(record.obligationRuleId);
+  const eventInstant = event.occurredAt
+    ? new Date(event.occurredAt)
+    : new Date(timestampFromLocalDateTime(`${event.occurredOn}T23:59:59`, rule?.timezone || "UTC"));
+  const governingRule = [...byId.values()]
+    .filter((candidate) => (
+      candidate.type === "obligation-rule"
+      && candidate.obligationId === obligation.id
+      && ["active", "retired"].includes(candidate.status)
+      && candidate.effectiveAt
+      && new Date(candidate.effectiveAt) <= eventInstant
+    ))
+    .sort((left, right) => right.effectiveAt.localeCompare(left.effectiveAt))[0];
+  if (rule?.type !== "obligation-rule" || rule.obligationId !== obligation.id || governingRule?.id !== rule.id) {
+    diagnostics.push(error(
+      "invalid-action-obligation-rule",
+      path,
+      "An event Action Item must bind the exact Obligation Rule that governed its event time."
+    ));
   }
 }
 
@@ -987,6 +1603,38 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
       unboundSubjects.length
         ? `Attestation contentRevisions must bind authored Markdown for every subject; missing ${unboundSubjects.join(", ")}.`
         : "Attestation contentRevisions must contain valid SHA-256 hashes for subject Markdown paths and no unrelated paths."
+    ));
+  }
+}
+
+function validateReportingRouteBinding(record, loaded, path, diagnostics) {
+  if (
+    record.type !== "attestation"
+    || record.status !== "completed"
+    || !loaded.model.resources.attestation?.fields?.reportingRouteId
+  ) return;
+  const date = record.assignedOn || record.completedOn;
+  if (!date) return;
+  const cutoff = timestampFromLocalDateTime(`${date}T23:59:59`, loaded.workspace.timezone);
+  const route = loaded.entries
+    .filter(({ record: candidate }) => (
+      candidate.type === "reporting-route"
+      && ["active", "retired"].includes(candidate.status)
+      && candidate.purpose === "security-reporting"
+      && candidate.priority === "primary"
+      && new Date(candidate.effectiveAt) <= new Date(cutoff)
+      && (!candidate.endsAt || new Date(candidate.endsAt) > new Date(cutoff))
+    ))
+    .sort((left, right) => right.record.effectiveAt.localeCompare(left.record.effectiveAt))[0] || null;
+  const expectedId = route?.record.id;
+  const expectedRevision = route ? reportingRouteRevision(route.record) : undefined;
+  if (record.reportingRouteId !== expectedId || record.reportingRouteRevision !== expectedRevision) {
+    diagnostics.push(error(
+      "invalid-reporting-route-binding",
+      path,
+      route
+        ? `A completed Attestation must bind the primary security reporting route effective on ${date} and its exact revision.`
+        : `A completed Attestation cannot claim a reporting route when none was effective on ${date}.`
     ));
   }
 }

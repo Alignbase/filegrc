@@ -9,7 +9,9 @@ import {
   assessPolicyLibraryUpgrades,
   assessProgramReadiness,
   assessWorkflow,
+  loadWorkspace,
   loadModel,
+  planObligations,
   scaffoldCollectionReview,
   validateWorkspace
 } from "../../filegrc/src/index.js";
@@ -34,7 +36,7 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 184,
+    total: 241,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -54,9 +56,21 @@ test("creates a complete generic repository with one dependency", async (context
       "source-coverage": 14,
       "retention-schedule-item": 14,
       control: 28,
-      obligation: 55
+      obligation: 55,
+      "obligation-rule": 55,
+      "reporting-route": 2
     }
   });
+  const loaded = await loadWorkspace(target);
+  const proposedWork = planObligations(loaded.resources, {
+    model: loaded.model,
+    programId: loaded.resources.find(({ type }) => type === "program").id,
+    asOf: "2026-07-25",
+    through: "2027-07-25"
+  });
+  assert.ok(proposedWork.items.length > 0);
+  assert.ok(proposedWork.triggers.length > 0);
+  assert.equal(proposedWork.items.every(({ status }) => status === "proposed"), true);
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
   assert.deepEqual(packageJson.dependencies, { filegrc: "^1.2.3" });
   assert.equal(packageJson.private, true);
@@ -92,7 +106,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "8");
+  assert.equal(workspace.dataModelVersion, "9");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
   const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
     JSON.parse(await readFile(path, "utf8"))
@@ -153,7 +167,7 @@ test("creates a complete generic repository with one dependency", async (context
   );
   assert.deepEqual(
     new Set(generatedRecords
-      .filter(({ type, recurrence }) => type === "obligation" && recurrence?.mode === "event")
+      .filter(({ type, recurrence }) => type === "obligation-rule" && recurrence?.mode === "event")
       .map(({ recurrence }) => recurrence.eventType)),
     new Set(Object.keys(model.policyEvents))
   );
@@ -292,7 +306,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(recoveryContent, /standing legal retainer is required only when management determines/);
   assert.match(recoveryContent, /the triggering law, contract, Policy, commitment, or management decision/);
   assert.match(recoveryContent, /representative security alert from generation through receipt, acknowledgement, escalation, and fallback/);
-  assert.match(recoveryContent, /\[Complete before activation: Name a usable alternate reporting route/);
+  assert.match(recoveryContent, /\[Complete before activation: Describe how workers can find the alternate Reporting Route/);
   assert.doesNotMatch(recoveryContent, /FileGRC|Obligation records|governed schedule/);
   const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
   assert.equal("approverIds" in retentionSchedule, false);
@@ -431,10 +445,23 @@ test("creates a complete generic repository with one dependency", async (context
       )),
     true
   );
+  const obligationRules = generatedRecords.filter(({ type }) => type === "obligation-rule");
+  const rulesByObligationId = new Map(obligationRules.map((rule) => [rule.obligationId, rule]));
+  assert.equal(obligationRules.every(({ status }) => status === "proposed"), true);
+  assert.equal(obligations.every(({ id, scheduleMode, ruleIds }) => (
+    scheduleMode === "rule" && ruleIds.length === 1 && ruleIds[0] === rulesByObligationId.get(id)?.id
+  )), true);
+  assert.deepEqual(rulesByObligationId.get("obligation-annual-critical-vendor-review").selector, {
+    resourceType: "vendor",
+    statuses: ["active"],
+    criticalities: ["high", "critical"],
+    membershipMode: "as-of",
+    cutoff: "window-end"
+  });
   assert.equal(
-    obligations
-      .filter((obligation) => obligation.recurrence.mode === "event")
-      .every((obligation) => ["date", "timestamp"].includes(obligation.window?.precision) && Number.isInteger(obligation.window?.dueAfter)),
+    obligationRules
+      .filter((rule) => rule.recurrence.mode === "event")
+      .every((rule) => ["date", "timestamp"].includes(rule.window?.precision) && Number.isInteger(rule.window?.dueAfter)),
     true
   );
   const obligationsById = new Map(obligations.map((obligation) => [obligation.id, obligation]));
@@ -445,26 +472,26 @@ test("creates a complete generic repository with one dependency", async (context
     )),
     true
   );
-  assert.deepEqual(obligationsById.get("obligation-monthly-endpoint-protection-verification").recurrence, {
+  assert.deepEqual(rulesByObligationId.get("obligation-monthly-endpoint-protection-verification").recurrence, {
     mode: "calendar",
     unit: "month",
     interval: 1,
     anchorDate: "2026-07-25"
   });
   assert.equal(obligationsById.get("obligation-monthly-endpoint-protection-verification").activityType, "endpoint-verification");
-  assert.equal(obligationsById.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);
-  assert.equal(obligationsById.get("obligation-annual-penetration-test").recurrence.unit, "year");
+  assert.equal(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);
+  assert.equal(rulesByObligationId.get("obligation-annual-penetration-test").recurrence.unit, "year");
   assert.equal(obligationsById.get("obligation-annual-penetration-test").activityType, "risk-assessment");
   assert.match(obligationsById.get("obligation-annual-penetration-test").title, /applicability and cadence review/);
   assert.equal(obligationsById.get("obligation-annual-control-design-review").activityType, "control-design-review");
   assert.equal(obligationsById.get("obligation-annual-workforce-competence-review").activityType, "performance-review");
-  assert.equal(obligationsById.get("obligation-quarterly-log-review").recurrence.interval, 3);
-  assert.equal(obligationsById.get("obligation-annual-backup-restoration-test").recurrence.unit, "year");
-  assert.equal(obligationsById.get("obligation-annual-continuity-exercise").recurrence.unit, "year");
-  const eventObligationCounts = obligations
-    .filter((obligation) => obligation.recurrence.mode === "event")
-    .reduce((counts, obligation) => {
-      counts[obligation.recurrence.eventType] = (counts[obligation.recurrence.eventType] || 0) + 1;
+  assert.equal(rulesByObligationId.get("obligation-quarterly-log-review").recurrence.interval, 3);
+  assert.equal(rulesByObligationId.get("obligation-annual-backup-restoration-test").recurrence.unit, "year");
+  assert.equal(rulesByObligationId.get("obligation-annual-continuity-exercise").recurrence.unit, "year");
+  const eventObligationCounts = obligationRules
+    .filter((rule) => rule.recurrence.mode === "event")
+    .reduce((counts, rule) => {
+      counts[rule.recurrence.eventType] = (counts[rule.recurrence.eventType] || 0) + 1;
       return counts;
     }, {});
   assert.equal(eventObligationCounts["person-started"], 5);
@@ -475,11 +502,11 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(obligationsById.has("obligation-worker-start-role-training"), false);
   assert.equal(obligationsById.get("obligation-worker-start-screening").activityType, "workforce-review");
   assert.equal(obligationsById.get("obligation-worker-role-change-training").activityType, "role-training");
-  assert.equal(obligationsById.get("obligation-worker-role-change-training").window.dueAfter, 30);
-  assert.equal(obligationsById.get("obligation-personal-device-approval").window.dueAfter, 0);
-  assert.equal(obligationsById.get("obligation-personal-device-registration").window.dueAfter, 0);
-  assert.equal(obligationsById.get("obligation-vendor-material-change-review").window.dueAfter, 30);
-  assert.equal(obligationsById.get("obligation-vendor-material-change-records").window.dueAfter, 30);
+  assert.equal(rulesByObligationId.get("obligation-worker-role-change-training").window.dueAfter, 30);
+  assert.equal(rulesByObligationId.get("obligation-personal-device-approval").window.dueAfter, 0);
+  assert.equal(rulesByObligationId.get("obligation-personal-device-registration").window.dueAfter, 0);
+  assert.equal(rulesByObligationId.get("obligation-vendor-material-change-review").window.dueAfter, 30);
+  assert.equal(rulesByObligationId.get("obligation-vendor-material-change-records").window.dueAfter, 30);
   assert.deepEqual(obligationsById.get("obligation-system-change-retention").scopeResourceIds, ["document-data-retention-schedule"]);
   assert.equal(obligationsById.get("obligation-system-change-alert-path").activityType, "alert-path-test");
   assert.equal(obligationsById.get("obligation-system-change-alert-path").completionResourceTypes, undefined);
@@ -528,7 +555,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 184, errors: 0, warnings: 3 });
+  assert.deepEqual(validation.counts, { resources: 241, errors: 0, warnings: 3 });
   assert.equal(
     validation.diagnostics.filter(({ code }) => code === "past-proposed-effective-date").length,
     3
@@ -726,7 +753,7 @@ test("creates a thirteen-record foundation without selecting a framework", async
     { id: "soc2-security", status: "skipped", records: 0 }
   ]);
   assert.deepEqual(result.resourceCounts, {
-    total: 13,
+    total: 15,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -736,7 +763,8 @@ test("creates a thirteen-record foundation without selecting a framework", async
       program: 1,
       classification: 4,
       component: 1,
-      "information-type": 1
+      "information-type": 1,
+      "reporting-route": 2
     }
   });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
@@ -1023,7 +1051,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 184 records, including 42 requirements, 28 controls, and 55 obligations/);
+  assert.match(output, /Program baseline: 241 records, including 42 requirements, 28 controls, and 55 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -1173,12 +1201,12 @@ test("creates and configures a service from one JSON config", async (context) =>
     configPath
   ]);
   assert.match(output, /Stage foundation: created \(13 records\)/);
-  assert.match(output, /Stage soc2-security: created \(171 records\)/);
+  assert.match(output, /Stage soc2-security: created \(228 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 186, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 243, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.systemIds, undefined);
   const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));

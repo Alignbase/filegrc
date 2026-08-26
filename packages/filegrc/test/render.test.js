@@ -595,7 +595,7 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
 });
 
 test("keeps repository and validation status in separate topbar controls", () => {
-  assert.match(APP_SCRIPT, /class="topbar-status">' \+ topbarProgramReadiness\(\)[\s\S]*class="search topbar-search"/);
+  assert.match(APP_SCRIPT, /class="topbar-status">' \+ programSelect \+ topbarProgramReadiness\(\)[\s\S]*class="search topbar-search"/);
   assert.match(APP_SCRIPT, /function topbarProgramReadiness\(\)/);
   assert.match(APP_SCRIPT, /class="topbar-readiness"/);
   assert.match(APP_SCRIPT, /class="topbar-status"/);
@@ -1423,7 +1423,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /state\.git\.upstream/);
   assert.match(APP_SCRIPT, /class="repository-sync-status"/);
   assert.match(APP_SCRIPT, /function conciseResourceDescription\(definition\)/);
-  assert.match(APP_SCRIPT, /conciseResourceDescription\(definition\)[\s\S]*Add the facts known now/);
+  assert.match(APP_SCRIPT, /conciseResourceDescription\(definition\)[\s\S]*Git will record the author, time, reason, and diff/);
   assert.match(APP_SCRIPT, /Pushed " \+ result\.shortCommit/);
   assert.match(APP_SCRIPT, /Retry sync/);
   assert.doesNotMatch(APP_SCRIPT, /class="repository-override"/);

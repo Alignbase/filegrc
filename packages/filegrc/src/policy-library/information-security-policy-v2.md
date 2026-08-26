@@ -50,7 +50,7 @@ Management obtains or generates, checks, and uses relevant information from inte
 
 Everyone in scope must act honestly, protect company and customer information, follow approved security processes, disclose conflicts that could affect security decisions, and preserve accurate records. Fraud, deliberate Control bypass, false Evidence, credential sharing, unauthorized access, concealment of a security event, and retaliation for a good-faith report are prohibited.
 
-Suspected security events, Control failures, fraud, or policy violations must be reported promptly through the primary route at {{security_contact_email}} or the usable alternate route documented in the Security Incident and Recovery Plan. A person may use the alternate route when the primary route is unavailable, compromised, or involved in the concern. Management investigates credible reports, limits disclosure to people who need the information, preserves relevant records, and records corrective action.
+Suspected security events, Control failures, fraud, or policy violations must be reported promptly through the current primary Security Reporting Route or its current usable alternate route. A person may use the alternate route when the primary route is unavailable, compromised, or involved in the concern. Management investigates credible reports, limits disclosure to people who need the information, preserves relevant records, and records corrective action.
 
 ## Risk Management and Compliance Policy
 

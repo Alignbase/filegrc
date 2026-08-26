@@ -188,8 +188,13 @@ Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change togeth
 
 ```sh
 npx filegrc obligations --json
+npx filegrc activate-obligation-rule RULE_ID --scaffold > activation.json
+npx filegrc activate-obligation-rule RULE_ID activation.json
 npx filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD > completion-mutation.json
 npx filegrc complete OBLIGATION_ID completion-mutation.json
+npx filegrc reconcile-obligation OBLIGATION_ID --scaffold --window-start YYYY-MM-DD > occurrence.json
+npx filegrc reconcile-obligation OBLIGATION_ID occurrence.json
+npx filegrc reconcile-obligation OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --correct-finalized > occurrence-correction.json
 npx filegrc trigger EVENT_TYPE --occurred-on YYYY-MM-DD --subject RESOURCE_ID --json
 npx filegrc complete-action ACTION_ITEM_ID --scaffold --completed-on YYYY-MM-DD > completion-mutation.json
 npx filegrc complete-action ACTION_ITEM_ID completion-mutation.json --completed-on YYYY-MM-DD
@@ -204,6 +209,10 @@ Fill the scaffold with the actual work, evidence, review, and every null or empt
 npx filegrc program-readiness --summary --json
 npx filegrc prepare-audit AUDIT_ID
 npx filegrc audit-readiness AUDIT_ID --json
+npx filegrc reconcile-management-documents AUDIT_ID --scaffold > management-reconciliation.json
+npx filegrc reconcile-management-documents AUDIT_ID management-reconciliation.json
+npx filegrc correct-audit-population POPULATION_ID --scaffold > population-correction.json
+npx filegrc correct-audit-population POPULATION_ID population-correction.json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 ```
 

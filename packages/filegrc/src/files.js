@@ -7,9 +7,20 @@ import { serializeWorkspaceMutation, workspaceValidationDeferred } from "./mutat
 import { isCanonicalDataPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { documentIsAuditSpecific } from "./program-lifecycle.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { reportingRouteRevision } from "./reporting-route-integrity.js";
 import { measureTiming } from "./timing.js";
+import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
+
+export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
+  auditManagementReconciliation: Symbol("audit-management-reconciliation"),
+  auditPopulationSupersession: Symbol("audit-population-supersession"),
+  obligationOccurrenceReconciliation: Symbol("obligation-occurrence-reconciliation"),
+  obligationOccurrenceSupersession: Symbol("obligation-occurrence-supersession"),
+  obligationRuleActivation: Symbol("obligation-rule-activation"),
+  collectionReviewReassessment: Symbol("collection-review-reassessment")
+});
 
 export async function createResource(input, record, options = {}) {
   return serializeWorkspaceMutation(input, (root) => createResourceUnlocked(root, record, options));
@@ -27,6 +38,7 @@ async function addEvidenceAttachmentUnlocked(input, evidenceId, sourcePath, opti
   const loaded = await loadWorkspace(input);
   const entry = loaded.entries.find(({ record }) => record.type === "evidence" && record.id === evidenceId);
   if (!entry) throw new Error(`Evidence "${evidenceId}" was not found.`);
+  assertFinalizedOccurrenceProofMutable(loaded, entry.record);
   const source = resolve(String(sourcePath || ""));
   let sourceStat;
   try {
@@ -83,6 +95,7 @@ async function removeEvidenceAttachmentUnlocked(input, evidenceId, attachment, o
   const loaded = await loadWorkspace(input);
   const entry = loaded.entries.find(({ record }) => record.type === "evidence" && record.id === evidenceId);
   if (!entry) throw new Error(`Evidence "${evidenceId}" was not found.`);
+  assertFinalizedOccurrenceProofMutable(loaded, entry.record);
   const requested = String(attachment || "").trim();
   const matches = (entry.record.filePaths || []).filter((path) => (
     path === requested || basename(path) === requested
@@ -304,14 +317,25 @@ async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperatio
   const allowedPathMoves = new Set();
   for (const record of creates) {
     validateBatchRecord(record, ids);
+    assertSpecializedWorkflowCreate(record, { ...changes, lifecycleOperation }, loaded);
     if (existingById.has(record.id)) throw new Error(`Resource "${record.id}" already exists.`);
-    const path = resourcePath(loaded.root, writeModel, record);
-    writes.push({ operation: "create", path, record, previous: null, fileMode: 0o666 });
+    const hasContentUpdate = Object.hasOwn(contentUpdates, record.id);
+    const recordContentWrites = await prepareContentWrites(loaded, record, contentUpdates[record.id], {
+      requireExpectedRevisions: false
+    });
+    if (hasContentUpdate) preparedContentIds.add(record.id);
+    contentWrites.push(...recordContentWrites);
+    const nextRecord = hasContentUpdate
+      ? await prepareApprovalBinding(loaded, record, recordContentWrites, null)
+      : record;
+    const path = resourcePath(loaded.root, writeModel, nextRecord);
+    writes.push({ operation: "create", path, record: nextRecord, previous: null, fileMode: 0o666 });
   }
   for (const record of updates) {
     validateBatchRecord(record, ids);
     const existing = existingById.get(record.id);
     if (!existing) throw new Error(`Resource "${record.id}" was not found.`);
+    assertImmutableWorkflowRecord(existing.record, record, { ...changes, lifecycleOperation }, loaded);
     if (existing.record.type !== record.type && !targetModelVersion) {
       throw new Error(`Resource "${record.id}" cannot change type.`);
     }
@@ -349,6 +373,7 @@ async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperatio
       requireExpectedRevisions: hasContentUpdate
     });
     if (hasContentUpdate) preparedContentIds.add(record.id);
+    if (recordContentWrites.length) assertWorkflowContentMutable(loaded, existing.record);
     contentWrites.push(...recordContentWrites);
     const nextRecord = hasContentUpdate
       ? await prepareApprovalBinding(loaded, record, recordContentWrites, existing.record)
@@ -363,6 +388,7 @@ async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperatio
     if (approvalBound(existing.record, loaded.model)) {
       throw new Error(`Batch content for approved or active resource "${resourceId}" needs a matching resource update and validation of its approval binding.`);
     }
+    assertWorkflowContentMutable(loaded, existing.record);
     contentWrites.push(...await prepareContentWrites(loaded, existing.record, contentUpdates[resourceId], {
       expectedRevisions: expectedContentRevisions[resourceId],
       requireExpectedRevisions: true
@@ -528,6 +554,7 @@ async function createResourcesUnlocked(input, records) {
   const ids = new Set();
   const writes = [];
   for (const record of records) {
+    assertSpecializedWorkflowCreate(record, {}, loaded);
     if (!record || Array.isArray(record) || typeof record !== "object") throw new Error("Every resource must be a JSON object.");
     if (ids.has(record.id)) throw new Error(`Resource "${record.id}" appears more than once in the batch.`);
     ids.add(record.id);
@@ -560,6 +587,7 @@ async function createResourcesUnlocked(input, records) {
 
 async function createResourceUnlocked(input, record, options) {
   const loaded = await loadWorkspace(input);
+  assertSpecializedWorkflowCreate(record, options, loaded);
   const deferValidation = workspaceValidationDeferred();
   const before = deferValidation ? null : await validateWorkspace(loaded);
   const path = resourcePath(loaded.root, loaded.model, record);
@@ -612,6 +640,8 @@ async function updateResourceUnlocked(input, type, id, record, options) {
     requireExpectedRevisions: options.requireExpectedContentRevisions
   });
   const existing = loaded.entries.find(({ record: candidate }) => candidate.id === id)?.record;
+  assertImmutableWorkflowRecord(existing, record, options, loaded);
+  if (contentWrites.length) assertWorkflowContentMutable(loaded, existing);
   const nextRecord = await prepareApprovalBinding(loaded, record, contentWrites, existing);
   assertGovernedContentLifecycleMutation(existing, nextRecord, loaded.model, null);
   try {
@@ -633,6 +663,230 @@ async function updateResourceUnlocked(input, type, id, record, options) {
   return { record: nextRecord, path };
 }
 
+function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = null) {
+  if (!existing) return;
+  const preservesExisting = (allowed = []) => [...new Set([...Object.keys(existing), ...Object.keys(next)])].every((key) => (
+    allowed.includes(key) || JSON.stringify(next[key]) === JSON.stringify(existing[key])
+  ));
+  if (existing.type === "collection-review" && ["active", "retired"].includes(existing.status)) {
+    const retirement = options.workflowCapability === INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
+      && existing.status === "active"
+      && next.status === "retired"
+      && next.statusTransition?.changedOn
+      && next.statusTransition?.changedByIds?.length
+      && next.statusTransition?.reason
+      && preservesExisting(["status", "statusTransition"]);
+    const legacyReplacement = options.workflowCapability === INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
+      && existing.status === "active"
+      && next.status === "active";
+    if (!retirement && !legacyReplacement && options.lifecycleOperation !== "model-migration") {
+      throw new Error(`Finalized Collection Review "${existing.id}" is immutable. Record a superseding review instead.`);
+    }
+  }
+  if (options.lifecycleOperation === "model-migration") return;
+  if (!modelSupports(loaded?.model || 0, "rolled-up-obligations")) return;
+  const capability = options.workflowCapability;
+  if (
+    existing.type === "obligation-occurrence"
+    && existing.status === "open"
+    && ![
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceReconciliation,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+    ].includes(capability)
+  ) {
+    throw new Error(`Obligation occurrence "${existing.id}" is workflow-managed. Scaffold and save its reconciliation instead of editing it directly.`);
+  }
+  const finalizedOccurrence = finalizedOccurrenceUsingProof(loaded, existing.id);
+  if (finalizedOccurrence && !preservesExisting()) {
+    throw new Error(
+      `Completion record "${existing.id}" is immutable because finalized occurrence "${finalizedOccurrence.id}" relies on it. `
+      + "Create a corrected completion and superseding occurrence instead."
+    );
+  }
+  if (existing.type === "obligation-rule" && ["active", "retired"].includes(existing.status)) {
+    const retirement = capability === INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+      && existing.status === "active"
+      && next.status === "retired"
+      && preservesExisting(["status", "retiredOn"]);
+    if (!retirement) throw new Error(`Effective Obligation rule "${existing.id}" is immutable. Create and activate a new rule revision instead.`);
+  }
+  if (
+    existing.type === "obligation-rule"
+    && existing.status !== "active"
+    && next.status === "active"
+    && capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+  ) {
+    throw new Error(`Obligation rule "${existing.id}" activation is workflow-managed. Review and activate the rule instead of editing it directly.`);
+  }
+  if (existing.type === "obligation" && capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation) {
+    const managedFields = ["scheduleMode", "ruleIds", "activeRuleId"];
+    if (managedFields.some((field) => JSON.stringify(next[field]) !== JSON.stringify(existing[field]))) {
+      throw new Error(`Obligation "${existing.id}" rule adoption is workflow-managed. Activate a reviewed rule instead of editing its schedule binding directly.`);
+    }
+  }
+  if (
+    existing.type === "obligation"
+    && existing.scheduleMode === "rule"
+    && capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+    && JSON.stringify(next.completionResourceIds) !== JSON.stringify(existing.completionResourceIds)
+  ) {
+    throw new Error(`Obligation "${existing.id}" historical completion links are immutable after rule activation.`);
+  }
+  if (existing.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(existing.status)) {
+    const supersession = [
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+    ].includes(capability)
+      && existing.status === "reconciled"
+      && next.status === "superseded"
+      && preservesExisting(["status"]);
+    if (!supersession) throw new Error(`Finalized Obligation occurrence "${existing.id}" is immutable. Create a superseding reconciliation instead.`);
+  }
+  if (existing.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(existing.status)) {
+    const supersession = capability === INTERNAL_WORKFLOW_CAPABILITIES.auditPopulationSupersession
+      && ["reconciled", "not-applicable"].includes(existing.status)
+      && next.status === "superseded"
+      && preservesExisting(["status"]);
+    if (!supersession) throw new Error(`Finalized Audit population "${existing.id}" is immutable. Create a superseding correction instead.`);
+  }
+  if (
+    (existing.type === "obligation-event" && ["complete", "canceled"].includes(existing.status))
+    || (existing.type === "action-item" && ["done", "canceled"].includes(existing.status) && existing.obligationId)
+  ) {
+    const existingEvidenceIds = existing.evidenceIds || [];
+    const nextEvidenceIds = next.evidenceIds || [];
+    const evidenceRepair = existing.type === "action-item"
+      && existing.status === "done"
+      && next.status === "done"
+      && existingEvidenceIds.every((id) => nextEvidenceIds.includes(id))
+      && preservesExisting(["evidenceIds"]);
+    if (!evidenceRepair && !preservesExisting()) {
+      throw new Error(`Finalized ${existing.type === "obligation-event" ? "Policy Event" : "generated Action Item"} "${existing.id}" is immutable. Preserve it and record a new corrective event or task.`);
+    }
+  }
+  if (existing.type === "reporting-route" && ["active", "retired"].includes(existing.status)) {
+    const retirement = existing.status === "active"
+      && next.status === "retired"
+      && next.endsAt
+      && preservesExisting(["status", "endsAt"]);
+    if (!retirement) throw new Error(`Effective Reporting Route "${existing.id}" is immutable. Create a new route revision instead.`);
+  }
+  if (existing.type === "attestation" && existing.status === "completed" && !preservesExisting()) {
+    throw new Error(`Completed Attestation "${existing.id}" is immutable. Preserve it and record a correction separately.`);
+  }
+}
+
+function assertFinalizedOccurrenceProofMutable(loaded, record) {
+  const occurrence = finalizedOccurrenceUsingProof(loaded, record.id);
+  if (occurrence) {
+    throw new Error(
+      `Proof record "${record.id}" is immutable because finalized occurrence "${occurrence.id}" relies on it. `
+      + "Create corrected proof and a superseding occurrence instead."
+    );
+  }
+}
+
+function assertWorkflowContentMutable(loaded, record) {
+  assertFinalizedOccurrenceProofMutable(loaded, record);
+  if (
+    (record.type === "obligation-rule" && ["active", "retired"].includes(record.status))
+    || (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
+    || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
+    || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))
+    || (record.type === "action-item" && record.obligationId && ["done", "canceled"].includes(record.status))
+    || (record.type === "collection-review" && ["active", "retired"].includes(record.status))
+    || (record.type === "reporting-route" && ["active", "retired"].includes(record.status))
+    || (record.type === "attestation" && record.status === "completed")
+  ) {
+    throw new Error(`Finalized ${record.type} Markdown is immutable. Preserve it and use the record's correction workflow.`);
+  }
+}
+
+function finalizedOccurrenceUsingProof(loaded, targetId) {
+  if (!loaded?.resources?.length || !targetId) return null;
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const proofTypes = new Set(["evidence", "exception", "attestation"]);
+  const proofFields = [
+    "completionResourceIds",
+    "evidenceIds",
+    "sampleEvidenceIds",
+    "sourceEvidenceId",
+    "sourceResourceIds",
+    "exceptionId",
+    "exceptionIds",
+    "attestationIds"
+  ];
+  for (const occurrence of loaded.resources.filter((record) => (
+    record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status)
+  ))) {
+    const pending = (occurrence.members || []).flatMap((member) => [
+      ...(member.completionResourceIds || []),
+      ...(member.exceptionId ? [member.exceptionId] : [])
+    ]);
+    const visited = new Set();
+    while (pending.length) {
+      const id = pending.pop();
+      if (!id || visited.has(id)) continue;
+      if (id === targetId) return occurrence;
+      visited.add(id);
+      const record = byId.get(id);
+      if (!record) continue;
+      for (const field of proofFields) {
+        const value = record[field];
+        for (const relatedId of Array.isArray(value) ? value : value ? [value] : []) {
+          if (proofTypes.has(byId.get(relatedId)?.type)) pending.push(relatedId);
+        }
+      }
+    }
+  }
+  for (const owner of loaded.resources.filter((record) => (
+    (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
+    || (record.type === "attestation" && record.status === "completed")
+  ))) {
+    const pending = [
+      ...(owner.evidenceIds || []),
+      ...(owner.sourceEvidenceId ? [owner.sourceEvidenceId] : [])
+    ];
+    const visited = new Set();
+    while (pending.length) {
+      const id = pending.pop();
+      if (!id || visited.has(id)) continue;
+      if (id === targetId) return owner;
+      visited.add(id);
+      const record = byId.get(id);
+      if (!record) continue;
+      for (const field of proofFields) {
+        const value = record[field];
+        for (const relatedId of Array.isArray(value) ? value : value ? [value] : []) {
+          if (proofTypes.has(byId.get(relatedId)?.type)) pending.push(relatedId);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
+  if (
+    record?.type === "collection-review"
+    && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
+    && options.lifecycleOperation !== "model-migration"
+  ) {
+    throw new Error(`Collection Review "${record.id || ""}" is workflow-managed. Preview and confirm the collection review instead of creating it directly.`);
+  }
+  if (!modelSupports(loaded?.model || 0, "rolled-up-obligations")) return;
+  if (
+    record?.type === "obligation-occurrence"
+    && ![
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceReconciliation,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession
+    ].includes(options.workflowCapability)
+  ) {
+    throw new Error(`Obligation occurrence "${record.id || ""}" is workflow-managed. Scaffold and save its reconciliation instead of creating it directly.`);
+  }
+}
+
 export async function updateContent(input, dataRelativePath, source, options = {}) {
   return serializeWorkspaceMutation(input, (root) => updateContentUnlocked(root, dataRelativePath, source, options));
 }
@@ -640,14 +894,16 @@ export async function updateContent(input, dataRelativePath, source, options = {
 async function updateContentUnlocked(input, dataRelativePath, source, options) {
   if (typeof source !== "string") throw new Error("Markdown content must be a string.");
   const loaded = await loadWorkspace(input);
-  const allowed = loaded.entries.some(({ record }) => (
+  const owner = loaded.entries.find(({ record }) => (
     markdownEntries(loaded.model, record).some(({ path }) => path === dataRelativePath)
   ));
+  const allowed = Boolean(owner);
   if (!allowed) {
     const error = new Error(`Markdown path "${dataRelativePath}" was not found.`);
     error.code = "ENOENT";
     throw error;
   }
+  assertWorkflowContentMutable(loaded, owner.record);
   const path = resolveDataPath(loaded.root, dataRelativePath);
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The Markdown file");
@@ -680,6 +936,19 @@ async function deleteResourceUnlocked(input, type, id, options) {
   const source = await readFile(path, "utf8");
   assertRevision(source, options.expectedRevision, "The record");
   const record = JSON.parse(source);
+  if (
+    (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
+    || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
+    || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))
+    || (record.type === "action-item" && record.obligationId && ["done", "canceled"].includes(record.status))
+    || (record.type === "collection-review" && ["active", "retired"].includes(record.status))
+    || (record.type === "obligation-rule" && ["active", "retired"].includes(record.status))
+    || (record.type === "reporting-route" && ["active", "retired"].includes(record.status))
+    || (record.type === "attestation" && record.status === "completed")
+  ) {
+    throw new Error(`Finalized ${record.type} "${id}" cannot be deleted. Preserve it and create a superseding correction.`);
+  }
+  assertFinalizedOccurrenceProofMutable(loaded, record);
   if (record.type === "evidence" && (record.filePaths || []).length) {
     throw new Error(`Evidence "${id}" still has local attachments. Detach them explicitly before deleting the record.`);
   }
@@ -927,7 +1196,7 @@ async function prepareAttestationBinding(loaded, record, previousRecord = null) 
   const bound = record.status === "completed" && record.attestationMethod === "git-approval";
   if (!bound) {
     delete nextRecord.contentRevisions;
-    return nextRecord;
+    return bindAttestationReportingRoute(loaded, nextRecord);
   }
   if (
     previousRecord?.status === "completed"
@@ -935,7 +1204,7 @@ async function prepareAttestationBinding(loaded, record, previousRecord = null) 
     && previousRecord.contentRevisions
   ) {
     nextRecord.contentRevisions = structuredClone(previousRecord.contentRevisions);
-    return nextRecord;
+    return bindAttestationReportingRoute(loaded, nextRecord);
   }
   const revisions = {};
   for (const id of record.subjectResourceIds || []) {
@@ -951,7 +1220,35 @@ async function prepareAttestationBinding(loaded, record, previousRecord = null) 
     }
   }
   nextRecord.contentRevisions = revisions;
-  return nextRecord;
+  return bindAttestationReportingRoute(loaded, nextRecord);
+}
+
+function bindAttestationReportingRoute(loaded, record) {
+  if (
+    record?.type !== "attestation"
+    || record.status !== "completed"
+    || !loaded.model.resources.attestation?.fields?.reportingRouteId
+  ) return record;
+  const date = record.assignedOn || record.completedOn || currentCalendarDate(loaded.workspace.timezone);
+  const cutoff = timestampFromLocalDateTime(`${date}T23:59:59`, loaded.workspace.timezone);
+  const route = loaded.resources
+    .filter((candidate) => (
+      candidate.type === "reporting-route"
+      && ["active", "retired"].includes(candidate.status)
+      && candidate.purpose === "security-reporting"
+      && candidate.priority === "primary"
+      && new Date(candidate.effectiveAt) <= new Date(cutoff)
+      && (!candidate.endsAt || new Date(candidate.endsAt) > new Date(cutoff))
+    ))
+    .sort((left, right) => right.effectiveAt.localeCompare(left.effectiveAt))[0] || null;
+  const bound = { ...record };
+  delete bound.reportingRouteId;
+  delete bound.reportingRouteRevision;
+  return route ? {
+    ...bound,
+    reportingRouteId: route.id,
+    reportingRouteRevision: reportingRouteRevision(route)
+  } : bound;
 }
 
 function approvalBound(record, model) {

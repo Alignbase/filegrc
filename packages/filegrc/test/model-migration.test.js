@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import { loadModel } from "../model/index.js";
 import { runCli } from "../src/cli.js";
 import { applicabilityReviewIsCurrent } from "../src/applicability-scope.js";
 import { assessAuditPreparation } from "../src/audit-preparation.js";
+import { applyCollectionReview } from "../src/collection-review.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
 import { migrateModel, planModelMigration } from "../src/model-migration.js";
@@ -717,7 +719,7 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
 });
@@ -777,6 +779,78 @@ test("migrates v7 retention prose and information uses without inventing schedul
   assert.equal(migratedCoverage.retentionScheduleItemIds, undefined);
   const migratedCommitment = preview.fileDiff.update.find(({ id }) => id === commitment.id).after;
   assert.deepEqual(migratedCommitment.sourceResourceIds, [document.id]);
+});
+
+test("removes obsolete reconciliation fingerprints when migrating v8 events to v9", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v9-event-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "8");
+  const loaded = await loadWorkspace(root);
+  const eventEntry = loaded.entries.find(({ record }) => record.type === "obligation-event");
+  await writeJson(eventEntry.path, {
+    ...eventEntry.record,
+    transitionFingerprint: "a".repeat(64)
+  });
+  for (const args of [
+    ["init", "--initial-branch=main"],
+    ["config", "user.name", "Test User"],
+    ["config", "user.email", "test@example.test"],
+    ["add", "."],
+    ["commit", "-m", "Create model v8 workspace"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+
+  const preview = await planModelMigration(root, { targetModelVersion: "9" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  const migratedEvent = preview.fileDiff.update.find(({ id }) => id === eventEntry.record.id).after;
+  assert.equal(migratedEvent.transitionFingerprint, undefined);
+  assert.ok(preview.classifications.automatic.some(({ resourceId, field }) => (
+    resourceId === eventEntry.record.id && field === "transitionFingerprint"
+  )));
+});
+
+test("grandfathers a committed active v8 Collection Review during v9 migration", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v9-collection-review-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "8");
+  for (const args of [
+    ["init", "--initial-branch=main"],
+    ["config", "user.name", "Test User"],
+    ["config", "user.email", "test@example.test"],
+    ["add", "."],
+    ["commit", "-m", "Create model v8 workspace"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+  await applyCollectionReview(root, {
+    resourceType: "person",
+    programId: "program-example",
+    decision: "complete",
+    rationale: "Confirmed the program participants before the model upgrade.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: "2026-06-30",
+    confirmed: true
+  });
+  for (const args of [
+    ["add", "."],
+    ["commit", "-m", "Record model v8 review"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+  await applyCollectionReview(root, {
+    resourceType: "person",
+    programId: "program-example",
+    decision: "complete",
+    rationale: "Reconfirmed the program participants before the model upgrade.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: "2026-07-01",
+    confirmed: true
+  });
+  for (const args of [
+    ["add", "."],
+    ["commit", "-m", "Refresh model v8 review"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+
+  const preview = await planModelMigration(root, { targetModelVersion: "9" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  assert.ok(preview.classifications.reviewRequired.some(({ resourceId, field }) => (
+    resourceId === "collection-review-example" && field === "knowledgeCutoffAt"
+  )));
 });
 
 test("migrates v5 Training into separate approval, activation, and Obligation scheduling", async (context) => {

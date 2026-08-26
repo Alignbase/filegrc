@@ -7,6 +7,7 @@ export {
   SUPPORTED_MODEL_VERSIONS
 } from "../model/index.js";
 export { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
+export { saveAuditPopulation, scaffoldAuditPopulationCorrection } from "./audit-populations.js";
 export { assessAuditDocumentActivations, assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 export { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
 export {
@@ -73,8 +74,12 @@ export {
   completeObligationEvent,
   completeObligationOccurrence,
   createObligationEvent,
+  activateObligationRule,
   planObligations,
-  scaffoldObligationCompletion
+  saveObligationOccurrence,
+  scaffoldObligationCompletion,
+  scaffoldObligationOccurrence,
+  scaffoldObligationRuleActivation
 } from "./obligations.js";
 export {
   planExternalReviewerGovernance,

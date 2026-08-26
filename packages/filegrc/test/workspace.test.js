@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { access, chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import { createAppState, createResource, createResourceAndLink, deleteResource, effectiveResourceStatus, loadWorkspace, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
 import { collectTimings } from "../src/timing.js";
 import { fingerprintWorkspace } from "../src/validate.js";
 import { makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+
+const execute = promisify(execFile);
 
 test("loads, validates, and searches resources", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-workspace-"));
@@ -442,6 +446,11 @@ test("validates a realistic workspace containing every resource type", async (co
   const root = await mkdtemp(join(tmpdir(), "filegrc-comprehensive-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   const { model } = await makeComprehensiveWorkspace(root);
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["config", "user.name", "Test User"], { cwd: root });
+  await execute("git", ["config", "user.email", "test@example.test"], { cwd: root });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["commit", "-m", "Create workspace"], { cwd: root });
   const validation = await validateWorkspace(root);
   assert.equal(validation.counts.resources, Object.keys(model.resources).length + 1);
   assert.deepEqual(validation.diagnostics, []);

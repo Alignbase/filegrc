@@ -1,0 +1,13 @@
+{
+  "id": "reporting-route-security-primary",
+  "type": "reporting-route",
+  "title": "Primary security reporting route",
+  "status": "planned",
+  "purpose": "security-reporting",
+  "priority": "primary",
+  "channelKind": "email",
+  "route": "{{security_contact_email}}",
+  "ownerIds": [
+    "appointment-policy-owner"
+  ]
+}

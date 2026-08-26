@@ -23,9 +23,11 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 ## Product principles
 
 - Git is the system of record. GRC records live as plain, reviewable files under `data/`.
-- Git supplies file history, authors, timestamps, diffs, commit messages, and revision IDs.
+- Git exclusively supplies version-control facts: file history, authors, commit timestamps, diffs, commit messages, revisions, renames, and prior file versions. Do not mirror them in FileGRC records or maintain a parallel change log.
 - Domain events still need explicit dates. Do not replace dates such as `occurredOn`, `approvedOn`, or `completedOn` with Git metadata.
 - Do not store a second change log or duplicate Git-derived fields such as `createdAt`, `updatedAt`, `createdBy`, or `updatedBy`.
+- Store each mutable program fact or decision in one authoritative record and reference it by ID. Policies state durable rules, categories, and required outcomes; they do not copy current people, vendors, systems, reporting addresses, schedules, recovery targets, or other inventories that have their own resource.
+- Roll up an Obligation occurrence when one queue-level owner, window, population rule, and reconciliation conclusion govern the work. Keep member-level operating records, evidence, completion, exception, and non-applicability facts inside that occurrence. Split work into separate Obligations or Action Items only when a member needs its own queue owner, deadline, conclusion, or follow-up lifecycle.
 - The engine must work locally, in CI, and in a basic server environment with only a supported Node.js release and Git.
 - The current repository state must remain useful without a network connection.
 - Data files are authoritative. Rendered pages, indexes, caches, and reports are derived output.
@@ -83,7 +85,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 
 ## Data rules
 
-The active authoritative model registry is the standalone `packages/filegrc/model/v8.json`. Models v1 through v7 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
+The active authoritative model registry is the standalone `packages/filegrc/model/v9.json`. Models v1 through v8 are published and frozen for migrations, compatibility tests, and reference. Breaking changes belong in a new model version with an explicit migration path. Keep the active model, starter data, generated docs, and tests in sync.
 
 - Use UTF-8 JSON for structured records and Markdown for long-form content.
 - Store canonical long-form Markdown beside its structured JSON record. filegrc derives companion names from the JSON location and Markdown slot; do not store those paths in record data.

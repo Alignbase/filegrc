@@ -51,7 +51,7 @@ The command performs one atomic batch. It:
 - Checks each Policy Event subject’s resource type and cardinality.
 - Converts event deadlines to a date- or timestamp-precision `window`.
 - Binds existing Policy and governed Document approvals to the current companion Markdown revisions for review.
-- Binds completed Git approvals in Attestations to the current subject Markdown revisions for review.
+- Binds completed repository-based acknowledgements in Attestations to the current subject Markdown revisions for review. The Attestation record, not Git, supplies the actor, decision, and date.
 - Separates scheduled dates from actual completion dates on reviews, assessments, and Backup Tests.
 - Requires completed operating records to name their completion date or time, actors, result, evidence, review, and coverage where applicable.
 - Normalizes Access Grant request, approval, provisioning, and deprovisioning facts and removes `subjectKind`.
@@ -248,7 +248,7 @@ Access Grants no longer store `subjectKind`; FileGRC reads the type from `subjec
 
 Risk acceptance is one `acceptance` object with rationale, approving People, approval date, and expiry date. Exception approval and resolution use separate `approval` and `resolution` objects. The migration converts complete flat decisions and reports missing decision facts rather than guessing.
 
-Completed Attestations require `completedOn` and `attestationMethod`. Git approvals bind the exact subject Markdown files in `contentRevisions`; signed and external approvals link Evidence. Waivers name the People who waived the assignment and preserve a reason. A pending Attestation remains stored as `pending`; FileGRC reports it as overdue after `dueOn`.
+Completed Attestations require `completedOn` and `attestationMethod`. Repository-based acknowledgements bind the exact subject Markdown files in `contentRevisions`; the Attestation supplies the Person, decision, and date. Signed and external acknowledgements link Evidence. Waivers name the People who waived the assignment and preserve a reason. A pending Attestation remains stored as `pending`; FileGRC reports it as overdue after `dueOn`.
 
 Completed Meetings store `startedAt`, `endedAt`, attendees, and minutes. Closed Incidents require their declared, containment, eradication, recovery, and closure timestamps plus Evidence and Record Markdown. Audit fieldwork requires its CPA Vendor and fieldwork dates, and a complete Audit links the report Evidence and conclusion dates. Submitted and closed Audit Requests and completed Data Requests likewise retain their dated response and Evidence.
 

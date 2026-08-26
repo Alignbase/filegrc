@@ -1457,7 +1457,8 @@ test("active-model collection reviews accept 0.9.1 hashes without rewriting mana
     assert.equal(legacyRevision, expectedLegacyRevisions[resourceType]);
     assert.notEqual(legacyRevision, currentRevision);
 
-    await updateResource(root, "collection-review", review.id, {
+    const reviewEntry = loaded.entries.find(({ record }) => record.id === review.id);
+    await writeJson(reviewEntry.path, {
       ...review,
       collectionRevision: legacyRevision
     });

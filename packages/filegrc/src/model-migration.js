@@ -899,7 +899,8 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
             : sourceVersion === "4" ? "5"
               : sourceVersion === "5" ? "6"
                 : sourceVersion === "6" ? "7"
-                  : ACTIVE_MODEL_VERSION;
+                  : sourceVersion === "7" ? "8"
+                    : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -919,8 +920,11 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "6" && requestedTarget === "7") {
     return planV6ToV7Migration(loaded);
   }
-  if (sourceVersion === "7" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "7" && requestedTarget === "8") {
     return planV7ToV8Migration(loaded);
+  }
+  if (sourceVersion === "8" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV8ToV9Migration(loaded);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
@@ -2186,6 +2190,114 @@ async function planV7ToV8Migration(loaded) {
       expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
       validateWholeWorkspace: true,
       targetModelVersion: "8"
+    }
+  };
+}
+
+async function planV8ToV9Migration(loaded) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("9");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+
+  for (const original of loaded.resources) {
+    const record = structuredClone(original);
+    let changed = false;
+    if (original.type === "workspace") {
+      record.dataModelVersion = "9";
+      changed = true;
+      automatic.push(classifiedChange("automatic", original.id, "dataModelVersion", "Select model v9."));
+    }
+    if (original.type === "obligation" && !original.scheduleMode) {
+      record.scheduleMode = "legacy";
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "scheduleMode",
+        "Keep the existing schedule in legacy mode until management reviews and activates an Obligation rule."
+      ));
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        original.id,
+        "ruleIds",
+        "Review the reusable schedule and population rule before adopting rolled-up occurrence reconciliation."
+      ));
+    }
+    if (original.type === "obligation-event" && Object.hasOwn(original, "transitionFingerprint")) {
+      delete record.transitionFingerprint;
+      changed = true;
+      automatic.push(classifiedChange(
+        "automatic",
+        original.id,
+        "transitionFingerprint",
+        "Remove the obsolete reconciliation fingerprint. Git history preserves the original transition binding."
+      ));
+    }
+    if (original.type === "collection-review" && original.status === "active" && !original.knowledgeCutoffAt) {
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        original.id,
+        "knowledgeCutoffAt",
+        "Record a new Collection Review against a clean Git revision before using it for historical population proof."
+      ));
+    }
+    if (changed) updates.push(record);
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Resolve ${item.field} before applying the model v9 migration.`
+    ));
+  }
+  const ready = unsupported.length === 0;
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "8",
+    targetModelVersion: "9",
+    ready,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: [
+      "Existing Obligation schedules remain in legacy mode until management activates reviewed rule revisions.",
+      "Existing Collection Reviews remain records, but only new Git-bound reviews can prove a historical population."
+    ],
+    migrationReport: {},
+    summary: {
+      create: 0,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "9"
     }
   };
 }

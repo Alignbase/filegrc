@@ -5,6 +5,7 @@ import { extname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
+import { saveAuditPopulation, scaffoldAuditPopulationCorrection } from "./audit-populations.js";
 import { activateDocuments, activateGovernedContent } from "./document-activation.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
 import { applyApplicabilityReviewWithContext, planApplicabilityReview } from "./batch-review.js";
@@ -33,11 +34,15 @@ import {
 } from "./git.js";
 import { normalizeResourceMutation, serializeWorkspaceMutation } from "./mutation.js";
 import {
+  activateObligationRule,
   completeObligationAction,
   completeObligationEvent,
   completeObligationOccurrence,
   createObligationEvent,
-  planObligations
+  planObligations,
+  saveObligationOccurrence,
+  scaffoldObligationOccurrence,
+  scaffoldObligationRuleActivation
 } from "./obligations.js";
 import {
   planExternalReviewerGovernance,
@@ -80,6 +85,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 403, { error: "The request host is not allowed." });
       }
       const url = new URL(request.url, "http://localhost");
+      const requestOptions = { ...options, programId: url.searchParams.get("programId") || undefined };
       if (["POST", "PUT", "DELETE"].includes(request.method) && !sameOrigin(request)) {
         return json(response, 403, { error: "Cross-origin writes are not allowed." });
       }
@@ -87,6 +93,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (timingEnabled()) {
           const { result, timings } = await collectTimings(() => measureTiming("state", () => createAppState(input, {
             allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+            programId: requestOptions.programId,
             includeDetails: false
           })));
           console.error(`[filegrc timing] ${JSON.stringify({ operation: "state", ...timings })}`);
@@ -94,6 +101,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }
         return json(response, 200, await createAppState(input, {
           allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+          programId: requestOptions.programId,
           includeDetails: false
         }));
       }
@@ -107,7 +115,10 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         };
         stateSessions.set(token, session);
         while (stateSessions.size > 8) stateSessions.delete(stateSessions.keys().next().value);
-        const state = await createAppBootstrap(loaded, { generatedAt: session.generatedAt });
+        const state = await createAppBootstrap(loaded, {
+          generatedAt: session.generatedAt,
+          programId: url.searchParams.get("programId") || undefined
+        });
         state.stateToken = token;
         return json(response, 200, state);
       }
@@ -119,7 +130,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const token = url.searchParams.get("token");
         const session = stateSessions.get(token);
         if (!session) return json(response, 409, { error: "The workspace state expired. Reload it and try again." });
-        const state = await loadStateSessionSection(session, section, options);
+        const state = await loadStateSessionSection(session, section, options, url.searchParams.get("programId") || undefined);
         return json(response, 200, { stateToken: token, section, state });
       }
       if (request.method === "GET" && url.pathname === "/api/history") {
@@ -130,6 +141,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       if (request.method === "GET" && url.pathname === "/api/obligations") {
         const loaded = await loadWorkspace(input);
         return json(response, 200, planObligations(loaded.resources, {
+          programId: url.searchParams.get("programId") || undefined,
           asOf: url.searchParams.get("asOf") || undefined,
           from: url.searchParams.get("from") || undefined,
           through: url.searchParams.get("through") || undefined,
@@ -163,10 +175,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/reconciliation") {
         const payload = await readJson(request);
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Reconcile policy event: ${result.event?.title || payload.candidateId}`
         }, () => applyReconciliation(input, {
           ...payload,
+          programId: payload.programId || requestOptions.programId,
           confirmed: payload.confirmed === true
         })));
       }
@@ -175,7 +188,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/external-reviewer-governance") {
         const payload = await readJson(request);
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Assign external independent reviewer: ${result.reviewerId}`
         }, () => setupExternalReviewerGovernance(input, {
           ...payload,
@@ -187,7 +200,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/audit-cycle") {
         const payload = await readJson(request);
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Create next audit cycle: ${result.audit?.title || payload.priorAuditId}`
         }, () => createNextAuditCycle(input, {
           ...payload,
@@ -195,48 +208,58 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         })));
       }
       if (request.method === "POST" && url.pathname === "/api/applicability-review/preview") {
-        return json(response, 200, await planApplicabilityReview(input, await readJson(request)));
+        const payload = await readJson(request);
+        return json(response, 200, await planApplicabilityReview(input, {
+          ...payload,
+          programId: url.searchParams.get("programId") || payload.programId
+        }));
       }
       if (request.method === "POST" && url.pathname === "/api/applicability-review") {
         const payload = await readJson(request);
         const { prefetchToken, ...reviewPayload } = payload;
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Record ${result.reviewedIds?.length || 0} applicability decisions`,
           fastResponse: prefersFastMutation(request),
           prefetchToken
         }, (_root, mutationContext) => applyApplicabilityReviewWithContext(input, {
           ...reviewPayload,
+          programId: url.searchParams.get("programId") || reviewPayload.programId,
           confirmed: payload.confirmed === true
         }, {
           repositorySnapshot: mutationContext?.repositorySnapshot
         })));
       }
       if (request.method === "POST" && url.pathname === "/api/collection-review/preview") {
-        return json(response, 200, await planCollectionReview(input, await readJson(request)));
+        const payload = await readJson(request);
+        return json(response, 200, await planCollectionReview(input, {
+          ...payload,
+          programId: url.searchParams.get("programId") || payload.programId
+        }));
       }
       if (request.method === "POST" && url.pathname === "/api/collection-review") {
         const payload = await readJson(request);
         const { prefetchToken, ...reviewPayload } = payload;
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Confirm ${result.assessment?.configuration?.title || payload.resourceType}`,
           fastResponse: prefersFastMutation(request),
           prefetchToken
         }, (_root, mutationContext) => applyCollectionReview(input, {
           ...reviewPayload,
+          programId: url.searchParams.get("programId") || reviewPayload.programId,
           scopeRevision: mutationContext?.repositorySnapshot?.currentCommit,
           confirmed: payload.confirmed === true
         })));
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-events") {
         const payload = await readJson(request);
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Create policy event: ${result.event?.title || payload.title || payload.eventType}`
-        }, () => createObligationEvent(input, payload)));
+        }, () => createObligationEvent(input, { ...payload, programId: payload.programId || requestOptions.programId })));
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-completions") {
         const payload = await readJson(request);
         if (!safeSegment(payload.obligationId)) return json(response, 400, { error: "A safe obligation ID is required." });
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: () => `Complete ${resourceTypeLabel(payload.record?.type)}: ${payload.record?.title || payload.obligationId}`
         }, () => completeObligationOccurrence(input, {
           obligationId: payload.obligationId,
@@ -246,12 +269,59 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }));
         return json(response, 201, result);
       }
+      if (request.method === "POST" && url.pathname === "/api/obligation-occurrences/scaffold") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.obligationId)) return json(response, 400, { error: "A safe Obligation ID is required." });
+        return json(response, 200, await scaffoldObligationOccurrence(input, { ...payload, programId: payload.programId || requestOptions.programId }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/audit-population-corrections/scaffold") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.populationId)) return json(response, 400, { error: "A safe Audit Population ID is required." });
+        return json(response, 200, await scaffoldAuditPopulationCorrection(input, payload));
+      }
+      if (request.method === "POST" && url.pathname === "/api/audit-population-corrections") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.record?.id)) return json(response, 400, { error: "A safe Audit Population correction ID is required." });
+        return json(response, 201, await browserMutation(input, requestOptions, {
+          message: () => `Correct audit population: ${payload.record.title || payload.record.id}`
+        }, () => saveAuditPopulation(input, {
+          record: payload.record,
+          content: payload.content,
+          expectedRevision: requireRevision(payload.revision, `audit-population/${payload.record.supersedesId}`)
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/obligation-occurrences") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.record?.id)) return json(response, 400, { error: "A safe occurrence ID is required." });
+        return json(response, 201, await browserMutation(input, requestOptions, {
+          message: () => `Save obligation occurrence: ${payload.record.title || payload.record.id}`
+        }, () => saveObligationOccurrence(input, {
+          record: payload.record,
+          programId: payload.programId || requestOptions.programId,
+          content: payload.content,
+          expectedRevision: payload.record?.supersedesId
+            ? requireRevision(payload.revision, `obligation-occurrence/${payload.record.supersedesId}`)
+            : payload.revision
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/obligation-rule-activations/scaffold") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.ruleId)) return json(response, 400, { error: "A safe Obligation Rule ID is required." });
+        return json(response, 200, await scaffoldObligationRuleActivation(input, payload));
+      }
+      if (request.method === "POST" && url.pathname === "/api/obligation-rule-activations") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.ruleId)) return json(response, 400, { error: "A safe Obligation Rule ID is required." });
+        return json(response, 201, await browserMutation(input, requestOptions, {
+          message: () => `Activate obligation rule: ${payload.ruleId}`
+        }, () => activateObligationRule(input, payload)));
+      }
       if (request.method === "POST" && url.pathname === "/api/action-completions") {
         const payload = await readJson(request);
         if (!safeSegment(payload.actionItemId)) {
           return json(response, 400, { error: "A safe Action Item ID is required." });
         }
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: () => `Complete action item: ${payload.actionItemId}`
         }, () => completeObligationAction(input, {
           actionItemId: payload.actionItemId,
@@ -267,10 +337,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (!safeSegment(payload.eventId)) {
           return json(response, 400, { error: "A safe Policy Event ID is required." });
         }
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: () => `Complete policy event: ${payload.eventId}`
         }, () => completeObligationEvent(input, {
           eventId: payload.eventId,
+          programId: payload.programId || requestOptions.programId,
           completedOn: payload.completedOn,
           expectedRevision: requireRevision(payload.revision, `obligation-event/${payload.eventId}`)
         }));
@@ -288,7 +359,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         try {
           const temporaryPath = join(temporaryDirectory, attachment);
           await writeFile(temporaryPath, await readBytes(request));
-          const result = await browserMutation(input, options, {
+          const result = await browserMutation(input, requestOptions, {
             message: () => `Attach evidence file: ${attachment}`
           }, () => addEvidenceAttachment(input, evidenceId, temporaryPath, {
             name: attachment,
@@ -306,7 +377,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           return json(response, 400, { error: "Safe Evidence and attachment identifiers are required." });
         }
         const revision = requireRevision(url.searchParams.get("revision"), `evidence/${evidenceId}`);
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: () => `Remove evidence file: ${attachment}`
         }, () => removeEvidenceAttachment(input, evidenceId, attachment, {
           expectedRevision: revision
@@ -317,7 +388,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 200, await prepareEvidencePacket(input, {
           start: url.searchParams.get("start"),
           end: url.searchParams.get("end"),
-          auditId: url.searchParams.get("auditId") || undefined
+          auditId: url.searchParams.get("auditId") || undefined,
+          programId: url.searchParams.get("programId") || undefined
         }));
       }
       if (request.method === "POST" && url.pathname === "/api/evidence-packet") {
@@ -339,14 +411,14 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/audit-preparation") {
         const payload = await readJson(request);
-        return json(response, 201, await browserMutation(input, options, {
+        return json(response, 201, await browserMutation(input, requestOptions, {
           message: () => `Prepare audit: ${payload.auditId || "engagement"}`
         }, () => prepareAuditWorkspace(input, payload)));
       }
       if (request.method === "POST" && url.pathname === "/api/setup") {
         const payload = await readJson(request);
         const completeSetup = async () => {
-          return browserMutation(input, options, {
+          return browserMutation(input, requestOptions, {
             message: (setupResult) => `${payload.draft === true ? "Save onboarding draft" : "Complete onboarding"} for ${setupResult.workspace.organizationName}`,
             fastResponse: prefersFastMutation(request)
           }, () => setupWorkspace(input, payload));
@@ -355,21 +427,21 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "POST" && url.pathname === "/api/policy-activations") {
         const payload = await readJson(request);
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: (activation) => `Activate ${activation.policyIds.length} ${activation.policyIds.length === 1 ? "Policy" : "Policies"}`
         }, () => activatePolicies(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/document-activations") {
         const payload = await readJson(request);
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: (activation) => `Activate ${activation.documentIds.length} governed ${activation.documentIds.length === 1 ? "Document" : "Documents"}`
         }, () => activateDocuments(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/governed-content-activations") {
         const payload = await readJson(request);
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: (activation) => `Activate ${activation.resourceIds.length} governed-content ${activation.resourceIds.length === 1 ? "record" : "records"}`
         }, () => activateGovernedContent(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
@@ -377,7 +449,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       if (request.method === "POST" && url.pathname === "/api/resources") {
         const payload = normalizeResourceMutation(await readJson(request));
         const { record } = payload;
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: () => `Create ${resourceTypeLabel(record.type)}: ${record.title || record.id}`
         }, () => createResource(input, record, { content: payload.content }));
         return json(response, 201, result);
@@ -385,15 +457,15 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       if (request.method === "POST" && url.pathname === "/api/commit") {
         await requireManualBrowserGit(input, options);
         const payload = await readJson(request);
-        return json(response, 201, await manualGitResultWithState(input, options, () => commitAndPushWorkspace(input, payload.message)));
+        return json(response, 201, await manualGitResultWithState(input, requestOptions, () => commitAndPushWorkspace(input, payload.message)));
       }
       if (request.method === "POST" && url.pathname === "/api/git/pull") {
         await requireManualBrowserGit(input, options);
-        return json(response, 200, await manualGitResultWithState(input, options, () => pullWorkspace(input)));
+        return json(response, 200, await manualGitResultWithState(input, requestOptions, () => pullWorkspace(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/git/push") {
         await requireManualBrowserGit(input, options);
-        return json(response, 200, await manualGitResultWithState(input, options, () => pushWorkspace(input)));
+        return json(response, 200, await manualGitResultWithState(input, requestOptions, () => pushWorkspace(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/git/retry-sync") {
         const result = await retryBrowserSync(input, {
@@ -431,7 +503,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "PUT" && url.pathname === "/api/content") {
         const payload = await readJson(request);
-        const result = await browserMutation(input, options, {
+        const result = await browserMutation(input, requestOptions, {
           message: () => `Update content: ${payload.path}`
         }, () => updateContent(input, payload.path, payload.source, {
           expectedRevision: requireRevision(payload.revision, `content/${payload.path}`)
@@ -455,7 +527,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (request.method === "PUT") {
           const payload = normalizeResourceMutation(await readJson(request), { requireRevision: true });
           const { record } = payload;
-          const result = await browserMutation(input, options, {
+          const result = await browserMutation(input, requestOptions, {
             message: () => `Update ${resourceTypeLabel(type)}: ${record.title || id}`
           }, () => updateResource(input, type, id, record, {
             content: payload.content,
@@ -467,7 +539,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }
         if (request.method === "DELETE") {
           const revision = requireRevision(url.searchParams.get("revision"), `${type}/${id}`);
-          const result = await browserMutation(input, options, {
+          const result = await browserMutation(input, requestOptions, {
             message: () => `Delete ${resourceTypeLabel(type)}: ${id}`
           }, () => deleteResource(input, type, id, { expectedRevision: revision }));
           return json(response, 200, {
@@ -575,16 +647,16 @@ function listen(server, port, host) {
   });
 }
 
-function browserMutation(input, options, mutationOptions, task) {
+function browserMutation(input, requestOptions, mutationOptions, task) {
   const run = () => serializeWorkspaceMutation(input, async (root) => {
     const fastResponse = mutationOptions.fastResponse === true;
     const workflowBefore = fastResponse
       ? null
-      : await measureTiming("workflow-before", () => assessWorkflow(root));
+      : await measureTiming("workflow-before", () => assessWorkflow(root, { programId: requestOptions.programId }));
     const result = await measureTiming("mutation", () => runBrowserMutation(root, {
       ...mutationOptions,
-      allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true,
-      backgroundPushDelayMs: options.backgroundPushDelayMs,
+      allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites === true,
+      backgroundPushDelayMs: requestOptions.backgroundPushDelayMs,
       includeValidationProof: !fastResponse
     }, task));
     if (fastResponse) {
@@ -594,7 +666,8 @@ function browserMutation(input, options, mutationOptions, task) {
       };
     }
     const state = await measureTiming("state", () => createAppState(root, {
-      allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+      allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites,
+      programId: requestOptions.programId,
       includeDetails: false,
       validationProof: result?.[BROWSER_VALIDATION]
     }));
@@ -633,17 +706,18 @@ export function reconcileMutationSynchronization(synchronization, repository) {
   };
 }
 
-function loadStateSessionSection(session, section, serverOptions) {
-  if (session.promises.has(section)) return session.promises.get(section);
+function loadStateSessionSection(session, section, serverOptions, programId) {
+  const cacheKey = `${section}:${programId || "default"}`;
+  if (session.promises.has(cacheKey)) return session.promises.get(cacheKey);
   const dependencies = section === "workflow"
     ? Promise.all([
-        loadStateSessionSection(session, "repository", serverOptions),
-        loadStateSessionSection(session, "program", serverOptions),
-        loadStateSessionSection(session, "obligations", serverOptions),
-        loadStateSessionSection(session, "audits", serverOptions)
+        loadStateSessionSection(session, "repository", serverOptions, programId),
+        loadStateSessionSection(session, "program", serverOptions, programId),
+        loadStateSessionSection(session, "obligations", serverOptions, programId),
+        loadStateSessionSection(session, "audits", serverOptions, programId)
       ])
     : section === "audits"
-      ? Promise.all([loadStateSessionSection(session, "program", serverOptions)])
+      ? Promise.all([loadStateSessionSection(session, "program", serverOptions, programId)])
       : Promise.resolve([]);
   const promise = dependencies.then((results) => {
     const repository = section === "workflow" ? results[0] : null;
@@ -657,13 +731,14 @@ function loadStateSessionSection(session, section, serverOptions) {
       auditPreparations: audits?.auditPreparations,
       obligations: obligations?.obligations,
       git: repository?.git,
-      validation: repository?.validation
+      validation: repository?.validation,
+      programId
     });
   }).catch((error) => {
-    session.promises.delete(section);
+    session.promises.delete(cacheKey);
     throw error;
   });
-  session.promises.set(section, promise);
+  session.promises.set(cacheKey, promise);
   return promise;
 }
 
@@ -682,10 +757,11 @@ async function requireManualBrowserGit(input, options) {
   }
 }
 
-async function manualGitResultWithState(input, options, task) {
+async function manualGitResultWithState(input, requestOptions, task) {
   const result = await task();
   const state = await createAppState(input, {
-    allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
+    allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites,
+    programId: requestOptions.programId,
     includeDetails: false
   });
   return { ...result, state };

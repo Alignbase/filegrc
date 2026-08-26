@@ -15,11 +15,13 @@ const POLICY_DISPLAY_PATH = `data/${POLICY_CONTENT_PATH}`;
 const TRAINING_ID = "training-security-awareness";
 const TRAINING_CONTENT_PATH = "training/training-security-awareness.md";
 const TRAINING_DISPLAY_PATH = `data/${TRAINING_CONTENT_PATH}`;
+const ALTERNATE_REPORTING_ROUTE_ID = "reporting-route-security-alternate";
 const PRIOR_TRAINING_REVISIONS = new Set([
   "53583484d668697e78d82bc22136d78976191303a06f67d0ad2edb55ba5ee0c6",
   "0c6677c22932eb3734240125bc0f40418a13f31d0a31943f4ecd12754afed7fc",
   "9e020af0de1c137607ba4c3186f04be7a00e0d0006e7fc8c7a109e35faf353cf",
-  "bf8ac1a9e22a215ed375b590f3cba767801e2e062069e147290bad2c98fd29aa"
+  "bf8ac1a9e22a215ed375b590f3cba767801e2e062069e147290bad2c98fd29aa",
+  "7e55e8df6991d32085ca836c24e3b0015806d04523eca7ed4ee9e51043f05614"
 ]);
 const CURRENT_TRAINING_REVISION = "7e55e8df6991d32085ca836c24e3b0015806d04523eca7ed4ee9e51043f05614";
 const PRIOR_PASSWORD_MANAGER_TRAINING = "Use an approved password manager to generate and store a unique password for each account.";
@@ -37,6 +39,12 @@ const PRIOR_ENDPOINT_SETTING_TRAINING = "Company-managed devices use the automat
 const CURRENT_ENDPOINT_SETTING_TRAINING = "Company-managed devices must use the approved automatic-lock setting.";
 const PRIOR_CONFIGURATION_RECORD_TRAINING = "The applicable Controls, Components, Systems, and governed schedules record the actual tools, settings, approval paths, and evidence.";
 const CURRENT_CONFIGURATION_DOCUMENTATION_TRAINING = "Approved supporting standards, procedures, and schedules document the tools, settings, approval paths, and evidence.";
+const PRIOR_TRAINING_REPORTING_ROUTE = "Questions and incident reports should be sent to {{security_contact_email}}.";
+const CURRENT_TRAINING_REPORTING_ROUTE = "Questions and incident reports use the current approved security reporting route delivered with this assignment.";
+const PRIOR_TRAINING_REPORTING_ACTION = "2. Report the event immediately to {{security_contact_email}}. If that route is unavailable, contact the current Policy Owner through an approved alternate method.";
+const CURRENT_TRAINING_REPORTING_ACTION = "2. Report the event immediately through the approved security reporting route delivered with this assignment. If that route is unavailable, use the current approved alternate route.";
+const PRIOR_TRAINING_REPORTING_CONFIRMATION = "- Confirm that you know how to reach {{security_contact_email}}.";
+const CURRENT_TRAINING_REPORTING_CONFIRMATION = "- Confirm that you know how to use the security reporting route delivered with this assignment.";
 const DOCUMENT_CONTENT_UPDATES = [
   {
     id: "document-data-retention-schedule",
@@ -59,9 +67,15 @@ const DOCUMENT_CONTENT_UPDATES = [
     id: "document-security-incident-recovery-plan",
     path: "documents/document-security-incident-recovery-plan.md",
     priorRevision: "339ff564fa0ec26503c2498e8d3c44529957113cf782aa03ddb5b4e64c8f0404",
-    additionalPriorRevisions: new Set(["51a19e22f3e0b31196371676297bfa843f96295d2f6c72e81a969ce7bafc36ae"]),
-    currentRevision: "558b6fa71eaabf4ea3cfe77eaa24f827ad66a19a059085b2090e3c4a4d79cb50",
+    additionalPriorRevisions: new Set([
+      "51a19e22f3e0b31196371676297bfa843f96295d2f6c72e81a969ce7bafc36ae",
+      "5107f5c6015089a7c64e87692976aa48f727b8c03988f93f71e8f3e5084a05ac"
+    ]),
+    currentRevision: "970b97c4f594ff54fab554460f3cf44f80ee8079e996f4d5dc1427290f8aa714",
     replacements: [
+      ["The primary reporting route is {{security_contact_email}}.", "Use the current approved primary security Reporting Route. The Reporting Route record is the source of truth for its channel, destination, owner, priority, and effective period."],
+      ["Use the current approved primary security Reporting Route. The Reporting Route record is the source of truth for its channel, destination, owner, priority, and effective period.", "Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period."],
+      ["[Complete before activation: Name a usable alternate reporting route, its owner, protected location, and how workers can find it when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not put plaintext credentials, private keys, tokens, or recovery codes in this plan.]", "[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]"],
       ["Controls, Components, Systems, Obligations, and Evidence hold the actual technical configuration and proof of operation.", "Supporting procedures, system records, and retained evidence document the actual technical configuration and operation."],
       ["If an incident raises a legal, privacy, or insurance question, the incident lead gets suitable advice at that time. FileGRC does not require pre-arranged counsel, in-house counsel, or a standing legal retainer.", "If an incident raises a legal, privacy, or insurance question, the incident lead obtains suitable advice at that time. A pre-arranged counsel relationship or standing legal retainer is required only when management determines that the organization's obligations and risk warrant one."],
       ["[Complete before activation: Link every important System and record its approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments in the System record.]", "[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]"],
@@ -565,7 +579,10 @@ async function buildPolicyLibraryPlan(loaded) {
         .replace(PRIOR_REPOSITORY_SECRET_TRAINING, CURRENT_REPOSITORY_SECRET_TRAINING)
         .replace(PRIOR_SOURCE_SECRET_TRAINING, CURRENT_SOURCE_SECRET_TRAINING)
         .replace(PRIOR_ENDPOINT_SETTING_TRAINING, CURRENT_ENDPOINT_SETTING_TRAINING)
-        .replace(PRIOR_CONFIGURATION_RECORD_TRAINING, CURRENT_CONFIGURATION_DOCUMENTATION_TRAINING);
+        .replace(PRIOR_CONFIGURATION_RECORD_TRAINING, CURRENT_CONFIGURATION_DOCUMENTATION_TRAINING)
+        .replace(PRIOR_TRAINING_REPORTING_ROUTE, CURRENT_TRAINING_REPORTING_ROUTE)
+        .replace(PRIOR_TRAINING_REPORTING_ACTION, CURRENT_TRAINING_REPORTING_ACTION)
+        .replace(PRIOR_TRAINING_REPORTING_CONFIRMATION, CURRENT_TRAINING_REPORTING_CONFIRMATION);
       proposalChanges.push({
         resourceType: "training",
         resourceId: TRAINING_ID,
@@ -600,12 +617,16 @@ async function buildPolicyLibraryPlan(loaded) {
       && !documentUpdate.additionalPriorRevisions?.has(sourceRevision)) {
       skipped.push(skippedItem(documentUpdate.id, "customized", "The governed Document differs from the recognized prior starter, so FileGRC will not rewrite it."));
     } else {
+      const securityContact = source.match(/The primary reporting route is ([^\r\n]+)\./)?.[1] || null;
       const nextSource = documentUpdate.currentSourcePath
         ? materializeDocument(
             await readFile(new URL(documentUpdate.currentSourcePath, import.meta.url), "utf8"),
             loaded.workspace?.organizationName
           )
-        : documentUpdate.replacements.reduce((current, [prior, next]) => current.replace(prior, next), source);
+        : documentUpdate.replacements.reduce((current, [prior, next]) => current.replace(
+            securityContact ? prior.replaceAll("{{security_contact_email}}", securityContact) : prior,
+            securityContact ? next.replaceAll("{{security_contact_email}}", securityContact) : next
+          ), source);
       if (normalizedDocumentRevision(nextSource, loaded.workspace?.organizationName) !== documentUpdate.currentRevision) {
         throw new Error(`The ${documentUpdate.id} starter update does not produce the current governed Document.`);
       }
@@ -725,17 +746,23 @@ async function buildPolicyLibraryPlan(loaded) {
       skipped.push(skippedItem(addition.id, "missing-basis", "The recognized proposed starter Obligation needed to derive this schedule is not available."));
       continue;
     }
+    const sourceRuleId = source.activeRuleId || source.ruleIds?.[0];
+    const sourceRule = sourceRuleId ? byId.get(sourceRuleId)?.record : null;
+    const sourceSchedule = source.scheduleMode === "rule" && sourceRule?.type === "obligation-rule"
+      ? sourceRule
+      : source;
     const record = {
       id: addition.id,
       type: "obligation",
       title: addition.title,
       status: "proposed",
       activityType: addition.activityType,
-      recurrence: structuredClone(source.recurrence),
+      ...(modelSupports(loaded.model, "rolled-up-obligations") ? { scheduleMode: "legacy" } : {}),
+      recurrence: structuredClone(sourceSchedule.recurrence),
       ownerIds: [...(source.ownerIds || [])],
-      startsOn: source.startsOn,
+      startsOn: source.startsOn || sourceSchedule.effectiveAt?.slice(0, 10),
       ...(source.triggerPrompt ? { triggerPrompt: source.triggerPrompt } : {}),
-      ...(addition.window || source.window ? { window: structuredClone(addition.window || source.window) } : {}),
+      ...(addition.window || sourceSchedule.window ? { window: structuredClone(addition.window || sourceSchedule.window) } : {}),
       controlIds: [...addition.controlIds],
       policyIds: [...(source.policyIds || [])]
     };
@@ -748,6 +775,36 @@ async function buildPolicyLibraryPlan(loaded) {
       summary: `Add ${addition.title.toLowerCase()} as a reviewable proposed schedule.`,
       diff: fullReplacementDiff(displayPath, "", `${JSON.stringify(record, null, 2)}\n`)
     });
+  }
+
+  if (modelSupports(loaded.model, "reporting-routes") && !byId.has(ALTERNATE_REPORTING_ROUTE_ID)) {
+    const primaryRoute = loaded.resources.find((record) => (
+      record.type === "reporting-route"
+      && record.purpose === "security-reporting"
+      && record.priority === "primary"
+    ));
+    if (primaryRoute) {
+      const record = {
+        id: ALTERNATE_REPORTING_ROUTE_ID,
+        type: "reporting-route",
+        title: "Alternate security reporting route",
+        status: "planned",
+        purpose: "security-reporting",
+        priority: "alternate",
+        channelKind: "other",
+        route: "TBD: protected alternate channel",
+        ownerIds: [...(primaryRoute.ownerIds || [])]
+      };
+      creates.push(record);
+      const displayPath = `data/reporting-routes/${record.id}.json`;
+      proposalChanges.push({
+        resourceType: "reporting-route",
+        resourceId: record.id,
+        path: displayPath,
+        summary: "Add a planned alternate route as the single source of truth for its destination, owner, and effective period.",
+        diff: fullReplacementDiff(displayPath, "", `${JSON.stringify(record, null, 2)}\n`)
+      });
+    }
   }
 
   const proposals = proposalChanges.length ? [{
@@ -801,6 +858,10 @@ function normalizedPolicyRevision(source, organizationName) {
     /through the primary route at [^\r\n]+ or the usable alternate route documented/,
     "through the primary route at {{security_contact_email}} or the usable alternate route documented"
   );
+  normalized = normalized.replace(
+    "through the current primary Security Reporting Route or its current usable alternate route",
+    "through the primary route at {{security_contact_email}} or the usable alternate route documented in the Security Incident and Recovery Plan"
+  );
   return createHash("sha256").update(normalized).digest("hex");
 }
 
@@ -814,6 +875,10 @@ function normalizedTrainingRevision(source, organizationName) {
   }
   const securityContact = normalized.match(/Questions and incident reports should be sent to ([^\r\n]+)\./)?.[1];
   if (securityContact) normalized = normalized.replaceAll(securityContact, "{{security_contact_email}}");
+  normalized = normalized
+    .replace(CURRENT_TRAINING_REPORTING_ROUTE, PRIOR_TRAINING_REPORTING_ROUTE)
+    .replace(CURRENT_TRAINING_REPORTING_ACTION, PRIOR_TRAINING_REPORTING_ACTION)
+    .replace(CURRENT_TRAINING_REPORTING_CONFIRMATION, PRIOR_TRAINING_REPORTING_CONFIRMATION);
   return createHash("sha256").update(normalized).digest("hex");
 }
 

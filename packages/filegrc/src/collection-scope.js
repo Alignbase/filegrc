@@ -55,6 +55,14 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   ));
 }
 
+export function selectScopedCollectionRecords(loaded, selector, program) {
+  if (!selector?.resourceType) return [];
+  return scopedCollectionRecords(loaded, selector.resourceType, program).filter((record) => (
+    (!selector.statuses?.length || selector.statuses.includes(record.status))
+    && (!selector.criticalities?.length || selector.criticalities.includes(record.criticality))
+  ));
+}
+
 function scopedProgramPeople(loaded, program = {}) {
   const personIds = new Set(loaded.resources.filter(({ type }) => type === "person").map(({ id }) => id));
   const systemIds = new Set(program.systemIds || []);

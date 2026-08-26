@@ -94,6 +94,7 @@ let repositorySyncPollTimer = null;
 let repositorySyncPollInFlight = false;
 let mutationStateRefreshInFlight = false;
 let mutationStateRefreshTimer = null;
+let programSelectionGeneration = 0;
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could Not Load the Workspace</h1><pre></pre></main>';
@@ -197,7 +198,8 @@ function loadStateSection(section) {
   if (stateSectionRequests.has(section)) return stateSectionRequests.get(section);
   state.sections[section] = "loading";
   const token = state.stateToken;
-  const request = fetchJson("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token))
+  const programQuery = state.selectedProgramId ? "&programId=" + encodeURIComponent(state.selectedProgramId) : "";
+  const request = fetchJson("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token) + programQuery)
     .then((result) => {
       if (state.stateToken !== result.stateToken) return;
       Object.assign(state, result.state);
@@ -300,7 +302,10 @@ function readinessStageForType(type) {
 }
 
 function activeProgram() {
-  return resourcesOfType("program").find(({ record }) => !["retired"].includes(record.status))?.record || state.workspace;
+  return resourcesOfType("program").find(({ record }) => record.id === state.selectedProgramId)
+    ?.record
+    || resourcesOfType("program").find(({ record }) => !["retired"].includes(record.status))?.record
+    || state.workspace;
 }
 
 function reviewedRequirementIds() {
@@ -353,7 +358,11 @@ function topbar(route) {
   const validationLoading = state.sections?.repository !== "complete";
   const validationTone = repositoryError ? "warn" : validationLoading ? "neutral" : state.validation.ok ? "good" : "bad";
   const validationLabel = repositoryError ? "Data check failed" : validationLoading ? "Checking data" : state.validation.ok ? "Data valid" : state.validation.counts.errors + " validation errors";
-  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><div class="topbar-status">' + topbarProgramReadiness() + '<label class="search topbar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="validation-chip" href="#/repository"><span class="status-dot ' + validationTone + '"></span>' + validationLabel + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + repositoryTone + '"></span>' + esc(repositoryLabel) + '</a></div>';
+  const programs = resourcesOfType("program").filter(({ record }) => record.status !== "retired");
+  const programSelect = programs.length > 1 && !state.readOnly
+    ? '<label class="program-select"><span class="sr-only">Current Program</span><select data-program-select>' + programs.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === state.selectedProgramId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label>'
+    : "";
+  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><div class="topbar-status">' + programSelect + topbarProgramReadiness() + '<label class="search topbar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="validation-chip" href="#/repository"><span class="status-dot ' + validationTone + '"></span>' + validationLabel + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + repositoryTone + '"></span>' + esc(repositoryLabel) + '</a></div>';
 }
 
 function topbarProgramReadiness() {
@@ -1541,6 +1550,9 @@ function renderObligations(main, params = new URLSearchParams()) {
     const trigger = plan.triggers.find((item) => item.eventType === button.dataset.startEvent);
     if (trigger) openObligationEventDialog(trigger);
   }));
+  main.querySelectorAll("[data-activate-obligation-rule]").forEach((button) => button.addEventListener("click", () => {
+    openObligationRuleActivation(button.dataset.activateObligationRule);
+  }));
   main.querySelectorAll("[data-expand-policy-events]").forEach((button) => button.addEventListener("click", (event) => {
     const button = event.currentTarget;
     const expanded = button.getAttribute("aria-expanded") === "true";
@@ -1565,6 +1577,10 @@ function renderObligations(main, params = new URLSearchParams()) {
   main.querySelectorAll("[data-record-obligation]").forEach((button) => button.addEventListener("click", () => {
     const item = plan.items.find((candidate) => candidate.key === button.dataset.recordObligation);
     if (item) openObligationCompletion(item);
+  }));
+  main.querySelectorAll("[data-reconcile-obligation]").forEach((button) => button.addEventListener("click", () => {
+    const item = plan.items.find((candidate) => candidate.key === button.dataset.reconcileObligation);
+    if (item) openObligationReconciliation(item);
   }));
   main.querySelectorAll("[data-complete-action]").forEach((button) => button.addEventListener("click", () => {
     const item = plan.items.find((candidate) => candidate.key === button.dataset.completeAction);
@@ -1642,7 +1658,11 @@ function policyEventTrigger(trigger, index, collapsed = false, scope = "events")
     : state.readOnly
       ? "Open this workspace in writable mode to trigger the workflow."
       : trigger.steps.length + " " + pluralize("task", trigger.steps.length) + " will be added to the Work Queue.";
-  return '<article class="policy-event-row"' + (collapsed ? " data-collapsed hidden" : "") + '><div class="policy-event-name"><div class="policy-event-title"><strong>' + esc(policyEventName(trigger.eventType)) + '</strong><span class="policy-event-guide"><button class="guide-trigger policy-event-guide-trigger" type="button" aria-label="Show ' + esc(policyEventName(trigger.eventType)) + ' workflow steps" aria-describedby="' + tooltipId + '"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button><div class="policy-event-tooltip" id="' + tooltipId + '" role="tooltip"><strong>' + esc(proposed ? "Proposed workflow" : "Adds " + trigger.steps.length + " " + pluralize("task", trigger.steps.length) + " to the Work Queue") + '</strong><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol></div></span></div><small>' + esc(availability) + '</small></div><button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '"' + (unavailable ? " disabled" : "") + '>Trigger Work</button></article>';
+  const proposedRule = trigger.steps.find(({ ruleStatus }) => ["proposed", "approved"].includes(ruleStatus));
+  const action = proposedRule && !state.readOnly
+    ? '<button class="button primary" type="button" data-activate-obligation-rule="' + esc(proposedRule.ruleId) + '">Review schedule</button>'
+    : '<button class="button primary" type="button" data-start-event="' + esc(trigger.eventType) + '"' + (unavailable ? " disabled" : "") + '>Trigger Work</button>';
+  return '<article class="policy-event-row"' + (collapsed ? " data-collapsed hidden" : "") + '><div class="policy-event-name"><div class="policy-event-title"><strong>' + esc(policyEventName(trigger.eventType)) + '</strong><span class="policy-event-guide"><button class="guide-trigger policy-event-guide-trigger" type="button" aria-label="Show ' + esc(policyEventName(trigger.eventType)) + ' workflow steps" aria-describedby="' + tooltipId + '"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button><div class="policy-event-tooltip" id="' + tooltipId + '" role="tooltip"><strong>' + esc(proposed ? "Proposed workflow" : "Adds " + trigger.steps.length + " " + pluralize("task", trigger.steps.length) + " to the Work Queue") + '</strong><ol>' + trigger.steps.map((step) => '<li><span>' + esc(step.title) + '</span><small>' + esc(eventStepSummary(step)) + '</small></li>').join("") + '</ol></div></span></div><small>' + esc(availability) + '</small></div>' + action + '</article>';
 }
 
 function policyEventName(eventType) {
@@ -1673,20 +1693,32 @@ function defaultClassificationId() {
 }
 
 function obligationCard(item, collapsed = false) {
-  const type = item.actionItemId ? "action-item" : "obligation";
-  const id = item.actionItemId || item.obligationId;
+  const type = item.actionItemId ? "action-item" : item.occurrenceId ? "obligation-occurrence" : "obligation";
+  const id = item.actionItemId || item.occurrenceId || item.obligationId;
   const completion = item.actionItemId ? actionCompletionPlan(item) : obligationCompletionPlan(item);
+  const proposedAction = item.status === "proposed" && item.ruleId && ["proposed", "approved"].includes(item.ruleStatus)
+    ? state.readOnly
+      ? '<a class="obligation-action" href="#/resource/obligation-rule/' + encodeURIComponent(item.ruleId) + '">Review schedule</a>'
+      : '<button class="obligation-action" type="button" data-activate-obligation-rule="' + esc(item.ruleId) + '">Review and activate</button>'
+    : item.status === "proposed" && item.programBlocker?.id
+      ? '<a class="obligation-action blocked" href="#/resource/' + encodeURIComponent(item.programBlocker.type) + '/' + encodeURIComponent(item.programBlocker.id) + '">' + esc(item.programBlocker.label) + '</a>'
+      : "";
   const canAct = completion?.blocked === "Assign current owner"
     || !["upcoming", "proposed"].includes(item.status);
-  const action = !state.readOnly && canAct && completion
+  const action = proposedAction || (!state.readOnly && canAct && completion
     ? completion.blocked
       ? '<a class="obligation-action blocked" href="' + completion.href + '">' + esc(completion.blocked) + '</a>'
       : item.actionItemId
         ? '<button class="obligation-action" type="button" data-complete-action="' + esc(item.key) + '">Complete task</button>'
-        : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
-    : "";
+        : item.ruleId
+          ? '<button class="obligation-action" type="button" data-reconcile-obligation="' + esc(item.key) + '">' + (item.reconciliationStatus === "reconciled" ? "Correct result" : "Review population") + '</button>'
+          : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
+    : "");
   const kind = item.kind === "event" ? "Policy Event Task" : item.kind === "action" ? "Assigned Follow-up" : properCase(item.activityType || "Recurring");
-  return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(type + ":" + id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(kind) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p><div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
+  const population = item.ruleId
+    ? '<p><strong>' + esc(String(item.completedCount || 0)) + ' of ' + esc(String(item.expectedCount || 0)) + '</strong> expected members passed' + (item.membershipFinal ? '' : '; population still open') + '.</p>'
+    : '';
+  return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(type + ":" + id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(kind) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p>' + population + '<div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
 }
 
 function actionCompletionPlan(item) {
@@ -1771,6 +1803,103 @@ function openObligationCompletion(item) {
     description: "Record the work performed during this occurrence. Saving creates the dated record and links it to the obligation. Add supporting evidence on this record or as a linked evidence record." + (item.status === "overdue" ? " The missed occurrence remains overdue when work is performed after its policy cutoff." : ""),
     saveLabel: "Save and link"
   });
+}
+
+async function openObligationReconciliation(item) {
+  try {
+    const response = await localFetch("/api/obligation-occurrences/scaffold", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        obligationId: item.obligationId,
+        windowStart: item.dueWindowStart,
+        asOf: currentDate(),
+        correctFinalized: item.reconciliationStatus === "reconciled"
+      })
+    });
+    const scaffold = await response.json();
+    if (!response.ok) throw new Error(scaffold.error || "Could not scaffold the occurrence reconciliation.");
+    const current = scaffold.operation === "update"
+      ? state.resources.find(({ record }) => record.id === scaffold.record.id)
+      : null;
+    const entry = current ? { ...current, record: scaffold.record } : null;
+    openEditor("obligation-occurrence", entry, {
+      seed: entry ? null : scaffold.record,
+      description: "Review each member and its proof. Counts and the conclusion are calculated from the rows below.",
+      occurrenceReview: true,
+      membershipFinal: scaffold.membershipFinal,
+      occurrenceReconciliation: { revision: scaffold.revision },
+      saveLabel: scaffold.operation === "update" ? "Save reconciliation" : scaffold.operation === "supersede" ? "Create correction" : "Create population review"
+    });
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function openObligationRuleActivation(ruleId) {
+  try {
+    const response = await localFetch("/api/obligation-rule-activations/scaffold", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ruleId })
+    });
+    const scaffold = await response.json();
+    if (!response.ok) throw new Error(scaffold.error || "Could not prepare this schedule for activation.");
+    const dialog = document.createElement("dialog");
+    dialog.className = "editor rule-activation";
+    const recurrence = scaffold.review.recurrence;
+    const selector = scaffold.review.selector;
+    const scheduleReview = recurrence.mode === "event"
+      ? '<div><span>Trigger</span><strong>' + esc(policyEventName(recurrence.eventType)) + '</strong><small>Applies to events after the effective time</small></div>'
+      : '<div><span>Cadence</span><strong>Every ' + esc(String(recurrence.interval)) + ' ' + esc(recurrence.unit) + (recurrence.interval === 1 ? "" : "s") + '</strong><small>Anchored ' + esc(recurrence.anchorDate) + ' · first affected <b data-first-affected>' + esc(scaffold.review.firstAffectedOn || "none") + '</b></small></div>';
+    const reviewSummary = '<section class="activation-review">' + scheduleReview + '<div><span>Population</span><strong>' + esc(selector ? properCase(selector.resourceType) : "Obligation scope") + '</strong><small>' + esc(selector ? selector.cutoff && "cutoff " + properCase(selector.cutoff) : "No selector") + '</small></div><div class="full"><span>Rationale</span><strong>' + esc(scaffold.review.rationale) + '</strong></div></section>';
+    const cutoverOption = (value, label) => '<option value="' + value + '" ' + (scaffold.payload.cutoverDecision === value ? "selected" : "") + '>' + label + '</option>';
+    dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Obligation schedule</p><h2>' + esc(scaffold.rule.title) + '</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Activation binds this reviewed schedule to ' + esc(scaffold.obligation.title) + ' in one write. <a href="#/resource/obligation-rule/' + encodeURIComponent(scaffold.rule.id) + '">Open the full rule</a>.</p>' + reviewSummary + (scaffold.openOccurrences.length ? '<p class="cutover-note">' + scaffold.openOccurrences.length + ' open ' + pluralize("occurrence", scaffold.openOccurrences.length) + ' need a cutover decision.</p>' : "") + '<div class="form-grid"><label class="field-group"><span>Approved on <span class="required-mark">Required</span></span><input name="approvedOn" type="date" required value="' + esc(scaffold.payload.approvedOn) + '"></label><label class="field-group"><span>Effective at <span class="required-mark">Required</span></span><input name="effectiveAt" type="datetime-local" required value="' + esc(scaffold.payload.effectiveLocal) + '"></label>' + (scaffold.priorRule ? '<label class="field-group"><span>Cutover</span><select name="cutoverDecision">' + cutoverOption("new-windows-only", "New windows only") + cutoverOption("keep-open-window", "Keep open occurrences") + cutoverOption("supersede-open-window", "Supersede open occurrences") + '</select></label>' : "") + '<fieldset class="field-group full"><legend>Approved by <span class="required-mark">Required</span></legend><div class="checkbox-list">' + scaffold.reviewerCandidates.map((person) => '<label><input type="checkbox" name="approver" value="' + esc(person.id) + '"><span>' + esc(person.title) + '<small>' + esc(person.id) + '</small></span></label>').join("") + '</div></fieldset><label class="field-group full confirmation"><input type="checkbox" name="confirmRevision" required><span>I reviewed revision <code>' + esc(scaffold.review.revision.slice(0, 12)) + '</code> and approve these terms.</span></label></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">Activate schedule</button></div></form>';
+    document.body.append(dialog);
+    dialog.showModal();
+    dialog.addEventListener("close", () => dialog.remove());
+    dialog.querySelectorAll("[data-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+    const effectiveInput = dialog.querySelector('input[name="effectiveAt"]');
+    effectiveInput.addEventListener("input", () => {
+      const target = dialog.querySelector("[data-first-affected]");
+      if (target) target.textContent = effectiveInput.value ? nextCalendarOccurrence(recurrence, effectiveInput.value.slice(0, 10)) : "none";
+    });
+    dialog.querySelector("form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const error = dialog.querySelector(".dialog-error");
+      const approvedByIds = [...form.querySelectorAll('input[name="approver"]:checked')].map(({ value }) => value);
+      if (!approvedByIds.length) return void (error.textContent = "Select at least one approver.");
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.textContent = "Activating…";
+      error.textContent = "";
+      try {
+        const saved = await localFetch("/api/obligation-rule-activations", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...scaffold.payload,
+            confirmedRevision: scaffold.review.revision,
+            approvedByIds,
+            approvedOn: form.elements.approvedOn.value,
+            effectiveLocal: form.elements.effectiveAt.value,
+            ...(form.elements.cutoverDecision ? { cutoverDecision: form.elements.cutoverDecision.value } : {})
+          })
+        });
+        if (!saved.ok) throw new Error(await responseMessage(saved));
+        applyMutationState(await saved.json());
+        dialog.close();
+        render();
+      } catch (caught) {
+        error.textContent = caught.message;
+        button.disabled = false;
+        button.textContent = "Activate schedule";
+      }
+    });
+  } catch (error) {
+    showError(error.message);
+  }
 }
 
 function obligationCompletionSeed(type, item, obligation) {
@@ -2172,7 +2301,9 @@ function openApplicabilityReviewDialog(type, entries) {
 }
 
 function renderAuditPacket(main, params = new URLSearchParams()) {
-  const audits = resourcesOfType("audit");
+  const audits = resourcesOfType("audit").filter(({ record }) => (
+    !state.selectedProgramId || !record.programId || record.programId === state.selectedProgramId
+  ));
   const evidence = resourcesOfType("evidence");
   const filegrcRecordTypes = new Set((state.model.evidenceSourceFamilies || [])
     .filter((family) => family.filegrcManaged === true)
@@ -2242,7 +2373,8 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
         body: JSON.stringify({
           start: form.elements.start.value,
           end: form.elements.end?.value || form.elements.start.value,
-          auditId: form.elements.auditId.value || undefined
+          auditId: form.elements.auditId.value || undefined,
+          programId: state.selectedProgramId || undefined
         })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
@@ -2573,6 +2705,11 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     && entry.record.status === "complete"
     ? '<button class="button primary" type="button" data-next-audit-cycle>' + (entry.record.auditKind === "soc-2-type-1" ? "Start Type 2 period" : "Start next cycle") + '</button>'
     : "";
+  const auditPopulationCorrectionAction = !state.readOnly
+    && type === "audit-population"
+    && ["reconciled", "not-applicable"].includes(entry.record.status)
+    ? '<button class="button" type="button" data-correct-audit-population>Correct population</button>'
+    : "";
   const detailMain = hasRecordBody
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
@@ -2590,10 +2727,27 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     connectionsPanel: resourceConnections(entry),
     historyPanel
   });
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + auditCycleAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-external-reviewer-governance]")?.addEventListener("click", openExternalReviewerGovernanceDialog);
   main.querySelector("[data-next-audit-cycle]")?.addEventListener("click", () => openNextAuditCycleDialog(entry.record));
+  main.querySelector("[data-correct-audit-population]")?.addEventListener("click", async () => {
+    try {
+      const scaffold = await fetchJson("/api/audit-population-corrections/scaffold", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ populationId: entry.record.id })
+      });
+      openEditor("audit-population", null, {
+        seed: scaffold.record,
+        auditPopulationCorrection: scaffold,
+        saveLabel: "Save correction",
+        description: scaffold.instructions
+      });
+    } catch (error) {
+      showError(error.message);
+    }
+  });
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
     description: "Record only a confirmed gap that needs separate remediation tracking. Keep the report details in this source record’s Markdown."
@@ -3593,7 +3747,7 @@ function openEditor(type, entry = null, options = {}) {
   const markdownDefinitions = dedicatedMarkdownDefinitions(type);
   if (!entry && options.seed) {
     Object.assign(record, options.seed);
-    record.id = createResourceId(type, record.title, state.resources.map(({ record: existing }) => existing.id));
+    record.id ||= createResourceId(type, record.title, state.resources.map(({ record: existing }) => existing.id));
   }
   const required = new Set([
     ...Object.entries(state.model.commonFields).filter(([, field]) => field.required).map(([name]) => name),
@@ -3614,7 +3768,11 @@ function openEditor(type, entry = null, options = {}) {
     ...Object.entries(fields).filter(([, field]) => field.relation || field.relationGroup).map(([name]) => name),
     ...Object.entries(fields).filter(([, field]) => field.requiredWhen).map(([name]) => name),
     ...oneOf
-  ])].filter((name) => !["id", "type"].includes(name) && fields[name]);
+  ])].filter((name) => (
+    !["id", "type"].includes(name)
+    && fields[name]
+    && !(options.occurrenceReview && ["members", "expectedCount", "completedCount", "conclusion"].includes(name))
+  ));
   const dialog = document.createElement("dialog");
   dialog.className = "editor";
   dialog.setAttribute("aria-labelledby", "resource-editor-title");
@@ -3626,8 +3784,8 @@ function openEditor(type, entry = null, options = {}) {
   const editorDescription = options.description
     || implementationEditorDescription(type)
     || conciseResourceDescription(definition)
-    || "Add the facts known now.";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
+    || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -3680,6 +3838,7 @@ function openEditor(type, entry = null, options = {}) {
       const updated = advanced
         ? JSON.parse(dialog.querySelector(".advanced-editor textarea").value)
         : readGuidedRecord(dialog, record, fields);
+      if (!advanced && options.occurrenceReview) applyOccurrenceMemberReview(dialog, updated, record);
       if (type === "policy" && updated.status === "active" && entry?.record.status !== "active") {
         throw new Error("Approve the Policy here, then activate it from the Step 3 Controls-page cutover.");
       }
@@ -3700,7 +3859,11 @@ function openEditor(type, entry = null, options = {}) {
           content[path] = recordContentSource.value;
         }
       }
-      const url = entry
+      const url = options.occurrenceReconciliation
+        ? "/api/obligation-occurrences"
+        : options.auditPopulationCorrection
+          ? "/api/audit-population-corrections"
+        : entry
         ? "/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id)
         : options.actionCompletion
           ? "/api/action-completions"
@@ -3711,12 +3874,12 @@ function openEditor(type, entry = null, options = {}) {
       ].filter(([path, revision]) => path && revision));
       setMutationBusy(dialog, true, "Saving…", options.saveLabel || "Save file");
       const response = await localFetch(url, {
-        method: entry ? "PUT" : "POST",
+        method: options.occurrenceReconciliation ? "POST" : entry ? "PUT" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           record: updated,
           content,
-          revision: entry?.revision || options.actionCompletion?.revision || options.obligationCompletion?.revision,
+          revision: entry?.revision || options.actionCompletion?.revision || options.obligationCompletion?.revision || options.occurrenceReconciliation?.revision || options.auditPopulationCorrection?.revision,
           contentRevisions,
           obligationId: options.obligationCompletion?.obligationId,
           actionItemId: options.actionCompletion?.actionItemId,
@@ -3733,6 +3896,71 @@ function openEditor(type, entry = null, options = {}) {
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });
+}
+
+function occurrenceMemberReview(record, membershipFinal = true) {
+  const members = record.members || [];
+  const pending = membershipFinal
+    ? ""
+    : '<p class="occurrence-pending">Population remains open through ' + esc(record.membershipCutoffAt) + '. Review now, then reconcile after the cutoff.</p>';
+  if (!members.length) {
+    return '<section class="occurrence-review"><div class="occurrence-review-head"><strong>Population</strong><span>0 members</span></div>' + pending + '<p class="occurrence-empty">Confirm the zero population, then set the record to reconciled.</p></section>';
+  }
+  const rows = members.map((member) => {
+    const source = state.resources.find(({ record: candidate }) => candidate.id === member.resourceId)?.record;
+    const title = source?.title || member.resourceId;
+    const result = member.disposition === "not-applicable"
+      ? "not-applicable"
+      : member.disposition === "exception" ? "exception" : member.result || "pending";
+    return '<div class="occurrence-member" data-occurrence-member="' + esc(member.resourceId) + '"><div class="occurrence-member-name"><strong>' + esc(title) + '</strong><small>' + esc(member.resourceId) + '</small></div>'
+      + '<label><span>Result</span><select data-member-result><option value="pending" ' + (result === "pending" ? "selected" : "") + '>Pending</option><option value="passed" ' + (result === "passed" ? "selected" : "") + '>Passed</option><option value="failed" ' + (result === "failed" ? "selected" : "") + '>Failed</option><option value="exception" ' + (result === "exception" ? "selected" : "") + '>Approved exception</option><option value="not-applicable" ' + (result === "not-applicable" ? "selected" : "") + '>Not applicable</option></select></label>'
+      + '<label class="occurrence-proof"><span>Completion IDs</span><input data-member-completions value="' + esc((member.completionResourceIds || []).join(", ")) + '" placeholder="attestation-id"></label>'
+      + '<label class="occurrence-proof"><span>Exception ID</span><input data-member-exception value="' + esc(member.exceptionId || "") + '" placeholder="exception-id"></label>'
+      + '<label class="occurrence-rationale"><span>Rationale</span><input data-member-rationale value="' + esc(member.rationale || "") + '" placeholder="Required when not applicable"></label></div>';
+  }).join("");
+  return '<section class="occurrence-review"><div class="occurrence-review-head"><strong>Population</strong><span>' + members.length + ' members</span></div>' + pending + '<div class="occurrence-members">' + rows + '</div></section>';
+}
+
+function applyOccurrenceMemberReview(dialog, updated, original) {
+  updated.members = [...dialog.querySelectorAll("[data-occurrence-member]")].map((row) => {
+    const resourceId = row.dataset.occurrenceMember;
+    const originalMember = (original.members || []).find((member) => member.resourceId === resourceId) || { resourceId };
+    const selectedResult = row.querySelector("[data-member-result]").value;
+    const completionResourceIds = row.querySelector("[data-member-completions]").value.split(",").map((value) => value.trim()).filter(Boolean);
+    const exceptionId = row.querySelector("[data-member-exception]").value.trim();
+    const rationale = row.querySelector("[data-member-rationale]").value.trim();
+    if (selectedResult === "not-applicable" && !rationale) {
+      throw new Error("A rationale is required when " + resourceId + " is not applicable.");
+    }
+    if (selectedResult === "exception" && !exceptionId) {
+      throw new Error("An approved Exception ID is required for " + resourceId + ".");
+    }
+    const disposition = ["not-applicable", "exception"].includes(selectedResult) ? selectedResult : "expected";
+    return {
+      ...originalMember,
+      disposition,
+      result: ["not-applicable", "exception"].includes(selectedResult) ? "pending" : selectedResult,
+      ...(completionResourceIds.length ? { completionResourceIds } : { completionResourceIds: [] }),
+      ...(exceptionId && disposition === "exception" ? { exceptionId } : { exceptionId: undefined }),
+      ...(rationale ? { rationale } : {})
+    };
+  });
+  const expected = updated.members.filter(({ disposition }) => disposition === "expected");
+  updated.expectedCount = expected.length;
+  updated.completedCount = expected.filter(({ result }) => result === "passed").length;
+  if (updated.status === "open") {
+    delete updated.conclusion;
+    delete updated.reconciledAt;
+    delete updated.reviewedByIds;
+    return;
+  }
+  updated.conclusion = updated.members.length === 0
+    ? "zero-population"
+    : updated.completedCount !== updated.expectedCount
+      ? "incomplete"
+      : updated.members.some(({ disposition }) => disposition !== "expected")
+        ? "complete-with-exceptions"
+        : "complete";
 }
 
 function implementationEditorDescription(type) {
@@ -4430,6 +4658,17 @@ function openContentEditor(entry, name) {
 }
 
 function bindCommon() {
+  root.querySelector("[data-program-select]")?.addEventListener("change", async (event) => {
+    const programId = event.currentTarget.value;
+    const selectionGeneration = ++programSelectionGeneration;
+    const response = await fetch("/api/state/bootstrap?programId=" + encodeURIComponent(programId));
+    if (!response.ok) throw new Error(await responseMessage(response));
+    if (selectionGeneration !== programSelectionGeneration) return;
+    state = normalizeAppState(await response.json());
+    stateSectionRequests.clear();
+    render();
+    loadStateForRoute();
+  });
   root.querySelectorAll(".nav-toggle, .nav-subgroup-toggle").forEach((button) => button.addEventListener("click", () => {
     const group = button.closest(".nav-group");
     const open = group.classList.toggle("open");
@@ -4930,7 +5169,8 @@ async function refreshMutationState() {
   mutationStateRefreshInFlight = true;
   let retry = false;
   try {
-    const response = await fetch("/api/state/bootstrap");
+    const programQuery = state.selectedProgramId ? "?programId=" + encodeURIComponent(state.selectedProgramId) : "";
+    const response = await fetch("/api/state/bootstrap" + programQuery);
     if (!response.ok) throw new Error(await responseMessage(response));
     state = normalizeAppState(await response.json());
     stateSectionRequests.clear();
@@ -5066,19 +5306,24 @@ async function responseMessage(response) {
   try { return JSON.parse(source).error || source; } catch { return source; }
 }
 async function localFetch(url, options) {
+  const requestUrl = new URL(url, location.origin);
+  if (state?.selectedProgramId && !requestUrl.searchParams.has("programId")) {
+    requestUrl.searchParams.set("programId", state.selectedProgramId);
+  }
+  const scopedUrl = requestUrl.pathname + requestUrl.search + requestUrl.hash;
   const method = String(options?.method || "GET").toUpperCase();
   const synchronizing = state?.repository?.mode === "trunk"
     && ["POST", "PUT", "DELETE"].includes(method)
-    && !["/api/evidence-packet", "/api/git/prefetch"].includes(url);
+    && !["/api/evidence-packet", "/api/git/prefetch"].includes(requestUrl.pathname);
   const chip = synchronizing ? document.querySelector(".repo-chip") : null;
   const previousChip = chip?.innerHTML;
   let repositoryRefreshed = false;
   if (chip) chip.innerHTML = '<span class="status-dot neutral"></span>Syncing';
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(scopedUrl, options);
     if (synchronizing && !response.ok) {
       try {
-        const stateResponse = await fetch("/api/state");
+        const stateResponse = await fetch("/api/state?programId=" + encodeURIComponent(state.selectedProgramId || ""));
         if (stateResponse.ok) {
           state = await stateResponse.json();
           if (chip?.isConnected) {
@@ -5104,7 +5349,7 @@ function esc(value) { return String(value ?? "").replace(/[&<>"']/g, (character)
 export const APP_STYLES = String.raw`
 :root{--ink:#151827;--muted:#5d6475;--line:#dfe3ef;--paper:#f6f7fb;--panel:#fff;--accent:#0000a5;--accent-soft:#eef1ff;--accent-light:#8aa1ff;--focus:#0000e0;--amber:#8a5200;--red:#a13a31;--sidebar:linear-gradient(135deg,#000070 0%,#000035 60%);--primary-gradient:linear-gradient(135deg,#000070 0%,#000035 60%);--surface-soft:#f2f4fa;--surface-muted:#eceff7;--field:#fff;--field-readonly:#eef0f6;--code-bg:#10162b;--code-ink:#e8ebff;--shadow:0 8px 28px rgba(0,0,53,.08);color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none}
 *{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#eef1ff;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:block;width:39px;height:39px;border-radius:10px}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:18px}.brand small{font-size:13.2px;color:#c5cae2;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:15.6px;color:#d5d9ed}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#202066;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#b4bbdc;text-transform:uppercase;letter-spacing:.11em;font-size:12px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none}.chevron:before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transform-origin:center;transition:transform .15s}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:12px;color:#b8bed7}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#000024;border-top:1px solid #34345f;color:#cbd0e5;font-size:13.2px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#9aabff}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:20.4px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:10.8px;margin:0}.search{height:39px;max-width:240px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4fa;border:1px solid #dfe3ef;border-radius:8px;padding:0 10px;color:#5d6475}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:15.6px}.search kbd{background:#fff;border:1px solid #dfe3ef;border-radius:4px;padding:1px 5px;font-size:12px}.mobile-sidebar-search{display:none}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#f8f9ff;background:linear-gradient(120deg,#000070,#000035);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(138,161,255,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#cbd3ff}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:33.6px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#dde1f4;font-size:15.6px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#e6e8f7;border-left:1px solid #6874ab;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:30px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:12px;color:#697184}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:16.8px;margin:4px 0 0}.panel-head>a{font-size:13.2px;color:var(--accent);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:36px;font-weight:500;display:block}.progress-number span{font-size:12px;color:var(--muted)}.progress{height:9px;background:#eceff7;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#0000a5,var(--accent-light));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:10.8px;text-transform:uppercase;letter-spacing:.08em;color:#5d6475}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #e8ebf3;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:12px;color:var(--accent);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:13.2px}.due-list small{font-size:10.8px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:12px}.resource-bars i{height:5px;background:#e8ebf3;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#6676dd;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f2f4fa;border-radius:6px;font-size:12px}.catalog a:hover{background:var(--accent-soft)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:37.2px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:15.6px;margin:0}.button{border:1px solid #d0d5e3;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:14.4px;font-weight:650}.button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:14.4px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:12px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:13.2px}.record-table th{background:#f2f4fa;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:10.8px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #e8ebf3;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:10.8px;color:#5d6475}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#6a7181;margin-top:3px}.record-table td[data-label="Description"]{min-width:260px;max-width:520px;color:var(--muted);line-height:1.45}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#eceff7;padding:3px 7px;font-size:10.8px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:13.2px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:12px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:10.8px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:34.8px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:27.6px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:18px;margin-top:1.7em}.markdown p,.markdown li{font-size:15.6px;line-height:1.65;color:#272c3b}.markdown code{background:#eef0f6;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#10162b;color:#e8ebff;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--accent-light);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:13.2px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #e8ebf3;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;color:#5d6475}.metadata dd{margin:0;font-size:13.2px;min-width:0}.compact-json{white-space:pre-wrap;font-size:10.8px}.git-panel>code{font-size:10.8px;word-break:break-all}.git-panel p{font-size:12px;color:var(--muted)}.relation{color:var(--accent);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #e8ebf3}.history>div:first-child{border-top:0}.history code{font-size:10.8px;color:var(--accent)}.history strong,.history small{display:block}.history strong{font-size:12px}.history small{font-size:10.8px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#697184;text-align:center;font-size:13.2px;background:#f4f5fa;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:13.2px;overflow-wrap:anywhere}.diagnostics code{font-size:10.8px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(0,0,24,.28)}dialog::backdrop{background:rgba(0,0,24,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eceff7;width:32px;height:32px;border-radius:50%;font-size:26.4px;cursor:pointer}.editor form>p{font-size:13.2px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#10162b;color:#e8ebff;padding:15px;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:13.2px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#737a8b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.topbar-readiness{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;flex:0 1 220px;min-width:155px;padding:5px 8px;border:1px solid transparent;border-radius:8px;color:var(--ink);text-decoration:none}.topbar-readiness:hover{border-color:var(--accent-light);background:var(--accent-soft)}.topbar-readiness-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}.topbar-readiness-copy>span{overflow:hidden;color:var(--muted);font-size:9.6px;font-weight:700;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}.topbar-readiness-copy>strong{font-size:10.8px;line-height:1}.topbar-readiness>.progress{width:100%;height:5px}.topbar-status{display:flex;flex:1 1 auto;min-width:0;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto}.topbar-status .topbar-search{flex:0 1 240px;width:240px;min-width:140px;margin-left:0}.repo-chip,.validation-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.repo-chip:hover,.validation-chip:hover{color:var(--ink);border-color:var(--accent-light)}
+.topbar-readiness{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;flex:0 1 220px;min-width:155px;padding:5px 8px;border:1px solid transparent;border-radius:8px;color:var(--ink);text-decoration:none}.topbar-readiness:hover{border-color:var(--accent-light);background:var(--accent-soft)}.topbar-readiness-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}.topbar-readiness-copy>span{overflow:hidden;color:var(--muted);font-size:9.6px;font-weight:700;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}.topbar-readiness-copy>strong{font-size:10.8px;line-height:1}.topbar-readiness>.progress{width:100%;height:5px}.topbar-status{display:flex;flex:1 1 auto;min-width:0;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto}.program-select select{max-width:180px;border:1px solid var(--line);border-radius:8px;padding:9px 28px 9px 10px;background:var(--surface);color:var(--ink);font:inherit}.topbar-status .topbar-search{flex:0 1 240px;width:240px;min-width:140px;margin-left:0}.repo-chip,.validation-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.repo-chip:hover,.validation-chip:hover{color:var(--ink);border-color:var(--accent-light)}
 .metadata>div{grid-template-columns:minmax(140px,1fr) minmax(0,2.5fr)}.metadata dt{min-width:0;overflow-wrap:anywhere}
 .audit-progress-empty{padding:11px 13px;border-radius:8px;background:var(--surface-soft)}.audit-progress-empty strong,.audit-progress-empty span{display:block}.audit-progress-empty strong{font-size:13.2px}.audit-progress-empty span{margin-top:4px;color:var(--muted);font-size:10.8px}
 .icon-button{position:relative;display:grid;place-items:center;padding:0;color:var(--ink);font-size:0}.icon-button:before,.icon-button:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.icon-button:after{transform:rotate(-45deg)}
@@ -5232,14 +5477,17 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:flex-start;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:12px}.obligation-preview small,.event-reminder-preview small{font-size:10.8px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
 .obligation-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 26.4px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue,.obligation-card.status-blocked{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:9.6px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:14.4px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:10.8px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.operation-gate{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px;border:1px solid var(--accent-light);border-radius:12px;background:var(--accent-wash)}.operation-gate h2{margin:5px 0 7px;font:500 25px Georgia,serif}.operation-gate p:not(.kicker){margin:0;max-width:680px;color:var(--muted)}.operation-setup-preview>summary{margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel);font-weight:700;cursor:pointer}.operation-setup-preview[open]>summary{margin-bottom:0}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 28.8px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:13.2px;color:var(--muted);margin:0;max-width:720px}.policy-event-feedback{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;margin-top:14px;padding:12px 14px;border:1px solid #9ccfb2;border-radius:8px;background:#e7f5ec}.policy-event-feedback .status-dot{align-self:start;margin-top:4px}.policy-event-feedback strong,.policy-event-feedback p{display:block}.policy-event-feedback strong{font-size:12px}.policy-event-feedback p{margin:3px 0 0;color:#315d44;font-size:10.8px}.policy-event-feedback .icon-button{width:30px;height:30px}.policy-event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.policy-event-more{margin-top:10px}.policy-event-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.policy-event-row[hidden]{display:none}.policy-event-name{min-width:0}.policy-event-title{display:flex;align-items:center;gap:6px;min-width:0}.policy-event-title>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.policy-event-guide{display:inline-flex;flex:0 0 auto}.policy-event-guide .guide-trigger{width:20px;height:20px}.policy-event-guide .guide-trigger svg{width:14px;height:14px}.policy-event-name strong,.policy-event-name>small{display:block}.policy-event-name strong{font-size:12px}.policy-event-name>small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.policy-event-row>.button{flex:none;padding:7px 9px;font-size:10.8px}.policy-event-tooltip{position:absolute;z-index:8;top:calc(100% + 7px);left:0;width:min(420px,calc(100vw - 48px));padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility 0s .12s;pointer-events:none}.policy-event-row:nth-child(3n) .policy-event-tooltip{right:0;left:auto}.policy-event-row:hover,.policy-event-row:focus-within{z-index:9}.policy-event-guide:hover .policy-event-tooltip,.policy-event-guide:focus-within .policy-event-tooltip{opacity:1;visibility:visible;transform:none;transition-delay:0s}.policy-event-tooltip>strong{font-size:12px}.policy-event-tooltip ol{display:grid;gap:7px;margin:9px 0 0;padding-left:20px}.policy-event-tooltip li span,.policy-event-tooltip li small{display:block}.policy-event-tooltip li span{font-size:10.8px}.policy-event-tooltip li small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.4}
 .obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:10.8px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
+.occurrence-review{margin:14px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.occurrence-review-head{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--surface-soft);font-size:10.8px}.occurrence-review-head span,.occurrence-member small{color:var(--muted)}.occurrence-members{display:grid}.occurrence-member{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(110px,.7fr) minmax(170px,1.2fr) minmax(150px,1fr);gap:8px;align-items:end;padding:10px 12px;border-top:1px solid var(--line)}.occurrence-member:first-child{border-top:0}.occurrence-member-name{align-self:center;min-width:0}.occurrence-member-name strong,.occurrence-member-name small{display:block;overflow:hidden;text-overflow:ellipsis}.occurrence-member label span{display:block;margin-bottom:4px;color:var(--muted);font-size:9.6px}.occurrence-member input,.occurrence-member select{width:100%}.occurrence-empty,.occurrence-pending{margin:0;padding:12px;color:var(--muted);font-size:10.8px}.occurrence-pending{border-bottom:1px solid var(--line);background:#fff7df;color:#765410}
+.activation-review{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}.activation-review>div{padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.activation-review .full{grid-column:1/-1}.activation-review span,.activation-review strong,.activation-review small{display:block}.activation-review span{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.06em}.activation-review strong{margin-top:4px;font-size:12px}.activation-review small{margin-top:3px;color:var(--muted);font-size:9.6px}.confirmation{display:flex!important;align-items:flex-start;gap:8px}.confirmation input{flex:none;width:auto!important;margin-top:2px}.cutover-note{margin:12px 0;padding:9px 11px;border-radius:7px;background:#fff7df;color:#765410;font-size:10.8px}
 .event-dialog label{display:block;margin-top:13px}.event-dialog label[hidden]{display:none}.event-dialog label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select,.event-dialog textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.event-dialog textarea{resize:vertical}.commit-dialog .form-grid label.full{grid-column:1/-1}.workflow-preview{margin-top:14px;padding:0 12px;border-radius:7px;background:var(--surface-soft)}.workflow-preview:not(:empty){padding-top:10px;padding-bottom:10px}.workflow-preview strong,.workflow-preview p{display:block;margin:0}.workflow-preview p{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.5}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:12px}.event-dialog-steps small{font-size:9.6px;color:var(--muted);margin-top:2px}
 .applicability-dialog{width:min(980px,calc(100vw - 30px));max-height:calc(100vh - 32px);border:0;border-radius:12px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 25px 80px rgba(0,0,24,.28)}.applicability-dialog form{padding:23px}.applicability-dialog form>p{color:var(--muted);font-size:13.2px}.applicability-dialog form>.applicability-baseline-note{padding:10px 12px;border-radius:7px;background:var(--accent-soft);color:var(--ink)}.review-context label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.review-context input,.review-context select,.applicability-row input,.applicability-row select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:8px 9px;font-size:13.2px}.review-context label.full{grid-column:1/-1}.applicability-rows{display:grid;gap:7px;max-height:46vh;overflow:auto;margin-top:16px;padding-right:4px}.applicability-row{display:grid;grid-template-columns:minmax(210px,1fr) 180px minmax(240px,1.3fr);gap:9px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:8px}.applicability-row strong,.applicability-row small{display:block}.applicability-row small{margin-top:3px;color:var(--muted);font-size:10.8px}.applicability-row .applicability-constraint{color:var(--accent);line-height:1.35}
 .object-value-list{display:grid;gap:7px}.object-value{min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.object-value-facts{display:flex;flex-wrap:wrap;gap:5px 10px}.object-value-facts>span{display:flex;align-items:baseline;gap:5px;min-width:0;font-size:11px}.object-value-facts b{color:var(--muted);font-size:8.8px;text-transform:uppercase;letter-spacing:.05em}.object-value>small{display:block;margin-top:6px;color:var(--muted);font-size:10px;line-height:1.45}.object-value-list.compact .object-value{padding:0;border:0;background:none}.object-value-list.compact .object-value-facts{display:grid;gap:5px}.object-value-list.compact .object-value-facts>span{display:grid;gap:2px;font-size:10px}
 .resource-review-criteria.compact{margin:12px 0;padding:10px 12px;background:var(--surface-soft)}.resource-review-criteria.compact summary{cursor:pointer;font-size:11px;font-weight:750}.resource-review-criteria.compact ul{margin-bottom:0}.evidence-map-more{justify-self:center;margin:2px 0 8px}
-.packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:10.8px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:13.2px}.packet-note,.packet-output>p{font-size:12px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:58px 1fr;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps p{font-size:12px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:12px}.packet-list small{font-size:9.6px;color:var(--muted);margin-top:2px}
+.packet-builder form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}.packet-builder label>span{display:block;font-size:10.8px;font-weight:720;margin-bottom:6px}.packet-builder input,.packet-builder select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:13.2px}.packet-note,.packet-output>p{font-size:12px;color:var(--muted);margin:12px 0 0}.packet-output{margin:14px 0}.packet-output h3{overflow-wrap:anywhere}.packet-gaps{display:grid}.packet-gaps>div{display:grid;grid-template-columns:max-content 1fr;align-items:start;gap:10px;border-top:1px solid var(--line);padding:10px 0}.packet-gaps>div:first-child{border-top:0}.packet-gaps .badge{display:inline-flex;align-items:center;justify-content:center;line-height:1.2}.packet-gaps p{font-size:12px;margin:0}.packet-list{display:grid}.packet-list a{display:block;text-decoration:none;border-top:1px solid var(--line);padding:9px 0}.packet-list a:first-child{border-top:0}.packet-list strong,.packet-list small{display:block}.packet-list strong{font-size:12px}.packet-list small{font-size:9.6px;color:var(--muted);margin-top:2px}
 .packet-preflight{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:12px}.packet-preflight a{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);text-decoration:none}.packet-preflight .status-dot{margin-top:4px}.packet-preflight small,.packet-preflight strong{display:block}.packet-preflight small{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.07em}.packet-preflight strong{margin-top:3px;font-size:12px}.audit-evidence-paths{margin-bottom:12px}.audit-evidence-paths .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:10.8px}.audit-evidence-path-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.audit-evidence-path-grid>a{display:block;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);text-decoration:none}.audit-evidence-path-grid h4{margin:7px 0 5px;font-size:13.2px}.audit-evidence-path-grid p{margin:0;color:var(--muted);font-size:10.8px;line-height:1.55}
 .audit-preparation{margin-bottom:12px}.audit-preparation .panel-head{align-items:flex-start}.audit-preparation .panel-head h3{margin:3px 0}.audit-preparation .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:10.8px}.preparation-progress{height:5px;margin:12px 0 0;border-radius:99px;background:var(--surface-muted);overflow:hidden}.preparation-progress span{display:block;height:100%;border-radius:inherit;background:var(--primary-gradient)}.audit-preparation-note{margin:9px 0 0;color:var(--muted);font-size:10.8px;line-height:1.5}.preparation-stages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.preparation-stage{border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);overflow:hidden}.preparation-stage summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px 12px;cursor:pointer;list-style:none}.preparation-stage summary::-webkit-details-marker{display:none}.preparation-stage summary span,.preparation-stage summary strong,.preparation-stage summary small{display:block}.preparation-stage summary strong{font-size:12px}.preparation-stage summary small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.preparation-stage summary b{flex:none;color:var(--muted);font-size:9.6px;font-weight:650}.preparation-items{border-top:1px solid var(--line);background:var(--panel)}.preparation-items>a,.preparation-items>div{display:grid;grid-template-columns:22px minmax(0,1fr);gap:9px;padding:10px 12px;border-top:1px solid var(--line);text-decoration:none}.preparation-items>:first-child{border-top:0}.preparation-items strong,.preparation-items small{display:block}.preparation-items strong{font-size:10.8px}.preparation-items small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.45}.preparation-status{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--surface-muted);color:var(--muted);font-size:10.8px;font-weight:800}.preparation-status.complete{background:#dcefe4;color:#125733}.preparation-status.action{background:#f7dfdc;color:#873027}.preparation-status.later{background:#f6e8c9;color:#79500f}.preparation-status.external,.preparation-status.info{background:var(--accent-soft);color:var(--accent)}.audit-preparation-error:empty{display:none}
 @media(max-width:900px){.obligation-board{grid-template-columns:1fr}.policy-event-list{grid-template-columns:repeat(2,minmax(0,1fr))}.policy-event-row:nth-child(3n) .policy-event-tooltip{right:auto;left:0}.policy-event-row:nth-child(2n) .policy-event-tooltip{right:0;left:auto}.packet-builder form,.packet-preflight{grid-template-columns:1fr 1fr}.packet-builder .button{align-self:end}}
+@media(max-width:900px){.occurrence-member{grid-template-columns:1fr 1fr}.occurrence-member-name,.occurrence-proof{grid-column:1/-1}}
 @media(max-width:1000px){.stage-overview-layout{grid-template-columns:1fr}.stage-page-grid,.group-destination-grid,.policy-activation-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.preparation-stages{grid-template-columns:1fr}}
 @media(max-width:900px){.overview-grid{grid-template-columns:1fr}.overview-grid>.audit-panel{grid-column:auto}}

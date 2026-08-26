@@ -5,10 +5,12 @@ import {
   collectionRevisionMatches
 } from "./collection-revision.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
-import { applyResourceBatch } from "./files.js";
+import { applyResourceBatch, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
 import { getGitSummary } from "./git.js";
+import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
 import { resolveProgram } from "./program.js";
+import { currentCalendarDate } from "./time.js";
 
 export { collectionRevision };
 
@@ -41,6 +43,13 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     authoritativeSourceId
   });
   const allowedDecisions = configuration.decisions || ["complete"];
+  const temporalReview = !modelSupports(loaded.model, "temporal-collection-reviews") || Boolean(
+    review?.coverage?.kind === "as-of"
+    && review.coverage.on === review.reviewedOn
+    && review.knowledgeCutoffAt
+    && Array.isArray(review.populationResourceIds)
+    && sameIds(review.populationResourceIds, records.map(({ id }) => id))
+  );
   const allowsEmptyCollection = allowedDecisions.some((decision) => (
     decision === "zero-population" || decision === "externally-managed"
   ));
@@ -58,6 +67,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     review?.status === "active"
     && allowedDecisions.includes(review.decision)
     && revisionMatches
+    && temporalReview
   );
   const stale = Boolean(
     review?.status === "active"
@@ -116,7 +126,17 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   const rationale = String(options.rationale || "").trim();
   const reviewedByIds = [...new Set((options.reviewedByIds || []).map(String).filter(Boolean))];
   const reviewedOn = String(options.reviewedOn || "").trim();
-  const scopeRevision = String(options.scopeRevision || getGitSummary(loaded.root).commit || "uncommitted").trim();
+  const temporalReviews = modelSupports(loaded.model, "temporal-collection-reviews");
+  const now = options.now ? new Date(options.now) : new Date();
+  if (Number.isNaN(now.getTime())) throw new Error("A valid Collection Review time is required.");
+  const today = currentCalendarDate(loaded.workspace.timezone, now);
+  const gitSummary = getGitSummary(loaded.root);
+  if (temporalReviews && (!gitSummary.available || !gitSummary.clean || !gitSummary.commit)) {
+    throw new Error("Commit the current workspace before recording a Collection Review so its scope revision is retrievable from Git.");
+  }
+  const scopeRevision = temporalReviews
+    ? gitSummary.commit
+    : String(options.scopeRevision || gitSummary.commit || "uncommitted").trim();
   const v4 = modelSupports(loaded.model, "program-scope");
   const authoritativeSourceId = String(v4 ? options.authoritativeComponentId : options.authoritativeSystemId || "").trim();
   if (!(configuration.decisions || ["complete"]).includes(decision)) {
@@ -138,6 +158,14 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   if (!rationale || !reviewedByIds.length || !reviewedOn) {
     throw new Error(`${configuration.title} review needs review notes, a reviewer, and a review date.`);
   }
+  if (temporalReviews) {
+    if (reviewedOn !== today) {
+      throw new Error("A current Collection Review must use today's workspace-local review date. Reconstruct an older population from Git history instead of backdating today's files.");
+    }
+    if (options.scopeRevision && options.scopeRevision !== scopeRevision) {
+      throw new Error("Collection Review scope revision is derived from Git and cannot be supplied.");
+    }
+  }
   if (decision === "externally-managed") {
     const system = loaded.resources.find((record) => (
       record.type === (v4 ? "component" : "system")
@@ -151,14 +179,29 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     authoritativeSourceId: decision === "externally-managed" ? authoritativeSourceId : null
   });
   const existing = assessment.review;
+  const preservesReviewHistory = temporalReviews;
   const record = {
-    ...(existing || {
-      id: `collection-review-${resourceType}`,
+    ...(!existing ? {
+      id: modelSupports(loaded.model, "program-scope")
+        ? createResourceId(
+            "collection-review",
+            `${program.id} ${configuration.title} review`,
+            loaded.resources.map(({ id }) => id)
+          )
+        : `collection-review-${resourceType}`,
       type: "collection-review",
       title: `${configuration.title} review`,
       resourceType,
       scopeResourceIds: [program.id]
-    }),
+    } : preservesReviewHistory ? {
+      ...existing,
+      id: createResourceId(
+        "collection-review",
+        `${configuration.title} review ${reviewedOn}`,
+        loaded.resources.map(({ id }) => id)
+      ),
+      supersedesId: existing.id
+    } : existing),
     status: "active",
     decision,
     rationale,
@@ -166,6 +209,11 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     reviewedOn,
     collectionRevision: currentRevision,
     scopeRevision,
+    ...(temporalReviews ? {
+      coverage: { kind: "as-of", on: reviewedOn },
+      knowledgeCutoffAt: now.toISOString(),
+      populationResourceIds: assessment.records.map(({ id }) => id).sort()
+    } : {}),
     ...(decision === "externally-managed"
       ? { [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: authoritativeSourceId }
       : {})
@@ -179,15 +227,31 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     resourceType,
     assessment,
     changes: {
-      ...(existing ? { update: [record] } : { create: [record] }),
+      ...(!existing || preservesReviewHistory ? { create: [record] } : { update: [record] }),
+      ...(existing && preservesReviewHistory ? {
+        update: [{
+          ...existing,
+          status: "retired",
+          statusTransition: {
+            changedByIds: reviewedByIds,
+            changedOn: reviewedOn,
+            reason: `Superseded by ${record.id}.`
+          }
+        }]
+      } : {}),
       ...(existing ? {
         expectedRevisions: {
           [existing.id]: options.expectedRevision || assessment.reviewRevision
         }
       } : {}),
-      validateWholeWorkspace: true
+      validateWholeWorkspace: true,
+      workflowCapability: INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
     }
   };
+}
+
+function sameIds(left, right) {
+  return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
 }
 
 export async function applyCollectionReview(input = process.cwd(), options = {}) {

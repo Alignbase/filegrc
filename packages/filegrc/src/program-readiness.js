@@ -28,7 +28,7 @@ import {
   REQUIRED_SOC2_SECURITY_REFERENCES
 } from "./soc2.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
-import { currentCalendarDate } from "./time.js";
+import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 
 export async function assessProgramReadiness(input, options = {}) {
@@ -81,7 +81,8 @@ export async function assessProgramReadiness(input, options = {}) {
       records,
       byId,
       loaded.model,
-      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "vendor", "information-type"].includes(resourceType))
+      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "vendor", "information-type"].includes(resourceType)),
+      workspace?.timezone || "UTC"
     );
   scopeReadinessStage.items.push(...await assessRequirementMappingReadiness(loaded));
   scopeReadinessStage.items.push(...await assessProgramAmendmentReadiness(loaded));
@@ -102,7 +103,7 @@ export async function assessProgramReadiness(input, options = {}) {
     && program.candidateCoverage?.kind === "range"
     && coverageStart(program.candidateCoverage) <= asOf
   );
-  const obligations = planObligations(records, { asOf, through: asOf, model: loaded.model });
+  const obligations = planObligations(records, { programId: program.id, asOf, through: asOf, model: loaded.model });
   const policyLibrary = await assessPolicyLibraryUpgrades(loaded);
   const operating = evidenceReady && candidateStarted && stages.at(-1).counts.action === 0;
   const canStartCandidatePeriod = Boolean(
@@ -201,7 +202,7 @@ function programScope(program, records, byId, model, loaded) {
   };
 }
 
-function scopeStage(workspace, scope, records, byId, model, collectionReviews = []) {
+function scopeStage(workspace, scope, records, byId, model, collectionReviews = [], timezone = "UTC") {
   const items = [];
   const goal = workspace?.assuranceGoal || "none";
   items.push(item(
@@ -219,6 +220,10 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
       ]
     }
   ));
+
+  if (model.resources?.["reporting-route"]) {
+    items.push(reportingRouteItem(records, byId, currentCalendarDate(timezone), timezone));
+  }
 
   if (modelSupports(model, "program-scope")) {
     const completeComponents = scope.components.filter((component) => (
@@ -404,6 +409,32 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   ));
 
   return stage("scope", "Define Scope", "Set program ownership, the management objective, service boundary, criteria, controls, and dependencies.", items);
+}
+
+function reportingRouteItem(records, byId, asOf, timezone = "UTC") {
+  const cutoff = new Date(timestampFromLocalDateTime(`${asOf}T23:59:59`, timezone));
+  const routes = records.filter((record) => (
+    record.type === "reporting-route"
+    && record.purpose === "security-reporting"
+    && record.status === "active"
+    && new Date(record.effectiveAt) <= cutoff
+    && (!record.endsAt || new Date(record.endsAt) > cutoff)
+  ));
+  const routeByPriority = new Map(routes.map((route) => [route.priority, route]));
+  const required = ["primary", "alternate"];
+  const ready = required.every((priority) => {
+    const route = routeByPriority.get(priority);
+    return route && currentPartyPeople(route.ownerIds || [], byId).size > 0;
+  });
+  return item(
+    "security-reporting-route",
+    ready ? "complete" : "action",
+    "Activate the primary and alternate security reporting routes",
+    ready
+      ? `The current routes are ${required.map((priority) => routeByPriority.get(priority).title).join(" and ")}. Training assignments bind the exact Git revision delivered.`
+      : "Activate one owned primary route and one independently usable alternate route before assigning training or relying on policy reporting instructions.",
+    routes[0] || records.find(({ type }) => type === "reporting-route") || { type: "reporting-route" }
+  );
 }
 
 function collectionReviewReadinessItem(assessment) {
@@ -1377,7 +1408,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
     ]);
   }
 
-  const obligations = planObligations(records, { asOf, through: asOf, model });
+  const obligations = planObligations(records, { programId: workspace.id, asOf, through: asOf, model });
   const start = workspace.candidateCoverage?.kind === "range"
     ? coverageStart(workspace.candidateCoverage)
     : null;

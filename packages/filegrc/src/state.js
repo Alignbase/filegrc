@@ -15,6 +15,7 @@ import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { assessWorkflow } from "./workflow.js";
 import { measureTiming } from "./timing.js";
 import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
+import { modelSupports } from "../model/index.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -27,7 +28,8 @@ export async function createAppState(input = process.cwd(), options = {}) {
     options.allowNonAuthoritativeWrites === true,
     options.includeDetails !== false,
     options.asOf ?? null,
-    options.now ?? null
+    options.now ?? null,
+    options.programId ?? null
   ]);
   if (!options.validationProof && appStatePromises.has(key)) return appStatePromises.get(key);
   const promise = serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options)).finally(() => {
@@ -48,6 +50,10 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
     timezone: "UTC"
   };
   const generatedAt = options.generatedAt ?? new Date().toISOString();
+  const programs = loaded.resources.filter((record) => record.type === "program" && record.status !== "retired");
+  const selectedProgram = options.programId
+    ? resolveProgram(loaded, options.programId)
+    : programs[0] || null;
   return {
     generatedAt,
     asOf: options.asOf ?? currentCalendarDate(workspace.timezone),
@@ -60,6 +66,7 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
       writesAllowed: false
     },
     workspace,
+    selectedProgramId: selectedProgram?.id || null,
     model: loaded.model,
     resources: loaded.entries.map((entry) => ({
       record: structuredClone(entry.record),
@@ -129,14 +136,14 @@ export async function createAppStateSection(input, section, options = {}) {
     };
   }
   if (section === "program") {
-    const programReadiness = options.programReadiness ?? await assessProgramReadiness(loaded, { asOf, generatedAt });
-    const activeProgram = resolveProgram(loaded);
+    const programReadiness = options.programReadiness ?? await assessProgramReadiness(loaded, { programId: options.programId, asOf, generatedAt });
+    const activeProgram = resolveProgram(loaded, options.programId);
     return {
       generatedAt,
       asOf,
       programReadiness,
       collectionReviews: Object.fromEntries(
-        assessCollectionReviews(loaded).map((assessment) => [
+        assessCollectionReviews(loaded, { programId: activeProgram.id }).map((assessment) => [
           assessment.resourceType,
           {
             resourceType: assessment.resourceType,
@@ -158,10 +165,12 @@ export async function createAppStateSection(input, section, options = {}) {
     };
   }
   if (section === "obligations") {
+    const activeProgram = resolveProgram(loaded, options.programId);
     return {
       generatedAt,
       asOf,
       obligations: planObligations(loaded.resources, {
+        programId: activeProgram.id,
         asOf,
         now: options.now ?? generatedAt,
         model: loaded.model
@@ -170,7 +179,11 @@ export async function createAppStateSection(input, section, options = {}) {
   }
   if (section === "audits") {
     const programReadiness = options.programReadiness;
-    const audits = loaded.resources.filter((record) => record.type === "audit");
+    const activeProgram = resolveProgram(loaded, options.programId);
+    const audits = loaded.resources.filter((record) => (
+      record.type === "audit"
+      && (!modelSupports(loaded.model, "program-scope") || record.programId === activeProgram.id)
+    ));
     return {
       generatedAt,
       asOf,
@@ -179,6 +192,7 @@ export async function createAppStateSection(input, section, options = {}) {
           audit?.id || "none",
           await assessAuditPreparation(loaded, {
             auditId: audit?.id,
+            programId: audit?.programId || options.programId,
             asOf,
             generatedAt,
             ...(audit || !programReadiness ? {} : { programReadiness })
@@ -192,6 +206,7 @@ export async function createAppStateSection(input, section, options = {}) {
       generatedAt,
       asOf,
       workflow: await assessWorkflow(loaded, {
+        programId: options.programId,
         asOf,
         evaluatedAt: generatedAt,
         programReadiness: options.programReadiness,
@@ -249,15 +264,19 @@ async function createAppStateUnlocked(input, options) {
   const asOf = options.asOf ?? currentCalendarDate(workspace.timezone);
   const generatedAt = new Date().toISOString();
   const programReadiness = await measureTiming("state-program-readiness", () => assessProgramReadiness(loaded, {
+    programId: options.programId,
     asOf,
     generatedAt
   }));
-  const activeProgram = resolveProgram(loaded);
+  const activeProgram = resolveProgram(loaded, options.programId);
   const applicabilityConstraints = Object.fromEntries(loaded.resources.flatMap((record) => {
     const constraint = soc2RequirementApplicabilityConstraint(record, activeProgram, loaded.model.modelVersion);
     return constraint ? [[record.id, constraint]] : [];
   }));
-  const audits = loaded.resources.filter((record) => record.type === "audit");
+  const audits = loaded.resources.filter((record) => (
+    record.type === "audit"
+    && (!modelSupports(loaded.model, "program-scope") || record.programId === activeProgram.id)
+  ));
   const auditPreparations = await measureTiming("state-audit-preparation", async () => Object.fromEntries(await Promise.all(
     (audits.length ? audits : [null]).map(async (audit) => {
       const preparation = await assessAuditPreparation(loaded, {
@@ -270,11 +289,13 @@ async function createAppStateUnlocked(input, options) {
     })
   )));
   const obligations = planObligations(entries, {
+    programId: activeProgram.id,
     asOf,
     now: options.now ?? generatedAt,
     model: loaded.model
   });
   const workflow = await measureTiming("state-workflow", () => assessWorkflow(loaded, {
+    programId: activeProgram.id,
     asOf,
     evaluatedAt: generatedAt,
     programReadiness,
@@ -286,7 +307,7 @@ async function createAppStateUnlocked(input, options) {
     validation
   }));
   const collectionReviews = Object.fromEntries(
-    assessCollectionReviews(loaded).map((assessment) => [
+    assessCollectionReviews(loaded, { programId: activeProgram.id }).map((assessment) => [
       assessment.resourceType,
       {
         resourceType: assessment.resourceType,
@@ -307,6 +328,7 @@ async function createAppStateUnlocked(input, options) {
     readOnly: Boolean(options.readOnly || (repository.mode === "trunk" && !repository.writesAllowed)),
     repository,
     workspace,
+    selectedProgramId: activeProgram.id,
     model: loaded.model,
     resources: entries,
     validation: {

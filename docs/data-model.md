@@ -1,10 +1,10 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v8.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v9.json. Do not edit by hand. -->
 
-Model version: `8`
+Model version: `9`
 
-Program-scoped GRC records using bounded Systems, operational Components, normalized information, and retained Evidence Artifacts.
+Model v9 adds reviewed Obligation rule revisions, rolled-up occurrence reconciliation, temporal Collection Reviews, and effective reporting routes to the model v8 program structure.
 
 Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.
 
@@ -154,14 +154,14 @@ Relationship fields use the named groups below. The registry expands each group 
 | Group | Resource types |
 | --- | --- |
 | `accountable-party` | `person`, `team`, `appointment` |
-| `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
+| `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
 | `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 | `obligation-template` | `person`, `system`, `asset`, `document`, `control`, `policy`, `training`, `retention-schedule-item`, `requirement-mapping` |
 | `completion-record` | `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
 | `event-subject` | `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident` |
-| `evidence-source-record` | `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
-| `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
-| `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
+| `evidence-source-record` | `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
 
 ## Collection review confirmations
 
@@ -580,6 +580,29 @@ Key format: `namespace`.
 | `method` | enum | Yes | Values: `carve-out`, `inclusive` |
 | `rationale` | string | Yes |  |
 
+### `scope-selector`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `resourceType` | enum | Yes | Values: `person`, `service-account`, `system`, `asset`, `vendor` |
+| `statuses` | array of string | No |  |
+| `criticalities` | array of enum | No | Values: `low`, `medium`, `high`, `critical` |
+| `membershipMode` | enum | Yes | Values: `as-of` |
+| `cutoff` | enum | Yes | Values: `window-start`, `window-end` |
+
+### `obligation-member`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `resourceId` | id | Yes | Relation group: `obligation-scope`. |
+| `effectiveFrom` | timestamp | No |  |
+| `effectiveThrough` | timestamp | No |  |
+| `disposition` | enum | Yes | Values: `expected`, `not-applicable`, `exception` |
+| `result` | enum | Yes | Values: `pending`, `passed`, `failed`, `partial` |
+| `completionResourceIds` | array of id | No | Relation group: `completion-record`. |
+| `exceptionId` | id | No | References: `exception` |
+| `rationale` | string | No |  |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -595,7 +618,7 @@ Key format: `namespace`.
 
 Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record.
 
-Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `source-coverage`, `control-activity`, `component`. Other resources without dedicated Markdown can add it when structured fields are not enough.
+Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `source-coverage`, `control-activity`, `component`, `obligation-occurrence`, `reporting-route`. Other resources without dedicated Markdown can add it when structured fields are not enough.
 
 ## Program and audit readiness defaults
 
@@ -895,6 +918,10 @@ Record Markdown: available when needed as an implicit companion file.
 | `scopeResourceIds` | array of id | Yes | References: `program`, `system`, `component` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
 | `authoritativeComponentId` | id | Conditional | Authoritative Component References: `component` Required when `decision` is `externally-managed` and `status` is `active`. |
+| `supersedesId` | id | No | References: `collection-review` |
+| `coverage` | object (`coverage-period`) | No | Reviewed temporal coverage |
+| `knowledgeCutoffAt` | timestamp | No | Knowledge cutoff |
+| `populationResourceIds` | array of id | No | Reviewed population Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 
 #### `requirement-mapping`
 
@@ -988,7 +1015,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `status` | enum | Yes | Values: `planned`, `active`, `ended` |
 | `appointmentKind` | string (id) | Yes | Appointment kind |
 | `holderId` | id | Conditional | Holder References: `person` Required when `status` is one of `active`, `ended`. |
-| `scopeResourceIds` | array of id | Yes | Scope Relation group: `appointment-scope`. References: `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
+| `scopeResourceIds` | array of id | Yes | Scope Relation group: `appointment-scope`. References: `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
 | `startsOn` | date | Conditional | Required when `status` is one of `active`, `ended`. |
 | `endsOn` | date | Conditional | Required when `status` is `ended`. |
 | `appointedByIds` | array of id | No | Appointed by References: `person` |
@@ -1188,6 +1215,8 @@ Markdown companions:
 | `waivedByIds` | array of id | Conditional | References: `person` Required when `status` is `waived`. Allowed when `status` is `waived`. |
 | `waiverReason` | string | Conditional | Required when `status` is `waived`. Allowed when `status` is `waived`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
+| `reportingRouteId` | id | No | Delivered reporting route References: `reporting-route` |
+| `reportingRouteRevision` | string | No | Delivered reporting route revision |
 
 At least one of `evidenceIds` is required when `status` is `completed` and `attestationMethod` is one of `signed-document`, `external-record`.
 
@@ -1352,6 +1381,35 @@ Record Markdown: available when needed as an implicit companion file.
 | `supersedesId` | id | No | References: `retention-schedule-item` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
 | `notes` | string | No |  |
+
+#### `reporting-route`
+
+An effective primary or alternate route for security reports and other approved communications, with its owner and failure dependencies.
+
+Instructions: An effective primary or alternate route for security reports and other approved communications, with its owner and failure dependencies.
+
+Policy basis: Workers need a usable route for security reports. An alternate is required only when an adopted Policy, Document, Commitment, or Risk decision calls for one.
+
+Timing: Review through a linked Obligation and communicate a changed route to the affected audience. Preserve the route revision delivered with each assignment.
+
+Path: `data/reporting-routes/<id>.json`
+
+Record Markdown: shown by default as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `planned`, `active`, `retired` |
+| `purpose` | enum | Yes | Values: `security-reporting`, `continuity-communication` |
+| `priority` | enum | Yes | Values: `primary`, `alternate` |
+| `channelKind` | enum | Yes | Values: `email`, `phone`, `web`, `other` |
+| `route` | string | Yes |  |
+| `effectiveAt` | timestamp | Conditional | Required when `status` is one of `active`, `retired`. |
+| `endsAt` | timestamp | Conditional | Required when `status` is `retired`. |
+| `dependencySystemIds` | array of id | No | References: `system` |
+| `approvedByIds` | array of id | Conditional | References: `person` Required when `status` is one of `active`, `retired`. |
+| `approvedOn` | date | Conditional | Required when `status` is one of `active`, `retired`. |
+| `sourceResourceIds` | array of id | No | References: `policy`, `document`, `commitment`, `risk` |
+| `ownerIds` | array of id | Yes | Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 
 ### Risk
 
@@ -2136,7 +2194,7 @@ Markdown companions:
 | `verifierIds` | array of id | Conditional | References: `person` Required when `status` is `verified`. |
 | `verifiedOn` | date | Conditional | Required when `status` is `verified`. |
 | `expiresOn` | date | No |  |
-| `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
+| `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
 | `filePaths` | array of data-path | Conditional | Required when `sourceKind` is `file` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `file`, `system`, `rendered-page`, `authored-record`. |
 | `externalReference` | object (`external-reference`) | Conditional | Required when `sourceKind` is `external-reference` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `external-reference`, `system`. |
 | `sourceCommit` | string | Conditional | Required when `sourceKind` is `rendered-page` and `status` is one of `collected`, `verified`, `withdrawn`. |
@@ -2262,19 +2320,22 @@ Markdown companions:
 | `status` | enum | Yes | Values: `proposed`, `active`, `paused`, `retired` |
 | `activityType` | enum | Yes | Values: `custom`, `access-change`, `access-provisioning`, `access-removal`, `access-review`, `alert-path-test`, `asset-recovery`, `asset-registration`, `backup-test`, `change-review`, `control-design-review`, `continuity-review`, `document-review`, `exception-review`, `exercise`, `incident-retrospective`, `endpoint-verification`, `inventory-review`, `log-review`, `meeting`, `network-review`, `oversight-meeting`, `penetration-test`, `performance-review`, `workforce-review`, `personal-device-approval`, `policy-review`, `remediation`, `retention-review`, `risk-assessment`, `role-training`, `security-scan`, `training`, `vendor-contract`, `vendor-remediation`, `vendor-review`, `vulnerability-scan`, `workforce-acknowledgement` Values come from the `obligationActivities` registry. |
 | `customActivity` | object (`custom-obligation-activity`) | Conditional | Custom activity definition Required when `activityType` is `custom`. Allowed when `activityType` is `custom`. |
-| `recurrence` | object (`recurrence`) | Yes |  |
+| `scheduleMode` | enum | Yes | Values: `rule`, `legacy` |
+| `ruleIds` | array of id | No | References: `obligation-rule` |
+| `activeRuleId` | id | Conditional | References: `obligation-rule` Required when `scheduleMode` is `rule` and `status` is one of `active`, `paused`, `retired`. |
 | `triggerPrompt` | string | No |  |
-| `window` | object (`obligation-window`) | No |  |
 | `scopeResourceIds` | array of id | No | Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 | `templateResourceId` | id | No | Relation group: `obligation-template`. References: `person`, `system`, `asset`, `document`, `control`, `policy`, `training`, `retention-schedule-item`, `requirement-mapping` |
 | `controlIds` | array of id | No | References: `control` |
 | `policyIds` | array of id | No | References: `policy` |
-| `startsOn` | date | No |  |
-| `endsOn` | date | No |  |
 | `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `paused`, `retired`. Allowed when `status` is one of `paused`, `retired`. |
 | `eventRiskLevels` | array of string | No | Event risk levels Values: `normal`, `high` |
+| `recurrence` | object (`recurrence`) | Conditional | Required when `scheduleMode` is `legacy`. Allowed when `scheduleMode` is `legacy`. |
+| `window` | object (`obligation-window`) | No | Allowed when `scheduleMode` is `legacy`. |
+| `startsOn` | date | No | Allowed when `scheduleMode` is `legacy`. |
+| `endsOn` | date | No | Allowed when `scheduleMode` is `legacy`. |
 
 #### `obligation-event`
 
@@ -2302,7 +2363,6 @@ Record Markdown: available when needed as an implicit companion file.
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 | `riskLevel` | enum | Conditional | Departure risk Values: `normal`, `high` Required when `eventType` is `person-ended`. |
-| `transitionFingerprint` | string | No |  |
 
 #### `finding`
 
@@ -2324,7 +2384,7 @@ Record Markdown: shown by default as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `accepted`, `remediating`, `resolved`, `closed` |
 | `severity` | rating | Yes |  |
-| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
+| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
 | `description` | string | Yes |  |
 | `controlIds` | array of id | No | References: `control` |
 | `riskIds` | array of id | No | References: `risk` |
@@ -2357,16 +2417,87 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `in-progress`, `blocked`, `done`, `canceled` |
 | `assigneeIds` | array of id | Yes | References: `person`, `team`, `appointment` |
-| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
+| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
 | `description` | string | No |  |
 | `priority` | rating | No |  |
 | `obligationId` | id | No | References: `obligation` |
+| `obligationRuleId` | id | No | Governing obligation rule References: `obligation-rule` |
 | `completedOn` | date | Conditional | Required when `status` is `done`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
-| `blockingResourceIds` | array of id | Conditional | Relation group: `work-blocker`. References: `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` Required when `status` is `blocked`. Allowed when `status` is `blocked`. |
+| `blockingResourceIds` | array of id | Conditional | Relation group: `work-blocker`. References: `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` Required when `status` is `blocked`. Allowed when `status` is `blocked`. |
 | `completionWindow` | object (`completion-window`) | Conditional | Completion window Required when `status` is one of `open`, `in-progress`, `blocked`. |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
+
+#### `obligation-rule`
+
+One immutable reviewed revision of an Obligation schedule, population rule, and completion criteria.
+
+Instructions: One immutable reviewed revision of an Obligation schedule, population rule, and completion criteria.
+
+Policy basis: A reusable schedule must be reviewed before it governs work. The rule records the exact management rationale or authoritative source used for that decision.
+
+Timing: Create a proposed revision, review it, then activate it at a real effective time. Never backdate a late decision or rewrite a prior effective rule.
+
+Path: `data/obligation-rules/<id>.json`
+
+Record Markdown: available when needed as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `proposed`, `approved`, `active`, `retired` |
+| `obligationId` | id | Yes | References: `obligation` |
+| `activityDefinitionVersion` | string | No |  |
+| `recurrence` | object (`recurrence`) | Yes |  |
+| `window` | object (`obligation-window`) | No |  |
+| `selector` | object (`scope-selector`) | No |  |
+| `rationale` | string | Yes |  |
+| `sourceResourceIds` | array of id | No | References: `policy`, `document`, `commitment`, `risk`, `appointment` |
+| `approvedByIds` | array of id | Conditional | References: `person` Required when `status` is one of `approved`, `active`, `retired`. |
+| `approvedOn` | date | Conditional | Required when `status` is one of `approved`, `active`, `retired`. |
+| `effectiveAt` | timestamp | Conditional | Required when `status` is one of `active`, `retired`. |
+| `timezone` | string (timezone) | Conditional | Required when `status` is one of `approved`, `active`, `retired`. |
+| `cutoverDecision` | enum | No | Values: `new-windows-only`, `supersede-open-window`, `keep-open-window` |
+| `supersedesId` | id | No | References: `obligation-rule` |
+| `retiredOn` | date | Conditional | Required when `status` is `retired`. |
+
+#### `obligation-occurrence`
+
+The reviewed population and operating result for one rolled-up Obligation window or Policy Event action.
+
+Instructions: The reviewed population and operating result for one rolled-up Obligation window or Policy Event action.
+
+Policy basis: A rolled-up schedule passes only after management reconciles every expected member, including a reviewed zero population.
+
+Timing: Reconcile after the captured membership rule can no longer add members and every member deadline is resolved. Correct a finalized record only with a superseding occurrence.
+
+Path: `data/obligation-occurrences/<id>.json`
+
+Record Markdown: shown by default as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `open`, `reconciled`, `superseded` |
+| `obligationId` | id | Yes | References: `obligation` |
+| `ruleId` | id | Yes | References: `obligation-rule` |
+| `occurrenceKey` | string | Yes |  |
+| `coverage` | object (`coverage-period`) | Yes |  |
+| `membershipCutoffAt` | date | Yes |  |
+| `collectionReviewId` | id | No | References: `collection-review` |
+| `collectionReviewCommit` | string | No |  |
+| `collectionReviewRevision` | string | No |  |
+| `collectionRevision` | string | No |  |
+| `scopeRevision` | string | No |  |
+| `members` | array of object (`obligation-member`) | Yes |  |
+| `expectedCount` | integer | Yes | Minimum: `0`. |
+| `completedCount` | integer | Yes | Minimum: `0`. |
+| `conclusion` | enum | Conditional | Values: `complete`, `complete-with-exceptions`, `incomplete`, `zero-population` Required when `status` is `reconciled`. |
+| `reviewedByIds` | array of id | Conditional | References: `person` Required when `status` is `reconciled`. |
+| `reconciledAt` | timestamp | Conditional | Required when `status` is `reconciled`. |
+| `supersedesId` | id | No | References: `obligation-occurrence` |
+| `auditPopulationIds` | array of id | No | References: `audit-population` |
+| `ownerIds` | array of id | Yes | Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
+| `programId` | id | Yes | References: `program` |
 
 ### Audits
 
@@ -2445,7 +2576,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `planned`, `reconciled`, `not-applicable` |
+| `status` | enum | Yes | Values: `planned`, `reconciled`, `not-applicable`, `superseded` |
 | `auditId` | id | Yes | References: `audit` |
 | `populationKind` | string | Yes |  |
 | `controlIds` | array of id | No | References: `control` |
@@ -2458,6 +2589,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `coverage` | object (`coverage-period`) | Yes | Coverage |
 | `sourceComponentId` | id | Conditional | Authoritative source Component References: `component` Required when `status` is `reconciled`. |
+| `supersedesId` | id | No | Superseded audit population References: `audit-population` |
 
 #### `audit-request`
 

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatCalendarDate, formatLocalDateTime, isRfc3339Timestamp } from "../src/time.js";
+import {
+  formatCalendarDate,
+  formatLocalDateTime,
+  isRfc3339Timestamp,
+  localDateTimeValue,
+  timestampFromLocalDateTime
+} from "../src/time.js";
 
 test("keeps calendar dates stable across local time zones", () => {
   assert.equal(formatCalendarDate("2026-06-15", "en-US"), "Jun 15, 2026");
@@ -25,4 +31,25 @@ test("accepts only real RFC 3339 timestamps", () => {
   assert.equal(isRfc3339Timestamp("2026-02-30T16:30:00Z"), false);
   assert.equal(isRfc3339Timestamp("2026-07-25T24:00:00Z"), false);
   assert.equal(isRfc3339Timestamp("2026-07-25T16:30:00"), false);
+});
+
+test("round-trips workspace-local timestamps across UTC offsets", () => {
+  const timestamp = timestampFromLocalDateTime("2026-07-31T23:59:59", "America/Chicago");
+  assert.equal(timestamp, "2026-08-01T04:59:59Z");
+  assert.equal(localDateTimeValue(timestamp, "America/Chicago"), "2026-07-31T23:59:59");
+  assert.equal(
+    timestampFromLocalDateTime("2026-01-01T00:00:00", "America/Chicago"),
+    "2026-01-01T06:00:00Z"
+  );
+});
+
+test("rejects ambiguous and nonexistent workspace-local times", () => {
+  assert.throws(
+    () => timestampFromLocalDateTime("2026-11-01T01:30:00", "America/Chicago"),
+    /occurs more than once.*explicit UTC offset/i
+  );
+  assert.throws(
+    () => timestampFromLocalDateTime("2026-03-08T02:30:00", "America/Chicago"),
+    /does not exist/i
+  );
 });

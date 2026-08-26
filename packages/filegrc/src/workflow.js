@@ -107,7 +107,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     generatedAt: evaluatedAt,
     programId: programRecord.type === "program" ? programRecord.id : undefined
   });
-  const auditPreparations = options.auditPreparations || Object.fromEntries(await Promise.all(
+  const suppliedAuditPreparations = options.auditPreparations || Object.fromEntries(await Promise.all(
     audits.map(async (audit) => [
       audit.id,
       await assessAuditPreparation(loaded, {
@@ -117,7 +117,12 @@ async function assessWorkflowUnmeasured(input, options = {}) {
       })
     ])
   ));
+  const auditIds = new Set(audits.map(({ id }) => id));
+  const auditPreparations = Object.fromEntries(
+    Object.entries(suppliedAuditPreparations).filter(([id]) => auditIds.has(id))
+  );
   const obligationPlan = options.obligations || planObligations(loaded.resources, {
+    programId: programRecord.id,
     asOf,
     through: options.through || asOf,
     now: evaluatedAt,
@@ -154,7 +159,8 @@ async function assessWorkflowUnmeasured(input, options = {}) {
   ];
   const workItems = buildWorkItems(loaded.resources, obligationPlan, {
     asOf,
-    includeComplete: Boolean(options.includeComplete)
+    includeComplete: Boolean(options.includeComplete),
+    programId: programRecord.id
   });
   const git = options.git || safeGitSummary(loaded.root);
   const assessments = buildAssessments({
@@ -818,6 +824,7 @@ async function assessPeriodHealth(loaded, options) {
     || record.controlIds.some((id) => selectedControlIds.has(id))
   ));
   const occurrences = planObligations(periodResources, {
+    programId: options.programId,
     from: coverage.start,
     asOf: periodThrough,
     through: periodThrough,
@@ -1137,7 +1144,7 @@ function findingSeverity(state, assessment) {
 
 function buildWorkItems(records, obligationPlan, options) {
   const byId = new Map(records.map((record) => [record.id, record]));
-  const items = obligationPlan.items.map((item) => obligationWorkItem(item, byId, options.asOf));
+  const items = obligationPlan.items.map((item) => obligationWorkItem(item, byId, options.asOf, options.programId));
   const obligationSources = new Set(items
     .map((item) => item.source?.id)
     .filter(Boolean));
@@ -1171,7 +1178,7 @@ function buildWorkItems(records, obligationPlan, options) {
   return uniqueByKey(items);
 }
 
-function obligationWorkItem(item, byId, asOf) {
+function obligationWorkItem(item, byId, asOf, programId) {
   const subjectId = item.subjectResourceId
     || (item.scopeResourceIds?.length === 1 ? item.scopeResourceIds[0] : null);
   const subjectRecord = subjectId ? byId.get(subjectId) : null;
@@ -1180,8 +1187,8 @@ function obligationWorkItem(item, byId, asOf) {
     key: `obligation:${item.key || item.actionItemId || item.obligationId}${subjectId ? `:${subjectId}` : ""}`,
     kind: item.kind === "calendar" ? "obligation-occurrence" : "assigned-work",
     source: {
-      type: item.actionItemId ? "action-item" : "obligation",
-      id: item.actionItemId || item.obligationId
+      type: item.actionItemId ? "action-item" : item.occurrenceId ? "obligation-occurrence" : "obligation",
+      id: item.actionItemId || item.occurrenceId || item.obligationId
     },
     ...(subjectId ? { subject: { type: subjectRecord?.type || "unknown", id: subjectId } } : {}),
     title: item.title,
@@ -1199,11 +1206,12 @@ function obligationWorkItem(item, byId, asOf) {
       profileId: item.completionProfile || null,
       resourceTypes: item.completionResourceTypes || []
     },
-    nextAction: obligationNextAction(item)
+    nextAction: obligationNextAction(item, programId)
   };
 }
 
-function obligationNextAction(item) {
+function obligationNextAction(item, programId) {
+  const programOption = programId ? ` --program ${shellArgument(programId)}` : "";
   if (item.actionItemId) {
     if (item.status === "blocked") {
       return {
@@ -1213,12 +1221,30 @@ function obligationNextAction(item) {
     }
     return {
       kind: "command",
-      command: `npx filegrc complete-action ${shellArgument(item.actionItemId)} --scaffold --completed-on YYYY-MM-DD`
+      command: `npx filegrc complete-action ${shellArgument(item.actionItemId)} --scaffold --completed-on YYYY-MM-DD${programOption}`
+    };
+  }
+  if (item.ruleId && ["proposed", "approved"].includes(item.ruleStatus)) {
+    return {
+      kind: "command",
+      command: `npx filegrc activate-obligation-rule ${shellArgument(item.ruleId)} --scaffold`
+    };
+  }
+  if (item.programBlocker) {
+    return {
+      kind: "command",
+      command: `npx filegrc get ${shellArgument(item.programBlocker.id)} --mutation`
+    };
+  }
+  if (item.ruleId) {
+    return {
+      kind: "command",
+      command: `npx filegrc reconcile-obligation ${shellArgument(item.obligationId)} --scaffold --window-start ${shellArgument(item.dueWindowStart)}${item.status === "complete" ? " --correct-finalized" : ""}${programOption}`
     };
   }
   return {
     kind: "command",
-    command: `npx filegrc complete ${shellArgument(item.obligationId)} --scaffold --window-start ${shellArgument(item.dueWindowStart)} --completed-on YYYY-MM-DD`
+    command: `npx filegrc complete ${shellArgument(item.obligationId)} --scaffold --window-start ${shellArgument(item.dueWindowStart)} --completed-on YYYY-MM-DD${programOption}`
   };
 }
 

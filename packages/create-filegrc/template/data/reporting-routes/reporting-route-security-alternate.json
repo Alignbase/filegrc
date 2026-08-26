@@ -1,0 +1,13 @@
+{
+  "id": "reporting-route-security-alternate",
+  "type": "reporting-route",
+  "title": "Alternate security reporting route",
+  "status": "planned",
+  "purpose": "security-reporting",
+  "priority": "alternate",
+  "channelKind": "other",
+  "route": "TBD: protected alternate channel",
+  "ownerIds": [
+    "appointment-policy-owner"
+  ]
+}

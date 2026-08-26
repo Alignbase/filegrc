@@ -1125,24 +1125,39 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     evidenceSourceKinds: FILEGRC_SOURCE_FAMILIES,
     evidenceOwnerIds: [POLICY_OWNER_APPOINTMENT_ID]
   };
-  const obligationRecords = obligations.map((obligation) => ({
-    id: obligation.id,
-    type: "obligation",
-    title: obligation.title,
+  const obligationRecords = obligations.map((obligation) => {
+    const ruleId = `${obligation.id.replace(/^obligation-/, "obligation-rule-")}-v1`;
+    return {
+      id: obligation.id,
+      type: "obligation",
+      title: obligation.title,
+      status: "proposed",
+      activityType: obligation.activityType,
+      scheduleMode: "rule",
+      ruleIds: [ruleId],
+      ownerIds: obligation.ownerIds,
+      ...(obligation.triggerPrompt ? { triggerPrompt: obligation.triggerPrompt } : {}),
+      ...(obligation.eventRiskLevels ? { eventRiskLevels: obligation.eventRiskLevels } : {}),
+      ...(obligation.scopeResourceIds ? { scopeResourceIds: obligation.scopeResourceIds } : {}),
+      ...(obligation.templateResourceId ? { templateResourceId: obligation.templateResourceId } : {}),
+      controlIds: obligation.controlIds,
+      policyIds: obligation.policyIds
+    };
+  });
+  const obligationRuleRecords = obligations.map((obligation) => ({
+    id: `${obligation.id.replace(/^obligation-/, "obligation-rule-")}-v1`,
+    type: "obligation-rule",
+    title: `${obligation.title} rule v1`,
     status: "proposed",
-    activityType: obligation.activityType,
+    obligationId: obligation.id,
+    activityDefinitionVersion: "1",
     recurrence: obligation.recurrence.mode === "calendar"
       ? { ...obligation.recurrence, anchorDate: effectiveDate }
       : obligation.recurrence,
-    ownerIds: obligation.ownerIds,
-    startsOn: effectiveDate,
-    ...(obligation.triggerPrompt ? { triggerPrompt: obligation.triggerPrompt } : {}),
-    ...(obligation.eventRiskLevels ? { eventRiskLevels: obligation.eventRiskLevels } : {}),
     ...(obligation.window ? { window: obligation.window } : {}),
-    ...(obligation.scopeResourceIds ? { scopeResourceIds: obligation.scopeResourceIds } : {}),
-    ...(obligation.templateResourceId ? { templateResourceId: obligation.templateResourceId } : {}),
-    controlIds: obligation.controlIds,
-    policyIds: obligation.policyIds
+    ...(starterObligationSelector(obligation.id) ? { selector: starterObligationSelector(obligation.id) } : {}),
+    rationale: "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation.",
+    sourceResourceIds: [...(obligation.policyIds || [])]
   }));
   const sourceCoverageRecords = SOURCE_FAMILIES.map(([sourceFamilyId, title]) => {
     const filegrcManaged = FILEGRC_SOURCE_FAMILIES.includes(sourceFamilyId);
@@ -1201,8 +1216,27 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     ...foundation,
     ...sourceCoverageRecords.map((record) => recordFile("source-coverage", record)),
     ...retentionScheduleItems.map((record) => recordFile("retention-schedule-items", record)),
-    ...obligationRecords.map((record) => recordFile("obligations", record))
+    ...obligationRecords.map((record) => recordFile("obligations", record)),
+    ...obligationRuleRecords.map((record) => recordFile("obligation-rules", record))
   ];
+}
+
+function starterObligationSelector(obligationId) {
+  const definitions = {
+    "obligation-annual-workforce-competence-review": { resourceType: "person", statuses: ["active"] },
+    "obligation-annual-access-review": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
+    "obligation-annual-network-access-review": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
+    "obligation-quarterly-vulnerability-scan": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
+    "obligation-quarterly-log-review": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
+    "obligation-annual-backup-restoration-test": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
+    "obligation-annual-critical-vendor-review": { resourceType: "vendor", statuses: ["active"], criticalities: ["high", "critical"] }
+  };
+  const definition = definitions[obligationId];
+  return definition ? {
+    ...definition,
+    membershipMode: "as-of",
+    cutoff: "window-end"
+  } : null;
 }
 
 export async function writeBaselineRecords(target, effectiveDate, starter = "security") {

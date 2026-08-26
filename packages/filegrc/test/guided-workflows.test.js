@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -24,6 +24,7 @@ import {
 } from "../src/index.js";
 import { runCli } from "../src/cli.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const executeProcess = promisify(execFile);
 const execute = (executable, args, options) => executable === process.execPath
@@ -69,6 +70,59 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   assert.equal((await planReconciliation(root)).candidates.length, 0);
 });
 
+test("one reconciled transition creates applicable actions across Programs", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-multi-program-reconcile-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const controlSource = JSON.parse(await readFile(join(root, "data", "controls", "control-example.json"), "utf8"));
+  const obligationSource = JSON.parse(await readFile(join(root, "data", "obligations", "obligation-example.json"), "utf8"));
+  const ruleSource = JSON.parse(await readFile(join(root, "data", "obligation-rules", "obligation-rule-example.json"), "utf8"));
+  await writeJson(join(root, "data", "controls", "control-program-b.json"), {
+    ...controlSource,
+    id: "control-program-b",
+    title: "Program B access control"
+  });
+  await writeJson(join(root, "data", "programs", "program-b.json"), {
+    id: "program-b",
+    type: "program",
+    title: "Program B",
+    status: "active",
+    controlIds: ["control-program-b"],
+    policyIds: obligationSource.policyIds,
+    systemIds: []
+  });
+  await writeJson(join(root, "data", "obligation-rules", "obligation-rule-program-b.json"), {
+    ...ruleSource,
+    id: "obligation-rule-program-b",
+    title: "Program B role change rule",
+    obligationId: "obligation-program-b"
+  });
+  await writeJson(join(root, "data", "obligations", "obligation-program-b.json"), {
+    ...obligationSource,
+    id: "obligation-program-b",
+    title: "Program B role change review",
+    controlIds: ["control-program-b"],
+    activeRuleId: "obligation-rule-program-b",
+    ruleIds: ["obligation-rule-program-b"]
+  });
+  await commitAll(root, "Create multi-program workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+
+  const preview = await planReconciliation(root);
+  const candidate = preview.candidates.find(({ eventType }) => eventType === "person-role-changed");
+  assert.ok(candidate);
+  const applied = await applyReconciliation(root, {
+    candidateId: candidate.id,
+    programId: "program-example",
+    occurredOn: "2026-08-03",
+    confirmed: true
+  });
+  assert.deepEqual(applied.event.obligationIds.sort(), ["obligation-example", "obligation-program-b"]);
+  assert.equal(applied.actions.length, 2);
+});
+
 test("treats an uncommitted generated workspace as its baseline", async (context) => {
   const root = await modelThreeWorkspace(context, "filegrc-reconcile-baseline-");
   await execute("git", ["init", "--initial-branch=main"], { cwd: root });
@@ -78,6 +132,85 @@ test("treats an uncommitted generated workspace as its baseline", async (context
   assert.equal(preview.candidates.length, 0);
   assert.ok(preview.changedPaths.length > 0);
   assert.match(preview.message, /Commit the initial workspace/);
+});
+
+test("does not treat a record path rename as a domain transition", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-rename-");
+  await commitAll(root, "Create test workspace");
+  const prior = join(root, "data", "people", "person-owner.json");
+  const destinationDirectory = join(root, "data", "people", "renamed");
+  const next = join(destinationDirectory, "person-owner.json");
+  await mkdir(destinationDirectory, { recursive: true });
+  await rename(prior, next);
+
+  const preview = await planReconciliation(root);
+  assert.equal(preview.candidates.length, 0);
+  assert.ok(preview.changedPaths.includes("data/people/person-owner.json"));
+  assert.ok(preview.changedPaths.includes("data/people/renamed/person-owner.json"));
+});
+
+test("pairs a committed rename by immutable identity after a large content change", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-committed-rename-");
+  await commitAll(root, "Create test workspace");
+  const prior = join(root, "data", "people", "person-owner.json");
+  const destinationDirectory = join(root, "data", "people", "renamed");
+  const next = join(destinationDirectory, "person-owner.json");
+  await mkdir(destinationDirectory, { recursive: true });
+  const person = JSON.parse(await readFile(prior, "utf8"));
+  person.jobTitle = "Chief Security Officer";
+  person.extensions = { test: { padding: "x".repeat(10_000) } };
+  await writeFile(next, `${JSON.stringify(person, null, 2)}\n`);
+  await import("node:fs/promises").then(({ rm }) => rm(prior));
+  await commitAll(root, "Move and update person");
+
+  const preview = await planReconciliation(root);
+  assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["person-role-changed"]);
+});
+
+test("uses occurredAt for reconciliation backed by an active hour-based rule", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-rule-timestamp-reconcile-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const loaded = await import("../src/index.js").then(({ loadWorkspace }) => loadWorkspace(root));
+  const control = loaded.resources.find(({ type }) => type === "control");
+  await writeJson(join(root, "data", "obligations", "obligation-hour-departure.json"), {
+    id: "obligation-hour-departure",
+    type: "obligation",
+    title: "Hour-based departure action",
+    status: "active",
+    activityType: "access-removal",
+    scheduleMode: "rule",
+    ruleIds: ["obligation-rule-hour-departure"],
+    activeRuleId: "obligation-rule-hour-departure",
+    ownerIds: ["person-example"],
+    controlIds: [control.id]
+  });
+  await writeJson(join(root, "data", "obligation-rules", "obligation-rule-hour-departure.json"), {
+    id: "obligation-rule-hour-departure",
+    type: "obligation-rule",
+    title: "Hour-based departure rule",
+    status: "active",
+    obligationId: "obligation-hour-departure",
+    activityDefinitionVersion: "1",
+    recurrence: { mode: "event", eventType: "person-ended" },
+    window: { precision: "timestamp", startsAfter: 0, dueAfter: 4 },
+    rationale: "Test timestamp reconciliation.",
+    approvedByIds: ["person-example"],
+    approvedOn: "2026-01-01",
+    effectiveAt: "2026-01-01T00:00:00Z",
+    timezone: "UTC"
+  });
+  await commitAll(root, "Create model 9 workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  person.status = "inactive";
+  await writeJson(personPath, person);
+
+  const preview = await planReconciliation(root);
+  const departure = preview.candidates.find(({ eventType }) => eventType === "person-ended");
+  assert.ok(departure);
+  assert.ok(departure.requiredFacts.includes("occurredAt"));
+  assert.match(departure.action.command, /--occurred-at RFC3339/);
 });
 
 test("does not treat initial draft policy adoption as a policy revision event", async (context) => {
@@ -102,6 +235,33 @@ test("does not treat initial draft policy adoption as a policy revision event", 
   await writeJson(path, policy);
 
   assert.equal((await planReconciliation(root)).candidates.length, 0);
+});
+
+test("reconciles a committed Markdown-only change to an active Policy", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-policy-markdown-reconcile-");
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(join(root, "data", "policies"), { recursive: true }));
+  const recordPath = join(root, "data", "policies", "policy-active.json");
+  const contentPath = join(root, "data", "policies", "policy-active.md");
+  await writeJson(recordPath, {
+    id: "policy-active",
+    type: "policy",
+    title: "Active Policy",
+    status: "active",
+    ownerIds: ["person-owner"],
+    approverIds: ["person-approver"],
+    approvedOn: "2026-08-01",
+    effectiveOn: "2026-08-01",
+    policyKind: "information-security",
+    programRole: "required"
+  });
+  await writeFile(contentPath, "# Active Policy\n\nInitial approved content.\n", "utf8");
+  await commitAll(root, "Add active policy");
+  await writeFile(contentPath, "# Active Policy\n\nMaterially revised content.\n", "utf8");
+  await commitAll(root, "Revise policy content");
+
+  const preview = await planReconciliation(root);
+  assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["policy-revised"]);
+  assert.equal(preview.candidates[0].subject.id, "policy-active");
 });
 
 test("does not treat an external reviewer as a workforce start", async (context) => {

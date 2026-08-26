@@ -76,7 +76,7 @@ export async function assessAuditPreparation(input, options = {}) {
   const programReadiness = options.programReadiness || await assessProgramReadiness(loaded, {
     asOf: readinessAsOf,
     generatedAt: options.generatedAt,
-    programId: audit?.programId
+    programId: audit?.programId || options.programId
   });
   const documentActivations = audit && modelSupports(loaded.model, "governed-document-activation")
     ? await auditDocumentActivationAssessments(loaded, audit, byId, calendarAsOf)
@@ -942,6 +942,7 @@ function occurrenceContinuityStage(audit, records, model, asOf) {
     || record.controlIds.some((id) => selectedControlIds.has(id))
   ));
   const plan = planObligations(periodResources, {
+    programId: audit.programId,
     from: periodStart,
     asOf: periodThrough,
     through: periodThrough,
@@ -1320,7 +1321,11 @@ function populationsStage(audit, records, byId, model) {
     );
   }
   const populations = audit
-    ? records.filter((record) => record.type === "audit-population" && record.auditId === audit.id)
+    ? records.filter((record) => (
+        record.type === "audit-population"
+        && record.auditId === audit.id
+        && record.status !== "superseded"
+      ))
     : [];
   const templates = applicablePopulationTemplates(
     audit,

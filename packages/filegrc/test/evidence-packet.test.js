@@ -17,7 +17,10 @@ import {
   getGitSummary,
   loadModel,
   loadWorkspace,
+  migrateModel,
   prepareEvidencePacket,
+  saveAuditPopulation,
+  scaffoldAuditPopulationCorrection,
   serveWorkspace,
   updateResource,
   writeEvidencePacket
@@ -68,6 +71,224 @@ const executeProcess = promisify(execFile);
 const execute = (executable, args, options) => executable === process.execPath
   ? executeCli(runCli, executable, args)
   : executeProcess(executable, args, options);
+
+test("keeps superseded test populations visible and blocks reliance on stale tests", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-corrected-test-population-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  while (Number((await loadWorkspace(root)).workspace.dataModelVersion) < 9) {
+    await migrateModel(root);
+  }
+  await executeProcess("git", ["init", "--initial-branch=main"], { cwd: root });
+  await executeProcess("git", ["config", "user.name", "Test User"], { cwd: root });
+  await executeProcess("git", ["config", "user.email", "test@example.test"], { cwd: root });
+  await executeProcess("git", ["add", "."], { cwd: root });
+  await executeProcess("git", ["commit", "-m", "Create model v9 workspace"], { cwd: root });
+  await createResources(root, [
+    {
+      id: "framework-security",
+      type: "framework",
+      title: "Security criteria",
+      status: "active",
+      version: "1"
+    },
+    {
+      id: "requirement-security",
+      type: "requirement",
+      title: "Security requirement",
+      frameworkId: "framework-security",
+      reference: "SEC1"
+    },
+    {
+      id: "system-audit-source",
+      type: "system",
+      title: "Audit source",
+      status: "active",
+      purpose: "Provide the scoped service used for the audit test.",
+      servicesProvided: ["Audit population source"],
+      boundary: "The test audit source system.",
+      criticality: "high",
+      ownerIds: ["person-owner"]
+    },
+    {
+      id: "component-audit-source",
+      type: "component",
+      title: "Audit source component",
+      status: "planned",
+      componentKind: "service",
+      description: "Authoritative source for the audit population export.",
+      evidenceSourceKinds: ["population-export"],
+      evidenceOwnerIds: ["person-owner"],
+      ownerIds: ["person-owner"]
+    },
+    {
+      id: "control-access-review",
+      type: "control",
+      title: "Access review",
+      status: "planned",
+      statement: "Management reviews access.",
+      ownerIds: ["person-owner"],
+      requirementIds: ["requirement-security"],
+      code: "ACC-01",
+      activity: "Review access.",
+      operationMode: "manual",
+      operationPattern: "scheduled",
+      systemIds: ["system-audit-source"]
+    },
+    {
+      id: "audit-type-2-correction",
+      type: "audit",
+      title: "Type 2 correction test",
+      status: "planned",
+      auditKind: "soc-2-type-2",
+      programId: "program-test-soc-2-program",
+      frameworkIds: ["framework-security"],
+      requirementIds: ["requirement-security"],
+      controlIds: ["control-access-review"],
+      systemIds: ["system-audit-source"],
+      scope: "Production service",
+      ownerIds: ["person-owner"],
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" }
+    },
+    {
+      id: "evidence-original-population",
+      type: "evidence",
+      title: "Original population export",
+      status: "verified",
+      artifactKind: "population-export",
+      sourceKind: "component",
+      sourceDescription: "Original export",
+      collectedOn: "2026-07-01",
+      generatedAt: "2026-07-01T12:00:00Z",
+      timezone: "UTC",
+      queryDescription: "All access reviews in the period.",
+      populationCount: 1,
+      completenessValidation: "Reconciled to the source total.",
+      accuracyValidation: "Checked the item to the source.",
+      collectorIds: ["person-owner"],
+      verifierIds: ["person-approver"],
+      verifiedOn: "2026-07-01",
+      classificationId: "internal",
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" },
+      sourceComponentId: "component-audit-source",
+      auditIds: ["audit-type-2-correction"],
+      controlIds: ["control-access-review"]
+    },
+    {
+      id: "audit-population-original",
+      type: "audit-population",
+      title: "Original access-review population",
+      status: "reconciled",
+      auditId: "audit-type-2-correction",
+      populationKind: "access-review-population",
+      controlIds: ["control-access-review"],
+      sourceComponentId: "component-audit-source",
+      sourceEvidenceId: "evidence-original-population",
+      reconciledByIds: ["person-owner"],
+      reconciledOn: "2026-07-01",
+      conclusion: "complete",
+      ownerIds: ["person-owner"],
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" }
+    },
+    {
+      id: "control-test-access-review",
+      type: "control-test",
+      title: "Access review control test",
+      status: "complete",
+      controlId: "control-access-review",
+      testKinds: ["operating-effectiveness"],
+      performedBy: "management",
+      auditId: "audit-type-2-correction",
+      testerIds: ["person-owner"],
+      sampleSize: 1,
+      populationId: "audit-population-original",
+      sampleEvidenceIds: ["evidence-original-population"],
+      evidenceIds: ["evidence-original-population"],
+      exceptionCount: 0,
+      reviewerIds: ["person-approver"],
+      reviewedOn: "2026-07-02",
+      completedOn: "2026-07-02",
+      outcome: "passed",
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" }
+    },
+    {
+      id: "obligation-remove-access",
+      type: "obligation",
+      title: "Remove access",
+      status: "active",
+      activityType: "access-removal",
+      scheduleMode: "rule",
+      ruleIds: ["obligation-rule-remove-access"],
+      activeRuleId: "obligation-rule-remove-access",
+      ownerIds: ["person-owner"],
+      controlIds: ["control-access-review"]
+    },
+    {
+      id: "obligation-rule-remove-access",
+      type: "obligation-rule",
+      title: "Access removal rule",
+      status: "active",
+      obligationId: "obligation-remove-access",
+      activityDefinitionVersion: "1",
+      recurrence: { mode: "event", eventType: "person-ended" },
+      window: { precision: "timestamp", startsAfter: 0, dueAfter: 4 },
+      rationale: "Remove access within four hours.",
+      approvedByIds: ["person-owner"],
+      approvedOn: "2026-01-01",
+      effectiveAt: "2026-01-01T00:00:00Z",
+      timezone: "UTC"
+    },
+    {
+      id: "obligation-event-person-ended",
+      type: "obligation-event",
+      title: "Worker departure",
+      status: "complete",
+      eventType: "person-ended",
+      riskLevel: "normal",
+      occurredOn: "2026-06-01",
+      occurredAt: "2026-06-01T08:00:00Z",
+      completedOn: "2026-06-01",
+      ownerIds: ["person-owner"],
+      obligationIds: ["obligation-remove-access"],
+      subjectResourceIds: ["person-owner"]
+    },
+    {
+      id: "action-item-remove-access",
+      type: "action-item",
+      title: "Remove access",
+      status: "done",
+      assigneeIds: ["person-owner"],
+      sourceResourceId: "obligation-event-person-ended",
+      obligationId: "obligation-remove-access",
+      obligationRuleId: "obligation-rule-remove-access",
+      completionResourceIds: ["evidence-original-population"],
+      completionWindow: {
+        precision: "timestamp",
+        startsAt: "2026-06-01T08:00:00Z",
+        dueAt: "2026-06-01T12:00:00Z",
+        overdueAt: "2026-06-01T12:00:00Z",
+        timezone: "UTC"
+      },
+      completedOn: "2026-06-01"
+    }
+  ]);
+  const correction = await scaffoldAuditPopulationCorrection(root, {
+    populationId: "audit-population-original",
+    asOf: "2026-07-03"
+  });
+  assert.deepEqual(correction.affectedControlTests.map(({ id }) => id), ["control-test-access-review"]);
+  await saveAuditPopulation(root, {
+    record: correction.record,
+    expectedRevision: correction.revision
+  });
+  const packet = await prepareEvidencePacket(root, { auditId: "audit-type-2-correction" });
+  assert.equal(packet.populations.some(({ id, status }) => id === "audit-population-original" && status === "superseded"), true);
+  const testSummary = packet.controlCoverage[0].tests.find(({ id }) => id === "control-test-access-review");
+  assert.equal(testSummary.populationStatus, "superseded");
+  assert.equal(testSummary.replacementPopulationId, correction.record.id);
+  assert.equal(packet.gaps.some(({ code, resourceId }) => code === "superseded-test-population" && resourceId === testSummary.id), true);
+  assert.equal(packet.gaps.some(({ code, resourceId }) => code === "event-completion-time-missing" && resourceId === "action-item-remove-access"), true);
+});
 
 test("waits for workspace writes before generating a packet", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-serialized-packet-"));

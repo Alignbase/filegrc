@@ -11,10 +11,11 @@ import {
   coverageOverlaps,
   coverageStart
 } from "./coverage.js";
-import { getFilesAtRevisions, getGitSummary, getWorkspaceHistories, getWorkspaceRevisionSnapshot, hasGitRevision } from "./git.js";
+import { getFileHistoryWithPaths, getFilesAtRevisions, getGitSummary, getRecordIdentityHistories, getWorkspaceHistories, getWorkspaceRevisionSnapshot, hasGitRevision } from "./git.js";
 import { planObligations } from "./obligations.js";
 import { isWithin, resolveDataPath, resolveWorkspacePath, resolveWorkspaceRoot } from "./paths.js";
 import { parseCalendarDate } from "./recurrence.js";
+import { resolveProgram, selectedRequirementIds } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import {
@@ -45,11 +46,14 @@ const NON_EVIDENCE_RECORD_TYPES = new Set([
   "evidence",
   "framework",
   "obligation",
+  "obligation-occurrence",
+  "obligation-rule",
   "organization",
   "person",
   "policy",
   "renderer-settings",
   "requirement",
+  "reporting-route",
   "system",
   "team",
   "training",
@@ -65,10 +69,25 @@ export async function prepareEvidencePacket(input, options = {}) {
   const entriesById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const audit = options.auditId ? byId.get(options.auditId) : null;
   if (options.auditId && audit?.type !== "audit") throw new Error(`Audit "${options.auditId}" was not found.`);
+  if (audit?.programId && options.programId && audit.programId !== options.programId) {
+    throw new Error(`Audit "${audit.id}" belongs to Program "${audit.programId}", not "${options.programId}".`);
+  }
+  const program = modelSupports(loaded.model, "program-scope")
+    ? resolveProgram(loaded, options.programId || audit?.programId)
+    : null;
+  const scope = audit || (program ? {
+    id: `program-scope:${program.id}`,
+    programScope: true,
+    programId: program.id,
+    frameworkIds: program.frameworkIds || [],
+    systemIds: program.systemIds || [],
+    requirementIds: selectedRequirementIds(program, loaded.model),
+    controlIds: program.controlIds || []
+  } : null);
   const { start, end, basis } = resolvePacketPeriod(options, audit);
   const typeOne = audit?.auditKind === "soc-2-type-1";
   const datedRecords = loaded.entries
-    .filter((entry) => !audit || recordRelevantToAudit(entry.record, audit, byId))
+    .filter((entry) => !scope || recordRelevantToAudit(entry.record, scope, byId))
     .map((entry) => packetRecord(entry.record, loaded.model, start, end, loaded.workspace.timezone))
     .filter(Boolean);
   const datedRecordIds = new Set(datedRecords.map(({ id }) => id));
@@ -78,19 +97,21 @@ export async function prepareEvidencePacket(input, options = {}) {
     ))
   );
   const plan = planObligations(records, {
+    programId: program?.id || options.programId || audit?.programId,
     asOf: end,
     from: start,
     through: end,
     includeComplete: true,
+    additionalControlIds: audit?.controlIds || [],
     model: loaded.model
   });
   const obligations = (typeOne ? [] : plan.calendarItems).filter((item) => (
     item.dueWindowStart <= end
     && item.overdueOn > start
-    && (!audit || recordRelevantToAudit(byId.get(item.obligationId), audit, byId))
+    && (!scope || recordRelevantToAudit(byId.get(item.obligationId), scope, byId))
   ));
   const eventRuns = (typeOne ? [] : plan.eventRuns).filter((run) => (
-    (!audit || run.actions.some((action) => recordRelevantToAudit(byId.get(action.obligationId), audit, byId)))
+    (!scope || run.actions.some((action) => recordRelevantToAudit(byId.get(action.obligationId), scope, byId)))
     && (
       (run.occurredOn >= start && run.occurredOn <= end)
       || datedEvidenceSourceIds.has(run.id)
@@ -103,6 +124,7 @@ export async function prepareEvidencePacket(input, options = {}) {
     )
   ));
   const selectedIds = new Set(datedRecords.map((record) => record.id));
+  if (program) selectedIds.add(program.id);
   if (audit) {
     selectedIds.add(audit.id);
     addIds(selectedIds, [
@@ -137,6 +159,8 @@ export async function prepareEvidencePacket(input, options = {}) {
   }
   for (const item of obligations) {
     selectedIds.add(item.obligationId);
+    if (item.ruleId) selectedIds.add(item.ruleId);
+    if (item.occurrenceId) selectedIds.add(item.occurrenceId);
     addIds(selectedIds, item.completionResourceIds);
     addIds(selectedIds, item.evidenceIds);
   }
@@ -152,7 +176,7 @@ export async function prepareEvidencePacket(input, options = {}) {
 
   const evidenceIds = new Set();
   for (const evidence of records.filter((record) => record.type === "evidence")) {
-    if (audit && !recordRelevantToAudit(evidence, audit, byId)) continue;
+    if (scope && !recordRelevantToAudit(evidence, scope, byId)) continue;
     const direct = selectedIds.has(evidence.id)
       || (evidence.sourceResourceIds || []).some((id) => selectedIds.has(id))
       || overlapsEvidencePeriod(evidence, start, end);
@@ -169,10 +193,10 @@ export async function prepareEvidencePacket(input, options = {}) {
   expandEvidenceWorkflowContext(selectedIds, byId);
   for (const id of selectedIds) if (byId.get(id)?.type === "evidence") evidenceIds.add(id);
 
-  const controlIds = new Set(audit?.controlIds || records
+  const controlIds = new Set(scope?.controlIds || records
     .filter((record) => record.type === "control" && !["not-applicable", "retired"].includes(record.status))
     .map(({ id }) => id));
-  if (!audit) {
+  if (!scope) {
     for (const id of selectedIds) {
       const record = byId.get(id);
       addIds(controlIds, record?.controlIds);
@@ -204,7 +228,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       selectedIds.add(complementaryControl.id);
     }
   }
-  for (const systemId of audit?.systemIds || []) {
+  for (const systemId of scope?.systemIds || []) {
     const system = byId.get(systemId);
     addIds(selectedIds, system?.subserviceVendorIds);
     for (const commitment of records.filter((record) => (
@@ -214,9 +238,8 @@ export async function prepareEvidencePacket(input, options = {}) {
     }
   }
 
-  const policyIds = new Set(audit
-    ? []
-    : records.filter((record) => record.type === "policy" && ["approved", "active"].includes(record.status)).map((record) => record.id));
+  const policyIds = new Set(program?.policyIds || []);
+  if (!scope) addIds(policyIds, records.filter((record) => record.type === "policy" && ["approved", "active"].includes(record.status)).map((record) => record.id));
   for (const id of selectedIds) addIds(policyIds, policyIdsFor(byId.get(id), byId));
   for (const controlId of controlIds) addIds(policyIds, byId.get(controlId)?.policyIds);
   expandSupersededPolicyIds(policyIds, byId);
@@ -224,7 +247,7 @@ export async function prepareEvidencePacket(input, options = {}) {
 
   const requirementIds = new Set();
   for (const controlId of controlIds) addIds(requirementIds, byId.get(controlId)?.requirementIds);
-  if (audit) addIds(requirementIds, audit.requirementIds);
+  if (scope) addIds(requirementIds, scope.requirementIds);
   addIds(selectedIds, requirementIds);
 
   const sourceRevisionValidity = new Map();
@@ -237,7 +260,7 @@ export async function prepareEvidencePacket(input, options = {}) {
   const sourceSystemIds = new Set([
     ...(v4
       ? [...controlIds].flatMap((id) => byId.get(id)?.evidenceSourceComponentIds || [])
-      : audit?.systemIds || []),
+      : scope?.systemIds || []),
     ...evidence.map((item) => item.sourceComponentId || item.sourceSystemId).filter(Boolean)
   ]);
   const sourceSystems = [...sourceSystemIds]
@@ -256,6 +279,7 @@ export async function prepareEvidencePacket(input, options = {}) {
     Number.MAX_SAFE_INTEGER,
     { strict: Boolean(historyRevision.commit) }
   );
+  const identityHistories = getRecordIdentityHistories(loaded.root, selectedIds);
   const packetRecords = [...selectedIds]
     .map((id) => byId.get(id))
     .filter(Boolean)
@@ -270,10 +294,10 @@ export async function prepareEvidencePacket(input, options = {}) {
         dates: packetRecord(record, loaded.model, start, end, loaded.workspace.timezone)?.dates || [],
         policyIds: policyIdsFor(record, byId),
         evidenceIds: record.evidenceIds || [],
-        history: histories.get(path) || [],
+        history: identityHistories.get(record.id) || [],
         contentPaths: contentPaths.map((contentPath) => ({
           path: contentPath,
-          history: histories.get(contentPath) || []
+          history: getFileHistoryWithPaths(loaded.root, contentPath, Number.MAX_SAFE_INTEGER) || histories.get(contentPath) || []
         }))
       };
     })
@@ -300,13 +324,21 @@ export async function prepareEvidencePacket(input, options = {}) {
     !NON_EVIDENCE_RECORD_TYPES.has(record.type)
     && controlIdsForRecord(byId.get(record.id), byId).size
   ));
+  const referencedPopulationIds = new Set(controlCoverage.flatMap(({ tests }) => (
+    tests.map(({ populationId }) => populationId).filter(Boolean)
+  )));
   const populations = (typeOne ? [] : records)
-    .filter((record) => record.type === "audit-population" && (!audit || record.auditId === audit.id))
+    .filter((record) => (
+      record.type === "audit-population"
+      && (record.status !== "superseded" || referencedPopulationIds.has(record.id))
+      && (!scope || recordRelevantToAudit(record, scope, byId))
+    ))
     .map((record) => populationSummary(record, byId))
     .sort(byTitle);
   const generatedAt = options.generatedAt || new Date().toISOString();
   const managementPreparation = await assessAuditPreparation(loaded, {
     auditId: audit?.id,
+    programId: program?.id,
     generatedAt,
     selectDefault: false
   });
@@ -376,7 +408,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       policies: policyIds.size,
       controls: controlIds.size,
       requirements: requirementIds.size,
-      systems: audit?.systemIds?.length || 0,
+      systems: scope?.systemIds?.length || 0,
       [v4 ? "sourceComponents" : "sourceSystems"]: sourceSystems.length,
       obligationOccurrences: obligations.length,
       eventRuns: eventRuns.length,
@@ -473,6 +505,7 @@ function recordRelevantToAudit(record, audit, byId, seen = new Set()) {
   if (record.id === audit.id || record.auditId === audit.id || (record.auditIds || []).includes(audit.id)) return true;
   if (record.auditId && record.auditId !== audit.id) return false;
   if ((record.auditIds || []).length) return false;
+  if (audit.programScope && audit.programId && record.programId) return record.programId === audit.programId;
   const selectedIds = new Set([
     ...(audit.frameworkIds || []),
     ...(audit.systemIds || []),
@@ -542,9 +575,33 @@ function expandEvidenceWorkflowContext(selectedIds, byId) {
   for (let index = 0; index < queue.length; index += 1) {
     const record = byId.get(queue[index]);
     enqueue(childrenBySource.get(record?.id));
+    enqueue([
+      ...(record?.completionResourceIds || []),
+      ...(record?.evidenceIds || []),
+      ...(record?.sampleEvidenceIds || []),
+      ...(record?.exceptionIds || []),
+      ...(record?.attestationIds || []),
+      record?.sourceEvidenceId,
+      record?.exceptionId
+    ]);
     if (record?.type === "evidence") enqueue([...(record.sourceResourceIds || []), record.sourceComponentId, record.sourceSystemId]);
     if (record?.type === "audit-population") enqueue([record.sourceEvidenceId, ...(record.controlIds || [])]);
     if (record?.type === "control-test") enqueue([record.populationId, ...(record.sampleEvidenceIds || [])]);
+    if (record?.type === "obligation-occurrence") {
+      enqueue((record.members || []).flatMap((member) => [
+        member.resourceId,
+        member.exceptionId,
+        ...(member.completionResourceIds || [])
+      ]));
+      enqueue([
+        record.obligationId,
+        record.ruleId,
+        record.collectionReviewId,
+        record.supersedesId
+      ]);
+    }
+    if (record?.type === "attestation") enqueue([record.reportingRouteId]);
+    if (record?.type === "exception") enqueue([...(record.evidenceIds || []), ...(record.attestationIds || [])]);
     if (record?.type === "action-item") {
       enqueue([
         record.sourceResourceId,
@@ -641,11 +698,16 @@ export async function writeEvidencePacket(input, packet, options = {}) {
         collectCommittedVersions(historicalFiles, item, content.path, content.history);
       }
     }
-    const historicalSources = getFilesAtRevisions(validation.loaded.root, historicalFiles);
-    for (let index = 0; index < historicalFiles.length; index += 1) {
+    const uniqueHistoricalFiles = historicalFiles.filter((file, index, all) => all.findIndex((candidate) => (
+      candidate.item.id === file.item.id
+      && candidate.history.commit === file.history.commit
+      && candidate.sourcePath === file.sourcePath
+    )) === index);
+    const historicalSources = getFilesAtRevisions(validation.loaded.root, uniqueHistoricalFiles);
+    for (let index = 0; index < uniqueHistoricalFiles.length; index += 1) {
       const source = historicalSources[index];
       if (source === null) continue;
-      const { item, sourcePath, history } = historicalFiles[index];
+      const { item, sourcePath, history } = uniqueHistoricalFiles[index];
       const exportedPath = join("history", item.type, item.id, history.commit, basename(sourcePath));
       await writePacketFile(output, exportedPath, source, files);
       historyIndex.push({
@@ -678,7 +740,13 @@ export function generateEvidencePacket(input, options = {}) {
 
 function collectCommittedVersions(target, item, sourcePath, history) {
   for (const revision of history || []) {
-    target.push({ item, sourcePath, relativePath: sourcePath, revision: revision.commit, history: revision });
+    target.push({
+      item,
+      sourcePath: revision.path || sourcePath,
+      relativePath: revision.path || sourcePath,
+      revision: revision.commit,
+      history: revision
+    });
   }
 }
 
@@ -1198,6 +1266,14 @@ function packetGaps({
       if (Number.isInteger(testRecord?.exceptionCount) && testRecord.exceptionCount < 0) {
         gaps.push(gap("error", "control-test-exception-count-invalid", `${coverage.code || coverage.title} records a negative exception count.`, test.id));
       }
+      if (test.populationStatus === "superseded") {
+        gaps.push(gap(
+          "error",
+          "superseded-test-population",
+          `${coverage.code || coverage.title} test ${test.id} used superseded population ${test.populationId}. Perform and review a replacement test against ${test.replacementPopulationId || "the corrected population"}.`,
+          test.id
+        ));
+      }
       const testFindings = records.filter((record) => record.type === "finding" && record.sourceResourceId === test.id);
       if ((testRecord?.exceptionCount > 0 || ["failed", "passed-with-exceptions"].includes(test.outcome)) && !testFindings.length) {
         gaps.push(gap("error", "control-test-finding-missing", `${coverage.code || coverage.title} records exceptions or failure without a linked finding.`, test.id));
@@ -1309,7 +1385,12 @@ function packetGaps({
 
   for (const item of obligations) {
     if (item.dueWindowEnd <= end && item.status !== "complete") {
-      gaps.push(gap("error", "missing-obligation-completion", `${item.title} has no linked completion in ${item.dueWindowStart} through ${item.dueWindowEnd}.`, item.obligationId));
+      gaps.push(gap(
+        "error",
+        "missing-obligation-completion",
+        `${item.title} is not reconciled for ${item.dueWindowStart} through ${item.dueWindowEnd} (${item.completedCount || 0} of ${item.expectedCount || 0} expected members passed).`,
+        item.occurrenceId || item.obligationId
+      ));
     }
   }
   for (const run of eventRuns) {
@@ -1334,6 +1415,20 @@ function packetGaps({
           "error",
           "missing-event-completion",
           `${run.title}: ${action.title} is marked ${action.recordedStatus} but has no linked ${action.expectedCompletionTypes.join(" or ")} completion record.`,
+          action.actionItemId
+        ));
+      } else if (action.timelinessStatus === "unknown") {
+        gaps.push(gap(
+          "error",
+          "event-completion-time-missing",
+          `${run.title}: ${action.title} has an hour-based deadline but its completion proof has no exact timestamp. Link proof with an RFC 3339 completion time or record and resolve a timeliness exception.`,
+          action.actionItemId
+        ));
+      } else if (action.lateCompletion) {
+        gaps.push(gap(
+          "error",
+          "late-event-completion",
+          `${run.title}: ${action.title} was completed after ${action.dueWindowEndAt || action.dueWindowEnd}. Record and resolve the timeliness exception.`,
           action.actionItemId
         ));
       } else if (action.dueWindowEnd && action.dueWindowEnd <= end && action.status !== "complete") {
@@ -1797,8 +1892,17 @@ function sourceSystemSummary(record, evidence, audit) {
 function testPopulationSummary(test, byId) {
   const population = byId.get(test.populationId);
   const evidence = byId.get(population?.sourceEvidenceId);
+  const replacement = population?.status === "superseded"
+    ? [...byId.values()].find((record) => (
+        record.type === "audit-population"
+        && record.supersedesId === population.id
+        && record.status !== "superseded"
+      ))
+    : null;
   return {
     populationId: test.populationId || null,
+    populationStatus: population?.status || null,
+    replacementPopulationId: replacement?.id || null,
     populationCount: evidence?.populationCount ?? null,
     populationEvidenceId: population?.sourceEvidenceId || null
   };
@@ -1806,15 +1910,16 @@ function testPopulationSummary(test, byId) {
 
 function populationGaps(gaps, audit, populations, byId, model) {
   const expected = model.auditReadiness?.populationTemplates || [];
+  const currentPopulations = populations.filter(({ status }) => status !== "superseded");
   for (const template of expected) {
-    const matching = populations.filter((population) => population.populationKind === template.kind);
+    const matching = currentPopulations.filter((population) => population.populationKind === template.kind);
     if (!matching.length) {
       gaps.push(gap("error", "missing-audit-population", `${audit.title} is missing the ${template.title} population.`, audit.id));
     } else if (matching.length > 1) {
       gaps.push(gap("error", "duplicate-audit-population", `${audit.title} has more than one ${template.title} population.`, audit.id));
     }
   }
-  for (const population of populations) {
+  for (const population of currentPopulations) {
     if (!coverageMatches(population.coverage, coverageStart(audit.coverage), coverageEnd(audit.coverage))) {
       gaps.push(gap("error", "population-period-mismatch", `${population.title} does not match the exact audit period.`, population.id));
     }

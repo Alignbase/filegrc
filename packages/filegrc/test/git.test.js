@@ -11,9 +11,13 @@ import {
   commitAndPushWorkspace,
   commitWorkspace,
   getChangedDataPathsSinceRevision,
+  getDataRecordHistoryIndex,
   getFileAtRevision,
+  getFileObjectIdAtRevision,
   getFilesAtRevisions,
   getFileHistory,
+  getFileHistoryWithPaths,
+  getWorkingFileObjectId,
   GitOperationError,
   hasGitRevision,
   pullWorkspace,
@@ -28,6 +32,95 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
+
+test("tracks each historical Markdown path across Git renames", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-content-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await writeFile(join(root, "data", "original.md"), "original\n", "utf8");
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Add original content"]);
+  await git(root, ["mv", "data/original.md", "data/renamed.md"]);
+  await git(root, ["commit", "-m", "Rename content"]);
+
+  const history = getFileHistoryWithPaths(root, "data/renamed.md", Number.MAX_SAFE_INTEGER);
+  assert.deepEqual(history.map(({ path }) => path), ["data/renamed.md", "data/original.md"]);
+});
+
+test("indexes data history when commit metadata contains record separators", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-byte-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", `Initial records\x1econtrolled suffix`]);
+
+  const index = getDataRecordHistoryIndex(root);
+  assert.equal(index.available, true);
+  assert.equal(index.commits.length, 1);
+  assert.equal(index.historiesById.get("person-owner")?.length, 1);
+  assert.match(index.historiesById.get("person-owner")[0].subject, /controlled suffix/);
+  const pathHistory = getFileHistoryWithPaths(root, "data/people/person-owner.json");
+  assert.equal(pathHistory.length, 1);
+  assert.equal(pathHistory[0].path, "data/people/person-owner.json");
+  assert.match(pathHistory[0].subject, /controlled suffix/);
+});
+
+test("rejects a shallow repository as an incomplete data history", async (context) => {
+  const source = await mkdtemp(join(tmpdir(), "filegrc-shallow-source-"));
+  const root = await mkdtemp(join(tmpdir(), "filegrc-shallow-clone-"));
+  context.after(() => Promise.all([
+    rm(source, { recursive: true, force: true }),
+    rm(root, { recursive: true, force: true })
+  ]));
+  await makeWorkspace(source);
+  await git(source, ["init"]);
+  await git(source, ["config", "user.name", "Test User"]);
+  await git(source, ["config", "user.email", "test@example.test"]);
+  await git(source, ["add", "."]);
+  await git(source, ["commit", "-m", "Initial records"]);
+  const ownerPath = join(source, "data", "people", "person-owner.json");
+  const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+  await writeFile(ownerPath, `${JSON.stringify({ ...owner, title: "Changed owner" }, null, 2)}\n`, "utf8");
+  await git(source, ["add", "."]);
+  await git(source, ["commit", "-m", "Change owner"]);
+  await rm(root, { recursive: true, force: true });
+  await execute("git", ["clone", "--depth=1", `file://${source}`, root]);
+
+  const index = getDataRecordHistoryIndex(root);
+  assert.equal(index.head?.length, 40);
+  assert.equal(index.available, false);
+  assert.match(index.error.message, /shallow/);
+});
+
+test("compares historical attachments larger than the command output limit by Git object ID", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-large-attachment-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  const path = join(root, "data", "large-evidence.bin");
+  await writeFile(path, Buffer.alloc(20_000_001, 0x61));
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Add large evidence"]);
+  const revision = getGitSummary(root).commit;
+
+  assert.equal(
+    getFileObjectIdAtRevision(root, revision, "data/large-evidence.bin"),
+    getWorkingFileObjectId(root, "data/large-evidence.bin")
+  );
+  await writeFile(path, Buffer.alloc(20_000_001, 0x62));
+  assert.notEqual(
+    getFileObjectIdAtRevision(root, revision, "data/large-evidence.bin"),
+    getWorkingFileObjectId(root, "data/large-evidence.bin")
+  );
+});
 
 test("keeps a queued synchronization result when repository state came from an overlapping snapshot", () => {
   const synchronization = {
@@ -609,6 +702,7 @@ test("a hung fetch times out without holding the mutation queue or poisoning lat
   });
   assert.equal(saved.status, 200);
   assert.match(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8"), /Recovered after timeout/);
+  assert.equal((await waitForRepository(fixture.root)).status, "synced");
 });
 
 test("async Git errors distinguish missing executables and sanitize command failures", async (context) => {

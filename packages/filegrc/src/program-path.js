@@ -201,11 +201,13 @@ export const PROGRAM_PATH = [
         summary: "Complete scheduled, event-driven, and assigned work by its due date.",
         instructions: "Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.",
         use: "See proposed, upcoming, blocked, due, and overdue policy work together with every open Action Item. Continuous and per-transaction Controls still operate through their Components and need dated operating records or Evidence.",
-        policyBasis: "Active and effective Policies start enabled reusable Obligations. Policy Events and source records create owned Action Items. Each occurrence or task retains its own deadline, completion record, and evidence.",
+        policyBasis: "Active and effective Policies start enabled reusable Obligations. Each calendar occurrence stays one rolled-up item whose reconciliation binds the selected population to its completion records. Policy Events and source records create owned Action Items.",
         commands: [
           "filegrc obligations --json",
+          "filegrc activate-obligation-rule RULE_ID --scaffold",
           "filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD",
-          "filegrc complete OBLIGATION_ID completion-mutation.json --json"
+          "filegrc complete OBLIGATION_ID completion-mutation.json --json",
+          "filegrc reconcile-obligation OBLIGATION_ID --scaffold --window-start YYYY-MM-DD"
         ]
       }
     ],

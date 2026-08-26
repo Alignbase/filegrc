@@ -4,10 +4,12 @@ An obligation is a reusable policy schedule or event template. It is not the rec
 
 - Calendar obligations need a valid recurrence anchor, owners, expected completion types, and policy or control links.
 - Event obligations need a stable lowercase `eventType`, a prompt, owners, expected completion types, and an explicit deadline window.
+- Keep one rolled-up Obligation Occurrence per rule window when one queue-level owner, population rule, and reconciliation conclusion govern the work. Reconcile each selected member to dated completion proof, an approved Exception, or a reviewed non-applicability decision.
+- Split the work only when a member needs its own queue owner, deadline, conclusion, or follow-up lifecycle.
 - Keep completed occurrences in `completionResourceIds`. Do not replace prior links when a new period starts.
 - Configure and enable Obligations during Step 3. An enabled Obligation remains dormant until every governing Policy and required program Document is active and effective and, when it names Controls, at least one linked Control is implemented. FileGRC starts calendar work from the latest Policy or governed Document effective date, so pre-cutover periods do not become overdue work.
 - Calendar Obligations generated with `status: proposed` contain suggested starting cadences. Review the scope and risk, edit the cadence when needed, and change the Obligation to `active` only when management accepts that schedule. A proposed Obligation never counts as a configured schedule.
-- When an approved cadence changes, update the policy, control, and obligation together.
+- When an approved cadence changes, update its authoritative Obligation schedule. Keep the durable required outcome in the Policy and the implementation fact in the Control instead of copying the cadence across all three records.
 - Pause or retire a template only when the underlying policy work no longer applies. Do not delete historical templates that explain prior periods.
 
 Use `npx filegrc obligations --json` to inspect calculated recurring work and preview every Policy Event task, owner, deadline, and requested proof. Run `npx filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD > completion-mutation.json`, fill the actual work and proof, then pass that file to `npx filegrc complete OBLIGATION_ID completion-mutation.json`. The scaffold includes the current Obligation revision, and the final command creates and links the dated occurrence in one validated write. Use `npx filegrc trigger EVENT_TYPE ...` only after the matching event occurs; it adds all configured Action Items to the Work Queue atomically.

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { runCli } from "../src/cli.js";
 import {
   completeObligationOccurrence,
@@ -19,11 +21,14 @@ import {
   validateWorkspace
 } from "../src/index.js";
 import { executeCli, makeWorkspace } from "./helpers.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
+const executeProcess = promisify(execFile);
 const MODEL_V2 = loadModel("2");
 const MODEL_V5 = loadModel("5");
 const MODEL_V7 = loadModel("7");
+const MODEL_V9 = loadModel("9");
 const planObligations = (resources, options = {}) => planObligationsWithModel(resources, {
   model: MODEL_V2,
   ...options
@@ -34,6 +39,197 @@ const ACTIVE_OWNER = {
   title: "Program Owner",
   status: "active"
 };
+
+test("scopes calendar work and event triggers to the selected Program", () => {
+  const resources = [
+    { id: "workspace", type: "workspace", title: "Workspace", timezone: "UTC", dataModelVersion: "9" },
+    { id: "program-a", type: "program", title: "Program A", status: "active", controlIds: ["control-a"], policyIds: [], systemIds: [] },
+    { id: "program-b", type: "program", title: "Program B", status: "active", controlIds: ["control-b"], policyIds: [], systemIds: [] },
+    ACTIVE_OWNER,
+    { id: "control-a", type: "control", title: "Control A", status: "implemented" },
+    { id: "control-b", type: "control", title: "Control B", status: "implemented" },
+    ...["a", "b"].flatMap((suffix) => [
+      {
+        id: `obligation-calendar-${suffix}`,
+        type: "obligation",
+        title: `Calendar ${suffix}`,
+        status: "active",
+        activityType: "meeting",
+        recurrence: { mode: "calendar", unit: "year", interval: 1, anchorDate: "2026-01-01" },
+        window: { precision: "date", startsAfter: 0, dueAfter: 30 },
+        ownerIds: ["person-owner"],
+        controlIds: [`control-${suffix}`]
+      },
+      {
+        id: `obligation-event-${suffix}`,
+        type: "obligation",
+        title: `Event ${suffix}`,
+        status: "active",
+        activityType: "access-change",
+        recurrence: { mode: "event", eventType: "person-role-changed" },
+        window: { precision: "date", startsAfter: 0, dueAfter: 3 },
+        ownerIds: ["person-owner"],
+        controlIds: [`control-${suffix}`]
+      }
+    ])
+  ];
+  const plan = planObligationsWithModel(resources, {
+    model: MODEL_V9,
+    programId: "program-a",
+    asOf: "2026-01-01",
+    through: "2026-01-31"
+  });
+  assert.deepEqual(plan.calendarItems.map(({ obligationId }) => obligationId), ["obligation-calendar-a"]);
+  assert.deepEqual(plan.triggers.flatMap(({ obligationIds }) => obligationIds), ["obligation-event-a"]);
+});
+
+test("rejects an open occurrence after a supersede-open-window rule cutover", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-rule-cutover-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const loaded = await loadWorkspace(root);
+  const ruleEntry = loaded.entries.find(({ record }) => record.type === "obligation-rule");
+  const occurrenceEntry = loaded.entries.find(({ record }) => record.type === "obligation-occurrence");
+  const obligationEntry = loaded.entries.find(({ record }) => record.type === "obligation");
+  await writeFile(ruleEntry.path, `${JSON.stringify({ ...ruleEntry.record, status: "retired", retiredOn: "2026-07-01" }, null, 2)}\n`);
+  const successor = {
+    ...ruleEntry.record,
+    id: "obligation-rule-successor",
+    title: "Successor obligation rule",
+    supersedesId: ruleEntry.record.id,
+    cutoverDecision: "supersede-open-window"
+  };
+  await writeFile(join(root, "data", "obligation-rules", `${successor.id}.json`), `${JSON.stringify(successor, null, 2)}\n`);
+  await writeFile(occurrenceEntry.path, `${JSON.stringify({
+    ...occurrenceEntry.record,
+    status: "open",
+    conclusion: undefined,
+    reviewedByIds: undefined,
+    reconciledAt: undefined
+  }, null, 2)}\n`);
+  await writeFile(obligationEntry.path, `${JSON.stringify({
+    ...obligationEntry.record,
+    activeRuleId: successor.id,
+    ruleIds: [...obligationEntry.record.ruleIds, successor.id]
+  }, null, 2)}\n`);
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "open-occurrence-after-rule-cutover"), true);
+});
+
+test("does not finalize as-of membership until the cutoff day has ended", () => {
+  const resources = [
+    { id: "workspace", type: "workspace", title: "Workspace", timezone: "UTC", dataModelVersion: "9" },
+    { id: "program-a", type: "program", title: "Program A", status: "active", controlIds: ["control-a"], policyIds: [], systemIds: ["system-a"] },
+    ACTIVE_OWNER,
+    { id: "control-a", type: "control", title: "Control A", status: "implemented" },
+    { id: "system-a", type: "system", title: "System A", status: "active" },
+    { id: "vendor-a", type: "vendor", title: "Vendor A", status: "active", criticality: "critical" },
+    { id: "component-a", type: "component", title: "Component A", status: "active", vendorId: "vendor-a", systemUses: [{ systemId: "system-a" }] },
+    {
+      id: "obligation-vendor-review",
+      type: "obligation",
+      title: "Review critical vendors",
+      status: "active",
+      activityType: "vendor-review",
+      scheduleMode: "rule",
+      ruleIds: ["rule-vendor-review"],
+      activeRuleId: "rule-vendor-review",
+      ownerIds: ["person-owner"],
+      controlIds: ["control-a"]
+    },
+    {
+      id: "rule-vendor-review",
+      type: "obligation-rule",
+      title: "Vendor review rule",
+      status: "active",
+      obligationId: "obligation-vendor-review",
+      activityDefinitionVersion: "1",
+      recurrence: { mode: "calendar", unit: "year", interval: 1, anchorDate: "2026-01-01" },
+      window: { precision: "date", startsAfter: 0, dueAfter: 10 },
+      selector: { resourceType: "vendor", membershipMode: "as-of", cutoff: "window-start", statuses: ["active"], criticalities: ["critical"] },
+      effectiveAt: "2026-01-01T00:00:00Z",
+      timezone: "UTC"
+    }
+  ];
+  const plan = (asOf) => planObligationsWithModel(resources, {
+    model: MODEL_V9,
+    programId: "program-a",
+    asOf,
+    through: "2026-01-11"
+  }).calendarItems[0];
+  assert.equal(plan("2026-01-01").membershipFinal, false);
+  assert.equal(plan("2026-01-02").membershipFinal, true);
+});
+
+test("direct-file validation rejects reconciliation on the population cutoff day", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-cutoff-reconciliation-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const loaded = await loadWorkspace(root);
+  const occurrenceEntry = loaded.entries.find(({ record }) => record.type === "obligation-occurrence");
+  await writeFile(occurrenceEntry.path, `${JSON.stringify({
+    ...occurrenceEntry.record,
+    reconciledAt: "2026-06-15T23:59:59Z"
+  }, null, 2)}\n`);
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "obligation-population-still-open"), true);
+});
+
+test("a planned completion cannot pass a different rolled-up member", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-member-completion-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const loaded = await loadWorkspace(root);
+  const obligationEntry = loaded.entries.find(({ record }) => record.type === "obligation");
+  const occurrenceEntry = loaded.entries.find(({ record }) => record.type === "obligation-occurrence");
+  const accessReviewEntry = loaded.entries.find(({ record }) => record.type === "access-review");
+  await writeFile(obligationEntry.path, `${JSON.stringify({ ...obligationEntry.record, activityType: "access-review" }, null, 2)}\n`);
+  await writeFile(accessReviewEntry.path, `${JSON.stringify({ ...accessReviewEntry.record, status: "planned" }, null, 2)}\n`);
+  await writeFile(occurrenceEntry.path, `${JSON.stringify({
+    ...occurrenceEntry.record,
+    members: [{
+      resourceId: "system-example",
+      disposition: "expected",
+      result: "passed",
+      completionResourceIds: [accessReviewEntry.record.id]
+    }]
+  }, null, 2)}\n`);
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "wrong-member-completion"), true);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "missing-passing-member-completion"), true);
+});
+
+test("freezes proof transitively after an occurrence is reconciled", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-finalized-proof-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const loaded = await loadWorkspace(root);
+  const occurrence = loaded.resources.find((record) => record.type === "obligation-occurrence");
+  const completion = loaded.resources.find((record) => record.id === occurrence.members[0].completionResourceIds[0]);
+  const evidence = loaded.resources.find((record) => record.id === completion.evidenceIds[0]);
+
+  await assert.rejects(
+    updateResource(root, "evidence", evidence.id, { ...evidence, title: `${evidence.title} changed` }),
+    /immutable because finalized occurrence/i
+  );
+
+  await executeProcess("git", ["init", "--initial-branch=main"], { cwd: root });
+  await executeProcess("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  await executeProcess("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  await executeProcess("git", ["add", "data"], { cwd: root });
+  await executeProcess("git", ["commit", "-m", "Record finalized occurrence"], { cwd: root });
+  const evidencePath = loaded.entries.find(({ record }) => record.id === evidence.id).path;
+  const rewritten = JSON.parse(await readFile(evidencePath, "utf8"));
+  rewritten.title = `${rewritten.title} rewritten directly`;
+  await writeFile(evidencePath, `${JSON.stringify(rewritten, null, 2)}\n`);
+  const validation = await validateWorkspace(root);
+  assert.ok(validation.diagnostics.some(({ code, message }) => (
+    code === "rewritten-finalized-record" && message.includes(evidence.id)
+  )));
+});
 
 test("plans flexible calendar windows with explicit due and overdue timing", () => {
   const obligation = {

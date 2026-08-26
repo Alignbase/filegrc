@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v7 workspaces must run `npx filegrc migrate --to-model 8 --preview --json` after installing a model v8 package. The migration preserves legacy retention prose as notes and creates no retention periods or disposition behavior. Older workspaces migrate one model version at a time. See the [model v8 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v8.md).
+Existing model v8 workspaces must run `npx filegrc migrate --to-model 9 --preview --json` after installing a model v9 package. The migration keeps current Obligation schedules in legacy mode until management reviews and activates rule-based replacements. Older workspaces migrate one model version at a time. See the [model v9 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v9.md).
 
 ## How it works
 
@@ -27,7 +27,7 @@ The repository is the program. There is no separate application database.
 
 - **JSON** holds records that filegrc validates, filters, and connects.
 - **Markdown** holds policies, procedures, plans, minutes, and narratives.
-- **Git** supplies authors, timestamps, revisions, diffs, and commit messages.
+- **Git** exclusively supplies authors, commit timestamps, revisions, diffs, renames, prior versions, and commit messages.
 
 Use the same source through the local web app, a text editor, the CLI, or CI. Browser and CLI actions call the same rules, so engineers and agents see the same validation and readiness results.
 

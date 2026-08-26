@@ -6,9 +6,9 @@ This plan coordinates reporting, response, recovery, and continuity when a secur
 
 ## Reporting routes
 
-The primary reporting route is {{security_contact_email}}.
+Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period.
 
-[Complete before activation: Name a usable alternate reporting route, its owner, protected location, and how workers can find it when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not put plaintext credentials, private keys, tokens, or recovery codes in this plan.]
+[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]
 
 Reports may describe suspected unauthorized access, malware, data loss, credential exposure, security-Control failure, service disruption, fraud affecting the service, or another policy violation. The recipient records the report, protects confidentiality, preserves relevant information, and assigns an initial owner.
 

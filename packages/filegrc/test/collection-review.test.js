@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import { loadModel } from "../model/index.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
 import {
@@ -13,9 +15,13 @@ import {
   planCollectionReview,
   scaffoldCollectionReview,
   serveWorkspace,
-  updateResource
+  updateResource,
+  validateWorkspace
 } from "../src/index.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace } from "./helpers.js";
+
+const execute = promisify(execFile);
 
 test("person scope includes operators referenced only by selected Components and Vendors", () => {
   const program = { id: "program-one", type: "program", systemIds: ["system-one"], controlIds: [] };
@@ -50,6 +56,45 @@ test("person scope includes operators referenced only by selected Components and
     scopedCollectionRecords(loaded, "vendor", program).map(({ id }) => id).sort(),
     ["vendor-one", "vendor-payroll"]
   );
+});
+
+test("rejects a Collection Review first committed after its claimed review date", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-backdated-review-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["config", "user.name", "Test User"], { cwd: root });
+  await execute("git", ["config", "user.email", "test@example.test"], { cwd: root });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["commit", "-m", "Initial workspace"], { cwd: root });
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
+  const plan = await planCollectionReview(root, {
+    resourceType: "person",
+    programId: "program-example",
+    decision: "complete",
+    rationale: "Confirmed the current program participants.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: today,
+    now: new Date().toISOString()
+  });
+  const review = plan.changes.create[0];
+  const backdated = "2026-01-01";
+  review.reviewedOn = backdated;
+  review.coverage = { kind: "as-of", on: backdated };
+  review.knowledgeCutoffAt = "2026-01-01T12:00:00Z";
+  await mkdir(join(root, "data", "collection-reviews"), { recursive: true });
+  await writeFile(
+    join(root, "data", "collection-reviews", `${review.id}.json`),
+    `${JSON.stringify(review, null, 2)}\n`,
+    "utf8"
+  );
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["commit", "-m", "Record backdated review"], { cwd: root });
+
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.diagnostics.some(({ code, message }) => (
+    code === "rewritten-finalized-record" && /backdating/.test(message)
+  )), true);
 });
 
 test("binds a collection confirmation to the exact records and relevant scope", async (context) => {
@@ -125,7 +170,7 @@ test("binds a collection confirmation to the exact records and relevant scope", 
       ...review,
       decision: "not-applicable"
     }),
-    /must use one of: complete/
+    /immutable/i
   );
 
   const owner = loaded.resources.find((record) => record.id === "person-owner");

@@ -42,6 +42,9 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 
 - Read `README.md` and run `npm run validate` before broad changes.
 - Treat `data/` as the source of truth. Do not hand-edit `.filegrc/` output.
+- Let Git exclusively supply version-control facts, including authors, commit timestamps, messages, diffs, revisions, renames, and prior file versions. Do not copy them into records or maintain a parallel change log.
+- Store each mutable program fact in one authoritative record and refer to it by ID. Policies state durable rules and outcomes instead of copying current people, vendors, systems, reporting routes, schedules, targets, or inventories.
+- Keep an Obligation occurrence rolled up when one owner, window, population rule, and reconciliation conclusion govern the work. Split it only when a member needs its own owner, deadline, conclusion, or follow-up lifecycle.
 - Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject.
 - Use UTF-8 JSON for structured records and Markdown for long-form work.
 - Keep one resource in each JSON file.
@@ -70,7 +73,7 @@ Run `npm run check:milestone` in CI. Before an assurance goal is selected it che
 
 ## Git is the audit trail
 
-Git supplies file authors, commit timestamps, messages, diffs, and revisions. Do not add fields such as `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, or a second change log.
+Git exclusively supplies file authors, commit timestamps, messages, diffs, revisions, renames, and prior versions. Do not add fields such as `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, or a second change log.
 
 Domain events still need explicit dates. Keep values such as `occurredOn`, `scheduledFor`, `approvedOn`, `completedOn`, and audit-period dates in their records.
 
@@ -115,7 +118,7 @@ npx filegrc migrate --to-model 8 --preview --json
 
 Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v8 migration preserves legacy retention prose as notes, renames Component processing operations, and creates no retention periods or disposition behavior.
 
-The [model v8 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v8.md) explains the structured retention and mapping changes.
+The [model v9 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v9.md) explains rolled-up Obligation occurrences, reviewed schedule rules, temporal Collection Reviews, and Reporting Routes.
 
 Run these commands when working with records:
 
@@ -282,7 +285,7 @@ Link a control test to its `audit-population` record when sampling applies. Link
 
 ## Content and approvals
 
-The initial program lead is {{policy_owner_name}}, {{policy_owner_job_title}}, at {{policy_owner_email}}. The separate Policy Owner Appointment records this person’s starting program authority, and the security reporting address is {{security_contact_email}}. Update the Person when their organizational position changes. End and replace Appointments when named authority moves to someone else.
+The initial program lead is {{policy_owner_name}}, {{policy_owner_job_title}}, at {{policy_owner_email}}. The separate Policy Owner Appointment records this person’s starting program authority. Reporting Route records hold the current security reporting destinations. Update the Person when their organizational position changes. End and replace Appointments when named authority moves to someone else.
 
 Appoint an independent management reviewer during policy review, not as a condition of defining the service boundary. The reviewer must be separate from the policy owner and able to challenge the owner’s decisions. Assign another internal leader or manager when a suitable reviewer is available. Otherwise, appoint a qualified external reviewer. The reviewer chairs Security and Risk Oversight and approves policies and governed documents.
 

@@ -12,7 +12,7 @@ import {
 
 test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "8");
+  assert.equal(model.modelVersion, "9");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -27,7 +27,7 @@ test("active model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 51);
+  assert.equal(Object.keys(model.resources).length, 54);
   assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "information-type", "retention-schedule-item"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
   for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "information-type", "retention-schedule-item"]) {
@@ -225,10 +225,10 @@ test("active model exposes the complete resource registry", () => {
   }
   assert.equal(model.recordContent.slot, "record");
   assert.equal(model.recordContent.label, "Record");
-  assert.equal(model.recordContent.defaultResourceTypes.length, 20);
+  assert.equal(model.recordContent.defaultResourceTypes.length, 22);
   assert.equal(model.auditReadiness.managementDocuments.length, 4);
   assert.equal(model.auditReadiness.populationTemplates.length, 10);
-  assert.deepEqual(model.resources["audit-population"].fields.status.values, ["planned", "reconciled", "not-applicable"]);
+  assert.deepEqual(model.resources["audit-population"].fields.status.values, ["planned", "reconciled", "not-applicable", "superseded"]);
   assert.equal(new Set(model.auditReadiness.populationTemplates.map(({ kind }) => kind)).size, 10);
   assert.equal(new Set(model.auditReadiness.managementDocuments.map(({ field }) => field)).size, 4);
   for (const document of model.auditReadiness.managementDocuments) {
@@ -317,7 +317,7 @@ test("active model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "8");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "9");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");

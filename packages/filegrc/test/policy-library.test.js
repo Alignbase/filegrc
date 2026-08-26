@@ -139,6 +139,8 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-security-incident-recovery-plan": {
     path: "document-security-incident-recovery-plan.md",
     replacements: [
+      ["Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period.", "The primary reporting route is security@example.test."],
+      ["[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]", "[Complete before activation: Name a usable alternate reporting route, its owner, protected location, and how workers can find it when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not put plaintext credentials, private keys, tokens, or recovery codes in this plan.]"],
       ["[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]", "[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]"],
       ["- Dependencies, fallback paths, and validation steps\n- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision", "- Dependencies, fallback paths, and validation steps"],
       ["Supporting procedures, system records, and retained evidence document the actual technical configuration and operation.", "Controls, Components, Systems, Obligations, and Evidence hold the actual technical configuration and proof of operation."],
@@ -756,7 +758,7 @@ test("proposes only the missing review schedules in an existing v4 starter works
     proposalRevision: proposal.revision
   });
   assert.deepEqual(new Set(applied.result.createdResourceIds), new Set(addedIds));
-  assert.equal(applied.result.validation.ok, true);
+  assert.equal(applied.result.validation.ok, true, JSON.stringify(applied.result.validation.diagnostics));
   assert.equal(await readFile(join(root, "data", "controls", "control-strong-authentication.json"), "utf8"), unchangedControl);
   assert.equal(await readFile(policyPath(root), "utf8"), unchangedPolicy);
   const policy = JSON.parse(await readFile(join(root, "data", "policies", "policy-information-security.json"), "utf8"));

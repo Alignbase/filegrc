@@ -150,6 +150,7 @@ export async function makeComprehensiveWorkspace(root, version) {
       record.recurrence = { mode: "event", eventType: "person-role-changed" };
       record.window = { precision: "date", startsAfter: 0, dueAfter: 3 };
     }
+    if (Number(model.modelVersion) >= 9) configureRuleBasedObligationFixture(record, ids);
     await writeRecord(root, definition, record, model);
     records.push(record);
   }
@@ -178,6 +179,60 @@ export async function makeComprehensiveWorkspace(root, version) {
     await writeRecord(root, model.resources.attestation, attestation, model);
   }
   return { model, records };
+}
+
+function configureRuleBasedObligationFixture(record, ids) {
+  if (record.type === "access-grant") {
+    record.status = "active";
+    record.requestedOn = "2026-06-15";
+    record.approvedOn = "2026-06-15";
+    record.provisionedOn = "2026-06-15";
+    return;
+  }
+  if (record.type === "obligation") {
+    record.activityType = "access-provisioning";
+    delete record.customActivity;
+    record.scheduleMode = "rule";
+    record.ruleIds = [ids["obligation-rule"]];
+    record.activeRuleId = ids["obligation-rule"];
+    delete record.recurrence;
+    delete record.window;
+    delete record.startsOn;
+    delete record.endsOn;
+    delete record.completionResourceIds;
+    return;
+  }
+  if (record.type === "obligation-rule") {
+    record.status = "active";
+    record.obligationId = ids.obligation;
+    record.recurrence = { mode: "event", eventType: "person-role-changed" };
+    record.window = { precision: "date", startsAfter: 0, dueAfter: 3 };
+    record.rationale = "Management approved this event window for access changes.";
+    record.approvedByIds = [ids.independentApprover];
+    record.approvedOn = "2026-01-15";
+    record.effectiveAt = "2026-01-15T15:30:00Z";
+    record.timezone = "America/Chicago";
+    return;
+  }
+  if (record.type === "obligation-occurrence") {
+    record.status = "reconciled";
+    record.obligationId = ids.obligation;
+    record.ruleId = ids["obligation-rule"];
+    record.occurrenceKey = "person-role-changed:person-example:2026-06-15";
+    record.coverage = { kind: "as-of", on: "2026-06-15" };
+    record.membershipCutoffAt = "2026-06-15";
+    record.members = [{
+      resourceId: ids.person,
+      disposition: "expected",
+      result: "passed",
+      completionResourceIds: [ids["access-grant"]]
+    }];
+    record.expectedCount = 1;
+    record.completedCount = 1;
+    record.conclusion = "complete";
+    record.reviewedByIds = [ids.independentApprover];
+    record.reconciledAt = "2026-06-16T15:30:00Z";
+  }
 }
 
 function sampleValue(name, field, ids, model, type) {

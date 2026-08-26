@@ -47,6 +47,61 @@ export function currentCalendarDate(timeZone, now = new Date()) {
   }
 }
 
+export function localDateTimeValue(value, timeZone) {
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return "";
+  const parts = dateTimeParts(instant, timeZone);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+export function timestampFromLocalDateTime(value, timeZone) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(value || "");
+  if (!match) throw new Error("A local date and time is required.");
+  const desired = match.slice(1).map((part, index) => Number(part ?? (index === 5 ? "0" : part)));
+  const desiredUtc = Date.UTC(desired[0], desired[1] - 1, desired[2], desired[3], desired[4], desired[5] || 0);
+  let instant = new Date(desiredUtc);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = dateTimeParts(instant, timeZone);
+    const representedUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second)
+    );
+    instant = new Date(instant.getTime() + desiredUtc - representedUtc);
+  }
+  const roundTrip = localDateTimeValue(instant, timeZone);
+  const normalized = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6] || "00"}`;
+  if (roundTrip !== normalized) throw new Error(`The local time ${normalized} does not exist in ${timeZone}.`);
+  const matchingInstants = [];
+  for (let offsetMinutes = -240; offsetMinutes <= 240; offsetMinutes += 1) {
+    const candidate = new Date(instant.getTime() + offsetMinutes * 60_000);
+    if (localDateTimeValue(candidate, timeZone) === normalized) matchingInstants.push(candidate.getTime());
+  }
+  if (new Set(matchingInstants).size > 1) {
+    throw new Error(
+      `The local time ${normalized} occurs more than once in ${timeZone}. Use an RFC 3339 timestamp with an explicit UTC offset.`
+    );
+  }
+  return instant.toISOString().replace(".000Z", "Z");
+}
+
+function dateTimeParts(instant, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(instant);
+  return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+}
+
 export function isRfc3339Timestamp(value) {
   const match = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value || "");
   if (!match) return false;

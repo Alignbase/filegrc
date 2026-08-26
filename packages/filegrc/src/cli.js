@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { ACTIVE_MODEL_VERSION, loadModel, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
 import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
+import { saveAuditPopulation, scaffoldAuditPopulationCorrection } from "./audit-populations.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
 import {
   applyApplicabilityReviewWithContext,
@@ -36,12 +37,16 @@ import { generateModelDocumentation } from "./model-docs.js";
 import { migrateModel, planModelMigration } from "./model-migration.js";
 import { normalizeResourceMutation } from "./mutation.js";
 import {
+  activateObligationRule,
   completeObligationAction,
   completeObligationEvent,
   completeObligationOccurrence,
   createObligationEvent,
   planObligations,
-  scaffoldObligationCompletion
+  saveObligationOccurrence,
+  scaffoldObligationCompletion,
+  scaffoldObligationOccurrence,
+  scaffoldObligationRuleActivation
 } from "./obligations.js";
 import {
   planExternalReviewerGovernance,
@@ -79,6 +84,7 @@ const BOOLEAN_FLAGS = new Set([
   "apply",
   "check-docs",
   "complete",
+  "correct-finalized",
   "current",
   "draft",
   "help",
@@ -384,6 +390,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "obligations") {
     const loaded = await loadWorkspace(root);
     const result = planObligations(loaded.resources, {
+      programId: flags.program,
       asOf: flags["as-of"] ?? currentCalendarDate(loaded.workspace.timezone),
       from: flags.from,
       through: flags.through,
@@ -406,8 +413,12 @@ export async function runCli(argv = process.argv.slice(2)) {
           item.actionItemId
             ? item.status === "blocked"
               ? `filegrc get ${item.actionItemId} --mutation`
-              : `filegrc complete-action ${item.actionItemId} --scaffold --completed-on YYYY-MM-DD`
-            : `filegrc complete ${item.obligationId} --scaffold --window-start ${item.dueWindowStart} --completed-on YYYY-MM-DD`
+              : `filegrc complete-action ${item.actionItemId} --scaffold${flags.program ? ` --program ${flags.program}` : ""} --completed-on YYYY-MM-DD`
+            : item.ruleId && ["proposed", "approved"].includes(item.ruleStatus)
+              ? `filegrc activate-obligation-rule ${item.ruleId} --scaffold`
+              : item.ruleId
+                ? `filegrc reconcile-obligation ${item.obligationId} --scaffold --window-start ${item.dueWindowStart}${flags.program ? ` --program ${flags.program}` : ""}${item.reconciliationStatus === "reconciled" ? " --correct-finalized" : ""}`
+                : `filegrc complete ${item.obligationId} --scaffold --window-start ${item.dueWindowStart}${flags.program ? ` --program ${flags.program}` : ""} --completed-on YYYY-MM-DD`
         ].join("\t"));
       }
       if (result.triggers.length) {
@@ -557,6 +568,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ? await withWorkflowDelta(root, () => applyReconciliation(root, {
         candidateId: flags.candidate,
         transitionFingerprint: flags.candidate,
+        programId: flags.program,
         occurredOn: flags["occurred-on"],
         occurredAt: flags["occurred-at"],
         riskLevel: flags["risk-level"],
@@ -621,12 +633,16 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "review-applicability") {
     if (flags.scaffold) {
-      const result = await scaffoldApplicabilityReview(root, { type: flags.type });
+      const result = await scaffoldApplicabilityReview(root, { type: flags.type, programId: flags.program });
       console.log(JSON.stringify(result, null, 2));
       return result;
     }
     const payload = await readSetupPayload(positionals[0]);
-    const options = { ...payload, confirmed: flags.yes === true };
+    const options = {
+      ...payload,
+      programId: flags.program || payload.programId,
+      confirmed: flags.yes === true
+    };
     const result = flags.preview
       ? await planApplicabilityReview(root, options)
       : await applyApplicabilityReviewWithContext(root, options, { includeWorkflowDelta: true });
@@ -638,7 +654,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "review-collection") {
     const resourceType = positionals[0] || flags.type;
     if (flags.scaffold) {
-      const result = await scaffoldCollectionReview(root, { resourceType });
+      const result = await scaffoldCollectionReview(root, { resourceType, programId: flags.program });
       console.log(JSON.stringify(result, null, 2));
       return result;
     }
@@ -646,6 +662,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const options = {
       ...payload,
       resourceType: resourceType || payload.resourceType,
+      programId: flags.program || payload.programId,
       confirmed: flags.yes === true
     };
     const result = flags.preview
@@ -751,6 +768,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "trigger") {
     const result = await withWorkflowDelta(root, () => createObligationEvent(root, {
+      programId: flags.program,
       eventType: positionals[0],
       occurredOn: flags["occurred-on"],
       occurredAt: flags["occurred-at"],
@@ -774,6 +792,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       start: flags.start,
       end: flags.end,
       auditId: flags.audit,
+      programId: flags.program,
       output: flags.output
     };
     const generated = flags.preview
@@ -862,6 +881,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags.scaffold) {
       const result = await scaffoldObligationCompletion(root, {
         obligationId,
+        programId: flags.program,
         windowStart: flags["window-start"],
         completedOn: flags["completed-on"]
       });
@@ -879,11 +899,81 @@ export async function runCli(argv = process.argv.slice(2)) {
     else console.log(`Created ${result.created.type}/${result.created.id} and linked it to obligation/${obligationId}`);
     return result;
   }
+  if (command === "activate-obligation-rule") {
+    const [ruleId, file] = positionals;
+    if (!ruleId) throw new Error("An Obligation Rule ID is required.");
+    if (flags.scaffold) {
+      const result = await scaffoldObligationRuleActivation(root, { ruleId });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!file) throw new Error("A scaffolded Obligation Rule activation payload file is required.");
+    const source = await readSetupPayload(file);
+    const payload = source.payload || source;
+    const result = await withWorkflowDelta(root, () => activateObligationRule(root, { ...payload, ruleId }));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Activated obligation-rule/${ruleId}`);
+    return result;
+  }
+  if (command === "reconcile-obligation") {
+    const [obligationId, file] = positionals;
+    if (!obligationId) throw new Error("An Obligation ID is required.");
+    if (flags.scaffold) {
+      const result = await scaffoldObligationOccurrence(root, {
+        obligationId,
+        programId: flags.program,
+        windowStart: flags["window-start"],
+        asOf: flags["as-of"],
+        correctFinalized: flags["correct-finalized"] === true
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!file) throw new Error("A scaffolded Obligation occurrence mutation file is required.");
+    const mutation = await readMutation(file);
+    if (mutation.record?.type !== "obligation-occurrence" || mutation.record.obligationId !== obligationId) {
+      throw new Error("The mutation must contain an Obligation occurrence for the requested Obligation.");
+    }
+    const loaded = await loadWorkspace(root);
+    const existing = loaded.resources.some(({ id, type }) => id === mutation.record.id && type === "obligation-occurrence");
+    const result = await withWorkflowDelta(root, () => saveObligationOccurrence(root, {
+      record: mutation.record,
+      programId: flags.program || mutation.record.programId,
+      content: mutation.content,
+      expectedRevision: expectedRevision(flags, mutation, `obligation-occurrence/${mutation.record.supersedesId || mutation.record.id}`)
+    }));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`${existing ? "Updated" : "Created"} obligation-occurrence/${mutation.record.id}`);
+    return result;
+  }
+  if (command === "correct-audit-population") {
+    const [populationId, file] = positionals;
+    if (!populationId) throw new Error("An Audit Population ID is required.");
+    if (flags.scaffold) {
+      const result = await scaffoldAuditPopulationCorrection(root, { populationId, asOf: flags["as-of"] });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!file) throw new Error("A scaffolded Audit Population correction payload file is required.");
+    const mutation = await readMutation(file);
+    if (mutation.record?.type !== "audit-population" || mutation.record.supersedesId !== populationId) {
+      throw new Error("The mutation must contain an Audit Population correction for the requested population.");
+    }
+    const result = await withWorkflowDelta(root, () => saveAuditPopulation(root, {
+      record: mutation.record,
+      content: mutation.content,
+      expectedRevision: expectedRevision(flags, mutation, `audit-population/${populationId}`)
+    }));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`Created audit-population/${mutation.record.id} and superseded audit-population/${populationId}.`);
+    return result;
+  }
   if (command === "complete-action") {
     const [actionItemId, file] = positionals;
     if (flags.scaffold) {
       const result = await scaffoldObligationCompletion(root, {
         actionItemId,
+        programId: flags.program,
         completedOn: flags["completed-on"]
       });
       console.log(JSON.stringify(result, null, 2));
@@ -906,6 +996,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (!eventId) throw new Error("A Policy Event ID is required.");
     const result = await withWorkflowDelta(root, () => completeObligationEvent(root, {
       eventId,
+      programId: flags.program,
       completedOn: flags["completed-on"],
       expectedRevision: requireExpectedRevision(flags, `obligation-event/${eventId}`)
     }));
@@ -1175,14 +1266,14 @@ Usage:
   filegrc scaffold <resource-type> --title text [--id resource-id] [--program program-id]
   filegrc list [resource-type] [--workflow] [--json]
   filegrc search <query> [--type resource-type] [--json]
-  filegrc obligations [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
+  filegrc obligations [--program program-id] [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
   filegrc program-amendment <source-resource-id> [--json]
   filegrc review-bindings <retention-or-mapping-id> [--json]
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
   filegrc audit-readiness [audit-id] [--as-of YYYY-MM-DD] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
-  filegrc reconcile [--preview|--apply --candidate fingerprint (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --yes] [--risk-level normal|high] [--json]
+  filegrc reconcile [--preview|--apply --candidate fingerprint (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --yes] [--program program-id] [--risk-level normal|high] [--json]
   filegrc external-reviewer-setup --scaffold
   filegrc external-reviewer-setup <reviewer.json|-> [--preview|--yes] [--json]
   filegrc next-audit-cycle <prior-audit-id> [cycle.json|-] --start YYYY-MM-DD --end YYYY-MM-DD [--preview|--yes] [--json]
@@ -1192,17 +1283,22 @@ Usage:
   filegrc activate-content [--scaffold | activation.json|-] [--program id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc activate-documents [--scaffold | activation.json|-] [--program id | --audit id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc policy-library [--json | --accept proposal-id --proposal-revision revision --yes]
-  filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
-  filegrc evidence-packet [--audit audit-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
+  filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--program program-id] [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
+  filegrc evidence-packet [--audit audit-id | --program program-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
   filegrc get [resource-type] <id> [--mutation]
   filegrc references <id> [--json]
   filegrc preview-mutation <preview.json|-> [--json]
   filegrc create <mutation.json|-> [--json]
-  filegrc complete <obligation-id> --scaffold --window-start YYYY-MM-DD [--completed-on YYYY-MM-DD]
+  filegrc complete <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--completed-on YYYY-MM-DD]
   filegrc complete <obligation-id> <completion-record.json|-> [--expected-revision hash] [--json]
-  filegrc complete-action <action-item-id> --scaffold [--completed-on YYYY-MM-DD]
+  filegrc activate-obligation-rule <rule-id> [payload.json] [--scaffold] [--json]
+  filegrc reconcile-obligation <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--as-of YYYY-MM-DD] [--correct-finalized]
+  filegrc reconcile-obligation <obligation-id> <occurrence.json|-> [--program program-id] [--expected-revision hash] [--json]
+  filegrc correct-audit-population <population-id> --scaffold [--as-of YYYY-MM-DD]
+  filegrc correct-audit-population <population-id> <correction.json|-> [--expected-revision hash] [--json]
+  filegrc complete-action <action-item-id> --scaffold [--program program-id] [--completed-on YYYY-MM-DD]
   filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
-  filegrc complete-event <obligation-event-id> --completed-on YYYY-MM-DD --expected-revision hash [--json]
+  filegrc complete-event <obligation-event-id> --program program-id --completed-on YYYY-MM-DD --expected-revision hash [--json]
   filegrc update <resource-type> <id> <mutation.json|-> [--json]
   filegrc content <resource-type> <id> [slot] [--write markdown-file|-] [--expected-revision hash] [--json]
   filegrc attach <evidence-id> <source-file> --expected-revision hash [--name file-name] [--json]
@@ -1515,6 +1611,7 @@ function agentOverview(model) {
     previewMutation: "filegrc preview-mutation <preview.json> --json",
     create: "filegrc create <mutation.json>",
     complete: "filegrc complete <obligation-id> <completion-mutation.json>",
+    reconcileObligation: "filegrc reconcile-obligation <obligation-id> --scaffold --window-start <date>",
     completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
     completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",
     update: "filegrc update <resource-type> <id> <mutation.json>",
