@@ -55,7 +55,20 @@ export function loadModel(version = ACTIVE_MODEL_VERSION) {
       expandRegistryReference(model, field, `${objectType}.${name}`);
     }
   }
+  validateCollectionReviewPopulationRelations(model);
   return model;
+}
+
+function validateCollectionReviewPopulationRelations(model) {
+  const field = model.resources["collection-review"]?.fields?.populationResourceIds;
+  if (!field) return;
+  const allowedTypes = new Set(field.relation || []);
+  const missingTypes = Object.keys(model.collectionReviews || {}).filter((type) => !allowedTypes.has(type));
+  if (missingTypes.length) {
+    throw new Error(
+      `Collection Review population relationships do not allow configured resource types: ${missingTypes.join(", ")}.`
+    );
+  }
 }
 
 function expandRegistryReference(model, field, path) {

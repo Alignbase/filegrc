@@ -7615,7 +7615,7 @@
         "populationResourceIds": {
           "type": "array",
           "items": "id",
-          "relationGroup": "obligation-scope",
+          "relationGroup": "collection-review-population",
           "label": "Reviewed population"
         }
       },
@@ -9370,6 +9370,17 @@
       "person",
       "team",
       "appointment"
+    ],
+    "collection-review-population": [
+      "person",
+      "framework",
+      "vendor",
+      "system",
+      "complementary-control",
+      "component",
+      "classification",
+      "information-type",
+      "retention-schedule-item"
     ],
     "appointment-scope": [
       "workspace",

@@ -31,6 +31,10 @@ test("active model exposes the complete resource registry", () => {
   assert.equal(Object.keys(model.resources).length, 55);
   assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
+  assert.deepEqual(
+    model.resources["collection-review"].fields.populationResourceIds.relation,
+    Object.keys(model.collectionReviews)
+  );
   for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]) {
     assert.ok(model.collectionReviews[type].description.length >= 60);
     assert.ok(model.collectionReviews[type].reviewPoints.length >= 2);

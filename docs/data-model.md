@@ -157,6 +157,7 @@ Relationship fields use the named groups below. The registry expands each group 
 | Group | Resource types |
 | --- | --- |
 | `accountable-party` | `person`, `team`, `appointment` |
+| `collection-review-population` | `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item` |
 | `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 | `obligation-template` | `person`, `system`, `asset`, `document`, `control`, `policy`, `training`, `retention-schedule-item`, `requirement-mapping` |
@@ -974,7 +975,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `supersedesId` | id | No | References: `collection-review` |
 | `coverage` | object (`coverage-period`) | No | Reviewed temporal coverage |
 | `knowledgeCutoffAt` | timestamp | No | Knowledge cutoff |
-| `populationResourceIds` | array of id | No | Reviewed population Relation group: `obligation-scope`. References: `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
+| `populationResourceIds` | array of id | No | Reviewed population Relation group: `collection-review-population`. References: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item` |
 
 #### `requirement-mapping`
 

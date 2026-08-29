@@ -100,6 +100,34 @@ test("does not treat a Git timestamp as proof of a Collection Review date", asyn
   )), false, JSON.stringify(validation.diagnostics, null, 2));
 });
 
+test("records a temporal Classification collection population", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-classification-review-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["config", "user.name", "Test User"], { cwd: root });
+  await execute("git", ["config", "user.email", "test@example.test"], { cwd: root });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["commit", "-m", "Initial workspace"], { cwd: root });
+
+  const loaded = await loadWorkspace(root);
+  const reviewedOn = new Intl.DateTimeFormat("en-CA", { timeZone: loaded.workspace.timezone }).format(new Date());
+  const result = await applyCollectionReview(root, {
+    resourceType: "classification",
+    programId: "program-example",
+    decision: "complete",
+    rationale: "Confirmed all active information handling classifications.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn,
+    confirmed: true
+  });
+
+  assert.deepEqual(result.changes.create[0].populationResourceIds, ["classification-example"]);
+  assert.equal(result.assessment.status, "current");
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics, null, 2));
+});
+
 test("binds a collection confirmation to the exact records and relevant scope", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
