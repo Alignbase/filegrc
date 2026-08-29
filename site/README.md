@@ -13,7 +13,7 @@ npm run site:dev
 ```
 
 The site opens at `http://localhost:3000`.
-The site toolchain requires Node.js 22.12 or newer. filegrc workspaces still
+The site toolchain requires Node.js 22.19 or newer. filegrc workspaces still
 support Node.js 20 or newer.
 
 ## Validate and build
