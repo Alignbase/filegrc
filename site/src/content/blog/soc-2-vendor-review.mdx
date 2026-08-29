@@ -1,0 +1,415 @@
+---
+title: "SOC 2 Vendor Review: A Risk-Based Checklist"
+description: "Run a SOC 2 vendor review that connects service scope, data access, assurance evidence, risks, decisions, follow-up, and review triggers."
+publishedDate: "2026-08-29"
+lastMod: "2026-08-29"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 vendor review",
+    "SOC 2 vendor risk assessment",
+    "SOC 2 vendor management checklist",
+    "SOC 2 vendor due diligence",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects each vendor review to the provider, current scope, risks, evidence, decision, and follow-up."
+faqs:
+  - question: "What is a SOC 2 vendor review?"
+    answer: "A SOC 2 vendor review is management's documented assessment of a provider relationship that can affect the scoped service. It should identify the service, data and access, criticality, evidence reviewed, risks, decision, reviewer, follow-up, and relevant dates."
+  - question: "Is a vendor's SOC 2 report enough for a vendor review?"
+    answer: "No. A SOC 2 report can support the review, but management must check whether the service it uses is in scope, the report period and criteria fit the need, exceptions and subservice organizations matter, and complementary user entity controls are addressed. Other evidence may be needed."
+  - question: "How often should a SOC 2 vendor review happen?"
+    answer: "Follow the cadence in the company's approved policy and make it risk-based. Review a provider before material reliance or access, on the scheduled cycle for its risk tier, and after changes such as a new service, new data access, a material incident, a contract change, or a major assurance-report exception."
+  - question: "What evidence should a vendor review keep?"
+    answer: "Keep the vendor inventory facts, scoped service and data flow, contract or terms reviewed, current assurance material, questionnaire or security documentation when used, incident and resilience information, findings, risk links, approval decision, conditions, and proof of completed follow-up."
+  - question: "Should each vendor have its own review record?"
+    answer: "Yes. Each review record should cover one vendor and one scheduled window or triggering event. Create a new record for the next review. If several providers need different owners, dates, or conclusions, separate records prevent one approval from hiding another provider's unresolved risk."
+furtherReading:
+  - text: "Follow the startup SOC 2 compliance checklist"
+    url: "/blogs/soc-2-compliance-checklist-startups"
+  - text: "Write a connected SOC 2 system description"
+    url: "/blogs/soc-2-system-description-template"
+  - text: "Run the pre-fieldwork audit readiness gate"
+    url: "/blogs/soc-2-audit-readiness-checklist"
+  - text: "Prepare a Git-bound SOC 2 audit evidence packet"
+    url: "/blogs/soc-2-audit-evidence-packet"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+A SOC 2 vendor review should record why a provider matters, which service,
+data, and access you rely on, what evidence you examined, which risks remain,
+who decided, and what happens next. Review one vendor at a time so an approved,
+conditional, or rejected decision has one scope and one follow-up path. A
+vendor's SOC 2 report may support the review, but it does not prove the service
+you use is in scope, resolve exceptions, cover missing criteria, or replace
+your own risk decision.
+
+## TL;DR
+
+- Keep a current vendor inventory before scheduling reviews.
+- Prioritize vendors by the service, data, access, and business dependency they
+  introduce, not by subscription price alone.
+- Define the review scope before requesting documents.
+- Treat a vendor's SOC 2 report as evidence, not an automatic approval.
+- Record findings, linked risks, decision, conditions, owner, dates, and
+  follow-up in one review for one vendor.
+- Repeat reviews on the approved schedule and after material changes or
+  incidents.
+
+## What a SOC 2 vendor review should decide
+
+The review should answer one management question: can the company accept the
+risk of using this provider for the stated service, data, access, and period?
+
+The AICPA's
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+include criteria for assessing and managing risks associated with vendors and
+business partners. The criteria do not turn a provider's report into a pass or
+set one universal checklist for every relationship. Management designs the
+vendor controls that fit its service, commitments, and risks. The CPA firm then
+tests the controls selected for the examination.
+
+NIST gives a useful vendor-lifecycle frame even though the Cybersecurity
+Framework is not a SOC 2 requirement. The
+[CSF 2.0 Core](https://www.nist.gov/publications/nist-cybersecurity-framework-csf-20)
+names outcomes for knowing and prioritizing suppliers, setting requirements,
+performing due diligence before a formal relationship, monitoring risk during
+the relationship, and planning for its end. Its
+[Cybersecurity Supply Chain Risk Management quick-start guide](https://www.nist.gov/publications/nist-cybersecurity-framework-20-quick-start-guide-cybersecurity-supply-chain-risk)
+explains how organizations can apply those outcomes as acquirers and suppliers.
+
+For a small software company, the completed review should leave a clear result:
+
+| Result      | Meaning                                                                  | Required next step                                      |
+| ----------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Approved    | Current evidence supports the scoped use within management's risk limits | Record the next review or change trigger                |
+| Conditional | The company accepts limited use while named conditions remain open       | Assign owners, deadlines, and proof for each condition  |
+| Rejected    | The unresolved risk is outside the approved limit for the proposed use   | Do not start or expand reliance; record the alternative |
+
+An approval applies only to the reviewed use. A provider approved for public
+status-page hosting has not automatically been approved to process customer
+secrets or hold production credentials.
+
+## Start with the vendor inventory and criticality
+
+You cannot choose a review depth until you know what the provider does. Build
+the vendor inventory from actual use, then assign an owner and criticality.
+Useful discovery sources include purchasing records, expense reports, identity
+provider applications, cloud accounts, source repositories, browser-extension
+inventories, and interviews with team leads.
+
+For each provider, record:
+
+- the legal or trading name used in the relationship;
+- the service or capability the company uses;
+- the internal owner;
+- whether the relationship is evaluating, active, deprecated, or terminated;
+- business and service criticality;
+- the highest information classification the provider can access;
+- the information types it can handle;
+- the contract or standard terms that govern the relationship; and
+- connected systems or supplied components that depend on it.
+
+Criticality should reflect impact. Ask what happens if the provider is
+unavailable, compromised, loses data, changes its service, or ends the
+relationship. A cheap dependency can still be critical when it can deploy code
+or access production.
+
+The [SOC 2 risk assessment workflow](/blogs/soc-2-risk-assessment-startups)
+shows how to connect vendor scenarios to the wider risk register. Do not hide a
+material provider risk inside a review note when it needs its own owner,
+treatment, and review date.
+
+## Define the review scope before asking for documents
+
+A generic security questionnaire often creates work without answering the
+decision. Start with the exact use case.
+
+Write down:
+
+1. The product, service, and environment that will depend on the vendor.
+2. The data the vendor can receive, store, transmit, or infer.
+3. Human, machine, network, administrative, and support access.
+4. The systems and supplied components connected to the relationship.
+5. Availability, security, privacy, deletion, and recovery needs.
+6. Customer commitments or contract terms affected by the provider.
+7. Geographic, regulatory, or subprocessor constraints management has
+   determined apply.
+8. The review period or as-of date.
+
+This scope controls the evidence request. A vendor that only receives public
+marketing copy needs a different review from a provider that hosts production
+data, authenticates users, or can change deployed code.
+
+Record exclusions too. If the review excludes an optional product module,
+regional environment, or support workflow, state why it does not affect the
+planned use. That prevents a future reviewer from treating a narrow approval
+as company-wide.
+
+## Request evidence based on the risk
+
+Ask for evidence that tests the scoped use and the provider risks you actually
+identified. Possible sources include:
+
+| Review area          | Evidence that may help                                                | What to verify                                                      |
+| -------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Service and boundary | Service description, architecture summary, trust material             | The exact service and environment you use are covered               |
+| Assurance            | Current SOC 2 report or other independent assessment                  | Period, opinion, criteria, scope, exceptions, and subservices fit   |
+| Security             | Security documentation, questionnaire, test summary                   | Claims address your data, access, threats, and required controls    |
+| Privacy and data     | Data-processing terms, deletion terms, subprocessor list              | Handling, locations, retention, deletion, and onward sharing fit    |
+| Access               | Access model, support-access process, authentication information      | Privileged and emergency access match the planned integration       |
+| Resilience           | Availability terms, continuity material, recovery-test information    | Dependency and recovery needs have been addressed                   |
+| Incidents            | Notification terms, disclosed events, remediation information         | Known events and notification duties affect the decision correctly  |
+| Contract             | Agreement, security terms, service levels, exit and data-return terms | Required duties are written into the relationship where appropriate |
+
+The list is a menu, not a demand for every provider. Ask more of a vendor that
+holds sensitive data or supports a critical service. Ask less when the scoped
+use creates little security or availability risk, but keep the reason for that
+lighter review.
+
+Keep fixed documents behind Evidence Artifact records with source,
+classification, collector, date or period, and verification facts. The
+[SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) explains the
+context needed around a report, questionnaire, export, or screenshot. Never
+put plaintext credentials, private keys, tokens, session material, or recovery
+codes in Git, even in a private repository. Keep confidential reports,
+regulated personal data, and personal data that may need erasure in an approved
+restricted evidence store when Git access and retention do not fit. Retain the
+metadata and approved external reference in a linked Evidence Artifact, then
+link that artifact's ID from the Vendor Review through `evidenceIds`.
+
+## Review a vendor's SOC 2 report without treating it as a pass
+
+A report can reduce uncertainty when it covers the right service and period.
+Read it against the planned use instead of recording only that a report exists.
+
+For vendor due diligence, read the report's assertion, system description, and
+service auditor's report. For a Type 2 report, also read the tests of controls
+and results. For a Type 1 report, review the auditor's procedures and
+conclusions about control design as of the stated date. The AICPA's
+[SOC for Service Organizations engagement overview](https://www.aicpa-cima.com/resources/download/soc-for-service-organizations-engagements-overview)
+explains why outsourcing relationships create risks that organizations need to
+identify, assess, and manage. Report layouts vary, so use the table of contents
+and terms in the provider's report. Check at least:
+
+- the service organization and named system;
+- Type 1 or Type 2 and the relevant date or period;
+- the auditor's opinion and any qualification;
+- the Trust Services Categories included;
+- the service boundary and regions or products described;
+- subservice organizations and whether the method is inclusive or carve-out;
+- Type 2 test results, exceptions, and management responses relevant to your
+  use, or the Type 1 design procedures and conclusions;
+- complementary user entity controls you must operate; and
+- material changes or gap-period information supplied outside the report.
+
+Do not label a report “expired” only because a calendar year passed. Record its
+actual covered period and decide whether it is current enough for the risk and
+review date. If there is a gap between the report period and your review, ask
+what changed and preserve the answer. Assess the source and limits of any
+bridge letter or other gap-period statement separately.
+
+A clean opinion also does not mean every control passed without exception.
+Read the test results and decide whether an exception affects your scoped use.
+The provider's auditor reports on the provider. Your company still owns its
+vendor decision and the complementary controls assigned to user entities.
+
+## Record findings, decision, and follow-up
+
+The completed review should make the reasoning visible without requiring
+someone to reopen every attachment. Keep the detailed analysis in Markdown and
+the fields used for workflow in structured data.
+
+A useful review record includes:
+
+- one vendor ID and a plain description of the reviewed use;
+- planned date, completed date, and the review's own window or as-of date;
+- reviewers who performed the work;
+- Evidence Artifact IDs for the exact documents reviewed, with each report's
+  date or period kept on its artifact record;
+- linked risk IDs for material findings or accepted exposure;
+- approved, conditional, or rejected decision;
+- findings, exceptions, and why they matter to the scoped use;
+- conditions, owners, deadlines, and completion proof;
+- next scheduled review and event triggers; and
+- references to any separate action items or risk acceptance.
+
+Do not write “approved with follow-up” and leave the follow-up inside a
+paragraph. If a condition has its own owner, deadline, or completion proof,
+create an action item. If the decision accepts material residual risk, record
+the risk acceptance under the company's approval rules.
+
+The [SOC 2 controls guide](/blogs/soc-2-controls-startups) explains the split
+among the control, procedure, obligation, completed work, and evidence. The
+vendor review is the dated operating record, not the policy or the recurring
+schedule itself.
+
+## Keep one vendor in each review record
+
+One record should reach one conclusion about one provider for one scheduled
+window or triggering event. That makes the decision, evidence, coverage,
+risks, and follow-up unambiguous. Create a new record for the next review.
+
+You may assess several vendors during one campaign, but do not close them with
+one shared “annual vendor review complete” result. Each vendor can have a
+different service boundary, report period, exception, owner, and decision. If
+one provider is rejected while another is approved, the records should show
+that without relying on a spreadsheet note.
+
+Keep the vendor inventory authoritative for current relationship facts. The
+review should not copy the current owner, criticality, information types, or
+contract dates into a second long-lived inventory. Link the vendor and describe
+the scope and analysis that were true for this review.
+
+## Schedule periodic and event-driven reviews
+
+Your approved policy should set risk-based review timing. Do not copy an annual
+cadence into every vendor record unless management has adopted and can operate
+that rule.
+
+Calendar reviews are useful for important active relationships. Event-driven
+reviews catch risk between calendar dates. Useful triggers include:
+
+- proposed access to a new information type or system;
+- a material product, region, hosting, or subprocessor change;
+- a significant incident or service outage;
+- a new report with a relevant exception or modified opinion;
+- a contract renewal or change to security terms;
+- a change in criticality or business dependency; and
+- planned termination, data return, access removal, or transition.
+
+The review cadence and trigger should produce work, not overwrite the prior
+decision. Preserve completed reviews because they explain why the company used
+the provider at that time. Create a new review for the next period or material
+change.
+
+## SOC 2 vendor review evidence checklist
+
+Before marking a review complete, confirm that another reviewer can answer:
+
+- Which vendor and exact use did management review?
+- Which data, access, systems, and components were in scope?
+- Why did the selected review depth fit the criticality and risk?
+- Which current documents and source facts were examined?
+- What did the assurance report cover, and what did it leave out?
+- Which exceptions, subservices, and user responsibilities matter?
+- Which risks or findings remain?
+- Who made the decision, when, and for which coverage period?
+- What conditions or actions have owners and deadlines?
+- What schedule or event will trigger the next review?
+
+Completion means the record has those facts and the decision matches them. It
+does not mean the provider has no risk.
+
+## Manage vendor reviews in FileGRC
+
+[FileGRC](/) separates the current Vendor inventory from each dated Vendor
+Review. Start with the current model and records:
+
+```sh
+npx filegrc guide vendor --json
+npx filegrc guide vendor-review --json
+npx filegrc list vendor --workflow --json
+npx filegrc list vendor-review --workflow --json
+```
+
+Scaffold one planned review for one vendor:
+
+```sh
+vendor_review_dir=$(mktemp -d)
+vendor_review_file="$vendor_review_dir/vendor-review.json"
+npx filegrc scaffold vendor-review \
+  --title "2026 Critical Hosting Provider Review" > "$vendor_review_file"
+```
+
+Fill the scaffold with the vendor ID and reviewed facts. Keep the status
+planned until a reviewer is assigned. Moving it to in progress requires at
+least one `reviewerIds` entry. Keep it in progress while evidence, analysis, or
+a decision is missing. Completion additionally requires Evidence Artifact IDs,
+coverage, a completed date, and an approved, conditional, or rejected decision.
+
+The scaffold is a mutation envelope. This shortened example shows the record
+and its companion Markdown together:
+
+```json
+{
+  "record": {
+    "id": "vendor-review-critical-hosting-2026",
+    "type": "vendor-review",
+    "title": "2026 Critical Hosting Provider Review",
+    "status": "complete",
+    "vendorId": "vendor-critical-hosting",
+    "reviewerIds": ["person-security-reviewer"],
+    "scope": "Production hosting service and customer data processing",
+    "evidenceIds": ["evidence-hosting-soc2-2026"],
+    "riskIds": ["risk-hosting-service-dependency"],
+    "coverage": {
+      "kind": "as-of",
+      "on": "2026-08-29"
+    },
+    "decision": "conditional",
+    "completedOn": "2026-08-29"
+  },
+  "content": {
+    "record": "# Review analysis\n\nThe provider's report covers the scoped hosting service. Current recovery-test proof is missing, so risk-hosting-service-dependency remains open. Approval is limited to current use. person-security-owner must complete action-item-hosting-recovery-follow-up by 2026-09-15 and link the proof before access or reliance expands."
+  }
+}
+```
+
+Here, `coverage` is the Vendor Review's as-of date. The linked Evidence
+Artifact records the separate period covered by the provider's SOC 2 report.
+
+Edit the generated envelope rather than replacing it with a bare record. Keep
+the assessment, findings, conditions, and follow-up in `content.record`. Then
+preview and create the validated mutation:
+
+```sh
+npx filegrc preview-mutation "$vendor_review_file" --json
+npx filegrc create "$vendor_review_file" --json
+npx filegrc validate --json
+```
+
+For scheduled work, inspect the current vendor population and due window, then
+scaffold the reconciliation for that window:
+
+```sh
+npx filegrc obligations --json
+npx filegrc reconcile-obligation OBLIGATION_ID \
+  --scaffold \
+  --window-start YYYY-MM-DD > "$vendor_review_dir/occurrence.json"
+```
+
+Complete each Vendor Review first with its own coverage, evidence, decision,
+review facts, and analysis. The occurrence scaffold then discovers those
+matching records and supplies the derived population, coverage, and
+`completionResourceIds`. Do not edit those derived facts. Check every member's
+disposition and result, add any required explanation, and set the occurrence
+status, conclusion, `reviewedByIds`, and `reconciledAt` only when the population
+is final. Show the completed payload to the responsible owner. After
+confirmation, save it with the purpose-built workflow command:
+
+```sh
+npx filegrc reconcile-obligation \
+  OBLIGATION_ID \
+  "$vendor_review_dir/occurrence.json" \
+  --json
+```
+
+An Obligation occurrence is workflow-managed, so generic `preview-mutation` is
+not its preview. Keep one rolled-up occurrence when one owner, window,
+population rule, and reconciliation conclusion govern the queue. Split work
+only when a vendor needs its own owner, deadline, conclusion, or follow-up
+lifecycle.
+
+Use the
+[SOC 2 compliance as code workflow](/blogs/soc-2-compliance-as-code) to review
+the Git diff before committing. FileGRC records the program facts and links to
+evidence, while Git supplies the author, commit time, revision, message, and
+diff.
+
+FileGRC does not inspect a vendor's systems, fetch assurance reports, monitor
+incidents, approve the provider, or decide whether evidence is sufficient for
+the SOC 2 examination. People perform the due diligence and make the vendor
+decision. The CPA firm plans and performs the independent examination.
