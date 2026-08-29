@@ -19,7 +19,7 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
-Existing model v8 workspaces must run `npx filegrc migrate --to-model 9 --preview --json` after installing a model v9 package. The migration keeps current Obligation schedules in legacy mode until management reviews and activates rule-based replacements. Older workspaces migrate one model version at a time. See the [model v9 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v9.md).
+Existing model v9 workspaces must run `npx filegrc migrate --to-model 10 --preview --json` after installing a model v10 package. The migration preserves prior Reporting Routes as legacy facts and asks management to create one reviewed Reporting Channel Set: the normal and fallback ways people send a report for one purpose. It does not infer missing Program, channel pairing, authority, or event-time facts. Older workspaces migrate one model version at a time. See the [model v10 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v10.md).
 
 ## How it works
 

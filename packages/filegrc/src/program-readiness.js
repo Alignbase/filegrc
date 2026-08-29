@@ -19,6 +19,7 @@ import { assessPolicyLibraryUpgrades } from "./policy-library.js";
 import { assessProgramAmendmentReadiness } from "./program-amendment.js";
 import { programComponents, resolveProgram, selectedRequirementIds } from "./program.js";
 import { assessRequirementMappingReadiness } from "./requirement-mapping.js";
+import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { assessRetentionReadiness } from "./retention.js";
 import { markdownEntries } from "./resource-markdown.js";
 import {
@@ -60,7 +61,7 @@ export async function assessProgramReadiness(input, options = {}) {
     informationTypesReviewed: collectionReviews.find(({ resourceType }) => resourceType === "information-type")?.complete === true
   }));
   controlStage.items.push(...collectionReviews
-    .filter(({ resourceType }) => ["component", "retention-schedule-item"].includes(resourceType))
+    .filter(({ resourceType }) => resourceType === "retention-schedule-item")
     .map(collectionReviewReadinessItem));
   const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
   controlStage.items.push(...governedContent.items);
@@ -81,9 +82,16 @@ export async function assessProgramReadiness(input, options = {}) {
       records,
       byId,
       loaded.model,
-      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "vendor", "information-type"].includes(resourceType)),
+      collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "component", "vendor", "classification", "information-type"].includes(resourceType)),
       workspace?.timezone || "UTC"
     );
+  if (modelSupports(loaded.model, "reporting-route-sets")) {
+    const routeSets = await assessReportingRouteSets(loaded, {
+      programId: program.id,
+      at: timestampFromLocalDateTime(`${asOf}T23:59:59`, workspace?.timezone || "UTC")
+    });
+    scopeReadinessStage.items.push(reportingRouteSetItem(routeSets));
+  }
   scopeReadinessStage.items.push(...await assessRequirementMappingReadiness(loaded));
   scopeReadinessStage.items.push(...await assessProgramAmendmentReadiness(loaded));
   const evidenceGateStages = [
@@ -221,7 +229,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     }
   ));
 
-  if (model.resources?.["reporting-route"]) {
+  if (model.resources?.["reporting-route"] && !modelSupports(model, "reporting-route-sets")) {
     items.push(reportingRouteItem(records, byId, currentCalendarDate(timezone), timezone));
   }
 
@@ -409,6 +417,45 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   ));
 
   return stage("scope", "Define Scope", "Set program ownership, the management objective, service boundary, criteria, controls, and dependencies.", items);
+}
+
+function reportingRouteSetItem(assessment) {
+  const current = assessment.routeSets.find(({ effective, canceled }) => effective && !canceled);
+  const draft = assessment.routeSets.find(({ record }) => ["draft", "proposed"].includes(record.status));
+  const required = assessment.requirements.length > 0;
+  const proposed = assessment.proposedRequirements.length > 0;
+  const ready = assessment.issues.length === 0 && (!required || Boolean(current));
+  const needsAction = assessment.issues.length > 0;
+  const target = current?.record || draft?.record || { type: "reporting-route-set" };
+  let message;
+  if (needsAction) {
+    message = assessment.issues[0].message;
+  } else if (required && ready && current) {
+    message = `${current.record.title} is committed, effective, and has a current responsible Appointment. Assignments bind its Git commit.`;
+  } else if (!required && proposed && draft) {
+    message = "A draft or approved-but-inactive rule will require normal and fallback reporting channels later. Review them before that rule becomes active; this is not a current readiness gate.";
+  } else if (!required && draft) {
+    message = "No approved rule currently requires these reporting channels. Keep the draft for review or remove it; it is not a readiness gate.";
+  } else if (!required) {
+    message = "No active Policy, Document, Commitment, or Risk decision currently requires these reporting channels.";
+  } else {
+    message = assessment.issues[0]?.message || "Set the normal and fallback reporting channels, commit the proposal, approve it, and commit the approval.";
+  }
+  return item(
+    "security-reporting-route-set",
+    needsAction ? "action" : required ? ready ? "complete" : "action" : proposed && draft ? "later" : "info",
+    needsAction ? "Fix reporting channel requirements" : required ? "Approve required reporting channels" : proposed ? "Review proposed reporting channels" : "Reporting channels are not currently required",
+    message,
+    target,
+    {
+      requirements: assessment.requirements,
+      issues: assessment.issues,
+      commands: [
+        "npx filegrc reporting-route-sets --json",
+        "npx filegrc reporting-route-set --scaffold"
+      ]
+    }
+  );
 }
 
 function reportingRouteItem(records, byId, asOf, timezone = "UTC") {

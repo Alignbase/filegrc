@@ -1,7 +1,8 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { devNull } from "node:os";
 import { relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { isSafeGitName } from "./git-name.js";
@@ -14,6 +15,9 @@ import { loadWorkspace } from "./workspace.js";
 const lastSuccessfulSynchronizations = new Map();
 const workspaceHistoryCache = new Map();
 const dataRecordHistoryIndexCache = new Map();
+const historicalFileCache = new Map();
+const reachableDataAncestryCache = new Map();
+const dataHistoryContextCache = new WeakMap();
 const backgroundSynchronizations = new Map();
 const browserRemotePrefetches = new Map();
 const browserRemotePrefetchPromises = new Map();
@@ -24,6 +28,38 @@ const GIT_DEFAULT_TIMEOUT_MS = 10_000;
 const GIT_REMOTE_TIMEOUT_MS = 30_000;
 const GIT_MAX_OUTPUT_BYTES = 20_000_000;
 export const BROWSER_VALIDATION = Symbol("filegrc.browserValidation");
+
+function gitEnvironment(overrides = {}) {
+  return {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("GIT_"))
+    ),
+    ...overrides,
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_GRAFT_FILE: devNull,
+    GIT_NO_LAZY_FETCH: "1",
+    GIT_ASKPASS: "",
+    SSH_ASKPASS: "",
+    SSH_ASKPASS_REQUIRE: "never",
+    GIT_CONFIG_COUNT: "8",
+    GIT_CONFIG_KEY_0: "core.fsmonitor",
+    GIT_CONFIG_VALUE_0: "false",
+    GIT_CONFIG_KEY_1: "core.hooksPath",
+    GIT_CONFIG_VALUE_1: devNull,
+    GIT_CONFIG_KEY_2: "protocol.ext.allow",
+    GIT_CONFIG_VALUE_2: "never",
+    GIT_CONFIG_KEY_3: "protocol.allow",
+    GIT_CONFIG_VALUE_3: "never",
+    GIT_CONFIG_KEY_4: "protocol.http.allow",
+    GIT_CONFIG_VALUE_4: "always",
+    GIT_CONFIG_KEY_5: "protocol.https.allow",
+    GIT_CONFIG_VALUE_5: "always",
+    GIT_CONFIG_KEY_6: "protocol.ssh.allow",
+    GIT_CONFIG_VALUE_6: "always",
+    GIT_CONFIG_KEY_7: "protocol.file.allow",
+    GIT_CONFIG_VALUE_7: "always"
+  };
+}
 
 export class GitOperationError extends Error {
   constructor(kind, operation, detail, options = {}) {
@@ -46,6 +82,7 @@ export function getGitSummary(input = process.cwd()) {
   const root = resolveWorkspaceRoot(input);
   try {
     const topLevel = measureTimingSync("git-discovery", () => git(root, ["rev-parse", "--show-toplevel"]));
+    assertNoWorkspaceContentFilters(root);
     const status = git(root, ["status", "--porcelain=v1", "--", "."]);
     const commit = tryGit(root, ["rev-parse", "HEAD"]) || null;
     const branch = tryGit(root, ["symbolic-ref", "--short", "HEAD"]) || null;
@@ -85,7 +122,7 @@ export function getFileHistory(input, relativePath, limit = 50) {
       "log",
       "--follow",
       ...countArgs,
-      "--format=%H%x1f%aI%x1f%an%x1f%s",
+      "--format=%H%x1f%cI%x1f%an%x1f%s",
       "--",
       relativePath
     ]);
@@ -108,7 +145,7 @@ export function getFileHistoryWithPaths(input, relativePath, limit = 50) {
       "--follow",
       "-z",
       ...countArgs,
-      "--format=%H%x00%aI%x00%an%x00%s%x00",
+      "--format=%H%x00%cI%x00%an%x00%s%x00",
       "--name-status",
       "-M",
       "--",
@@ -143,6 +180,15 @@ export function getFileHistoryWithPaths(input, relativePath, limit = 50) {
   } catch {
     return null;
   }
+}
+
+export function getFilePathAtRevision(input, relativePath, revision) {
+  const root = resolveWorkspaceRoot(input);
+  if (!isSafeDataGitPath(relativePath) || !/^[a-f0-9]{40}$/i.test(String(revision || ""))) return null;
+  const history = getFileHistoryWithPaths(root, relativePath, Number.MAX_SAFE_INTEGER) || [];
+  const summary = history.find(({ commit }) => commit === revision)
+    || history.find(({ commit }) => isDataHistoryAncestor(root, commit, revision));
+  return summary?.path || null;
 }
 
 export function getDataCommitHistory(input) {
@@ -203,7 +249,7 @@ export function getDataRecordHistoryIndex(input) {
     if (available) {
       const output = gitRaw(root, [
         "log", "--reverse", "-m", "-z", "--relative",
-        "--format=%H%x00%aI%x00%an%x00%s%x00", "--name-status", "-M", "--", "data"
+        "--format=%H%x00%cI%x00%an%x00%s%x00", "--name-status", "-M", "--", "data"
       ]);
       changes.push(...parseDataRecordHistory(output));
     }
@@ -309,12 +355,35 @@ export function isGitAncestor(input, ancestor, descendant) {
     execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
       cwd: root,
       stdio: "ignore",
-      timeout: 10_000
+      timeout: 10_000,
+      env: gitEnvironment()
     });
     return true;
   } catch {
     return false;
   }
+}
+
+export function isDataHistoryAncestor(input, ancestor, descendant) {
+  const context = input && typeof input === "object" ? input : null;
+  const root = resolveWorkspaceRoot(context?.root || input);
+  let index = context ? dataHistoryContextCache.get(context) : null;
+  if (!index) {
+    index = getDataRecordHistoryIndex(root);
+    if (context) dataHistoryContextCache.set(context, index);
+  }
+  if (
+    !index.available
+    || (descendant !== index.head && !index.commits.includes(descendant))
+  ) return isGitAncestor(root, ancestor, descendant);
+  const key = `${root}\0${ancestor}\0${descendant}`;
+  if (reachableDataAncestryCache.has(key)) return reachableDataAncestryCache.get(key);
+  const result = isGitAncestor(root, ancestor, descendant);
+  reachableDataAncestryCache.set(key, result);
+  while (reachableDataAncestryCache.size > 20_000) {
+    reachableDataAncestryCache.delete(reachableDataAncestryCache.keys().next().value);
+  }
+  return result;
 }
 
 export function getFileBufferAtRevision(input, revision, relativePath) {
@@ -329,7 +398,8 @@ export function getFileBufferAtRevision(input, revision, relativePath) {
       cwd: root,
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
-      maxBuffer: 20_000_000
+      maxBuffer: 20_000_000,
+      env: gitEnvironment()
     });
   } catch {
     return null;
@@ -415,34 +485,56 @@ export function getFilesAtRevisions(input, requests, options = {}) {
     throw new Error("Historical file exports require a Git commit and a data/ path.");
   }
   if (!requests.length) return [];
+  const results = new Array(requests.length);
+  const missing = [];
+  requests.forEach((request, index) => {
+    const key = `${root}\0${request.revision}\0${request.relativePath}`;
+    if (historicalFileCache.has(key)) {
+      results[index] = historicalFileCache.get(key);
+      historicalFileCache.delete(key);
+      historicalFileCache.set(key, results[index]);
+    } else {
+      missing.push({ ...request, index, key });
+    }
+  });
+  if (!missing.length) return results;
   try {
     const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
     const workspacePrefix = relative(topLevel, root).split(sep).join("/");
     if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return requests.map(() => null);
-    const results = [];
     const batchSize = Math.max(1, Math.min(Number(options.batchSize) || 4, 512));
-    for (let offset = 0; offset < requests.length; offset += batchSize) {
-      const batch = requests.slice(offset, offset + batchSize);
+    for (let offset = 0; offset < missing.length; offset += batchSize) {
+      const batch = missing.slice(offset, offset + batchSize);
       const specifications = batch.map(({ revision, relativePath }) => {
         const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
         return `${revision}:${repositoryPath}`;
       });
+      let values;
       try {
         const output = measureTimingSync("git-history-export", () => execFileSync("git", ["cat-file", "--batch"], {
           cwd: root,
           input: `${specifications.join("\n")}\n`,
           stdio: ["pipe", "pipe", "ignore"],
           timeout: 10_000,
-          maxBuffer: 80_000_000
+          maxBuffer: 80_000_000,
+          env: gitEnvironment()
         }));
-        results.push(...parseBatchObjects(output, batch.length));
+        values = parseBatchObjects(output, batch.length);
       } catch {
-        results.push(...specifications.map((specification) => readHistoricalFile(root, specification)));
+        values = specifications.map((specification) => readHistoricalFile(root, specification));
+      }
+      batch.forEach(({ index, key }, batchIndex) => {
+        const value = values[batchIndex];
+        results[index] = value;
+        if (value !== null && Buffer.byteLength(value, "utf8") <= 65_536) historicalFileCache.set(key, value);
+      });
+      while (historicalFileCache.size > 2_048) {
+        historicalFileCache.delete(historicalFileCache.keys().next().value);
       }
     }
     return results;
   } catch {
-    return requests.map(() => null);
+    return results.map((value) => value ?? null);
   }
 }
 
@@ -469,7 +561,8 @@ function readHistoricalFile(root, specification) {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
-      maxBuffer: 20_000_000
+      maxBuffer: 20_000_000,
+      env: gitEnvironment()
     }));
   } catch {
     return null;
@@ -562,6 +655,7 @@ export function getRepositorySnapshot(input = process.cwd(), options = {}) {
 export async function getWorkspaceRevisionSnapshot(input = process.cwd()) {
   const root = resolveWorkspaceRoot(input);
   try {
+    assertNoWorkspaceContentFilters(root);
     const source = await measureTiming("repository-revision", () => runGitCommand(root, [
       "status",
       "--porcelain=v2",
@@ -599,6 +693,7 @@ async function buildRepositorySnapshot(root) {
   }
   const [topLevel, gitDirectory] = repositoryPaths.split("\n");
   try {
+    assertNoWorkspaceContentFilters(root);
     const [status, remotes] = await Promise.all([
       runGitCommand(topLevel, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], {
         operation: "inspect repository status"
@@ -753,7 +848,7 @@ async function prefetchBrowserRemoteCoalesced(root, options) {
   if (!prepared.repository) return { status: "not-needed", token: null, fetchedAt: null, expiresAt: null };
 
   // Fetch updates only remote-tracking refs, so it does not occupy the source mutation queue.
-  await fetchConfiguredRemote(root, prepared.config.remote);
+  await fetchConfiguredRemote(root, prepared.config);
   return serializeWorkspaceMutation(root, async () => {
     const summary = await getRepositorySnapshot(root, { fresh: true });
     if (!summary.available) throw summary.error;
@@ -790,19 +885,26 @@ export async function retryBrowserSync(input = process.cwd(), options = {}) {
       throw new Error("Retry sync is disabled while the development write override is active.");
     }
     const before = await requireTrunkPreconditionsAsync(root, config, { allowAhead: true });
-    await fetchConfiguredRemote(root, config.remote);
+    await fetchConfiguredRemote(root, config);
     const synchronized = inspectTrunkRepository(root, config, await getRepositorySnapshot(root, { fresh: true }));
     if (synchronized.behind > 0 && synchronized.ahead > 0) {
       throw new Error("The authoritative branch has diverged from its upstream. FileGRC will not merge or rebase it. Reconcile the repository with Git, then reload.");
     }
     if (synchronized.behind > 0) {
-      await fastForwardConfiguredBranchAsync(root, synchronized.upstream);
+      throw new Error("The authoritative branch is behind its upstream. Fast-forward it with Git, then reload before retrying sync.");
     }
     const ready = inspectTrunkRepository(root, config, await getRepositorySnapshot(root, { fresh: true }));
     if (ready.ahead > 0 && !ready.pendingCommitsFilegrcOnly) {
       throw new Error("At least one commit ahead of upstream changes files outside this FileGRC workspace. FileGRC will not push it. Reconcile the repository with Git.");
     }
-    if (ready.ahead > 0) await pushConfiguredBranch(root, config);
+    if (ready.ahead > 0) {
+      const pushed = await pushConfiguredBranch(root, config, ready.currentCommit, ready.upstreamCommit);
+      if (pushed.trackingError) {
+        const committed = { commit: ready.currentCommit, shortCommit: ready.currentCommit.slice(0, 8) };
+        recordBackgroundTrackingFailure(root, committed, pushed.trackingError);
+        throw new Error(pushed.trackingError);
+      }
+    }
     const after = inspectTrunkRepository(root, config, await getRepositorySnapshot(root, { fresh: true }));
     if (after.ahead !== 0 || after.behind !== 0) {
       throw new Error("The authoritative branch is still not synchronized. Reload the repository state before trying again.");
@@ -825,7 +927,7 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   const beforeFetch = await measureTiming("git-preconditions", () => requireTrunkPreconditionsAsync(root, config));
   let synchronized = beforeFetch;
   if (!consumeFreshBrowserRemotePrefetch(root, config, options?.prefetchToken, beforeFetch)) {
-    await fetchConfiguredRemote(root, config.remote);
+    await fetchConfiguredRemote(root, config);
     synchronized = inspectTrunkRepository(root, config, await getRepositorySnapshot(root, { fresh: true }));
   }
   if (synchronized.ahead > 0 && synchronized.behind > 0) {
@@ -835,8 +937,7 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
     throw new Error("The authoritative branch has local commits waiting to be pushed. Use Retry sync before making another browser change.");
   }
   if (synchronized.behind > 0) {
-    await fastForwardConfiguredBranchAsync(root, synchronized.upstream);
-    synchronized = inspectTrunkRepository(root, config, await getRepositorySnapshot(root, { fresh: true }));
+    throw new Error("The authoritative branch is behind its upstream. Fast-forward it with Git, then reload before making a browser change.");
   }
   if (synchronized.ahead !== 0 || synchronized.behind !== 0) {
     throw new Error("The authoritative branch is not synchronized with its upstream. Reload after reconciling the repository with Git.");
@@ -845,29 +946,29 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   let result;
   let subject;
   let validationProof;
+  let validatedManifest;
   try {
     result = await measureTiming("write", () => withDeferredWorkspaceValidation(() => task(root, {
       repositorySnapshot: synchronized
     })));
     subject = generatedCommitMessage(typeof options?.message === "function" ? options.message(result) : options?.message);
+    assertNoIgnoredAuthoritativeFiles(root);
+    const beforeValidation = workspaceByteManifest(root);
     const validation = await validateWorkspace(root);
     if (!validation.ok) {
-      throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. The browser change was rolled back.`);
+      throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}.`);
     }
     validationProof = options?.includeValidationProof === false
       ? null
       : {
           validation,
           fingerprint: (await measureTiming("fingerprint", () => fingerprintWorkspace(validation.loaded))).fingerprint
-        };
+    };
+    validatedManifest = workspaceByteManifest(root);
+    assertWorkspaceManifestEqual(beforeValidation, validatedManifest);
     await assertNoOutsideWorktreeChangesAsync(root);
   } catch (error) {
-    try {
-      await rollbackWorkspaceChangesAsync(root);
-    } catch (rollbackError) {
-      throw new Error(`${error.message} FileGRC could not roll back the workspace change. ${rollbackError.message} Later browser mutations are blocked until the Git worktree is reconciled.`);
-    }
-    throw error;
+    throw new Error(`${error.message} FileGRC preserved every current file instead of guessing which edits it owns. Review the Git diff; later browser mutations are blocked until the worktree is reconciled.`);
   }
 
   const changed = Boolean(await runGitCommand(root, ["status", "--porcelain=v1", "--", "."], {
@@ -889,37 +990,39 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   if (!changed) {
     throw new Error("The browser action did not change any FileGRC workspace files.");
   }
-  let identity;
+  assertValidGitIdentity(root);
+  assertNoWorkspaceContentFilters(root);
+  await assertNoOutsideWorktreeChangesAsync(root);
+  let commit;
+  let indexReconciled;
   try {
-    identity = await runGitCommand(root, ["config", "--get-regexp", "^user\\.(name|email)$"], {
-      operation: "read the Git user identity"
-    });
-  } catch (error) {
-    if (error instanceof GitOperationError && error.kind === "command-failure") identity = "";
-    else throw error;
-  }
-  if (!/^user\.name\s+.+$/m.test(identity) || !/^user\.email\s+.+$/m.test(identity)) {
-    throw new Error("Configure git user.name and git user.email before browser changes can be committed. The saved files remain uncommitted and later browser changes are blocked.");
-  }
-  await measureTiming("stage", () => runGitCommand(root, ["add", "--all", "--", "."], {
-    operation: "stage the FileGRC workspace change",
-    timeoutMs: GIT_REMOTE_TIMEOUT_MS
-  }));
-  await assertNoOutsideWorktreeChangesAsync(root, false);
-  await assertOnlyWorkspaceFilesStagedAsync(root);
-  try {
-    await measureTiming("commit", () => runGitCommand(root, ["commit", "-m", subject, "--", "."], {
-      operation: "create the FileGRC browser commit",
-      timeoutMs: GIT_REMOTE_TIMEOUT_MS
-    }));
+    const expectedRef = `refs/heads/${config.authoritativeBranch}`;
+    assertExpectedCheckout(root, expectedRef, synchronized.currentCommit);
+    validatedManifest = writeWorkspaceManifestObjects(root, validatedManifest);
+    ({ commit, indexReconciled } = await measureTiming("commit", () => commitValidatedIndexAsync(root, subject, validatedManifest, {
+      expectedParent: synchronized.currentCommit,
+      expectedRef
+    })));
   } catch (error) {
     throw new Error(`${error.message} The saved files remain in the Git worktree and later browser changes are blocked.`);
   }
 
-  const commit = await runGitCommand(root, ["rev-parse", "HEAD"], {
-    operation: "read the FileGRC browser commit"
-  });
-  const committed = { commit, shortCommit: commit.slice(0, 8) };
+  const committed = { commit, shortCommit: commit.slice(0, 8), upstreamCommit: synchronized.upstreamCommit };
+  if (!indexReconciled) {
+    const error = new Error("FileGRC created the commit, but the shared Git index changed or could not be reconciled afterward. Review and reconcile the Git index before syncing.");
+    recordBackgroundPushFailure(root, committed, error);
+    return withValidationProof({
+      ...result,
+      synchronization: {
+        status: "not-synced",
+        commit: committed.commit,
+        shortCommit: committed.shortCommit,
+        upstream: synchronized.upstream,
+        synchronizedAt: null,
+        pushError: backgroundSynchronizations.get(root)?.error ?? error.message
+      }
+    }, validationProof);
+  }
   queueBackgroundPush(root, config, committed, options?.backgroundPushDelayMs);
   return withValidationProof({
     ...result,
@@ -969,7 +1072,10 @@ function queueBackgroundPush(root, config, committed, delayMs = 0) {
   });
   const start = async () => {
     try {
-      const ready = await requireTrunkPreconditionsAsync(root, config, { allowAhead: true });
+      const ready = await requireTrunkPreconditionsAsync(root, config, {
+        allowAhead: true,
+        backgroundCommit: committed.commit
+      });
       if (ready.currentCommit !== committed.commit) {
         throw new Error("The authoritative branch changed after FileGRC created its browser commit. FileGRC did not push it.");
       }
@@ -992,18 +1098,26 @@ function queueBackgroundPush(root, config, committed, delayMs = 0) {
 async function finishBackgroundPush(root, config, committed) {
   const started = performance.now();
   let outcome = "failed";
+  let remotePushed = false;
   try {
-    await pushConfiguredBranch(root, config, committed.commit);
+    const pushed = await pushConfiguredBranch(root, config, committed.commit, committed.upstreamCommit);
+    remotePushed = pushed.remotePushed;
+    if (pushed.trackingError) {
+      recordBackgroundTrackingFailure(root, committed, pushed.trackingError);
+      outcome = "pushed-tracking-stale";
+      return;
+    }
     const after = inspectTrunkRepository(root, config, await getRepositorySnapshot(root, { fresh: true }), { ignoreBackground: true });
     if (after.ahead !== 0 || after.behind !== 0) {
       throw new Error("The authoritative branch is still not synchronized after the background push.");
     }
     const synchronizedAt = new Date().toISOString();
     lastSuccessfulSynchronizations.set(root, synchronizedAt);
-    backgroundSynchronizations.delete(root);
+    deleteBackgroundSynchronizationIfCurrent(root, committed.commit);
     outcome = "synced";
   } catch (error) {
-    recordBackgroundPushFailure(root, committed, error);
+    if (remotePushed) recordBackgroundRemoteSuccessFailure(root, committed, error.message);
+    else recordBackgroundPushFailure(root, committed, error);
   } finally {
     if (timingEnabled()) {
       console.error(`[filegrc timing] ${JSON.stringify({
@@ -1016,14 +1130,47 @@ async function finishBackgroundPush(root, config, committed) {
 }
 
 function recordBackgroundPushFailure(root, committed, error) {
-  backgroundSynchronizations.set(root, {
+  setBackgroundSynchronizationIfCurrent(root, committed, {
     status: "failed",
     commit: committed.commit,
     shortCommit: committed.shortCommit,
     startedAt: backgroundSynchronizations.get(root)?.startedAt ?? null,
     finishedAt: new Date().toISOString(),
+    remotePushed: false,
     error: `${error.message} The local FileGRC commit was retained. Use Retry sync after the remote is available.`
+  }, { allowMissing: true });
+}
+
+function recordBackgroundTrackingFailure(root, committed, error) {
+  recordBackgroundRemoteSuccessFailure(root, committed, error);
+}
+
+function recordBackgroundRemoteSuccessFailure(root, committed, error) {
+  setBackgroundSynchronizationIfCurrent(root, committed, {
+    status: "failed",
+    commit: committed.commit,
+    shortCommit: committed.shortCommit,
+    startedAt: backgroundSynchronizations.get(root)?.startedAt ?? null,
+    finishedAt: new Date().toISOString(),
+    remotePushed: true,
+    error: `${error} The remote accepted the exact FileGRC commit. Fetch with Git to reconcile local state; do not retry the push.`
+  }, { allowMissing: true });
+}
+
+function setBackgroundSynchronizationIfCurrent(root, committed, next, options = {}) {
+  const current = backgroundSynchronizations.get(root);
+  if (current && current.commit !== committed.commit) return false;
+  if (!current && options.allowMissing !== true) return false;
+  backgroundSynchronizations.set(root, {
+    ...next,
+    remotePushed: current?.remotePushed === true || next.remotePushed === true
   });
+  return true;
+}
+
+function deleteBackgroundSynchronizationIfCurrent(root, commit) {
+  if (backgroundSynchronizations.get(root)?.commit !== commit) return false;
+  return backgroundSynchronizations.delete(root);
 }
 
 async function commitWorkspaceUnlocked(root, message) {
@@ -1031,31 +1178,47 @@ async function commitWorkspaceUnlocked(root, message) {
   if (!subject || subject.length > 200 || /[\u0000-\u001f\u007f]/.test(subject)) {
     throw new Error("Commit messages must be one line from 1 through 200 characters.");
   }
-  const validation = await validateWorkspace(root);
-  if (!validation.ok) {
-    throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before committing.`);
-  }
+  assertNoWorkspaceContentFilters(root);
   const before = getGitSummary(root);
   if (!before.available) throw new Error("Git history is unavailable for this workspace.");
   if (!before.branch) throw new Error("Check out a branch before creating a browser commit.");
+  assertNoGitOperationInProgress(root);
   if (before.clean) throw new Error("The workspace has no changes to commit.");
   if (!tryGit(root, ["config", "user.name"]) || !tryGit(root, ["config", "user.email"])) {
     throw new Error("Configure git user.name and user.email before committing.");
   }
-  gitForWrite(root, ["add", "--all", "--", "."]);
-  gitForWrite(root, ["commit", "-m", subject, "--", "."]);
+  assertValidGitIdentity(root);
+  assertNoIgnoredAuthoritativeFiles(root);
+  const beforeValidation = workspaceByteManifest(root);
+  const validation = await validateWorkspace(root);
+  if (!validation.ok) {
+    throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before committing.`);
+  }
+  let validatedManifest = workspaceByteManifest(root);
+  assertWorkspaceManifestEqual(beforeValidation, validatedManifest);
+  const commitOptions = {
+    expectedParent: before.commit,
+    expectedRef: `refs/heads/${before.branch}`
+  };
+  assertExpectedCheckout(root, commitOptions.expectedRef, commitOptions.expectedParent);
+  validatedManifest = writeWorkspaceManifestObjects(root, validatedManifest);
+  const committed = await commitValidatedIndexAsync(root, subject, validatedManifest, commitOptions);
   const after = getGitSummary(root);
   return {
-    commit: after.commit,
-    shortCommit: after.shortCommit,
+    commit: committed.commit,
+    shortCommit: committed.commit.slice(0, 8),
+    indexReconciled: committed.indexReconciled,
     subject: after.lastCommit?.subject || subject
   };
 }
 
 async function commitAndPushWorkspaceUnlocked(root, message) {
   const before = getGitSummary(root);
+  const target = before.upstream || before.remotes?.length
+    ? captureManualPushTarget(root, before)
+    : null;
   const committed = await commitWorkspaceUnlocked(root, message);
-  if (!before.upstream && !before.remotes?.length) {
+  if (!target) {
     return {
       ...committed,
       pushed: false,
@@ -1063,12 +1226,18 @@ async function commitAndPushWorkspaceUnlocked(root, message) {
     };
   }
   try {
-    const pushed = await pushWorkspaceUnlocked(root);
+    const pushed = await pushCapturedWorkspaceCommit(root, {
+      before,
+      target,
+      commit: committed.commit
+    });
     return {
       ...committed,
       pushed: true,
       pushSkipped: false,
-      upstream: pushed.upstream
+      upstream: pushed.upstream,
+      trackingConfigured: pushed.trackingConfigured,
+      trackingError: pushed.trackingError
     };
   } catch (error) {
     return {
@@ -1082,14 +1251,23 @@ async function commitAndPushWorkspaceUnlocked(root, message) {
 
 async function pullWorkspaceUnlocked(root) {
   const before = syncReadySummary(root, "pull");
+  assertNoGitOperationInProgress(root);
   if (!before.upstream) {
     throw new Error("This branch has no upstream branch. Push it first or configure an upstream with Git.");
   }
-  try {
-    gitForWrite(root, ["pull", "--rebase", "--no-autostash"], "pull with rebase");
-  } catch (error) {
-    tryGitForWrite(root, ["rebase", "--abort"]);
-    throw error;
+  const remote = before.upstream.split("/")[0];
+  const branch = before.upstream.slice(remote.length + 1);
+  const url = assertSafeAutomaticTransport(root, remote);
+  gitForWrite(root, exactFetchArgs({ remote, branch, url }), `fetch ${remote} before checking incoming commits`);
+  const target = git(root, ["rev-parse", "--verify", `${before.upstream}^{commit}`]);
+  const incomingCommits = lines(git(root, ["rev-list", "--reverse", `${before.commit}..${target}`]));
+  assertCommitsInsideWorkspace(root, incomingCommits);
+  for (const commit of incomingCommits) {
+    assertNoCommitWorkspaceContentFilters(root, commit);
+  }
+  assertExpectedCheckout(root, `refs/heads/${before.branch}`, before.commit);
+  if (incomingCommits.length) {
+    throw new Error("FileGRC fetched incoming commits but did not integrate them. Reconcile the branch with Git, then reload FileGRC.");
   }
   const after = getGitSummary(root);
   return {
@@ -1103,14 +1281,56 @@ async function pullWorkspaceUnlocked(root) {
 
 async function pushWorkspaceUnlocked(root) {
   const before = syncReadySummary(root, "push");
+  assertNoGitOperationInProgress(root);
+  const target = captureManualPushTarget(root, before);
   const validation = await validateWorkspace(root);
   if (!validation.ok) {
     throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before pushing.`);
   }
+  return pushCapturedWorkspaceCommit(root, { before, target, commit: before.commit });
+}
+
+async function pushCapturedWorkspaceCommit(root, { before, target, commit }) {
+  assertExpectedCheckout(root, `refs/heads/${before.branch}`, commit);
+  await gitForWriteAsync(root, exactPushArgs(target, commit), "push", {
+    expectedCheckout: {
+      expectedRef: `refs/heads/${before.branch}`,
+      expectedCommit: commit
+    }
+  });
+  let trackingError = reconcileRemoteTracking(root, target, commit);
+  if (!before.upstream && !trackingError) {
+    try {
+      assertExpectedCheckout(root, `refs/heads/${before.branch}`, commit);
+      gitForWrite(root, ["branch", "--set-upstream-to", `${target.remote}/${before.branch}`, before.branch], "configure the pushed branch upstream");
+    } catch (error) {
+      trackingError = error.message;
+    }
+  }
+  return {
+    commit,
+    shortCommit: commit.slice(0, 8),
+    branch: before.branch,
+    upstream: before.upstream || (trackingError ? null : `${target.remote}/${before.branch}`),
+    trackingConfigured: Boolean(before.upstream) || !trackingError,
+    trackingError
+  };
+}
+
+function captureManualPushTarget(root, before) {
+  let remote;
+  let destination;
   if (before.upstream) {
-    gitForWrite(root, ["push"], "push");
+    remote = tryGit(root, ["config", "--get", `branch.${before.branch}.remote`]);
+    destination = tryGit(root, ["config", "--get", `branch.${before.branch}.merge`]);
+    const destinationBranch = destination?.startsWith("refs/heads/")
+      ? destination.slice("refs/heads/".length)
+      : "";
+    if (!isSafeGitName(remote) || !isSafeGitName(destinationBranch) || before.upstream !== `${remote}/${destinationBranch}`) {
+      throw new Error("The current branch has an unsafe or unsupported upstream configuration. Configure a normal remote branch with Git before pushing.");
+    }
   } else {
-    const remote = before.remotes.includes("origin")
+    remote = before.remotes.includes("origin")
       ? "origin"
       : before.remotes.length === 1
         ? before.remotes[0]
@@ -1120,15 +1340,41 @@ async function pushWorkspaceUnlocked(root) {
         ? "This branch has no upstream and the repository has multiple remotes. Configure an upstream with Git."
         : "This repository has no Git remote. Add one before pushing.");
     }
-    gitForWrite(root, ["push", "--set-upstream", "--", remote, "HEAD"], "push");
+    destination = `refs/heads/${before.branch}`;
   }
-  const after = getGitSummary(root);
+  const destinationBranch = destination.slice("refs/heads/".length);
   return {
-    commit: after.commit,
-    shortCommit: after.shortCommit,
-    branch: after.branch,
-    upstream: after.upstream
+    remote,
+    destination,
+    destinationBranch,
+    trackingRef: `refs/remotes/${remote}/${destinationBranch}`,
+    expectedTrackingCommit: before.upstream ? tryGit(root, ["rev-parse", "--verify", before.upstream]) : null,
+    url: assertSafeAutomaticTransport(root, remote, { push: true })
   };
+}
+
+function reconcileRemoteTracking(root, target, commit) {
+  try {
+    gitForWrite(root, [
+      "update-ref", "-m", "FileGRC exact push",
+      target.trackingRef,
+      commit,
+      target.expectedTrackingCommit || "0000000000000000000000000000000000000000"
+    ], "reconcile the remote-tracking branch after a successful push");
+    return null;
+  } catch (error) {
+    return `${error.message} The exact commit was pushed, but the local remote-tracking branch needs reconciliation with Git.`;
+  }
+}
+
+function exactPushArgs(target, commit) {
+  const expected = target.expectedTrackingCommit || "";
+  return [
+    "-c", "push.pushOption=",
+    "push", "--porcelain", "--no-follow-tags", "--recurse-submodules=no", "--no-signed", "--no-push-option",
+    `--force-with-lease=${target.destination}:${expected}`,
+    "--", target.url, `${commit}:${target.destination}`
+  ];
 }
 
 function syncReadySummary(root, action) {
@@ -1181,6 +1427,7 @@ function inspectTrunkRepository(root, config, summary, options = {}) {
       shortCommit: background.shortCommit,
       startedAt: background.startedAt,
       finishedAt: background.finishedAt ?? null,
+      remotePushed: background.remotePushed === true,
       error: background.error
     } : null,
     writesAllowed: false
@@ -1276,9 +1523,11 @@ function inspectTrunkRepository(root, config, summary, options = {}) {
     const external = counts.ahead > 0 && !pendingCommitsFilegrcOnly;
     const backgroundFailure = background?.status === "failed"
       && background.commit === summary.commit
-      && counts.ahead > 0
-      && counts.behind === 0
-      && pendingCommitsFilegrcOnly
+      && (background.remotePushed === true || (
+        counts.ahead > 0
+        && counts.behind === 0
+        && pendingCommitsFilegrcOnly
+      ))
       ? background.error
       : null;
     return {
@@ -1291,9 +1540,9 @@ function inspectTrunkRepository(root, config, summary, options = {}) {
           ? "The authoritative branch has diverged from upstream. Reconcile it with Git. FileGRC will not merge or rebase it."
           : counts.ahead > 0
             ? "FileGRC-only commits are waiting to be pushed. Use Retry sync."
-            : "The authoritative branch is behind upstream. The next browser mutation will fast-forward before writing."),
-      writesAllowed: counts.ahead === 0 && counts.behind > 0,
-      retrySafe: counts.ahead > 0 && counts.behind === 0 && pendingCommitsFilegrcOnly,
+            : "The authoritative branch is behind upstream. Fast-forward it with Git, then reload FileGRC."),
+      writesAllowed: false,
+      retrySafe: counts.ahead > 0 && counts.behind === 0 && pendingCommitsFilegrcOnly && background?.remotePushed !== true,
       backgroundSyncError: backgroundFailure
     };
   }
@@ -1315,6 +1564,12 @@ async function requireTrunkPreconditionsAsync(root, config, options = {}) {
   if (summary.branch !== config.authoritativeBranch) throw new Error(state.message);
   if (!summary.remotes.includes(config.remote)) throw new Error(state.message);
   if (summary.upstream !== `${config.remote}/${config.authoritativeBranch}`) throw new Error(state.message);
+  if (
+    state.backgroundSynchronization?.status === "syncing"
+    && state.backgroundSynchronization.commit !== options.backgroundCommit
+  ) {
+    throw new Error("A FileGRC background push is still finalizing. Wait for it to finish before making another browser change.");
+  }
   if (state.operationInProgress) throw new Error(state.message);
   if (!state.wholeWorktreeClean) throw new Error(state.message);
   if (!options.allowAhead && state.ahead > 0) {
@@ -1323,26 +1578,140 @@ async function requireTrunkPreconditionsAsync(root, config, options = {}) {
   return state;
 }
 
-async function fetchConfiguredRemote(root, remote) {
-  return measureTiming("fetch", () => gitForWriteAsync(root, ["fetch", "--prune", "--", remote], `fetch ${remote}`));
-}
-
-function fastForwardConfiguredBranchAsync(root, upstream) {
-  return runGitCommand(root, ["merge", "--ff-only", "--", upstream], {
-    operation: `fast-forward from ${upstream}`,
-    timeoutMs: GIT_REMOTE_TIMEOUT_MS
-  });
-}
-
-async function pushConfiguredBranch(root, config, source = "HEAD") {
-  return measureTiming("push", () => gitForWriteAsync(
+async function fetchConfiguredRemote(root, config) {
+  const url = assertSafeAutomaticTransport(root, config.remote);
+  return measureTiming("fetch", () => gitForWriteAsync(
     root,
-    ["push", "--porcelain", "--", config.remote, `${source}:refs/heads/${config.authoritativeBranch}`],
-    `push ${config.authoritativeBranch} to ${config.remote}`
+    exactFetchArgs({ remote: config.remote, branch: config.authoritativeBranch, url }),
+    `fetch ${config.remote}`
   ));
 }
 
-async function assertNoOutsideWorktreeChangesAsync(root, rollbackExpected = true) {
+function exactFetchArgs({ remote, branch, url }) {
+  return [
+    "fetch", "--prune", "--no-prune-tags", "--no-tags", "--recurse-submodules=no",
+    "--", url, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`
+  ];
+}
+
+function assertCommitsInsideWorkspace(root, commits) {
+  const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+  const prefix = relative(topLevel, root).split(sep).join("/");
+  if (prefix === ".." || prefix.startsWith("../")) throw new Error("The FileGRC workspace is outside its Git repository.");
+  if (!prefix) return;
+  for (const commit of commits) {
+    const changed = nulFields(gitRaw(topLevel, [
+      "diff-tree", "--root", "--no-commit-id", "--name-only", "-z", "-m", "-r", commit, "--"
+    ]));
+    const outside = changed.filter((path) => !pathInsideWorkspace(path, prefix));
+    if (outside.length) {
+      throw new Error(`FileGRC will not rebase commit ${commit.slice(0, 12)} because it changes files outside this nested workspace: ${outside.slice(0, 5).join(", ")}${outside.length > 5 ? "…" : ""}. Reconcile the whole repository with Git.`);
+    }
+  }
+}
+
+async function pushConfiguredBranch(root, config, source, expectedTrackingCommit) {
+  if (!/^[a-f0-9]{40}$/i.test(source)) {
+    throw new Error("FileGRC requires an exact commit ID before pushing the authoritative branch.");
+  }
+  const url = assertSafeAutomaticTransport(root, config.remote, { push: true });
+  const target = {
+    remote: config.remote,
+    url,
+    destination: `refs/heads/${config.authoritativeBranch}`,
+    trackingRef: `refs/remotes/${config.remote}/${config.authoritativeBranch}`,
+    expectedTrackingCommit
+  };
+  await measureTiming("push", () => gitForWriteAsync(
+    root,
+    exactPushArgs(target, source),
+    `push ${config.authoritativeBranch} to ${config.remote}`,
+    {
+      expectedCheckout: {
+        expectedRef: `refs/heads/${config.authoritativeBranch}`,
+        expectedCommit: source
+      }
+    }
+  ));
+  const trackingError = await reconcileRemoteTrackingAsync(root, target, source);
+  return { remotePushed: true, trackingError };
+}
+
+async function reconcileRemoteTrackingAsync(root, target, commit) {
+  try {
+    await gitForWriteAsync(root, [
+      "update-ref", "-m", "FileGRC exact push",
+      target.trackingRef,
+      commit,
+      target.expectedTrackingCommit || "0000000000000000000000000000000000000000"
+    ], "reconcile the remote-tracking branch after a successful push");
+    return null;
+  } catch (error) {
+    return `${error.message} The exact commit was pushed, but the local remote-tracking branch needs reconciliation with Git.`;
+  }
+}
+
+function assertSafeAutomaticTransport(root, remote, options = {}) {
+  assertNoRepositoryExecutableGitConfig(root);
+  const url = tryGit(root, ["remote", "get-url", ...(options.push ? ["--push"] : []), "--", remote]);
+  const safe = url
+    && !/[\0\r\n]/.test(url)
+    && (
+      /^(?:https?|ssh|file):\/\//i.test(url)
+      || /^(?:\.\.?[\\/]|[\\/]|[A-Za-z]:[\\/])/.test(url)
+      || /^[^\s/@:]+@[^\s/:]+:.+$/.test(url)
+    );
+  if (!safe) {
+    throw new Error(`FileGRC will not use the configured remote "${remote}" because its URL scheme is not allowed for automatic fetch or push.`);
+  }
+  return url;
+}
+
+function assertNoRepositoryExecutableGitConfig(root) {
+  assertWorkspaceInsideGitWorktree(root);
+  const pattern = "^(core\\.(sshcommand|gitproxy|askpass|alternaterefscommand|worktree|sparsecheckout.*)|credential\\.(helper|.*\\.helper)|fetch\\.bundleuri|filter\\..*\\.(clean|smudge|process)|merge\\..*\\.driver|http\\..*|remote\\..*\\.(proxy|uploadpack|receivepack)|url\\..*\\.(insteadof|pushinsteadof)|protocol\\..*\\.allow)$";
+  const scopes = ["--local"];
+  if (gitOptionalMatch(root, ["config", "--local", "--type=bool", "--get", "extensions.worktreeConfig"]) === "true") {
+    scopes.push("--worktree");
+  }
+  const executableConfiguration = scopes
+    .map((scope) => gitOptionalMatch(root, ["config", scope, "--get-regexp", pattern]))
+    .find(Boolean);
+  if (executableConfiguration) {
+    throw new Error("FileGRC will not run managed Git synchronization while repository-local executable transport, filter, merge, HTTP, credential, URL rewrite, or protocol configuration is present. Move trusted user and transport settings to normal user-level Git configuration and remove the local override.");
+  }
+  assertNoHiddenIndexEntries(root);
+}
+
+function assertWorkspaceInsideGitWorktree(root) {
+  const workspace = realpathSync(root);
+  const topLevel = realpathSync(git(root, ["rev-parse", "--show-toplevel"]));
+  if (workspace !== topLevel && !workspace.startsWith(`${topLevel}${sep}`)) {
+    throw new Error("FileGRC will not run managed Git writes because repository configuration redirects the Git worktree outside this workspace. Remove core.worktree and reopen the authoritative checkout.");
+  }
+}
+
+function assertExpectedCheckout(root, expectedRef, expectedCommit) {
+  if (!checkoutMatches(root, expectedRef, expectedCommit)) {
+    throw new Error("The checked-out Git branch or commit changed while FileGRC prepared the operation. Review the worktree and return to the expected branch before trying again.");
+  }
+}
+
+function checkoutMatches(root, expectedRef, expectedCommit) {
+  return tryGit(root, ["symbolic-ref", "--quiet", "HEAD"]) === expectedRef
+    && tryGit(root, ["rev-parse", "HEAD"]) === expectedCommit;
+}
+
+function assertValidGitIdentity(root) {
+  try {
+    git(root, ["var", "GIT_AUTHOR_IDENT"]);
+    git(root, ["var", "GIT_COMMITTER_IDENT"]);
+  } catch {
+    throw new Error("Configure valid git user.name and git user.email values before FileGRC creates commits. The saved files remain uncommitted and later browser changes are blocked.");
+  }
+}
+
+async function assertNoOutsideWorktreeChangesAsync(root) {
   const topLevel = (await runGitCommand(root, ["rev-parse", "--show-toplevel"], {
     operation: "locate the repository before checking worktree changes"
   })).trim();
@@ -1352,42 +1721,267 @@ async function assertNoOutsideWorktreeChangesAsync(root, rollbackExpected = true
   });
   const paths = statusPathsFromRaw(output);
   if (paths.some((path) => !pathInsideWorkspace(path, prefix))) {
-    throw new Error(rollbackExpected
-      ? "Files outside this FileGRC workspace changed while the browser action was running. The FileGRC change was rolled back; reconcile the other Git work first."
-      : "Files outside this FileGRC workspace changed while the browser action was being staged. The saved FileGRC files remain uncommitted and later browser mutations are blocked; reconcile the Git worktree.");
+    throw new Error("Files outside this FileGRC workspace changed while the browser action was running. FileGRC preserved the current worktree; reconcile the Git diff before another browser mutation.");
   }
 }
 
-async function assertOnlyWorkspaceFilesStagedAsync(root) {
-  const topLevel = (await runGitCommand(root, ["rev-parse", "--show-toplevel"], {
-    operation: "locate the repository before checking staged files"
-  })).trim();
+function assertNoWorkspaceContentFilters(root) {
+  const paths = [...new Set(nulFields(gitRaw(root, [
+    "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."
+  ])))];
+  for (let offset = 0; offset < paths.length; offset += 256) {
+    const batch = paths.slice(offset, offset + 256);
+    const attributes = nulFields(gitRaw(root, ["check-attr", "-z", "filter", "merge", "--", ...batch]));
+    for (let index = 0; index < attributes.length; index += 3) {
+      const [path, attribute, value] = attributes.slice(index, index + 3);
+      if (attribute === "filter" && value && !["unspecified", "unset"].includes(value)) {
+        throw new Error(`FileGRC will not commit "${path}" because Git content filter "${value}" could change or execute while staging authoritative files. Remove the filter attribute and review the resulting diff.`);
+      }
+      if (attribute === "merge" && value && !["unspecified", "unset", "set"].includes(value)) {
+        throw new Error(`FileGRC will not manage "${path}" because Git merge driver "${value}" could execute while synchronizing authoritative files. Remove the named merge attribute and review the resulting diff.`);
+      }
+    }
+  }
+}
+
+function assertNoCommitWorkspaceContentFilters(root, commit) {
+  const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+  const gitDirectory = git(root, ["rev-parse", "--absolute-git-dir"]);
   const prefix = relative(topLevel, root).split(sep).join("/");
-  const output = await runGitCommand(topLevel, [
-    "diff", "--cached", "--name-only", "-z", "--diff-filter=ACDMRTUXB"
-  ], { operation: "inspect staged FileGRC files" });
-  const staged = nulFields(output);
-  if (!staged.length) throw new Error("The browser action did not stage any FileGRC workspace files.");
-  if (staged.some((path) => !pathInsideWorkspace(path, prefix))) {
-    throw new Error("Git has staged files outside this FileGRC workspace. FileGRC will not create a browser commit until those files are unstaged.");
+  if (prefix === ".." || prefix.startsWith("../")) {
+    throw new Error("The FileGRC workspace is outside its Git repository.");
+  }
+  const exactCommit = git(root, ["rev-parse", "--verify", `${commit}^{commit}`]);
+  const paths = nulFields(gitRaw(topLevel, [
+    "ls-tree", "-r", "-z", exactCommit, "--", prefix || "."
+  ])).map((entry) => {
+    const separator = entry.indexOf("\t");
+    const metadata = separator === -1 ? [] : entry.slice(0, separator).split(" ");
+    const path = separator === -1 ? "" : entry.slice(separator + 1);
+    const [mode, type, objectId] = metadata;
+    if (!/^(?:100644|100755)$/.test(mode || "") || type !== "blob" || !/^[a-f0-9]+$/i.test(objectId || "") || !path) {
+      throw new Error(`FileGRC will not check out incoming commit ${exactCommit.slice(0, 12)} because its workspace tree contains a non-regular entry. Replace symlinks and submodules with regular, reviewable files before synchronizing.`);
+    }
+    return path;
+  });
+  const indexFile = resolve(gitDirectory, `filegrc-inspection-index-${randomUUID()}`);
+  try {
+    gitForWrite(topLevel, ["read-tree", exactCommit], "inspect the incoming Git tree", { gitIndexFile: indexFile });
+    for (let offset = 0; offset < paths.length; offset += 256) {
+      const batch = paths.slice(offset, offset + 256);
+      const attributes = nulFields(gitRaw(topLevel, ["check-attr", "-z", "--cached", "filter", "merge", "--", ...batch], {
+        gitIndexFile: indexFile
+      }));
+      for (let index = 0; index < attributes.length; index += 3) {
+        const [path, attribute, value] = attributes.slice(index, index + 3);
+        if (attribute === "filter" && value && !["unspecified", "unset"].includes(value)) {
+          throw new Error(`FileGRC will not check out incoming commit ${exactCommit.slice(0, 12)} because "${path}" uses Git content filter "${value}". Remove the filter attribute in a reviewed Git change before synchronizing.`);
+        }
+        if (attribute === "merge" && value && !["unspecified", "unset", "set"].includes(value)) {
+          throw new Error(`FileGRC will not check out incoming commit ${exactCommit.slice(0, 12)} because "${path}" uses Git merge driver "${value}". Remove the named merge attribute in a reviewed Git change before synchronizing.`);
+        }
+      }
+    }
+  } finally {
+    rmSync(indexFile, { force: true });
+    rmSync(`${indexFile}.lock`, { force: true });
   }
 }
 
-async function rollbackWorkspaceChangesAsync(root) {
-  await runGitCommand(root, ["restore", "--staged", "--worktree", "--source=HEAD", "--", "."], {
-    operation: "roll back the FileGRC workspace change",
-    timeoutMs: GIT_REMOTE_TIMEOUT_MS
-  });
-  const untracked = nulFields(await runGitCommand(
-    root,
-    ["ls-files", "-z", "--others", "--exclude-standard", "--", "."],
-    { operation: "list untracked FileGRC files" }
-  ));
-  for (const path of untracked) {
-    const absolute = resolve(root, path);
-    if (absolute === root || !absolute.startsWith(`${root}${sep}`)) continue;
-    await rm(absolute, { force: true });
+function assertNoIgnoredAuthoritativeFiles(root) {
+  const ignored = nulFields(gitRaw(root, [
+    "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", "data"
+  ]));
+  if (ignored.length) {
+    throw new Error(`FileGRC will not commit while authoritative data files are ignored by Git: ${ignored.slice(0, 5).join(", ")}${ignored.length > 5 ? "…" : ""}. Remove the ignore rule and review the complete staged diff.`);
   }
+}
+
+function workspaceByteManifest(root) {
+  assertNoHiddenIndexEntries(root);
+  const paths = [...new Set(nulFields(gitRaw(root, [
+    "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."
+  ])))].sort();
+  const workspace = realpathSync(root);
+  return new Map(paths.map((path) => {
+    if (!path || path.startsWith("/") || path.split("/").includes("..") || /[\0\r\n]/.test(path)) {
+      throw new Error("Git reported an unsafe workspace path. Reconcile the worktree before committing.");
+    }
+    const absolute = resolve(root, path);
+    let stat;
+    try {
+      stat = lstatSync(absolute);
+    } catch (error) {
+      if (error?.code === "ENOENT") return [path, { objectId: null, mode: null }];
+      throw error;
+    }
+    if (stat.isSymbolicLink()) {
+      throw new Error(`FileGRC will not commit symbolic link "${path}". Store authoritative content as a regular file and review its target explicitly.`);
+    }
+    if (!stat.isFile()) {
+      throw new Error(`FileGRC will not commit non-file workspace entry "${path}".`);
+    }
+    const descriptor = openSync(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    try {
+      const opened = fstatSync(descriptor);
+      const resolved = realpathSync(absolute);
+      const current = lstatSync(absolute);
+      if (
+        !opened.isFile()
+        || (resolved !== workspace && !resolved.startsWith(`${workspace}${sep}`))
+        || current.isSymbolicLink()
+        || !current.isFile()
+        || opened.dev !== current.dev
+        || opened.ino !== current.ino
+      ) {
+        throw new Error(`FileGRC will not commit workspace entry "${path}" because it changed while its bytes were being inspected.`);
+      }
+      const bytes = readFileSync(descriptor);
+      const objectId = hashWorkspaceBytes(root, bytes);
+      return [path, { objectId, mode: opened.mode & 0o111 ? "100755" : "100644", bytes }];
+    } finally {
+      closeSync(descriptor);
+    }
+  }));
+}
+
+function assertNoHiddenIndexEntries(root) {
+  const hidden = nulFields(gitRaw(root, ["ls-files", "-v", "-z", "--cached", "--", "."]))
+    .filter((entry) => entry[0] === "S" || entry[0] === entry[0]?.toLowerCase());
+  if (hidden.length) {
+    const paths = hidden.slice(0, 5).map((entry) => entry.slice(2));
+    throw new Error(`FileGRC will not run managed Git operations while index entries use skip-worktree or assume-unchanged: ${paths.join(", ")}${hidden.length > 5 ? "…" : ""}. Clear those Git index flags and review the complete workspace diff.`);
+  }
+}
+
+function hashWorkspaceBytes(root, bytes, write = false) {
+  return execFileSync("git", ["hash-object", ...(write ? ["-w"] : []), "--stdin"], {
+    cwd: root,
+    input: bytes,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "ignore"],
+    timeout: 30_000,
+    maxBuffer: 20_000_000,
+    env: gitEnvironment()
+  }).trim();
+}
+
+function writeWorkspaceManifestObjects(root, manifest) {
+  return new Map([...manifest].map(([path, value]) => (
+    value.objectId
+      ? [path, { ...value, objectId: hashWorkspaceBytes(root, value.bytes, true) }]
+      : [path, value]
+  )));
+}
+
+function assertWorkspaceManifestEqual(expected, current) {
+  if (!workspaceManifestsEqual(expected, current)) {
+    throw new Error("Workspace files changed while FileGRC was validating them. Review the concurrent edit and try the action again.");
+  }
+}
+
+function workspaceManifestsEqual(expected, current) {
+  return expected.size === current.size
+    && [...expected].every(([path, value]) => {
+      const other = current.get(path);
+      return other && value.objectId === other.objectId && value.mode === other.mode;
+    });
+}
+
+async function commitValidatedIndexAsync(root, subject, manifest, options) {
+  assertWorkspaceInsideGitWorktree(root);
+  assertNoGitOperationInProgress(root);
+  const parent = options.expectedParent;
+  const ref = options.expectedRef;
+  assertExpectedCheckout(root, ref, parent);
+  const gitDirectory = await runGitCommand(root, ["rev-parse", "--absolute-git-dir"], { operation: "locate the repository index" });
+  const sharedIndex = resolve(root, await runGitCommand(root, ["rev-parse", "--git-path", "index"], { operation: "locate the shared repository index" }));
+  const expectedSharedIndex = readFileSync(sharedIndex);
+  const indexFile = resolve(gitDirectory, `filegrc-index-${randomUUID()}`);
+  const sharedUpdateIndex = resolve(gitDirectory, `filegrc-shared-index-${randomUUID()}`);
+  let indexReconciled = false;
+  try {
+    writeFileSync(sharedUpdateIndex, expectedSharedIndex);
+    await applyManifestToIndexAsync(root, manifest, sharedUpdateIndex);
+    await runGitCommand(root, ["read-tree", parent], { operation: "initialize the private FileGRC index", gitIndexFile: indexFile });
+    await applyManifestToIndexAsync(root, manifest, indexFile);
+    const tree = await runGitCommand(root, ["write-tree"], { operation: "capture the validated FileGRC tree", gitIndexFile: indexFile });
+    const commit = await runGitCommand(root, ["commit-tree", tree, "-p", parent, "-m", subject], {
+      operation: "create the validated FileGRC browser commit",
+      timeoutMs: GIT_REMOTE_TIMEOUT_MS
+    });
+    assertNoGitOperationInProgress(root);
+    await runGitCommand(root, ["update-ref", "-m", subject, ref, commit, parent], {
+      operation: "advance the authoritative branch to the validated FileGRC commit",
+      expectedCheckout: { expectedRef: ref, expectedCommit: parent },
+      expectedNoOperation: true
+    });
+    if (!gitOperationInProgress(root) && checkoutMatches(root, ref, commit)) {
+      indexReconciled = replaceSharedIndexIfUnchanged(sharedIndex, sharedUpdateIndex, expectedSharedIndex);
+    }
+    return { commit, indexReconciled: indexReconciled ?? false };
+  } finally {
+    await Promise.all([
+      rm(indexFile, { force: true }),
+      rm(`${indexFile}.lock`, { force: true }),
+      rm(sharedUpdateIndex, { force: true }),
+      rm(`${sharedUpdateIndex}.lock`, { force: true })
+    ].map((cleanup) => cleanup.catch(() => undefined)));
+  }
+}
+
+function replaceSharedIndexIfUnchanged(sharedIndex, privateIndex, expected) {
+  const lock = `${sharedIndex}.lock`;
+  let descriptor;
+  let installed = false;
+  let ownsLock = false;
+  try {
+    descriptor = openSync(lock, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o666);
+    ownsLock = true;
+    if (!readFileSync(sharedIndex).equals(expected)) return false;
+    writeFileSync(descriptor, readFileSync(privateIndex));
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    renameSync(lock, sharedIndex);
+    installed = true;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor); } catch { /* Best-effort cleanup after reconciliation. */ }
+    }
+    if (ownsLock && !installed) {
+      try { rmSync(lock, { force: true }); } catch { /* Best-effort cleanup after reconciliation. */ }
+    }
+  }
+}
+
+async function applyManifestToIndexAsync(root, manifest, indexFile) {
+  const options = { operation: "write the validated FileGRC index", ...(indexFile ? { gitIndexFile: indexFile } : {}) };
+  for (const args of manifestIndexCommands(root, manifest)) await runGitCommand(root, args, options);
+}
+
+function manifestIndexCommands(root, manifest) {
+  const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+  const prefix = relative(topLevel, root).split(sep).join("/");
+  if (prefix === ".." || prefix.startsWith("../")) throw new Error("The FileGRC workspace is outside its Git repository.");
+  const additions = [];
+  const deletions = [];
+  for (const [path, value] of manifest) {
+    const repositoryPath = prefix ? `${prefix}/${path}` : path;
+    if (value.objectId) additions.push(`${value.mode},${value.objectId},${repositoryPath}`);
+    else deletions.push(repositoryPath);
+  }
+  const commands = [];
+  for (let offset = 0; offset < additions.length; offset += 128) {
+    commands.push(["update-index", "--add", ...additions.slice(offset, offset + 128).flatMap((entry) => ["--cacheinfo", entry])]);
+  }
+  for (let offset = 0; offset < deletions.length; offset += 256) {
+    commands.push(["update-index", "--force-remove", "--", ...deletions.slice(offset, offset + 256)]);
+  }
+  return commands;
 }
 
 function statusPathsFromRaw(output) {
@@ -1516,11 +2110,26 @@ function repositoryOperationFromDirectory(gitDirectory) {
     ["merge", "MERGE_HEAD"],
     ["rebase", "rebase-merge"],
     ["rebase", "rebase-apply"],
-    ["cherry-pick", "CHERRY_PICK_HEAD"]
+    ["cherry-pick", "CHERRY_PICK_HEAD"],
+    ["sequencer", "sequencer"],
+    ["revert", "REVERT_HEAD"],
+    ["bisect", "BISECT_START"]
   ]) {
     if (existsSync(resolve(gitDirectory, path))) return name;
   }
   return null;
+}
+
+function assertNoGitOperationInProgress(root) {
+  const operation = gitOperationInProgress(root);
+  if (operation) {
+    throw new Error(`A Git ${operation} is already in progress. Finish or abort it with Git before using FileGRC synchronization.`);
+  }
+}
+
+function gitOperationInProgress(root) {
+  const gitDirectory = tryGit(root, ["rev-parse", "--absolute-git-dir"]);
+  return repositoryOperationFromDirectory(gitDirectory);
 }
 
 export function setGitCommandInterceptorForTests(interceptor) {
@@ -1544,7 +2153,19 @@ export function runGitCommand(cwd, args, options = {}) {
   return runGitCommandNative(cwd, args, options);
 }
 
+export function runGitCommandSync(cwd, args) {
+  return git(resolveWorkspaceRoot(cwd), args);
+}
+
 function runGitCommandNative(cwd, args, options = {}) {
+  if (options.expectedCheckout) {
+    assertExpectedCheckout(
+      cwd,
+      options.expectedCheckout.expectedRef,
+      options.expectedCheckout.expectedCommit
+    );
+  }
+  if (options.expectedNoOperation) assertNoGitOperationInProgress(cwd);
   const operation = options.operation || "run a Git command";
   const configuredTimeout = options.timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS;
   const timeoutMs = Math.max(1, Number(configuredTimeout) || GIT_DEFAULT_TIMEOUT_MS);
@@ -1554,13 +2175,13 @@ function runGitCommandNative(cwd, args, options = {}) {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
-      env: {
-        ...process.env,
+      env: gitEnvironment({
+        ...(options.gitIndexFile ? { GIT_INDEX_FILE: options.gitIndexFile } : {}),
         GIT_TERMINAL_PROMPT: "0",
         GIT_ASKPASS: "",
         SSH_ASKPASS: "",
         GIT_MERGE_AUTOEDIT: "no"
-      }
+      })
     });
     const stdout = [];
     const stderr = [];
@@ -1646,7 +2267,8 @@ function git(cwd, args) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 10_000,
-    maxBuffer: 20_000_000
+    maxBuffer: 20_000_000,
+    env: gitEnvironment()
   }).trim());
 }
 
@@ -1658,6 +2280,15 @@ function tryGit(cwd, args) {
   }
 }
 
+function gitOptionalMatch(cwd, args) {
+  try {
+    return git(cwd, args);
+  } catch (error) {
+    if (error?.status === 1) return "";
+    throw error;
+  }
+}
+
 function tryGitRaw(cwd, args) {
   try {
     return gitRaw(cwd, args);
@@ -1666,13 +2297,14 @@ function tryGitRaw(cwd, args) {
   }
 }
 
-function gitRaw(cwd, args) {
+function gitRaw(cwd, args, options = {}) {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 10_000,
-    maxBuffer: 20_000_000
+    maxBuffer: 20_000_000,
+    env: gitEnvironment(options.gitIndexFile ? { GIT_INDEX_FILE: options.gitIndexFile } : {})
   });
 }
 
@@ -1680,19 +2312,20 @@ function nulFields(source) {
   return source ? source.split("\0").filter(Boolean) : [];
 }
 
-function gitForWrite(cwd, args, action = "create the commit") {
+function gitForWrite(cwd, args, action = "create the commit", options = {}) {
   try {
+    assertWorkspaceInsideGitWorktree(cwd);
     return execFileSync("git", args, {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30_000,
       maxBuffer: 20_000_000,
-      env: {
-        ...process.env,
+      env: gitEnvironment({
+        ...(options.gitIndexFile ? { GIT_INDEX_FILE: options.gitIndexFile } : {}),
         GIT_TERMINAL_PROMPT: "0",
         GIT_MERGE_AUTOEDIT: "no"
-      }
+      })
     }).trim();
   } catch (error) {
     const message = sanitizeGitErrorMessage(error.stderr?.trim() || error.stdout?.trim() || error.message);
@@ -1700,25 +2333,20 @@ function gitForWrite(cwd, args, action = "create the commit") {
   }
 }
 
-async function gitForWriteAsync(cwd, args, action = "update the repository") {
+async function gitForWriteAsync(cwd, args, action = "update the repository", options = {}) {
+  assertWorkspaceInsideGitWorktree(cwd);
   return runGitCommand(cwd, args, {
     operation: action,
-    timeoutMs: GIT_REMOTE_TIMEOUT_MS
+    timeoutMs: GIT_REMOTE_TIMEOUT_MS,
+    ...options
   });
 }
 
 export function sanitizeGitErrorMessage(value) {
   const sanitized = String(value || "Git returned no error detail.")
     .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi, "$1[redacted]@")
-    .replace(/([?&](?:access[_-]?token|auth|key|password|secret|token)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/([?&][^=&#\s]+)=([^&#\s]*)/g, "$1=[redacted]")
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s#]+)#[^\s]*/gi, "$1#[redacted]")
     .replace(/\b(authorization:\s*)(?:basic|bearer)\s+\S+/gi, "$1[redacted]");
   return sanitized.length > 8_000 ? `${sanitized.slice(0, 8_000)}…` : sanitized;
-}
-
-function tryGitForWrite(cwd, args) {
-  try {
-    gitForWrite(cwd, args);
-  } catch {
-    // Best-effort cleanup after a failed remote operation.
-  }
 }

@@ -896,10 +896,11 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
     : sourceVersion === "1" ? V1_TARGET_MODEL_VERSION
       : sourceVersion === "2" ? "3"
         : sourceVersion === "3" ? "4"
-            : sourceVersion === "4" ? "5"
-              : sourceVersion === "5" ? "6"
-                : sourceVersion === "6" ? "7"
-                  : sourceVersion === "7" ? "8"
+          : sourceVersion === "4" ? "5"
+            : sourceVersion === "5" ? "6"
+              : sourceVersion === "6" ? "7"
+                : sourceVersion === "7" ? "8"
+                  : sourceVersion === "8" ? "9"
                     : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
@@ -923,8 +924,11 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "7" && requestedTarget === "8") {
     return planV7ToV8Migration(loaded);
   }
-  if (sourceVersion === "8" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "8" && requestedTarget === "9") {
     return planV8ToV9Migration(loaded);
+  }
+  if (sourceVersion === "9" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV9ToV10Migration(loaded);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
@@ -2298,6 +2302,106 @@ async function planV8ToV9Migration(loaded) {
       expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
       validateWholeWorkspace: true,
       targetModelVersion: "9"
+    }
+  };
+}
+
+async function planV9ToV10Migration(loaded) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("10");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+
+  for (const original of loaded.resources) {
+    const record = structuredClone(original);
+    let changed = false;
+    if (record.type === "workspace") {
+      record.dataModelVersion = "10";
+      automatic.push(classifiedChange("automatic", record.id, "dataModelVersion", "Select model v10."));
+      changed = true;
+    }
+    if (record.type === "reporting-route") {
+      if (record.status === "planned") {
+        record.status = "deprecated-draft";
+        automatic.push(classifiedChange(
+          "automatic",
+          record.id,
+          "status",
+          "Mark this unfinished model v9 route as a deprecated draft."
+        ));
+        changed = true;
+      }
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "reporting-route-set",
+        "Scaffold one Reporting Route Set for the Program and purpose. Confirm the Program, paired lanes, approval authority, actual event time, timezone, and any structured source requirements instead of inferring them."
+      ));
+    }
+    if (record.type === "attestation" && (record.reportingRouteId || record.reportingRouteRevision)) {
+      reviewRequired.push(classifiedChange(
+        "review-required",
+        record.id,
+        "reportingRouteSetId",
+        "The preserved legacy scalar route binding cannot prove a Route Set revision. Keep the historical Attestation unchanged, and use a committed Route Set binding for future delivery proof."
+      ));
+    }
+    if (changed) updates.push(record);
+  }
+
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange(
+      "unsupported",
+      item.resourceId,
+      item.field,
+      item.message || `Resolve ${item.field} before applying the model v10 migration.`
+    ));
+  }
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "9",
+    targetModelVersion: "10",
+    ready: unsupported.length === 0,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: [
+      "Legacy Reporting Routes remain visible as migration-only records and cannot become effective Route Sets.",
+      "The migration does not infer a Program, purpose lineage, paired lane, authority, approval time, timezone, or evidence judgment.",
+      "Use the Route Set scaffold and a reviewed Git diff to create current facts."
+    ],
+    migrationReport: {},
+    summary: {
+      create: 0,
+      update: updates.length,
+      automatic: automatic.length,
+      reviewRequired: reviewRequired.length,
+      unsupported: unsupported.length
+    },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({
+        type: record.type,
+        id: record.id,
+        before: loaded.resources.find(({ id }) => id === record.id),
+        after: record
+      }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "10"
     }
   };
 }

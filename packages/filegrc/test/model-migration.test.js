@@ -13,6 +13,7 @@ import { applyCollectionReview } from "../src/collection-review.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
 import { migrateModel, planModelMigration } from "../src/model-migration.js";
+import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { validateWorkspace } from "../src/validate.js";
 import { assessWorkflow } from "../src/workflow.js";
@@ -719,7 +720,7 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9\|10>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
 });
@@ -851,6 +852,51 @@ test("grandfathers a committed active v8 Collection Review during v9 migration",
   assert.ok(preview.classifications.reviewRequired.some(({ resourceId, field }) => (
     resourceId === "collection-review-example" && field === "knowledgeCutoffAt"
   )));
+});
+
+test("preserves model v9 Reporting Routes as legacy facts without inventing Route Sets", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v10-routes-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "9");
+  const initial = await loadWorkspace(root);
+  const routeEntry = initial.entries.find(({ record }) => record.type === "reporting-route");
+  const route = {
+    ...routeEntry.record,
+    status: "active",
+    effectiveAt: "2026-01-01T00:00:00Z",
+    approvedByIds: ["person-independent-approver-example"],
+    approvedOn: "2026-01-01"
+  };
+  await writeJson(routeEntry.path, route);
+  const attestationEntry = initial.entries.find(({ record }) => record.type === "attestation");
+  await writeJson(attestationEntry.path, {
+    ...attestationEntry.record,
+    reportingRouteId: route.id,
+    reportingRouteRevision: reportingRouteRevision(route)
+  });
+  for (const args of [
+    ["init", "--initial-branch=main"],
+    ["config", "user.email", "filegrc@example.test"],
+    ["config", "user.name", "FileGRC Test"],
+    ["add", "."],
+    ["commit", "-m", "Create model v9 workspace"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+  const plan = await planModelMigration(root, { targetModelVersion: "10" });
+  assert.equal(plan.ready, true, plan.classifications.unsupported.map(({ message }) => message).join("\n"));
+  assert.ok(plan.classifications.reviewRequired.some(({ field }) => field === "reporting-route-set"));
+  assert.ok(plan.classifications.reviewRequired.some(({ field }) => field === "reportingRouteSetId"));
+  assert.equal(plan.fileDiff.update.some(({ type }) => type === "reporting-route"), false);
+  assert.equal(plan.fileDiff.update.some(({ type }) => type === "attestation"), false);
+  assert.equal(plan.fileDiff.create.length, 0);
+  const result = await migrateModel(root, { targetModelVersion: "10" });
+  assert.equal(result.applied, true);
+  const loaded = await loadWorkspace(root);
+  assert.equal(loaded.workspace.dataModelVersion, "10");
+  assert.equal(loaded.resources.some(({ type }) => type === "reporting-route-set"), false);
+  assert.equal(loaded.resources.find(({ type }) => type === "reporting-route").status, "active");
+  const attestation = loaded.resources.find(({ type }) => type === "attestation");
+  assert.equal(attestation.reportingRouteId, route.id);
+  assert.equal(attestation.reportingRouteRevision, reportingRouteRevision(route));
 });
 
 test("migrates v5 Training into separate approval, activation, and Obligation scheduling", async (context) => {

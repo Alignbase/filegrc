@@ -1279,8 +1279,10 @@ function stageProgress(stage) {
       detail: "Create an Audit only after a real engagement or customer deadline exists."
     };
   }
-  const complete = pages.filter((destination) => derivedStagePageState(stage, destination).complete).length;
-  return progressFromCounts(complete, pages.length, "page");
+  const pageStates = pages.map((destination) => derivedStagePageState(stage, destination));
+  const applicable = pageStates.filter((current) => current.countsTowardProgress !== false);
+  const complete = applicable.filter((current) => current.complete).length;
+  return progressFromCounts(complete, applicable.length, "page");
 }
 
 function derivedStagePageState(stage, destination) {
@@ -1291,24 +1293,29 @@ function derivedStagePageState(stage, destination) {
   ) {
     return { complete: false, label: "No engagement" };
   }
-  const blocking = stagePageItems(stage, destination);
+  const items = stagePageItems(stage, destination);
+  const deferredStates = new Set(["later", "scheduled", "upcoming", "waiting-external"]);
+  const blocking = items.filter(({ state }) => !deferredStates.has(state));
   if (blocking.length) {
     return { complete: false, label: blocking.length + " " + pluralize("item", blocking.length) + (blocking.length === 1 ? " needs work" : " need work") };
   }
+  if (items.some(({ state }) => deferredStates.has(state))) {
+    return { complete: false, countsTowardProgress: false, label: "Later" };
+  }
+  const collectionReview = destination.type ? state.collectionReviews?.[destination.type] : null;
+  if (collectionReview) {
+    return collectionReview.status === "current"
+      ? { complete: true, label: "Reviewed" }
+      : { complete: false, label: "Review scope" };
+  }
   if (destination.type && resourcesOfType(destination.type).length === 0) {
-    const collectionReview = state.collectionReviews?.[destination.type];
-    if (collectionReview) {
-      return collectionReview.status === "current"
-        ? { complete: true, label: "Reviewed" }
-        : { complete: false, label: "Review scope" };
-    }
-    return { complete: true, label: "Conditional" };
+    return { complete: false, countsTowardProgress: false, label: "Only if needed" };
   }
   return { complete: true, label: "Ready" };
 }
 
 function stagePageItems(stage, destination) {
-  const activeStates = new Set(["blocked", "due", "open", "overdue", "ready"]);
+  const activeStates = new Set(["blocked", "due", "later", "open", "overdue", "ready", "scheduled", "upcoming", "waiting-external"]);
   const items = [
     ...(state.workflow?.findings || []),
     ...(state.workflow?.workItems || []),
@@ -2548,7 +2555,8 @@ function renderList(main, type, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + applicabilityButton + createButton + '</div>';
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(listTitle)) + '</h2>' + guideTrigger + '</div></div>' + listTools + '</div>' + resourceGuide(type) +
+  const pageSummary = STAGE_PAGE_SUMMARIES[type] || definition.description;
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(listTitle)) + '</h2>' + guideTrigger + '</div><p>' + esc(pageSummary) + '</p></div>' + listTools + '</div>' + resourceGuide(type) +
     collectionReviewPanel(type) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Next action</th><th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
@@ -2710,6 +2718,16 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     && ["reconciled", "not-applicable"].includes(entry.record.status)
     ? '<button class="button" type="button" data-correct-audit-population>Correct population</button>'
     : "";
+  const reportingRouteSetActions = !state.readOnly && type === "reporting-route-set"
+    ? entry.record.status === "draft"
+      ? '<button class="button primary" type="button" data-propose-route-set>' + (state.repository?.mode === "trunk" && !state.repository?.developmentOverride ? "Commit proposal" : "Propose (commit required)") + '</button>'
+      : entry.record.status === "proposed"
+        ? '<button class="button primary" type="button" data-approve-route-set ' + (!state.git.clean || !state.git.commit ? 'disabled title="Commit the proposal before approval"' : "") + '>' + (state.repository?.mode === "trunk" && !state.repository?.developmentOverride ? "Approve and commit" : "Approve (commit required)") + '</button>'
+        : entry.record.status === "approved"
+          ? '<button class="button" type="button" data-cancel-route-set>Cancel route set</button>'
+          : ""
+    : "";
+  const routeSetLocked = type === "reporting-route-set" && entry.record.status !== "draft";
   const detailMain = hasRecordBody
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
@@ -2727,7 +2745,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     connectionsPanel: resourceConnections(entry),
     historyPanel
   });
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-external-reviewer-governance]")?.addEventListener("click", openExternalReviewerGovernanceDialog);
   main.querySelector("[data-next-audit-cycle]")?.addEventListener("click", () => openNextAuditCycleDialog(entry.record));
@@ -2748,6 +2766,12 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
       showError(error.message);
     }
   });
+  main.querySelector("[data-propose-route-set]")?.addEventListener("click", () => mutateReportingRouteSet("propose", {
+    routeSetId: entry.record.id,
+    expectedRevision: entry.revision
+  }));
+  main.querySelector("[data-approve-route-set]")?.addEventListener("click", () => openReportingRouteApproval(entry));
+  main.querySelector("[data-cancel-route-set]")?.addEventListener("click", () => openReportingRouteCancellation(entry));
   main.querySelector("[data-record-finding]")?.addEventListener("click", () => openEditor("finding", null, {
     seed: issueSeed("finding", entry.record),
     description: "Record only a confirmed gap that needs separate remediation tracking. Keep the report details in this source record’s Markdown."
@@ -3079,7 +3103,7 @@ function renderRepository(main) {
           ? "Add a Git remote before pushing"
           : "";
   const pullButton = !state.readOnly && state.git.available && hasRemote
-    ? '<button class="button" type="button" data-git-action="pull" ' + (pullDisabled ? 'disabled title="' + esc(pullDisabled) + '"' : "") + '>Pull with rebase</button>'
+    ? '<button class="button" type="button" data-git-action="pull" ' + (pullDisabled ? 'disabled title="' + esc(pullDisabled) + '"' : "") + '>Check incoming commits</button>'
     : "";
   const commitButton = !state.readOnly && state.git.available && !state.git.clean
     ? '<button class="button primary" type="button" id="commit-workspace" ' + (!state.git.branch
@@ -3092,7 +3116,7 @@ function renderRepository(main) {
   const repositoryInstructions = !state.git.branch
     ? "This workspace is on a detached HEAD. Check out a branch before using browser commit, pull, or push."
     : hasRemote
-    ? "Pull remote changes with rebase, review the workspace diff, then commit and push together."
+    ? "Fetch remote refs without changing this branch. If commits are incoming, integrate them with Git, then reload FileGRC."
     : "Review the workspace diff, then commit it locally. Add a Git remote when you want browser pull and push.";
   const validationBody = state.validation.diagnostics.length
     ? '<div class="diagnostics">' + state.validation.diagnostics.map((item) => '<div><span class="badge ' + item.severity + '">' + esc(properCase(item.severity)) + '</span><code>' + esc(item.path) + '</code><p>' + esc(item.message) + '</p></div>').join("") + '</div>'
@@ -3150,14 +3174,14 @@ async function runRepositoryGitAction(action) {
     const currentStatus = document.querySelector(".repository-sync-status");
     if (currentStatus) currentStatus.textContent = action === "pull"
       ? result.updated
-        ? "Pulled " + result.upstream + " with rebase at " + result.shortCommit + "."
+        ? "No incoming commits from " + result.upstream + ". This branch remains at " + result.shortCommit + "."
         : result.branch + " is current with " + result.upstream + "."
       : action === "retry-sync"
         ? "Synchronized " + result.shortCommit + " with " + result.upstream + "."
         : "Pushed " + result.shortCommit + " to " + result.upstream + ".";
   } catch (cause) {
     buttons.forEach((button, index) => { button.disabled = disabled[index]; });
-    if (active) active.textContent = action === "pull" ? "Pull with rebase" : action === "retry-sync" ? "Retry sync" : "Push";
+    if (active) active.textContent = action === "pull" ? "Check incoming commits" : action === "retry-sync" ? "Retry sync" : "Push";
     if (status) {
       status.textContent = cause.message;
       status.classList.add("error");
@@ -3212,6 +3236,169 @@ function openCommitDialog() {
     }
   });
   dialog.querySelector('input[name="message"]').focus();
+}
+
+async function mutateReportingRouteSet(action, payload, dialog) {
+  try {
+    if (dialog) setMutationBusy(dialog, true, action === "approve" ? "Approving…" : action === "cancel" ? "Canceling…" : "Proposing…");
+    const response = await localFetch("/api/reporting-route-sets/" + action, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(await responseMessage(response));
+    applyMutationState(await response.json());
+    dialog?.close();
+    render();
+  } catch (error) {
+    if (dialog) {
+      setMutationBusy(dialog, false, "");
+      dialog.querySelector(".dialog-error").textContent = error.message;
+    } else showError(error.message);
+  }
+}
+
+function reportingRouteAppointmentOptions(entry) {
+  return resourcesOfType("appointment").filter(({ record }) => (
+    ["active", "ended"].includes(record.status)
+    && record.holderId
+    && record.appointmentKind === entry.record.approvalAppointmentKind
+    && record.scopeResourceIds?.some((id) => [entry.record.id, entry.record.programId, state.workspace.id].includes(id))
+  ));
+}
+
+function reportingRouteEvidenceField(subjectId, name, label) {
+  const evidence = resourcesOfType("evidence").filter(({ record }) => (
+    record.status === "verified"
+    && record.sourceResourceIds?.includes(subjectId)
+    && record.sourceDescription?.trim()
+    && record.collectedOn
+    && record.verifiedOn
+    && record.collectorIds?.length
+    && record.verifierIds?.length
+    && (
+      (record.sourceKind === "file" && record.filePaths?.length)
+      || (record.sourceKind === "rendered-page" && record.artifactKind === "rendered-page" && record.capture && record.sourceCommit)
+    )
+  ));
+  if (!evidence.length) {
+    return '<div class="field-group full"><span>' + esc(label) + ' <span class="required-mark">Required</span></span><p class="field-help">Add verified, fixed Evidence linked to this channel set before recording the event.</p><a class="button" href="#/resources/evidence">Open Evidence</a></div>';
+  }
+  return '<fieldset class="field-group full"><legend>' + esc(label) + ' <span class="required-mark">Required</span></legend>' + evidence.map(({ record }) => '<label class="confirmation"><input type="checkbox" name="' + esc(name) + '" value="' + esc(record.id) + '"><span>' + esc(record.title) + '</span></label>').join("") + '<p class="field-help">Only likely candidates are shown. FileGRC checks retained material and event-date coverage when you submit.</p></fieldset>';
+}
+
+function checkedFormValues(form, name) {
+  return [...form.querySelectorAll('input[name="' + name + '"]:checked')].map((input) => input.value);
+}
+
+function openReportingRouteApproval(entry) {
+  const appointments = reportingRouteAppointmentOptions(entry);
+  const predecessor = entry.record.predecessorId
+    ? state.resources.find(({ record }) => record.id === entry.record.predecessorId && record.type === "reporting-route-set" && record.status === "approved")
+    : null;
+  const predecessorAppointments = predecessor ? reportingRouteAppointmentOptions(predecessor) : [];
+  const nowLocal = localDateTimeInput(new Date(), state.workspace.timezone);
+  const tomorrow = new Date(Date.now() + 86_400_000);
+  const defaultEffective = predecessor
+    ? nowLocal
+    : localDateTimeInput(tomorrow, state.workspace.timezone, true);
+  const approvalActionLabel = state.repository?.mode === "trunk" && !state.repository?.developmentOverride
+    ? "Approve and commit"
+    : "Approve (commit required)";
+  const dialog = document.createElement("dialog");
+  dialog.className = "editor";
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Reporting channel approval</p><h2>' + esc(approvalActionLabel) + '</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Approve the exact normal and fallback channels proposed at <code>' + esc(state.git.shortCommit) + '</code>. FileGRC records the actual approval and effective times; Git records when this approval is committed.</p><div class="form-grid"><label class="field-group full"><span>Approval authority <span class="required-mark">Required</span></span><select name="approvalAppointmentId" required><option value="">Select an Appointment</option>' + appointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(entry.record.id, "evidenceIds", "Approval evidence") + '<label class="field-group"><span>Approved at <span class="required-mark">Required</span></span><input name="approvedAt" type="datetime-local" step="1" required value="' + esc(nowLocal) + '"></label><label class="field-group"><span>Effective at <span class="required-mark">Required</span></span><input name="effectiveAt" type="datetime-local" step="1" required value="' + esc(defaultEffective) + '"></label>' + (predecessor ? '<div class="field-group full"><span>Predecessor cutover</span><p class="field-help">Approving this successor also cancels ' + esc(predecessor.record.title) + ' at the effective time.</p></div><label class="field-group full"><span>Predecessor cancellation authority <span class="required-mark">Required</span></span><select name="predecessorCancellationAppointmentId" required><option value="">Select an Appointment</option>' + predecessorAppointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(predecessor.record.id, "predecessorCancellationEvidenceIds", "Predecessor cancellation evidence") : "") + '<label class="field-group full confirmation"><input type="checkbox" name="confirm" required><span>I reviewed this proposal and confirm these are the actual approval and effective times in ' + esc(state.workspace.timezone) + '.</span></label></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status"></span><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">' + esc(approvalActionLabel) + '</button></div></form>';
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelectorAll("[data-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector("form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const evidenceIds = checkedFormValues(form, "evidenceIds");
+    const predecessorEvidenceIds = checkedFormValues(form, "predecessorCancellationEvidenceIds");
+    if (!evidenceIds.length || (predecessor && !predecessorEvidenceIds.length)) {
+      form.querySelector(".dialog-error").textContent = "Select fixed, verified Evidence for each approval or cancellation event.";
+      return;
+    }
+    mutateReportingRouteSet("approve", {
+      routeSetId: entry.record.id,
+      proposalCommit: state.git.commit,
+      approvalAppointmentId: form.elements.approvalAppointmentId.value,
+      evidenceIds,
+      approvedAt: zonedTimestampFromLocal(form.elements.approvedAt.value, state.workspace.timezone),
+      effectiveAt: zonedTimestampFromLocal(form.elements.effectiveAt.value, state.workspace.timezone),
+      timezone: state.workspace.timezone,
+      expectedRevision: entry.revision,
+      ...(predecessor ? {
+        predecessorCancellationAppointmentId: form.elements.predecessorCancellationAppointmentId.value,
+        predecessorCancellationEvidenceIds: predecessorEvidenceIds,
+        predecessorExpectedRevision: predecessor.revision
+      } : {})
+    }, dialog);
+  });
+}
+
+function openReportingRouteCancellation(entry) {
+  const appointments = reportingRouteAppointmentOptions(entry);
+  const dialog = document.createElement("dialog");
+  dialog.className = "editor";
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Reporting channel cancellation</p><h2>Cancel this revision</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Use cancellation for a stopped revision. Create a successor when either channel changes.</p><div class="form-grid"><label class="field-group full"><span>Cancellation authority <span class="required-mark">Required</span></span><select name="approvalAppointmentId" required><option value="">Select an Appointment</option>' + appointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(entry.record.id, "evidenceIds", "Cancellation evidence") + '<label class="field-group"><span>Canceled at <span class="required-mark">Required</span></span><input name="canceledAt" type="datetime-local" step="1" required value="' + esc(localDateTimeInput(new Date(), state.workspace.timezone)) + '"></label><label class="field-group full"><span>Reason <span class="required-mark">Required</span></span><textarea name="reason" required></textarea></label></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status"></span><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button danger">Cancel channel set</button></div></form>';
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelectorAll("[data-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector("form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const evidenceIds = checkedFormValues(form, "evidenceIds");
+    if (!evidenceIds.length) {
+      form.querySelector(".dialog-error").textContent = "Select fixed, verified Evidence for the cancellation event.";
+      return;
+    }
+    mutateReportingRouteSet("cancel", {
+      routeSetId: entry.record.id,
+      approvalAppointmentId: form.elements.approvalAppointmentId.value,
+      evidenceIds,
+      canceledAt: zonedTimestampFromLocal(form.elements.canceledAt.value, state.workspace.timezone),
+      timezone: state.workspace.timezone,
+      reason: form.elements.reason.value,
+      expectedRevision: entry.revision
+    }, dialog);
+  });
+}
+
+function localDateTimeInput(date, timezone, midnight = false) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date).map(({ type, value }) => [type, value]));
+  return parts.year + "-" + parts.month + "-" + parts.day + "T" + (midnight ? "00:00:00" : parts.hour + ":" + parts.minute + ":" + parts.second);
+}
+
+function zonedTimestampFromLocal(value, timezone) {
+  const desired = new Date(value + "Z");
+  if (Number.isNaN(desired.getTime())) throw new Error("A valid local date and time is required.");
+  let instant = desired;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const represented = new Date(localDateTimeInput(instant, timezone) + "Z");
+    instant = new Date(instant.getTime() + desired.getTime() - represented.getTime());
+  }
+  if (localDateTimeInput(instant, timezone) !== value) throw new Error("The selected local time does not exist in " + timezone + ".");
+  const zoneLocalAsUtc = new Date(localDateTimeInput(instant, timezone) + "Z");
+  const offsetMinutes = Math.round((zoneLocalAsUtc.getTime() - instant.getTime()) / 60_000);
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const offset = sign + String(Math.floor(absolute / 60)).padStart(2, "0") + ":" + String(absolute % 60).padStart(2, "0");
+  return value + offset;
 }
 
 function resourceGuide(type) {
@@ -3785,7 +3972,7 @@ function openEditor(type, entry = null, options = {}) {
     || implementationEditorDescription(type)
     || conciseResourceDescription(definition)
     || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name))).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name), record.id)).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -4102,7 +4289,7 @@ function recordContentPlaceholder(type) {
   return "Document the work, results, decisions, and follow-up.";
 }
 
-function editorField(type, name, field, value, required, editing, oneOfRequired = false, oneOfActive = oneOfRequired) {
+function editorField(type, name, field, value, required, editing, oneOfRequired = false, oneOfActive = oneOfRequired, currentRecordId = null) {
   const label = fieldLabel(type, name);
   const requiredMark = required || field.requiredWhen || oneOfRequired
     ? '<span class="required-mark" ' + (required || oneOfActive ? "" : "hidden") + '>' + (oneOfRequired ? "One Required" : "Required") + '</span>'
@@ -4126,7 +4313,9 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     return fieldWrap(name, "relation-array", label, requiredMark, control, help, required);
   }
   if (relation) {
-    const candidates = relationCandidates(relationField, type, name);
+    const candidates = relationCandidates(relationField, type, name).filter(({ record }) => (
+      name !== "predecessorId" || record.id !== currentRecordId
+    ));
     control = candidates.length
       ? '<select><option value="">Select ' + esc(relationTypeLabel(relationField).toLowerCase()) + '</option>' + candidates.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (value === record.id ? "selected" : "") + '>' + esc(record.title) + ' · ' + esc(state.model.resources[record.type].title) + '</option>').join("") + '</select>'
       : required ? '<select><option value="">No matching ' + esc(relationTypeLabel(relationField, true).toLowerCase()) + ' yet</option></select>' : '<div class="missing-options">No matching ' + esc(relationTypeLabel(relationField, true).toLowerCase()) + ' yet.</div>';
@@ -4142,9 +4331,11 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
     const activationManagedType = ["policy", "document"].includes(type)
       || (type === "training" && Boolean(state.model.resources.training?.fields?.activatedContentRevisions));
-    const availableValues = activationManagedType && name === "status" && value !== "active"
-      ? values.filter((item) => item !== "active")
-      : values;
+    const availableValues = type === "reporting-route-set" && name === "status" && editing
+      ? values.filter((item) => item === value)
+      : activationManagedType && name === "status" && value !== "active"
+        ? values.filter((item) => item !== "active")
+        : values;
     control = '<select><option value="">Select</option>' + availableValues.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
     const enumHelp = activationManagedType && name === "status"
       ? type === "document"
@@ -4258,7 +4449,7 @@ function objectPropertyFields(schema, value = {}) {
         ? '<textarea>' + esc(value[name] || "") + '</textarea>'
         : '<input type="' + (property.type === "date" ? "date" : property.type === "timestamp" ? "datetime-local" : ["integer", "number"].includes(property.type) ? "number" : "text") + '" value="' + esc(property.type === "timestamp" && value[name] ? String(value[name]).slice(0, 16) : value[name] ?? "") + '"' + (property.minimum !== undefined ? ' min="' + esc(property.minimum) + '"' : "") + '>';
     }
-    return '<div class="object-property' + (stringMap ? " string-map-property" : "") + '" data-object-field="' + esc(name) + '" data-object-kind="' + esc(property.type) + '" data-object-required="' + (required.has(name) || property.requiredWhen ? "true" : "false") + '"' + (property.requiredWhen ? ' data-object-required-when="' + esc(JSON.stringify(property.requiredWhen)) + '"' : "") + (property.allowedWhen ? ' data-object-allowed-when="' + esc(JSON.stringify(property.allowedWhen)) + '"' : "") + '><span class="object-property-label">' + esc(humanize(name)) + mark + '</span>' + input + '</div>';
+    return '<div class="object-property' + (stringMap ? " string-map-property" : "") + '" data-object-field="' + esc(name) + '" data-object-kind="' + esc(property.type) + '" data-object-required="' + (required.has(name) || property.requiredWhen ? "true" : "false") + '"' + (property.requiredWhen ? ' data-object-required-when="' + esc(JSON.stringify(property.requiredWhen)) + '"' : "") + (property.allowedWhen ? ' data-object-allowed-when="' + esc(JSON.stringify(property.allowedWhen)) + '"' : "") + '><span class="object-property-label">' + esc(property.label || humanize(name)) + mark + '</span>' + input + '</div>';
   }).join("");
 }
 
@@ -5005,7 +5196,7 @@ function formatObjectArray(items, objectType, compact = false) {
         notes.push(String(value));
         return [];
       }
-      const label = humanize(name.replace(/Ids?$/, ""));
+      const label = property.label || humanize(name.replace(/Ids?$/, ""));
       let display;
       if (property.relation && property.type === "id") display = formatReference(value);
       else if (property.relation && property.type === "array") display = value.map((id) => formatReference(id)).join(" ");

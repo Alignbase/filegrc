@@ -50,7 +50,7 @@ test("creates a complete generic repository with one dependency", async (context
       document: 6,
       training: 1,
       framework: 2,
-      "collection-review": 8,
+      "collection-review": 9,
       "information-type": 1,
       requirement: 42,
       "source-coverage": 14,
@@ -58,7 +58,7 @@ test("creates a complete generic repository with one dependency", async (context
       control: 28,
       obligation: 55,
       "obligation-rule": 55,
-      "reporting-route": 2
+      "reporting-route-set": 1
     }
   });
   const loaded = await loadWorkspace(target);
@@ -106,7 +106,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "9");
+  assert.equal(workspace.dataModelVersion, "10");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
   const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
     JSON.parse(await readFile(path, "utf8"))
@@ -224,6 +224,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.doesNotMatch(informationSecurityContent, /applicable FileGRC record|belong in the applicable (?:Control|System|Component)|Controls and Obligations record/);
   assert.match(informationSecurityContent, /Approval does not by itself demonstrate implementation or operation/);
   assert.match(informationSecurityContent, /documents supporting procedures, configurations, Control operation, and Evidence separately/);
+  assert.match(informationSecurityContent, /normal Security Reporting Channel or its usable fallback/);
   assert.match(informationSecurityContent, /^## Consolidated policy index$/m);
   assert.match(informationSecurityContent, /^\- \*\*Governance and workforce:\*\*/m);
   assert.match(informationSecurityContent, /^## Definitions$/m);
@@ -306,7 +307,9 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(recoveryContent, /standing legal retainer is required only when management determines/);
   assert.match(recoveryContent, /the triggering law, contract, Policy, commitment, or management decision/);
   assert.match(recoveryContent, /representative security alert from generation through receipt, acknowledgement, escalation, and fallback/);
-  assert.match(recoveryContent, /\[Complete before activation: Describe how workers can find the alternate Reporting Route/);
+  assert.match(recoveryContent, /People send suspected security concerns through the current approved normal reporting channel/);
+  assert.match(recoveryContent, /Reporting Channel Set is the source of truth/);
+  assert.match(recoveryContent, /\[Complete before activation: Describe how workers can find the fallback reporting channel/);
   assert.doesNotMatch(recoveryContent, /FileGRC|Obligation records|governed schedule/);
   const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
   assert.equal("approverIds" in retentionSchedule, false);
@@ -323,6 +326,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(awarenessTrainingContent, /Keep plaintext passwords/);
   assert.match(awarenessTrainingContent, /Approved source-controlled ciphertext must follow the Policy and keep decryption keys separate/);
   assert.match(awarenessTrainingContent, /Approved source-controlled ciphertext must meet the Policy's separate-key, access, and rotation conditions/);
+  assert.match(awarenessTrainingContent, /approved security reporting channel delivered with this assignment/);
   assert.match(awarenessTrainingContent, /Repository access alone must never decrypt approved source-controlled ciphertext/);
   assert.match(awarenessTrainingContent, /source repositories or general-purpose Systems/);
   assert.match(awarenessTrainingContent, /Approved supporting standards, procedures, and schedules document/);
@@ -753,7 +757,7 @@ test("creates a thirteen-record foundation without selecting a framework", async
     { id: "soc2-security", status: "skipped", records: 0 }
   ]);
   assert.deepEqual(result.resourceCounts, {
-    total: 15,
+    total: 13,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -763,8 +767,7 @@ test("creates a thirteen-record foundation without selecting a framework", async
       program: 1,
       classification: 4,
       component: 1,
-      "information-type": 1,
-      "reporting-route": 2
+      "information-type": 1
     }
   });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));

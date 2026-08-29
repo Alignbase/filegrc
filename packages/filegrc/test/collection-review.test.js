@@ -58,8 +58,8 @@ test("person scope includes operators referenced only by selected Components and
   );
 });
 
-test("rejects a Collection Review first committed after its claimed review date", async (context) => {
-  const root = await mkdtemp(join(tmpdir(), "filegrc-backdated-review-"));
+test("does not treat a Git timestamp as proof of a Collection Review date", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-review-git-time-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeComprehensiveWorkspace(root, "9");
   await execute("git", ["init", "--initial-branch=main"], { cwd: root });
@@ -78,10 +78,6 @@ test("rejects a Collection Review first committed after its claimed review date"
     now: new Date().toISOString()
   });
   const review = plan.changes.create[0];
-  const backdated = "2026-01-01";
-  review.reviewedOn = backdated;
-  review.coverage = { kind: "as-of", on: backdated };
-  review.knowledgeCutoffAt = "2026-01-01T12:00:00Z";
   await mkdir(join(root, "data", "collection-reviews"), { recursive: true });
   await writeFile(
     join(root, "data", "collection-reviews", `${review.id}.json`),
@@ -89,12 +85,19 @@ test("rejects a Collection Review first committed after its claimed review date"
     "utf8"
   );
   await execute("git", ["add", "."], { cwd: root });
-  await execute("git", ["commit", "-m", "Record backdated review"], { cwd: root });
+  await execute("git", ["commit", "-m", "Record current review"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: "2001-01-01T00:00:00Z",
+      GIT_COMMITTER_DATE: "2031-01-01T00:00:00Z"
+    }
+  });
 
   const validation = await validateWorkspace(root);
   assert.equal(validation.diagnostics.some(({ code, message }) => (
-    code === "rewritten-finalized-record" && /backdating/.test(message)
-  )), true);
+    code === "rewritten-finalized-record" && /Collection Review/.test(message)
+  )), false, JSON.stringify(validation.diagnostics, null, 2));
 });
 
 test("binds a collection confirmation to the exact records and relevant scope", async (context) => {

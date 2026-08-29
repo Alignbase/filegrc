@@ -10,7 +10,7 @@ const execute = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const textExtensions = new Set(["", ".json", ".md", ".txt", ".yml", ".yaml", ".gitignore"]);
 const STARTER_PROFILES = new Set(["foundation", "security"]);
-const SECURITY_TEMPLATE_COLLECTIONS = new Set(["collection-reviews", "documents", "policies", "training"]);
+const SECURITY_TEMPLATE_COLLECTIONS = new Set(["collection-reviews", "documents", "policies", "reporting-route-sets", "training"]);
 
 export async function createFilegrc(options = {}) {
   const parameterConfig = JSON.parse(await readFile(join(packageRoot, "template-parameters.json"), "utf8"));

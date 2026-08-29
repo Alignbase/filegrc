@@ -384,6 +384,12 @@ test("builds an auditor packet from dated records, obligation coverage, policies
   const root = await mkdtemp(join(tmpdir(), "filegrc-evidence-packet-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeWorkspace(root);
+  await git(root, ["init"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Create packet workspace"]);
+  const sourceCommit = getGitSummary(root).commit;
   await createResource(root, {
     id: "evidence-risk-assessment-support",
     type: "evidence",
@@ -763,7 +769,7 @@ test("builds an auditor packet from dated records, obligation coverage, policies
       verifiedOn: "2026-03-20",
       sourceResourceIds: ["action-item-q1-risk-review"],
       controlIds: ["control-quarterly-risk-review"],
-      sourceCommit: "0123456789abcdef0123456789abcdef01234567",
+      sourceCommit,
       capture: {
         route: "#/resource/meeting/q1-risk-review",
         filters: {},
@@ -823,21 +829,18 @@ test("builds an auditor packet from dated records, obligation coverage, policies
     completionResourceIds: ["action-item-q1-risk-review"]
   });
 
-  await git(root, ["init"]);
-  await git(root, ["config", "user.name", "Test User"]);
-  await git(root, ["config", "user.email", "test@example.test"]);
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "Create Q1 compliance records"]);
-  const sourceCommit = getGitSummary(root).commit;
+  const operatingCommit = getGitSummary(root).commit;
   const evidence = (await loadWorkspace(root)).resources.find(({ id }) => id === "evidence-q1-risk-review");
   await updateResource(root, "evidence", "evidence-q1-risk-review", {
     ...evidence,
-    sourceCommit
+    sourceCommit: operatingCommit
   });
   const populationEvidence = (await loadWorkspace(root)).resources.find(({ id }) => id === "evidence-risk-review-population");
   await updateResource(root, "evidence", "evidence-risk-review-population", {
     ...populationEvidence,
-    sourceCommit
+    sourceCommit: operatingCommit
   });
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "Bind Q1 evidence revision"]);

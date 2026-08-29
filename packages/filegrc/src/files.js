@@ -7,7 +7,7 @@ import { serializeWorkspaceMutation, workspaceValidationDeferred } from "./mutat
 import { isCanonicalDataPath, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { documentIsAuditSpecific } from "./program-lifecycle.js";
 import { markdownEntries } from "./resource-markdown.js";
-import { reportingRouteRevision } from "./reporting-route-integrity.js";
+import { bindAttestationReportingRouteSet, reportingRouteRevision } from "./reporting-route-integrity.js";
 import { measureTiming } from "./timing.js";
 import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
@@ -19,7 +19,10 @@ export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   obligationOccurrenceReconciliation: Symbol("obligation-occurrence-reconciliation"),
   obligationOccurrenceSupersession: Symbol("obligation-occurrence-supersession"),
   obligationRuleActivation: Symbol("obligation-rule-activation"),
-  collectionReviewReassessment: Symbol("collection-review-reassessment")
+  collectionReviewReassessment: Symbol("collection-review-reassessment"),
+  reportingRouteSetProposal: Symbol("reporting-route-set-proposal"),
+  reportingRouteSetApproval: Symbol("reporting-route-set-approval"),
+  reportingRouteSetCancellation: Symbol("reporting-route-set-cancellation")
 });
 
 export async function createResource(input, record, options = {}) {
@@ -684,6 +687,43 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     }
   }
   if (options.lifecycleOperation === "model-migration") return;
+  if (
+    modelSupports(loaded?.model || 0, "reporting-route-sets")
+    && ["policy", "document", "commitment", "risk"].includes(existing.type)
+    && JSON.stringify(existing.reportingRouteRequirements || []) !== JSON.stringify(next.reportingRouteRequirements || [])
+  ) {
+    const protectedStatus = existing.type === "policy" || existing.type === "document"
+      ? ["approved", "active", "superseded", "retired"].includes(existing.status)
+      : existing.type === "commitment"
+        ? ["active", "superseded", "retired"].includes(existing.status)
+        : existing.status !== "draft";
+    if (protectedStatus) {
+      throw new Error(`${getResourceDefinition(loaded.model, existing.type).title} "${existing.id}" reporting route requirements are part of its approved decision. Create a successor or return the decision to draft before changing them.`);
+    }
+  }
+  if (existing.type === "reporting-route-set") {
+    const capability = options.workflowCapability;
+    if (existing.status === "draft" && next.status === "proposed") {
+      if (capability !== INTERNAL_WORKFLOW_CAPABILITIES.reportingRouteSetProposal || !preservesExisting(["status"])) {
+        throw new Error(`Reporting Route Set "${existing.id}" must use the managed proposal action.`);
+      }
+    } else if (existing.status === "proposed" && next.status === "approved") {
+      if (
+        capability !== INTERNAL_WORKFLOW_CAPABILITIES.reportingRouteSetApproval
+        || !preservesExisting(["status", "proposalCommit", "approval"])
+      ) throw new Error(`Reporting Route Set "${existing.id}" must use the managed approval action.`);
+    } else if (existing.status === "approved" && next.status === "canceled") {
+      if (
+        ![
+          INTERNAL_WORKFLOW_CAPABILITIES.reportingRouteSetApproval,
+          INTERNAL_WORKFLOW_CAPABILITIES.reportingRouteSetCancellation
+        ].includes(capability)
+        || !preservesExisting(["status", "cancellation"])
+      ) throw new Error(`Reporting Route Set "${existing.id}" must use the managed cancellation action.`);
+    } else if (existing.status !== "draft" || next.status !== "draft") {
+      throw new Error(`Finalized Reporting Route Set "${existing.id}" is immutable. Create a successor revision instead.`);
+    }
+  }
   if (!modelSupports(loaded?.model || 0, "rolled-up-obligations")) return;
   const capability = options.workflowCapability;
   if (
@@ -875,6 +915,13 @@ function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
   ) {
     throw new Error(`Collection Review "${record.id || ""}" is workflow-managed. Preview and confirm the collection review instead of creating it directly.`);
   }
+  if (
+    record?.type === "reporting-route-set"
+    && record.status !== "draft"
+    && options.lifecycleOperation !== "model-migration"
+  ) {
+    throw new Error(`Reporting Route Set "${record.id || ""}" must be created as a draft and advanced through managed actions.`);
+  }
   if (!modelSupports(loaded?.model || 0, "rolled-up-obligations")) return;
   if (
     record?.type === "obligation-occurrence"
@@ -944,7 +991,11 @@ async function deleteResourceUnlocked(input, type, id, options) {
     || (record.type === "collection-review" && ["active", "retired"].includes(record.status))
     || (record.type === "obligation-rule" && ["active", "retired"].includes(record.status))
     || (record.type === "reporting-route" && ["active", "retired"].includes(record.status))
+    || (record.type === "reporting-route-set" && ["proposed", "approved", "canceled", "historical"].includes(record.status))
     || (record.type === "attestation" && record.status === "completed")
+    || (["policy", "document", "commitment", "risk"].includes(record.type)
+      && record.reportingRouteRequirements?.length
+      && protectedReportingRouteRequirementStatus(record))
   ) {
     throw new Error(`Finalized ${record.type} "${id}" cannot be deleted. Preserve it and create a superseding correction.`);
   }
@@ -969,6 +1020,12 @@ async function deleteResourceUnlocked(input, type, id, options) {
     throw error;
   }
   return { type, id, path, deletedContent: contentFiles.filter(({ source }) => source !== null).map(({ dataRelativePath }) => dataRelativePath) };
+}
+
+function protectedReportingRouteRequirementStatus(record) {
+  if (["policy", "document"].includes(record.type)) return ["approved", "active", "superseded", "retired"].includes(record.status);
+  if (record.type === "commitment") return ["active", "superseded", "retired"].includes(record.status);
+  return record.type === "risk" && record.status !== "draft";
 }
 
 export function resourcePath(input, model, record) {
@@ -1227,10 +1284,14 @@ function bindAttestationReportingRoute(loaded, record) {
   if (
     record?.type !== "attestation"
     || record.status !== "completed"
-    || !loaded.model.resources.attestation?.fields?.reportingRouteId
+    || (!loaded.model.resources.attestation?.fields?.reportingRouteId
+      && !loaded.model.resources.attestation?.fields?.reportingRouteSetId)
   ) return record;
   const date = record.assignedOn || record.completedOn || currentCalendarDate(loaded.workspace.timezone);
   const cutoff = timestampFromLocalDateTime(`${date}T23:59:59`, loaded.workspace.timezone);
+  if (loaded.model.resources.attestation.fields.reportingRouteSetId) {
+    return bindAttestationReportingRouteSet(loaded, record);
+  }
   const route = loaded.resources
     .filter((candidate) => (
       candidate.type === "reporting-route"

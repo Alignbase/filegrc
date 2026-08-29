@@ -1,0 +1,23 @@
+{
+  "id": "reporting-route-set-security-reporting",
+  "type": "reporting-route-set",
+  "title": "Security reporting channels",
+  "status": "draft",
+  "programId": "program-soc-2",
+  "purposeKey": "security-reporting",
+  "purposeLabel": "Security reporting",
+  "primaryLane": {
+    "channelKind": "email",
+    "destination": "{{security_contact_email}}"
+  },
+  "alternateLane": {
+    "channelKind": "other",
+    "destination": "TBD: protected alternate channel"
+  },
+  "authorityAppointmentKind": "policy-owner",
+  "approvalAppointmentKind": "independent-policy-reviewer",
+  "sourceResourceIds": [
+    "policy-information-security",
+    "document-security-incident-recovery-plan"
+  ]
+}

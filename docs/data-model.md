@@ -1,10 +1,10 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v9.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v10.json. Do not edit by hand. -->
 
-Model version: `9`
+Model version: `10`
 
-Model v9 adds reviewed Obligation rule revisions, rolled-up occurrence reconciliation, temporal Collection Reviews, and effective reporting routes to the model v8 program structure.
+Model v10 replaces separate effective Reporting Routes with approved, revisioned Reporting Route Sets and binds assignments to Git commits.
 
 Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.
 
@@ -19,6 +19,7 @@ Name the owners, criteria, service, Systems, and providers in scope.
 - **People** (`person`): Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
 - **Appointments** (`appointment`): Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
 - **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.
+- **Reporting channel sets** (`reporting-route-set`): Record the normal and fallback ways people send one kind of report, including where each channel goes and the role that keeps it usable. Commit the proposal before approval, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
 - **Programs** (`program`): Define one management compliance or assurance Program with its goal, bounded Systems, selected Frameworks, Requirement applicability decisions, Controls, owners, risk method, and candidate period.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.
@@ -27,7 +28,7 @@ Name the owners, criteria, service, Systems, and providers in scope.
 - **Systems** (`system`): Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.
 - **Components** (`component`): Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.
 - **Vendors** (`vendor`): Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.
-- **Classifications** (`classification`): Define an ordered information-handling category used by inventory and Evidence Artifacts.
+- **Classifications** (`classification`): Review the starter information-handling categories and ordering against management's actual protection decisions, then use the approved Classifications on inventory and Evidence Artifacts.
 - **Information Types** (`information-type`): Define a stable category of information and its default Classification, then link it from Systems, Components, and Vendors.
 
 Headless commands:
@@ -35,10 +36,12 @@ Headless commands:
 - `npx filegrc setup`
 - `npx filegrc guide person --json`
 - `npx filegrc guide appointment --json`
+- `npx filegrc reporting-route-sets --json`
 - `npx filegrc guide system --json`
 - `npx filegrc guide component --json`
 - `npx filegrc guide requirement-mapping --json`
 - `npx filegrc review-collection vendor --scaffold`
+- `npx filegrc review-collection classification --scaffold`
 - `npx filegrc review-collection information-type --scaffold`
 - `npx filegrc list system --json`
 
@@ -154,14 +157,14 @@ Relationship fields use the named groups below. The registry expands each group 
 | Group | Resource types |
 | --- | --- |
 | `accountable-party` | `person`, `team`, `appointment` |
-| `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 | `obligation-template` | `person`, `system`, `asset`, `document`, `control`, `policy`, `training`, `retention-schedule-item`, `requirement-mapping` |
 | `completion-record` | `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
 | `event-subject` | `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident` |
-| `evidence-source-record` | `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
-| `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
-| `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `evidence-source-record` | `appointment`, `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
+| `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
+| `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 
 ## Collection review confirmations
 
@@ -175,6 +178,7 @@ FileGRC derives record issues, but it cannot infer that management reviewed an a
 | `system` | Bounded System scope | `complete` | Start with the service management governs or the auditor will examine. Confirm its purpose, services, boundary, exclusions, owners, and Information Types. Do not list applications, platforms, providers, or devices as separate Systems when they are Components, Vendors, or Assets. |
 | `complementary-control` | Customer and provider responsibilities | `complete`, `zero-population` | Think through the customer and carved-out provider actions that in-scope Controls depend on, and add any missing Complementary Control. Confirm each statement names a specific action, responsible party, affected System, and dependent Control. Use zero population only when no in-scope Control depends on a customer or carved-out provider action. |
 | `component` | Scoped Components | `complete`, `zero-population` | Start with each bounded System and include only Components that deliver its service, support Controls, produce authoritative Evidence, or support relevant operations. Confirm every System use has the right role and a specific rationale. Keep unrelated corporate tools and Vendor relationships outside the reviewed population. |
+| `classification` | Information handling classifications | `complete` | Confirm each Classification represents a distinct handling level the organization actually uses. Confirm the ordering and handling expectations match approved information protection decisions. Retire unused or duplicate Classifications only after reviewing every record that references them. |
 | `information-type` | Information Type inventory | `complete`, `zero-population` | Review near-duplicate names and choose one canonical Information Type only after confirming they mean the same thing. Retire superseded records through a reviewed migration that rewrites every relationship. Confirm every active Information Type has an approved classification and a retention schedule item or an explicit management-review prompt. |
 | `retention-schedule-item` | Retention schedule | `complete`, `zero-population` | Confirm schedule coverage across Systems, Components, Vendors, source families, logs, backups, audit records, and the FileGRC repository. Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions. Keep undecided periods and disposition behavior planned for management review. |
 
@@ -188,6 +192,7 @@ Relationship constraints prevent cycles and duplicate active authority or access
 - `policy.parentPolicyId` must be acyclic.
 - `policy.supersedesId` must be acyclic.
 - `document.supersedesId` must be acyclic.
+- `reporting-route-set.predecessorId` must be acyclic.
 - `appointment` records in `active` must be unique by `appointmentKind`, `scopeResourceIds`.
 - `access-grant` records in `active` must be unique by `subjectId`, `componentId`, `accessLevel`, `role`, `privileged`.
 - `collection-review` records in `active` must be unique by `resourceType`, `scopeResourceIds`.
@@ -603,6 +608,53 @@ Key format: `namespace`.
 | `exceptionId` | id | No | References: `exception` |
 | `rationale` | string | No |  |
 
+### `reporting-route-lane`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `channelKind` | enum | Yes | How people report Values: `email`, `phone`, `web`, `in-person`, `other` |
+| `destination` | string | Yes | Where the report goes |
+| `dependencySystemIds` | array of id | Conditional | Systems this channel needs References: `system` Required when `dependencyBasis` is `cataloged`. Allowed when `dependencyBasis` is `cataloged`. |
+| `dependencyBasis` | enum | No | Dependency review conclusion Values: `cataloged`, `none` |
+| `dependencyRationale` | string | Conditional | Why no supporting System is required Required when `dependencyBasis` is `none`. Allowed when `dependencyBasis` is `none`. |
+
+### `reporting-route-requirement`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `purposeKey` | string (id) | Yes | Reports covered |
+| `programScope` | enum | Yes | Programs covered Values: `all-programs`, `selected-programs` |
+| `programIds` | array of id | Conditional | References: `program` Required when `programScope` is `selected-programs`. Allowed when `programScope` is `selected-programs`. |
+| `requiredLanes` | array of enum | Yes | Required channels Values: `primary`, `alternate` |
+| `distinctChannels` | boolean | No | Require different channel types |
+| `independentDependencies` | boolean | No | Require independent supporting systems |
+| `evidenceIds` | array of id | No | Evidence supporting a backfilled requirement References: `evidence` |
+| `effectiveAt` | timestamp | Yes |  |
+| `endsAt` | timestamp | No |  |
+| `timezone` | string (timezone) | Yes |  |
+
+### `reporting-route-approval`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `proposalCommit` | string | Yes |  |
+| `approvedById` | id | Yes | References: `person` |
+| `approvalAppointmentId` | id | Yes | References: `appointment` |
+| `approvedAt` | timestamp | Yes |  |
+| `effectiveAt` | timestamp | Yes |  |
+| `timezone` | string (timezone) | Yes |  |
+| `evidenceIds` | array of id | Yes | References: `evidence` |
+
+### `reporting-route-cancellation`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `canceledAt` | timestamp | Yes |  |
+| `canceledById` | id | Yes | References: `person` |
+| `authorityAppointmentId` | id | Yes | References: `appointment` |
+| `reason` | string | Yes |  |
+| `evidenceIds` | array of id | Yes | References: `evidence` |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -618,7 +670,7 @@ Key format: `namespace`.
 
 Resources with no dedicated Markdown use an optional companion with the same basename as the JSON record. The renderer creates and discovers this file from the stable record location, so no path is stored in the record.
 
-Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `source-coverage`, `control-activity`, `component`, `obligation-occurrence`, `reporting-route`. Other resources without dedicated Markdown can add it when structured fields are not enough.
+Record Markdown is shown by default for: `system`, `control-test`, `finding`, `exception`, `policy-review`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `source-coverage`, `control-activity`, `component`, `obligation-occurrence`, `reporting-route-set`. Other resources without dedicated Markdown can add it when structured fields are not enough.
 
 ## Program and audit readiness defaults
 
@@ -756,6 +808,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
 | `applicabilityReview` | object (`applicability-review`) | No | Applicability review |
+| `reportingRouteRequirements` | array of object (`reporting-route-requirement`) | No | Reporting route requirements |
 
 #### `complementary-control`
 
@@ -908,7 +961,7 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `active`, `retired` |
-| `resourceType` | enum | Yes | Reviewed resource type Values: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `information-type`, `retention-schedule-item` Values come from the `collectionReviews` registry. |
+| `resourceType` | enum | Yes | Reviewed resource type Values: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item` Values come from the `collectionReviews` registry. |
 | `decision` | enum | Conditional | Values: `complete`, `zero-population`, `externally-managed`, `not-applicable` Required when `status` is `active`. |
 | `rationale` | string | Conditional | Required when `status` is `active`. |
 | `reviewedByIds` | array of id | Conditional | Reviewed by References: `person` Required when `status` is `active`. |
@@ -1015,7 +1068,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `status` | enum | Yes | Values: `planned`, `active`, `ended` |
 | `appointmentKind` | string (id) | Yes | Appointment kind |
 | `holderId` | id | Conditional | Holder References: `person` Required when `status` is one of `active`, `ended`. |
-| `scopeResourceIds` | array of id | Yes | Scope Relation group: `appointment-scope`. References: `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `scopeResourceIds` | array of id | Yes | Scope Relation group: `appointment-scope`. References: `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `startsOn` | date | Conditional | Required when `status` is one of `active`, `ended`. |
 | `endsOn` | date | Conditional | Required when `status` is `ended`. |
 | `appointedByIds` | array of id | No | Appointed by References: `person` |
@@ -1104,6 +1157,7 @@ Markdown companions:
 | `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`, `approved`. |
 | `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` Allowed when `workflowScope` is `program`. |
 | `componentIds` | array of id | No | Components References: `component` |
+| `reportingRouteRequirements` | array of object (`reporting-route-requirement`) | No | Reporting route requirements |
 
 #### `policy`
 
@@ -1144,6 +1198,7 @@ Markdown companions:
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |
 | `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` |
 | `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`, `in-review`, `approved`. |
+| `reportingRouteRequirements` | array of object (`reporting-route-requirement`) | No | Reporting route requirements |
 
 #### `policy-review`
 
@@ -1204,9 +1259,11 @@ Markdown companions:
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `pending`, `completed`, `waived` |
 | `subjectResourceIds` | array of id | Yes | References: `policy`, `document`, `training`, `action-item` |
+| `programId` | id | No | Program References: `program` |
 | `personId` | id | Yes | References: `person` |
 | `attestationKind` | string | Yes |  |
 | `assignedOn` | date | Yes |  |
+| `assignedAt` | timestamp | No | Assignment time |
 | `dueOn` | date | No |  |
 | `completedOn` | date | Conditional | Required when `status` is `completed`. Allowed when `status` is `completed`. |
 | `attestationMethod` | enum | Conditional | Values: `git-approval`, `signed-document`, `external-record` Required when `status` is `completed`. Allowed when `status` is `completed`. |
@@ -1215,8 +1272,10 @@ Markdown companions:
 | `waivedByIds` | array of id | Conditional | References: `person` Required when `status` is `waived`. Allowed when `status` is `waived`. |
 | `waiverReason` | string | Conditional | Required when `status` is `waived`. Allowed when `status` is `waived`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
-| `reportingRouteId` | id | No | Delivered reporting route References: `reporting-route` |
-| `reportingRouteRevision` | string | No | Delivered reporting route revision |
+| `reportingRouteId` | id | No | Legacy delivered reporting route References: `reporting-route` |
+| `reportingRouteRevision` | string | No | Legacy delivered reporting route revision |
+| `reportingRouteSetId` | id | No | Delivered reporting route set References: `reporting-route-set` |
+| `reportingRouteSetCommit` | string | No | Delivered reporting route set Git commit |
 
 At least one of `evidenceIds` is required when `status` is `completed` and `attestationMethod` is one of `signed-document`, `external-record`.
 
@@ -1384,9 +1443,9 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `reporting-route`
 
-An effective primary or alternate route for security reports and other approved communications, with its owner and failure dependencies.
+A legacy model v9 record for one way people could send a report, such as an email address, phone number, or web form. Use Reporting Channel Sets for current work.
 
-Instructions: An effective primary or alternate route for security reports and other approved communications, with its owner and failure dependencies.
+Instructions: A legacy model v9 record for one way people could send a report, such as an email address, phone number, or web form. Use Reporting Channel Sets for current work.
 
 Policy basis: Workers need a usable route for security reports. An alternate is required only when an adopted Policy, Document, Commitment, or Risk decision calls for one.
 
@@ -1394,11 +1453,11 @@ Timing: Review through a linked Obligation and communicate a changed route to th
 
 Path: `data/reporting-routes/<id>.json`
 
-Record Markdown: shown by default as an implicit companion file.
+Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `planned`, `active`, `retired` |
+| `status` | enum | Yes | Values: `planned`, `active`, `retired`, `deprecated-draft`, `historical` |
 | `purpose` | enum | Yes | Values: `security-reporting`, `continuity-communication` |
 | `priority` | enum | Yes | Values: `primary`, `alternate` |
 | `channelKind` | enum | Yes | Values: `email`, `phone`, `web`, `other` |
@@ -1410,6 +1469,40 @@ Record Markdown: shown by default as an implicit companion file.
 | `approvedOn` | date | Conditional | Required when `status` is one of `active`, `retired`. |
 | `sourceResourceIds` | array of id | No | References: `policy`, `document`, `commitment`, `risk` |
 | `ownerIds` | array of id | Yes | Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
+
+#### `reporting-route-set`
+
+The normal and fallback ways people send a report for one purpose, such as an email address and a hotline for security concerns. The set records where each channel leads, who keeps it usable, and when the approved pair applies.
+
+Instructions: Record the normal and fallback ways people send one kind of report, including where each channel goes and the role that keeps it usable. Commit the proposal before approval, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
+
+Policy basis: A reporting channel is an email address, phone number, web form, in-person contact, or other destination people use to raise a concern. Policies and other approved decisions say when channels are required; this record stores the current contact details so governed text does not copy them.
+
+Timing: Choose the normal channel and a usable fallback, then commit the proposal before approval. Approve the exact committed pair with the actual authority, time, and verified fixed evidence of the approval event. Record cancellation evidence the same way. Create a successor when either channel changes instead of editing an approved set.
+
+Path: `data/reporting-route-sets/<id>.json`
+
+Markdown companions:
+
+- **Instructions**: `.md` beside the JSON record (required).
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `draft`, `proposed`, `approved`, `canceled`, `historical` |
+| `programId` | id | Yes | References: `program` |
+| `purposeKey` | string (id) | Yes | Stable purpose key |
+| `purposeLabel` | string | Yes | Reports covered |
+| `primaryLane` | object (`reporting-route-lane`) | Yes | Normal reporting channel |
+| `alternateLane` | object (`reporting-route-lane`) | No | Fallback reporting channel |
+| `authorityAppointmentKind` | string (id) | Yes | Role responsible for these channels |
+| `approvalAppointmentKind` | string (id) | Yes | Role authorized to approve channel changes |
+| `sourceResourceIds` | array of id | No | Rules requiring these channels References: `policy`, `document`, `commitment`, `risk` |
+| `predecessorId` | id | No | Prior channel set References: `reporting-route-set` |
+| `proposalCommit` | string | Conditional | Managed by filegrc. Required when `status` is one of `approved`, `canceled`. Allowed when `status` is one of `approved`, `canceled`. |
+| `approval` | object (`reporting-route-approval`) | Conditional | Managed by filegrc. Required when `status` is one of `approved`, `canceled`. Allowed when `status` is one of `approved`, `canceled`. |
+| `cancellation` | object (`reporting-route-cancellation`) | Conditional | Managed by filegrc. Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
+| `legacyRouteIds` | array of id | No | References: `reporting-route` Allowed when `status` is `historical`. |
+| `legacyBasis` | string | No | Allowed when `status` is `historical`. |
 
 ### Risk
 
@@ -1441,6 +1534,9 @@ Record Markdown: shown by default as an implicit companion file.
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `approval` | object (`exception-approval`) | Conditional | Required when `status` is one of `approved`, `revoked`, `closed`. Allowed when `status` is one of `approved`, `revoked`, `closed`. |
 | `resolution` | object (`exception-resolution`) | Conditional | Required when `status` is one of `revoked`, `closed`. Allowed when `status` is one of `revoked`, `closed`. |
+| `reportingRouteSetId` | id | No | Reporting Route Set References: `reporting-route-set` |
+| `reportingRouteLanePair` | enum | No | Route lane pair Values: `primary-alternate` |
+| `dependencySystemIds` | array of id | No | Intersecting dependency Systems References: `system` |
 
 #### `risk`
 
@@ -1478,6 +1574,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `reviewDueOn` | date | No | Next review due |
 | `componentIds` | array of id | No | Components References: `component` |
 | `informationTypeIds` | array of id | No | Affected Information Types References: `information-type` |
+| `reportingRouteRequirements` | array of object (`reporting-route-requirement`) | No | Reporting route requirements |
 
 #### `risk-assessment`
 
@@ -1819,7 +1916,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 A controlled information-handling category used consistently across inventory and Evidence Artifacts.
 
-Instructions: Define an ordered information-handling category used by inventory and Evidence Artifacts.
+Instructions: Review the starter information-handling categories and ordering against management's actual protection decisions, then use the approved Classifications on inventory and Evidence Artifacts.
 
 Policy basis: Management defines handling categories so information and retained evidence receive consistent protection.
 
@@ -2194,7 +2291,7 @@ Markdown companions:
 | `verifierIds` | array of id | Conditional | References: `person` Required when `status` is `verified`. |
 | `verifiedOn` | date | Conditional | Required when `status` is `verified`. |
 | `expiresOn` | date | No |  |
-| `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `appointment`, `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `filePaths` | array of data-path | Conditional | Required when `sourceKind` is `file` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `file`, `system`, `rendered-page`, `authored-record`. |
 | `externalReference` | object (`external-reference`) | Conditional | Required when `sourceKind` is `external-reference` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `external-reference`, `system`. |
 | `sourceCommit` | string | Conditional | Required when `sourceKind` is `rendered-page` and `status` is one of `collected`, `verified`, `withdrawn`. |
@@ -2384,7 +2481,7 @@ Record Markdown: shown by default as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `accepted`, `remediating`, `resolved`, `closed` |
 | `severity` | rating | Yes |  |
-| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `description` | string | Yes |  |
 | `controlIds` | array of id | No | References: `control` |
 | `riskIds` | array of id | No | References: `risk` |
@@ -2417,7 +2514,7 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `open`, `in-progress`, `blocked`, `done`, `canceled` |
 | `assigneeIds` | array of id | Yes | References: `person`, `team`, `appointment` |
-| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` |
+| `sourceResourceId` | id | Yes | Relation group: `work-source`. References: `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `description` | string | No |  |
 | `priority` | rating | No |  |
 | `obligationId` | id | No | References: `obligation` |
@@ -2425,7 +2522,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `completedOn` | date | Conditional | Required when `status` is `done`. |
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `completionResourceIds` | array of id | No | Relation group: `completion-record`. References: `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
-| `blockingResourceIds` | array of id | Conditional | Relation group: `work-blocker`. References: `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route` Required when `status` is `blocked`. Allowed when `status` is `blocked`. |
+| `blockingResourceIds` | array of id | Conditional | Relation group: `work-blocker`. References: `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` Required when `status` is `blocked`. Allowed when `status` is `blocked`. |
 | `completionWindow` | object (`completion-window`) | Conditional | Completion window Required when `status` is one of `open`, `in-progress`, `blocked`. |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 
@@ -2521,6 +2618,7 @@ Record Markdown: available when needed as an implicit companion file.
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete` |
 | `auditKind` | enum | Yes | Values: `readiness`, `soc-2-type-1`, `soc-2-type-2` |
+| `timezone` | string (timezone) | No |  |
 | `frameworkIds` | array of id | Yes | References: `framework` |
 | `scope` | string | Yes |  |
 | `auditorVendorId` | id | Conditional | References: `vendor` Required when `status` is one of `in-progress`, `fieldwork`, `report-draft`, `issued`, `delivered`, `complete`. |

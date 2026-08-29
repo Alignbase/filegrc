@@ -272,6 +272,9 @@ function sampleValue(name, field, ids, model, type) {
   if (name === "timezone") return "America/Chicago";
   if (name === "version") return "2026";
   if (name === "appointmentKind") return "policy-owner";
+  if (name === "authorityAppointmentKind") return "policy-owner";
+  if (name === "approvalAppointmentKind") return "independent-policy-reviewer";
+  if (name === "purposeKey") return "security-reporting";
   if (name === "email") return "security@example.test";
   if (name === "source") return "Repository workflow";
   if (name === "scope") return "Production application and supporting operations";

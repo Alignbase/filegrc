@@ -6,7 +6,7 @@ Security depends on the choices people make while using accounts, devices, data,
 
 This training applies to employees and contractors who use {{company_name}} systems or information. Complete it within 30 days after starting, at least annually, and again when assigned after a material change or incident.
 
-Questions and incident reports use the current approved security reporting route delivered with this assignment.
+Questions and incident reports use the current approved security reporting channel delivered with this assignment.
 
 ## Your responsibilities
 
@@ -176,7 +176,7 @@ Report any event that could affect the confidentiality, integrity, or availabili
 ## Reporting and first actions
 
 1. Stop the unsafe action. Do not continue entering credentials, sending data, or following the request.
-2. Report the event immediately through the approved security reporting route delivered with this assignment. If that route is unavailable, use the current approved alternate route.
+2. Report the event immediately through the approved security reporting channel delivered with this assignment. If that channel is unavailable, use the current approved fallback channel.
 3. State what happened, when it happened, the affected account, device, system, or data, and any action already taken.
 4. Preserve the message, file, screen, device, or other evidence. Take a screenshot only when it is safe and does not expose more sensitive data.
 5. Follow response-team instructions. Remain available for questions.
@@ -200,7 +200,7 @@ The person who reports an event should cooperate with the response but should no
 After reviewing this training:
 
 - Ask about any requirement you do not understand.
-- Confirm that you know how to use the security reporting route delivered with this assignment.
+- Confirm that you know how to use the security reporting channel delivered with this assignment.
 - Complete the assigned training acknowledgement.
 
 The acknowledgement records the exact training revision reviewed and any signed evidence required for the assignment.

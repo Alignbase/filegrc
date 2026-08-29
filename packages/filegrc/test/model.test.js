@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
@@ -12,7 +13,7 @@ import {
 
 test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "9");
+  assert.equal(model.modelVersion, "10");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -27,10 +28,10 @@ test("active model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 54);
-  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "information-type", "retention-schedule-item"]);
+  assert.equal(Object.keys(model.resources).length, 55);
+  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
-  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "information-type", "retention-schedule-item"]) {
+  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]) {
     assert.ok(model.collectionReviews[type].description.length >= 60);
     assert.ok(model.collectionReviews[type].reviewPoints.length >= 2);
     assert.ok(model.collectionReviews[type].reviewPoints.length <= 3);
@@ -82,6 +83,11 @@ test("active model exposes the complete resource registry", () => {
   }
   assert.equal(model.resources.person.titleLabel, "Name");
   assert.equal(model.resources.person.fields.jobTitle.label, "Organization job title");
+  assert.equal(model.resources["reporting-route-set"].title, "Reporting channel set");
+  assert.match(model.resources["reporting-route-set"].description, /normal and fallback ways people send a report/);
+  assert.match(model.resources["reporting-route-set"].description, /email address and a hotline/);
+  assert.equal(model.resources["reporting-route-set"].fields.primaryLane.label, "Normal reporting channel");
+  assert.equal(model.resources["reporting-route-set"].fields.alternateLane.label, "Fallback reporting channel");
   assert.equal(model.commonFields.ownerIds, undefined);
   assert.deepEqual(model.relationGroups["accountable-party"], ["person", "team", "appointment"]);
   assert.deepEqual(model.resources.control.fields.ownerIds.relation, ["person", "team", "appointment"]);
@@ -317,7 +323,7 @@ test("active model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "9");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "10");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");
@@ -393,6 +399,24 @@ test("model versions cannot escape the packaged model registry", () => {
   assert.throws(() => loadModel("1"), /migrate --to-model 2/);
   assert.throws(() => loadModel("../../package"), /Unsupported data model version/);
   assert.throws(() => loadModel("/../../package"), /Unsupported data model version/);
+});
+
+test("published model files remain byte-for-byte frozen", async () => {
+  const expected = {
+    1: "022329634da331277dbf1cc01bd44cc591b9628990e8736635044bf22a8912d3",
+    2: "c0821f78856b8ffa68d41947909ef89414d01d52acfdcbbe5afc26d3db9a62ff",
+    3: "afe51020e7e8b4efec8fe1501171ba55904a6f547d165e9b7fe7878ee19c4723",
+    4: "24eaccc6eca25eb3fe5a127f0b7d464a01e466bf2e790278065d045ef7103e51",
+    5: "11c00af08675f49a4163dccea5cb6ee48d701fd95bf35c5040817d48bd97fcaf",
+    6: "d5ed8888b4526d9866c2355f3120c8bbd4e5ba18549b5d5280a6e33cdf9fdd2f",
+    7: "ba3342bd08d62c163bdaac497af6377a2ad715ef30bf4f929ea3b6b59142dc78",
+    8: "4513bf03b8b8040af87cf5a85d28267706c526f2da1d6d570d44b3ff82578df2",
+    9: "9af966f140331e25e094950a1705082c978b7898e70071eb30e64d88788dcd08"
+  };
+  for (const [version, digest] of Object.entries(expected)) {
+    const source = await readFile(new URL(`../model/v${version}.json`, import.meta.url));
+    assert.equal(createHash("sha256").update(source).digest("hex"), digest, `model v${version}`);
+  }
 });
 
 test("v4 penetration-testing guidance remains conditional and risk-based", () => {

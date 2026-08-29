@@ -17,6 +17,20 @@
     "document-security-incident-recovery-plan",
     "document-data-retention-schedule"
   ],
+  "reportingRouteRequirements": [
+    {
+      "purposeKey": "security-reporting",
+      "programScope": "all-programs",
+      "requiredLanes": [
+        "primary",
+        "alternate"
+      ],
+      "distinctChannels": true,
+      "independentDependencies": false,
+      "effectiveAt": "1970-01-01T00:00:00Z",
+      "timezone": "UTC"
+    }
+  ],
   "proposedEffectiveOn": "{{effective_date}}",
   "programRole": "required"
 }

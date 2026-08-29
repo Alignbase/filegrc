@@ -27,7 +27,7 @@ import { resolveProgram } from "./program.js";
 import { currentPartyPeople } from "./parties.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./collection-review-integrity.js";
-import { reportingRouteRevision } from "./reporting-route-integrity.js";
+import { bindAttestationReportingRouteSet, reportingRouteRevision } from "./reporting-route-integrity.js";
 import { selectScopedCollectionRecords } from "./collection-scope.js";
 
 const COMPLETION_DATE_FIELDS = [
@@ -1256,6 +1256,7 @@ function applyCompletionScaffoldDefaults(record, context) {
       if (!subjectResourceIds.length) throw new Error("An Attestation completion needs the exact Policy, Document, Training, or Action Item content acknowledged.");
       return {
         status: "completed",
+        ...(loaded.model.resources.attestation?.fields?.programId ? { programId: program.id } : {}),
         subjectResourceIds,
         personId,
         attestationKind: obligation.activityType || "completion",
@@ -1452,8 +1453,15 @@ function effectiveReportingRoute(loaded, purpose, asOf) {
 }
 
 function bindEffectiveReportingRoute(loaded, record) {
-  if (record?.type !== "attestation" || !loaded.model.resources.attestation?.fields?.reportingRouteId) return record;
+  if (
+    record?.type !== "attestation"
+    || (!loaded.model.resources.attestation?.fields?.reportingRouteId
+      && !loaded.model.resources.attestation?.fields?.reportingRouteSetId)
+  ) return record;
   const date = record.assignedOn || record.completedOn || currentCalendarDate(loaded.workspace.timezone);
+  if (loaded.model.resources.attestation.fields.reportingRouteSetId) {
+    return bindAttestationReportingRouteSet(loaded, record);
+  }
   const route = effectiveReportingRoute(loaded, "security-reporting", date);
   const bound = { ...record };
   delete bound.reportingRouteId;

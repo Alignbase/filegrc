@@ -11,7 +11,7 @@ import {
   coverageOverlaps,
   coverageStart
 } from "./coverage.js";
-import { getFileHistoryWithPaths, getFilesAtRevisions, getGitSummary, getRecordIdentityHistories, getWorkspaceHistories, getWorkspaceRevisionSnapshot, hasGitRevision } from "./git.js";
+import { getFileHistoryWithPaths, getFilesAtRevisions, getGitSummary, getRecordIdentityHistories, getWorkspaceHistories, getWorkspaceRevisionSnapshot, hasGitRevision, isDataHistoryAncestor } from "./git.js";
 import { planObligations } from "./obligations.js";
 import { isWithin, resolveDataPath, resolveWorkspacePath, resolveWorkspaceRoot } from "./paths.js";
 import { parseCalendarDate } from "./recurrence.js";
@@ -30,6 +30,8 @@ import {
 } from "./soc2.js";
 import { validateWorkspace } from "./validate.js";
 import { measureTiming } from "./timing.js";
+import { assessReportingRoutePeriod } from "./reporting-route-sets.js";
+import { reportingRouteEventCommit, reportingRouteSourceAppliesToProgram, reportingRouteSourceMayApply } from "./reporting-route-integrity.js";
 
 const preparedPacketValidations = new WeakMap();
 
@@ -54,6 +56,7 @@ const NON_EVIDENCE_RECORD_TYPES = new Set([
   "renderer-settings",
   "requirement",
   "reporting-route",
+  "reporting-route-set",
   "system",
   "team",
   "training",
@@ -175,23 +178,7 @@ export async function prepareEvidencePacket(input, options = {}) {
   }
 
   const evidenceIds = new Set();
-  for (const evidence of records.filter((record) => record.type === "evidence")) {
-    if (scope && !recordRelevantToAudit(evidence, scope, byId)) continue;
-    const direct = selectedIds.has(evidence.id)
-      || (evidence.sourceResourceIds || []).some((id) => selectedIds.has(id))
-      || overlapsEvidencePeriod(evidence, start, end);
-    if (direct) evidenceIds.add(evidence.id);
-  }
-  for (const id of [...selectedIds]) {
-    const record = byId.get(id);
-    addIds(evidenceIds, record?.evidenceIds);
-    addIds(evidenceIds, record?.sampleEvidenceIds);
-    if (record?.sourceEvidenceId) evidenceIds.add(record.sourceEvidenceId);
-    if (record?.populationId) selectedIds.add(record.populationId);
-  }
-  addIds(selectedIds, evidenceIds);
-  expandEvidenceWorkflowContext(selectedIds, byId);
-  for (const id of selectedIds) if (byId.get(id)?.type === "evidence") evidenceIds.add(id);
+  closeEvidenceSelection({ selectedIds, evidenceIds, records, scope, byId, start, end });
 
   const controlIds = new Set(scope?.controlIds || records
     .filter((record) => record.type === "control" && !["not-applicable", "retired"].includes(record.status))
@@ -250,9 +237,64 @@ export async function prepareEvidencePacket(input, options = {}) {
   if (scope) addIds(requirementIds, scope.requirementIds);
   addIds(selectedIds, requirementIds);
 
+  const routeRequirementsApply = records.some((record) => (
+    reportingRouteSourceMayApply(record)
+    && record.reportingRouteRequirements?.length
+    && (!program || reportingRouteSourceAppliesToProgram(record, program, records))
+  ));
+  const reportingRouteCoverage = modelSupports(loaded.model, "reporting-route-sets")
+    ? audit && routeRequirementsApply && !audit.timezone
+      ? {
+        supported: true,
+        start,
+        end,
+        timezone: null,
+        snapshots: [],
+        issues: [{
+          code: "missing-audit-timezone",
+          resourceId: audit.id,
+          message: `${audit.title} needs an IANA timezone before FileGRC can assess reporting-route coverage across its date boundaries.`
+        }]
+      }
+      : await assessReportingRoutePeriod(loaded, {
+        start,
+        end,
+        programId: program?.id || audit?.programId,
+        timezone: audit?.timezone || loaded.workspace.timezone
+      })
+    : null;
+  const reportingRouteSets = new Map();
+  for (const assessment of (reportingRouteCoverage?.snapshots || []).flatMap((snapshot) => governingReportingRouteSets(snapshot))) {
+    const current = reportingRouteSets.get(assessment.record.id);
+    reportingRouteSets.set(assessment.record.id, current ? {
+      ...assessment,
+      authorities: [...new Map([...current.authorities, ...assessment.authorities].map((item) => [item.id, item])).values()]
+    } : assessment);
+  }
+  for (const { record: routeSet, authorities } of reportingRouteSets.values()) {
+    selectedIds.add(routeSet.id);
+    addIds(selectedIds, routeSet.sourceResourceIds);
+    addIds(selectedIds, authorities.map(({ id }) => id));
+    addIds(selectedIds, authorities.map(({ holderId }) => holderId));
+    for (const exception of records.filter((record) => (
+      record.type === "exception" && record.reportingRouteSetId === routeSet.id
+    ))) selectedIds.add(exception.id);
+  }
+  for (const snapshot of reportingRouteCoverage?.snapshots || []) {
+    addIds(selectedIds, snapshot.requirements.map(({ sourceId }) => sourceId));
+  }
+  closeEvidenceSelection({ selectedIds, evidenceIds, records, scope, byId, start, end });
+
+  const historyRevision = await getWorkspaceRevisionSnapshot(loaded.root);
   const sourceRevisionValidity = new Map();
   const revisionIsValid = (revision) => {
-    if (!sourceRevisionValidity.has(revision)) sourceRevisionValidity.set(revision, hasGitRevision(loaded.root, revision));
+    if (!sourceRevisionValidity.has(revision)) {
+      sourceRevisionValidity.set(revision, Boolean(
+        historyRevision.commit
+        && hasGitRevision(loaded.root, revision)
+        && isDataHistoryAncestor(loaded, revision, historyRevision.commit)
+      ));
+    }
     return sourceRevisionValidity.get(revision);
   };
   const evidence = [...evidenceIds].map((id) => evidenceSummary(byId.get(id), byId, revisionIsValid)).filter(Boolean).sort(byTitle);
@@ -272,7 +314,6 @@ export async function prepareEvidencePacket(input, options = {}) {
     `data/${entry.relativePath}`,
     ...markdownEntries(loaded.model, entry.record).map((markdown) => `data/${markdown.path}`)
   ]);
-  const historyRevision = await getWorkspaceRevisionSnapshot(loaded.root);
   const histories = getWorkspaceHistories(
     loaded.root,
     selectedPaths,
@@ -357,7 +398,8 @@ export async function prepareEvidencePacket(input, options = {}) {
     records,
     populations,
     model: loaded.model,
-    managementPreparation
+    managementPreparation,
+    reportingRouteCoverage
   });
   const errorCount = gaps.filter(({ severity }) => severity === "error").length;
   const warningCount = gaps.filter(({ severity }) => severity === "warning").length;
@@ -430,6 +472,54 @@ export async function prepareEvidencePacket(input, options = {}) {
     dataModelVersion: String(loaded.model.modelVersion),
     populations,
     ...(modelSupports(loaded.model, "governed-document-activation") ? { documentLifecycles } : {}),
+    ...(reportingRouteCoverage ? {
+      reportingRouteCoverage: {
+        start: reportingRouteCoverage.start,
+        end: reportingRouteCoverage.end,
+        timezone: reportingRouteCoverage.timezone,
+        snapshots: reportingRouteCoverage.snapshots.map((snapshot) => ({
+          at: snapshot.at,
+          requirements: snapshot.requirements,
+          routeSets: governingReportingRouteSets(snapshot).map(({
+            record,
+            committed,
+            effective,
+            canceled,
+            authorities,
+            approvalAssertionTiming,
+            cancellationAssertionTiming
+          }) => ({
+            id: record.id,
+            title: record.title,
+            status: record.status,
+            purposeKey: record.purposeKey,
+            predecessorId: record.predecessorId || null,
+            proposalCommit: record.proposalCommit || null,
+            approval: record.approval
+              ? {
+                ...record.approval,
+                assertionTiming: approvalAssertionTiming,
+                authorityRevision: reportingRouteEventCommit(loaded, record, "approval")
+              }
+              : null,
+            cancellation: record.cancellation
+              ? {
+                ...record.cancellation,
+                assertionTiming: cancellationAssertionTiming,
+                authorityRevision: reportingRouteEventCommit(loaded, record, "cancellation")
+              }
+              : null,
+            primaryLane: record.primaryLane,
+            alternateLane: record.alternateLane || null,
+            committed,
+            effective,
+            canceled,
+            authorityAppointmentIds: authorities.map(({ id }) => id)
+          })),
+          issues: snapshot.issues
+        }))
+      }
+    } : {}),
     managementPreparation,
     controlCoverage,
     gaps,
@@ -600,7 +690,22 @@ function expandEvidenceWorkflowContext(selectedIds, byId) {
         record.supersedesId
       ]);
     }
-    if (record?.type === "attestation") enqueue([record.reportingRouteId]);
+    if (record?.type === "attestation") enqueue([record.programId, record.reportingRouteId, record.reportingRouteSetId]);
+    if (record?.type === "reporting-route-set") {
+      enqueue([
+        ...(record.sourceResourceIds || []),
+        record.predecessorId,
+        record.approval?.approvalAppointmentId,
+        record.approval?.approvedById,
+        ...(record.approval?.evidenceIds || []),
+        record.cancellation?.authorityAppointmentId,
+        record.cancellation?.canceledById,
+        ...(record.cancellation?.evidenceIds || []),
+        ...(record.primaryLane?.dependencySystemIds || []),
+        ...(record.alternateLane?.dependencySystemIds || [])
+      ]);
+    }
+    if (record?.type === "appointment") enqueue([record.holderId]);
     if (record?.type === "exception") enqueue([...(record.evidenceIds || []), ...(record.attestationIds || [])]);
     if (record?.type === "action-item") {
       enqueue([
@@ -611,6 +716,30 @@ function expandEvidenceWorkflowContext(selectedIds, byId) {
       ]);
     }
     if (record?.type === "obligation-event") enqueue(record.obligationIds || []);
+  }
+}
+
+function closeEvidenceSelection({ selectedIds, evidenceIds, records, scope, byId, start, end }) {
+  let previousSize = -1;
+  while (previousSize !== selectedIds.size + evidenceIds.size) {
+    previousSize = selectedIds.size + evidenceIds.size;
+    for (const evidence of records.filter((record) => record.type === "evidence")) {
+      if (scope && !recordRelevantToAudit(evidence, scope, byId)) continue;
+      const direct = selectedIds.has(evidence.id)
+        || (evidence.sourceResourceIds || []).some((id) => selectedIds.has(id))
+        || overlapsEvidencePeriod(evidence, start, end);
+      if (direct) evidenceIds.add(evidence.id);
+    }
+    for (const id of [...selectedIds]) {
+      const record = byId.get(id);
+      addIds(evidenceIds, record?.evidenceIds);
+      addIds(evidenceIds, record?.sampleEvidenceIds);
+      if (record?.sourceEvidenceId) evidenceIds.add(record.sourceEvidenceId);
+      if (record?.populationId) selectedIds.add(record.populationId);
+    }
+    addIds(selectedIds, evidenceIds);
+    expandEvidenceWorkflowContext(selectedIds, byId);
+    for (const id of selectedIds) if (byId.get(id)?.type === "evidence") evidenceIds.add(id);
   }
 }
 
@@ -1185,11 +1314,52 @@ function packetGaps({
   records,
   populations,
   model,
-  managementPreparation
+  managementPreparation,
+  reportingRouteCoverage
 }) {
   const gaps = [];
   if (!git.commit) gaps.push(gap("error", "uncommitted-workspace", "The workspace has no Git revision to bind this packet to."));
   else if (!git.clean) gaps.push(gap("error", "dirty-workspace", "Commit or discard workspace changes before treating this packet as audit evidence."));
+
+  for (const issue of reportingRouteCoverage?.issues || []) {
+    gaps.push(gap("error", issue.code, issue.message, issue.resourceId));
+  }
+  const routeAssessments = (reportingRouteCoverage?.snapshots || []).flatMap(({ routeSets }) => routeSets);
+  for (const assessment of [...new Map(routeAssessments.map((item) => [item.record.id, item])).values()]) {
+    const route = assessment.record;
+    if (assessment.approvalAssertionTiming === "git-recorded-later") {
+      gaps.push(gap(
+        "warning",
+        "non-contemporaneous-reporting-route-approval",
+        `${route.title} has a Git committer timestamp more than one day after the stated approval time. Committer timestamps are user-controlled metadata, so management and the engagement team must evaluate the linked fixed evidence itself.`,
+        route.id
+      ));
+    }
+    if (assessment.approvalAssertionTiming === "git-recorded-before-event") {
+      gaps.push(gap(
+        "warning",
+        "reporting-route-approval-recorded-before-event",
+        `${route.title} has a Git committer timestamp before its stated approval time. Committer timestamps are user-controlled metadata; review the linked fixed evidence before relying on this approval.`,
+        route.id
+      ));
+    }
+    if (assessment.cancellationAssertionTiming === "git-recorded-later") {
+      gaps.push(gap(
+        "warning",
+        "non-contemporaneous-reporting-route-cancellation",
+        `${route.title} has a Git committer timestamp more than one day after the stated cancellation time. Committer timestamps are user-controlled metadata; review the linked fixed evidence.`,
+        route.id
+      ));
+    }
+    if (assessment.cancellationAssertionTiming === "git-recorded-before-event") {
+      gaps.push(gap(
+        "warning",
+        "reporting-route-cancellation-recorded-before-event",
+        `${route.title} has a Git committer timestamp before its stated cancellation time. Committer timestamps are user-controlled metadata; review the linked fixed evidence before relying on this cancellation.`,
+        route.id
+      ));
+    }
+  }
 
   if (!audit) {
     gaps.push(gap("error", "missing-audit-scope", "Select an audit record before treating this packet as an auditor delivery."));
@@ -1438,7 +1608,7 @@ function packetGaps({
     }
   }
   for (const item of evidence) {
-    if (item.artifactKind === "rendered-page" && !item.sourceCommit) {
+    if (item.sourceKind === "rendered-page" && !item.sourceCommit) {
       gaps.push(gap("error", "unbound-rendered-evidence", `${item.title} does not name the Git revision that was rendered.`, item.id));
     } else if (item.sourceCommit && !item.sourceCommitValid) {
       gaps.push(gap("error", "invalid-evidence-revision", `${item.title} names a source Git revision that is not available in this repository.`, item.id));
@@ -1480,7 +1650,7 @@ function packetGaps({
     if (item.externalReference && !item.filePaths.length) {
       gaps.push(gap("warning", "external-only-evidence", `${item.title} relies on an external reference and is not self-contained in the packet.`, item.id));
     }
-    if (item.artifactKind === "rendered-page") {
+    if (item.sourceKind === "rendered-page") {
       const captureComplete = item.capture
         && typeof item.capture.route === "string"
         && item.capture.route.trim()
@@ -2156,6 +2326,13 @@ function deduplicateGaps(gaps) {
 
 function addIds(target, values = []) {
   for (const value of values) if (value) target.add(value);
+}
+
+function governingReportingRouteSets(snapshot) {
+  const requiredPurposes = new Set(snapshot.requirements.map(({ purposeKey }) => purposeKey));
+  return snapshot.routeSets.filter(({ record, effective, canceled }) => (
+    effective && !canceled && requiredPurposes.has(record.purposeKey)
+  ));
 }
 
 function requireDate(value, label) {

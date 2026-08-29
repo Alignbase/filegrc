@@ -1,10 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { modelSupports } from "../model/index.js";
 import { createObligationEvent } from "./obligations.js";
-import { getDataRecordHistoryIndex } from "./git.js";
+import { getDataRecordHistoryIndex, getFileAtRevision, runGitCommandSync } from "./git.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -381,12 +380,8 @@ function readRevisionRecord(root, revision, path) {
 function readRevisionSource(root, revision, path) {
   if (!path) return "";
   try {
-    return execFileSync("git", ["show", `${revision}:${path}`], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 10_000
-    });
+    const commit = runGit(root, ["rev-parse", `${revision}^{commit}`]);
+    return commit ? getFileAtRevision(root, commit, path) || "" : "";
   } catch {
     return "";
   }
@@ -478,12 +473,8 @@ function readHeadRecord(root, path) {
 
 function readHeadSource(root, path) {
   try {
-    return execFileSync("git", ["show", `HEAD:${path}`], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 10_000
-    });
+    const commit = gitRevision(root);
+    return commit ? getFileAtRevision(root, commit, path) || "" : "";
   } catch {
     return "";
   }
@@ -495,12 +486,7 @@ function gitRevision(root) {
 
 function runGit(root, args) {
   try {
-    return execFileSync("git", args, {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 10_000
-    }).trim();
+    return runGitCommandSync(root, args);
   } catch {
     return "";
   }

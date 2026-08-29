@@ -217,6 +217,9 @@ function applyModelScaffoldDefaults(record, loaded, options = {}) {
       "soc-2-type-2": "soc-2-type-2"
     }[program?.assuranceGoal];
     if (kind) record.auditKind = kind;
+    if (modelSupports(loaded.model, "reporting-route-sets") && loaded.workspace?.timezone) {
+      record.timezone = loaded.workspace.timezone;
+    }
     for (const field of ["frameworkIds", "systemIds", "requirementIds", "controlIds"]) {
       if (field === "requirementIds" && modelSupports(loaded.model, "program-scope")) {
         record[field] = (program.requirementApplicability || []).filter(({ decision }) => decision === "applicable").map(({ requirementId }) => requirementId);

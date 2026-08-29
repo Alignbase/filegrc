@@ -40,11 +40,14 @@ const CURRENT_ENDPOINT_SETTING_TRAINING = "Company-managed devices must use the 
 const PRIOR_CONFIGURATION_RECORD_TRAINING = "The applicable Controls, Components, Systems, and governed schedules record the actual tools, settings, approval paths, and evidence.";
 const CURRENT_CONFIGURATION_DOCUMENTATION_TRAINING = "Approved supporting standards, procedures, and schedules document the tools, settings, approval paths, and evidence.";
 const PRIOR_TRAINING_REPORTING_ROUTE = "Questions and incident reports should be sent to {{security_contact_email}}.";
-const CURRENT_TRAINING_REPORTING_ROUTE = "Questions and incident reports use the current approved security reporting route delivered with this assignment.";
+const PREVIOUS_TRAINING_REPORTING_ROUTE = "Questions and incident reports use the current approved security reporting route delivered with this assignment.";
+const CURRENT_TRAINING_REPORTING_ROUTE = "Questions and incident reports use the current approved security reporting channel delivered with this assignment.";
 const PRIOR_TRAINING_REPORTING_ACTION = "2. Report the event immediately to {{security_contact_email}}. If that route is unavailable, contact the current Policy Owner through an approved alternate method.";
-const CURRENT_TRAINING_REPORTING_ACTION = "2. Report the event immediately through the approved security reporting route delivered with this assignment. If that route is unavailable, use the current approved alternate route.";
+const PREVIOUS_TRAINING_REPORTING_ACTION = "2. Report the event immediately through the approved security reporting route delivered with this assignment. If that route is unavailable, use the current approved alternate route.";
+const CURRENT_TRAINING_REPORTING_ACTION = "2. Report the event immediately through the approved security reporting channel delivered with this assignment. If that channel is unavailable, use the current approved fallback channel.";
 const PRIOR_TRAINING_REPORTING_CONFIRMATION = "- Confirm that you know how to reach {{security_contact_email}}.";
-const CURRENT_TRAINING_REPORTING_CONFIRMATION = "- Confirm that you know how to use the security reporting route delivered with this assignment.";
+const PREVIOUS_TRAINING_REPORTING_CONFIRMATION = "- Confirm that you know how to use the security reporting route delivered with this assignment.";
+const CURRENT_TRAINING_REPORTING_CONFIRMATION = "- Confirm that you know how to use the security reporting channel delivered with this assignment.";
 const DOCUMENT_CONTENT_UPDATES = [
   {
     id: "document-data-retention-schedule",
@@ -69,13 +72,16 @@ const DOCUMENT_CONTENT_UPDATES = [
     priorRevision: "339ff564fa0ec26503c2498e8d3c44529957113cf782aa03ddb5b4e64c8f0404",
     additionalPriorRevisions: new Set([
       "51a19e22f3e0b31196371676297bfa843f96295d2f6c72e81a969ce7bafc36ae",
-      "5107f5c6015089a7c64e87692976aa48f727b8c03988f93f71e8f3e5084a05ac"
+      "5107f5c6015089a7c64e87692976aa48f727b8c03988f93f71e8f3e5084a05ac",
+      "970b97c4f594ff54fab554460f3cf44f80ee8079e996f4d5dc1427290f8aa714"
     ]),
-    currentRevision: "970b97c4f594ff54fab554460f3cf44f80ee8079e996f4d5dc1427290f8aa714",
+    currentRevision: "ff8b5764ba3073d7ab6678c7da607850de5a82de4383cb54417cd74d82c05305",
     replacements: [
+      ["## Reporting routes", "## Reporting channels"],
       ["The primary reporting route is {{security_contact_email}}.", "Use the current approved primary security Reporting Route. The Reporting Route record is the source of truth for its channel, destination, owner, priority, and effective period."],
       ["Use the current approved primary security Reporting Route. The Reporting Route record is the source of truth for its channel, destination, owner, priority, and effective period.", "Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period."],
       ["[Complete before activation: Name a usable alternate reporting route, its owner, protected location, and how workers can find it when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not put plaintext credentials, private keys, tokens, or recovery codes in this plan.]", "[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]"],
+      ["Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period.\n\n[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]", "People send suspected security concerns through the current approved normal reporting channel, such as the security email address. If that channel is unavailable, compromised, or involved in the concern, they use the approved fallback channel. The Reporting Channel Set is the source of truth for the current destinations, responsible role, and effective period.\n\n[Complete before activation: Describe how workers can find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]"],
       ["Controls, Components, Systems, Obligations, and Evidence hold the actual technical configuration and proof of operation.", "Supporting procedures, system records, and retained evidence document the actual technical configuration and operation."],
       ["If an incident raises a legal, privacy, or insurance question, the incident lead gets suitable advice at that time. FileGRC does not require pre-arranged counsel, in-house counsel, or a standing legal retainer.", "If an incident raises a legal, privacy, or insurance question, the incident lead obtains suitable advice at that time. A pre-arranged counsel relationship or standing legal retainer is required only when management determines that the organization's obligations and risk warrant one."],
       ["[Complete before activation: Link every important System and record its approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments in the System record.]", "[Complete before activation: Document every important System's approved recovery time objective, recovery point objective, maximum tolerable downtime, dependencies, owner, and critical customer commitments.]"],
@@ -580,8 +586,11 @@ async function buildPolicyLibraryPlan(loaded) {
         .replace(PRIOR_SOURCE_SECRET_TRAINING, CURRENT_SOURCE_SECRET_TRAINING)
         .replace(PRIOR_ENDPOINT_SETTING_TRAINING, CURRENT_ENDPOINT_SETTING_TRAINING)
         .replace(PRIOR_CONFIGURATION_RECORD_TRAINING, CURRENT_CONFIGURATION_DOCUMENTATION_TRAINING)
+        .replace(PREVIOUS_TRAINING_REPORTING_ROUTE, CURRENT_TRAINING_REPORTING_ROUTE)
         .replace(PRIOR_TRAINING_REPORTING_ROUTE, CURRENT_TRAINING_REPORTING_ROUTE)
+        .replace(PREVIOUS_TRAINING_REPORTING_ACTION, CURRENT_TRAINING_REPORTING_ACTION)
         .replace(PRIOR_TRAINING_REPORTING_ACTION, CURRENT_TRAINING_REPORTING_ACTION)
+        .replace(PREVIOUS_TRAINING_REPORTING_CONFIRMATION, CURRENT_TRAINING_REPORTING_CONFIRMATION)
         .replace(PRIOR_TRAINING_REPORTING_CONFIRMATION, CURRENT_TRAINING_REPORTING_CONFIRMATION);
       proposalChanges.push({
         resourceType: "training",
@@ -877,8 +886,11 @@ function normalizedTrainingRevision(source, organizationName) {
   if (securityContact) normalized = normalized.replaceAll(securityContact, "{{security_contact_email}}");
   normalized = normalized
     .replace(CURRENT_TRAINING_REPORTING_ROUTE, PRIOR_TRAINING_REPORTING_ROUTE)
+    .replace(PREVIOUS_TRAINING_REPORTING_ROUTE, PRIOR_TRAINING_REPORTING_ROUTE)
     .replace(CURRENT_TRAINING_REPORTING_ACTION, PRIOR_TRAINING_REPORTING_ACTION)
+    .replace(PREVIOUS_TRAINING_REPORTING_ACTION, PRIOR_TRAINING_REPORTING_ACTION)
     .replace(CURRENT_TRAINING_REPORTING_CONFIRMATION, PRIOR_TRAINING_REPORTING_CONFIRMATION);
+  normalized = normalized.replace(PREVIOUS_TRAINING_REPORTING_CONFIRMATION, PRIOR_TRAINING_REPORTING_CONFIRMATION);
   return createHash("sha256").update(normalized).digest("hex");
 }
 

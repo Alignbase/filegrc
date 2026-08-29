@@ -43,7 +43,8 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 - Read `README.md` and run `npm run validate` before broad changes.
 - Treat `data/` as the source of truth. Do not hand-edit `.filegrc/` output.
 - Let Git exclusively supply version-control facts, including authors, commit timestamps, messages, diffs, revisions, renames, and prior file versions. Do not copy them into records or maintain a parallel change log.
-- Store each mutable program fact in one authoritative record and refer to it by ID. Policies state durable rules and outcomes instead of copying current people, vendors, systems, reporting routes, schedules, targets, or inventories.
+- Store each mutable program fact in one authoritative record and refer to it by ID. Policies state durable rules and outcomes instead of copying current people, vendors, systems, reporting channels, schedules, targets, or inventories.
+- A Reporting Channel Set holds the normal and fallback ways people send a report for one purpose, such as a security email address and a hotline. Keep one revision for each Program and purpose. Commit its proposal before recording approval, use separate Appointment kinds for approval and ongoing responsibility, and create a successor instead of editing an approved revision.
 - Keep an Obligation occurrence rolled up when one owner, window, population rule, and reconciliation conclusion govern the work. Split it only when a member needs its own owner, deadline, conclusion, or follow-up lifecycle.
 - Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject.
 - Use UTF-8 JSON for structured records and Markdown for long-form work.
@@ -118,7 +119,7 @@ npx filegrc migrate --to-model 8 --preview --json
 
 Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v8 migration preserves legacy retention prose as notes, renames Component processing operations, and creates no retention periods or disposition behavior.
 
-The [model v9 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v9.md) explains rolled-up Obligation occurrences, reviewed schedule rules, temporal Collection Reviews, and Reporting Routes.
+The [model v10 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v10.md) explains Reporting Channel Sets and the legacy-route review. The [model v9 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v9.md) explains rolled-up Obligation occurrences, reviewed schedule rules, and temporal Collection Reviews.
 
 Run these commands when working with records:
 
@@ -130,10 +131,16 @@ npx filegrc list risk --json
 npx filegrc get risk-example
 npx filegrc get risk-example --mutation
 npx filegrc references risk-example --json
+npx filegrc reporting-route-sets --json
+npx filegrc reporting-route-set scaffold approve --id REPORTING_ROUTE_SET_ID
+npx filegrc reporting-route-set scaffold cancel --id REPORTING_ROUTE_SET_ID
+npx filegrc reporting-route-set scaffold successor --id SUCCESSOR_ROUTE_SET_ID
 npx filegrc describe risk
 npx filegrc search "access review"
 npm run serve
 ```
+
+The Reporting Channel Set scaffolds are action-specific. Approval needs the exact committed proposal, current route-set revision, authorized Appointment, actual times, timezone, and verified fixed Evidence. Cancellation needs its own authority, time, reason, Evidence, and current revision. A successor approval also includes the predecessor cancellation authority, Evidence, and revision so FileGRC records the cutover atomically. Replace every placeholder before passing the payload to `reporting-route-set approve` or `reporting-route-set cancel`.
 
 Prefer existing fields. Put organization-specific values under `extensions` with a namespace owned by {{company_name}}. Add structure only when validation, filtering, relationships, due dates, or audit completeness need it. Variable procedures, interviews, observations, rationale, and detailed results belong in the record's Markdown companion.
 
@@ -285,7 +292,7 @@ Link a control test to its `audit-population` record when sampling applies. Link
 
 ## Content and approvals
 
-The initial program lead is {{policy_owner_name}}, {{policy_owner_job_title}}, at {{policy_owner_email}}. The separate Policy Owner Appointment records this person’s starting program authority. Reporting Route records hold the current security reporting destinations. Update the Person when their organizational position changes. End and replace Appointments when named authority moves to someone else.
+The initial program lead is {{policy_owner_name}}, {{policy_owner_job_title}}, at {{policy_owner_email}}. The separate Policy Owner Appointment records this person’s starting program authority. The Reporting Channel Set holds the normal and fallback ways people send security concerns. Update the Person when their organizational position changes. End and replace Appointments when named authority moves to someone else.
 
 Appoint an independent management reviewer during policy review, not as a condition of defining the service boundary. The reviewer must be separate from the policy owner and able to challenge the owner’s decisions. Assign another internal leader or manager when a suitable reviewer is available. Otherwise, appoint a qualified external reviewer. The reviewer chairs Security and Risk Oversight and approves policies and governed documents.
 

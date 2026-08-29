@@ -1,0 +1,10 @@
+{
+  "id": "collection-review-classification",
+  "type": "collection-review",
+  "title": "Information handling classifications review",
+  "status": "planned",
+  "resourceType": "classification",
+  "scopeResourceIds": [
+    "program-soc-2"
+  ]
+}

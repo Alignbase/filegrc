@@ -32,6 +32,21 @@ const execute = (executable, args, options) => executable === process.execPath
   : executeProcess(executable, args, options);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
+test("exposes action-specific Reporting Channel Set scaffolds through the CLI", async () => {
+  const successor = JSON.parse((await execute(process.execPath, [
+    cli,
+    "reporting-route-set",
+    "scaffold",
+    "successor",
+    "--id",
+    "route-successor"
+  ])).stdout);
+  assert.equal(successor.routeSetId, "route-successor");
+  assert.equal(successor.expectedRevision, "CURRENT_ROUTE_SET_REVISION");
+  assert.equal(successor.predecessorExpectedRevision, "CURRENT_PREDECESSOR_REVISION");
+  assert.deepEqual(successor.predecessorCancellationEvidenceIds, []);
+});
+
 test("reconciles a direct-file role change only after explicit event facts", async (context) => {
   const root = await modelThreeWorkspace(context, "filegrc-reconcile-");
   await writeJson(join(root, "data", "obligations", "obligation-role-change.json"), {
@@ -68,6 +83,31 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   });
   assert.equal(applied.actions.length, 1);
   assert.equal((await planReconciliation(root)).candidates.length, 0);
+});
+
+test("reconciliation ignores inherited Git repository redirection", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-real-");
+  await commitAll(root, "Create real reconciliation workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+
+  const alternate = await modelThreeWorkspace(context, "filegrc-reconcile-redirect-");
+  await commitAll(alternate, "Create redirected workspace");
+  const alternateGitDirectory = (await execute("git", ["rev-parse", "--absolute-git-dir"], { cwd: alternate })).stdout.trim();
+  const priorGitDirectory = process.env.GIT_DIR;
+  const priorGitWorkTree = process.env.GIT_WORK_TREE;
+  try {
+    process.env.GIT_DIR = alternateGitDirectory;
+    process.env.GIT_WORK_TREE = alternate;
+    const preview = await planReconciliation(root);
+    assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["person-role-changed"]);
+  } finally {
+    if (priorGitDirectory === undefined) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = priorGitDirectory;
+    if (priorGitWorkTree === undefined) delete process.env.GIT_WORK_TREE;
+    else process.env.GIT_WORK_TREE = priorGitWorkTree;
+  }
 });
 
 test("one reconciled transition creates applicable actions across Programs", async (context) => {

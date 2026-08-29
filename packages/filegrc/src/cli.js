@@ -58,6 +58,13 @@ import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from
 import { applyPolicyLibraryUpgrade, assessPolicyLibraryUpgrades } from "./policy-library.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+import {
+  approveReportingRouteSet,
+  assessReportingRouteSets,
+  cancelReportingRouteSet,
+  proposeReportingRouteSet,
+  scaffoldReportingRouteSet
+} from "./reporting-route-sets.js";
 import { planProgramAmendment } from "./program-amendment.js";
 import { resolveProgram } from "./program.js";
 import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
@@ -474,6 +481,52 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
     return output;
+  }
+  if (command === "reporting-route-sets") {
+    const result = await assessReportingRouteSets(root, {
+      programId: flags.program,
+      at: flags.at
+    });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else if (!result.supported) console.log("Reporting Channel Sets are not supported by this workspace model.");
+    else console.log(result.issues.length
+      ? `${result.issues.length} Reporting Channel Set action${result.issues.length === 1 ? "" : "s"} remain.`
+      : "Reporting Channel Set requirements are covered.");
+    return result;
+  }
+  if (command === "reporting-route-set") {
+    const [action, value] = positionals;
+    if (flags.scaffold || action === "scaffold") {
+      const scaffoldAction = flags.action || (action === "scaffold" && value) || "approve";
+      const result = scaffoldReportingRouteSet({
+        action: scaffoldAction,
+        routeSetId: flags.id,
+        timezone: flags.timezone,
+        effectiveAt: flags["effective-at"],
+        proposalCommit: flags["proposal-commit"],
+        expectedRevision: flags.revision,
+        predecessorExpectedRevision: flags["predecessor-revision"]
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (action === "propose") {
+      const result = await withWorkflowDelta(root, () => proposeReportingRouteSet(root, { routeSetId: value, expectedRevision: flags.revision }));
+      if (flags.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Proposed ${result.record.id}. Commit the proposal before approval.`);
+      return result;
+    }
+    if (["approve", "cancel"].includes(action)) {
+      if (!value) throw new Error(`Pass a JSON payload path for reporting-route-set ${action}.`);
+      const payload = JSON.parse(await readFile(resolve(value), "utf8"));
+      const result = action === "approve"
+        ? await withWorkflowDelta(root, () => approveReportingRouteSet(root, payload))
+        : await withWorkflowDelta(root, () => cancelReportingRouteSet(root, payload));
+      if (flags.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`${action === "approve" ? "Approved" : "Canceled"} ${result.record.id}. Commit this managed event before relying on it.`);
+      return result;
+    }
+    throw new Error("Use reporting-route-set scaffold [approve|cancel|successor], propose ROUTE_SET_ID, approve PAYLOAD.json, or cancel PAYLOAD.json.");
   }
   if (command === "program-amendment") {
     const sourceResourceId = flags.source || positionals[0];
@@ -1263,6 +1316,8 @@ Usage:
   filegrc workflow [audit-id] [--as-of YYYY-MM-DD] [--through YYYY-MM-DD] [--complete] [--require-ready] [--json]
   filegrc period-health [audit-id] [--start YYYY-MM-DD --end YYYY-MM-DD] [--as-of YYYY-MM-DD] [--require-healthy] [--json]
   filegrc milestone-check [--as-of YYYY-MM-DD] [--json]
+  filegrc reporting-route-sets [--program program-id] [--at RFC3339] [--json]
+  filegrc reporting-route-set scaffold <approve|cancel|successor> [--id route-set-id] | propose ROUTE_SET_ID | approve PAYLOAD.json | cancel PAYLOAD.json
   filegrc scaffold <resource-type> --title text [--id resource-id] [--program program-id]
   filegrc list [resource-type] [--workflow] [--json]
   filegrc search <query> [--type resource-type] [--json]
@@ -1382,6 +1437,27 @@ Options:
 Start with:
   npx filegrc guide --json
   # Use the next model version shown by the guide.`);
+    return;
+  }
+  if (["reporting-route-set", "reporting-route-sets"].includes(command)) {
+    console.log(`Usage:
+  filegrc reporting-route-sets [--program program-id] [--at RFC3339] [--json]
+  filegrc reporting-route-set scaffold approve [--id route-set-id] [--timezone IANA] [--effective-at RFC3339] [--proposal-commit commit] [--revision revision]
+  filegrc reporting-route-set scaffold cancel [--id route-set-id] [--timezone IANA] [--revision revision]
+  filegrc reporting-route-set scaffold successor [--id route-set-id] [--timezone IANA] [--effective-at RFC3339] [--proposal-commit commit] [--revision revision] [--predecessor-revision revision]
+  filegrc reporting-route-set propose ROUTE_SET_ID [--revision revision] [--json]
+  filegrc reporting-route-set approve PAYLOAD.json [--json]
+  filegrc reporting-route-set cancel PAYLOAD.json [--json]
+
+Reporting channels are the email addresses, phone numbers, web forms, in-person
+contacts, or other destinations people use to raise a concern. A set keeps the
+normal channel and its fallback together for one purpose. Inspect the rules that
+require them or advance a set through proposal, approval, and cancellation. CLI writes never create Git commits.
+Commit the proposal before approval, then commit the approval before its effective
+time. The action-specific payload scaffolds name the actual event time, IANA
+timezone, authority Appointment, Evidence, and current revisions. Approval and
+successor scaffolds also require the full proposal commit. A successor records
+its approval and the predecessor cancellation together.`);
     return;
   }
   if (command === "program-readiness") {

@@ -87,6 +87,17 @@ export {
   setupExternalReviewerGovernance
 } from "./external-reviewer.js";
 export { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+export {
+  approveReportingRouteSet,
+  assessReportingRoutePeriod,
+  assessReportingRouteSets,
+  cancelReportingRouteSet,
+  effectiveReportingRouteRequirements,
+  proposeReportingRouteSet,
+  reportingRouteLanesIndependent,
+  scaffoldReportingRouteSet
+} from "./reporting-route-sets.js";
+export { reportingRouteBindingExpectation } from "./reporting-route-integrity.js";
 export { planProgramAmendment } from "./program-amendment.js";
 export {
   buildAgentProgramPath,

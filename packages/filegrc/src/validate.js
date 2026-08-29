@@ -8,7 +8,7 @@ import {
   collectionRevisionMatches
 } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
-import { getFileObjectIdAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision } from "./git.js";
+import { getFileBufferAtRevision, getFileObjectIdAtRevision, getFilePathAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision, isDataHistoryAncestor } from "./git.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import {
   addCalendarDays,
@@ -26,7 +26,14 @@ import { recordTiming } from "./timing.js";
 import { personWasActiveOn } from "./soc2.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./collection-review-integrity.js";
-import { reportingRouteRevision } from "./reporting-route-integrity.js";
+import {
+  reportingRouteRevision,
+  reportingRouteBindingExpectationForValidation,
+  reportingRouteEventCommit,
+  reportingRouteEventAuthorityIssueAtCommit,
+  reportingRouteFixedEvidence,
+  reportingRouteRecordAtRevision
+} from "./reporting-route-integrity.js";
 import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -128,7 +135,10 @@ async function validateWorkspaceUnmeasured(input) {
       validateCompletedObligationAction(record, byId, loaded.model, displayPath, diagnostics);
     }
     if (record.type === "obligation-event") validatePolicyEvent(record, loaded.model, byId, displayPath, diagnostics);
-    if (record.type === "evidence") validateEvidencePaths(record, displayPath, diagnostics);
+    if (record.type === "evidence") {
+      validateEvidencePaths(record, displayPath, diagnostics);
+      validateEvidenceSourceRevision(record, loaded.root, displayPath, diagnostics);
+    }
     validateCoverage(record, displayPath, diagnostics);
     validateClassification(record, loaded, displayPath, diagnostics);
     validateCompletionDates(record, displayPath, diagnostics);
@@ -196,8 +206,11 @@ async function validateWorkspaceUnmeasured(input) {
     validateObligationRuleSet(loaded.resources, pathById, diagnostics);
     validateAuditPopulationSet(loaded.resources, byId, pathById, diagnostics);
   }
-  if (modelSupports(loaded.model, "reporting-routes")) {
+  if (modelSupports(loaded.model, "reporting-routes") && !modelSupports(loaded.model, "reporting-route-sets")) {
     validateReportingRouteSet(loaded.resources, pathById, diagnostics, loaded.workspace?.timezone || "UTC");
+  }
+  if (modelSupports(loaded.model, "reporting-route-sets")) {
+    validateReportingRouteSets(loaded, byId, pathById, diagnostics);
   }
   if (modelSupports(loaded.model, "temporal-collection-reviews")) {
     validateCollectionReviewSet(loaded.resources, pathById, diagnostics);
@@ -835,6 +848,236 @@ function validateReportingRouteSet(resources, pathById, diagnostics, timezone) {
   }
 }
 
+function validateReportingRouteSets(loaded, byId, pathById, diagnostics) {
+  const routeSets = loaded.resources.filter(({ type }) => type === "reporting-route-set");
+  const successors = new Map();
+  const repository = getGitSummary(loaded.root);
+  const currentByPurpose = new Map();
+  for (const source of loaded.resources.filter(({ type }) => ["policy", "document", "commitment", "risk"].includes(type))) {
+    const path = pathById.get(source.id);
+    for (const requirement of Array.isArray(source.reportingRouteRequirements) ? source.reportingRouteRequirements : []) {
+      if (!requirement || typeof requirement !== "object" || Array.isArray(requirement)) continue;
+      validateTimestampTimezone(requirement.effectiveAt, requirement.timezone, path, diagnostics, "requirement start");
+      if (requirement.endsAt) {
+        validateTimestampTimezone(requirement.endsAt, requirement.timezone, path, diagnostics, "requirement end");
+        if (new Date(requirement.endsAt) <= new Date(requirement.effectiveAt)) {
+          diagnostics.push(error("invalid-reporting-route-requirement-interval", path, "A Reporting Route requirement must end after it starts."));
+        }
+      }
+    }
+  }
+  for (const route of routeSets) {
+    const path = pathById.get(route.id);
+    if (["draft", "proposed", "approved"].includes(route.status)) {
+      const key = `${route.programId}\0${route.purposeKey}`;
+      const current = currentByPurpose.get(key) || { approved: [], pending: [] };
+      current[route.status === "approved" ? "approved" : "pending"].push(route);
+      currentByPurpose.set(key, current);
+    }
+    if (route.predecessorId) {
+      const predecessor = byId.get(route.predecessorId);
+      if (route.predecessorId === route.id) {
+        diagnostics.push(error("invalid-reporting-route-lineage", path, "A Reporting Route Set cannot name itself as its predecessor."));
+      }
+      if (
+        predecessor?.type === "reporting-route-set"
+        && (predecessor.programId !== route.programId || predecessor.purposeKey !== route.purposeKey)
+      ) {
+        diagnostics.push(error("invalid-reporting-route-lineage", path, "A Reporting Route Set successor must keep the same Program and immutable purpose key."));
+      }
+      if (predecessor?.type === "reporting-route-set" && !FINAL_ROUTE_SET_STATUSES.has(predecessor.status)) {
+        diagnostics.push(error("invalid-reporting-route-lineage", path, `Predecessor Reporting Route Set "${predecessor.id}" must already be finalized.`));
+      }
+      const current = successors.get(route.predecessorId);
+      if (current) {
+        diagnostics.push(error("branched-reporting-route-lineage", path, `Reporting Route Set "${route.predecessorId}" has more than one successor: ${current}, ${route.id}.`));
+      } else successors.set(route.predecessorId, route.id);
+    }
+    if (!FINAL_ROUTE_SET_STATUSES.has(route.status)) continue;
+    if (route.status === "historical") continue;
+    if (!/^[a-f0-9]{40}$/i.test(String(route.proposalCommit || "")) || !hasGitRevision(loaded.root, route.proposalCommit)) {
+      diagnostics.push(error("invalid-reporting-route-proposal", path, "An approved Reporting Route Set must bind a full, available proposal commit."));
+      continue;
+    }
+    const entry = loaded.entries.find(({ record }) => record.id === route.id);
+    const proposal = entry ? reportingRouteRecordAtRevision(loaded, entry, route.proposalCommit) : null;
+    if (!proposal || proposal.status !== "proposed" || !sameRouteProposal(proposal, route)) {
+      diagnostics.push(error("changed-reporting-route-proposal", path, "The approved Route Set facts must exactly match the committed proposal; only managed approval fields may differ."));
+    }
+    for (const markdown of markdownEntries(loaded.model, route)) {
+      const currentPath = `data/${markdown.path}`;
+      const proposedPath = getFilePathAtRevision(loaded.root, currentPath, route.proposalCommit);
+      const proposedObject = proposedPath
+        ? getFileObjectIdAtRevision(loaded.root, route.proposalCommit, proposedPath)
+        : null;
+      const currentObject = getWorkingFileObjectId(loaded.root, currentPath);
+      if (!proposedObject || proposedObject !== currentObject) {
+        diagnostics.push(error("changed-reporting-route-instructions", path, "Reporting Route Set instructions must exactly match the committed proposal."));
+      }
+    }
+    const approval = route.approval;
+    if (!approval) continue;
+    if (approval.proposalCommit !== route.proposalCommit) {
+      diagnostics.push(error("invalid-reporting-route-proposal", path, "Approval proposalCommit must match the Route Set proposalCommit exactly."));
+    }
+    validateTimestampTimezone(approval.approvedAt, approval.timezone, path, diagnostics, "approval");
+    validateTimestampTimezone(approval.effectiveAt, approval.timezone, path, diagnostics, "effective");
+    if (new Date(approval.approvedAt) > new Date()) {
+      diagnostics.push(error("future-reporting-route-approval", path, "Approval time must be an actual nonfuture event time."));
+    }
+    if (new Date(approval.effectiveAt) < new Date(approval.approvedAt)) {
+      diagnostics.push(error("invalid-reporting-route-order", path, "Effective time cannot precede approval time."));
+    }
+    if (
+      !reportingRouteFixedEvidence(
+        loaded.resources,
+        route.id,
+        approval.evidenceIds,
+        approval.approvedAt,
+        approval.timezone,
+        { root: loaded.root }
+      ).length
+    ) {
+      diagnostics.push(error("missing-reporting-route-event-evidence", path, "Reporting Route approval needs linked verified, fixed Evidence covering the approval event."));
+    }
+    const approvalCommit = reportingRouteEventCommit(loaded, route, "approval");
+    if (approvalCommit && (
+      approvalCommit === route.proposalCommit
+      || !isDataHistoryAncestor(loaded, route.proposalCommit, approvalCommit)
+    )) {
+      diagnostics.push(error("invalid-reporting-route-order", path, "The approval commit must descend from the exact proposal commit."));
+    }
+    if (repository.commit && !isDataHistoryAncestor(loaded, route.proposalCommit, repository.commit)) {
+      diagnostics.push(error("invalid-reporting-route-lineage", path, "The current revision must descend from its proposal commit."));
+    }
+    const approvalAuthorityIssue = reportingRouteEventAuthorityIssueAtCommit(loaded, route, "approval");
+    if (approvalAuthorityIssue) {
+      diagnostics.push(error(approvalAuthorityIssue.code, path, approvalAuthorityIssue.message));
+    }
+    if (route.status === "canceled") {
+      const cancellationCommit = reportingRouteEventCommit(loaded, route, "cancellation");
+      if (approvalCommit && cancellationCommit && (
+        cancellationCommit === approvalCommit
+        || !isDataHistoryAncestor(loaded, approvalCommit, cancellationCommit)
+      )) {
+        diagnostics.push(error("invalid-reporting-route-order", path, "The cancellation commit must descend from the approval commit."));
+      }
+      validateTimestampTimezone(route.cancellation?.canceledAt, approval.timezone, path, diagnostics, "cancellation");
+      if (new Date(route.cancellation?.canceledAt) > new Date()) {
+        diagnostics.push(error("future-reporting-route-cancellation", path, "Cancellation time must be an actual nonfuture event time."));
+      }
+      if (
+        !reportingRouteFixedEvidence(
+          loaded.resources,
+          route.id,
+          route.cancellation?.evidenceIds,
+          route.cancellation?.canceledAt,
+          approval.timezone,
+          { root: loaded.root }
+        ).length
+      ) {
+        diagnostics.push(error("missing-reporting-route-event-evidence", path, "Reporting Route cancellation needs linked verified, fixed Evidence covering the cancellation event."));
+      }
+      const cancellationAuthorityIssue = reportingRouteEventAuthorityIssueAtCommit(loaded, route, "cancellation");
+      if (cancellationAuthorityIssue) {
+        diagnostics.push(error(cancellationAuthorityIssue.code, path, cancellationAuthorityIssue.message));
+      }
+    }
+  }
+  for (const route of routeSets) {
+    const visited = new Set([route.id]);
+    let predecessorId = route.predecessorId;
+    while (predecessorId) {
+      if (visited.has(predecessorId)) {
+        diagnostics.push(error("invalid-reporting-route-lineage", pathById.get(route.id), `Reporting Route Set "${route.id}" belongs to a predecessor cycle.`));
+        break;
+      }
+      visited.add(predecessorId);
+      predecessorId = byId.get(predecessorId)?.predecessorId;
+    }
+  }
+  for (const { approved, pending } of currentByPurpose.values()) {
+    const candidate = pending[1] || approved[1];
+    if (pending.length > 1 || approved.length > 1) {
+      diagnostics.push(error(
+        "ambiguous-reporting-route-set",
+        pathById.get(candidate.id),
+        "A Program and purpose may have at most one approved channel set and one pending successor."
+      ));
+      continue;
+    }
+    if (approved.length === 1 && pending.length === 1 && pending[0].predecessorId !== approved[0].id) {
+      diagnostics.push(error(
+        "invalid-reporting-route-lineage",
+        pathById.get(pending[0].id),
+        `Pending successor "${pending[0].id}" must name approved Route Set "${approved[0].id}" as its predecessor.`
+      ));
+    }
+  }
+  const finalizedByPurpose = new Map();
+  for (const route of routeSets.filter(({ status, approval }) => (
+    ["approved", "canceled"].includes(status) && typeof approval?.effectiveAt === "string"
+  ))) {
+    const key = `${route.programId}\0${route.purposeKey}`;
+    const routes = finalizedByPurpose.get(key) || [];
+    routes.push(route);
+    finalizedByPurpose.set(key, routes);
+    if (
+      route.status === "canceled"
+      && new Date(route.cancellation?.canceledAt) < new Date(route.approval?.effectiveAt)
+    ) {
+      diagnostics.push(error(
+        "invalid-reporting-route-order",
+        pathById.get(route.id),
+        "A Reporting Channel Set cannot be canceled before it becomes effective."
+      ));
+    }
+  }
+  for (const routes of finalizedByPurpose.values()) {
+    routes.sort((left, right) => left.approval.effectiveAt.localeCompare(right.approval.effectiveAt));
+    for (let index = 1; index < routes.length; index += 1) {
+      const previous = routes[index - 1];
+      const current = routes[index];
+      if (current.predecessorId !== previous.id) {
+        diagnostics.push(error(
+          "invalid-reporting-route-lineage",
+          pathById.get(current.id),
+          `Reporting Channel Set "${current.id}" must name "${previous.id}" as its predecessor.`
+        ));
+      }
+      const previousEnd = previous.status === "canceled"
+        ? new Date(previous.cancellation?.canceledAt)
+        : null;
+      if (!previousEnd || new Date(current.approval.effectiveAt) < previousEnd) {
+        diagnostics.push(error(
+          "overlapping-reporting-route-sets",
+          pathById.get(current.id),
+          `Reporting Channel Sets "${previous.id}" and "${current.id}" overlap for the same Program and purpose.`
+        ));
+      }
+    }
+  }
+}
+
+const FINAL_ROUTE_SET_STATUSES = new Set(["approved", "canceled", "historical"]);
+
+function sameRouteProposal(proposal, finalized) {
+  const allowed = new Set(["status", "proposalCommit", "approval", "cancellation"]);
+  const keys = new Set([...Object.keys(proposal), ...Object.keys(finalized)]);
+  return [...keys].every((key) => allowed.has(key) || JSON.stringify(proposal[key]) === JSON.stringify(finalized[key]));
+}
+
+function validateTimestampTimezone(value, timezone, path, diagnostics, label) {
+  if (!value || !timezone) return;
+  const source = String(value);
+  const local = source.replace(/(?:Z|[+-]\d\d:\d\d)$/, "").replace(/\.\d+$/, "");
+  let zoned;
+  try { zoned = localDateTimeValue(new Date(source), timezone); } catch { return; }
+  if (zoned !== local) {
+    diagnostics.push(error("reporting-route-timezone-offset-mismatch", path, `The ${label} timestamp offset does not match ${timezone}.`));
+  }
+}
+
 function validateCollectionReview(record, loaded, byId, path, diagnostics) {
   if (record.status !== "active") return;
   const { model } = loaded;
@@ -1263,6 +1506,45 @@ function validateEvidencePaths(record, path, diagnostics) {
   }
 }
 
+function validateEvidenceSourceRevision(record, root, path, diagnostics) {
+  if (
+    record.sourceKind === "rendered-page"
+    && record.artifactKind !== "rendered-page"
+  ) {
+    diagnostics.push(error(
+      "invalid-rendered-evidence-kind",
+      path,
+      "Evidence with sourceKind rendered-page must also use artifactKind rendered-page."
+    ));
+  }
+  const revisionAvailable = record.sourceCommit && hasGitRevision(root, record.sourceCommit);
+  if (
+    record.sourceKind === "rendered-page"
+    && record.sourceCommit
+    && !revisionAvailable
+  ) {
+    diagnostics.push(error(
+      "invalid-evidence-source-revision",
+      path,
+      `Rendered-page Evidence sourceCommit "${record.sourceCommit}" must name an available Git commit.`
+    ));
+  }
+  if (
+    record.sourceKind === "rendered-page"
+    && revisionAvailable
+    && (() => {
+      const repositoryCommit = getGitSummary(root).commit;
+      return !repositoryCommit || !isDataHistoryAncestor(root, record.sourceCommit, repositoryCommit);
+    })()
+  ) {
+    diagnostics.push(error(
+      "non-authoritative-evidence-source-revision",
+      path,
+      `Rendered-page Evidence sourceCommit "${record.sourceCommit}" must belong to the current authoritative Git history.`
+    ));
+  }
+}
+
 function validateIndependentApproval(record, byId, path, diagnostics) {
   if (!["policy", "document"].includes(record.type)) return;
   if (!(record.approverIds || []).length) return;
@@ -1611,10 +1893,54 @@ function validateReportingRouteBinding(record, loaded, path, diagnostics) {
   if (
     record.type !== "attestation"
     || record.status !== "completed"
-    || !loaded.model.resources.attestation?.fields?.reportingRouteId
+    || (!loaded.model.resources.attestation?.fields?.reportingRouteId
+      && !loaded.model.resources.attestation?.fields?.reportingRouteSetId)
   ) return;
   const date = record.assignedOn || record.completedOn;
   if (!date) return;
+  if (loaded.model.resources.attestation.fields.reportingRouteSetId) {
+    const expectation = reportingRouteBindingExpectationForValidation(loaded, record);
+    if (!expectation.required) {
+      if (record.reportingRouteSetId || record.reportingRouteSetCommit) {
+        diagnostics.push(error("invalid-reporting-route-binding", path, `The Attestation claims Reporting Channel Set delivery when no structured security-reporting requirement applied on ${date}.`));
+      }
+      return;
+    }
+    if (expectation.error) {
+      diagnostics.push(error("invalid-reporting-route-binding", path, expectation.error));
+      return;
+    }
+    if (!record.reportingRouteSetId || !/^[a-f0-9]{40}$/i.test(String(record.reportingRouteSetCommit || ""))) {
+      diagnostics.push(error("invalid-reporting-route-binding", path, "A Route Set delivery binding must name both the Route Set and its full Git commit."));
+      return;
+    }
+    const repository = getGitSummary(loaded.root);
+    if (
+      !repository.commit
+      || !isDataHistoryAncestor(loaded, record.reportingRouteSetCommit, repository.commit)
+      || record.reportingRouteSetId !== expectation.routeSet.id
+      || record.reportingRouteSetCommit !== expectation.commit
+    ) {
+      diagnostics.push(error(
+        "invalid-reporting-route-binding",
+        path,
+        `The Attestation must bind the authoritative approved revision of Reporting Channel Set "${expectation.routeSet.id}" that governed security reporting on ${date}.`
+      ));
+      return;
+    }
+    const routeEntry = loaded.entries.find(({ record: candidate }) => candidate.id === record.reportingRouteSetId);
+    const route = routeEntry
+      ? reportingRouteRecordAtRevision(loaded, routeEntry, record.reportingRouteSetCommit)
+      : null;
+    if (
+      route?.type !== "reporting-route-set"
+      || route.status !== "approved"
+      || route.purposeKey !== "security-reporting"
+    ) {
+      diagnostics.push(error("invalid-reporting-route-binding", path, `The Attestation must bind an approved security Reporting Route Set effective on ${date} at the named Git commit.`));
+    }
+    return;
+  }
   const cutoff = timestampFromLocalDateTime(`${date}T23:59:59`, loaded.workspace.timezone);
   const route = loaded.entries
     .filter(({ record: candidate }) => (

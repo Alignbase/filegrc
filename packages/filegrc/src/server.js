@@ -34,6 +34,13 @@ import {
 } from "./git.js";
 import { normalizeResourceMutation, serializeWorkspaceMutation } from "./mutation.js";
 import {
+  approveReportingRouteSet,
+  assessReportingRouteSets,
+  cancelReportingRouteSet,
+  proposeReportingRouteSet,
+  scaffoldReportingRouteSet
+} from "./reporting-route-sets.js";
+import {
   activateObligationRule,
   completeObligationAction,
   completeObligationEvent,
@@ -255,6 +262,36 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Create policy event: ${result.event?.title || payload.title || payload.eventType}`
         }, () => createObligationEvent(input, { ...payload, programId: payload.programId || requestOptions.programId })));
+      }
+      if (request.method === "GET" && url.pathname === "/api/reporting-route-sets") {
+        return json(response, 200, await assessReportingRouteSets(input, {
+          programId: url.searchParams.get("programId") || requestOptions.programId,
+          at: url.searchParams.get("at") || undefined
+        }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/reporting-route-sets/scaffold") {
+        return json(response, 200, scaffoldReportingRouteSet(await readJson(request)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/reporting-route-sets/propose") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.routeSetId)) return json(response, 400, { error: "A safe Reporting Route Set ID is required." });
+        return json(response, 200, await browserMutation(input, requestOptions, {
+          message: () => `Propose reporting route set: ${payload.routeSetId}`
+        }, () => proposeReportingRouteSet(input, payload)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/reporting-route-sets/approve") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.routeSetId)) return json(response, 400, { error: "A safe Reporting Route Set ID is required." });
+        return json(response, 200, await browserMutation(input, requestOptions, {
+          message: () => `Approve reporting route set: ${payload.routeSetId}`
+        }, () => approveReportingRouteSet(input, payload)));
+      }
+      if (request.method === "POST" && url.pathname === "/api/reporting-route-sets/cancel") {
+        const payload = await readJson(request);
+        if (!safeSegment(payload.routeSetId)) return json(response, 400, { error: "A safe Reporting Route Set ID is required." });
+        return json(response, 200, await browserMutation(input, requestOptions, {
+          message: () => `Cancel reporting route set: ${payload.routeSetId}`
+        }, () => cancelReportingRouteSet(input, payload)));
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-completions") {
         const payload = await readJson(request);

@@ -4,11 +4,11 @@
 
 This plan coordinates reporting, response, recovery, and continuity when a security event or disruption affects {{company_name}} or an in-scope service. Supporting procedures, system records, and retained evidence document the actual technical configuration and operation.
 
-## Reporting routes
+## Reporting channels
 
-Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period.
+People send suspected security concerns through the current approved normal reporting channel, such as the security email address. If that channel is unavailable, compromised, or involved in the concern, they use the approved fallback channel. The Reporting Channel Set is the source of truth for the current destinations, responsible role, and effective period.
 
-[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]
+[Complete before activation: Describe how workers can find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]
 
 Reports may describe suspected unauthorized access, malware, data loss, credential exposure, security-Control failure, service disruption, fraud affecting the service, or another policy violation. The recipient records the report, protects confidentiality, preserves relevant information, and assigns an initial owner.
 

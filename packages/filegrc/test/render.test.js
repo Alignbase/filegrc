@@ -123,6 +123,19 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.doesNotMatch(APP_STYLES, /\.policy-activation-confirm\{/);
 });
 
+test("sends complete Reporting Channel Set lifecycle payloads", () => {
+  assert.match(APP_SCRIPT, /routeSetId: entry\.record\.id,\s+expectedRevision: entry\.revision/);
+  assert.doesNotMatch(APP_SCRIPT, /routeSetId: entry\.record\.id,\s+revision: entry\.revision/);
+  assert.match(APP_SCRIPT, /record\.appointmentKind === entry\.record\.approvalAppointmentKind/);
+  assert.match(APP_SCRIPT, /\["active", "ended"\]\.includes\(record\.status\)/);
+  assert.match(APP_SCRIPT, /predecessorExpectedRevision: predecessor\.revision/);
+  assert.match(APP_SCRIPT, /const nowLocal = localDateTimeInput\(new Date\(\), state\.workspace\.timezone\)/);
+  assert.match(APP_SCRIPT, /const defaultEffective = predecessor\s+\? nowLocal/);
+  assert.doesNotMatch(APP_SCRIPT, /state\.repository\?\.developmentOverride \|\| !state\.git\.clean/);
+  assert.match(APP_SCRIPT, /record\.sourceKind === "file" && record\.filePaths\?\.length/);
+  assert.match(APP_SCRIPT, /FileGRC checks retained material and event-date coverage when you submit/);
+});
+
 test("static and editable navigation receive the same program readiness progress", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-dashboard-state-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -726,6 +739,7 @@ test("renders nested relationship values without exposing raw JSON", () => {
 test("uses model-driven controls for fixed-shape object fields", () => {
   assert.match(APP_SCRIPT, /schema\?\.additionalProperties === false/);
   assert.match(APP_SCRIPT, /function objectPropertyFields\(schema, value = \{\}\)/);
+  assert.match(APP_SCRIPT, /property\.label \|\| humanize\(name\)/);
   assert.match(APP_SCRIPT, /function readStructuredObject\(container\)/);
   assert.match(APP_SCRIPT, /wireStructuredObjectEditors\(dialog\)/);
   assert.match(APP_SCRIPT, /return fieldWrap\(name, "structured-object"/);
@@ -735,6 +749,7 @@ test("uses model-driven controls for fixed-shape object fields", () => {
   assert.match(APP_SCRIPT, /Bind current revisions/);
   assert.match(APP_SCRIPT, /function renderRetentionReadiness\(\)/);
   assert.match(APP_SCRIPT, /function readStringMap\(container\)/);
+  assert.match(APP_SCRIPT, /const label = property\.label \|\| humanize\(name\.replace/);
   assert.match(APP_STYLES, /\.string-map-row\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\) auto/);
   assert.match(APP_SCRIPT, /typeof value === "object" && !Array\.isArray\(value\) && !Object\.keys\(value\)\.length/);
   assert.match(APP_SCRIPT, /field\.relation \|\| state\.model\.relationGroups\?\.\[field\.relationGroup\]/);
@@ -845,7 +860,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /function renderOrganization\(main\)/);
   assert.match(APP_SCRIPT, /class="organization-nav /);
   assert.doesNotMatch(APP_SCRIPT, /<h3>People and Teams<\/h3>/);
-  assert.deepEqual(section(scopeStage, "Program Ownership").types, ["person", "appointment", "team"]);
+  assert.deepEqual(section(scopeStage, "Program Ownership").types, ["person", "appointment", "team", "reporting-route-set"]);
   assert.match(section(scopeStage, "Program Ownership").steps.join(" "), /Review the starter Security and Risk Oversight team/);
   assert.match(APP_SCRIPT, /Renderer and Repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
@@ -1018,6 +1033,8 @@ test("keeps concise Step-page summaries separate from detailed resource guides",
     assert.ok(APP_SCRIPT.includes(instructions), `${type} renderer instruction matches the headless guide`);
   }
   assert.match(guideSource, /const instructions = RESOURCE_GUIDE_INSTRUCTIONS\[type\] \|\| definition\.description/);
+  assert.match(listSource, /const pageSummary = STAGE_PAGE_SUMMARIES\[type\] \|\| definition\.description/);
+  assert.match(listSource, /esc\(pageSummary\)/);
   assert.match(APP_SCRIPT, /const RESOURCE_GUIDE_INSTRUCTIONS = /);
   for (const [type, summary] of Object.entries(RESOURCE_PAGE_SUMMARIES)) {
     assert.ok(APP_SCRIPT.includes(summary), `${type} has a concise Step-page summary`);
@@ -1198,7 +1215,10 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /function stageProgress\(stage\)/);
   assert.doesNotMatch(APP_SCRIPT, /function programPathProgress\(\)/);
   assert.match(APP_SCRIPT, /const progress = dashboardProgramReadiness\(state\.programReadiness\)/);
-  assert.match(APP_SCRIPT, /pages\.filter\(\(destination\) => derivedStagePageState\(stage, destination\)\.complete\)\.length/);
+  assert.match(APP_SCRIPT, /current\.countsTowardProgress !== false/);
+  assert.match(APP_SCRIPT, /applicable\.filter\(\(current\) => current\.complete\)\.length/);
+  assert.match(APP_SCRIPT, /return \{ complete: false, countsTowardProgress: false, label: "Only if needed" \}/);
+  assert.match(APP_SCRIPT, /const collectionReview = destination\.type \? state\.collectionReviews\?\.\[destination\.type\] : null/);
   assert.match(APP_SCRIPT, /if \(!total\) return \{ percent: 0/);
   assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 5/);
   assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
@@ -1207,7 +1227,9 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.equal(PROGRAM_PATH[2].summary, "Describe each Control and connect its evidence source.");
   assert.equal(PROGRAM_PATH[3].summary, "Complete scheduled and event work. Keep dated proof.");
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
-  assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team"]);
+  assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team", "reporting-route-set"]);
+  assert.equal(RESOURCE_PAGE_SUMMARIES["reporting-route-set"], "Set the normal and fallback ways people report security concerns.");
+  assert.match(PROGRAM_PATH[0].sections[0].description, /normal security reporting channel and its fallback/);
   assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
   assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control", "retention-schedule-item", "obligation"]);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
@@ -1417,7 +1439,7 @@ test("runs optional onboarding from committed renderer settings", () => {
   assert.match(APP_SCRIPT, /result\.pushed/);
   assert.match(APP_SCRIPT, /result\.pushSkipped/);
   assert.match(APP_SCRIPT, /Commit locally/);
-  assert.match(APP_SCRIPT, />Pull with rebase<\/button>/);
+  assert.match(APP_SCRIPT, />Check incoming commits<\/button>/);
   assert.match(APP_SCRIPT, />Push<\/button>/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/git\/" \+ action/);
   assert.match(APP_SCRIPT, /state\.git\.upstream/);
