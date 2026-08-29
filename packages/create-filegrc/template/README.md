@@ -75,6 +75,7 @@ The browser is helpful, but it is not required. An agent can discover the model,
 ```sh
 npx filegrc program-path --next --json
 npx filegrc reconcile --preview --json
+npx filegrc reconcile --dismiss --candidate FINGERPRINT --reviewer PERSON_ID --reviewed-on YYYY-MM-DD --rationale "Why no real event occurred" --yes --json
 npx filegrc workflow --json # full checklist when needed
 npx filegrc period-health --require-healthy --json
 npx filegrc review-applicability decisions.json --preview --json

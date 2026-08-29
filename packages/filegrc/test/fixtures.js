@@ -106,6 +106,7 @@ export async function makeComprehensiveWorkspace(root, version) {
   const records = [];
 
   for (const [type, definition] of Object.entries(model.resources)) {
+    if (type === "reconciliation-dismissal") continue;
     const record = {
       id: ids[type],
       type,

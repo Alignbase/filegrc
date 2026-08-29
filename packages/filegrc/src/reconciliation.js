@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { modelSupports } from "../model/index.js";
-import { createObligationEvent } from "./obligations.js";
+import { createObligationEvent, obligationRule } from "./obligations.js";
+import { createResource, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
 import { getDataRecordHistoryIndex, getFileAtRevision, runGitCommandSync } from "./git.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
+import { currentCalendarDate } from "./time.js";
 
 const TRANSITIONS = {
   person: [
@@ -94,7 +96,7 @@ const TRANSITIONS = {
   }]
 };
 
-export async function planReconciliation(input = process.cwd()) {
+export async function planReconciliation(input = process.cwd(), options = {}) {
   const loaded = input?.entries && input?.resources && input?.model
     ? input
     : await loadWorkspace(input);
@@ -134,11 +136,24 @@ export async function planReconciliation(input = process.cwd()) {
     ? recordsAtRevision(loaded.root, `${reconciliationHistory[0]}^`)
     : new Map();
   const historyIndex = getDataRecordHistoryIndex(loaded.root);
+  const committedRecordIds = new Set(historyIndex.historiesById.keys());
+  const eventRecordSnapshots = new Map();
+  const recordsForEvent = (event) => {
+    if (eventRecordSnapshots.has(event.id)) return eventRecordSnapshots.get(event.id);
+    const history = historyIndex.historiesById.get(event.id) || [];
+    const firstCommit = history.at(-1)?.commit;
+    const records = firstCommit
+      ? [...recordsAtRevision(loaded.root, firstCommit).values()].map(({ record }) => record)
+      : loaded.resources;
+    eventRecordSnapshots.set(event.id, records);
+    return records;
+  };
   const currentMarkdownOwners = new Map();
   for (const entry of loaded.entries) {
     for (const markdown of markdownEntries(loaded.model, entry.record)) currentMarkdownOwners.set(`data/${markdown.path}`, entry);
   }
-  const candidates = [];
+  const rawCandidates = [];
+  const filteredCandidates = [];
   const examined = new Set();
 
   for (const commit of reconciliationHistory) {
@@ -186,22 +201,27 @@ export async function planReconciliation(input = process.cwd()) {
       ].join("\n");
       for (const transition of TRANSITIONS[record.type] || []) {
         if (!transition.applies(previous, current, { markdownChanged })) continue;
-        if (committedEventHandled(loaded.root, commit, commitPaths, transition.eventType, record.id, historicalRecords)) continue;
-        const fingerprint = transitionFingerprint({
-          baseRevision: commit,
+        const fingerprintInput = {
+          baseRevision: parentRevision(loaded.root, commit),
           eventType: transition.eventType,
           subjectId: record.id,
           path: recordPath,
           beforeSource,
           currentSource,
           markdownChanged
+        };
+        const fingerprint = transitionFingerprint(fingerprintInput);
+        const legacyCommittedFingerprint = transitionFingerprint({ ...fingerprintInput, baseRevision: commit });
+        const legacyWorkingFingerprint = transitionFingerprint({
+          ...fingerprintInput,
+          beforeSource: [previous ? JSON.stringify(previous) : "", ...changedMarkdownPaths.map((changed) => (
+            readRevisionSource(loaded.root, `${commit}^`, changed)
+          ))].join("\n")
         });
         const eventId = `obligation-event-git-${fingerprint.slice(0, 16)}`;
-        if (loaded.resources.some((item) => (
-          item.type === "obligation-event"
-          && (item.id === eventId || item.transitionFingerprint === fingerprint)
-        ))) continue;
-        candidates.push(reconciliationCandidate(
+        const handledFingerprints = [fingerprint, legacyCommittedFingerprint, legacyWorkingFingerprint];
+        const handledEventIds = handledFingerprints.map((value) => `obligation-event-git-${value.slice(0, 16)}`);
+        const candidate = reconciliationCandidate(
           loaded,
           transition,
           record,
@@ -209,7 +229,16 @@ export async function planReconciliation(input = process.cwd()) {
           fingerprint,
           eventId,
           { committedRevision: commit }
-        ));
+        );
+        rawCandidates.push(candidate);
+        if (!transitionHandled(loaded.resources, handledEventIds, handledFingerprints, {
+          eventType: transition.eventType,
+          subjectId: record.id,
+          includeDismissed: options.includeDismissed,
+          committedRecordIds,
+          timezone: loaded.workspace.timezone,
+          recordsForEvent
+        })) filteredCandidates.push(candidate);
       }
     }
   }
@@ -241,10 +270,10 @@ export async function planReconciliation(input = process.cwd()) {
     }));
     const previousMarkdown = changedMarkdownPaths.map((changed) => readHeadSource(loaded.root, changed));
     const currentSource = [currentEntry?.source || "", ...currentMarkdown].join("\n");
-    const beforeSource = [previous ? JSON.stringify(previous) : "", ...previousMarkdown].join("\n");
+    const beforeSource = [readHeadSource(loaded.root, previousRecordPath), ...previousMarkdown].join("\n");
     for (const transition of TRANSITIONS[record.type] || []) {
       if (!transition.applies(previous, current, { markdownChanged })) continue;
-      const fingerprint = transitionFingerprint({
+      const fingerprintInput = {
         baseRevision,
         eventType: transition.eventType,
         subjectId: record.id,
@@ -252,24 +281,40 @@ export async function planReconciliation(input = process.cwd()) {
         beforeSource,
         currentSource,
         markdownChanged
+      };
+      const fingerprint = transitionFingerprint(fingerprintInput);
+      const legacyFingerprint = transitionFingerprint({
+        ...fingerprintInput,
+        beforeSource: [previous ? JSON.stringify(previous) : "", ...previousMarkdown].join("\n")
       });
       const eventId = `obligation-event-git-${fingerprint.slice(0, 16)}`;
-      if (loaded.resources.some((item) => (
-        item.type === "obligation-event"
-        && (
-          item.id === eventId
-          || item.transitionFingerprint === fingerprint
-        )
-      ))) continue;
-      candidates.push(reconciliationCandidate(loaded, transition, record, path, fingerprint, eventId));
+      const legacyEventId = `obligation-event-git-${legacyFingerprint.slice(0, 16)}`;
+      const candidate = reconciliationCandidate(loaded, transition, record, path, fingerprint, eventId);
+      rawCandidates.push(candidate);
+      if (!transitionHandled(loaded.resources, [eventId, legacyEventId], [fingerprint, legacyFingerprint], {
+        eventType: transition.eventType,
+        subjectId: record.id,
+        includeDismissed: options.includeDismissed,
+        committedRecordIds,
+        timezone: loaded.workspace.timezone,
+        recordsForEvent
+      })) filteredCandidates.push(candidate);
     }
   }
-  return {
+  const result = {
     contractVersion: 1,
     gitRevision: gitRevision(loaded.root),
     changedPaths,
-    candidates: candidates.sort((a, b) => a.id.localeCompare(b.id))
+    candidates: (options.includeHandled ? rawCandidates : filteredCandidates)
+      .sort((a, b) => a.id.localeCompare(b.id))
   };
+  if (options.includeHandled) {
+    Object.defineProperty(result, "filteredPlan", {
+      value: { ...result, candidates: filteredCandidates.sort((a, b) => a.id.localeCompare(b.id)) },
+      enumerable: false
+    });
+  }
+  return result;
 }
 
 function reconciliationCandidate(loaded, transition, record, path, fingerprint, eventId, extra = {}) {
@@ -341,30 +386,14 @@ function pairCommittedRecordRenames(root, commit, changes) {
   return [...changes.filter((change) => !paired.has(change)), ...replacements];
 }
 
-function committedEventHandled(root, commit, commitPaths, eventType, subjectId, historicalRecords) {
-  const requiredObligationIds = applicableEventObligationIds(
-    [...historicalRecords.values()].map(({ record }) => record),
-    eventType
-  );
-  return commitPaths.some((path) => {
-    if (!path.endsWith(".json")) return false;
-    const record = readRevisionRecord(root, commit, path);
-    const previous = readRevisionRecord(root, `${commit}^`, path);
-    return !previous
-      && record?.type === "obligation-event"
-      && record.eventType === eventType
-      && (record.subjectResourceIds || []).includes(subjectId)
-      && requiredObligationIds.every((id) => (record.obligationIds || []).includes(id));
-  });
-}
-
-function applicableEventObligationIds(records, eventType) {
+function applicableEventObligationIds(records, eventType, riskLevel, occurredAt) {
   const byId = new Map(records.map((record) => [record.id, record]));
   return records.filter((record) => {
     if (record.type !== "obligation" || record.status !== "active") return false;
-    const rule = byId.get(record.activeRuleId);
-    const schedule = rule?.type === "obligation-rule" && rule.status === "active" ? rule : record;
-    return schedule.recurrence?.mode === "event" && schedule.recurrence.eventType === eventType;
+    const schedule = obligationRule(record, byId, { now: occurredAt }) || record;
+    return schedule.recurrence?.mode === "event"
+      && schedule.recurrence.eventType === eventType
+      && (!Array.isArray(record.eventRiskLevels) || record.eventRiskLevels.includes(riskLevel));
   }).map(({ id }) => id);
 }
 
@@ -393,9 +422,7 @@ export async function applyReconciliation(input = process.cwd(), options = {}) {
   }
   return serializeWorkspaceMutation(input, async (root) => {
     const plan = await planReconciliation(root);
-    const candidate = plan.candidates.find(({ id, transitionFingerprint }) => (
-      id === options.candidateId || transitionFingerprint === options.transitionFingerprint
-    ));
+    const candidate = findCandidate(plan, options);
     if (!candidate) {
       throw new Error("The reconciliation candidate is missing or changed. Run reconcile --preview again.");
     }
@@ -415,6 +442,172 @@ export async function applyReconciliation(input = process.cwd(), options = {}) {
     });
     return { candidate, ...result };
   });
+}
+
+export async function dismissReconciliation(input = process.cwd(), options = {}) {
+  if (options.confirmed !== true) {
+    throw new Error("Dismissing a reconciliation candidate records a review decision. Preview the candidate and confirm the write.");
+  }
+  return serializeWorkspaceMutation(input, async (root) => {
+    const plan = await planReconciliation(root);
+    const candidate = findCandidate(plan, options);
+    if (!candidate) {
+      throw new Error("The reconciliation candidate is missing or changed. Run reconcile --preview again.");
+    }
+    const loaded = await loadWorkspace(root);
+    if (!loaded.model.resources["reconciliation-dismissal"]) {
+      throw new Error("Reconciliation dismissals require data model v10 or newer.");
+    }
+    const reviewedById = String(options.reviewedById || "").trim();
+    const reviewedOn = String(options.reviewedOn || "").trim();
+    const rationale = String(options.rationale || "").trim();
+    if (!loaded.resources.some((record) => (
+      record.type === "person" && record.id === reviewedById && record.status === "active"
+    ))) {
+      throw new Error("An active Person ID is required as the dismissal reviewer.");
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(reviewedOn)) {
+      throw new Error("The dismissal review date must use YYYY-MM-DD.");
+    }
+    if (reviewedOn !== currentCalendarDate(loaded.workspace.timezone)) {
+      throw new Error("The dismissal review date must be the current date in the workspace timezone.");
+    }
+    if (!rationale) throw new Error("A rationale is required to dismiss a reconciliation candidate.");
+    const record = {
+      id: `reconciliation-dismissal-${candidate.transitionFingerprint}`,
+      type: "reconciliation-dismissal",
+      title: `Dismiss ${candidate.eventType} for ${candidate.subject.title}`,
+      transitionFingerprint: candidate.transitionFingerprint,
+      eventType: candidate.eventType,
+      subjectResourceId: candidate.subject.id,
+      reviewedByIds: [reviewedById],
+      reviewedOn,
+      rationale
+    };
+    const result = await createResource(root, record, {
+      workflowCapability: INTERNAL_WORKFLOW_CAPABILITIES.reconciliationDismissal
+    });
+    return { candidate, dismissal: result.record, path: result.path };
+  });
+}
+
+function transitionHandled(resources, eventIds, fingerprints, transition) {
+  return resources.some((item) => (
+    item.type === "obligation-event"
+      ? (() => {
+        if (!eventIds.includes(item.id) && !fingerprints.includes(item.transitionFingerprint)) return false;
+        const records = transition.recordsForEvent?.(item) || resources;
+        const event = records.find((record) => record.id === item.id) || item;
+        return (eventIds.includes(event.id) || fingerprints.includes(event.transitionFingerprint))
+          && obligationEventHandlesTransition(event, records, transition.eventType, transition.subjectId, resources);
+      })()
+      : !transition.includeDismissed && reconciliationDismissalMatches(item, {
+        transitionFingerprint: fingerprints[0],
+        eventType: transition.eventType,
+        subject: { id: transition.subjectId }
+      }, resources, {
+        requireActiveReviewer: !transition.committedRecordIds.has(item.id),
+        timezone: transition.timezone
+      })
+  ));
+}
+
+function obligationEventHandlesTransition(event, records, eventType, subjectId, currentRecords = records) {
+  if (event?.type !== "obligation-event" || event.eventType !== eventType || event.status === "canceled") return false;
+  if (!(event.subjectResourceIds || []).includes(subjectId)) return false;
+  const currentEvent = currentRecords.find((record) => record.id === event.id);
+  if (
+    currentEvent?.type !== "obligation-event"
+    || currentEvent.eventType !== eventType
+    || currentEvent.status === "canceled"
+    || !(currentEvent.subjectResourceIds || []).includes(subjectId)
+    || currentEvent.riskLevel !== event.riskLevel
+    || currentEvent.occurredOn !== event.occurredOn
+    || currentEvent.occurredAt !== event.occurredAt
+  ) return false;
+  const occurredAt = event.occurredAt || (event.occurredOn ? `${event.occurredOn}T23:59:59Z` : undefined);
+  const requiredObligationIds = applicableEventObligationIds(records, eventType, event.riskLevel, occurredAt);
+  if (!requiredObligationIds.length) return false;
+  return requiredObligationIds.every((obligationId) => {
+    const historicalAction = records.find((record) => (
+      record.type === "action-item"
+      && record.sourceResourceId === event.id
+      && record.obligationId === obligationId
+      && record.status !== "canceled"
+    ));
+    return (event.obligationIds || []).includes(obligationId)
+      && (currentEvent.obligationIds || []).includes(obligationId)
+      && historicalAction
+      && currentRecords.some((record) => (
+      record.type === "action-item"
+      && record.id === historicalAction.id
+      && record.sourceResourceId === event.id
+      && record.obligationId === obligationId
+      && record.status !== "canceled"
+      ));
+  });
+}
+
+export function reconciliationDismissalMatches(record, candidate, resources, options = {}) {
+  if (record?.type !== "reconciliation-dismissal") return false;
+  const reviewers = Array.isArray(record.reviewedByIds) ? record.reviewedByIds : [];
+  return record.id === `reconciliation-dismissal-${candidate.transitionFingerprint}`
+    && record.transitionFingerprint === candidate.transitionFingerprint
+    && record.eventType === candidate.eventType
+    && record.subjectResourceId === candidate.subject.id
+    && reviewers.length === 1
+    && resources.some((item) => (
+      item.type === "person"
+      && item.id === reviewers[0]
+      && (!options.requireActiveReviewer || item.status === "active")
+    ))
+    && /^\d{4}-\d{2}-\d{2}$/.test(record.reviewedOn || "")
+    && (!options.requireActiveReviewer
+      || record.reviewedOn === currentCalendarDate(options.timezone || "UTC"))
+    && typeof record.rationale === "string"
+    && Boolean(record.rationale.trim());
+}
+
+export async function validateReconciliationDismissals(loaded, diagnostics) {
+  const dismissals = loaded.entries.filter(({ record }) => record.type === "reconciliation-dismissal");
+  if (!dismissals.length) return;
+  const raw = await planReconciliation(loaded, { includeHandled: true });
+  const committedRecordIds = new Set(getDataRecordHistoryIndex(loaded.root).historiesById.keys());
+  const seen = new Set();
+  for (const entry of dismissals) {
+    const candidate = raw.candidates.find(({ transitionFingerprint }) => (
+      transitionFingerprint === entry.record.transitionFingerprint
+    ));
+    if (
+      !candidate
+      || seen.has(entry.record.transitionFingerprint)
+      || !reconciliationDismissalMatches(entry.record, candidate, loaded.resources, {
+        requireActiveReviewer: !committedRecordIds.has(entry.record.id),
+        timezone: loaded.workspace.timezone
+      })
+    ) {
+      diagnostics.push({
+        severity: "error",
+        code: "invalid-reconciliation-dismissal",
+        path: `data/${entry.relativePath}`,
+        message: `Reconciliation dismissal "${entry.record.id}" must bind one current raw transition candidate to its exact fingerprint, event type, subject, and one active Person reviewer.`
+      });
+    }
+    seen.add(entry.record.transitionFingerprint);
+  }
+  return raw;
+}
+
+function parentRevision(root, commit) {
+  return runGit(root, ["rev-parse", `${commit}^`]) || commit;
+}
+
+function findCandidate(plan, options) {
+  return plan.candidates.find(({ id, transitionFingerprint }) => (
+    id === options.candidateId
+    || transitionFingerprint === options.candidateId
+    || transitionFingerprint === options.transitionFingerprint
+  ));
 }
 
 function gitChangedEntries(root) {

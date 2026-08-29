@@ -5,6 +5,7 @@ import { assessCollectionReviews } from "./collection-review.js";
 import { getBrowserRepositoryState, getRepositorySnapshot, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
+import { planReconciliation } from "./reconciliation.js";
 import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -82,6 +83,7 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
       counts: { errors: 0, warnings: 0 },
       diagnostics: []
     },
+    reconciliation: { contractVersion: 1, gitRevision: null, changedPaths: [], candidates: [] },
     obligations: { loading: true, items: [], triggers: [], counts: {} },
     collectionReviews: {},
     applicabilityConstraints: {},
@@ -116,6 +118,8 @@ export async function createAppStateSection(input, section, options = {}) {
       validateWorkspace(loaded),
       measureTiming("state-repository-snapshot", () => getRepositorySnapshot(loaded.root))
     ]);
+    const reconciliation = validation.reconciliation
+      ?? await measureTiming("state-reconciliation", () => planReconciliation(loaded));
     const git = { ...snapshot };
     delete git.root;
     const repository = await measureTiming("state-repository", () => getBrowserRepositoryState(loaded, {
@@ -128,6 +132,7 @@ export async function createAppStateSection(input, section, options = {}) {
       readOnly: Boolean(options.readOnly || (repository.mode === "trunk" && !repository.writesAllowed)),
       repository,
       git,
+      reconciliation,
       validation: {
         ok: validation.ok,
         counts: validation.counts,
@@ -294,6 +299,8 @@ async function createAppStateUnlocked(input, options) {
     now: options.now ?? generatedAt,
     model: loaded.model
   });
+  const reconciliation = validation.reconciliation
+    ?? await measureTiming("state-reconciliation", () => planReconciliation(loaded));
   const workflow = await measureTiming("state-workflow", () => assessWorkflow(loaded, {
     programId: activeProgram.id,
     asOf,
@@ -303,6 +310,7 @@ async function createAppStateUnlocked(input, options) {
       Object.entries(auditPreparations).filter(([id]) => id !== "none")
     ),
     obligations,
+    reconciliation,
     git,
     validation
   }));
@@ -337,6 +345,7 @@ async function createAppStateUnlocked(input, options) {
       diagnostics: validation.diagnostics
     },
     obligations,
+    reconciliation,
     collectionReviews,
     applicabilityConstraints,
     programReadiness,

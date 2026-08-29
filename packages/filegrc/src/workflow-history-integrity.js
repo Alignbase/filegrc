@@ -15,6 +15,7 @@ import { currentCalendarDate, isRfc3339Timestamp, timestampFromLocalDateTime } f
 import { recordsAtRevision, reportingRouteFixedEvidence } from "./reporting-route-integrity.js";
 
 const FINAL_STATUSES = new Map([
+  ["reconciliation-dismissal", new Set([undefined])],
   ["collection-review", new Set(["active", "retired"])],
   ["obligation-rule", new Set(["active", "retired"])],
   ["obligation-occurrence", new Set(["reconciled", "superseded"])],
@@ -93,6 +94,21 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
       diagnostics.push(integrityError(
         entry,
         `Collection Review "${entry.record.id}" must first be committed active with a knowledge cutoff on its recorded review date. Create a current review instead of initially retiring one or changing its review binding.`
+      ));
+      continue;
+    }
+    if (
+      entry.record.type === "reconciliation-dismissal"
+      && !validInitialReconciliationDismissal(
+        historical,
+        loaded,
+        historiesById,
+        workspaceTimezoneAtRevision(loaded, historical.commit)
+      )
+    ) {
+      diagnostics.push(integrityError(
+        entry,
+        `Reconciliation dismissal "${entry.record.id}" must first be committed with exactly one active Person reviewer.`
       ));
       continue;
     }
@@ -352,6 +368,21 @@ function validInitialCollectionReview(historical, timezone) {
       timezone,
       new Date(historical.record.knowledgeCutoffAt)
     );
+}
+
+function validInitialReconciliationDismissal(historical, loaded, historiesById, timezone) {
+  const reviewerIds = historical.record.reviewedByIds || [];
+  if (reviewerIds.length !== 1) return false;
+  const reviewer = recordAtRevision(
+    loaded,
+    historical.commit,
+    reviewerIds[0],
+    historiesById.get(reviewerIds[0]) || []
+  )?.record;
+  return reviewer?.type === "person"
+    && reviewer.status === "active"
+    && isRfc3339Timestamp(historical.timestamp)
+    && historical.record.reviewedOn === currentCalendarDate(timezone, new Date(historical.timestamp));
 }
 
 function legacyCollectionReview(loaded, historical) {

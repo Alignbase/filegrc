@@ -7485,6 +7485,71 @@
         "coverage"
       ]
     },
+    "reconciliation-dismissal": {
+      "title": "Reconciliation dismissal",
+      "pluralTitle": "Reconciliation dismissals",
+      "group": "repository",
+      "collection": "reconciliation-dismissals",
+      "description": "A reviewed decision that one exact Git transition candidate is a false positive and does not represent a real policy event.",
+      "guidance": {
+        "policyBasis": "Direct file changes can resemble real operational events. This record preserves the reviewer, date, rationale, and exact candidate fingerprint when management confirms that no event occurred.",
+        "cadence": "Create only from a current reconciliation candidate. A later change produces a different fingerprint and requires its own review."
+      },
+      "required": [
+        "transitionFingerprint",
+        "eventType",
+        "subjectResourceId",
+        "reviewedByIds",
+        "reviewedOn",
+        "rationale"
+      ],
+      "fields": {
+        "transitionFingerprint": {
+          "type": "string",
+          "label": "Transition fingerprint"
+        },
+        "eventType": {
+          "type": "string",
+          "label": "Candidate event type",
+          "filter": true
+        },
+        "subjectResourceId": {
+          "type": "id",
+          "relationGroup": "event-subject",
+          "label": "Candidate subject"
+        },
+        "reviewedByIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "person"
+          ],
+          "label": "Reviewed by"
+        },
+        "reviewedOn": {
+          "type": "date",
+          "label": "Reviewed on"
+        },
+        "rationale": {
+          "type": "string",
+          "search": true
+        }
+      },
+      "listFields": [
+        "title",
+        "eventType",
+        "subjectResourceId",
+        "reviewedOn"
+      ],
+      "formFields": [
+        "transitionFingerprint",
+        "eventType",
+        "subjectResourceId",
+        "reviewedByIds",
+        "reviewedOn",
+        "rationale"
+      ]
+    },
     "collection-review": {
       "title": "Collection review",
       "pluralTitle": "Collection reviews",
@@ -9516,7 +9581,8 @@
       "vendor",
       "access-grant",
       "vulnerability",
-      "incident"
+      "incident",
+      "exception"
     ],
     "evidence-source-record": [
       "appointment",

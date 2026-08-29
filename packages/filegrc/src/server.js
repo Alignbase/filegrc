@@ -57,7 +57,7 @@ import {
 } from "./external-reviewer.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { activatePolicies } from "./policy-activation.js";
-import { applyReconciliation, planReconciliation } from "./reconciliation.js";
+import { applyReconciliation, dismissReconciliation, planReconciliation } from "./reconciliation.js";
 import { resourceReviewRevisions } from "./retention.js";
 import { createAppBootstrap, createAppState, createAppStateSection, createResourceDetail } from "./state.js";
 import { setupWorkspace } from "./setup.js";
@@ -187,6 +187,15 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }, () => applyReconciliation(input, {
           ...payload,
           programId: payload.programId || requestOptions.programId,
+          confirmed: payload.confirmed === true
+        })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/reconciliation/dismissal") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, requestOptions, {
+          message: (result) => `Dismiss Git transition candidate: ${result.candidate?.eventType || payload.candidateId}`
+        }, () => dismissReconciliation(input, {
+          ...payload,
           confirmed: payload.confirmed === true
         })));
       }

@@ -28,7 +28,16 @@ test("active model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 55);
+  assert.equal(Object.keys(model.resources).length, 56);
+  assert.deepEqual(model.resources["reconciliation-dismissal"].required, [
+    "transitionFingerprint",
+    "eventType",
+    "subjectResourceId",
+    "reviewedByIds",
+    "reviewedOn",
+    "rationale"
+  ]);
+  assert.ok(model.relationGroups["event-subject"].includes("exception"));
   assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
   assert.deepEqual(

@@ -1856,7 +1856,7 @@ function obligationActivity(model, obligation) {
   };
 }
 
-function obligationRule(obligation, byId, options = {}) {
+export function obligationRule(obligation, byId, options = {}) {
   const proposedId = options.includeProposed
     ? [...(obligation.ruleIds || [])].reverse().find((id) => ["proposed", "approved"].includes(byId.get(id)?.status))
     : null;

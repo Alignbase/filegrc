@@ -162,7 +162,7 @@ Relationship fields use the named groups below. The registry expands each group 
 | `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 | `obligation-template` | `person`, `system`, `asset`, `document`, `control`, `policy`, `training`, `retention-schedule-item`, `requirement-mapping` |
 | `completion-record` | `access-grant`, `asset`, `control`, `document`, `evidence`, `control-test`, `finding`, `exception`, `action-item`, `policy-review`, `policy`, `attestation`, `meeting`, `risk-assessment`, `risk`, `vendor`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping` |
-| `event-subject` | `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident` |
+| `event-subject` | `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident`, `exception` |
 | `evidence-source-record` | `appointment`, `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `work-source` | `control`, `control-test`, `finding`, `exception`, `obligation`, `obligation-event`, `policy-review`, `meeting`, `risk`, `risk-assessment`, `vendor-review`, `access-review`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `work-blocker` | `person`, `appointment`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
@@ -2455,7 +2455,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `eventType` | string | Yes |  |
 | `occurredOn` | date | Yes |  |
 | `occurredAt` | timestamp | No |  |
-| `subjectResourceIds` | array of id | No | Relation group: `event-subject`. References: `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident` |
+| `subjectResourceIds` | array of id | No | Relation group: `event-subject`. References: `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident`, `exception` |
 | `obligationIds` | array of id | Yes | References: `obligation` |
 | `completedOn` | date | Conditional | Required when `status` is `complete`. |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
@@ -2774,3 +2774,26 @@ Record Markdown: available when needed as an implicit companion file.
 | `repositoryMode` | enum | Yes | Repository mode Values: `trunk`, `manual` |
 | `authoritativeBranch` | string (git-name) | Yes | Authoritative branch |
 | `repositoryRemote` | string (git-name) | Yes | Repository remote |
+
+#### `reconciliation-dismissal`
+
+A reviewed decision that one exact Git transition candidate is a false positive and does not represent a real policy event.
+
+Instructions: A reviewed decision that one exact Git transition candidate is a false positive and does not represent a real policy event.
+
+Policy basis: Direct file changes can resemble real operational events. This record preserves the reviewer, date, rationale, and exact candidate fingerprint when management confirms that no event occurred.
+
+Timing: Create only from a current reconciliation candidate. A later change produces a different fingerprint and requires its own review.
+
+Path: `data/reconciliation-dismissals/<id>.json`
+
+Record Markdown: available when needed as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `transitionFingerprint` | string | Yes | Transition fingerprint |
+| `eventType` | string | Yes | Candidate event type |
+| `subjectResourceId` | id | Yes | Candidate subject Relation group: `event-subject`. References: `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `policy`, `training`, `vendor`, `access-grant`, `vulnerability`, `incident`, `exception` |
+| `reviewedByIds` | array of id | Yes | Reviewed by References: `person` |
+| `reviewedOn` | date | Yes | Reviewed on |
+| `rationale` | string | Yes |  |

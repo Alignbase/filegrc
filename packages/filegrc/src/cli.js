@@ -68,7 +68,7 @@ import {
 import { planProgramAmendment } from "./program-amendment.js";
 import { resolveProgram } from "./program.js";
 import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
-import { applyReconciliation, planReconciliation } from "./reconciliation.js";
+import { applyReconciliation, dismissReconciliation, planReconciliation } from "./reconciliation.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { effectiveResourceStatus } from "./resource-status.js";
 import { searchResources } from "./search.js";
@@ -617,7 +617,17 @@ export async function runCli(argv = process.argv.slice(2)) {
     return result;
   }
   if (command === "reconcile") {
-    const result = flags.apply
+    if (flags.apply && flags.dismiss) throw new Error("Choose either --apply or --dismiss for one reconciliation candidate.");
+    const result = flags.dismiss
+      ? await withWorkflowDelta(root, () => dismissReconciliation(root, {
+        candidateId: flags.candidate,
+        transitionFingerprint: flags.candidate,
+        reviewedById: flags.reviewer,
+        reviewedOn: flags["reviewed-on"],
+        rationale: flags.rationale,
+        confirmed: flags.yes === true
+      }))
+      : flags.apply
       ? await withWorkflowDelta(root, () => applyReconciliation(root, {
         candidateId: flags.candidate,
         transitionFingerprint: flags.candidate,
@@ -630,7 +640,9 @@ export async function runCli(argv = process.argv.slice(2)) {
       }))
       : await planReconciliation(root);
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else if (flags.apply) {
+    else if (flags.dismiss) {
+      console.log(`Dismissed ${result.candidate.eventType}: recorded ${result.dismissal.id}.`);
+    } else if (flags.apply) {
       console.log(`Reconciled ${result.candidate.eventType}: created ${result.event.id} and ${result.actions.length} linked tasks.`);
     } else if (!result.candidates.length) {
       console.log("No direct-file transitions need confirmation.");
@@ -1328,7 +1340,7 @@ Usage:
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
   filegrc audit-readiness [audit-id] [--as-of YYYY-MM-DD] [--require-ready] [--json]
   filegrc prepare-audit <audit-id> [--json]
-  filegrc reconcile [--preview|--apply --candidate fingerprint (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --yes] [--program program-id] [--risk-level normal|high] [--json]
+  filegrc reconcile [--preview|--apply --candidate fingerprint (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) --yes|--dismiss --candidate fingerprint --reviewer person-id --reviewed-on YYYY-MM-DD --rationale text --yes] [--program program-id] [--risk-level normal|high] [--json]
   filegrc external-reviewer-setup --scaffold
   filegrc external-reviewer-setup <reviewer.json|-> [--preview|--yes] [--json]
   filegrc next-audit-cycle <prior-audit-id> [cycle.json|-] --start YYYY-MM-DD --end YYYY-MM-DD [--preview|--yes] [--json]

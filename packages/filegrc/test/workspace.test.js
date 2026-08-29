@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { createAppState, createResource, createResourceAndLink, deleteResource, effectiveResourceStatus, loadWorkspace, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
+import { createAppState, createResource, createResourceAndLink, deleteResource, dismissReconciliation, effectiveResourceStatus, loadWorkspace, planReconciliation, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
 import { collectTimings } from "../src/timing.js";
 import { fingerprintWorkspace } from "../src/validate.js";
 import { makeWorkspace } from "./helpers.js";
@@ -451,6 +451,19 @@ test("validates a realistic workspace containing every resource type", async (co
   await execute("git", ["config", "user.email", "test@example.test"], { cwd: root });
   await execute("git", ["add", "."], { cwd: root });
   await execute("git", ["commit", "-m", "Create workspace"], { cwd: root });
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeFile(personPath, `${JSON.stringify({ ...person, jobTitle: "Security Director" }, null, 2)}\n`, "utf8");
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+  await dismissReconciliation(root, {
+    candidateId: candidate.transitionFingerprint,
+    reviewedById: "person-independent-approver-example",
+    reviewedOn: "2026-08-29",
+    rationale: "The fixture changes the title only to exercise a reviewed false-positive transition.",
+    confirmed: true
+  });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["commit", "-m", "Record transition dismissal"], { cwd: root });
   const validation = await validateWorkspace(root);
   assert.equal(validation.counts.resources, Object.keys(model.resources).length + 1);
   assert.deepEqual(validation.diagnostics, []);

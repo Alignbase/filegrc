@@ -13,6 +13,7 @@ import {
   assessWorkflow,
   createNextAuditCycle,
   createObligationEvent,
+  dismissReconciliation,
   planNextAuditCycle,
   planApplicabilityReview,
   planExternalReviewerGovernance,
@@ -83,6 +84,241 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   });
   assert.equal(applied.actions.length, 1);
   assert.equal((await planReconciliation(root)).candidates.length, 0);
+  await commitAll(root, "Record role change event");
+  const eventPath = join(root, "data", "obligation-events", `${applied.event.id}.json`);
+  const eventRecord = JSON.parse(await readFile(eventPath, "utf8"));
+  await writeJson(eventPath, { ...eventRecord, eventType: "person-started" });
+  assert.equal((await planReconciliation(root)).candidates.length, 1);
+  await writeJson(eventPath, eventRecord);
+  const actionPath = join(root, "data", "action-items", `${applied.actions[0].id}.json`);
+  const action = JSON.parse(await readFile(actionPath, "utf8"));
+  await import("node:fs/promises").then(({ rm }) => rm(actionPath));
+  await commitAll(root, "Remove role change checklist");
+  assert.equal((await planReconciliation(root)).candidates.length, 1);
+  await writeJson(actionPath, action);
+  await commitAll(root, "Restore role change checklist");
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+  const obligationPath = join(root, "data", "obligations", "obligation-role-change.json");
+  const obligation = JSON.parse(await readFile(obligationPath, "utf8"));
+  await writeJson(obligationPath, { ...obligation, status: "retired" });
+  await commitAll(root, "Retire role change obligation");
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+});
+
+test("dismisses only the exact false-positive transition fingerprint with review facts", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-reconcile-dismissal-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  await commitAll(root, "Create model 10 workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  await commitAll(root, "Correct title");
+
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+  assert.ok(candidate);
+  await assert.rejects(dismissReconciliation(root, {
+    candidateId: candidate.transitionFingerprint,
+    reviewedById: "person-example",
+    reviewedOn: "2026-08-29",
+    rationale: "The title was corrected; assigned access and duties did not change."
+  }), /confirm/);
+  const result = await dismissReconciliation(root, {
+    candidateId: candidate.transitionFingerprint,
+    reviewedById: "person-example",
+    reviewedOn: "2026-08-29",
+    rationale: "The title was corrected; assigned access and duties did not change.",
+    confirmed: true
+  });
+  assert.equal(result.dismissal.transitionFingerprint, candidate.transitionFingerprint);
+  assert.deepEqual(result.dismissal.reviewedByIds, ["person-example"]);
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+
+  await commitAll(root, "Record false-positive review");
+  const committedValidation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(
+    committedValidation.diagnostics.some(({ code }) => code === "rewritten-finalized-record"),
+    false,
+    JSON.stringify(committedValidation.diagnostics, null, 2)
+  );
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+
+  await createObligationEvent(root, {
+    id: candidate.eventId,
+    eventType: candidate.eventType,
+    occurredOn: "2026-08-29",
+    subjectResourceIds: [candidate.subject.id],
+    transitionFingerprint: candidate.transitionFingerprint
+  });
+  const correctedValidation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(
+    correctedValidation.diagnostics.some(({ code }) => code === "invalid-reconciliation-dismissal"),
+    false,
+    JSON.stringify(correctedValidation.diagnostics, null, 2)
+  );
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+
+  await writeJson(result.path, {
+    ...result.dismissal,
+    rationale: "Rewritten after the review was committed."
+  });
+  const rewrittenValidation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.ok(rewrittenValidation.diagnostics.some(({ code }) => code === "rewritten-finalized-record"));
+  await writeJson(result.path, { ...result.dismissal, rationale: 1 });
+  const malformedValidation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(malformedValidation.ok, false);
+  assert.ok(malformedValidation.diagnostics.some(({ path }) => path.includes(result.dismissal.id)));
+  await writeJson(result.path, result.dismissal);
+
+  await writeJson(personPath, { ...person, status: "inactive", jobTitle: "Security Director" });
+  const inactiveReviewerValidation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(
+    inactiveReviewerValidation.diagnostics.some(({ code }) => code === "invalid-reconciliation-dismissal"),
+    false,
+    JSON.stringify(inactiveReviewerValidation.diagnostics, null, 2)
+  );
+
+  await writeJson(personPath, { ...person, jobTitle: "Chief Security Officer" });
+  const later = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+  assert.ok(later);
+  assert.notEqual(later.transitionFingerprint, candidate.transitionFingerprint);
+});
+
+test("does not let an unrelated Policy Event suppress a reconciliation candidate", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-reconcile-unrelated-event-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  await commitAll(root, "Create model 10 workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  await commitAll(root, "Correct title");
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+  assert.ok(candidate);
+
+  await createObligationEvent(root, {
+    id: candidate.eventId,
+    eventType: candidate.eventType,
+    occurredOn: "2026-08-29",
+    subjectResourceIds: ["person-independent-approver-example"]
+  });
+  assert.ok((await planReconciliation(root)).candidates.some(({ id }) => id === candidate.id));
+});
+
+test("does not let an incomplete same-commit high-risk event suppress a departure", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-high-risk-event-");
+  for (const [id, riskLevels] of [
+    ["obligation-departure-normal", undefined],
+    ["obligation-departure-high", ["high"]]
+  ]) {
+    await writeJson(join(root, "data", "obligations", `${id}.json`), {
+      id,
+      type: "obligation",
+      title: id,
+      status: "active",
+      activityType: "access-removal",
+      recurrence: { mode: "event", eventType: "person-ended" },
+      ...(riskLevels ? { eventRiskLevels: riskLevels } : {}),
+      window: { precision: "date", startsAfter: 0, dueAfter: 1 },
+      ownerIds: ["person-owner"],
+      completionResourceIds: []
+    });
+  }
+  await commitAll(root, "Add departure obligations");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, status: "inactive" });
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-ended");
+  assert.ok(candidate);
+  await mkdir(join(root, "data", "obligation-events"), { recursive: true });
+  await writeJson(join(root, "data", "obligation-events", `${candidate.eventId}.json`), {
+    id: candidate.eventId,
+    type: "obligation-event",
+    title: "Incomplete high-risk departure",
+    status: "open",
+    eventType: candidate.eventType,
+    occurredOn: "2026-08-29",
+    riskLevel: "high",
+    ownerIds: [person.id],
+    obligationIds: ["obligation-departure-normal"],
+    subjectResourceIds: [person.id]
+  });
+  await commitAll(root, "Record incomplete departure event");
+
+  assert.ok((await planReconciliation(root)).candidates.some(({ eventType }) => eventType === "person-ended"));
+});
+
+test("rejects an inactive Person as a reconciliation dismissal reviewer", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-reconcile-dismissal-reviewer-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  await commitAll(root, "Create model 10 workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, status: "inactive", jobTitle: "Security Director" });
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+
+  await assert.rejects(dismissReconciliation(root, {
+    candidateId: candidate.transitionFingerprint,
+    reviewedById: "person-example",
+    reviewedOn: "2026-08-29",
+    rationale: "The title was corrected only.",
+    confirmed: true
+  }), /active Person/);
+});
+
+test("requires the current workspace date for a reconciliation dismissal", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-reconcile-dismissal-future-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  await commitAll(root, "Create model 10 workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+
+  await assert.rejects(dismissReconciliation(root, {
+    candidateId: candidate.transitionFingerprint,
+    reviewedById: "person-example",
+    reviewedOn: "2000-01-01",
+    rationale: "The title was corrected only.",
+    confirmed: true
+  }), /current date/);
+});
+
+test("CLI dismissal records review facts and removes the committed-transition warning", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-reconcile-dismissal-cli-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  await commitAll(root, "Create model 10 workspace");
+  const personPath = join(root, "data", "people", "person-example.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  await commitAll(root, "Correct job title");
+  const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
+  assert.ok(candidate?.committedRevision);
+
+  const output = JSON.parse((await execute(process.execPath, [
+    cli,
+    "reconcile",
+    "--dismiss",
+    "--candidate",
+    candidate.transitionFingerprint,
+    "--reviewer",
+    "person-example",
+    "--reviewed-on",
+    "2026-08-29",
+    "--rationale",
+    "This commit corrected the recorded title only.",
+    "--yes",
+    "--json",
+    "--root",
+    root
+  ])).stdout);
+  assert.equal(output.dismissal.reviewedOn, "2026-08-29");
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+  const validation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(validation.diagnostics.some(({ code }) => code === "unreconciled-committed-transition"), false);
 });
 
 test("reconciliation ignores inherited Git repository redirection", async (context) => {

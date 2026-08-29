@@ -22,7 +22,8 @@ export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   collectionReviewReassessment: Symbol("collection-review-reassessment"),
   reportingRouteSetProposal: Symbol("reporting-route-set-proposal"),
   reportingRouteSetApproval: Symbol("reporting-route-set-approval"),
-  reportingRouteSetCancellation: Symbol("reporting-route-set-cancellation")
+  reportingRouteSetCancellation: Symbol("reporting-route-set-cancellation"),
+  reconciliationDismissal: Symbol("reconciliation-dismissal")
 });
 
 export async function createResource(input, record, options = {}) {
@@ -671,6 +672,9 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
   const preservesExisting = (allowed = []) => [...new Set([...Object.keys(existing), ...Object.keys(next)])].every((key) => (
     allowed.includes(key) || JSON.stringify(next[key]) === JSON.stringify(existing[key])
   ));
+  if (existing.type === "reconciliation-dismissal" && !preservesExisting()) {
+    throw new Error(`Reconciliation dismissal "${existing.id}" is immutable because it records a fingerprint-bound review decision.`);
+  }
   if (existing.type === "collection-review" && ["active", "retired"].includes(existing.status)) {
     const retirement = options.workflowCapability === INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
       && existing.status === "active"
@@ -909,6 +913,13 @@ function finalizedOccurrenceUsingProof(loaded, targetId) {
 
 function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
   if (
+    record?.type === "reconciliation-dismissal"
+    && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.reconciliationDismissal
+    && options.lifecycleOperation !== "model-migration"
+  ) {
+    throw new Error(`Reconciliation dismissal "${record.id || ""}" is workflow-managed. Dismiss the current transition candidate instead of creating it directly.`);
+  }
+  if (
     record?.type === "collection-review"
     && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
     && options.lifecycleOperation !== "model-migration"
@@ -984,7 +995,8 @@ async function deleteResourceUnlocked(input, type, id, options) {
   assertRevision(source, options.expectedRevision, "The record");
   const record = JSON.parse(source);
   if (
-    (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
+    record.type === "reconciliation-dismissal"
+    || (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
     || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))
     || (record.type === "action-item" && record.obligationId && ["done", "canceled"].includes(record.status))

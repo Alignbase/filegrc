@@ -62,6 +62,7 @@ export async function validateWorkspace(input = process.cwd()) {
 async function validateWorkspaceUnmeasured(input) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const diagnostics = [...loaded.diagnostics];
+  let reconciliation = null;
   const { byId } = indexResources(loaded.resources);
   const seen = new Map();
   const pathById = new Map(loaded.entries.map((entry) => [
@@ -216,8 +217,9 @@ async function validateWorkspaceUnmeasured(input) {
     validateCollectionReviewSet(loaded.resources, pathById, diagnostics);
   }
   if (modelSupports(loaded.model, "guided-workflow")) {
-    const { planReconciliation } = await import("./reconciliation.js");
-    const reconciliation = await planReconciliation(loaded);
+    const { planReconciliation, validateReconciliationDismissals } = await import("./reconciliation.js");
+    const rawReconciliation = await validateReconciliationDismissals(loaded, diagnostics);
+    reconciliation = rawReconciliation?.filteredPlan ?? await planReconciliation(loaded);
     for (const candidate of reconciliation.candidates.filter(({ committedRevision }) => committedRevision)) {
       diagnostics.push(warning(
         "unreconciled-committed-transition",
@@ -239,6 +241,10 @@ async function validateWorkspaceUnmeasured(input) {
   };
   Object.defineProperty(result, "loaded", {
     value: loaded,
+    enumerable: false
+  });
+  Object.defineProperty(result, "reconciliation", {
+    value: reconciliation,
     enumerable: false
   });
   return result;

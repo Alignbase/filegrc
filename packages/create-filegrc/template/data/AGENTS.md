@@ -18,7 +18,7 @@ npx filegrc search "TERM" --json
 
 Use `program-path --next --json` for the current lifecycle step. Use `workflow --json` when you need the full shared assessments, complete checklist, Work Items, and blockers. Use `guide` before any unfamiliar create or status transition. It reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
 
-After changing a lifecycle fact directly, review `reconcile --preview --json`. A candidate asks whether the change represents a real policy event. Supply the actual event date or timestamp, departure risk when relevant, and explicit confirmation before applying it.
+After changing a lifecycle fact directly, review `reconcile --preview --json`. A candidate asks whether the change represents a real policy event. Supply the actual event date or timestamp, departure risk when relevant, and explicit confirmation before applying it. If it is a false positive, use `reconcile --dismiss` with the exact candidate fingerprint, a Person reviewer, the review date, a rationale, and `--yes`. The immutable dismissal suppresses only that fingerprint.
 
 ## Choose the right record
 
