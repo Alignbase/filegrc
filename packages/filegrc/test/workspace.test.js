@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { createAppState, createResource, createResourceAndLink, deleteResource, dismissReconciliation, effectiveResourceStatus, loadWorkspace, planReconciliation, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
+import { createAppState, createResource, createResourceAndLink, currentCalendarDate, deleteResource, dismissReconciliation, effectiveResourceStatus, loadWorkspace, planReconciliation, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
 import { collectTimings } from "../src/timing.js";
 import { fingerprintWorkspace } from "../src/validate.js";
 import { makeWorkspace } from "./helpers.js";
@@ -458,7 +458,7 @@ test("validates a realistic workspace containing every resource type", async (co
   await dismissReconciliation(root, {
     candidateId: candidate.transitionFingerprint,
     reviewedById: "person-independent-approver-example",
-    reviewedOn: "2026-08-29",
+    reviewedOn: currentCalendarDate("America/Chicago"),
     rationale: "The fixture changes the title only to exercise a reviewed false-positive transition.",
     confirmed: true
   });

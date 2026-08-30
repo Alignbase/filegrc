@@ -13,6 +13,7 @@ import {
   assessWorkflow,
   createNextAuditCycle,
   createObligationEvent,
+  currentCalendarDate,
   dismissReconciliation,
   planNextAuditCycle,
   planApplicabilityReview,
@@ -138,16 +139,17 @@ test("dismisses only the exact false-positive transition fingerprint with review
 
   const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
   assert.ok(candidate);
+  const reviewedOn = currentCalendarDate("America/Chicago");
   await assert.rejects(dismissReconciliation(root, {
     candidateId: candidate.transitionFingerprint,
     reviewedById: "person-example",
-    reviewedOn: "2026-08-29",
+    reviewedOn,
     rationale: "The title was corrected; assigned access and duties did not change."
   }), /confirm/);
   const result = await dismissReconciliation(root, {
     candidateId: candidate.transitionFingerprint,
     reviewedById: "person-example",
-    reviewedOn: "2026-08-29",
+    reviewedOn,
     rationale: "The title was corrected; assigned access and duties did not change.",
     confirmed: true
   });
@@ -326,6 +328,7 @@ test("CLI dismissal records review facts and removes the committed-transition wa
   await commitAll(root, "Correct job title");
   const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-role-changed");
   assert.ok(candidate?.committedRevision);
+  const reviewedOn = currentCalendarDate("America/Chicago");
 
   const output = JSON.parse((await execute(process.execPath, [
     cli,
@@ -336,7 +339,7 @@ test("CLI dismissal records review facts and removes the committed-transition wa
     "--reviewer",
     "person-example",
     "--reviewed-on",
-    "2026-08-29",
+    reviewedOn,
     "--rationale",
     "This commit corrected the recorded title only.",
     "--yes",
@@ -344,7 +347,7 @@ test("CLI dismissal records review facts and removes the committed-transition wa
     "--root",
     root
   ])).stdout);
-  assert.equal(output.dismissal.reviewedOn, "2026-08-29");
+  assert.equal(output.dismissal.reviewedOn, reviewedOn);
   assert.equal((await planReconciliation(root)).candidates.length, 0);
   const validation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
   assert.equal(validation.diagnostics.some(({ code }) => code === "unreconciled-committed-transition"), false);
