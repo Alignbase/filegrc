@@ -534,6 +534,8 @@ test("classifies and atomically migrates a complete v3 System and Component grap
   context.after(() => rm(invalidParent, { recursive: true, force: true }));
   const invalidRoot = join(invalidParent, "workspace");
   execFileSync("git", ["clone", "--quiet", root, invalidRoot], { stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "FileGRC Tests"], { cwd: invalidRoot, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "tests@filegrc.dev"], { cwd: invalidRoot, stdio: "ignore" });
 
   const preview = await planModelMigration(root, { targetModelVersion: "4" });
   assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
