@@ -1,0 +1,361 @@
+---
+title: "SOC 2 Control Testing: A Practical Management Workflow"
+description: "Plan and record SOC 2 control testing with a clear objective, period, population, samples, evidence, results, exceptions, and follow-up."
+publishedDate: "2026-08-30"
+lastMod: "2026-08-30"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 control testing",
+    "SOC 2 controls testing",
+    "SOC 2 test of controls",
+    "SOC 2 control testing examples",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects a management control test to its control, period, population, sample evidence, result, exceptions, and review."
+faqs:
+  - question: "What is SOC 2 control testing?"
+    answer: "SOC 2 control testing is the work used to evaluate whether a control is suitably designed and, for a period-based examination, whether it operated as described. A test should identify the control, objective, date or period, procedure, evidence, result, exceptions, and reviewer. The CPA firm performs the independent testing for a SOC 2 examination."
+  - question: "Does management have to run its own SOC 2 control tests?"
+    answer: "No. Management-run control tests are not a separate SOC 2 requirement, because the CPA firm plans and performs its own independent testing. Management may run tests to monitor controls, find gaps before fieldwork, check evidence retrieval, or verify remediation. Those tests should not be presented as the CPA firm's work."
+  - question: "Who performs SOC 2 tests of controls?"
+    answer: "The CPA firm performing the SOC 2 examination selects its procedures, performs independent tests, evaluates exceptions, and reaches the examination conclusion. Management operates the controls, supplies requested records, and may perform separate monitoring or readiness tests. Internal audit may also test controls when the organization has that function."
+  - question: "What should a SOC 2 control test record include?"
+    answer: "Record the control and test objective, design or operating focus, exact date or period, tester, method and procedure, source systems, population and sample when used, evidence, result, exception count, reviewer, completion date, and follow-up. Keep the detailed procedure and observations in reviewable notes."
+  - question: "How do populations and samples fit into SOC 2 control testing?"
+    answer: "For an audit-bound test of repeated activity, define the complete Type 2 population before selecting items. Link the reconciled audit population and sampled-item evidence separately. For standalone management monitoring, keep the source export as Evidence and document the query and selection in the test Markdown. The CPA firm chooses its own sample and testing approach for the examination."
+furtherReading:
+  - text: "Follow the startup SOC 2 compliance checklist"
+    url: "/blogs/soc-2-compliance-checklist-startups"
+  - text: "Run the pre-fieldwork audit readiness gate"
+    url: "/blogs/soc-2-audit-readiness-checklist"
+  - text: "Prepare a Git-bound SOC 2 audit evidence packet"
+    url: "/blogs/soc-2-audit-evidence-packet"
+  - text: "Compare SOC 2 Type 1 and Type 2 reports"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 control testing should produce a record another reviewer can follow. It
+should name the control and objective, fix the date or period, explain the
+procedure, connect the population and sampled items when sampling applies,
+link the evidence, state the result, count the exceptions, and assign any
+follow-up. Management may use this workflow to monitor controls and prepare
+for fieldwork. The CPA firm still plans and performs its own independent tests.
+
+## TL;DR
+
+- Decide why management is testing the control before collecting evidence.
+- Test one control against one clear design or operating objective.
+- Fix the date or period, scope, source systems, and expected result first.
+- For repeated activity, preserve the complete population before selecting a
+  sample.
+- Record the procedure, evidence, result, every exception, review, and
+  follow-up together.
+- Keep management testing separate from the CPA firm's independent work.
+
+## What SOC 2 control testing means
+
+A control test asks whether a named control meets a defined objective. A design
+test looks at whether the control, if performed as written, could address the
+intended criterion, risk, or commitment. An operating test looks at whether the
+control actually ran as described on a date or across a period.
+
+The AICPA describes a
+[SOC 2 examination](https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2/)
+as a report on controls at a service organization relevant to security,
+availability, processing integrity, confidentiality, or privacy. Its
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide the criteria used to evaluate those controls. Management designs and
+operates the controls for its system. A licensed CPA firm performs the SOC 2
+examination and decides which procedures support its opinion.
+
+That boundary matters. A management test can find a broken process, confirm a
+fix, or show that source records can be retrieved. It does not become the CPA
+firm's test merely because it is well documented. Do not claim that an internal
+pass proves audit acceptance or that management can choose the firm's sample.
+
+Use a management control test when there is a specific reason, such as:
+
+- checking that a newly implemented control works before relying on it;
+- monitoring a higher-risk control between formal reviews;
+- confirming that a changed procedure still produces the expected records;
+- investigating a dashboard alert, incident, or reported exception;
+- verifying remediation before closing a finding; or
+- preparing the control owner and evidence path for fieldwork.
+
+Management-run tests are optional for SOC 2. Schedule them because the approved
+monitoring process, risk, change, or finding calls for one, not because a fixed
+internet checklist says every control needs a quarterly test.
+
+## Separate operation, management testing, and CPA testing
+
+These records answer different questions and may use some of the same source
+material.
+
+| Record                  | Question                                                                      | Typical owner                                    |
+| ----------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------ |
+| Control operation       | Did the required activity occur for the stated event or schedule?             | Control performer and reviewer                   |
+| Management control test | Did management's procedure support its stated design or operating conclusion? | Management or internal audit tester and reviewer |
+| CPA control test        | What independent work supports the service auditor's conclusion?              | CPA firm                                         |
+
+Suppose a control requires approval before a production change. The approved
+pull request and deployment record prove operation for one change. A management
+test may inspect a defined set of changes, compare approvals with deployment
+times, record exceptions, and reach an internal conclusion. The CPA firm may
+later select different items, request different evidence, and evaluate the
+results under its own plan.
+
+Do not replace the operating records with a test summary. If the control runs
+for every change, keep each change approval in its authoritative source. The
+test points to the related source export and item evidence. This separation
+makes it possible to reproduce what happened without treating a later review
+as the original approval.
+
+## Plan the test before gathering evidence
+
+Start with the current control record. If the statement, scope, owner, system,
+procedure, or operation pattern is wrong, fix the control first. The
+[SOC 2 controls guide](/blogs/soc-2-controls-startups) explains how to connect
+a control to its criteria, risks, systems, procedure, and evidence sources.
+
+Then write a short test plan that answers these questions:
+
+| Plan field      | Decision to record                                                        |
+| --------------- | ------------------------------------------------------------------------- |
+| Control         | Which single control is under test?                                       |
+| Purpose         | Is this implementation, monitoring, remediation, or fieldwork readiness?  |
+| Objective       | What design or operating claim will the procedure evaluate?               |
+| Coverage        | Is the test as of one date or across an exact period?                     |
+| Scope           | Which systems, people, locations, events, and control steps are included? |
+| Expected result | What observable condition counts as a pass?                               |
+| Method          | What will the tester inspect, discuss, observe, query, or reperform?      |
+| Population      | For an audit-bound test, which complete Type 2 set contains the items?    |
+| Sample          | Which items will management test, and why were they selected?             |
+| Evidence        | Which source records support each step and conclusion?                    |
+| Exceptions      | How will a deviation be recorded, assessed, and followed up?              |
+| Independence    | Who performs and reviews the management test?                             |
+
+Keep the objective narrow enough to reach a clear result. "Test change
+management" is too broad. "For the Q3 production-change population, confirm
+each selected deployment had an approved change request before deployment" is
+inspectable. A separate objective may be needed for emergency changes,
+segregation of duties, or post-deployment review.
+
+The control's operation pattern should shape the plan. An as-of configuration
+test needs a named observation date. A recurring manual control needs a period
+and a defined source set. An audit-bound test that samples repeated activity
+may need an audit population. An event-driven control needs the complete set of
+triggering events, including a sourced zero-event result. An automated control
+may need configuration, change, access, and output evidence rather than a
+collection of screenshots showing the same setting.
+
+## Choose procedures that answer the objective
+
+Choose each procedure because it can support a specific determination. Useful
+actions include inspecting a policy, configuration, ticket, log, report, or
+approval; interviewing the performer; observing the process; querying a source
+system; and reperforming a calculation or rule.
+
+NIST SP 800-53A is not a SOC 2 requirement, but it provides useful public
+planning language for control assessments. NIST groups assessor actions into
+[examine, interview, and test methods](https://csrc.nist.gov/pubs/sp/800/53/a/r5/final)
+and says assessment procedures can be tailored to organizational needs. Use
+that as a prompt for writing precise actions, while the CPA firm retains
+authority over its SOC 2 procedures.
+
+One procedure rarely answers every question. An interview can explain how an
+access review works, but the review record and source population show what
+happened. A screenshot can show one state, but it may omit the query, period,
+account set, or reviewer. Reperformance can confirm a rule, but it may not show
+that the rule operated throughout the period.
+
+For each step, record:
+
+1. The action the tester performed.
+2. The source object or person used.
+3. The expected condition.
+4. The observed result.
+5. The evidence ID that supports the observation.
+6. Any exception and its effect on the conclusion.
+
+This produces a repeatable workpaper without copying sensitive source data into
+the control-test note.
+
+## Connect the source set before the sample
+
+When a control operates many times, start with the complete set of relevant
+items. A test of five approved pull requests does not show what source set those
+items came from. Record the control, exact period, source system, query,
+exclusions, count, fixed export, and management's completeness and accuracy
+checks.
+
+Use an `audit-population` only when the test belongs to a real Type 2 engagement
+with a firm-agreed period and population need. The
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) covers that
+workflow. Link the test to both its `auditId` and `populationId`, then link the
+item-level evidence for the selected items separately.
+
+For standalone management monitoring, retain the fixed source export as
+Evidence and document the query, exclusions, count, and selection method in the
+control-test Markdown. Do not create a formal audit population before the Type
+2 engagement and period exist. Both patterns keep three facts distinct:
+
+- the population export is the complete source set;
+- the sample identifies the items tested; and
+- the item evidence shows what happened for each selected item.
+
+Management can select a sample for its own monitoring test. Record the method,
+sample size, and reason so the result is not overstated. A judgmental sample of
+high-risk or unusual items may be useful for finding problems, but it does not
+support a claim about every item in the population. A random or systematic
+selection still does not give management authority over the CPA firm's sample.
+
+Zero-event populations need the same source discipline. Preserve the query,
+period, filters, timestamp, zero-row export or report, count of zero, and
+reconciliation. If the control remained applicable but no trigger occurred,
+the result is zero events, not automatically "not applicable."
+
+## Record evidence with enough context
+
+A file name alone does not explain a test. Link each artifact to its source,
+collector, date or period, classification, control, population or sample item,
+and verification record when required. The
+[SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) shows how to
+record exports, screenshots, tickets, logs, acknowledgements, and review
+results with that context.
+
+Keep raw source exports and fixed third-party files behind evidence records.
+Do not put passwords, tokens, private keys, session material, or recovery codes
+in Git. Keep confidential reports, regulated personal data, and personal data
+that may need erasure in an approved restricted evidence store when Git access
+and retention do not fit. Link the approved external reference and safe
+metadata instead.
+
+Evidence should support both the procedure step and the conclusion. If a test
+claims that all five sampled changes had prior approval, each item needs a
+traceable approval and deployment time. A summary spreadsheet written after
+the fact cannot replace missing source records.
+
+## Reach a result without hiding exceptions
+
+Use a small result set that forces a clear conclusion:
+
+| Result                 | Meaning                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| Passed                 | The recorded work supported the objective without exceptions.                                 |
+| Passed with exceptions | The objective was generally supported, but named deviations remain in the record.             |
+| Failed                 | The work did not support the objective.                                                       |
+| Inconclusive           | The tester could not reach a result because the source, scope, or procedure was insufficient. |
+| Not applicable         | The documented objective did not apply to the tested scope, for a stated reason.              |
+
+Count every exception and describe it. Do not change an exception into a clean
+pass because the owner fixed it after the test date. Record the original
+deviation, the effect on the result, the remediation, and the later verification
+as separate facts.
+
+When `exceptionCount` is greater than zero, or the result is failed or passed
+with exceptions, create a Finding whose `sourceResourceId` is the control-test
+ID. The Finding gives the issue its own risk statement, owner, due date,
+remediation, and closure review. Use an Action Item when the Finding also needs
+a separately assigned follow-up task.
+
+The reviewer should check the objective, scope, procedure, population, samples,
+evidence, exceptions, and result. The tester and reviewer should be different
+people when a suitable reviewer is available, especially for a failed test or
+a test management plans to rely on.
+
+## SOC 2 control testing example
+
+This shortened filegrc mutation records a completed management test of a
+production-change approval control. The detailed procedure and observations
+live in companion Markdown.
+
+```json
+{
+  "record": {
+    "id": "control-test-change-approval-2026-q3",
+    "type": "control-test",
+    "title": "Q3 2026 production change approval test",
+    "status": "complete",
+    "controlId": "control-production-change-approval",
+    "testKinds": ["inspection", "reperformance"],
+    "performedBy": "management",
+    "outcome": "passed",
+    "testerIds": ["person-control-tester"],
+    "auditId": "audit-2026-type-2",
+    "populationId": "audit-population-production-changes-2026-q3",
+    "sampleSize": 5,
+    "sampleEvidenceIds": ["evidence-change-approval-sample-2026-q3"],
+    "evidenceIds": ["evidence-change-test-workpaper-2026-q3"],
+    "exceptionCount": 0,
+    "reviewerIds": ["person-control-test-reviewer"],
+    "coverage": {
+      "kind": "range",
+      "startsOn": "2026-07-01",
+      "endsOn": "2026-09-30"
+    },
+    "completedOn": "2026-10-02",
+    "reviewedOn": "2026-10-03"
+  },
+  "content": {
+    "record": "# Objective\n\nConfirm each selected deployment had an approved change request before deployment.\n\n# Procedure\n\nInspect the reconciled Q3 population, selected item evidence, approval timestamps, and deployment timestamps. Reperform the prior-approval comparison for each item.\n\n# Results\n\nAll five selected items met the recorded condition."
+  }
+}
+```
+
+The values are fictional. Use IDs from the current workspace and link real
+source evidence. If one selected change lacked timely approval, the record
+should count the exception and use the result supported by the test. It should
+also have a linked Finding. Add an Action Item when follow-up needs its own
+owner and deadline.
+
+## Run the control-test workflow in filegrc
+
+Start with the model guide, then inspect the current control and its relationship
+candidates:
+
+```sh
+npx filegrc guide control-test --json
+npx filegrc get CONTROL_ID --json
+npx filegrc references CONTROL_ID --json
+```
+
+Create a scaffold and fill it with sourced values. Save the complete
+`{ record, content }` mutation as `control-test.json`, then preview and apply it:
+
+```sh
+npx filegrc scaffold control-test \
+  --title "Q3 2026 production change approval test" > control-test.json
+npx filegrc preview-mutation control-test.json --json
+npx filegrc create control-test.json --json
+npx filegrc validate --json
+```
+
+For a completed test, filegrc requires the control, test kinds, performer,
+tester or external tester, outcome, evidence, coverage, completion date,
+reviewer, and review date. Sampling fields connect the test to its population
+and item evidence when the test belongs to a Type 2 audit. For standalone
+monitoring, link the source export through `evidenceIds` and document selection
+in companion Markdown beside the objective, procedure, observations, exception
+details, and conclusion.
+
+Use [SOC 2 compliance as code](/blogs/soc-2-compliance-as-code) practices to
+review the mutation as a Git diff. FileGRC stores the management record and its
+relationships. It does not run the source control, collect live data, choose
+the CPA firm's sample, perform the independent examination, or decide whether
+the firm's evidence is sufficient.
+
+## Hand the CPA firm a traceable record
+
+Before fieldwork, confirm that each management test points back to the current
+control, exact date or period, authoritative source Components, complete
+population when used, item evidence, exceptions, and follow-up. Resolve stale
+links and missing source records. Share the result as management monitoring or
+readiness work, not as a substitute for the CPA firm's procedures.
+
+[Run filegrc locally](/) to keep those records in JSON, Markdown, and Git. The
+result is a reviewable chain from the control and test objective to the source
+population, evidence, conclusion, and remediation.
