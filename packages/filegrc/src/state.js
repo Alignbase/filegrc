@@ -218,7 +218,8 @@ export async function createAppStateSection(input, section, options = {}) {
         auditPreparations: options.auditPreparations,
         obligations: options.obligations,
         git: options.git,
-        validation: options.validation
+        validation: options.validation,
+        strictHistory: options.strictHistory
       })
     };
   }
@@ -355,17 +356,24 @@ async function createAppStateUnlocked(input, options) {
   };
 }
 
-export async function createResourceDetail(input, type, id) {
+export async function createResourceDetail(input, type, id, options = {}) {
+  if (input?.entries && input?.root) return createResourceDetailFromLoaded(input, type, id, options);
   return serializeWorkspaceMutation(input, async (root) => {
     const validation = await validateWorkspace(root);
-    const entry = validation.loaded.entries.find(({ record }) => record.type === type && record.id === id);
-    if (!entry) return null;
-    const relativePath = `data/${entry.relativePath}`;
-    const histories = getWorkspaceHistories(validation.loaded.root, [relativePath], 12);
-    return createStateEntry(validation.loaded, entry, {
-      includeDetails: true,
-      history: histories.get(relativePath) ?? []
-    });
+    return createResourceDetailFromLoaded(validation.loaded, type, id, options);
+  });
+}
+
+async function createResourceDetailFromLoaded(loaded, type, id, options) {
+  const entry = loaded.entries.find(({ record }) => record.type === type && record.id === id);
+  if (!entry) return null;
+  const relativePath = `data/${entry.relativePath}`;
+  const histories = getWorkspaceHistories(loaded.root, [relativePath], 12, {
+    deadlineAt: options.historyDeadlineAt
+  });
+  return createStateEntry(loaded, entry, {
+    includeDetails: true,
+    history: histories.get(relativePath) ?? []
   });
 }
 

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   assessWorkflow,
   buildWorkflowDelta,
@@ -15,7 +17,14 @@ import {
   WORKFLOW_CONTRACT_VERSION
 } from "../src/index.js";
 import { packetDeliveryIssue } from "../src/workflow.js";
+import {
+  getDataRecordHistoryIndex,
+  setGitSubprocessObserverForTests,
+  setHistoricalRevisionReadObserverForTests
+} from "../src/git.js";
+import { validateWorkflowHistoryIntegrity } from "../src/workflow-history-integrity.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 test("requires a reviewable, approved, and receipted packet delivery record", () => {
   assert.match(packetDeliveryIssue(null), /least-disclosure review/);
@@ -380,6 +389,78 @@ test("keeps audit-only roles out of period coverage and guides every late audit 
   assert.equal(findingKeys.has("audit.audit-issued.lifecycle.advance"), true);
   assert.equal(workflow.assessments.deliveryReadiness.status, "needs-work");
   assert.equal(workflow.assessments.auditClosure.findingKeys.includes("audit.audit-issued.lifecycle.advance"), true);
+});
+
+test("strict workflow history failures reject and recover on retry", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-strict-history-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  const programEntry = loaded.entries.find(({ record }) => record.type === "program");
+  assert.ok(programEntry);
+  await writeJson(join(root, "data", programEntry.relativePath), {
+    ...programEntry.record,
+    assuranceGoal: "soc-2-type-2",
+    candidateCoverage: {
+      kind: "range",
+      startsOn: "2026-01-01",
+      endsOn: "2026-06-30"
+    }
+  });
+  const runGit = (...args) => promisify(execFile)("git", args, { cwd: root });
+  await runGit("init", "--initial-branch=main");
+  await runGit("config", "user.name", "Test User");
+  await runGit("config", "user.email", "test@example.test");
+  await runGit("add", ".");
+  await runGit("commit", "-m", "Initial workspace");
+
+  let failHistory = true;
+  const restoreObserver = setGitSubprocessObserverForTests(({ kind, args }) => {
+    if (failHistory && kind === "sync" && args.includes("log")) {
+      throw new Error("transient history failure");
+    }
+  });
+  context.after(restoreObserver);
+
+  await assert.rejects(
+    assessWorkflow(root, { strictHistory: true, reconciliation: { candidates: [] } }),
+    /Git history is unavailable/
+  );
+  failHistory = false;
+  const recovered = await assessWorkflow(root, { strictHistory: true, reconciliation: { candidates: [] } });
+  assert.ok(Array.isArray(recovered.findings));
+});
+
+test("workflow history integrity propagates revision-read deadlines and recovers", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-revision-deadline-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const runGit = (...args) => promisify(execFile)("git", args, { cwd: root });
+  await runGit("init", "--initial-branch=main");
+  await runGit("config", "user.name", "Test User");
+  await runGit("config", "user.email", "test@example.test");
+  await runGit("add", ".");
+  await runGit("commit", "-m", "Initial workspace");
+  const loaded = await loadWorkspace(root);
+  assert.equal(getDataRecordHistoryIndex(root).available, true);
+
+  let failRevisionRead = true;
+  const restoreObserver = setHistoricalRevisionReadObserverForTests(() => {
+    if (!failRevisionRead) return;
+    failRevisionRead = false;
+    const error = new Error("revision read deadline");
+    error.code = "FILEGRC_GIT_DEADLINE";
+    throw error;
+  });
+  context.after(restoreObserver);
+
+  await assert.rejects(
+    validateWorkflowHistoryIntegrity(loaded, []),
+    (error) => error?.code === "FILEGRC_GIT_DEADLINE"
+  );
+  const diagnostics = [];
+  await validateWorkflowHistoryIntegrity(loaded, diagnostics);
+  assert.ok(Array.isArray(diagnostics));
 });
 
 test("keeps preliminary audit planning separate from an accepted engagement", async (context) => {

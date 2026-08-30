@@ -19,6 +19,7 @@ import {
   getFilesAtRevisions,
   getFileHistory,
   getFileHistoryWithPaths,
+  getRepositoryStateSignature,
   getWorkingFileObjectId,
   GitOperationError,
   hasGitRevision,
@@ -26,9 +27,14 @@ import {
   pullWorkspace,
   pushWorkspace,
   runGitCommand,
+  runGitCommandSync,
   sanitizeGitErrorMessage,
   setHistoricalBatchInterceptorForTests,
-  setGitCommandInterceptorForTests
+  setHistoricalRevisionReadObserverForTests,
+  setGitCommandInterceptorForTests,
+  setGitSubprocessObserverForTests,
+  withGitCommandCache,
+  withGitCommandDeadline
 } from "../src/git.js";
 import { reconcileMutationSynchronization } from "../src/server.js";
 import { collectTimings } from "../src/timing.js";
@@ -36,6 +42,304 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
+
+test("request-scoped Git command caches keep one coherent repository snapshot", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-git-command-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+
+  const cache = new Map();
+  const cachedCommit = await withGitCommandCache(cache, async () => {
+    const initial = getGitSummary(root);
+    await writeFile(join(root, "cache-check.txt"), "changed\n", "utf8");
+    await git(root, ["add", "cache-check.txt"]);
+    await git(root, ["commit", "-m", "Change after state loading began"]);
+    const repeated = getGitSummary(root);
+    assert.deepEqual(repeated, initial);
+    return repeated.commit;
+  });
+
+  assert.ok(cache.size > 0);
+  assert.notEqual(getGitSummary(root).commit, cachedCommit);
+});
+
+test("repository state signatures include exact upstream ref identities", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-repository-signature-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const base = (await git(root, ["rev-parse", "HEAD"])).stdout.trim();
+  const tree = (await git(root, ["rev-parse", "HEAD^{tree}"])).stdout.trim();
+  const upstreamOne = (await git(root, ["commit-tree", tree, "-p", base, "-m", "Upstream one"])).stdout.trim();
+  const upstreamTwo = (await git(root, ["commit-tree", tree, "-p", base, "-m", "Upstream two"])).stdout.trim();
+  await git(root, ["remote", "add", "origin", "https://example.invalid/repository.git"]);
+  await git(root, ["update-ref", "refs/remotes/origin/main", upstreamOne]);
+  await git(root, ["branch", "--set-upstream-to=origin/main", "main"]);
+  const before = await getRepositoryStateSignature(root);
+  await git(root, ["tag", "unrelated", base]);
+  assert.equal(await getRepositoryStateSignature(root), before);
+  await git(root, ["update-ref", "refs/remotes/origin/main", upstreamTwo]);
+  const after = await getRepositoryStateSignature(root);
+  assert.notEqual(after, before);
+});
+
+test("state sessions expire when the repository remote set changes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-remote-session-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const served = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  await git(root, ["remote", "add", "origin", "https://example.invalid/repository.git"]);
+  const repository = await fetch(`${served.url}/api/state/repository?token=${encodeURIComponent(bootstrap.stateToken)}`);
+  assert.equal(repository.status, 409);
+  const remoteBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  await git(root, ["remote", "set-url", "origin", "https://changed.example.invalid/repository.git"]);
+  const changedUrl = await fetch(`${served.url}/api/state/repository?token=${encodeURIComponent(remoteBootstrap.stateToken)}`);
+  assert.equal(changedUrl.status, 409);
+});
+
+test("tokenized section and detail requests keep Git subprocess work bounded", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-state-command-budget-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await writeFile(join(root, "data", "budget-history.txt"), "Historical budget fixture.\n", "utf8");
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const revision = (await git(root, ["rev-parse", "HEAD"])).stdout.trim();
+  const served = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  let calls = [];
+  const restore = setGitSubprocessObserverForTests(({ kind, args }) => {
+    calls.push(`${kind}:${args.join(" ")}`);
+  });
+  context.after(restore);
+
+  const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  assert.ok(calls.length <= 4, `expected at most 4 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const coldDetail = await fetch(`${served.url}/api/resource/person/person-owner?token=${encodeURIComponent(bootstrap.stateToken)}`);
+  assert.equal(coldDetail.status, 200);
+  assert.ok(calls.length <= 30, `expected at most 30 Git subprocesses for a cold tokenized detail, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const workflowDetailBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  calls = [];
+  const workflowDetail = await fetch(`${served.url}/api/resource/person/person-owner?workflow=true&token=${encodeURIComponent(workflowDetailBootstrap.stateToken)}`);
+  assert.equal(workflowDetail.status, 200);
+  assert.ok(calls.length <= 40, `expected at most 40 Git subprocesses for a cold tokenized workflow detail, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const sectionBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  assert.ok(calls.length <= 4, `expected at most 4 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  calls = [];
+  const firstProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
+  assert.equal(firstProgram.status, 200);
+  assert.ok(calls.length <= 8, `expected at most 8 Git calls for an uncached program section, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const cachedProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
+  assert.equal(cachedProgram.status, 200);
+  assert.ok(calls.length <= 4, `expected at most 4 Git calls for a cached program section, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const homeBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  assert.ok(calls.length <= 4, `expected at most 4 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  const homeSections = ["repository", "program", "obligations", "workflow"];
+  calls = [];
+  const coldHome = await Promise.all(homeSections.map((section) => (
+    fetch(`${served.url}/api/state/${section}?token=${encodeURIComponent(homeBootstrap.stateToken)}`)
+  )));
+  assert.equal(coldHome.every(({ status }) => status === 200), true);
+  assert.ok(calls.length <= 40, `expected at most 40 Git subprocesses for a cold home launch, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const warmHome = await Promise.all(homeSections.map((section) => (
+    fetch(`${served.url}/api/state/${section}?token=${encodeURIComponent(homeBootstrap.stateToken)}`)
+  )));
+  assert.equal(warmHome.every(({ status }) => status === 200), true);
+  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for a warm home navigation, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  assert.deepEqual(getFilesAtRevisions(root, [{ revision, relativePath: "data/budget-history.txt" }]), ["Historical budget fixture.\n"]);
+  assert.ok(calls.some((call) => call.includes("sync:cat-file --batch")), `expected the historical batch subprocess to be observed, received: ${calls.join(", ")}`);
+
+  calls = [];
+  assert.throws(
+    () => withGitCommandDeadline(performance.now() - 1, () => getWorkspaceHistories(root, ["data/workspace.json"], 99)),
+    (error) => error.code === "FILEGRC_GIT_DEADLINE"
+  );
+  assert.equal(calls.length, 0);
+  assert.throws(
+    () => getWorkspaceHistories(root, ["data/workspace.json"], 98, { deadlineAt: performance.now() - 1 }),
+    (error) => error.code === "FILEGRC_GIT_DEADLINE"
+  );
+  assert.equal(calls.length, 0);
+  const recoveredHistory = getWorkspaceHistories(root, ["data/workspace.json"], 99);
+  assert.ok(recoveredHistory.get("data/workspace.json").length > 0);
+});
+
+test("tokenized workflow detail rejects transient history failures and recovers", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-detail-strict-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root);
+  const loaded = await import("../src/workspace.js").then(({ loadWorkspace }) => loadWorkspace(root));
+  const programEntry = loaded.entries.find(({ record }) => record.type === "program");
+  assert.ok(programEntry);
+  await writeJson(join(root, "data", programEntry.relativePath), {
+    ...programEntry.record,
+    assuranceGoal: "soc-2-type-2",
+    candidateCoverage: {
+      kind: "range",
+      startsOn: "2026-01-01",
+      endsOn: "2026-06-30"
+    }
+  });
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const served = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  const detailRecord = bootstrap.resources[0]?.record;
+  assert.ok(detailRecord);
+
+  let failHistory = true;
+  const restore = setGitSubprocessObserverForTests(({ kind, args }) => {
+    if (failHistory && kind === "sync" && args.includes("log") && args.includes("--name-only")) {
+      throw new Error("transient detail history failure");
+    }
+  });
+  context.after(restore);
+
+  const path = `/api/resource/${encodeURIComponent(detailRecord.type)}/${encodeURIComponent(detailRecord.id)}?workflow=true&token=${encodeURIComponent(bootstrap.stateToken)}`;
+  assert.equal((await fetch(`${served.url}${path}`)).status, 503);
+  failHistory = false;
+  assert.equal((await fetch(`${served.url}${path}`)).status, 200);
+});
+
+test("expired state-section Git deadlines return a retryable response", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-section-deadline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const served = await serveWorkspace(root, { port: 0, stateSectionDeadlineMs: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+
+  const response = await fetch(`${served.url}/api/state/repository?token=${encodeURIComponent(bootstrap.stateToken)}`);
+  assert.equal(response.status, 503);
+});
+
+test("repository sections reject revision-read deadlines and recover on retry", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-repository-revision-deadline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const served = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
+
+  let failRevisionRead = true;
+  const restore = setHistoricalRevisionReadObserverForTests(() => {
+    if (!failRevisionRead) return;
+    failRevisionRead = false;
+    const error = new Error("repository revision-read deadline");
+    error.code = "FILEGRC_GIT_DEADLINE";
+    throw error;
+  });
+  context.after(restore);
+
+  const path = `/api/state/repository?token=${encodeURIComponent(bootstrap.stateToken)}`;
+  assert.equal((await fetch(`${served.url}${path}`)).status, 503);
+  assert.equal((await fetch(`${served.url}${path}`)).status, 200);
+});
+
+test("running Git commands preserve the shared deadline error", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-running-git-deadline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await git(root, ["init", "--initial-branch=main"]);
+
+  await assert.rejects(
+    withGitCommandDeadline(performance.now() + 50, () => runGitCommand(root, [
+      "-c",
+      "alias.filegrc-pause=!sleep 1",
+      "filegrc-pause"
+    ], { timeoutMs: 1_000 })),
+    (error) => error?.code === "FILEGRC_GIT_DEADLINE"
+  );
+});
+
+test("running synchronous Git commands preserve the shared deadline error", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-running-sync-git-deadline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+
+  assert.throws(
+    () => withGitCommandDeadline(performance.now() + 50, () => runGitCommandSync(root, [
+      "-c",
+      "alias.filegrc-pause=!sleep 1",
+      "filegrc-pause"
+    ], { timeoutMs: 1_000 })),
+    (error) => error?.code === "FILEGRC_GIT_DEADLINE"
+  );
+});
+
+test("direct workspace-history deadlines preserve running timeout errors", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-direct-history-deadline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const restore = setGitSubprocessObserverForTests(({ kind, args }) => {
+    if (kind !== "sync" || !args.includes("log")) return;
+    const error = new Error("simulated running timeout");
+    error.code = "ETIMEDOUT";
+    error.signal = "SIGTERM";
+    throw error;
+  });
+  context.after(restore);
+
+  assert.throws(
+    () => getWorkspaceHistories(root, ["data/workspace.json"], 99, {
+      deadlineAt: performance.now() + 1_000,
+      strict: true
+    }),
+    (error) => error?.code === "FILEGRC_GIT_DEADLINE"
+  );
+});
 
 test("tracks each historical Markdown path across Git renames", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-content-history-"));

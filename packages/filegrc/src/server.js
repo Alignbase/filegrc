@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
@@ -26,11 +27,14 @@ import {
   getBrowserRepositoryState,
   getFileHistory,
   getRepositorySnapshot,
+  getRepositoryStateSignature,
   prefetchBrowserRemote,
   pullWorkspace,
   pushWorkspace,
   retryBrowserSync,
-  runBrowserMutation
+  runBrowserMutation,
+  withGitCommandCache,
+  withGitCommandDeadline
 } from "./git.js";
 import { normalizeResourceMutation, serializeWorkspaceMutation } from "./mutation.js";
 import {
@@ -57,11 +61,13 @@ import {
 } from "./external-reviewer.js";
 import { isWithin, relativeToWorkspace, resolveWorkspacePath } from "./paths.js";
 import { activatePolicies } from "./policy-activation.js";
+import { resolveProgram } from "./program.js";
 import { applyReconciliation, dismissReconciliation, planReconciliation } from "./reconciliation.js";
 import { resourceReviewRevisions } from "./retention.js";
 import { createAppBootstrap, createAppState, createAppStateSection, createResourceDetail } from "./state.js";
 import { setupWorkspace } from "./setup.js";
 import { collectTimings, measureTiming, timingEnabled } from "./timing.js";
+import { fingerprintWorkspace } from "./validate.js";
 import {
   assessWorkflow,
   buildWorkflowDelta,
@@ -71,9 +77,15 @@ import {
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 
+const STATE_SESSION_MAX_AGE_MS = 5 * 60_000;
+const MAX_STATE_SESSIONS = 8;
+const MAX_STATE_SESSION_PROMISES = 64;
+const RESOURCE_DETAIL_GIT_DEADLINE_MS = 10_000;
+const STATE_SECTION_GIT_DEADLINE_MS = 10_000;
+
 export function createFilegrcServer(input = process.cwd(), options = {}) {
   const stateSessions = new Map();
-  let nextStateSession = 0;
+  const fileDigestCache = new Map();
   return createHttpServer(async (request, response) => {
     const requestStarted = performance.now();
     if (timingEnabled()) {
@@ -92,7 +104,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 403, { error: "The request host is not allowed." });
       }
       const url = new URL(request.url, "http://localhost");
-      const requestOptions = { ...options, programId: url.searchParams.get("programId") || undefined };
+      const requestOptions = {
+        ...options,
+        programId: url.searchParams.get("programId") || undefined,
+        invalidateStateSessions: () => invalidateStateSessions(stateSessions)
+      };
       if (["POST", "PUT", "DELETE"].includes(request.method) && !sameOrigin(request)) {
         return json(response, 403, { error: "Cross-origin writes are not allowed." });
       }
@@ -113,15 +129,43 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         }));
       }
       if (request.method === "GET" && url.pathname === "/api/state/bootstrap") {
-        const loaded = await serializeWorkspaceMutation(input, (root) => loadWorkspace(root));
-        const token = `${Date.now().toString(36)}-${(++nextStateSession).toString(36)}`;
+        if (!sameOriginBrowserRead(request)) {
+          return json(response, 403, { error: "Cross-origin state requests are not allowed." });
+        }
+        const deadlineAt = performance.now() + STATE_SECTION_GIT_DEADLINE_MS;
+        const [snapshot, repositorySignature] = await withGitCommandDeadline(deadlineAt, () => (
+          serializeWorkspaceMutation(input, (root) => Promise.all([
+            fingerprintWorkspace(root, {
+              fileDigestCache,
+              deadlineAt
+            }),
+            getRepositoryStateSignature(root, {
+              timeoutMs: Math.max(1, Math.ceil(deadlineAt - performance.now()))
+            })
+          ]))
+        ));
+        const loaded = snapshot.loaded;
+        const token = randomUUID();
         const session = {
           loaded,
+          fingerprint: snapshot.fingerprint,
+          repositorySignature,
+          fileDigestCache,
           generatedAt: new Date().toISOString(),
-          promises: new Map()
+          expiresAt: Date.now() + STATE_SESSION_MAX_AGE_MS,
+          revoked: false,
+          promises: new Map(),
+          verificationPromise: null,
+          gitCommandCache: new Map()
         };
+        pruneStateSessions(stateSessions);
         stateSessions.set(token, session);
-        while (stateSessions.size > 8) stateSessions.delete(stateSessions.keys().next().value);
+        while (stateSessions.size > MAX_STATE_SESSIONS) {
+          const oldestToken = stateSessions.keys().next().value;
+          const oldestSession = stateSessions.get(oldestToken);
+          if (oldestSession) oldestSession.revoked = true;
+          stateSessions.delete(oldestToken);
+        }
         const state = await createAppBootstrap(loaded, {
           generatedAt: session.generatedAt,
           programId: url.searchParams.get("programId") || undefined
@@ -135,9 +179,17 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           return json(response, 404, { error: "Unknown app-state section." });
         }
         const token = url.searchParams.get("token");
+        pruneStateSessions(stateSessions);
         const session = stateSessions.get(token);
         if (!session) return json(response, 409, { error: "The workspace state expired. Reload it and try again." });
-        const state = await loadStateSessionSection(session, section, options, url.searchParams.get("programId") || undefined);
+        const sectionDeadlineMs = Number.isFinite(options.stateSectionDeadlineMs)
+          ? Math.max(0, options.stateSectionDeadlineMs)
+          : STATE_SECTION_GIT_DEADLINE_MS;
+        const deadlineAt = performance.now() + sectionDeadlineMs;
+        const state = await withGitCommandDeadline(deadlineAt, () => (
+          loadStateSessionSection(session, section, options, url.searchParams.get("programId") || undefined, null, deadlineAt)
+        ));
+        assertCurrentStateSession(session);
         return json(response, 200, { stateToken: token, section, state });
       }
       if (request.method === "GET" && url.pathname === "/api/history") {
@@ -514,9 +566,14 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 200, await manualGitResultWithState(input, requestOptions, () => pushWorkspace(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/git/retry-sync") {
-        const result = await retryBrowserSync(input, {
-          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
-        });
+        let result;
+        try {
+          result = await retryBrowserSync(input, {
+            allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
+          });
+        } finally {
+          requestOptions.invalidateStateSessions();
+        }
         const state = await createAppState(input, {
           allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
           includeDetails: false
@@ -562,10 +619,17 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         const id = decodeURIComponent(match[2]);
         if (!safeSegment(type) || !safeSegment(id)) return json(response, 400, { error: "Unsafe resource identifier." });
         if (request.method === "GET") {
-          const entry = await createResourceDetail(input, type, id);
+          const token = url.searchParams.get("token");
+          pruneStateSessions(stateSessions);
+          const session = token ? stateSessions.get(token) : null;
+          if (token && !session) return json(response, 409, { error: "The workspace state expired. Reload it and try again." });
+          const includeWorkflow = url.searchParams.get("workflow") === "true";
+          const entry = session
+            ? await loadStateSessionResource(session, token, type, id, options, requestOptions.programId, includeWorkflow)
+            : await createResourceDetail(input, type, id);
           if (!entry) return json(response, 404, { error: "Resource not found." });
-          if (url.searchParams.get("workflow") === "true") {
-            const workflow = await assessWorkflow(input);
+          if (includeWorkflow && !session) {
+            const workflow = await assessWorkflow(input, { programId: requestOptions.programId });
             entry.workflow = workflowForResource(workflow, type, id);
           }
           return json(response, 200, entry);
@@ -651,7 +715,9 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
   const server = createFilegrcServer(loaded.root, {
     allowedHosts: [host],
     allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true,
-    backgroundPushDelayMs: options.backgroundPushDelayMs
+    backgroundPushDelayMs: options.backgroundPushDelayMs,
+    stateSectionDeadlineMs: options.stateSectionDeadlineMs,
+    resourceDetailDeadlineMs: options.resourceDetailDeadlineMs
   });
   let usedFallbackPort = false;
   try {
@@ -699,12 +765,17 @@ function browserMutation(input, requestOptions, mutationOptions, task) {
     const workflowBefore = fastResponse
       ? null
       : await measureTiming("workflow-before", () => assessWorkflow(root, { programId: requestOptions.programId }));
-    const result = await measureTiming("mutation", () => runBrowserMutation(root, {
-      ...mutationOptions,
-      allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites === true,
-      backgroundPushDelayMs: requestOptions.backgroundPushDelayMs,
-      includeValidationProof: !fastResponse
-    }, task));
+    let result;
+    try {
+      result = await measureTiming("mutation", () => runBrowserMutation(root, {
+        ...mutationOptions,
+        allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites === true,
+        backgroundPushDelayMs: requestOptions.backgroundPushDelayMs,
+        includeValidationProof: !fastResponse
+      }, task));
+    } finally {
+      requestOptions.invalidateStateSessions?.();
+    }
     if (fastResponse) {
       return {
         ...result,
@@ -752,40 +823,112 @@ export function reconcileMutationSynchronization(synchronization, repository) {
   };
 }
 
-function loadStateSessionSection(session, section, serverOptions, programId) {
-  const cacheKey = `${section}:${programId || "default"}`;
-  if (session.promises.has(cacheKey)) return session.promises.get(cacheKey);
-  const dependencies = section === "workflow"
-    ? Promise.all([
-        loadStateSessionSection(session, "repository", serverOptions, programId),
-        loadStateSessionSection(session, "program", serverOptions, programId),
-        loadStateSessionSection(session, "obligations", serverOptions, programId),
-        loadStateSessionSection(session, "audits", serverOptions, programId)
-      ])
-    : section === "audits"
-      ? Promise.all([loadStateSessionSection(session, "program", serverOptions, programId)])
-      : Promise.resolve([]);
-  const promise = dependencies.then((results) => {
-    const repository = section === "workflow" ? results[0] : null;
-    const program = section === "workflow" ? results[1] : section === "audits" ? results[0] : null;
-    const obligations = section === "workflow" ? results[2] : null;
-    const audits = section === "workflow" ? results[3] : null;
-    return createAppStateSection(session.loaded, section, {
-      allowNonAuthoritativeWrites: serverOptions.allowNonAuthoritativeWrites,
-      generatedAt: session.generatedAt,
-      programReadiness: program?.programReadiness,
-      auditPreparations: audits?.auditPreparations,
-      obligations: obligations?.obligations,
-      git: repository?.git,
-      validation: repository?.validation,
-      programId
+async function loadStateSessionSection(session, section, serverOptions, programId, verificationContext = null, deadlineAt) {
+  const requestStartedAt = performance.now();
+  assertCurrentStateSession(session);
+  const selectedProgramId = section === "repository"
+    ? null
+    : resolveProgram(session.loaded, programId).id;
+  const cacheKey = section === "repository" ? section : `${section}:${selectedProgramId}`;
+  const ownsVerification = verificationContext === null;
+  const sharedVerification = verificationContext || {};
+  let calculationEntry = session.promises.get(cacheKey);
+  if (!calculationEntry) {
+    makeStateSessionCalculationRoom(session);
+    const dependencies = section === "workflow"
+      ? Promise.all([
+          loadStateSessionSection(session, "repository", serverOptions, programId, sharedVerification, deadlineAt),
+          loadStateSessionSection(session, "program", serverOptions, programId, sharedVerification, deadlineAt),
+          loadStateSessionSection(session, "obligations", serverOptions, programId, sharedVerification, deadlineAt),
+          loadStateSessionSection(session, "audits", serverOptions, programId, sharedVerification, deadlineAt)
+        ])
+      : section === "audits"
+        ? Promise.all([loadStateSessionSection(session, "program", serverOptions, programId, sharedVerification, deadlineAt)])
+        : Promise.resolve([]);
+    calculationEntry = { promise: null, completedAt: null, deadlineAt };
+    calculationEntry.promise = dependencies.then((results) => {
+      const repository = section === "workflow" ? results[0] : null;
+      const program = section === "workflow" ? results[1] : section === "audits" ? results[0] : null;
+      const obligations = section === "workflow" ? results[2] : null;
+      const audits = section === "workflow" ? results[3] : null;
+      return withGitCommandCache(session.gitCommandCache, () => createAppStateSection(session.loaded, section, {
+        allowNonAuthoritativeWrites: serverOptions.allowNonAuthoritativeWrites,
+        generatedAt: session.generatedAt,
+        programReadiness: program?.programReadiness,
+        auditPreparations: audits?.auditPreparations,
+        obligations: obligations?.obligations,
+        git: repository?.git,
+        validation: repository?.validation,
+        strictHistory: repository?.git?.available === true,
+        programId: selectedProgramId || programId
+      }));
+    }).then((state) => {
+      calculationEntry.completedAt = performance.now();
+      return state;
+    }).catch((error) => {
+      if (session.promises.get(cacheKey) === calculationEntry) session.promises.delete(cacheKey);
+      throw error;
     });
-  }).catch((error) => {
+    session.promises.set(cacheKey, calculationEntry);
+  } else if (calculationEntry.completedAt !== null) {
     session.promises.delete(cacheKey);
+    session.promises.set(cacheKey, calculationEntry);
+  }
+  let state;
+  try {
+    state = await awaitWithinDeadline(calculationEntry.promise, deadlineAt);
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE"
+      && calculationEntry.deadlineAt !== deadlineAt
+      && deadlineAt !== undefined
+      && performance.now() < deadlineAt) {
+      return loadStateSessionSection(
+        session,
+        section,
+        serverOptions,
+        programId,
+        verificationContext,
+        deadlineAt
+      );
+    }
     throw error;
+  }
+  if (ownsVerification) {
+    await verifyStateSessionSnapshot(session, Math.max(requestStartedAt, calculationEntry.completedAt || 0), deadlineAt);
+  }
+  return state;
+}
+
+async function loadStateSessionResource(session, token, type, id, serverOptions, programId, includeWorkflow) {
+  assertCurrentStateSession(session);
+  const detailDeadlineMs = Number.isFinite(serverOptions.resourceDetailDeadlineMs)
+    ? Math.max(0, serverOptions.resourceDetailDeadlineMs)
+    : RESOURCE_DETAIL_GIT_DEADLINE_MS;
+  const deadlineAt = performance.now() + detailDeadlineMs;
+  return withGitCommandDeadline(deadlineAt, async () => {
+    const detail = await withGitCommandCache(session.gitCommandCache, () => createResourceDetail(session.loaded, type, id, {
+      historyDeadlineAt: deadlineAt
+    }));
+    if (detail && includeWorkflow) {
+      const repository = await loadStateSessionSection(
+        session,
+        "repository",
+        serverOptions,
+        programId,
+        {},
+        deadlineAt
+      );
+      const workflow = await withGitCommandCache(session.gitCommandCache, () => assessWorkflow(session.loaded, {
+        programId,
+        historyDeadlineAt: deadlineAt,
+        strictHistory: repository?.git?.available === true
+      }));
+      detail.workflow = workflowForResource(workflow, type, id);
+    }
+    await verifyStateSessionSnapshot(session, performance.now(), deadlineAt);
+    assertCurrentStateSession(session);
+    return detail ? { ...detail, stateToken: token } : null;
   });
-  session.promises.set(cacheKey, promise);
-  return promise;
 }
 
 function prefersFastMutation(request) {
@@ -804,13 +947,153 @@ async function requireManualBrowserGit(input, options) {
 }
 
 async function manualGitResultWithState(input, requestOptions, task) {
-  const result = await task();
+  let result;
+  try {
+    result = await task();
+  } finally {
+    requestOptions.invalidateStateSessions?.();
+  }
   const state = await createAppState(input, {
     allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites,
     programId: requestOptions.programId,
     includeDetails: false
   });
   return { ...result, state };
+}
+
+function pruneStateSessions(stateSessions, now = Date.now()) {
+  for (const [token, session] of stateSessions) {
+    if (session.revoked || session.expiresAt <= now) {
+      session.revoked = true;
+      stateSessions.delete(token);
+    }
+  }
+}
+
+function invalidateStateSessions(stateSessions) {
+  for (const session of stateSessions.values()) session.revoked = true;
+  stateSessions.clear();
+}
+
+function assertCurrentStateSession(session) {
+  if (session.revoked || session.expiresAt <= Date.now()) throw stateSessionExpiredError();
+}
+
+function stateSessionExpiredError() {
+  const error = new Error("The workspace state expired. Reload it and try again.");
+  error.code = "FILEGRC_STATE_EXPIRED";
+  return error;
+}
+
+function stateSessionCapacityError() {
+  const error = new Error("The workspace state has too many calculations in progress. Reload it and try again.");
+  error.code = "FILEGRC_STATE_CAPACITY";
+  return error;
+}
+
+function makeStateSessionCalculationRoom(session) {
+  const pending = [...session.promises.values()].filter(({ completedAt }) => completedAt === null).length;
+  if (pending >= MAX_STATE_SESSION_PROMISES) throw stateSessionCapacityError();
+  while (session.promises.size >= MAX_STATE_SESSION_PROMISES) {
+    const completedKey = [...session.promises].find(([, entry]) => entry.completedAt !== null)?.[0];
+    if (completedKey === undefined) throw stateSessionCapacityError();
+    session.promises.delete(completedKey);
+  }
+}
+
+function assertStateSessionFingerprint(session, fingerprint) {
+  if (fingerprint === session.fingerprint) return;
+  session.revoked = true;
+  throw stateSessionExpiredError();
+}
+
+async function verifyStateSessionSnapshot(session, notBefore = 0, deadlineAt) {
+  assertCurrentStateSession(session);
+  while (session.verificationPromise) {
+    const current = session.verificationPromise;
+    if (current.startedAt >= notBefore) {
+      try {
+        return await awaitWithinDeadline(current.promise, deadlineAt);
+      } catch (error) {
+        if (!replaceableVerificationError(error)
+          || error.source === "caller-deadline"
+          || current.deadlineAt === deadlineAt
+          || deadlineAt === undefined
+          || performance.now() >= deadlineAt) throw error;
+        if (session.verificationPromise === current) session.verificationPromise = null;
+        assertCurrentStateSession(session);
+        continue;
+      }
+    }
+    try {
+      await awaitWithinDeadline(current.promise, deadlineAt);
+      assertCurrentStateSession(session);
+    } catch (error) {
+      if (!replaceableVerificationError(error)
+        || error.source === "caller-deadline"
+        || current.deadlineAt === deadlineAt
+        || deadlineAt === undefined
+        || performance.now() >= deadlineAt) throw error;
+      if (session.verificationPromise === current) session.verificationPromise = null;
+      assertCurrentStateSession(session);
+      continue;
+    }
+  }
+  const verification = { startedAt: Number.POSITIVE_INFINITY, promise: null, deadlineAt };
+  verification.promise = (async () => {
+    // Let concurrent section requests join the same future verification. Once
+    // file reads begin, callers whose calculation finishes later must wait for
+    // a new pass.
+    await new Promise((resolve) => setImmediate(resolve));
+    verification.startedAt = performance.now();
+    return Promise.all([
+      fingerprintWorkspace(session.loaded.root, {
+        fileDigestCache: session.fileDigestCache,
+        deadlineAt
+      }),
+      getRepositoryStateSignature(session.loaded.root, {
+        timeoutMs: deadlineAt === undefined ? undefined : Math.max(1, Math.ceil(deadlineAt - performance.now()))
+      })
+    ]);
+  })().then(([snapshot, repositorySignature]) => {
+    assertStateSessionFingerprint(session, snapshot.fingerprint);
+    if (repositorySignature !== session.repositorySignature) {
+      session.revoked = true;
+      throw stateSessionExpiredError();
+    }
+    assertCurrentStateSession(session);
+    return { ...snapshot, repositorySignature };
+  }).finally(() => {
+    if (session.verificationPromise === verification) session.verificationPromise = null;
+  });
+  session.verificationPromise = verification;
+  return awaitWithinDeadline(verification.promise, deadlineAt);
+}
+
+function awaitWithinDeadline(promise, deadlineAt) {
+  if (deadlineAt === undefined) return promise;
+  const remaining = Math.ceil(deadlineAt - performance.now());
+  if (remaining <= 0) {
+    promise.catch(() => {});
+    return Promise.reject(gitDeadlineError());
+  }
+  let timer;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(gitDeadlineError()), remaining);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function gitDeadlineError() {
+  const error = new Error("The shared Git request deadline expired.");
+  error.code = "FILEGRC_GIT_DEADLINE";
+  error.source = "caller-deadline";
+  return error;
+}
+
+function replaceableVerificationError(error) {
+  return ["FILEGRC_GIT_DEADLINE", "FILEGRC_FINGERPRINT_BUDGET"].includes(error?.code);
 }
 
 function resourceTypeLabel(value) {
@@ -897,11 +1180,27 @@ function requireRevision(value, target) {
 }
 
 function sameOrigin(request) {
+  const fetchSite = String(request.headers["sec-fetch-site"] || "").toLowerCase();
+  if (fetchSite === "same-origin") return true;
+  if (fetchSite && fetchSite !== "none") return false;
   const origin = request.headers.origin;
   if (!origin) return true;
   try {
     const expectedProtocol = request.socket.encrypted ? "https:" : "http:";
     return new URL(origin).origin === `${expectedProtocol}//${request.headers.host}`;
+  } catch {
+    return false;
+  }
+}
+
+function sameOriginBrowserRead(request) {
+  const fetchSite = String(request.headers["sec-fetch-site"] || "").toLowerCase();
+  if (fetchSite) return ["same-origin", "none"].includes(fetchSite);
+  if (!sameOrigin(request)) return false;
+  const referrer = request.headers.referer;
+  if (!referrer) return true;
+  try {
+    return new URL(referrer).host === request.headers.host;
   } catch {
     return false;
   }
@@ -937,6 +1236,11 @@ function urlHost(host) {
 }
 
 function statusFor(error) {
+  if (error?.code === "FILEGRC_STATE_EXPIRED") return 409;
+  if (error?.code === "FILEGRC_STATE_CAPACITY") return 429;
+  if (error?.code === "FILEGRC_FINGERPRINT_BUDGET") return 503;
+  if (error?.code === "FILEGRC_GIT_HISTORY_UNAVAILABLE") return 503;
+  if (error?.code === "FILEGRC_GIT_DEADLINE") return 503;
   if (error instanceof SyntaxError || error instanceof URIError) return 400;
   if (/exceeds 2 MB/i.test(error.message)) return 413;
   if (/exceeds 25 MB/i.test(error.message)) return 413;

@@ -819,7 +819,8 @@ function readRevisionRecord(root, revision, path) {
   if (!path) return null;
   try {
     return JSON.parse(readRevisionSource(root, revision, path));
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return null;
   }
 }
@@ -832,7 +833,8 @@ function readRevisionSource(root, revision, path, historyIndex = null) {
       ? historyIndex.parentsByCommit.get(parentMatch[1])?.[0] || null
       : /^[a-f0-9]{40}$/i.test(String(revision)) ? String(revision) : runGit(root, ["rev-parse", `${revision}^{commit}`]);
     return commit ? getFileAtRevision(root, commit, path) || "" : "";
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return "";
   }
 }
@@ -1128,7 +1130,8 @@ function readHeadRecord(root, path, revision = null) {
   if (!path) return null;
   try {
     return JSON.parse(readHeadSource(root, path, revision));
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return null;
   }
 }
@@ -1137,7 +1140,8 @@ function readHeadSource(root, path, revision = null) {
   try {
     const commit = revision || gitRevision(root);
     return commit ? getFileAtRevision(root, commit, path) || "" : "";
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return "";
   }
 }
@@ -1152,6 +1156,7 @@ function runGit(root, args, deadline) {
     if (deadline && timeoutMs <= 0) throw new Error("Git reconciliation history exceeded its cumulative deadline.");
     return runGitCommandSync(root, args, timeoutMs ? { timeoutMs } : {});
   } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     if (deadline && performance.now() >= deadline) {
       const timeoutError = new Error("Git reconciliation history exceeded its cumulative deadline.", { cause: error });
       timeoutError.code = "FILEGRC_HISTORY_DEADLINE";

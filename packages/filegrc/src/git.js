@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { devNull } from "node:os";
@@ -22,8 +23,13 @@ const backgroundSynchronizations = new Map();
 const browserRemotePrefetches = new Map();
 const browserRemotePrefetchPromises = new Map();
 const repositorySnapshotPromises = new Map();
+const gitCommandCaches = new AsyncLocalStorage();
+const gitCommandDeadlines = new AsyncLocalStorage();
+const gitCommandCacheBytes = new WeakMap();
 let gitCommandInterceptor = null;
+let gitSubprocessObserver = null;
 let historicalBatchInterceptor = null;
+let historicalRevisionReadObserver = null;
 const BROWSER_REMOTE_PREFETCH_MAX_AGE_MS = 30_000;
 const GIT_DEFAULT_TIMEOUT_MS = 10_000;
 const GIT_REMOTE_TIMEOUT_MS = 30_000;
@@ -36,7 +42,20 @@ const DATA_HISTORY_MAX_ANCESTRY_COMMITS = 20_000;
 const DATA_HISTORY_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 const DATA_HISTORY_BUILD_TIMEOUT_MS = 10_000;
 const DATA_HISTORY_FAILURE_CACHE_MS = 2_000;
+const GIT_COMMAND_CACHE_MAX_ENTRIES = 128;
+const GIT_COMMAND_CACHE_MAX_BYTES = 4 * 1024 * 1024;
+const GIT_COMMAND_CACHE_MAX_ENTRY_BYTES = 512 * 1024;
 export const BROWSER_VALIDATION = Symbol("filegrc.browserValidation");
+
+export function withGitCommandCache(cache, callback) {
+  if (!(cache instanceof Map)) throw new TypeError("The Git command cache must be a Map.");
+  return gitCommandCaches.run(cache, callback);
+}
+
+export function withGitCommandDeadline(deadlineAt, callback) {
+  if (!Number.isFinite(deadlineAt)) throw new TypeError("The Git command deadline must be finite.");
+  return gitCommandDeadlines.run(deadlineAt, callback);
+}
 
 function gitEnvironment(overrides = {}) {
   return {
@@ -111,6 +130,7 @@ export function getGitSummary(input = process.cwd()) {
       lastCommit: last
     };
   } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return {
       available: false,
       clean: null,
@@ -139,7 +159,8 @@ export function getFileHistory(input, relativePath, limit = 50) {
     ]);
     if (!output) return [];
     return output.split("\n").map(parseLogLine);
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -190,7 +211,8 @@ export function getFileHistoryWithPaths(input, relativePath, limit = 50) {
       }
     }
     return history;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -213,7 +235,8 @@ export function getDataCommitHistory(input) {
   const root = resolveWorkspaceRoot(input);
   try {
     return lines(git(root, ["log", "--reverse", "--format=%H", "--", "data"]));
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return [];
   }
 }
@@ -238,7 +261,8 @@ export function getChangedDataJsonFilesAtRevision(input, revision) {
       paths.push(workspacePrefix ? repositoryPath.slice(workspacePrefix.length + 1) : repositoryPath);
     }
     return [...new Set(paths)];
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return [];
   }
 }
@@ -289,6 +313,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
     try {
       head = historyGit(["rev-parse", "HEAD"]) || null;
     } catch (cause) {
+      rethrowGitDeadline(cause);
       discoveryError = cause;
     }
   }
@@ -305,6 +330,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
     try {
       shallow = historyGit(["rev-parse", "--is-shallow-repository"]) === "true";
     } catch (cause) {
+      rethrowGitDeadline(cause);
       discoveryError = cause;
     }
   }
@@ -331,6 +357,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
       }
     }
   } catch (cause) {
+    rethrowGitDeadline(cause);
     available = false;
     error = cause;
   }
@@ -348,6 +375,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
         }
       );
     } catch (cause) {
+      rethrowGitDeadline(cause);
       available = false;
       error = cause;
     }
@@ -393,6 +421,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
       if (!historiesById.has(record.id)) historiesById.set(record.id, []);
       historiesById.get(record.id).push({ ...summary, path });
     } catch (cause) {
+      rethrowGitDeadline(cause);
       available = false;
       error = new Error(`Git history contains an unreadable data record at ${summary.commit.slice(0, 12)}:${path}.`, { cause });
       break;
@@ -415,6 +444,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
         throw new Error("Git returned incomplete commit ancestry.");
       }
     } catch (cause) {
+      rethrowGitDeadline(cause);
       available = false;
       error = cause;
     }
@@ -583,14 +613,15 @@ export function isGitAncestor(input, ancestor, descendant) {
   if (!/^[a-f0-9]{40}$/i.test(String(ancestor)) || !/^[a-f0-9]{40}$/i.test(String(descendant))) return false;
   const root = resolveWorkspaceRoot(input);
   try {
-    execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
+    observedExecFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
       cwd: root,
       stdio: "ignore",
       timeout: 10_000,
       env: gitEnvironment()
     });
     return true;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return false;
   }
 }
@@ -617,14 +648,15 @@ export function getFileBufferAtRevision(input, revision, relativePath) {
     const workspacePrefix = relative(topLevel, root).split(sep).join("/");
     if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return null;
     const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
-    return execFileSync("git", ["show", `${revision}:${repositoryPath}`], {
+    return observedExecFileSync("git", ["show", `${revision}:${repositoryPath}`], {
       cwd: root,
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
       maxBuffer: 20_000_000,
       env: gitEnvironment()
     });
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -639,7 +671,8 @@ export function getFileObjectIdAtRevision(input, revision, relativePath) {
     const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
     const objectId = git(root, ["rev-parse", `${revision}:${repositoryPath}`]);
     return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -650,7 +683,8 @@ export function getWorkingFileObjectId(input, relativePath) {
   try {
     const objectId = git(root, ["hash-object", "--no-filters", "--", relativePath]);
     return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -660,11 +694,28 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, o
   const wanted = new Set(relativePaths);
   const histories = new Map([...wanted].map((path) => [path, []]));
   if (!wanted.size) return histories;
-  const head = tryGit(root, ["rev-parse", "HEAD"]) || null;
+  const remainingTime = () => {
+    if (options.deadlineAt === undefined) return undefined;
+    const remaining = Math.ceil(options.deadlineAt - performance.now());
+    if (remaining > 0) return remaining;
+    const error = new Error("The Git history deadline expired before another subprocess could start.");
+    error.code = "FILEGRC_GIT_DEADLINE";
+    throw error;
+  };
+  const withinDeadline = (task) => options.deadlineAt === undefined
+    ? task()
+    : withGitCommandDeadline(options.deadlineAt, task);
+  let head = null;
+  try {
+    head = withinDeadline(() => git(root, ["rev-parse", "HEAD"], { timeoutMs: remainingTime() })) || null;
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
+    head = null;
+  }
   const cached = workspaceHistoryCache.get(root);
   if (cached?.head === head && cached.limitPerFile === limitPerFile) {
     if (options.strict === true && cached.available === false) {
-      throw new Error("Git history is unavailable for the requested workspace files.");
+      throw gitHistoryUnavailableError();
     }
     for (const path of wanted) histories.set(path, cached.histories.get(path) ?? []);
     return histories;
@@ -672,7 +723,9 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, o
   const allHistories = new Map();
   let available = true;
   try {
-    const output = git(root, ["log", "--relative", "--format=%x1e%H%x1f%aI%x1f%an%x1f%s", "--name-only", "--", "data"]);
+    const output = withinDeadline(() => git(root, ["log", "--relative", "--format=%x1e%H%x1f%aI%x1f%an%x1f%s", "--name-only", "--", "data"], {
+      timeoutMs: remainingTime()
+    }));
     for (const block of output.split("\x1e")) {
       const lines = block.trim().split("\n").filter(Boolean);
       if (lines.length < 2) continue;
@@ -683,20 +736,28 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, o
         if (history.length < limitPerFile) history.push(commit);
       }
     }
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     available = false;
     if (options.strict === true) {
-      throw new Error("Git history is unavailable for the requested workspace files.");
+      throw gitHistoryUnavailableError(error);
     }
     // Browser and workflow views tolerate an uncommitted workspace with no history yet.
   }
-  workspaceHistoryCache.set(root, { head, limitPerFile, histories: allHistories, available });
+  if (available) workspaceHistoryCache.set(root, { head, limitPerFile, histories: allHistories, available });
   for (const path of wanted) histories.set(path, allHistories.get(path) ?? []);
   return histories;
 }
 
+function gitHistoryUnavailableError(cause) {
+  const error = new Error("Git history is unavailable for the requested workspace files.", { cause });
+  error.code = "FILEGRC_GIT_HISTORY_UNAVAILABLE";
+  return error;
+}
+
 export function getFileAtRevision(input, revision, relativePath) {
   const root = resolveWorkspaceRoot(input);
+  historicalRevisionReadObserver?.({ root, revision, relativePath });
   const indexed = indexedDataFile(dataRecordHistoryIndexCache.get(root), revision, relativePath);
   return indexed === undefined
     ? getFilesAtRevisions(root, [{ revision, relativePath }])[0]
@@ -771,7 +832,7 @@ export function getFilesAtRevisions(input, requests, options = {}) {
       try {
         const run = () => {
           const remainingMs = remainingTime();
-          return execFileSync("git", ["cat-file", "--batch"], {
+          return observedExecFileSync("git", ["cat-file", "--batch"], {
             cwd: root,
             input: `${specifications.join("\n")}\n`,
             stdio: ["pipe", "pipe", "ignore"],
@@ -785,6 +846,7 @@ export function getFilesAtRevisions(input, requests, options = {}) {
         ));
         values = parseBatchObjects(output, batch.length);
       } catch (cause) {
+        rethrowGitDeadline(cause);
         const error = new Error("Git could not read the historical file batch safely.", { cause });
         error.code = "FILEGRC_HISTORY_BATCH_FAILED";
         throw error;
@@ -800,7 +862,7 @@ export function getFilesAtRevisions(input, requests, options = {}) {
     }
     return results;
   } catch (error) {
-    if (["FILEGRC_HISTORY_EXPORT_LIMIT", "FILEGRC_HISTORY_BATCH_FAILED", "FILEGRC_HISTORY_DEADLINE"].includes(error?.code)) throw error;
+    if (["FILEGRC_HISTORY_EXPORT_LIMIT", "FILEGRC_HISTORY_BATCH_FAILED", "FILEGRC_HISTORY_DEADLINE", "FILEGRC_GIT_DEADLINE"].includes(error?.code)) throw error;
     return results.map((value) => value ?? null);
   }
 }
@@ -814,7 +876,7 @@ export function setHistoricalBatchInterceptorForTests(interceptor) {
 }
 
 function assertHistoricalExportSize(root, specifications, remainingBytes, maxTotalBytes, timeoutMs = GIT_DEFAULT_TIMEOUT_MS) {
-  const output = measureTimingSync("git-history-size", () => execFileSync("git", [
+  const output = measureTimingSync("git-history-size", () => observedExecFileSync("git", [
     "cat-file",
     "--batch-check=%(objectname) %(objecttype) %(objectsize)"
   ], {
@@ -880,14 +942,15 @@ export function getDataFilesAtRevision(input, revision) {
     return lines(git(root, ["ls-tree", "-r", "--name-only", revision, "--", dataPrefix]))
       .filter((path) => path.startsWith(`${dataPrefix}/`) && path.endsWith(".json"))
       .map((path) => workspacePrefix ? path.slice(workspacePrefix.length + 1) : path);
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return [];
   }
 }
 
 function readHistoricalFile(root, specification) {
   try {
-    return measureTimingSync("git-history-export", () => execFileSync("git", ["show", specification], {
+    return measureTimingSync("git-history-export", () => observedExecFileSync("git", ["show", specification], {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -895,7 +958,8 @@ function readHistoricalFile(root, specification) {
       maxBuffer: 20_000_000,
       env: gitEnvironment()
     }));
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -938,7 +1002,8 @@ export function getChangedDataPathsSinceRevision(input, revision) {
       ...lines(git(root, ["diff", "--name-only", "--relative", revision, "--", "data"])),
       ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", "data"]))
     ])].filter((path) => path.startsWith("data/"));
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -951,7 +1016,8 @@ export function hasGitRevision(input, revision) {
   try {
     git(root, ["cat-file", "-e", `${revision}^{commit}`]);
     return true;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return false;
   }
 }
@@ -985,6 +1051,66 @@ export function getRepositorySnapshot(input = process.cwd(), options = {}) {
   return snapshot;
 }
 
+export async function getRepositoryStateSignature(input = process.cwd(), options = {}) {
+  const root = resolveWorkspaceRoot(input);
+  const timeout = { timeoutMs: options.timeoutMs };
+  let status;
+  let gitDirectory;
+  let refs;
+  let remotes;
+  try {
+    [status, gitDirectory, refs, remotes] = await Promise.all([
+      runGitCommand(root, [
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "-z",
+        "--untracked-files=all"
+      ], { ...timeout, operation: "verify repository state" }),
+      runGitCommand(root, ["rev-parse", "--absolute-git-dir"], {
+        ...timeout,
+        operation: "locate repository state"
+      }),
+      runGitCommand(root, ["rev-parse", "--verify", "@{upstream}"], {
+        ...timeout,
+        operation: "verify the upstream repository revision"
+      }).catch((error) => {
+        if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
+        return "";
+      }),
+      runGitCommand(root, ["remote", "-v"], { ...timeout, operation: "verify repository remotes" })
+    ]);
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
+    status = "git-unavailable";
+    gitDirectory = "";
+    refs = "";
+    remotes = "";
+  }
+  const background = backgroundSynchronizations.get(root);
+  const backgroundState = background ? {
+    status: background.status,
+    commit: background.commit,
+    startedAt: background.startedAt ?? null,
+    finishedAt: background.finishedAt ?? null,
+    remotePushed: background.remotePushed === true,
+    error: background.error ?? null
+  } : null;
+  return createHash("sha256")
+    .update(status)
+    .update("\0")
+    .update(refs)
+    .update("\0")
+    .update(remotes)
+    .update("\0")
+    .update(repositoryOperationFromDirectory(gitDirectory.trim()) || "")
+    .update("\0")
+    .update(JSON.stringify(backgroundState))
+    .update("\0")
+    .update(lastSuccessfulSynchronizations.get(root) || "")
+    .digest("hex");
+}
+
 export async function getWorkspaceRevisionSnapshot(input = process.cwd()) {
   const root = resolveWorkspaceRoot(input);
   try {
@@ -1009,6 +1135,7 @@ export async function getWorkspaceRevisionSnapshot(input = process.cwd()) {
       workspaceChangePaths: parsed.changePaths
     };
   } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return unavailableSnapshot(error, { workspaceChangePaths: [] });
   }
 }
@@ -1022,6 +1149,7 @@ async function buildRepositorySnapshot(root) {
       { operation: "locate the repository" }
     ));
   } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return unavailableSnapshot(error);
   }
   const [topLevel, gitDirectory] = repositoryPaths.split("\n");
@@ -1087,6 +1215,7 @@ async function buildRepositorySnapshot(root) {
       invocationCount: 3 + (parsed.commit ? 1 : 0) + (parsed.upstream ? 1 : 0) + (parsed.ahead > 0 ? 1 : 0)
     };
   } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return unavailableSnapshot(error, { root: topLevel, gitDirectory });
   }
 }
@@ -2188,7 +2317,7 @@ function assertNoHiddenIndexEntries(root) {
 }
 
 function hashWorkspaceBytes(root, bytes, write = false) {
-  return execFileSync("git", ["hash-object", ...(write ? ["-w"] : []), "--stdin"], {
+  return observedExecFileSync("git", ["hash-object", ...(write ? ["-w"] : []), "--stdin"], {
     cwd: root,
     input: bytes,
     encoding: "utf8",
@@ -2474,6 +2603,24 @@ export function setGitCommandInterceptorForTests(interceptor) {
   return () => { gitCommandInterceptor = previous; };
 }
 
+export function setGitSubprocessObserverForTests(observer) {
+  if (observer !== null && typeof observer !== "function") {
+    throw new TypeError("The Git subprocess observer must be a function or null.");
+  }
+  const previous = gitSubprocessObserver;
+  gitSubprocessObserver = observer;
+  return () => { gitSubprocessObserver = previous; };
+}
+
+export function setHistoricalRevisionReadObserverForTests(observer) {
+  if (observer !== null && typeof observer !== "function") {
+    throw new TypeError("The historical revision-read observer must be a function or null.");
+  }
+  const previous = historicalRevisionReadObserver;
+  historicalRevisionReadObserver = observer;
+  return () => { historicalRevisionReadObserver = previous; };
+}
+
 export function runGitCommand(cwd, args, options = {}) {
   if (gitCommandInterceptor) {
     return Promise.resolve().then(() => gitCommandInterceptor({
@@ -2501,8 +2648,9 @@ function runGitCommandNative(cwd, args, options = {}) {
   if (options.expectedNoOperation) assertNoGitOperationInProgress(cwd);
   const operation = options.operation || "run a Git command";
   const configuredTimeout = options.timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS;
-  const timeoutMs = Math.max(1, Number(configuredTimeout) || GIT_DEFAULT_TIMEOUT_MS);
+  const { timeoutMs, deadlineLimited } = gitTimeoutPlan(configuredTimeout, GIT_DEFAULT_TIMEOUT_MS);
   const maxOutputBytes = Math.max(1, Number(options.maxOutputBytes) || GIT_MAX_OUTPUT_BYTES);
+  gitSubprocessObserver?.({ kind: "async", cwd, args: [...args], options: { ...options } });
   return new Promise((resolveCommand, rejectCommand) => {
     const child = spawn("git", args, {
       cwd,
@@ -2581,7 +2729,9 @@ function runGitCommandNative(cwd, args, options = {}) {
         : /not a git repository|outside repository/i.test(errorOutput)
           ? "invalid-repository"
           : "command-failure";
-      rejectCommand(new GitOperationError(kind, operation, detail));
+      rejectCommand(new GitOperationError(kind, operation, detail, {
+        code: timedOut && deadlineLimited ? "FILEGRC_GIT_DEADLINE" : undefined
+      }));
     });
   });
 }
@@ -2595,20 +2745,23 @@ async function tryGitAsync(cwd, args, operation) {
 }
 
 function git(cwd, args, options = {}) {
-  return measureTimingSync("git-command-sync", () => execFileSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: Math.max(1, Number(options.timeoutMs) || GIT_DEFAULT_TIMEOUT_MS),
-    maxBuffer: 20_000_000,
-    env: gitEnvironment()
-  }).trim());
+  return cachedGitCommand("text", cwd, args, options, () => {
+    return measureTimingSync("git-command-sync", () => observedExecFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: Math.max(1, Number(options.timeoutMs) || GIT_DEFAULT_TIMEOUT_MS),
+      maxBuffer: 20_000_000,
+      env: gitEnvironment()
+    }).trim());
+  });
 }
 
 function tryGit(cwd, args) {
   try {
     return git(cwd, args);
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return "";
   }
 }
@@ -2625,20 +2778,105 @@ function gitOptionalMatch(cwd, args) {
 function tryGitRaw(cwd, args) {
   try {
     return gitRaw(cwd, args);
-  } catch {
+  } catch (error) {
+    if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
     return "";
   }
 }
 
 function gitRaw(cwd, args, options = {}) {
-  return execFileSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: Math.max(1, Number(options.timeoutMs) || GIT_DEFAULT_TIMEOUT_MS),
-    maxBuffer: 20_000_000,
-    env: gitEnvironment(options.gitIndexFile ? { GIT_INDEX_FILE: options.gitIndexFile } : {})
+  return cachedGitCommand("raw", cwd, args, options, () => {
+    return observedExecFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: Math.max(1, Number(options.timeoutMs) || GIT_DEFAULT_TIMEOUT_MS),
+      maxBuffer: 20_000_000,
+      env: gitEnvironment(options.gitIndexFile ? { GIT_INDEX_FILE: options.gitIndexFile } : {})
+    });
   });
+}
+
+function cachedGitCommand(outputKind, cwd, args, options, run) {
+  const cache = gitCommandCaches.getStore();
+  if (!cache) return run();
+  const key = JSON.stringify([
+    outputKind,
+    resolve(cwd),
+    args,
+    options.gitIndexFile || null
+  ]);
+  const cached = cache.get(key);
+  if (cached) {
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached.value;
+  }
+  const value = run();
+  const size = Buffer.byteLength(value);
+  if (size <= GIT_COMMAND_CACHE_MAX_ENTRY_BYTES) {
+    let totalBytes = gitCommandCacheBytes.get(cache) || 0;
+    while (cache.size >= GIT_COMMAND_CACHE_MAX_ENTRIES || totalBytes + size > GIT_COMMAND_CACHE_MAX_BYTES) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      totalBytes -= cache.get(oldestKey)?.size || 0;
+      cache.delete(oldestKey);
+    }
+    cache.set(key, { value, size });
+    gitCommandCacheBytes.set(cache, totalBytes + size);
+  }
+  return value;
+}
+
+function observedExecFileSync(executable, args, options = {}) {
+  const timeoutPlan = executable === "git"
+    ? gitTimeoutPlan(options.timeout, GIT_DEFAULT_TIMEOUT_MS)
+    : null;
+  const boundedOptions = timeoutPlan
+    ? { ...options, timeout: timeoutPlan.timeoutMs }
+    : options;
+  try {
+    if (executable === "git") {
+      gitSubprocessObserver?.({
+        kind: "sync",
+        cwd: boundedOptions.cwd,
+        args: [...args],
+        options: { ...boundedOptions, input: boundedOptions.input === undefined ? undefined : "[redacted]" }
+      });
+    }
+    return execFileSync(executable, args, boundedOptions);
+  } catch (error) {
+    if (timeoutPlan?.deadlineLimited && (error?.code === "ETIMEDOUT" || error?.signal)) {
+      const deadlineError = new Error("The Git command exceeded the shared request deadline.", { cause: error });
+      deadlineError.code = "FILEGRC_GIT_DEADLINE";
+      throw deadlineError;
+    }
+    throw error;
+  }
+}
+
+function boundedGitTimeout(configured, fallback) {
+  return gitTimeoutPlan(configured, fallback).timeoutMs;
+}
+
+function gitTimeoutPlan(configured, fallback) {
+  const requested = Math.max(1, Number(configured) || fallback);
+  const deadlineAt = gitCommandDeadlines.getStore();
+  if (deadlineAt === undefined) return { timeoutMs: requested, deadlineLimited: false };
+  const remaining = Math.ceil(deadlineAt - performance.now());
+  if (remaining <= 0) {
+    const error = new Error("The Git command deadline expired before another subprocess could start.");
+    error.code = "FILEGRC_GIT_DEADLINE";
+    throw error;
+  }
+  return {
+    timeoutMs: Math.min(requested, remaining),
+    deadlineLimited: remaining <= requested
+  };
+}
+
+function rethrowGitDeadline(error) {
+  if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
 }
 
 function nulFields(source) {
@@ -2648,7 +2886,7 @@ function nulFields(source) {
 function gitForWrite(cwd, args, action = "create the commit", options = {}) {
   try {
     assertWorkspaceInsideGitWorktree(cwd);
-    return execFileSync("git", args, {
+    return observedExecFileSync("git", args, {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],

@@ -7,7 +7,8 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { createAppState, createResource, createResourceAndLink, currentCalendarDate, deleteResource, dismissReconciliation, effectiveResourceStatus, loadWorkspace, planReconciliation, searchResources, updateContent, updateResource, validateWorkspace } from "../src/index.js";
 import { collectTimings } from "../src/timing.js";
-import { fingerprintWorkspace } from "../src/validate.js";
+import { fingerprintWorkspace, setFingerprintFileReadObserverForTests } from "../src/validate.js";
+import { markdownEntries } from "../src/resource-markdown.js";
 import { makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
@@ -142,6 +143,139 @@ test("reusable validation state invalidates when a source record changes", async
 
   assert.equal(timings.validation.count, 1);
   assert.equal(state.resources.find(({ record }) => record.id === owner.id).record.department, "External source edit");
+});
+
+test("workspace fingerprints include fixed evidence attachment bytes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-attachment-fingerprint-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  const evidenceEntry = loaded.entries.find(({ record }) => record.type === "evidence");
+  assert.ok(evidenceEntry);
+  const attachment = `evidence/${evidenceEntry.record.id}/attachment.txt`;
+  const secondAttachment = `evidence/${evidenceEntry.record.id}/second.bin`;
+  const evidence = { ...evidenceEntry.record, sourceKind: "file", filePaths: [attachment, secondAttachment] };
+  await writeFile(join(root, "data", evidenceEntry.relativePath), `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+  const attachmentPath = join(root, "data", attachment);
+  await mkdir(join(attachmentPath, ".."), { recursive: true });
+  await writeFile(attachmentPath, "Example fixed evidence attachment.\n", "utf8");
+  const secondAttachmentPath = join(root, "data", secondAttachment);
+  await writeFile(secondAttachmentPath, "Second fixed evidence attachment.\n", "utf8");
+  const fileDigestCache = new Map();
+  let attachmentReads = 0;
+  const restoreObserver = setFingerprintFileReadObserverForTests((path) => {
+    if (path.endsWith(`/${attachment}`) || path.endsWith(`/${secondAttachment}`)) attachmentReads += 1;
+  });
+  context.after(restoreObserver);
+  const before = (await fingerprintWorkspace(root, { fileDigestCache })).fingerprint;
+  assert.equal(attachmentReads, 2);
+  attachmentReads = 0;
+  assert.equal((await fingerprintWorkspace(root, { fileDigestCache })).fingerprint, before);
+  assert.equal(attachmentReads, 0);
+  const source = await readFile(attachmentPath, "utf8");
+  await writeFile(attachmentPath, source.replace("Example", "Changed"), "utf8");
+  const after = (await fingerprintWorkspace(root, { fileDigestCache })).fingerprint;
+  assert.notEqual(after, before);
+
+  const secondMarker = Buffer.from(`data-path\0${secondAttachment}\0file\0`);
+  await writeFile(attachmentPath, Buffer.from("left"));
+  await writeFile(secondAttachmentPath, Buffer.concat([Buffer.from("right\0"), secondMarker, Buffer.from("tail")]));
+  const boundaryBefore = (await fingerprintWorkspace(root, { fileDigestCache })).fingerprint;
+  await writeFile(attachmentPath, Buffer.concat([Buffer.from("left\0"), secondMarker, Buffer.from("right")]));
+  await writeFile(secondAttachmentPath, Buffer.from("tail"));
+  const boundaryAfter = (await fingerprintWorkspace(root, { fileDigestCache })).fingerprint;
+  assert.notEqual(boundaryAfter, boundaryBefore);
+});
+
+test("workspace fingerprint attachment reads stop when the verification budget expires", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-attachment-budget-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  const evidenceEntry = loaded.entries.find(({ record }) => record.type === "evidence");
+  assert.ok(evidenceEntry);
+  const attachments = [
+    `evidence/${evidenceEntry.record.id}/first.txt`,
+    `evidence/${evidenceEntry.record.id}/second.txt`
+  ];
+  await writeFile(join(root, "data", evidenceEntry.relativePath), `${JSON.stringify({
+    ...evidenceEntry.record,
+    sourceKind: "file",
+    filePaths: attachments
+  }, null, 2)}\n`, "utf8");
+  await mkdir(join(root, "data", "evidence", evidenceEntry.record.id), { recursive: true });
+  for (const path of attachments) await writeFile(join(root, "data", path), "attachment\n", "utf8");
+  const fingerprintInput = await loadWorkspace(root);
+
+  const reads = [];
+  const restoreObserver = setFingerprintFileReadObserverForTests(async (path) => {
+    if (path.endsWith("/first.txt") || path.endsWith("/second.txt")) {
+      reads.push(path);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  });
+  context.after(restoreObserver);
+
+  await assert.rejects(
+    fingerprintWorkspace(fingerprintInput, {
+      deadlineAt: performance.now() + 100,
+      maxUncachedFileBytes: 1024 * 1024
+    }),
+    (error) => error?.code === "FILEGRC_FINGERPRINT_BUDGET"
+  );
+  assert.equal(reads.length, 1);
+});
+
+test("workspace fingerprints reuse unchanged Markdown digests and bound changed Markdown reads", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-markdown-fingerprint-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const loaded = await loadWorkspace(root);
+  const markdownCandidates = loaded.entries
+    .flatMap(({ record }) => markdownEntries(loaded.model, record))
+    .map(({ path }) => path);
+  let markdownRelative = null;
+  for (const candidate of markdownCandidates) {
+    try {
+      if ((await stat(join(root, "data", candidate))).isFile()) {
+        markdownRelative = candidate;
+        break;
+      }
+    } catch {}
+  }
+  assert.ok(markdownRelative);
+  const markdown = join(root, "data", markdownRelative);
+  const fileDigestCache = new Map();
+  let markdownReads = 0;
+  const restoreObserver = setFingerprintFileReadObserverForTests(async (path) => {
+    if (!path.endsWith(`/${markdownRelative}`)) return;
+    markdownReads += 1;
+    if (markdownReads > 1) await new Promise((resolve) => setTimeout(resolve, 150));
+  });
+  context.after(restoreObserver);
+
+  await fingerprintWorkspace(loaded, { fileDigestCache });
+  assert.equal(markdownReads, 1);
+  await fingerprintWorkspace(loaded, { fileDigestCache });
+  assert.equal(markdownReads, 1);
+  await writeFile(markdown, `${await readFile(markdown, "utf8")}\n`, "utf8");
+  await assert.rejects(
+    fingerprintWorkspace(loaded, { fileDigestCache, deadlineAt: performance.now() + 100 }),
+    (error) => error?.code === "FILEGRC_FINGERPRINT_BUDGET"
+  );
+  assert.equal(markdownReads, 2);
+});
+
+test("workspace fingerprints include malformed authoritative JSON bytes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-malformed-fingerprint-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const malformedPath = join(root, "data", "people", "malformed.json");
+  await writeFile(malformedPath, "{", "utf8");
+  const before = (await fingerprintWorkspace(root)).fingerprint;
+  await writeFile(malformedPath, "[", "utf8");
+  const after = (await fingerprintWorkspace(root)).fingerprint;
+  assert.notEqual(after, before);
 });
 
 test("app state reuses the validated workspace for repository configuration", async (context) => {

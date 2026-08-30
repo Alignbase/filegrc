@@ -241,7 +241,15 @@ test("serves state and browser assets", async (context) => {
   assert.equal(ownerSummary.history, undefined);
   const bootstrapResponse = await fetch(`${result.url}/api/state/bootstrap`);
   assert.equal(bootstrapResponse.status, 200);
+  const crossOriginBootstrapResponse = await fetch(`${result.url}/api/state/bootstrap`, {
+    headers: {
+      origin: "https://example.invalid",
+      "sec-fetch-site": "cross-site"
+    }
+  });
+  assert.equal(crossOriginBootstrapResponse.status, 403);
   const bootstrap = await bootstrapResponse.json();
+  assert.match(bootstrap.stateToken, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   assert.equal(bootstrap.resources.length, 3);
   assert.equal(bootstrap.resources.every(({ detailsLoaded, content }) => detailsLoaded === false && Object.keys(content).length === 0), true);
   assert.equal(bootstrap.sections.program, "idle");
@@ -252,6 +260,12 @@ test("serves state and browser assets", async (context) => {
   assert.equal(program.stateToken, bootstrap.stateToken);
   assert.equal(program.section, "program");
   assert.ok(program.state.programReadiness);
+  const snapshotOwnerPath = join(root, "data", "people", "person-owner.json");
+  const ownerSource = await readFile(snapshotOwnerPath, "utf8");
+  await writeFile(snapshotOwnerPath, `${ownerSource}\n`, "utf8");
+  const staleSectionResponse = await fetch(`${result.url}/api/state/program?token=${encodeURIComponent(bootstrap.stateToken)}`);
+  assert.equal(staleSectionResponse.status, 409);
+  await writeFile(snapshotOwnerPath, ownerSource, "utf8");
   const expiredResponse = await fetch(`${result.url}/api/state/program?token=expired`);
   assert.equal(expiredResponse.status, 409);
   const ownerDetailResponse = await fetch(`${result.url}/api/resource/person/person-owner`);
@@ -259,6 +273,20 @@ test("serves state and browser assets", async (context) => {
   const ownerDetail = await ownerDetailResponse.json();
   assert.equal(ownerDetail.detailsLoaded, true);
   assert.deepEqual(ownerDetail.history, []);
+  const detailBootstrapResponse = await fetch(`${result.url}/api/state/bootstrap`);
+  assert.equal(detailBootstrapResponse.status, 200);
+  const detailBootstrap = await detailBootstrapResponse.json();
+  const sessionDetailResponse = await fetch(`${result.url}/api/resource/person/person-owner?token=${encodeURIComponent(detailBootstrap.stateToken)}`);
+  assert.equal(sessionDetailResponse.status, 200);
+  const sessionDetail = await sessionDetailResponse.json();
+  assert.equal(sessionDetail.detailsLoaded, true);
+  assert.deepEqual(sessionDetail.record, ownerDetail.record);
+  await writeFile(snapshotOwnerPath, `${ownerSource}\n`, "utf8");
+  const staleDetailResponse = await fetch(`${result.url}/api/resource/person/person-owner?token=${encodeURIComponent(detailBootstrap.stateToken)}`);
+  assert.equal(staleDetailResponse.status, 409);
+  await writeFile(snapshotOwnerPath, ownerSource, "utf8");
+  const expiredDetailResponse = await fetch(`${result.url}/api/resource/person/person-owner?token=expired`);
+  assert.equal(expiredDetailResponse.status, 409);
   const revisionsResponse = await fetch(`${result.url}/api/review-revisions?id=person-owner`);
   assert.equal(revisionsResponse.status, 200);
   const revisions = await revisionsResponse.json();
@@ -1353,7 +1381,127 @@ test("loads calculated state only for the current browser route", () => {
   assert.match(APP_SCRIPT, /route\.name === "audit-packet"[\s\S]*"audits"/);
   assert.match(APP_SCRIPT, /data-load-workflow>Calculate action/);
   assert.match(APP_SCRIPT, /loadStateSection\("workflow"\)/);
+  assert.match(APP_SCRIPT, /tokenQuery = token \? "\?token="/);
+  assert.match(APP_SCRIPT, /response\.status === 409 && token/);
+  assert.match(APP_SCRIPT, /detail\.stateToken === token && state\.stateToken === token/);
   assert.doesNotMatch(APP_SCRIPT, /fetchJson\("\/api\/state"\)/);
+});
+
+test("resource detail retries when a concurrent section refresh replaces its state token", async () => {
+  const start = APP_SCRIPT.indexOf("async function loadResourceDetail");
+  const end = APP_SCRIPT.indexOf("function issueSeed", start);
+  const source = APP_SCRIPT.slice(start, end);
+  let resolveOldDetail;
+  let detailCalls = 0;
+  let renders = 0;
+  const oldDetailResponse = new Promise((resolve) => { resolveOldDetail = resolve; });
+  const harness = new Function("dependencies", `
+    let state = dependencies.state;
+    const resourceDetailRequests = new Map();
+    const stateSectionRequests = new Map();
+    let expiredStateRefresh = null;
+    const localFetch = dependencies.localFetch;
+    const fetch = dependencies.fetch;
+    const normalizeAppState = (value) => value;
+    const responseMessage = async () => "request failed";
+    const parseRoute = () => ({ name: "detail", type: "person", id: "person-owner" });
+    const render = dependencies.render;
+    const loadStateForRoute = () => {};
+    const root = { querySelector: () => null };
+    const esc = String;
+    ${source}
+    return { loadResourceDetail, refreshExpiredAppState, state: () => state };
+  `)({
+    state: {
+      stateToken: "token-a",
+      selectedProgramId: null,
+      resources: [{ record: { type: "person", id: "person-owner" }, detailsLoaded: false }]
+    },
+    localFetch: async () => {
+      detailCalls += 1;
+      if (detailCalls === 1) return oldDetailResponse;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          stateToken: "token-b",
+          detailsLoaded: true,
+          record: { type: "person", id: "person-owner", title: "Owner" }
+        })
+      };
+    },
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({
+        stateToken: "token-b",
+        selectedProgramId: null,
+        resources: [{ record: { type: "person", id: "person-owner" }, detailsLoaded: false }],
+        sections: {}
+      })
+    }),
+    render: () => { renders += 1; }
+  });
+
+  const detailPromise = harness.loadResourceDetail("person", "person-owner");
+  await new Promise((resolve) => setImmediate(resolve));
+  await harness.refreshExpiredAppState("token-a");
+  resolveOldDetail({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      stateToken: "token-a",
+      detailsLoaded: true,
+      record: { type: "person", id: "person-owner", title: "Stale owner" }
+    })
+  });
+  await detailPromise;
+
+  assert.equal(detailCalls, 2);
+  assert.equal(harness.state().resources[0].record.title, "Owner");
+  assert.equal(renders, 1);
+});
+
+test("state sections start a new request after refreshing an expired token", async () => {
+  const start = APP_SCRIPT.indexOf("function loadStateSection");
+  const end = APP_SCRIPT.indexOf("function parseRoute", start);
+  const source = APP_SCRIPT.slice(start, end);
+  let calls = 0;
+  const harness = new Function("dependencies", `
+    let state = {
+      stateToken: "token-a",
+      selectedProgramId: null,
+      sections: { program: "idle" }
+    };
+    const stateSectionRequests = new Map();
+    const localFetch = dependencies.localFetch;
+    const refreshExpiredAppState = async () => { state.stateToken = "token-b"; state.sections.program = "idle"; };
+    const responseMessage = async () => "request failed";
+    const render = () => {};
+    const loadStateForRoute = () => {};
+    const scheduleRepositorySyncPoll = () => {};
+    const maybeRequestOnboarding = () => {};
+    ${source}
+    return { loadStateSection, state: () => state };
+  `)({
+    localFetch: async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false, status: 409 };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          stateToken: "token-b",
+          state: { sections: { program: "complete" }, programReadiness: { status: "ready" } }
+        })
+      };
+    }
+  });
+
+  await harness.loadStateSection("program");
+
+  assert.equal(calls, 2);
+  assert.equal(harness.state().sections.program, "complete");
+  assert.equal(harness.state().programReadiness.status, "ready");
 });
 
 test("runs optional onboarding from committed renderer settings", () => {

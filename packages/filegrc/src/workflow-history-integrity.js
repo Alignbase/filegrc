@@ -116,7 +116,7 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
       entry.record.type === "exception"
       && historical.record.reportingRouteSetId
       && historical.commit !== commits.find((commit) => {
-        try { return Number(JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"))?.dataModelVersion) >= 10; } catch { return false; }
+        try { return Number(JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"))?.dataModelVersion) >= 10; } catch (error) { rethrowGitDeadline(error); return false; }
       })
     ) {
       const records = recordsAtRevision(loaded, historical.commit);
@@ -146,7 +146,7 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
   }
 
   const firstV10Commit = commits.find((commit) => {
-    try { return Number(JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"))?.dataModelVersion) >= 10; } catch { return false; }
+    try { return Number(JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"))?.dataModelVersion) >= 10; } catch (error) { rethrowGitDeadline(error); return false; }
   });
   const protectedRouteSources = new Map();
   for (const [commit, records] of revisionRecords) {
@@ -307,7 +307,8 @@ function legacyCollectionReviewTransition(loaded, previous, current) {
   try {
     const workspace = JSON.parse(getFileAtRevision(loaded.root, current.commit, "data/workspace.json"));
     return Number(workspace?.dataModelVersion) < 9;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return false;
   }
 }
@@ -319,7 +320,8 @@ function historicalState(loaded) {
     try {
       const workspace = JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"));
       return Number(workspace?.dataModelVersion) >= 9;
-    } catch {
+    } catch (error) {
+      rethrowGitDeadline(error);
       return false;
     }
   });
@@ -392,7 +394,8 @@ function legacyCollectionReview(loaded, historical) {
   let workspace;
   try {
     workspace = JSON.parse(getFileAtRevision(loaded.root, historical.commit, "data/workspace.json"));
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return false;
   }
   return Number(workspace?.dataModelVersion) < 9
@@ -408,7 +411,8 @@ function recordAtRevision(loaded, commit, id, identityHistory) {
   try {
     const record = JSON.parse(source);
     return record?.id === id ? { record, path: item.path } : null;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -454,7 +458,7 @@ async function validateReportingRouteAuthorityHistory(loaded, commits, revisionR
   ));
   if (!routeSets.length) return;
   const firstV10Commit = commits.find((commit) => {
-    try { return Number(JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"))?.dataModelVersion) >= 10; } catch { return false; }
+    try { return Number(JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"))?.dataModelVersion) >= 10; } catch (error) { rethrowGitDeadline(error); return false; }
   });
   for (const route of routeSets) {
     const versions = changedVersions(route.id, commits, revisionRecords, historiesById);
@@ -733,7 +737,8 @@ function authorityAppointmentOverlapsRoute(appointment, route, workspaceId, time
     routeEnd = route.cancellation?.canceledAt
       ? currentCalendarDate(timezone, new Date(route.cancellation.canceledAt))
       : null;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return false;
   }
   return (!routeEnd || appointment.startsOn <= routeEnd)
@@ -786,7 +791,8 @@ function historicalWorkspaceTimezoneAtRevision(loaded, commit) {
     if (typeof workspace?.timezone !== "string" || !workspace.timezone.trim()) return null;
     new Intl.DateTimeFormat("en", { timeZone: workspace.timezone }).format();
     return workspace.timezone;
-  } catch {
+  } catch (error) {
+    rethrowGitDeadline(error);
     return null;
   }
 }
@@ -900,4 +906,8 @@ function integrityError(entry, message) {
     path: `data/${entry.relativePath}`,
     message
   };
+}
+
+function rethrowGitDeadline(error) {
+  if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
 }

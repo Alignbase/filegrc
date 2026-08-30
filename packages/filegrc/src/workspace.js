@@ -14,11 +14,13 @@ async function loadWorkspaceUnmeasured(input) {
   const diagnostics = [];
   const files = await collectJsonFiles(dataRoot);
   const resources = [];
+  const sourceEntries = [];
 
   for (const path of files) {
     const relativePath = relative(dataRoot, path).split(sep).join("/");
     try {
       const source = await readFile(path, "utf8");
+      sourceEntries.push({ path, relativePath, source });
       const record = JSON.parse(source);
       resources.push({ record, path, relativePath, source });
     } catch (error) {
@@ -68,6 +70,7 @@ async function loadWorkspaceUnmeasured(input) {
     model,
     workspace: workspaceEntry?.record ?? null,
     entries: resources,
+    sourceEntries,
     resources: resources.map(({ record }) => record),
     diagnostics
   };

@@ -141,7 +141,9 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     asOf,
     evaluatedAt,
     programId: programRecord.type === "program" ? programRecord.id : undefined,
-    controlIds: options.auditId ? audits[0]?.controlIds : programRecord?.controlIds
+    controlIds: options.auditId ? audits[0]?.controlIds : programRecord?.controlIds,
+    historyDeadlineAt: options.historyDeadlineAt,
+    strictHistory: options.strictHistory
   });
   const guidedFindings = [
     ...programFindings(program),
@@ -732,7 +734,10 @@ async function assessPeriodHealth(loaded, options) {
     "component"
   ].includes(record.type));
   const paths = relevantEntries.map(({ relativePath }) => `data/${relativePath}`);
-  const histories = getWorkspaceHistories(loaded.root, paths, 50);
+  const histories = getWorkspaceHistories(loaded.root, paths, 50, {
+    deadlineAt: options.historyDeadlineAt,
+    strict: options.strictHistory === true
+  });
   const allHistory = [...histories.values()].flat().filter(Boolean);
   const earliestCommitDate = allHistory
     .map(({ timestamp }) => timestamp?.slice(0, 10))

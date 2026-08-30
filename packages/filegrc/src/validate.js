@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition, modelSupports } from "../model/index.js";
@@ -35,6 +36,17 @@ import {
   reportingRouteRecordAtRevision
 } from "./reporting-route-integrity.js";
 import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
+
+let fingerprintFileReadObserver = null;
+
+export function setFingerprintFileReadObserverForTests(observer) {
+  if (observer !== null && typeof observer !== "function") {
+    throw new TypeError("The fingerprint file-read observer must be a function or null.");
+  }
+  const previous = fingerprintFileReadObserver;
+  fingerprintFileReadObserver = observer;
+  return () => { fingerprintFileReadObserver = previous; };
+}
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
@@ -229,6 +241,7 @@ async function validateWorkspaceUnmeasured(input) {
         ));
       }
     } catch (cause) {
+      if (cause?.code === "FILEGRC_GIT_DEADLINE") throw cause;
       diagnostics.push(error(
         "reconciliation-history-unavailable",
         "data/workspace.json",
@@ -1224,19 +1237,27 @@ function validateCollectionReviewSet(resources, pathById, diagnostics) {
   }
 }
 
-export async function fingerprintWorkspace(input = process.cwd()) {
+export async function fingerprintWorkspace(input = process.cwd(), options = {}) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const hash = createHash("sha256");
   hash.update(`model\0${loaded.model.modelVersion}\0`);
-  for (const entry of [...loaded.entries].sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
+  const sourceEntries = loaded.sourceEntries || loaded.entries;
+  const fingerprintBudget = { uncachedBytes: 0 };
+  for (const entry of [...sourceEntries].sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
     hash.update(`record\0${entry.relativePath}\0${entry.source.length}\0${entry.source}`);
+  }
+  for (const entry of [...loaded.entries].sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
     const definition = loaded.model.resources[entry.record?.type];
     if (!definition) continue;
     for (const item of markdownEntries(loaded.model, entry.record).sort((a, b) => a.path.localeCompare(b.path))) {
       try {
-        const source = await readFile(resolveDataPath(loaded.root, item.path), "utf8");
-        hash.update(`markdown\0${item.path}\0${source.length}\0${source}`);
-      } catch {
+        const resolvedPath = resolveDataPath(loaded.root, item.path);
+        const file = await stat(resolvedPath);
+        if (!file.isFile()) throw new Error("Markdown path is not a file.");
+        const content = await fingerprintFileContent(resolvedPath, file, options, fingerprintBudget);
+        hash.update(`markdown\0${item.path}\0${content.size}\0${content.digest}\0`);
+      } catch (error) {
+        if (error?.code === "FILEGRC_FINGERPRINT_BUDGET") throw error;
         hash.update(`markdown-missing\0${item.path}\0`);
       }
     }
@@ -1247,15 +1268,59 @@ export async function fingerprintWorkspace(input = process.cwd()) {
       const paths = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
       for (const path of [...paths].sort()) {
         try {
-          const file = await stat(resolveDataPath(loaded.root, path));
-          hash.update(`data-path\0${path}\0${file.isFile() ? "file" : "other"}\0`);
-        } catch {
+          const resolvedPath = resolveDataPath(loaded.root, path);
+          const file = await stat(resolvedPath);
+          if (file.isFile()) {
+            const identity = `${file.dev}:${file.ino}:${file.mode}:${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+            let content = options.fileDigestCache?.get(resolvedPath);
+            if (!content || content.identity !== identity) {
+              content = await fingerprintFileContent(resolvedPath, file, options, fingerprintBudget);
+            }
+            hash.update(`data-path\0${path}\0file\0${content.size}\0${content.digest}\0`);
+          } else hash.update(`data-path\0${path}\0other\0`);
+        } catch (error) {
+          if (error?.code === "FILEGRC_FINGERPRINT_BUDGET") throw error;
           hash.update(`data-path-missing\0${path}\0`);
         }
       }
     }
   }
   return { fingerprint: hash.digest("hex"), loaded };
+}
+
+async function fingerprintFileContent(path, file, options, budget) {
+  const identity = `${file.dev}:${file.ino}:${file.mode}:${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+  const cached = options.fileDigestCache?.get(path);
+  if (cached?.identity === identity) return cached;
+  assertFingerprintBudget(options, budget.uncachedBytes + file.size);
+  budget.uncachedBytes += file.size;
+  const contentHash = createHash("sha256");
+  let size = 0;
+  await fingerprintFileReadObserver?.(path);
+  for await (const chunk of createReadStream(path)) {
+    assertFingerprintBudget(options, budget.uncachedBytes - file.size + size + chunk.length);
+    size += chunk.length;
+    contentHash.update(chunk);
+  }
+  const content = { identity, size, digest: contentHash.digest("hex") };
+  if (options.fileDigestCache?.size < 20_000 || options.fileDigestCache?.has(path)) {
+    options.fileDigestCache.set(path, content);
+  }
+  return content;
+}
+
+function assertFingerprintBudget(options, uncachedBytes) {
+  if (options.deadlineAt !== undefined && performance.now() >= options.deadlineAt) {
+    const error = new Error("Workspace attachment verification exceeded its time limit. Reload and try again.");
+    error.code = "FILEGRC_FINGERPRINT_BUDGET";
+    throw error;
+  }
+  if (options.maxUncachedFileBytes !== undefined
+    && uncachedBytes > options.maxUncachedFileBytes) {
+    const error = new Error("Workspace file verification exceeded its byte limit. Reload and try again.");
+    error.code = "FILEGRC_FINGERPRINT_BUDGET";
+    throw error;
+  }
 }
 
 function validateImplementedControlSchedules(record, obligationsByControl, path, diagnostics) {

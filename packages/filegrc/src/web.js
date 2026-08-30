@@ -95,6 +95,7 @@ let repositorySyncPollInFlight = false;
 let mutationStateRefreshInFlight = false;
 let mutationStateRefreshTimer = null;
 let programSelectionGeneration = 0;
+let expiredStateRefresh = null;
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could Not Load the Workspace</h1><pre></pre></main>';
@@ -193,14 +194,22 @@ function loadStateForRoute() {
   for (const section of desiredStateSections(route)) loadStateSection(section);
 }
 
-function loadStateSection(section) {
+function loadStateSection(section, refreshExpired = true) {
   if (!state.stateToken || state.sections?.[section] === "complete") return Promise.resolve();
   if (stateSectionRequests.has(section)) return stateSectionRequests.get(section);
   state.sections[section] = "loading";
   const token = state.stateToken;
   const programQuery = state.selectedProgramId ? "&programId=" + encodeURIComponent(state.selectedProgramId) : "";
-  const request = fetchJson("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token) + programQuery)
-    .then((result) => {
+  const request = localFetch("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token) + programQuery)
+    .then(async (response) => {
+      if (response.status === 409 && refreshExpired && state.stateToken === token) {
+        await refreshExpiredAppState(token);
+        render();
+        if (stateSectionRequests.get(section) === request) stateSectionRequests.delete(section);
+        return loadStateSection(section, false);
+      }
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const result = await response.json();
       if (state.stateToken !== result.stateToken) return;
       Object.assign(state, result.state);
       state.sections[section] = "complete";
@@ -2909,17 +2918,35 @@ function evidenceAttachmentPanel(entry) {
 }
 
 async function loadResourceDetail(type, id) {
-  const key = type + "\0" + id;
+  const key = (state.stateToken || "live") + "\0" + type + "\0" + id;
   if (resourceDetailRequests.has(key)) return resourceDetailRequests.get(key);
   const request = (async () => {
     try {
-      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id));
-      if (!response.ok) throw new Error(await responseMessage(response));
-      const detail = await response.json();
+      let token = state.stateToken;
+      let detail = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const tokenQuery = token ? "?token=" + encodeURIComponent(token) : "";
+        const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
+        if (response.status === 409 && token) {
+          await refreshExpiredAppState(token);
+          token = state.stateToken;
+          continue;
+        }
+        if (!response.ok) throw new Error(await responseMessage(response));
+        detail = await response.json();
+        if (!token || (detail.stateToken === token && state.stateToken === token)) break;
+        token = state.stateToken;
+        detail = null;
+      }
+      if (!detail) throw new Error("The workspace state changed while loading this record. Reload and try again.");
+      delete detail.stateToken;
       const index = state.resources.findIndex(({ record }) => record.type === type && record.id === id);
       if (index >= 0) state.resources[index] = detail;
       const route = parseRoute();
-      if (route.name === "detail" && route.type === type && route.id === id) render();
+      if (route.name === "detail" && route.type === type && route.id === id) {
+        render();
+        loadStateForRoute();
+      }
     } catch (error) {
       const route = parseRoute();
       if (route.name === "detail" && route.type === type && route.id === id) {
@@ -2927,11 +2954,50 @@ async function loadResourceDetail(type, id) {
         if (main) main.innerHTML = '<div class="page"><section class="panel"><div class="dialog-error" role="alert">' + esc(error.message) + '</div></section></div>';
       }
     } finally {
-      resourceDetailRequests.delete(key);
+      for (const [requestKey, pending] of resourceDetailRequests) {
+        if (pending === request) resourceDetailRequests.delete(requestKey);
+      }
     }
   })();
   resourceDetailRequests.set(key, request);
   return request;
+}
+
+function refreshExpiredAppState(expectedToken) {
+  if (expiredStateRefresh) {
+    if (expiredStateRefresh.token === expectedToken) return expiredStateRefresh.promise;
+    return expiredStateRefresh.promise
+      .catch(() => {})
+      .then(() => refreshExpiredAppState(expectedToken));
+  }
+  if (expectedToken && state.stateToken !== expectedToken) return Promise.resolve();
+  const programQuery = state.selectedProgramId ? "?programId=" + encodeURIComponent(state.selectedProgramId) : "";
+  const holder = { token: expectedToken, promise: null };
+  const refresh = (async () => {
+    const response = await fetch("/api/state/bootstrap" + programQuery);
+    if (!response.ok) throw new Error(await responseMessage(response));
+    const next = normalizeAppState(await response.json());
+    if (expectedToken && state.stateToken !== expectedToken) return;
+    rekeyResourceDetailRequests(state.stateToken, next.stateToken);
+    state = next;
+    stateSectionRequests.clear();
+  })().finally(() => {
+    if (expiredStateRefresh === holder) expiredStateRefresh = null;
+  });
+  holder.promise = refresh;
+  expiredStateRefresh = holder;
+  return refresh;
+}
+
+function rekeyResourceDetailRequests(previousToken, nextToken) {
+  if (!previousToken || !nextToken || previousToken === nextToken) return;
+  const prefix = previousToken + "\0";
+  for (const [key, request] of resourceDetailRequests) {
+    if (!key.startsWith(prefix)) continue;
+    const nextKey = nextToken + key.slice(previousToken.length);
+    resourceDetailRequests.delete(key);
+    if (!resourceDetailRequests.has(nextKey)) resourceDetailRequests.set(nextKey, request);
+  }
 }
 
 function issueSeed(type, source) {
