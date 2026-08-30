@@ -24,6 +24,8 @@ import {
   setupExternalReviewerGovernance
 } from "../src/index.js";
 import { runCli } from "../src/cli.js";
+import { setHistoricalBatchInterceptorForTests } from "../src/git.js";
+import { collectTimings } from "../src/timing.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
@@ -84,6 +86,17 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   });
   assert.equal(applied.actions.length, 1);
   assert.equal((await planReconciliation(root)).candidates.length, 0);
+  const canonicalEventPath = join(root, "data", "obligation-events", `${applied.event.id}.json`);
+  const legacyEventId = "obligation-event-legacy-role-change";
+  const legacyEventPath = join(root, "data", "obligation-events", `${legacyEventId}.json`);
+  await rename(canonicalEventPath, legacyEventPath);
+  await writeJson(legacyEventPath, { ...applied.event, id: legacyEventId });
+  const appliedActionPath = join(root, "data", "action-items", `${applied.actions[0].id}.json`);
+  await writeJson(appliedActionPath, { ...applied.actions[0], sourceResourceId: legacyEventId });
+  assert.equal((await planReconciliation(root)).candidates.length, 0);
+  await rename(legacyEventPath, canonicalEventPath);
+  await writeJson(canonicalEventPath, applied.event);
+  await writeJson(appliedActionPath, applied.actions[0]);
   await commitAll(root, "Record role change event");
   const eventPath = join(root, "data", "obligation-events", `${applied.event.id}.json`);
   const eventRecord = JSON.parse(await readFile(eventPath, "utf8"));
@@ -100,7 +113,15 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   assert.equal((await planReconciliation(root)).candidates.length, 0);
   const obligationPath = join(root, "data", "obligations", "obligation-role-change.json");
   const obligation = JSON.parse(await readFile(obligationPath, "utf8"));
-  await writeJson(obligationPath, { ...obligation, status: "retired" });
+  await writeJson(obligationPath, {
+    ...obligation,
+    status: "retired",
+    statusTransition: {
+      changedByIds: ["person-owner"],
+      changedOn: "2026-08-29",
+      reason: "Retire the test obligation"
+    }
+  });
   await commitAll(root, "Retire role change obligation");
   assert.equal((await planReconciliation(root)).candidates.length, 0);
 });
@@ -227,7 +248,15 @@ test("does not let an incomplete same-commit high-risk event suppress a departur
   await commitAll(root, "Add departure obligations");
   const personPath = join(root, "data", "people", "person-owner.json");
   const person = JSON.parse(await readFile(personPath, "utf8"));
-  await writeJson(personPath, { ...person, status: "inactive" });
+  await writeJson(personPath, {
+    ...person,
+    status: "inactive",
+    statusTransition: {
+      changedByIds: [person.id],
+      changedOn: "2026-08-29",
+      reason: "Test departure"
+    }
+  });
   const candidate = (await planReconciliation(root)).candidates.find(({ eventType }) => eventType === "person-ended");
   assert.ok(candidate);
   await mkdir(join(root, "data", "obligation-events"), { recursive: true });
@@ -425,7 +454,7 @@ test("does not treat a record path rename as a domain transition", async (contex
   assert.ok(preview.changedPaths.includes("data/people/renamed/person-owner.json"));
 });
 
-test("pairs a committed rename by immutable identity after a large content change", async (context) => {
+test("fails reconciliation closed for a committed record moved outside its model location", async (context) => {
   const root = await modelThreeWorkspace(context, "filegrc-reconcile-committed-rename-");
   await commitAll(root, "Create test workspace");
   const prior = join(root, "data", "people", "person-owner.json");
@@ -439,8 +468,10 @@ test("pairs a committed rename by immutable identity after a large content chang
   await import("node:fs/promises").then(({ rm }) => rm(prior));
   await commitAll(root, "Move and update person");
 
-  const preview = await planReconciliation(root);
-  assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["person-role-changed"]);
+  await assert.rejects(
+    planReconciliation(root),
+    /Invalid historical resource.*belongs at data\/people\/person-owner\.json/
+  );
 });
 
 test("uses occurredAt for reconciliation backed by an active hour-based rule", async (context) => {
@@ -528,7 +559,8 @@ test("reconciles a committed Markdown-only change to an active Policy", async (c
     approvedOn: "2026-08-01",
     effectiveOn: "2026-08-01",
     policyKind: "information-security",
-    programRole: "required"
+    programRole: "required",
+    approvedContentRevisions: { "policies/policy-active.md": "a".repeat(64) }
   });
   await writeFile(contentPath, "# Active Policy\n\nInitial approved content.\n", "utf8");
   await commitAll(root, "Add active policy");
@@ -539,6 +571,296 @@ test("reconciles a committed Markdown-only change to an active Policy", async (c
   assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["policy-revised"]);
   assert.equal(preview.candidates[0].subject.id, "policy-active");
 });
+
+test("batches committed reconciliation history and reuses the cached snapshot", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-history-batch-");
+  await commitAll(root, "Create history batching workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  for (let index = 0; index < 12; index += 1) {
+    await writeJson(personPath, { ...person, jobTitle: `Security role ${index}` });
+    await commitAll(root, `Change role ${index}`);
+  }
+
+  const first = await collectTimings(() => planReconciliation(root));
+  assert.equal(first.result.candidates.length, 12);
+  assert.ok(
+    (first.timings["git-history-export"]?.count || 0) <= 2,
+    JSON.stringify(first.timings, null, 2)
+  );
+
+  const cached = await collectTimings(() => planReconciliation(root));
+  assert.equal(cached.result.candidates.length, 12);
+  assert.equal(cached.timings["git-history-export"], undefined, JSON.stringify(cached.timings, null, 2));
+});
+
+test("reconstructs reconciliation state from each commit's first parent", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-merge-history-");
+  await commitAll(root, "Create merge history workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+
+  await execute("git", ["switch", "-c", "role-change"], { cwd: root });
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Change role on branch"], {
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: "2030-01-03T00:00:00Z", GIT_COMMITTER_DATE: "2030-01-03T00:00:00Z" }
+  });
+
+  await execute("git", ["switch", "main"], { cwd: root });
+  await execute("git", ["rm", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Remove person on main"], {
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: "2030-01-02T00:00:00Z", GIT_COMMITTER_DATE: "2030-01-02T00:00:00Z" }
+  });
+  await assert.rejects(execute("git", ["merge", "role-change", "--no-edit"], { cwd: root }));
+  await execute("git", ["rm", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "--no-edit"], {
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: "2030-01-04T00:00:00Z", GIT_COMMITTER_DATE: "2030-01-04T00:00:00Z" }
+  });
+
+  const preview = await planReconciliation(root);
+  assert.deepEqual(
+    preview.candidates.map(({ eventType }) => eventType).sort(),
+    ["person-ended", "person-role-changed"]
+  );
+});
+
+test("reconciles a skew-dated clean merge transition only once", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-clean-merge-");
+  await commitAll(root, "Create clean merge workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+
+  await execute("git", ["switch", "-c", "role-change"], { cwd: root });
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Change role on branch"], {
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: "2030-01-03T00:00:00Z", GIT_COMMITTER_DATE: "2030-01-03T00:00:00Z" }
+  });
+
+  await execute("git", ["switch", "main"], { cwd: root });
+  await writeFile(join(root, "README.md"), "# Merge fixture\n", "utf8");
+  await execute("git", ["add", "README.md"], { cwd: root });
+  await execute("git", ["commit", "-m", "Advance main"], {
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: "2030-01-02T00:00:00Z", GIT_COMMITTER_DATE: "2030-01-02T00:00:00Z" }
+  });
+  await execute("git", ["merge", "role-change", "--no-edit"], {
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: "2030-01-04T00:00:00Z", GIT_COMMITTER_DATE: "2030-01-04T00:00:00Z" }
+  });
+
+  const preview = await planReconciliation(root);
+  assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["person-role-changed"]);
+});
+
+test("fails validation closed when reconciliation history is unavailable", async (context) => {
+  const source = await modelThreeWorkspace(context, "filegrc-reconcile-history-source-");
+  await commitAll(source, "Create source workspace");
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-reconcile-shallow-"));
+  const root = join(parent, "workspace");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  await execute("git", ["clone", "--depth", "1", `file://${source}`, root]);
+
+  await assert.rejects(planReconciliation(root), /Git history is unavailable for reconciliation/);
+  const validation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(validation.ok, false);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "reconciliation-history-unavailable"));
+});
+
+test("briefly caches a failed history build", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-failed-history-cache-");
+  await commitAll(root, "Create failed history cache workspace");
+  let batchCalls = 0;
+  const restore = setHistoricalBatchInterceptorForTests(() => {
+    batchCalls += 1;
+    throw new Error("forced history batch failure");
+  });
+  try {
+    await assert.rejects(planReconciliation(root), /Git history is unavailable for reconciliation/);
+    await assert.rejects(planReconciliation(root), /Git history is unavailable for reconciliation/);
+  } finally {
+    restore();
+  }
+  assert.equal(batchCalls, 1);
+});
+
+for (const [label, version] of [
+  ["unknown string", "bogus"],
+  ["array coercion", ["3"]],
+  ["boolean coercion", true],
+  ["noncanonical numeric string", "01"]
+]) {
+  test(`fails reconciliation closed for historical workspace model ${label}`, async (context) => {
+    const root = await modelThreeWorkspace(context, `filegrc-reconcile-unsupported-model-${label.replaceAll(" ", "-")}-`);
+    await commitAll(root, "Create model history workspace");
+    const workspacePath = join(root, "data", "workspace.json");
+    const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+    await writeJson(workspacePath, { ...workspace, dataModelVersion: version });
+    await commitAll(root, "Commit unsupported model declaration");
+    await writeJson(workspacePath, workspace);
+    await commitAll(root, "Repair model declaration");
+
+    await assert.rejects(planReconciliation(root), /unsupported data model/);
+  });
+}
+
+for (const [label, mutate, expected] of [
+  ["missing version", (workspace) => { delete workspace.dataModelVersion; }, /unsupported data model/],
+  ["wrong identity", (workspace) => { workspace.id = "workspace-renamed"; }, /invalid Workspace identity or location/]
+]) {
+  test(`fails reconciliation closed for a historical Workspace with ${label}`, async (context) => {
+    const root = await modelThreeWorkspace(context, `filegrc-reconcile-workspace-${label.replaceAll(" ", "-")}-`);
+    await commitAll(root, "Create Workspace validation history");
+    const workspacePath = join(root, "data", "workspace.json");
+    const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+    const invalid = structuredClone(workspace);
+    mutate(invalid);
+    await writeJson(workspacePath, invalid);
+    await commitAll(root, "Commit invalid historical Workspace");
+    await writeJson(workspacePath, workspace);
+    await commitAll(root, "Repair historical Workspace");
+
+    await assert.rejects(planReconciliation(root), expected);
+  });
+}
+
+test("fails reconciliation closed when historical Workspace is deleted and restored", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-workspace-delete-");
+  await commitAll(root, "Create Workspace deletion history");
+  const workspacePath = join(root, "data", "workspace.json");
+  const workspace = await readFile(workspacePath, "utf8");
+  await execute("git", ["rm", "data/workspace.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Delete historical Workspace"], { cwd: root });
+  await writeFile(workspacePath, workspace, "utf8");
+  await commitAll(root, "Restore historical Workspace");
+
+  await assert.rejects(planReconciliation(root), /no active canonical Workspace/);
+});
+
+test("revalidates inherited reconciliation records when legacy history enters model v3", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-v1-upgrade-");
+  const workspacePath = join(root, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  await writeJson(workspacePath, { ...workspace, dataModelVersion: "1" });
+  const obligationPath = join(root, "data", "obligations", "obligation-legacy-invalid.json");
+  await writeJson(obligationPath, {
+    id: "obligation-legacy-invalid",
+    type: "obligation",
+    title: "Legacy invalid obligation",
+    status: "retired",
+    activityType: "access-change",
+    recurrence: { mode: "event", eventType: "person-role-changed" },
+    window: { precision: "date", startsAfter: 0, dueAfter: 1 },
+    ownerIds: ["person-owner"],
+    completionResourceIds: []
+  });
+  await commitAll(root, "Create legacy history");
+  await writeJson(workspacePath, workspace);
+  await commitAll(root, "Enter model v3");
+  const obligation = JSON.parse(await readFile(obligationPath, "utf8"));
+  await writeJson(obligationPath, {
+    ...obligation,
+    statusTransition: {
+      changedByIds: ["person-owner"],
+      changedOn: "2026-08-29",
+      reason: "Retired before migration"
+    }
+  });
+  await commitAll(root, "Repair legacy obligation");
+
+  await assert.rejects(planReconciliation(root), /Required field "statusTransition" is missing/);
+});
+
+test("fails reconciliation closed for malformed historical data records", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-malformed-history-");
+  await commitAll(root, "Create malformed history workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeFile(personPath, "{ invalid historical JSON\n", "utf8");
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Commit malformed history"], { cwd: root });
+  await writeJson(personPath, { ...person, jobTitle: "Security Director" });
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Restore current person"], { cwd: root });
+
+  await assert.rejects(planReconciliation(root), /unreadable data record/);
+  const validation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(validation.ok, false);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "reconciliation-history-unavailable"));
+});
+
+test("fails reconciliation closed for historical record identity changes", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-invalid-identity-");
+  await commitAll(root, "Create identity history workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await writeJson(personPath, { ...person, type: "unsupported-history-type", status: "inactive" });
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Commit invalid historical type"], { cwd: root });
+  await writeJson(personPath, person);
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Restore person identity"], { cwd: root });
+
+  await assert.rejects(planReconciliation(root), /unsupported data record|immutable record/);
+  const validation = await import("../src/index.js").then(({ validateWorkspace }) => validateWorkspace(root));
+  assert.equal(validation.ok, false);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "reconciliation-history-unavailable"));
+});
+
+test("fails reconciliation closed when a committed ID is reused with another type after deletion", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-reused-id-");
+  await commitAll(root, "Create ID reuse workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await execute("git", ["rm", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Delete person"], { cwd: root });
+  await writeJson(personPath, { ...person, type: "vendor", title: "Reused as a Vendor" });
+  await execute("git", ["add", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Reuse deleted person ID"], { cwd: root });
+
+  await assert.rejects(planReconciliation(root), /Invalid historical resource|reuses deleted record ID/);
+});
+
+test("allows a deleted record to be restored at the same path and type", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-restored-id-");
+  await commitAll(root, "Create restore workspace");
+  const personPath = join(root, "data", "people", "person-owner.json");
+  const person = JSON.parse(await readFile(personPath, "utf8"));
+  await execute("git", ["rm", "data/people/person-owner.json"], { cwd: root });
+  await execute("git", ["commit", "-m", "Delete person temporarily"], { cwd: root });
+  await writeJson(personPath, { ...person, jobTitle: "Restored Security Owner" });
+  await commitAll(root, "Restore person at original identity");
+
+  const preview = await planReconciliation(root);
+  assert.ok(Array.isArray(preview.candidates));
+});
+
+for (const [label, mutate, expected] of [
+  ["missing required fields", (record) => { delete record.affiliation; }, /Required field "affiliation" is missing/],
+  ["invalid enum values", (record) => { record.status = "bogus"; }, /status: must be one of/],
+  ["unknown fields", (record) => { record.unmodeled = true; }, /Field "unmodeled" is not defined/],
+  ["invalid IDs and locations", (record) => { record.id = "Bad_ID"; }, /belongs at data\/people\/Bad_ID\.json|lowercase kebab-case/]
+]) {
+  test(`fails reconciliation closed for historical ${label}`, async (context) => {
+    const root = await modelThreeWorkspace(context, `filegrc-reconcile-${label.replaceAll(" ", "-")}-`);
+    await commitAll(root, "Create semantic history workspace");
+    const personPath = join(root, "data", "people", "person-owner.json");
+    const person = JSON.parse(await readFile(personPath, "utf8"));
+    const invalid = structuredClone(person);
+    mutate(invalid);
+    await writeJson(personPath, invalid);
+    await commitAll(root, "Commit invalid historical record");
+    await writeJson(personPath, person);
+    await commitAll(root, "Repair historical record");
+
+    await assert.rejects(planReconciliation(root), expected);
+  });
+}
 
 test("does not treat an external reviewer as a workforce start", async (context) => {
   const root = await modelThreeWorkspace(context, "filegrc-external-reviewer-reconcile-");

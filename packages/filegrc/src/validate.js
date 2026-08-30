@@ -218,14 +218,29 @@ async function validateWorkspaceUnmeasured(input) {
   }
   if (modelSupports(loaded.model, "guided-workflow")) {
     const { planReconciliation, validateReconciliationDismissals } = await import("./reconciliation.js");
-    const rawReconciliation = await validateReconciliationDismissals(loaded, diagnostics);
-    reconciliation = rawReconciliation?.filteredPlan ?? await planReconciliation(loaded);
-    for (const candidate of reconciliation.candidates.filter(({ committedRevision }) => committedRevision)) {
-      diagnostics.push(warning(
-        "unreconciled-committed-transition",
-        candidate.sourcePath,
-        `${candidate.eventType} transition in Git commit ${candidate.committedRevision.slice(0, 8)} still needs confirmation or dismissal.`
+    try {
+      const rawReconciliation = await validateReconciliationDismissals(loaded, diagnostics);
+      reconciliation = rawReconciliation?.filteredPlan ?? await planReconciliation(loaded);
+      for (const candidate of reconciliation.candidates.filter(({ committedRevision }) => committedRevision)) {
+        diagnostics.push(warning(
+          "unreconciled-committed-transition",
+          candidate.sourcePath,
+          `${candidate.eventType} transition in Git commit ${candidate.committedRevision.slice(0, 8)} still needs confirmation or dismissal.`
+        ));
+      }
+    } catch (cause) {
+      diagnostics.push(error(
+        "reconciliation-history-unavailable",
+        "data/workspace.json",
+        cause instanceof Error ? cause.message : "Git history is unavailable for reconciliation."
       ));
+      reconciliation = {
+        contractVersion: 1,
+        gitRevision: null,
+        changedPaths: [],
+        candidates: [],
+        unavailable: true
+      };
     }
   }
 
@@ -2131,6 +2146,23 @@ function validateLocation(record, definition, relativePath, diagnostics) {
   const expected = `${definition.collection}/${recordPath}`;
   if (relativePath !== expected) {
     diagnostics.push(error("wrong-location", `data/${relativePath}`, `${record.type} belongs at data/${expected}.`));
+  }
+}
+
+export function assertHistoricalRecordValid(record, model, relativePath) {
+  const displayPath = `data/${relativePath}`;
+  const diagnostics = [];
+  let definition;
+  try {
+    definition = getResourceDefinition(model, record?.type);
+  } catch {
+    throw new Error(`Unknown historical resource type "${record?.type ?? ""}" at ${displayPath}.`);
+  }
+  validateLocation(record, definition, relativePath, diagnostics);
+  validateRecord(record, definition, model, displayPath, diagnostics);
+  validateDateRanges(record, displayPath, diagnostics);
+  if (diagnostics.some(({ severity }) => severity === "error")) {
+    throw new Error(`Invalid historical resource at ${displayPath}: ${diagnostics.map(({ message }) => message).join(" ")}`);
   }
 }
 

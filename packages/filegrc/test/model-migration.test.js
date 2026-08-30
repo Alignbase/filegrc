@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -13,6 +13,7 @@ import { applyCollectionReview } from "../src/collection-review.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { applyResourceBatch, createResource } from "../src/files.js";
 import { migrateModel, planModelMigration } from "../src/model-migration.js";
+import { planReconciliation } from "../src/reconciliation.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { validateWorkspace } from "../src/validate.js";
@@ -522,6 +523,18 @@ test("classifies and atomically migrates a complete v3 System and Component grap
     if (changed) await writeJson(entry.path, record);
   }
 
+  for (const args of [
+    ["init", "--initial-branch=main"],
+    ["config", "user.name", "FileGRC Tests"],
+    ["config", "user.email", "tests@filegrc.dev"],
+    ["add", "."],
+    ["commit", "-m", "Create model v3 workspace"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+  const invalidParent = await mkdtemp(`${tmpdir()}/filegrc-model-v4-invalid-retype-`);
+  context.after(() => rm(invalidParent, { recursive: true, force: true }));
+  const invalidRoot = join(invalidParent, "workspace");
+  execFileSync("git", ["clone", "--quiet", root, invalidRoot], { stdio: "ignore" });
+
   const preview = await planModelMigration(root, { targetModelVersion: "4" });
   assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
   assert.equal(preview.migrationReport.retainedSystemIds.includes(rootSystem.id), true);
@@ -549,6 +562,9 @@ test("classifies and atomically migrates a complete v3 System and Component grap
 
   const result = await migrateModel(root, { targetModelVersion: "4" });
   assert.equal(result.applied, true);
+  execFileSync("git", ["add", "."], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Migrate workspace to model v4"], { cwd: root, stdio: "ignore" });
+  await planReconciliation(root);
   const migrated = await loadWorkspace(root);
   assert.equal(migrated.workspace.dataModelVersion, "4");
   assert.equal(migrated.resources.find(({ id }) => id === rootSystem.id).type, "system");
@@ -569,6 +585,20 @@ test("classifies and atomically migrates a complete v3 System and Component grap
   assert.equal(packet.dataModelVersion, "4");
   assert.ok(Array.isArray(packet.sourceComponents));
   assert.equal(packet.sourceSystems, undefined);
+
+  await migrateModel(invalidRoot, { targetModelVersion: "4" });
+  const invalidLoaded = await loadWorkspace(invalidRoot);
+  const personEntry = invalidLoaded.entries.find(({ record }) => record.type === "person");
+  const vendor = invalidLoaded.resources.find(({ type }) => type === "vendor");
+  await rm(personEntry.path);
+  await writeJson(join(invalidRoot, "data", "vendors", `${personEntry.record.id}.json`), {
+    ...vendor,
+    id: personEntry.record.id,
+    title: "Invalid migration retype"
+  });
+  execFileSync("git", ["add", "."], { cwd: invalidRoot, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Attempt unrelated migration retype"], { cwd: invalidRoot, stdio: "ignore" });
+  await assert.rejects(planReconciliation(invalidRoot), /changes immutable record type/);
 });
 
 test("blocks an ambiguous v3 System until an explicit v4 decision is supplied", async (context) => {

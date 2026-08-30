@@ -11,6 +11,7 @@ import {
   commitAndPushWorkspace,
   commitWorkspace,
   getChangedDataPathsSinceRevision,
+  getDataFilesAtRevision,
   getDataRecordHistoryIndex,
   getFileAtRevision,
   getFileObjectIdAtRevision,
@@ -26,6 +27,7 @@ import {
   pushWorkspace,
   runGitCommand,
   sanitizeGitErrorMessage,
+  setHistoricalBatchInterceptorForTests,
   setGitCommandInterceptorForTests
 } from "../src/git.js";
 import { reconcileMutationSynchronization } from "../src/server.js";
@@ -100,6 +102,9 @@ test("ignores Git replacement refs when reading authoritative history", async (c
     owner.title
   );
   assert.equal(getDataRecordHistoryIndex(root).commits.includes(authoritativeCommit), true);
+  const cachedDataFiles = getDataFilesAtRevision(root, authoritativeCommit);
+  assert.ok(cachedDataFiles.includes("data/workspace.json"));
+  assert.ok(cachedDataFiles.every((path) => path.endsWith(".json")));
 });
 
 test("ignores legacy Git grafts when reading authoritative history", async (context) => {
@@ -433,6 +438,48 @@ test("scopes Git status and file histories to a workspace nested in a larger rep
   assert.equal(JSON.parse(historicalFiles[0]).title, "Program Owner");
   assert.equal(historicalFiles[1], null);
   assert.equal(JSON.parse(historicalFiles[2]).id, "workspace");
+  assert.throws(
+    () => getFilesAtRevisions(root, [
+      { revision: initialCommit, relativePath: "data/people/person-owner.json" }
+    ], { maxTotalBytes: 1 }),
+    /1 byte safety limit/
+  );
+  assert.throws(
+    () => getFilesAtRevisions(root, [
+      { revision: initialCommit, relativePath: "data/people/person-owner.json" },
+      { revision: initialCommit, relativePath: "data/workspace.json" }
+    ], { maxRequests: 1 }),
+    /1-request safety limit/
+  );
+  assert.throws(
+    () => getFilesAtRevisions(root, [
+      { revision: initialCommit, relativePath: "data/workspace.json" }
+    ], { deadline: performance.now() - 1 }),
+    /cumulative deadline/
+  );
+  await writeFile(join(root, "data", "batch-failure.md"), "batch failure fixture\n", "utf8");
+  await git(parent, ["add", "compliance/data/batch-failure.md"]);
+  await git(parent, ["commit", "-m", "Add batch failure fixture"]);
+  const batchCommit = getGitSummary(root).commit;
+  let batchCalls = 0;
+  const restoreHistoricalBatch = setHistoricalBatchInterceptorForTests(() => {
+    batchCalls += 1;
+    throw new Error("forced batch failure");
+  });
+  try {
+    assert.throws(
+      () => getFilesAtRevisions(root, [
+        { revision: batchCommit, relativePath: "data/batch-failure.md" }
+      ]),
+      /could not read the historical file batch safely/
+    );
+  } finally {
+    restoreHistoricalBatch();
+  }
+  assert.equal(batchCalls, 1);
+  await rm(join(root, "data", "batch-failure.md"));
+  await git(parent, ["add", "compliance/data/batch-failure.md"]);
+  await git(parent, ["commit", "-m", "Remove batch failure fixture"]);
   assert.throws(
     () => getFilesAtRevisions(root, [{ revision: initialCommit, relativePath: "data/people/person-owner.json\nHEAD:package.json" }]),
     /require a Git commit and a data\/ path/

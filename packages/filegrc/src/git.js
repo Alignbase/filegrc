@@ -15,18 +15,27 @@ import { loadWorkspace } from "./workspace.js";
 const lastSuccessfulSynchronizations = new Map();
 const workspaceHistoryCache = new Map();
 const dataRecordHistoryIndexCache = new Map();
+let dataRecordHistoryIndexCacheBytes = 0;
 const historicalFileCache = new Map();
-const reachableDataAncestryCache = new Map();
 const dataHistoryContextCache = new WeakMap();
 const backgroundSynchronizations = new Map();
 const browserRemotePrefetches = new Map();
 const browserRemotePrefetchPromises = new Map();
 const repositorySnapshotPromises = new Map();
 let gitCommandInterceptor = null;
+let historicalBatchInterceptor = null;
 const BROWSER_REMOTE_PREFETCH_MAX_AGE_MS = 30_000;
 const GIT_DEFAULT_TIMEOUT_MS = 10_000;
 const GIT_REMOTE_TIMEOUT_MS = 30_000;
 const GIT_MAX_OUTPUT_BYTES = 20_000_000;
+const DATA_HISTORY_MAX_SOURCE_BYTES = 16 * 1024 * 1024;
+const DATA_HISTORY_MAX_SOURCE_REQUESTS = 20_000;
+const DATA_HISTORY_MAX_COMMITS = 5_000;
+const DATA_HISTORY_MAX_CHANGES = 20_000;
+const DATA_HISTORY_MAX_ANCESTRY_COMMITS = 20_000;
+const DATA_HISTORY_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+const DATA_HISTORY_BUILD_TIMEOUT_MS = 10_000;
+const DATA_HISTORY_FAILURE_CACHE_MS = 2_000;
 export const BROWSER_VALIDATION = Symbol("filegrc.browserValidation");
 
 function gitEnvironment(overrides = {}) {
@@ -114,6 +123,8 @@ export function getGitSummary(input = process.cwd()) {
 export function getFileHistory(input, relativePath, limit = 50) {
   const root = resolveWorkspaceRoot(input);
   if (!isSafeDataGitPath(relativePath)) return null;
+  const indexed = indexedPathHistory(dataRecordHistoryIndexCache.get(root), relativePath);
+  if (indexed) return limitedHistory(indexed, limit);
   try {
     const countArgs = Number(limit) >= Number.MAX_SAFE_INTEGER
       ? []
@@ -136,6 +147,8 @@ export function getFileHistory(input, relativePath, limit = 50) {
 export function getFileHistoryWithPaths(input, relativePath, limit = 50) {
   const root = resolveWorkspaceRoot(input);
   if (!isSafeDataGitPath(relativePath)) return null;
+  const indexed = indexedPathHistory(dataRecordHistoryIndexCache.get(root), relativePath);
+  if (indexed) return limitedHistory(indexed, limit);
   try {
     const countArgs = Number(limit) >= Number.MAX_SAFE_INTEGER
       ? []
@@ -185,6 +198,11 @@ export function getFileHistoryWithPaths(input, relativePath, limit = 50) {
 export function getFilePathAtRevision(input, relativePath, revision) {
   const root = resolveWorkspaceRoot(input);
   if (!isSafeDataGitPath(relativePath) || !/^[a-f0-9]{40}$/i.test(String(revision || ""))) return null;
+  const index = dataRecordHistoryIndexCache.get(root);
+  const indexed = indexedPathHistory(index, relativePath);
+  if (indexed) {
+    return indexed.find(({ commit }) => indexedAncestor(index, commit, revision))?.path || null;
+  }
   const history = getFileHistoryWithPaths(root, relativePath, Number.MAX_SAFE_INTEGER) || [];
   const summary = history.find(({ commit }) => commit === revision)
     || history.find(({ commit }) => isDataHistoryAncestor(root, commit, revision));
@@ -234,53 +252,171 @@ export function getRecordIdentityHistories(input, ids) {
   return new Map([...new Set(ids)].map((id) => [id, index.historiesById.get(id) || []]));
 }
 
-export function getDataRecordHistoryIndex(input) {
+export function getDataRecordHistoryIndex(input, options = {}) {
   const root = resolveWorkspaceRoot(input);
-  const head = tryGit(root, ["rev-parse", "HEAD"]) || null;
   const cached = dataRecordHistoryIndexCache.get(root);
-  if (cached?.head === head) return cached;
+  const suppliedHead = /^[a-f0-9]{40}$/i.test(String(options.head)) ? String(options.head) : undefined;
+  if (
+    suppliedHead
+    && cached?.head === suppliedHead
+    && !cached.available
+    && cached.failureExpiresAt > performance.now()
+  ) return cached;
+  if (suppliedHead && cached?.head === suppliedHead && cached.available) return cached;
+  const hasDeadline = options.deadline !== undefined;
+  const deadline = hasDeadline ? Number(options.deadline) : performance.now() + DATA_HISTORY_BUILD_TIMEOUT_MS;
+  if (!Number.isFinite(deadline) || deadline <= performance.now()) {
+    const error = new Error("Git data history exceeded its cumulative time limit.");
+    error.code = "FILEGRC_HISTORY_DEADLINE";
+    throw error;
+  }
+  const remainingTime = () => {
+    const remainingMs = Math.floor(deadline - performance.now());
+    if (remainingMs <= 0) {
+      const error = new Error("Git data history exceeded its cumulative time limit.");
+      error.code = "FILEGRC_HISTORY_DEADLINE";
+      throw error;
+    }
+    return remainingMs;
+  };
+  const historyGit = (args) => git(root, args, { timeoutMs: remainingTime() });
+  const historyGitRaw = (args) => gitRaw(root, args, { timeoutMs: remainingTime() });
+  let head = null;
+  let discoveryError = null;
+  if (suppliedHead) {
+    head = suppliedHead;
+  } else {
+    try {
+      head = historyGit(["rev-parse", "HEAD"]) || null;
+    } catch (cause) {
+      discoveryError = cause;
+    }
+  }
+  if (cached?.head === head && cached.available) return cached;
+  if (cached) {
+    dataRecordHistoryIndexCache.delete(root);
+    dataRecordHistoryIndexCacheBytes -= cached.cacheBytes || 0;
+  }
   const changes = [];
-  const shallow = head && tryGit(root, ["rev-parse", "--is-shallow-repository"]) === "true";
+  const sourceChanges = [];
+  const changesByCommit = new Map();
+  let shallow = false;
+  if (head) {
+    try {
+      shallow = historyGit(["rev-parse", "--is-shallow-repository"]) === "true";
+    } catch (cause) {
+      discoveryError = cause;
+    }
+  }
   let available = Boolean(head) && !shallow;
-  let error = !head
+  let error = discoveryError || (!head
     ? new Error("Git history is unavailable because the workspace has no committed HEAD.")
-    : shallow ? new Error("Git history is shallow.") : null;
+    : shallow ? new Error("Git history is shallow.") : null);
+  if (discoveryError) available = false;
   try {
     if (available) {
-      const output = gitRaw(root, [
-        "log", "--reverse", "-m", "-z", "--relative",
-        "--format=%H%x00%cI%x00%an%x00%s%x00", "--name-status", "-M", "--", "data"
+      const output = historyGitRaw([
+        "log", "--topo-order", "--reverse", "--diff-merges=first-parent", "-z", "--relative",
+        "--format=%H%x00%cI%x00%an%x00%s%x00", "--name-status", "-M", head, "--", "data"
       ]);
-      changes.push(...parseDataRecordHistory(output));
+      const parsed = parseDataRecordHistory(output);
+      if (parsed.commitCount > DATA_HISTORY_MAX_COMMITS || parsed.changes.length > DATA_HISTORY_MAX_CHANGES) {
+        throw dataHistoryLimitError("Git data history is too large to reconcile safely.");
+      }
+      changes.push(...parsed.recordChanges);
+      sourceChanges.push(...parsed.sourceChanges);
+      for (const change of parsed.changes) {
+        if (!changesByCommit.has(change.summary.commit)) changesByCommit.set(change.summary.commit, []);
+        changesByCommit.get(change.summary.commit).push(change);
+      }
     }
   } catch (cause) {
     available = false;
     error = cause;
   }
-  const sources = available
-    ? getFilesAtRevisions(
-      root,
-      changes.map(({ summary, path }) => ({ revision: summary.commit, relativePath: path })),
-      { batchSize: 512 }
-    )
-    : [];
+  let sources = [];
+  if (available) {
+    try {
+      sources = getFilesAtRevisions(
+        root,
+        sourceChanges.map(({ summary, path }) => ({ revision: summary.commit, relativePath: path })),
+        {
+          batchSize: 512,
+          maxRequests: DATA_HISTORY_MAX_SOURCE_REQUESTS,
+          maxTotalBytes: DATA_HISTORY_MAX_SOURCE_BYTES,
+          deadline
+        }
+      );
+    } catch (cause) {
+      available = false;
+      error = cause;
+    }
+  }
   if (head && sources.some((source) => source === null)) {
     available = false;
     error ||= new Error("Git could not read every historical data record.");
   }
   const recordsByCommit = new Map();
   const historiesById = new Map();
+  const fileChangesByCommit = new Map();
+  const historicalRecordPaths = new Set();
+  const sourceByCommitAndPath = new Map();
+  sourceChanges.forEach(({ summary, path }, index) => {
+    sourceByCommitAndPath.set(`${summary.commit}\0${path}`, sources[index]);
+  });
+  for (const [commit, commitChanges] of changesByCommit) {
+    const fileChanges = new Map();
+    for (const change of commitChanges) {
+      if (change.beforePath?.match(/\.(?:json|md)$/) && change.beforePath !== change.afterPath) {
+        if (change.beforePath.endsWith(".json")) historicalRecordPaths.add(change.beforePath);
+        fileChanges.set(change.beforePath, null);
+      }
+      if (change.afterPath?.match(/\.(?:json|md)$/)) {
+        if (change.afterPath.endsWith(".json")) historicalRecordPaths.add(change.afterPath);
+        fileChanges.set(change.afterPath, sourceByCommitAndPath.get(`${commit}\0${change.afterPath}`) ?? null);
+      }
+    }
+    fileChangesByCommit.set(commit, fileChanges);
+  }
   for (let index = 0; index < changes.length; index += 1) {
     const { summary, path } = changes[index];
     try {
-      const record = JSON.parse(sources[index]);
-      if (!record?.id) continue;
+      const record = JSON.parse(sourceByCommitAndPath.get(`${summary.commit}\0${path}`));
+      if (!record || Array.isArray(record) || typeof record.id !== "string" || typeof record.type !== "string") {
+        throw new Error("Historical data records require string IDs and types.");
+      }
       if (!recordsByCommit.has(summary.commit)) recordsByCommit.set(summary.commit, new Map());
+      if (recordsByCommit.get(summary.commit).has(record.id)) {
+        throw new Error(`Historical data records reuse ID "${record.id}" in one commit.`);
+      }
       recordsByCommit.get(summary.commit).set(record.id, { record, path });
       if (!historiesById.has(record.id)) historiesById.set(record.id, []);
       historiesById.get(record.id).push({ ...summary, path });
-    } catch {
-      // Ignore malformed historical files.
+    } catch (cause) {
+      available = false;
+      error = new Error(`Git history contains an unreadable data record at ${summary.commit.slice(0, 12)}:${path}.`, { cause });
+      break;
+    }
+  }
+  const parentsByCommit = new Map();
+  if (available) {
+    try {
+      for (const line of lines(historyGit(["rev-list", "--parents", head]))) {
+        const [commit, ...parents] = line.split(" ");
+        if (!/^[a-f0-9]{40}$/i.test(commit) || parents.some((parent) => !/^[a-f0-9]{40}$/i.test(parent))) {
+          throw new Error("Git returned invalid commit ancestry.");
+        }
+        parentsByCommit.set(commit, parents);
+        if (parentsByCommit.size > DATA_HISTORY_MAX_ANCESTRY_COMMITS) {
+          throw dataHistoryLimitError("Git ancestry is too large to reconcile safely.");
+        }
+      }
+      if (!parentsByCommit.has(head) || [...changesByCommit.keys()].some((commit) => !parentsByCommit.has(commit))) {
+        throw new Error("Git returned incomplete commit ancestry.");
+      }
+    } catch (cause) {
+      available = false;
+      error = cause;
     }
   }
   for (const [id, history] of historiesById) {
@@ -297,13 +433,38 @@ export function getDataRecordHistoryIndex(input) {
     head,
     available,
     error,
-    commits: [...new Set(changes.map(({ summary }) => summary.commit))],
-    recordsByCommit,
-    historiesById
+    commits: available ? [...changesByCommit.keys()] : [],
+    changesByCommit: available ? changesByCommit : new Map(),
+    parentsByCommit: available ? parentsByCommit : new Map(),
+    fileChangesByCommit: available ? fileChangesByCommit : new Map(),
+    historicalRecordPaths: available ? historicalRecordPaths : new Set(),
+    recordsByCommit: available ? recordsByCommit : new Map(),
+    historiesById: available ? historiesById : new Map(),
+    sourceBytes: available
+      ? sources.reduce((total, source) => total + (typeof source === "string" ? Buffer.byteLength(source, "utf8") : 0), 0)
+      : 0,
+    ancestryCache: new Map(),
+    indexedFileCache: new Map()
   };
-  if (available) {
+  result.failureExpiresAt = available ? null : performance.now() + DATA_HISTORY_FAILURE_CACHE_MS;
+  result.estimatedBytes = available
+    ? result.sourceBytes * 3
+      + [...result.changesByCommit.values()].reduce((total, commitChanges) => total + commitChanges.length * 512, 0)
+      + result.parentsByCommit.size * 256
+      + [...result.historiesById.values()].reduce((total, history) => total + history.length * 128, 0)
+    : 512 + Buffer.byteLength(error?.message || "", "utf8");
+  result.cacheBytes = result.estimatedBytes;
+  if (result.estimatedBytes <= DATA_HISTORY_CACHE_MAX_BYTES) {
     dataRecordHistoryIndexCache.set(root, result);
-    while (dataRecordHistoryIndexCache.size > 16) dataRecordHistoryIndexCache.delete(dataRecordHistoryIndexCache.keys().next().value);
+    dataRecordHistoryIndexCacheBytes += result.cacheBytes;
+  }
+  if (dataRecordHistoryIndexCache.has(root)) {
+    while (dataRecordHistoryIndexCache.size > 4 || dataRecordHistoryIndexCacheBytes > DATA_HISTORY_CACHE_MAX_BYTES) {
+      const oldestRoot = dataRecordHistoryIndexCache.keys().next().value;
+      const oldest = dataRecordHistoryIndexCache.get(oldestRoot);
+      dataRecordHistoryIndexCache.delete(oldestRoot);
+      dataRecordHistoryIndexCacheBytes -= oldest?.cacheBytes || 0;
+    }
   }
   return result;
 }
@@ -311,6 +472,9 @@ export function getDataRecordHistoryIndex(input) {
 function parseDataRecordHistory(output) {
   const fields = output.split("\0");
   const changes = [];
+  const recordChanges = [];
+  const sourceChanges = [];
+  const commits = new Set();
   let index = 0;
   while (index < fields.length) {
     while (fields[index] === "") index += 1;
@@ -324,6 +488,8 @@ function parseDataRecordHistory(output) {
       throw new Error("Git returned an incomplete data-history header.");
     }
     const summary = { commit, shortCommit: commit.slice(0, 8), timestamp, author, subject };
+    if (commits.has(commit)) throw new Error("Git returned duplicate data-history commit output.");
+    commits.add(commit);
     while (index < fields.length) {
       while (fields[index] === "") index += 1;
       const rawStatus = fields[index];
@@ -337,15 +503,80 @@ function parseDataRecordHistory(output) {
       const renamed = status.startsWith("R") || status.startsWith("C");
       const second = renamed ? fields[index++] : null;
       if (!first || (renamed && !second)) throw new Error("Git returned an incomplete data-history path.");
-      if (status === "D") continue;
-      const path = renamed ? second : first;
-      if (path.startsWith("data/") && path.endsWith(".json")) {
+      const beforePath = status === "A" ? null : first;
+      const afterPath = status === "D" ? null : renamed ? second : first;
+      for (const path of [beforePath, afterPath].filter(Boolean)) {
         if (!isSafeDataGitPath(path)) throw new Error("Git returned an unsafe data-history path.");
-        changes.push({ summary, path });
+      }
+      const change = { summary, status, beforePath, afterPath };
+      changes.push(change);
+      if (afterPath?.endsWith(".json")) {
+        recordChanges.push({ summary, path: afterPath });
+      }
+      if (afterPath?.endsWith(".json") || afterPath?.endsWith(".md")) {
+        sourceChanges.push({ summary, path: afterPath });
       }
     }
   }
-  return changes;
+  return { changes, recordChanges, sourceChanges, commitCount: commits.size };
+}
+
+function indexedPathHistory(index, relativePath) {
+  if (!index?.available) return null;
+  for (const history of index.historiesById.values()) {
+    if (history[0]?.path === relativePath) return history;
+  }
+  return null;
+}
+
+function limitedHistory(history, limit) {
+  if (Number(limit) >= Number.MAX_SAFE_INTEGER) return history;
+  return history.slice(0, Math.max(1, Math.min(Number(limit) || 50, 200)));
+}
+
+function indexedDataFile(index, revision, relativePath) {
+  if (
+    !index?.available
+    || !relativePath?.match(/\.(?:json|md)$/)
+    || !index.parentsByCommit.has(revision)
+  ) return undefined;
+  const key = `${revision}\0${relativePath}`;
+  if (index.indexedFileCache.has(key)) return index.indexedFileCache.get(key);
+  let commit = revision;
+  let source = null;
+  while (commit) {
+    const changes = index.fileChangesByCommit.get(commit);
+    if (changes?.has(relativePath)) {
+      source = changes.get(relativePath);
+      break;
+    }
+    commit = index.parentsByCommit.get(commit)?.[0] || null;
+  }
+  index.indexedFileCache.set(key, source);
+  while (index.indexedFileCache.size > 20_000) index.indexedFileCache.delete(index.indexedFileCache.keys().next().value);
+  return source;
+}
+
+function indexedAncestor(index, ancestor, descendant) {
+  if (ancestor === descendant) return true;
+  const key = `${ancestor}\0${descendant}`;
+  if (index.ancestryCache.has(key)) return index.ancestryCache.get(key);
+  const pending = [descendant];
+  const visited = new Set();
+  let result = false;
+  while (pending.length) {
+    const commit = pending.pop();
+    if (commit === ancestor) {
+      result = true;
+      break;
+    }
+    if (visited.has(commit)) continue;
+    visited.add(commit);
+    pending.push(...(index.parentsByCommit.get(commit) || []));
+  }
+  index.ancestryCache.set(key, result);
+  while (index.ancestryCache.size > 20_000) index.ancestryCache.delete(index.ancestryCache.keys().next().value);
+  return result;
 }
 
 export function isGitAncestor(input, ancestor, descendant) {
@@ -372,18 +603,10 @@ export function isDataHistoryAncestor(input, ancestor, descendant) {
     index = getDataRecordHistoryIndex(root);
     if (context) dataHistoryContextCache.set(context, index);
   }
-  if (
-    !index.available
-    || (descendant !== index.head && !index.commits.includes(descendant))
-  ) return isGitAncestor(root, ancestor, descendant);
-  const key = `${root}\0${ancestor}\0${descendant}`;
-  if (reachableDataAncestryCache.has(key)) return reachableDataAncestryCache.get(key);
-  const result = isGitAncestor(root, ancestor, descendant);
-  reachableDataAncestryCache.set(key, result);
-  while (reachableDataAncestryCache.size > 20_000) {
-    reachableDataAncestryCache.delete(reachableDataAncestryCache.keys().next().value);
+  if (!index.available || !index.parentsByCommit.has(descendant)) {
+    return isGitAncestor(root, ancestor, descendant);
   }
-  return result;
+  return indexedAncestor(index, ancestor, descendant);
 }
 
 export function getFileBufferAtRevision(input, revision, relativePath) {
@@ -473,16 +696,42 @@ export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, o
 }
 
 export function getFileAtRevision(input, revision, relativePath) {
-  return getFilesAtRevisions(input, [{ revision, relativePath }])[0];
+  const root = resolveWorkspaceRoot(input);
+  const indexed = indexedDataFile(dataRecordHistoryIndexCache.get(root), revision, relativePath);
+  return indexed === undefined
+    ? getFilesAtRevisions(root, [{ revision, relativePath }])[0]
+    : indexed;
 }
 
 export function getFilesAtRevisions(input, requests, options = {}) {
   const root = resolveWorkspaceRoot(input);
+  const hasDeadline = options.deadline !== undefined;
+  const deadline = hasDeadline ? Number(options.deadline) : performance.now() + DATA_HISTORY_BUILD_TIMEOUT_MS;
+  if (!Number.isFinite(deadline) || deadline <= performance.now()) {
+    const error = new Error("Git historical file export exceeded its cumulative deadline.");
+    error.code = "FILEGRC_HISTORY_DEADLINE";
+    throw error;
+  }
+  const remainingTime = () => {
+    const remainingMs = Math.floor(deadline - performance.now());
+    if (remainingMs <= 0) {
+      const error = new Error("Git historical file export exceeded its cumulative deadline.");
+      error.code = "FILEGRC_HISTORY_DEADLINE";
+      throw error;
+    }
+    return remainingMs;
+  };
   const invalid = Array.isArray(requests) && requests.find(({ revision, relativePath } = {}) => (
     !/^[a-f0-9]{40}$/i.test(String(revision)) || !isSafeDataGitPath(relativePath)
   ));
   if (!Array.isArray(requests) || invalid) {
     throw new Error("Historical file exports require a Git commit and a data/ path.");
+  }
+  const maxRequests = Number(options.maxRequests) > 0 ? Math.floor(Number(options.maxRequests)) : null;
+  if (maxRequests && requests.length > maxRequests) {
+    const error = new Error(`Git historical file exports exceed the ${maxRequests}-request safety limit.`);
+    error.code = "FILEGRC_HISTORY_EXPORT_LIMIT";
+    throw error;
   }
   if (!requests.length) return [];
   const results = new Array(requests.length);
@@ -497,31 +746,48 @@ export function getFilesAtRevisions(input, requests, options = {}) {
       missing.push({ ...request, index, key });
     }
   });
+  const maxTotalBytes = Number(options.maxTotalBytes) > 0 ? Number(options.maxTotalBytes) : null;
+  const cachedBytes = maxTotalBytes
+    ? results.reduce((total, value) => total + (typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0), 0)
+    : 0;
+  if (maxTotalBytes && cachedBytes > maxTotalBytes) throw historicalExportLimitError(maxTotalBytes);
   if (!missing.length) return results;
   try {
-    const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+    const topLevel = git(root, ["rev-parse", "--show-toplevel"], { timeoutMs: remainingTime() });
     const workspacePrefix = relative(topLevel, root).split(sep).join("/");
     if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) return requests.map(() => null);
+    const missingSpecifications = missing.map(({ revision, relativePath }) => {
+      const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
+      return `${revision}:${repositoryPath}`;
+    });
+    if (maxTotalBytes) {
+      assertHistoricalExportSize(root, missingSpecifications, maxTotalBytes - cachedBytes, maxTotalBytes, remainingTime());
+    }
     const batchSize = Math.max(1, Math.min(Number(options.batchSize) || 4, 512));
     for (let offset = 0; offset < missing.length; offset += batchSize) {
       const batch = missing.slice(offset, offset + batchSize);
-      const specifications = batch.map(({ revision, relativePath }) => {
-        const repositoryPath = workspacePrefix ? `${workspacePrefix}/${relativePath}` : relativePath;
-        return `${revision}:${repositoryPath}`;
-      });
+      const specifications = missingSpecifications.slice(offset, offset + batchSize);
       let values;
       try {
-        const output = measureTimingSync("git-history-export", () => execFileSync("git", ["cat-file", "--batch"], {
-          cwd: root,
-          input: `${specifications.join("\n")}\n`,
-          stdio: ["pipe", "pipe", "ignore"],
-          timeout: 10_000,
-          maxBuffer: 80_000_000,
-          env: gitEnvironment()
-        }));
+        const run = () => {
+          const remainingMs = remainingTime();
+          return execFileSync("git", ["cat-file", "--batch"], {
+            cwd: root,
+            input: `${specifications.join("\n")}\n`,
+            stdio: ["pipe", "pipe", "ignore"],
+            timeout: remainingMs,
+            maxBuffer: 80_000_000,
+            env: gitEnvironment()
+          });
+        };
+        const output = measureTimingSync("git-history-export", () => (
+          historicalBatchInterceptor ? historicalBatchInterceptor({ root, specifications, run }) : run()
+        ));
         values = parseBatchObjects(output, batch.length);
-      } catch {
-        values = specifications.map((specification) => readHistoricalFile(root, specification));
+      } catch (cause) {
+        const error = new Error("Git could not read the historical file batch safely.", { cause });
+        error.code = "FILEGRC_HISTORY_BATCH_FAILED";
+        throw error;
       }
       batch.forEach(({ index, key }, batchIndex) => {
         const value = values[batchIndex];
@@ -533,14 +799,79 @@ export function getFilesAtRevisions(input, requests, options = {}) {
       }
     }
     return results;
-  } catch {
+  } catch (error) {
+    if (["FILEGRC_HISTORY_EXPORT_LIMIT", "FILEGRC_HISTORY_BATCH_FAILED", "FILEGRC_HISTORY_DEADLINE"].includes(error?.code)) throw error;
     return results.map((value) => value ?? null);
   }
+}
+
+export function setHistoricalBatchInterceptorForTests(interceptor) {
+  const previous = historicalBatchInterceptor;
+  historicalBatchInterceptor = interceptor;
+  return () => {
+    historicalBatchInterceptor = previous;
+  };
+}
+
+function assertHistoricalExportSize(root, specifications, remainingBytes, maxTotalBytes, timeoutMs = GIT_DEFAULT_TIMEOUT_MS) {
+  const output = measureTimingSync("git-history-size", () => execFileSync("git", [
+    "cat-file",
+    "--batch-check=%(objectname) %(objecttype) %(objectsize)"
+  ], {
+    cwd: root,
+    input: `${specifications.join("\n")}\n`,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "ignore"],
+    timeout: timeoutMs,
+    maxBuffer: 20_000_000,
+    env: gitEnvironment()
+  }));
+  let total = 0;
+  for (const line of output.trim().split("\n")) {
+    if (!line || line.endsWith(" missing")) continue;
+    const match = line.match(/^[a-f0-9]+ blob (\d+)$/i);
+    if (!match) throw new Error("Git returned invalid historical object metadata.");
+    total += Number(match[1]);
+    if (!Number.isSafeInteger(total) || total > remainingBytes) throw historicalExportLimitError(maxTotalBytes);
+  }
+}
+
+function historicalExportLimitError(maxTotalBytes) {
+  const megabytes = maxTotalBytes / (1024 * 1024);
+  const limit = Number.isInteger(megabytes) && megabytes >= 1
+    ? `${megabytes} MB`
+    : `${maxTotalBytes} byte`;
+  const error = new Error(`Git historical file exports exceed the ${limit} safety limit.`);
+  error.code = "FILEGRC_HISTORY_EXPORT_LIMIT";
+  return error;
+}
+
+function dataHistoryLimitError(message) {
+  const error = new Error(message);
+  error.code = "FILEGRC_HISTORY_INDEX_LIMIT";
+  return error;
 }
 
 export function getDataFilesAtRevision(input, revision) {
   if (!/^[a-f0-9]{40}$/i.test(String(revision))) return [];
   const root = resolveWorkspaceRoot(input);
+  const index = dataRecordHistoryIndexCache.get(root);
+  if (index?.available && index.parentsByCommit.has(revision)) {
+    const lineage = [];
+    let commit = revision;
+    while (commit) {
+      lineage.push(commit);
+      commit = index.parentsByCommit.get(commit)?.[0] || null;
+    }
+    const files = new Set();
+    for (let position = lineage.length - 1; position >= 0; position -= 1) {
+      for (const [path, source] of index.fileChangesByCommit.get(lineage[position]) || []) {
+        if (source === null) files.delete(path);
+        else files.add(path);
+      }
+    }
+    return [...files].filter((path) => path.endsWith(".json"));
+  }
   try {
     const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
     const workspacePrefix = relative(topLevel, root).split(sep).join("/");
@@ -615,6 +946,8 @@ export function getChangedDataPathsSinceRevision(input, revision) {
 export function hasGitRevision(input, revision) {
   if (!/^[a-f0-9]{40}$/i.test(String(revision))) return false;
   const root = resolveWorkspaceRoot(input);
+  const index = dataRecordHistoryIndexCache.get(root);
+  if (index?.available && index.parentsByCommit.has(revision)) return true;
   try {
     git(root, ["cat-file", "-e", `${revision}^{commit}`]);
     return true;
@@ -2153,8 +2486,8 @@ export function runGitCommand(cwd, args, options = {}) {
   return runGitCommandNative(cwd, args, options);
 }
 
-export function runGitCommandSync(cwd, args) {
-  return git(resolveWorkspaceRoot(cwd), args);
+export function runGitCommandSync(cwd, args, options = {}) {
+  return git(resolveWorkspaceRoot(cwd), args, options);
 }
 
 function runGitCommandNative(cwd, args, options = {}) {
@@ -2261,12 +2594,12 @@ async function tryGitAsync(cwd, args, operation) {
   }
 }
 
-function git(cwd, args) {
+function git(cwd, args, options = {}) {
   return measureTimingSync("git-command-sync", () => execFileSync("git", args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
-    timeout: 10_000,
+    timeout: Math.max(1, Number(options.timeoutMs) || GIT_DEFAULT_TIMEOUT_MS),
     maxBuffer: 20_000_000,
     env: gitEnvironment()
   }).trim());
@@ -2302,7 +2635,7 @@ function gitRaw(cwd, args, options = {}) {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
-    timeout: 10_000,
+    timeout: Math.max(1, Number(options.timeoutMs) || GIT_DEFAULT_TIMEOUT_MS),
     maxBuffer: 20_000_000,
     env: gitEnvironment(options.gitIndexFile ? { GIT_INDEX_FILE: options.gitIndexFile } : {})
   });
