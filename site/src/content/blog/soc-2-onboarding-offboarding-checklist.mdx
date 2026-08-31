@@ -1,0 +1,347 @@
+---
+title: "SOC 2 Onboarding and Offboarding Checklist for Startups"
+description: "Build a SOC 2 onboarding and offboarding checklist with clear owners, deadlines, evidence, access changes, and a complete event trail."
+publishedDate: "2026-08-31"
+lastMod: "2026-08-31"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 onboarding and offboarding checklist",
+    "SOC 2 employee onboarding checklist",
+    "SOC 2 offboarding checklist",
+    "SOC 2 access revocation evidence",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc turns each workforce start, role change, or departure into dated work with owners, deadlines, evidence, and review."
+faqs:
+  - question: "What is a SOC 2 onboarding and offboarding checklist?"
+    answer: "A SOC 2 onboarding and offboarding checklist records the security work triggered when a worker starts, changes roles, or leaves. It should identify the event, person or opaque workforce ID, applicable tasks, owners, deadlines, actual completion times, evidence, exceptions, and final review."
+  - question: "What should a SOC 2 employee onboarding checklist include?"
+    answer: "Include approved access requests, role-based access, issued assets, confidentiality and acceptable-use acknowledgements, required training, security contacts, completion evidence, and a review that every applicable task finished. Tailor the list to the worker's role, systems, data, and approved policies."
+  - question: "What should a SOC 2 employee offboarding checklist include?"
+    answer: "Include the confirmed departure time, access and session removal, privileged and local accounts, credential or key handling when needed, asset return, ownership transfer, evidence from each authoritative system, exceptions, and independent review when your control requires it."
+  - question: "How quickly must access be removed for SOC 2?"
+    answer: "SOC 2 does not impose one universal 24-hour deadline for every departure. Management should set timing from its policy, control design, risks, systems, and commitments, then operate that timing consistently. Use an exact timestamp when the approved rule is measured in hours."
+  - question: "What evidence should a startup save for onboarding and offboarding?"
+    answer: "Save the source event, approved access request, provisioning or revocation logs, tickets, asset records, signed acknowledgements, training completion, timestamps, reviewer record, and proof for any follow-up. Link fixed artifacts to the event without putting secrets or unnecessary personal data in Git."
+  - question: "Does filegrc provision or revoke user access?"
+    answer: "No. Identity, HR, endpoint, training, signature, and application systems perform those actions and remain authoritative for their output. filegrc records the policy event, creates the required work, links evidence, checks completion, and keeps the management record reviewable in Git."
+furtherReading:
+  - text: "Follow the startup SOC 2 compliance checklist"
+    url: "/blogs/soc-2-compliance-checklist-startups"
+  - text: "Plan a practical SOC 2 timeline"
+    url: "/blogs/soc-2-timeline-startups"
+  - text: "Prepare for Type 1 or Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Run the pre-fieldwork audit readiness gate"
+    url: "/blogs/soc-2-audit-readiness-checklist"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+A SOC 2 onboarding and offboarding checklist should connect one real workforce
+event to every security task it requires. For each start, role change, or
+departure, record who owns the work, when it is due, when it happened, and what
+evidence proves completion. A reusable spreadsheet can help plan the steps, but
+the completed record also needs the source event, system output, exceptions,
+and review around those steps.
+
+## TL;DR
+
+- Use separate triggers for worker starts, role changes, and departures.
+- Tailor the checklist to the person's role, systems, privileges, data, and
+  issued assets.
+- Set deadlines in approved policy and control records. SOC 2 does not set one
+  universal 24-hour offboarding rule.
+- Preserve actual completion dates and timestamps, not only a checked box.
+- Link each task to proof from the HR, identity, application, endpoint,
+  training, signature, or ticket system that performed the work.
+- Reconcile the full event population for a Type 2 period, including a sourced
+  count of zero when no event occurred.
+
+## What the checklist needs to prove
+
+The
+[AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide criteria for evaluating controls over security and the other selected
+Trust Services Categories. For workforce access, management needs controls
+that authorize access, change it when responsibilities change, and remove it
+when it is no longer authorized. The criteria define what the controls should
+achieve. They do not publish one onboarding form, universal task list, or fixed
+removal deadline for every company.
+
+Your checklist should let a reviewer answer these questions:
+
+1. What real event triggered the work, and when did it occur?
+2. Which worker, role, systems, accounts, privileges, data, and assets were in
+   scope?
+3. Which approved policies, controls, and event rules produced the tasks?
+4. Who owned and completed each task?
+5. Did every task finish within its approved window?
+6. What source evidence proves each action and the final state?
+7. Which exceptions or follow-up items remained open?
+8. Who reviewed the completed event?
+
+That chain is more useful than a generic "complete" cell because it preserves
+the control rule, event, work, and proof as separate facts.
+
+## Use three event types
+
+A worker start, role change, and departure create different risks. Treat each
+as its own event even when one template contains all three sections.
+
+| Event       | Main question                                                               | Common control work                                                                                      |
+| ----------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Start       | Was access granted only after approval and in line with the role?           | Agreements, training assignment, approved access, device registration, security contacts                 |
+| Role change | Was old access removed as new access was granted?                           | Role approval, entitlement comparison, access change, duty-conflict review, training update              |
+| Departure   | Was access removed and company property handled within the approved window? | Account and session removal, privileged access review, ownership transfer, asset return, evidence review |
+
+Role changes deserve their own trigger because access can accumulate when a
+person moves between teams. A scheduled access review may detect that drift
+later, but the role-change event should start the immediate work. The
+[SOC 2 access review evidence guide](/blogs/soc-2-access-review-evidence)
+explains the later, population-wide review.
+
+Contractors, temporary staff, interns, and other people with in-scope access
+may need the same event workflow. Base the decision on access, duties, systems,
+and risk, not the payroll label alone.
+
+## SOC 2 employee onboarding checklist
+
+Use this table as a planning list. Management should add, remove, or split
+tasks to match its actual systems and approved control design.
+
+| Onboarding task              | What to record                                                                       | Useful evidence                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| Confirm the source event     | Worker or opaque ID, start date, role, manager, and approved source                  | Approved HR record or restricted-system reference           |
+| Accept workforce terms       | Applicable confidentiality, acceptable-use, conduct, and intellectual-property terms | Signed acknowledgement bound to the exact document revision |
+| Approve access               | Request, business need, systems, roles, privileges, approver, and approval time      | Access request or ticket                                    |
+| Provision accounts           | Actual accounts, roles, groups, and completion time in each system                   | Identity-provider and application logs or exports           |
+| Apply strong authentication  | Required authentication state for each covered system                                | Configuration or enrollment record without secret values    |
+| Register issued assets       | Device, badge, hardware key, or other accountable item                               | Asset assignment record                                     |
+| Assign and complete training | Course, due date, approved content revision, completion, and reviewer                | Training-system record or signed attestation                |
+| Share reporting routes       | Security, privacy, and incident reporting channels that apply                        | Acknowledgement or onboarding record                        |
+| Review completion            | Checklist coverage, missing work, exceptions, and reviewer                           | Completed event record and linked proof                     |
+
+Do not grant broad default access because the checklist has a field for it. Use
+the role, least-privilege rules, segregation needs, and approved request to
+decide what access belongs in scope. The
+[SOC 2 controls guide](/blogs/soc-2-controls-startups) shows how to connect
+that operating work to policies, risks, systems, and criteria.
+
+Keep the source event separate from proof that each action happened. An HR
+start record can establish the event, but it does not prove that an application
+owner approved the role or that the identity system applied it.
+
+## SOC 2 role-change checklist
+
+Treat a change in job, team, responsibilities, temporary assignment, location,
+or privilege as an event when it changes security duties or access. Review the
+old and new states together:
+
+1. Confirm the effective date, prior role, new role, manager, and source
+   approval.
+2. List access and duties required by the new role.
+3. Identify access, groups, tokens, shared credentials, and administrative
+   rights that the old role no longer needs.
+4. Review segregation-of-duty conflicts and privileged access.
+5. Remove old access and grant approved new access.
+6. Assign new policy acknowledgements or role-specific training when needed.
+7. Preserve source-system proof and actual completion times.
+8. Review the final state and create follow-up for anything incomplete.
+
+A role change should not appear as a clean event when access removal is still
+open. Keep the action open, name the owner and deadline, and record any approved
+exception.
+
+## SOC 2 employee offboarding checklist
+
+An offboarding workflow should cover every authoritative source that can grant
+the departing person access. A central identity provider helps, but it may not
+cover local application accounts, cloud keys, source-control permissions,
+shared credentials, physical access, or accounts outside single sign-on.
+
+| Offboarding task             | What to check                                                                                              | Useful evidence                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Confirm the departure event  | Effective date or timestamp, approved source, event owner, and risk level                                  | HR record or restricted-system reference                 |
+| Disable interactive access   | Identity, email, VPN, production, source control, support, and local app accounts                          | Deactivation logs or dated account export                |
+| End active sessions          | Sessions, device tokens, refresh tokens, and remote access where supported                                 | Session-revocation log or system record                  |
+| Remove privileges            | Admin roles, groups, direct grants, break-glass access, and approval rights                                | Before-and-after entitlement evidence                    |
+| Handle credentials           | Exportable keys, shared credentials, secrets, certificates, and recovery methods affected by the departure | Rotation or revocation ticket without secret values      |
+| Transfer ownership           | Repositories, services, alerts, documents, queues, domains, billing, and other sole-owner objects          | Ownership-change record                                  |
+| Recover or dispose of assets | Devices, badges, hardware keys, media, and other property                                                  | Asset return, approved remote wipe, or disposal evidence |
+| Preserve required records    | Business records, legal holds, and approved retention steps                                                | Retention or transfer record                             |
+| Review the final state       | Source coverage, completion times, exceptions, evidence, and reviewer                                      | Completed event record                                   |
+
+NIST SP 800-53 is not a SOC 2 requirement, but its public account-management
+guidance is a useful design reference. NIST AC-2 calls for account management
+to align with personnel termination and transfer processes and uses
+organization-defined time periods for several account actions in
+[SP 800-53 Revision 5](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final).
+That is a useful prompt to define your own sources, triggers, owners, and
+timing. It does not replace the control design agreed for the SOC 2
+examination.
+
+## Set deadlines from policy and risk
+
+SOC 2 does not create one universal rule that every account must be disabled
+within 24 hours. Management should set an allowed completion window and first
+overdue cutoff for each event task. Base the timing on approved policy, control
+design, access risk, system behavior, employment or contract terms, and
+customer commitments. Confirm the design with the CPA firm.
+
+Some tasks may be due before access begins. Others may be due on a calendar
+date, at the departure time, or within a stated number of hours. Record the
+scheduled date separately from actual completion. When policy measures the
+deadline in hours, save the event and completion as timestamps with a timezone.
+A date alone cannot prove whether a four-hour task finished on time.
+
+High-risk departures may need a different action set or tighter windows. Record
+the risk decision without copying sensitive HR details into a widely accessible
+repository. A risk level and approved restricted reference may be enough for
+the GRC record.
+
+## Preserve evidence, not just checked boxes
+
+For every task, keep evidence from the system that performed or recorded the
+action. Useful sources include the HR or contractor system, identity provider,
+local applications, cloud platform, source control, support tools, endpoint and
+asset systems, training and signature systems, and ticket system.
+
+Record the source, report or event ID, filters, timestamp, timezone, collector,
+and result. Use a fixed export, log, screenshot, signed file, or approved
+external reference as appropriate. The
+[SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) explains how to
+give each artifact enough context.
+
+Do not put passwords, access tokens, private keys, recovery codes, session
+material, or unnecessary personal data in Git. Personal data that may need
+later erasure should remain in an approved restricted system. Use an opaque
+case or worker ID and a safe external reference in the compliance repository
+when the detailed source record should not be permanent.
+
+## Run one policy event in FileGRC
+
+FileGRC models starts, role changes, and departures as Policy Events. An active
+event obligation is a reusable rule. When the event occurs, FileGRC creates one
+dated event and every linked Action Item in one validated write. Each task keeps
+its owner, completion window, requested proof, and source event.
+
+Inspect the active event rules before the event occurs:
+
+```sh
+npx filegrc obligations --json
+```
+
+Then trigger the matching workflow with the actual facts:
+
+```sh
+npx filegrc trigger person-started \
+  --occurred-on 2026-08-31 \
+  --subject person-worker-id \
+  --json
+
+npx filegrc trigger person-role-changed \
+  --occurred-on 2026-08-31 \
+  --subject person-worker-id \
+  --json
+
+npx filegrc trigger person-ended \
+  --occurred-at 2026-08-31T17:00:00-05:00 \
+  --subject person-worker-id \
+  --risk-level normal \
+  --json
+```
+
+Use `--occurred-at` when any linked task has an hour-based deadline. FileGRC
+rejects an event that lacks the timing precision needed to calculate its
+cutoff.
+
+Complete each generated action with the proof type requested by its obligation:
+
+```sh
+npx filegrc complete-action ACTION_ITEM_ID \
+  --scaffold \
+  --completed-on 2026-08-31 > completion-mutation.json
+
+# Fill the scaffold with the real work, evidence, actors, review, and dates.
+# For an hour-based window, also put the actual timestamp in the timestamp
+# field supported by the requested completion record.
+npx filegrc complete-action ACTION_ITEM_ID \
+  completion-mutation.json \
+  --completed-on 2026-08-31
+
+npx filegrc get OBLIGATION_EVENT_ID --mutation
+npx filegrc complete-event OBLIGATION_EVENT_ID \
+  --completed-on 2026-08-31 \
+  --expected-revision REVISION
+```
+
+The completion scaffold includes the action's current revision. The
+`--completed-on` flag records the calendar date. For an hour-based window, fill
+the actual `completedAt`, `occurredAt`, `collectedAt`, or `verifiedAt` field
+supported by the requested completion type. Run
+`npx filegrc guide RESOURCE_TYPE --json` to confirm the field. A date-only
+completion cannot prove within-day timing.
+
+FileGRC rejects the wrong completion type. A valid completed Policy Event must
+have every action marked `done` and linked to an allowed completion resource.
+Run `npx filegrc validate --json` to enforce that final state, inspect the Git
+diff, and commit the event and its evidence links together.
+
+If someone changes a lifecycle fact directly in the source files, run
+`npx filegrc reconcile --preview --json`. Confirm the candidate before applying
+it with the real event date or timestamp and departure risk. FileGRC does not
+treat a Git diff as proof that the real-world event occurred.
+
+This workflow applies the same principle described in
+[SOC 2 compliance as code](/blogs/soc-2-compliance-as-code): keep source facts
+in files, calculate work from approved rules, validate changes, and let Git
+preserve the reviewable history.
+
+## Reconcile the Type 2 event population
+
+The
+[AICPA's authoritative SOC 2 guide](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy)
+covers examinations of control design and effectiveness. For a Type 1
+examination, management may need to show the designed workflow and its state on
+the specified date. For Type 2, the CPA firm may request the complete set of
+workforce starts, role changes, departures, and related actions during the
+period, then select items for testing.
+
+Define the authoritative source for each event type before fieldwork. Preserve
+the exact period, query or report, filters, generation time, timezone, count,
+and completeness checks. Reconcile the source set to the recorded Policy Events
+and investigate every mismatch.
+
+If no departure occurred during the period, preserve a sourced result with a
+count of zero. Do not mark the control not applicable only because the
+population is empty. The
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) explains how
+to bind a formal population to a real Type 2 engagement and fixed source
+export.
+
+The CPA firm chooses its samples and decides whether the evidence is sufficient
+and appropriate. FileGRC can check dates, relationships, required proof, and
+population coverage, but it does not make the auditor's judgment.
+
+## Review the completed event
+
+Before closing a start, role change, or departure, confirm:
+
+- the event date or timestamp came from an approved source;
+- the checklist matched the role, systems, privileges, data, assets, and risk;
+- every task had a named owner and policy-based deadline;
+- actual completion dates or timestamps were recorded;
+- source evidence supports each completed action;
+- local accounts and direct privileges outside central identity were covered;
+- old access was removed during a role change;
+- exceptions and missing work remain visible with owners and due dates;
+- sensitive data and secrets stayed out of Git; and
+- a named reviewer checked the final state when the control requires review.
+
+[filegrc](/) records the event, creates its full action set, links each result
+to evidence, calculates deadlines, and keeps the history in Git. It does not
+run HR, identity, endpoint, training, signature, or application systems, and it
+does not replace the CPA firm's examination.
