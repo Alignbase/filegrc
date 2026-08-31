@@ -201,6 +201,27 @@ test("marks a Requirement Mapping stale when either reviewed side changes", asyn
   assert.equal(controlBacked.commands.some((command) => command.includes(`program-amendment ${target.id}`)), false);
 });
 
+test("does not require a Requirement Mapping for a baseline SOC 2 Commitment", async () => {
+  const model = loadModel("10");
+  const commitment = {
+    id: "commitment-service",
+    type: "commitment",
+    title: "Customer service promise",
+    status: "planned",
+    commitmentKind: "service",
+    statement: "Protect the customer service.",
+    ownerIds: ["person-owner"]
+  };
+  const loaded = {
+    model,
+    workspace: { id: "workspace", type: "workspace", dataModelVersion: "10" },
+    resources: [commitment],
+    entries: [{ record: commitment, source: JSON.stringify(commitment) }]
+  };
+  assert.deepEqual(await assessRequirementMappingReadiness(loaded), []);
+  assert.deepEqual(await assessProgramAmendmentReadiness(loaded), []);
+});
+
 test("plans a cohesive supplemental-policy amendment and supports custom obligations", async () => {
   const model = loadModel("8");
   const resources = [

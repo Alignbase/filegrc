@@ -30,10 +30,17 @@ import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./
 import {
   reportingRouteRevision,
   reportingRouteBindingExpectationForValidation,
+  reportingRouteCommitTimestamp,
   reportingRouteEventCommit,
   reportingRouteEventAuthorityIssueAtCommit,
+  reportingRouteExactHistoryEntry,
   reportingRouteFixedEvidence,
-  reportingRouteRecordAtRevision
+  reportingRouteProposalIssues,
+  reportingRouteProposalAssessmentTime,
+  reportingRouteRecordAtRevision,
+  reportingRouteRequirementsForProposal,
+  reportingRouteSupportIssues,
+  recordsAtRevision
 } from "./reporting-route-integrity.js";
 import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
 
@@ -902,6 +909,29 @@ function validateReportingRouteSets(loaded, byId, pathById, diagnostics) {
   }
   for (const route of routeSets) {
     const path = pathById.get(route.id);
+    if (route.status === "proposed") {
+      const proposalHistory = repository.commit
+        ? reportingRouteExactHistoryEntry(loaded, route, repository.commit)
+        : null;
+      const proposalRecords = proposalHistory ? recordsAtRevision(loaded, proposalHistory.commit) : loaded.resources;
+      const proposalRecord = proposalHistory
+        ? proposalRecords.find(({ id }) => id === route.id) || route
+        : route;
+      const proposalAssessmentAt = proposalHistory
+        ? reportingRouteProposalAssessmentTime(proposalHistory.timestamp, new Date())
+        : new Date();
+      if (proposalHistory && !proposalAssessmentAt) {
+        diagnostics.push(error("invalid-reporting-route-proposal-time", path, "The proposal commit time is too far in the future to establish a reliable proposal."));
+      }
+      for (const issue of reportingRouteProposalIssues(proposalRecords, proposalRecord, {
+        at: proposalAssessmentAt || new Date(),
+        timezone: proposalRecords.find(({ type }) => type === "workspace")?.timezone || loaded.workspace?.timezone || "UTC",
+        root: loaded.root,
+        commit: proposalHistory?.commit
+      })) {
+        diagnostics.push(error(issue.code, path, issue.message));
+      }
+    }
     if (["draft", "proposed", "approved"].includes(route.status)) {
       const key = `${route.programId}\0${route.purposeKey}`;
       const current = currentByPurpose.get(key) || { approved: [], pending: [] };
@@ -937,6 +967,60 @@ function validateReportingRouteSets(loaded, byId, pathById, diagnostics) {
     const proposal = entry ? reportingRouteRecordAtRevision(loaded, entry, route.proposalCommit) : null;
     if (!proposal || proposal.status !== "proposed" || !sameRouteProposal(proposal, route)) {
       diagnostics.push(error("changed-reporting-route-proposal", path, "The approved Route Set facts must exactly match the committed proposal; only managed approval fields may differ."));
+    } else {
+      const proposalRecords = recordsAtRevision(loaded, route.proposalCommit);
+      const proposalTimestamp = reportingRouteCommitTimestamp(loaded, route.id, route.proposalCommit);
+      const proposalAssessmentAt = proposalTimestamp
+        ? reportingRouteProposalAssessmentTime(proposalTimestamp, new Date())
+        : null;
+      if (!proposalTimestamp) {
+        diagnostics.push(error("invalid-reporting-route-proposal", path, "The proposal commit must be an exact Reporting Channel Set history entry."));
+      } else if (!proposalAssessmentAt) {
+        diagnostics.push(error("invalid-reporting-route-proposal-time", path, "The proposal commit time is too far in the future to establish a reliable proposal."));
+      } else {
+        const proposalIssues = reportingRouteProposalIssues(
+          proposalRecords,
+          proposal,
+          {
+            at: proposalAssessmentAt,
+            timezone: proposalRecords.find(({ type }) => type === "workspace")?.timezone || loaded.workspace?.timezone || "UTC",
+            root: loaded.root,
+            commit: route.proposalCommit
+          }
+        );
+        for (const issue of proposalIssues) {
+          diagnostics.push(error(issue.code, path, issue.message));
+        }
+        if (!proposalIssues.length) {
+          const approvalCommit = reportingRouteEventCommit(loaded, route, "approval");
+          const approvalRecords = approvalCommit ? recordsAtRevision(loaded, approvalCommit) : loaded.resources;
+          const liveCommit = route.status === "canceled"
+            ? reportingRouteEventCommit(loaded, route, "cancellation")
+            : null;
+          const liveRecords = liveCommit ? recordsAtRevision(loaded, liveCommit) : loaded.resources;
+          const cutoverAt = route.approval?.effectiveAt || route.approval?.approvedAt || new Date();
+          const cutoverTimezone = route.approval?.timezone || loaded.workspace?.timezone || "UTC";
+          for (const issue of reportingRouteSupportIssues(
+            reportingRouteRequirementsForProposal(approvalRecords, route, {
+              at: cutoverAt,
+              timezone: cutoverTimezone
+            }),
+            route,
+            proposalRecords,
+            liveRecords,
+            {
+              at: cutoverAt,
+              availableAt: route.approval?.approvedAt || new Date(),
+              timezone: cutoverTimezone,
+              root: loaded.root,
+              proposalCommit: route.proposalCommit,
+              currentCommit: liveCommit
+            }
+          )) {
+            diagnostics.push(error(issue.code, path, issue.message));
+          }
+        }
+      }
     }
     for (const markdown of markdownEntries(loaded.model, route)) {
       const currentPath = `data/${markdown.path}`;

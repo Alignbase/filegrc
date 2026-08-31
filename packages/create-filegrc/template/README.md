@@ -39,7 +39,7 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 
 ![filegrc SOC 2 program overview](docs/filegrc-home.png)
 
-1. **Define scope.** Set program ownership, choose the criteria, and define the service, Systems, and providers in scope.
+1. **Define scope.** Set program ownership, choose the criteria, define the service, Systems, and providers in scope, review any supplemental requirement mappings, and commit the reporting-channel proposals needed by the planned program.
 2. **Approve policies.** Review Policies, program Documents, and Training in one table. Have someone other than the owner approve each exact revision. Approval does not mean the linked Controls are implemented.
 3. **Implement controls.** Implement the approved requirements, define how each Control works, connect its Evidence sources, and configure Obligations. Activate each unchanged approved Document or Training record with a separate activation date and revision, then activate the selected Policy cutover set.
 4. **Operate the program.** Run scheduled and event-driven work, maintain risk, and retain dated evidence.

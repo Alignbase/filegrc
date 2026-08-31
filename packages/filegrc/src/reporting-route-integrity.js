@@ -14,6 +14,7 @@ import { appointmentWasAuthorizedOn } from "./soc2.js";
 import { isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 
 const CONTEMPORANEOUS_COMMIT_WINDOW_MS = 86_400_000;
+const REPORTING_ROUTE_REQUIREMENT_SOURCE_TYPES = new Set(["policy", "document", "commitment", "risk"]);
 
 export function reportingRouteRevision(record) {
   const effectiveFacts = {
@@ -103,10 +104,14 @@ export function reportingRouteAssertionTiming(loaded, routeSet, eventName) {
 
 export function reportingRouteFixedEvidence(records, subjectId, evidenceIds, at, timezone = "UTC", options = {}) {
   let date;
+  let availableDate;
   try {
     date = /^\d{4}-\d{2}-\d{2}$/.test(String(at || ""))
       ? String(at)
       : localDateTimeValue(instant(at, "Supported event time"), timezone).slice(0, 10);
+    availableDate = options.availableAt
+      ? localDateTimeValue(instant(options.availableAt, "Evidence availability time"), timezone).slice(0, 10)
+      : null;
   } catch {
     return [];
   }
@@ -119,6 +124,7 @@ export function reportingRouteFixedEvidence(records, subjectId, evidenceIds, at,
       || evidence.status !== "verified"
       || !arrayValue(evidence.sourceResourceIds).includes(subjectId)
       || !verifiedEvidenceComplete(evidence, personIds)
+      || (availableDate && (evidence.collectedOn > availableDate || evidence.verifiedOn > availableDate))
     ) return false;
     const coversDate = coverageContains(evidence.coverage, date)
       || [evidence.businessEventAt, evidence.sourceGeneratedAt].filter(Boolean).some((value) => {
@@ -274,6 +280,150 @@ export function reportingRouteRequirementAppliesToProgram(requirement, programId
     && arrayValue(requirement.programIds).includes(programId);
 }
 
+export function reportingRouteProposalIssues(records, routeSet, options = {}) {
+  return reportingRouteProposalIssuesForRequirements(
+    reportingRouteRequirementsForProposal(records, routeSet),
+    routeSet,
+    records,
+    options
+  );
+}
+
+export function reportingRouteRequirementsForProposal(records, routeSet, options = {}) {
+  return records.flatMap((source) => (
+    REPORTING_ROUTE_REQUIREMENT_SOURCE_TYPES.has(source.type)
+      && (
+        reportingRouteSourceMayBecomeEffective(source)
+        || reportingRouteSourceEffectiveAt(source, options.at, options.timezone)
+      )
+      ? (Array.isArray(source.reportingRouteRequirements) ? source.reportingRouteRequirements : [])
+        .filter((requirement) => (
+          requirement
+          && typeof requirement === "object"
+          && !Array.isArray(requirement)
+          && requirement.purposeKey === routeSet.purposeKey
+          && reportingRouteRequirementAppliesToProgram(requirement, routeSet.programId)
+        ))
+      : []
+  ));
+}
+
+function reportingRouteSourceEffectiveAt(source, at, timezone = "UTC") {
+  if (!at) return false;
+  try { return reportingRouteSourceEffective(source, at, timezone); } catch { return false; }
+}
+
+export function reportingRouteSupportIssues(requirements, routeSet, proposalRecords, currentRecords, options = {}) {
+  const proposalIssues = reportingRouteProposalIssuesForRequirements(
+    requirements,
+    routeSet,
+    proposalRecords,
+    { ...options, commit: options.proposalCommit }
+  );
+  const currentIssues = reportingRouteProposalIssuesForRequirements(
+    requirements,
+    routeSet,
+    currentRecords,
+    { ...options, commit: options.currentCommit }
+  );
+  return [...new Map([...proposalIssues, ...currentIssues].map((item) => [
+    `${item.code}\0${item.resourceId}\0${item.message}`,
+    item
+  ])).values()];
+}
+
+export function reportingRouteProposalIssuesForRequirements(requirements, routeSet, records, options = {}) {
+  const applicableRequirements = requirements.filter((requirement) => (
+    requirement
+    && typeof requirement === "object"
+    && !Array.isArray(requirement)
+    && requirement.purposeKey === routeSet.purposeKey
+    && reportingRouteRequirementAppliesToProgram(requirement, routeSet.programId)
+  ));
+  const issues = [];
+  const placeholder = (value) => /^(?:\[|tbd\b|todo\b|unknown\b|replace\b|complete before\b)/i.test(String(value || "").trim());
+  if (placeholder(routeSet.primaryLane?.destination)) {
+    issues.push({
+      code: "incomplete-reporting-route-proposal",
+      resourceId: routeSet.id,
+      message: `${routeSet.title} needs the real normal reporting destination before it can be proposed.`
+    });
+  }
+  if (applicableRequirements.some(({ requiredLanes }) => requiredLanes?.includes("alternate"))) {
+    if (!routeSet.alternateLane || placeholder(routeSet.alternateLane.destination)) {
+      issues.push({
+        code: "incomplete-reporting-route-proposal",
+        resourceId: routeSet.id,
+        message: `${routeSet.title} needs the real fallback reporting destination before it can be proposed.`
+      });
+    }
+  }
+  if (applicableRequirements.some(({ distinctChannels }) => distinctChannels)
+    && routeSet.alternateLane?.channelKind === routeSet.primaryLane?.channelKind) {
+    issues.push({
+      code: "reporting-route-channel-not-distinct",
+      resourceId: routeSet.id,
+      message: `${routeSet.title} needs different normal and fallback channel types before it can be proposed.`
+    });
+  }
+  if (applicableRequirements.some(({ independentDependencies }) => independentDependencies)
+    && !reportingRouteLanesIndependent(
+      routeSet,
+      records,
+      options.at || new Date(),
+      options
+    )) {
+    issues.push({
+      code: "reporting-route-dependencies-not-independent",
+      resourceId: routeSet.id,
+      message: `${routeSet.title} needs independent normal and fallback channel dependencies or an applicable Exception before it can be proposed.`
+    });
+  }
+  return issues;
+}
+
+export function reportingRouteLanesIndependent(record, records, at, options = {}) {
+  if (!record.alternateLane) return false;
+  for (const lane of [record.primaryLane, record.alternateLane]) {
+    if (!lane?.dependencyBasis) return false;
+    if (lane.dependencyBasis === "cataloged" && !lane.dependencySystemIds?.length) return false;
+    if (lane.dependencyBasis === "none" && !String(lane.dependencyRationale || "").trim()) return false;
+  }
+  const primary = new Set(record.primaryLane?.dependencySystemIds || []);
+  const overlap = (record.alternateLane.dependencySystemIds || []).filter((id) => primary.has(id));
+  if (!overlap.length) return true;
+  const timezone = options.timezone || record.approval?.timezone || "UTC";
+  let date;
+  let availableDate;
+  try {
+    date = localDateTimeValue(instant(at, "Reporting Route assessment time"), timezone).slice(0, 10);
+    availableDate = localDateTimeValue(
+      instant(options.availableAt || at, "Reporting Route support availability time"),
+      timezone
+    ).slice(0, 10);
+  } catch {
+    return false;
+  }
+  return records.some((candidate) => (
+    candidate.type === "exception"
+    && candidate.status === "approved"
+    && candidate.reportingRouteSetId === record.id
+    && candidate.reportingRouteLanePair === "primary-alternate"
+    && overlap.every((id) => candidate.dependencySystemIds?.includes(id))
+    && candidate.approval?.approvedOn <= date
+    && candidate.approval?.approvedOn <= availableDate
+    && candidate.approval?.expiresOn >= date
+    && reportingRouteFixedEvidence(
+      records,
+      candidate.id,
+      candidate.evidenceIds,
+      candidate.approval?.approvedOn,
+      timezone,
+      { root: options.root, commit: options.commit, availableAt: options.availableAt || at }
+    ).length > 0
+  ));
+}
+
 export function reportingRouteSourceEffective(source, at, timezone = "UTC") {
   const when = instant(at, "Source assessment time");
   if (!reportingRouteSourceMayApply(source)) return false;
@@ -297,6 +447,11 @@ export function reportingRouteSourceMayApply(source) {
   if (source?.type === "commitment") return ["active", "superseded", "retired"].includes(source.status);
   if (source?.type === "risk") return ["open", "monitoring", "closed", "archived"].includes(source.status);
   return false;
+}
+
+export function reportingRouteSourceMayBecomeEffective(source) {
+  return REPORTING_ROUTE_REQUIREMENT_SOURCE_TYPES.has(source?.type)
+    && !["superseded", "retired", "closed", "archived"].includes(source.status);
 }
 
 export function reportingRouteSetInterval(routeSet) {
@@ -522,6 +677,32 @@ export function reportingRouteRecordAtRevision(loaded, entry, commit) {
 
 export function reportingRouteHistory(loaded, routeSetId) {
   return getDataRecordHistoryIndex(loaded.root).historiesById.get(routeSetId) || [];
+}
+
+export function reportingRouteExactHistoryEntry(loaded, routeSet, head) {
+  return reportingRouteHistory(loaded, routeSet.id).find((summary) => {
+    if (head && !isDataHistoryAncestor(loaded, summary.commit, head)) return false;
+    const source = getFileAtRevision(loaded.root, summary.commit, summary.path);
+    try { return source && JSON.stringify(JSON.parse(source)) === JSON.stringify(routeSet); } catch { return false; }
+  }) || null;
+}
+
+export function reportingRouteCommitTimestamp(loaded, routeSetId, commit) {
+  return reportingRouteHistory(loaded, routeSetId)
+    .find(({ commit: changedAt }) => changedAt === commit)?.timestamp || null;
+}
+
+export function reportingRouteProposalAssessmentTime(timestamp, assessmentAt = new Date()) {
+  let commitAt;
+  let assessedAt;
+  try {
+    commitAt = instant(timestamp, "Proposal commit time");
+    assessedAt = instant(assessmentAt, "Proposal assessment time");
+  } catch {
+    return null;
+  }
+  if (commitAt.getTime() > assessedAt.getTime() + CONTEMPORANEOUS_COMMIT_WINDOW_MS) return null;
+  return commitAt > assessedAt ? assessedAt : commitAt;
 }
 
 export function recordsAtRevision(loaded, commit) {

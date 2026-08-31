@@ -3,14 +3,25 @@ import { applyResourceBatch, INTERNAL_WORKFLOW_CAPABILITIES, updateResource } fr
 import {
   effectiveReportingRouteRequirements as deriveEffectiveReportingRouteRequirements,
   reportingRouteAssertionTiming,
+  reportingRouteCommitTimestamp,
   reportingRouteEventCommit,
   reportingRouteEventAuthorityIssue,
   reportingRouteEventAuthorityIssueAtCommit,
+  reportingRouteExactHistoryEntry,
   reportingRouteFixedEvidence,
+  reportingRouteLanesIndependent,
   reportingRouteOngoingAuthorities,
+  reportingRouteProposalIssues,
+  reportingRouteProposalAssessmentTime,
+  reportingRouteProposalIssuesForRequirements,
   reportingRouteRecordAtRevision,
+  reportingRouteRequirementAppliesToProgram,
+  reportingRouteRequirementsForProposal,
+  reportingRouteSupportIssues,
+  recordsAtRevision,
   reportingRouteSourceEffective,
   reportingRouteSourceMayApply,
+  reportingRouteSourceMayBecomeEffective,
   reportingRouteSourceAppliesToProgram
 } from "./reporting-route-integrity.js";
 import { localDateTimeValue } from "./time.js";
@@ -22,6 +33,8 @@ const COMMIT_REQUIRED_STATUSES = new Set(["proposed", "approved", "canceled"]);
 const SOURCE_TYPES = new Set(["policy", "document", "commitment", "risk"]);
 const MAX_PERIOD_BOUNDARIES = 512;
 const PERIOD_REPOSITORY_SNAPSHOT = Symbol("filegrc.reportingRoutePeriodRepositorySnapshot");
+
+export { reportingRouteLanesIndependent };
 
 export async function assessReportingRouteSets(input = process.cwd(), options = {}) {
   const loaded = typeof input === "object" && input?.resources ? input : await loadWorkspace(input);
@@ -46,13 +59,19 @@ export async function assessReportingRouteSets(input = process.cwd(), options = 
   const requirements = deriveEffectiveReportingRouteRequirements(loaded.resources, at, programId, timezone);
   const proposedRequirements = loaded.resources.flatMap((source) => (
     SOURCE_TYPES.has(source.type)
+      && reportingRouteSourceMayBecomeEffective(source)
       && (!programId || reportingRouteSourceAppliesToProgram(
         source,
         loaded.resources.find(({ type, id }) => type === "program" && id === programId),
         loaded.resources
       ))
       ? (Array.isArray(source.reportingRouteRequirements) ? source.reportingRouteRequirements : [])
-        .filter((requirement) => requirement && typeof requirement === "object" && !Array.isArray(requirement))
+        .filter((requirement) => (
+          requirement
+          && typeof requirement === "object"
+          && !Array.isArray(requirement)
+          && (!programId || reportingRouteRequirementAppliesToProgram(requirement, programId))
+        ))
         .map((requirement) => ({
         ...requirement,
         sourceId: source.id,
@@ -66,7 +85,10 @@ export async function assessReportingRouteSets(input = process.cwd(), options = 
   ));
   const repository = options[PERIOD_REPOSITORY_SNAPSHOT]
     || await getRepositorySnapshot(loaded.root, { fresh: true });
-  const assessments = routeSets.map((record) => assessRouteSet(record, loaded, at, repository));
+  const assessments = routeSets.map((record) => ({
+    ...assessRouteSet(record, loaded, at, repository),
+    ...proposedRequirementAssessment(record, loaded, repository, proposedRequirements, at, timezone)
+  }));
   const issues = loaded.resources.flatMap((source) => {
     if (!SOURCE_TYPES.has(source.type) || !Object.hasOwn(source, "reportingRouteRequirements")) return [];
     if (!reportingRouteSourceMayApply(source)) return [];
@@ -118,7 +140,10 @@ export async function assessReportingRouteSets(input = process.cwd(), options = 
     if (requirement.distinctChannels && route.alternateLane?.channelKind === route.primaryLane?.channelKind) {
       issues.push(issue("reporting-route-channel-not-distinct", route.id, `${requirement.sourceId} requires different normal and fallback channel types.`));
     }
-    if (requirement.independentDependencies && !reportingRouteLanesIndependent(route, loaded.resources, at)) {
+    if (requirement.independentDependencies && !reportingRouteLanesIndependent(route, loaded.resources, at, {
+      timezone,
+      root: loaded.root
+    })) {
       issues.push(issue("reporting-route-dependencies-not-independent", route.id, `${requirement.sourceId} requires independent channel dependencies or an applicable Exception.`));
     }
   }
@@ -331,6 +356,12 @@ export async function proposeReportingRouteSet(input, options = {}) {
   const loaded = await loadWorkspace(input);
   const entry = routeEntry(loaded, options.routeSetId);
   if (entry.record.status !== "draft") throw new Error(`Reporting Channel Set "${entry.record.id}" must be draft before it is proposed.`);
+  const proposalIssues = reportingRouteProposalIssues(loaded.resources, entry.record, {
+    at: new Date(),
+    timezone: loaded.workspace?.timezone || "UTC",
+    root: loaded.root
+  });
+  if (proposalIssues.length) throw new Error(proposalIssues[0].message);
   const result = await updateResource(loaded.root, entry.record.type, entry.record.id, {
     ...entry.record,
     status: "proposed"
@@ -347,12 +378,38 @@ export async function approveReportingRouteSet(input, options = {}) {
   if (entry.record.status !== "proposed") throw new Error(`Reporting Channel Set "${entry.record.id}" must be proposed before approval.`);
   const proposalCommit = fullCommit(options.proposalCommit, "Proposal commit");
   assertProposalMatches(loaded, entry, proposalCommit);
+  const proposalRecords = recordsAtRevision(loaded, proposalCommit);
+  const proposalTimestamp = reportingRouteCommitTimestamp(loaded, entry.record.id, proposalCommit);
+  if (!proposalTimestamp) throw new Error(`Proposal commit ${proposalCommit} is not present in Reporting Channel Set history.`);
+  const proposalAssessmentAt = reportingRouteProposalAssessmentTime(proposalTimestamp, new Date());
+  if (!proposalAssessmentAt) throw new Error("Proposal commit time is too far in the future to establish a reliable proposal.");
+  const proposalIssues = reportingRouteProposalIssues(proposalRecords, entry.record, {
+    at: proposalAssessmentAt,
+    timezone: proposalRecords.find(({ type }) => type === "workspace")?.timezone || loaded.workspace?.timezone || "UTC",
+    root: loaded.root,
+    commit: proposalCommit
+  });
+  if (proposalIssues.length) throw new Error(proposalIssues[0].message);
   const approvedAt = pastOrPresentTimestamp(options.approvedAt, "Approval time");
   const effectiveAt = instant(options.effectiveAt, "Effective time");
   const timezone = timezoneName(options.timezone);
   assertTimestampZone(options.approvedAt, timezone, "Approval time");
   assertTimestampZone(options.effectiveAt, timezone, "Effective time");
   if (effectiveAt < approvedAt) throw new Error("A Reporting Channel Set cannot become effective before it is approved.");
+  const cutoverIssues = reportingRouteSupportIssues(
+    reportingRouteRequirementsForProposal(loaded.resources, entry.record, { at: effectiveAt, timezone }),
+    entry.record,
+    proposalRecords,
+    loaded.resources,
+    {
+      at: effectiveAt,
+      availableAt: approvedAt,
+      timezone,
+      root: loaded.root,
+      proposalCommit
+    }
+  );
+  if (cutoverIssues.length) throw new Error(cutoverIssues[0].message);
   const authority = approvalAuthority(loaded, entry.record, options, approvedAt, timezone);
   const approvalEvidenceIds = [...new Set(options.evidenceIds || [])];
   if (!reportingRouteFixedEvidence(
@@ -527,6 +584,83 @@ function assessRouteSet(record, loaded, at, repository) {
   if (COMMIT_REQUIRED_STATUSES.has(record.status) && !committed) {
     issues.push(issue("reporting-route-commit-required", record.id, `${record.title} must be committed before this lifecycle state can be relied on.`));
   }
+  const proposalEntry = loaded.entries.find(({ record: candidate }) => candidate.id === record.id);
+  const historicalProposal = ["approved", "canceled"].includes(record.status)
+    && proposalEntry
+    && /^[a-f0-9]{40}$/i.test(String(record.proposalCommit || ""))
+    ? reportingRouteRecordAtRevision(loaded, proposalEntry, record.proposalCommit)
+    : null;
+  if (record.status === "proposed") {
+    const proposalHistory = committed && repository.commit
+      ? reportingRouteExactHistoryEntry(loaded, record, repository.commit)
+      : null;
+    const proposalRecords = proposalHistory ? recordsAtRevision(loaded, proposalHistory.commit) : loaded.resources;
+    const proposalRecord = proposalHistory
+      ? proposalRecords.find(({ id }) => id === record.id) || record
+      : record;
+    const proposalAssessmentAt = proposalHistory
+      ? reportingRouteProposalAssessmentTime(proposalHistory.timestamp, at)
+      : at;
+    if (proposalHistory && !proposalAssessmentAt) {
+      issues.push(issue("invalid-reporting-route-proposal-time", record.id, "The proposal commit time is too far in the future to establish a reliable proposal."));
+    }
+    issues.push(...reportingRouteProposalIssues(proposalRecords, proposalRecord, {
+      at: proposalAssessmentAt || at,
+      timezone: proposalRecords.find(({ type }) => type === "workspace")?.timezone || loaded.workspace?.timezone || "UTC",
+      root: loaded.root,
+      commit: proposalHistory?.commit
+    }));
+  } else if (historicalProposal) {
+    const proposalRecords = recordsAtRevision(loaded, record.proposalCommit);
+    const proposalTimestamp = reportingRouteCommitTimestamp(loaded, record.id, record.proposalCommit);
+    const proposalAssessmentAt = proposalTimestamp
+      ? reportingRouteProposalAssessmentTime(proposalTimestamp, at)
+      : null;
+    if (!proposalTimestamp) {
+      issues.push(issue("invalid-reporting-route-proposal", record.id, "The proposal commit must be an exact Reporting Channel Set history entry."));
+    } else if (!proposalAssessmentAt) {
+      issues.push(issue("invalid-reporting-route-proposal-time", record.id, "The proposal commit time is too far in the future to establish a reliable proposal."));
+    } else {
+      const proposalIssues = reportingRouteProposalIssues(
+        proposalRecords,
+        historicalProposal,
+        {
+          at: proposalAssessmentAt,
+          timezone: proposalRecords.find(({ type }) => type === "workspace")?.timezone || loaded.workspace?.timezone || "UTC",
+          root: loaded.root,
+          commit: record.proposalCommit
+        }
+      );
+      issues.push(...proposalIssues);
+      if (!proposalIssues.length) {
+        const approvalCommit = reportingRouteEventCommit(loaded, record, "approval");
+        const approvalRecords = approvalCommit ? recordsAtRevision(loaded, approvalCommit) : loaded.resources;
+        const liveCommit = record.status === "canceled"
+          ? reportingRouteEventCommit(loaded, record, "cancellation")
+          : null;
+        const liveRecords = liveCommit ? recordsAtRevision(loaded, liveCommit) : loaded.resources;
+        const cutoverAt = record.approval?.effectiveAt || record.approval?.approvedAt || at;
+        const cutoverTimezone = record.approval?.timezone || loaded.workspace?.timezone || "UTC";
+        issues.push(...reportingRouteSupportIssues(
+          reportingRouteRequirementsForProposal(approvalRecords, record, {
+            at: cutoverAt,
+            timezone: cutoverTimezone
+          }),
+          record,
+          proposalRecords,
+          liveRecords,
+          {
+            at: cutoverAt,
+            availableAt: record.approval?.approvedAt || at,
+            timezone: cutoverTimezone,
+            root: loaded.root,
+            proposalCommit: record.proposalCommit,
+            currentCommit: liveCommit
+          }
+        ));
+      }
+    }
+  }
   if (record.status === "approved" && record.approval && repository.commit && !isDataHistoryAncestor(loaded, record.proposalCommit, repository.commit)) {
     issues.push(issue("invalid-reporting-route-proposal-lineage", record.id, "The approved revision must descend from the exact committed proposal."));
   }
@@ -573,6 +707,26 @@ function assessRouteSet(record, loaded, at, repository) {
     cancellationAssertionTiming,
     issues,
     state
+  };
+}
+
+function proposedRequirementAssessment(record, loaded, repository, requirements, at, timezone) {
+  const history = repository.commit
+    ? reportingRouteExactHistoryEntry(loaded, record, repository.commit)
+    : null;
+  const records = history ? recordsAtRevision(loaded, history.commit) : loaded.resources;
+  return {
+    proposedRequirementIssues: reportingRouteProposalIssuesForRequirements(
+      requirements,
+      record,
+      records,
+      {
+        at: history ? reportingRouteProposalAssessmentTime(history.timestamp, at) || at : at,
+        timezone,
+        root: loaded.root,
+        commit: history?.commit
+      }
+    )
   };
 }
 
@@ -675,28 +829,6 @@ function approvalAuthority(loaded, routeSet, options, at, timezone) {
   });
   if (authorityIssue) throw new Error(authorityIssue.message);
   return appointment;
-}
-
-export function reportingRouteLanesIndependent(record, records, at) {
-  if (!record.alternateLane) return false;
-  for (const lane of [record.primaryLane, record.alternateLane]) {
-    if (!lane?.dependencyBasis) return false;
-    if (lane.dependencyBasis === "cataloged" && !lane.dependencySystemIds?.length) return false;
-    if (lane.dependencyBasis === "none" && !String(lane.dependencyRationale || "").trim()) return false;
-  }
-  const primary = new Set(record.primaryLane?.dependencySystemIds || []);
-  const overlap = (record.alternateLane.dependencySystemIds || []).filter((id) => primary.has(id));
-  if (!overlap.length) return true;
-  const date = localDateTimeValue(at, record.approval?.timezone || "UTC").slice(0, 10);
-  return records.some((candidate) => (
-    candidate.type === "exception"
-    && candidate.status === "approved"
-    && candidate.reportingRouteSetId === record.id
-    && candidate.reportingRouteLanePair === "primary-alternate"
-    && overlap.every((id) => candidate.dependencySystemIds?.includes(id))
-    && candidate.approval?.approvedOn <= date
-    && candidate.approval?.expiresOn >= date
-  ));
 }
 
 function routeEntry(loaded, id) {

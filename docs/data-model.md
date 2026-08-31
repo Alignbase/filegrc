@@ -19,12 +19,12 @@ Name the owners, criteria, service, Systems, and providers in scope.
 - **People** (`person`): Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
 - **Appointments** (`appointment`): Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
 - **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.
-- **Reporting channel sets** (`reporting-route-set`): Record the normal and fallback ways people send one kind of report, including where each channel goes and the role that keeps it usable. Commit the proposal before approval, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
+- **Reporting channel sets** (`reporting-route-set`): Prepare the normal and fallback ways people will send each report required by proposed program content, including where each channel goes and the role that keeps it usable. Commit the proposal in Step 1, approve it before cutover, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
 - **Programs** (`program`): Define one management compliance or assurance Program with its goal, bounded Systems, selected Frameworks, Requirement applicability decisions, Controls, owners, risk method, and candidate period.
 - **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
 - **Requirements** (`requirement`): Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.
 - **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
-- **Requirement Mappings** (`requirement-mapping`): Record a reviewed relationship among Requirements, Commitments, and Controls. Choose the comparison method and relationship explicitly, explain the rationale, and bind the review to every mapped source revision.
+- **Requirement Mappings** (`requirement-mapping`): Use a Requirement Mapping when supplemental policies, contracts, privacy promises, frameworks, or other sources need explicit coverage semantics. Choose the comparison method and relationship, explain the rationale, and bind the review to every mapped source revision.
 - **Systems** (`system`): Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.
 - **Components** (`component`): Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.
 - **Vendors** (`vendor`): Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.
@@ -981,7 +981,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 A reviewed assertion about how one set of Requirements, Commitments, or Controls relates to another without copying the authoritative source content.
 
-Instructions: Record a reviewed relationship among Requirements, Commitments, and Controls. Choose the comparison method and relationship explicitly, explain the rationale, and bind the review to every mapped source revision.
+Instructions: Use a Requirement Mapping when supplemental policies, contracts, privacy promises, frameworks, or other sources need explicit coverage semantics. Choose the comparison method and relationship, explain the rationale, and bind the review to every mapped source revision.
 
 Policy basis: Supplemental policies, contracts, privacy promises, and frameworks need explicit coverage semantics so a link is not mistaken for complete coverage.
 
@@ -1475,7 +1475,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 The normal and fallback ways people send a report for one purpose, such as an email address and a hotline for security concerns. The set records where each channel leads, who keeps it usable, and when the approved pair applies.
 
-Instructions: Record the normal and fallback ways people send one kind of report, including where each channel goes and the role that keeps it usable. Commit the proposal before approval, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
+Instructions: Prepare the normal and fallback ways people will send each report required by proposed program content, including where each channel goes and the role that keeps it usable. Commit the proposal in Step 1, approve it before cutover, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
 
 Policy basis: A reporting channel is an email address, phone number, web form, in-person contact, or other destination people use to raise a concern. Policies and other approved decisions say when channels are required; this record stores the current contact details so governed text does not copy them.
 

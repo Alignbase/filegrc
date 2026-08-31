@@ -23,7 +23,13 @@ import {
   validateWorkspace,
   writeEvidencePacket
 } from "../src/index.js";
-import { assertionTimingAt, reportingRouteFixedEvidence } from "../src/reporting-route-integrity.js";
+import {
+  assertionTimingAt,
+  reportingRouteFixedEvidence,
+  reportingRouteProposalIssues,
+  reportingRouteRequirementsForProposal,
+  reportingRouteSourceMayBecomeEffective
+} from "../src/reporting-route-integrity.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { writeJson } from "./helpers.js";
 
@@ -64,6 +70,85 @@ test("requires explicit dependency conclusions before claiming channel independe
     primaryLane: { ...route.primaryLane, dependencyBasis: "none", dependencyRationale: "The address is delivered directly to a named recipient." },
     alternateLane: { ...route.alternateLane, dependencyBasis: "none", dependencyRationale: "The phone route terminates directly with a named recipient." }
   }, [], new Date()), true);
+
+  const overlapping = {
+    ...route,
+    id: "reporting-route-set-overlap",
+    title: "Overlapping reporting channels",
+    programId: "program-example",
+    purposeKey: "security-reporting",
+    primaryLane: { ...route.primaryLane, dependencyBasis: "cataloged", dependencySystemIds: ["system-shared"] },
+    alternateLane: { ...route.alternateLane, dependencyBasis: "cataloged", dependencySystemIds: ["system-shared"] }
+  };
+  const exception = {
+    id: "exception-route-overlap",
+    type: "exception",
+    status: "approved",
+    reportingRouteSetId: overlapping.id,
+    reportingRouteLanePair: "primary-alternate",
+    dependencySystemIds: ["system-shared"],
+    evidenceIds: ["evidence-route-overlap"],
+    approval: { approvedOn: "2026-01-01", expiresOn: "2026-06-30" }
+  };
+  const evidence = {
+    id: "evidence-route-overlap",
+    type: "evidence",
+    status: "verified",
+    artifactKind: "business-record",
+    sourceKind: "file",
+    sourceDescription: "Signed approval of the temporary dependency overlap.",
+    collectedOn: "2026-01-01",
+    collectorIds: ["person-collector"],
+    verifierIds: ["person-verifier"],
+    verifiedOn: "2026-01-01",
+    sourceResourceIds: [exception.id],
+    coverage: { kind: "as-of", on: "2026-01-01" },
+    filePaths: ["evidence/evidence-route-overlap/approval.txt"]
+  };
+  const requirementSource = {
+    id: "policy-reporting",
+    type: "policy",
+    reportingRouteRequirements: [{
+      purposeKey: overlapping.purposeKey,
+      programScope: "all-programs",
+      requiredLanes: ["primary", "alternate"],
+      independentDependencies: true
+    }]
+  };
+  const records = [
+    requirementSource,
+    exception,
+    evidence,
+    { id: "person-collector", type: "person" },
+    { id: "person-verifier", type: "person" }
+  ];
+  assert.equal(reportingRouteProposalIssues(records, overlapping, {
+    at: new Date("2026-03-01T00:00:00Z"),
+    timezone: "UTC"
+  }).length, 0);
+  assert.ok(reportingRouteProposalIssues(records.filter(({ type }) => type !== "evidence"), overlapping, {
+    at: new Date("2026-03-01T00:00:00Z"),
+    timezone: "UTC"
+  }).some(({ code }) => code === "reporting-route-dependencies-not-independent"));
+  assert.ok(reportingRouteProposalIssues(records, overlapping, {
+    at: new Date("2026-07-01T00:00:00Z"),
+    timezone: "UTC"
+  }).some(({ code }) => code === "reporting-route-dependencies-not-independent"));
+  assert.ok(reportingRouteProposalIssues(records.map((record) => (
+    record.id === evidence.id ? { ...record, verifiedOn: "2026-04-01" } : record
+  )), overlapping, {
+    at: new Date("2026-03-01T00:00:00Z"),
+    timezone: "UTC"
+  }).some(({ code }) => code === "reporting-route-dependencies-not-independent"));
+  assert.ok(reportingRouteProposalIssues(records, overlapping, {
+    at: new Date("2026-03-01T00:00:00Z"),
+    availableAt: new Date("2025-12-31T00:00:00Z"),
+    timezone: "UTC"
+  }).some(({ code }) => code === "reporting-route-dependencies-not-independent"));
+  assert.doesNotThrow(() => reportingRouteProposalIssues(records, overlapping, {
+    at: new Date("2026-03-01T00:00:00Z"),
+    timezone: "Not/A_Timezone"
+  }));
 });
 
 test("follows the effective lifecycle of Reporting Route requirement sources", () => {
@@ -88,6 +173,353 @@ test("follows the effective lifecycle of Reporting Route requirement sources", (
   };
   assert.equal(effectiveReportingRouteRequirements([retired], new Date("2021-04-30T23:59:59Z")).length, 1);
   assert.equal(effectiveReportingRouteRequirements([retired], new Date("2021-05-01T00:00:00Z")).length, 0);
+  assert.equal(reportingRouteSourceMayBecomeEffective(planned), true);
+  assert.equal(reportingRouteSourceMayBecomeEffective(retired), false);
+  assert.equal(reportingRouteSourceMayBecomeEffective({ ...planned, type: "risk", status: "closed" }), false);
+  assert.equal(reportingRouteRequirementsForProposal([retired], {
+    purposeKey: "security-reporting"
+  }, {
+    at: new Date("2021-04-30T23:59:59Z"),
+    timezone: "UTC"
+  }).length, 1);
+  assert.equal(reportingRouteRequirementsForProposal([retired], {
+    purposeKey: "security-reporting"
+  }, {
+    at: new Date("2021-05-01T00:00:00Z"),
+    timezone: "UTC"
+  }).length, 0);
+});
+
+test("requires a real committed Reporting Channel Set proposal in Step 1", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-route-set-step-one-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { records } = await makeComprehensiveWorkspace(root, "10");
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const program = byId.get("program-example");
+  const policy = {
+    ...byId.get("policy-example"),
+    status: "draft",
+    reportingRouteRequirements: [{
+      purposeKey: "security-reporting",
+      programScope: "all-programs",
+      requiredLanes: ["primary", "alternate"],
+      distinctChannels: true,
+      independentDependencies: true,
+      effectiveAt: "1970-01-01T00:00:00Z",
+      timezone: "UTC"
+    }]
+  };
+  const route = {
+    ...byId.get("reporting-route-set-example"),
+    status: "draft",
+    programId: program.id,
+    purposeKey: "security-reporting",
+    purposeLabel: "Security reporting",
+    primaryLane: { channelKind: "email", destination: "security@example.test" },
+    alternateLane: { channelKind: "phone", destination: "TBD: protected fallback" },
+    sourceResourceIds: [policy.id]
+  };
+  delete route.proposalCommit;
+  delete route.approval;
+  delete route.cancellation;
+  await writeRecord(root, "policies", policy);
+  await writeRecord(root, "reporting-route-sets", route);
+  await git(root, "init", "--initial-branch=main");
+  await git(root, "config", "user.name", "Test User");
+  await git(root, "config", "user.email", "test@example.test");
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Create Step 1 proposals");
+
+  let readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  let item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "action");
+  assert.deepEqual(item.unpreparedPurposeKeys, ["security-reporting"]);
+  await assert.rejects(() => proposeReportingRouteSet(root, { routeSetId: route.id }), /real fallback reporting destination/);
+
+  await writeRecord(root, "reporting-route-sets", { ...route, status: "proposed" });
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Directly record an incomplete proposal");
+  const incompleteProposalCommit = (await git(root, "rev-parse", "HEAD")).trim();
+  const incompleteProposalValidation = await validateWorkspace(root);
+  assert.ok(incompleteProposalValidation.diagnostics.some(({ code }) => code === "incomplete-reporting-route-proposal"));
+  await assert.rejects(() => approveReportingRouteSet(root, {
+    routeSetId: route.id,
+    proposalCommit: incompleteProposalCommit
+  }), /real fallback reporting destination/);
+
+  const futureExceptionId = "exception-future-route-overlap";
+  const futureEvidenceId = "evidence-future-route-overlap";
+  const futureEvidencePath = `evidence/${futureEvidenceId}/approval.txt`;
+  await writeRecord(root, "exceptions", {
+    ...byId.get("exception-example"),
+    id: futureExceptionId,
+    title: "Future reporting route overlap exception",
+    status: "approved",
+    scopeResourceIds: [route.id],
+    requestorIds: ["person-example"],
+    ownerIds: ["person-example"],
+    rationale: "Temporarily accept a shared channel dependency.",
+    requestedOn: "2098-12-31",
+    approval: {
+      approvedByIds: ["person-independent-approver-example"],
+      approvedOn: "2099-01-01",
+      expiresOn: "2099-12-31"
+    },
+    reportingRouteSetId: route.id,
+    reportingRouteLanePair: "primary-alternate",
+    dependencySystemIds: ["system-example"],
+    evidenceIds: [futureEvidenceId]
+  });
+  await writeRecord(root, "evidence", {
+    ...byId.get("evidence-example"),
+    id: futureEvidenceId,
+    title: "Future reporting route overlap approval",
+    status: "verified",
+    artifactKind: "business-record",
+    sourceKind: "file",
+    sourceDescription: "Signed approval of the temporary dependency overlap.",
+    collectedOn: "2099-01-01",
+    collectorIds: ["person-example"],
+    verifierIds: ["person-independent-approver-example"],
+    verifiedOn: "2099-01-01",
+    sourceResourceIds: [futureExceptionId],
+    coverage: { kind: "as-of", on: "2099-01-01" },
+    filePaths: [futureEvidencePath]
+  });
+  await mkdir(join(root, "data", "evidence", futureEvidenceId), { recursive: true });
+  await writeFile(join(root, "data", futureEvidencePath), "Signed future exception approval.\n", "utf8");
+  const futureRoute = {
+    ...route,
+    status: "proposed",
+    primaryLane: {
+      channelKind: "email",
+      destination: "security@example.test",
+      dependencyBasis: "cataloged",
+      dependencySystemIds: ["system-example"]
+    },
+    alternateLane: {
+      channelKind: "phone",
+      destination: "+1-555-0100",
+      dependencyBasis: "cataloged",
+      dependencySystemIds: ["system-example"]
+    }
+  };
+  await writeRecord(root, "reporting-route-sets", futureRoute);
+  await git(root, "add", `data/reporting-route-sets/${route.id}.json`);
+  await git(root, "commit", "-m", "Commit reporting proposal without its support");
+  const uncommittedSupportValidation = await validateWorkspace(root);
+  assert.ok(uncommittedSupportValidation.diagnostics.some(({ code }) => code === "reporting-route-dependencies-not-independent"));
+  readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "action");
+
+  await writeRecord(root, "reporting-route-sets", { ...futureRoute, title: "Future-supported reporting channels" });
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Record proposal with its future exception");
+  const futureExceptionProposalCommit = (await git(root, "rev-parse", "HEAD")).trim();
+  const futureExceptionValidation = await validateWorkspace(root);
+  assert.ok(futureExceptionValidation.diagnostics.some(({ code }) => code === "reporting-route-dependencies-not-independent"));
+  const workspacePath = join(root, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+  await writeJson(workspacePath, { ...workspace, timezone: "Not/A_Timezone" });
+  const invalidTimezoneValidation = await validateWorkspace(root);
+  assert.ok(invalidTimezoneValidation.diagnostics.length > 0);
+  assert.ok(invalidTimezoneValidation.diagnostics.some(({ message }) => /timezone/i.test(message)));
+  await writeJson(workspacePath, workspace);
+  await assert.rejects(() => approveReportingRouteSet(root, {
+    routeSetId: route.id,
+    proposalCommit: futureExceptionProposalCommit,
+    approvedAt: "2026-01-01T00:00:00Z",
+    effectiveAt: "2099-02-01T00:00:00Z",
+    timezone: "UTC"
+  }), /independent normal and fallback channel dependencies/);
+  await writeRecord(root, "policies", { ...policy, title: "Policy changed after the route proposal" });
+  await git(root, "add", `data/policies/${policy.id}.json`);
+  await git(root, "commit", "-m", "Change an unrelated proposal source");
+  const descendantCommit = (await git(root, "rev-parse", "HEAD")).trim();
+  await assert.rejects(() => approveReportingRouteSet(root, {
+    routeSetId: route.id,
+    proposalCommit: descendantCommit
+  }), /not present in Reporting Channel Set history/);
+  await rm(join(root, "data", "exceptions", `${futureExceptionId}.json`));
+  await rm(join(root, "data", "evidence", futureEvidenceId), { recursive: true });
+
+  const approvedException = {
+    ...byId.get("exception-example"),
+    id: futureExceptionId,
+    title: "Reporting route overlap exception",
+    status: "approved",
+    scopeResourceIds: [route.id],
+    requestorIds: ["person-example"],
+    ownerIds: ["person-example"],
+    rationale: "Temporarily accept a shared channel dependency.",
+    requestedOn: "2024-12-31",
+    approval: {
+      approvedByIds: ["person-independent-approver-example"],
+      approvedOn: "2025-01-01",
+      expiresOn: "2027-01-01"
+    },
+    reportingRouteSetId: route.id,
+    reportingRouteLanePair: "primary-alternate",
+    dependencySystemIds: ["system-example"],
+    evidenceIds: [futureEvidenceId]
+  };
+  const approvedEvidence = {
+    ...byId.get("evidence-example"),
+    id: futureEvidenceId,
+    title: "Reporting route overlap approval",
+    status: "verified",
+    artifactKind: "business-record",
+    sourceKind: "file",
+    sourceDescription: "Signed approval of the temporary dependency overlap.",
+    collectedOn: "2025-01-01",
+    collectorIds: ["person-example"],
+    verifierIds: ["person-independent-approver-example"],
+    verifiedOn: "2025-01-01",
+    sourceResourceIds: [futureExceptionId],
+    coverage: { kind: "as-of", on: "2025-01-01" },
+    filePaths: [futureEvidencePath]
+  };
+  await writeRecord(root, "exceptions", approvedException);
+  await writeRecord(root, "evidence", approvedEvidence);
+  await mkdir(join(root, "data", "evidence", futureEvidenceId), { recursive: true });
+  await writeFile(join(root, "data", futureEvidencePath), "Signed exception approval.\n", "utf8");
+  await writeRecord(root, "reporting-route-sets", { ...futureRoute, title: "Exception-supported reporting channels" });
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Commit an exception-supported route proposal");
+  const approvedExceptionProposalCommit = (await git(root, "rev-parse", "HEAD")).trim();
+  await writeRecord(root, "exceptions", {
+    ...approvedException,
+    status: "revoked",
+    resolution: {
+      resolvedByIds: ["person-independent-approver-example"],
+      resolvedOn: "2026-08-30",
+      rationale: "The shared dependency is no longer accepted."
+    }
+  });
+  await git(root, "add", `data/exceptions/${futureExceptionId}.json`);
+  await git(root, "commit", "-m", "Revoke the route dependency exception");
+  await assert.rejects(() => approveReportingRouteSet(root, {
+    routeSetId: route.id,
+    proposalCommit: approvedExceptionProposalCommit,
+    approvedAt: "2026-08-30T00:00:00Z",
+    effectiveAt: "2026-09-01T00:00:00Z",
+    timezone: "UTC"
+  }), /independent normal and fallback channel dependencies/);
+  await rm(join(root, "data", "exceptions", `${futureExceptionId}.json`));
+  await rm(join(root, "data", "evidence", futureEvidenceId), { recursive: true });
+
+  await writeRecord(root, "reporting-route-sets", {
+    ...route,
+    alternateLane: { channelKind: "phone", destination: "+1-555-0100" }
+  });
+  await assert.rejects(() => proposeReportingRouteSet(root, { routeSetId: route.id }), /independent normal and fallback channel dependencies/);
+
+  await writeRecord(root, "reporting-route-sets", {
+    ...route,
+    primaryLane: {
+      channelKind: "email",
+      destination: "security@example.test",
+      dependencyBasis: "none",
+      dependencyRationale: "The reporting address is delivered directly to the appointed recipient."
+    },
+    alternateLane: {
+      channelKind: "phone",
+      destination: "+1-555-0100",
+      dependencyBasis: "none",
+      dependencyRationale: "The phone route terminates directly with the appointed recipient."
+    }
+  });
+  await proposeReportingRouteSet(root, { routeSetId: route.id });
+  readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "action");
+  assert.ok(item.issues.some(({ code }) => code === "reporting-route-commit-required"));
+
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Commit reporting channel proposal");
+  readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "complete");
+  assert.deepEqual(item.unpreparedPurposeKeys, []);
+  assert.match(item.message, /committed Reporting Channel Set proposal/);
+
+  const committedProposal = (await loadWorkspace(root)).resources.find(({ id }) => id === route.id);
+  await writeRecord(root, "reporting-route-sets", { ...committedProposal, title: "Future-dated proposal commit" });
+  await git(root, "add", `data/reporting-route-sets/${route.id}.json`);
+  await gitCommitAt(root, "2099-01-01T00:00:00Z", "Forge a future proposal commit time");
+  const futureCommitValidation = await validateWorkspace(root);
+  assert.ok(futureCommitValidation.diagnostics.some(({ code }) => code === "invalid-reporting-route-proposal-time"));
+  readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "action");
+});
+
+test("requires a new proposal when proposed requirements outgrow a committed route", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-route-set-expanded-requirement-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { records } = await makeComprehensiveWorkspace(root, "10");
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const policy = {
+    ...byId.get("policy-example"),
+    status: "draft",
+    reportingRouteRequirements: [{
+      purposeKey: "security-reporting",
+      programScope: "all-programs",
+      requiredLanes: ["primary"],
+      distinctChannels: false,
+      independentDependencies: false,
+      effectiveAt: "1970-01-01T00:00:00Z",
+      timezone: "UTC"
+    }]
+  };
+  const route = {
+    ...byId.get("reporting-route-set-example"),
+    status: "proposed",
+    programId: "program-example",
+    purposeKey: "security-reporting",
+    purposeLabel: "Security reporting",
+    primaryLane: { channelKind: "email", destination: "security@example.test" },
+    sourceResourceIds: [policy.id]
+  };
+  delete route.alternateLane;
+  delete route.proposalCommit;
+  delete route.approval;
+  delete route.cancellation;
+  await writeRecord(root, "policies", policy);
+  await writeRecord(root, "reporting-route-sets", route);
+  await git(root, "init", "--initial-branch=main");
+  await git(root, "config", "user.name", "Test User");
+  await git(root, "config", "user.email", "test@example.test");
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Commit primary reporting proposal");
+
+  let readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  let item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "complete");
+
+  await writeRecord(root, "policies", {
+    ...policy,
+    reportingRouteRequirements: [{
+      ...policy.reportingRouteRequirements[0],
+      requiredLanes: ["primary", "alternate"],
+      distinctChannels: true
+    }]
+  });
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Require a fallback reporting channel");
+  readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
+  item = readiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "security-reporting-route-set");
+  assert.equal(item.status, "action");
+  assert.deepEqual(item.unpreparedPurposeKeys, ["security-reporting"]);
+  assert.ok(item.proposedRequirementIssues.some(({ code }) => code === "incomplete-reporting-route-proposal"));
 });
 
 test("keeps Reporting Route requirement Program scope explicit and stable", () => {

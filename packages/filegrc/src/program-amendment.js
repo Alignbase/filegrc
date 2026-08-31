@@ -172,13 +172,14 @@ export async function assessProgramAmendmentReadiness(loaded) {
   const commitments = loaded.resources.filter((record) => (
     record.type === "commitment" && !["superseded", "retired"].includes(record.status)
   ));
-  const sourceIds = new Set(commitments.flatMap((record) => record.sourceResourceIds || []));
+  const supplementalCommitments = commitments.filter((record) => (record.sourceResourceIds || []).length > 0);
+  const sourceIds = new Set(supplementalCommitments.flatMap((record) => record.sourceResourceIds || []));
   for (const record of loaded.resources) {
     if (["policy", "document"].includes(record.type) && record.programRole === "supporting" && !["superseded", "retired"].includes(record.status)) {
       sourceIds.add(record.id);
     }
   }
-  const sourceRecords = [...new Set([...sourceIds, ...commitments.map(({ id }) => id)])]
+  const sourceRecords = [...new Set([...sourceIds, ...supplementalCommitments.map(({ id }) => id)])]
     .map((id) => byId.get(id))
     .filter((record) => record && SOURCE_TYPES.has(record.type));
   const plans = await Promise.all(sourceRecords.map((record) => (

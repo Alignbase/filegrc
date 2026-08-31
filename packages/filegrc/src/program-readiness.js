@@ -424,16 +424,32 @@ function reportingRouteSetItem(assessment) {
   const draft = assessment.routeSets.find(({ record }) => ["draft", "proposed"].includes(record.status));
   const required = assessment.requirements.length > 0;
   const proposed = assessment.proposedRequirements.length > 0;
-  const ready = assessment.issues.length === 0 && (!required || Boolean(current));
-  const needsAction = assessment.issues.length > 0;
+  const proposedPurposeKeys = [...new Set(assessment.proposedRequirements
+    .map(({ purposeKey }) => purposeKey)
+    .filter(Boolean))];
+  const preparedPurposeKeys = new Set(assessment.routeSets
+    .filter(({ record, committed, canceled, proposedRequirementIssues }) => (
+      ["proposed", "approved"].includes(record.status)
+      && committed
+      && !canceled
+      && proposedRequirementIssues.length === 0
+    ))
+    .map(({ record }) => record.purposeKey));
+  const unpreparedPurposeKeys = proposedPurposeKeys.filter((purposeKey) => !preparedPurposeKeys.has(purposeKey));
+  const ready = assessment.issues.length === 0
+    && (!required || Boolean(current))
+    && unpreparedPurposeKeys.length === 0;
+  const needsAction = assessment.issues.length > 0 || unpreparedPurposeKeys.length > 0;
   const target = current?.record || draft?.record || { type: "reporting-route-set" };
   let message;
-  if (needsAction) {
+  if (assessment.issues.length) {
     message = assessment.issues[0].message;
+  } else if (unpreparedPurposeKeys.length) {
+    message = `Complete and commit a Reporting Channel Set proposal for ${unpreparedPurposeKeys.join(", ")} before Step 1 is complete. Approval and effectiveness remain part of the later implementation cutover.`;
   } else if (required && ready && current) {
     message = `${current.record.title} is committed, effective, and has a current responsible Appointment. Assignments bind its Git commit.`;
-  } else if (!required && proposed && draft) {
-    message = "A draft or approved-but-inactive rule will require normal and fallback reporting channels later. Review them before that rule becomes active; this is not a current readiness gate.";
+  } else if (!required && proposed) {
+    message = "Every reporting-channel requirement in proposed program content has a committed Reporting Channel Set proposal. Approve the exact proposal before its governing content becomes active.";
   } else if (!required && draft) {
     message = "No approved rule currently requires these reporting channels. Keep the draft for review or remove it; it is not a readiness gate.";
   } else if (!required) {
@@ -443,12 +459,15 @@ function reportingRouteSetItem(assessment) {
   }
   return item(
     "security-reporting-route-set",
-    needsAction ? "action" : required ? ready ? "complete" : "action" : proposed && draft ? "later" : "info",
-    needsAction ? "Fix reporting channel requirements" : required ? "Approve required reporting channels" : proposed ? "Review proposed reporting channels" : "Reporting channels are not currently required",
+    needsAction ? "action" : required ? ready ? "complete" : "action" : proposed ? "complete" : "info",
+    needsAction ? "Prepare required reporting channels" : required ? "Approve required reporting channels" : proposed ? "Reporting channel proposals are ready" : "Reporting channels are not currently required",
     message,
     target,
     {
       requirements: assessment.requirements,
+      proposedRequirements: assessment.proposedRequirements,
+      proposedRequirementIssues: assessment.routeSets.flatMap(({ proposedRequirementIssues }) => proposedRequirementIssues),
+      unpreparedPurposeKeys,
       issues: assessment.issues,
       commands: [
         "npx filegrc reporting-route-sets --json",
