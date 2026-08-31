@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -128,6 +128,73 @@ test("records a temporal Classification collection population", async (context) 
   assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics, null, 2));
 });
 
+test("scaffolds every collection re-review with today's workspace date and prior review context", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-collection-rereview-scaffold-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { model } = await makeComprehensiveWorkspace(root, "10");
+  const reviewRoot = join(root, "data", "collection-reviews");
+  await rm(reviewRoot, { recursive: true, force: true });
+  await mkdir(reviewRoot, { recursive: true });
+
+  for (const resourceType of Object.keys(model.collectionReviews)) {
+    const decisions = model.collectionReviews[resourceType].decisions || ["complete"];
+    const priorDecision = resourceType === "vendor"
+      ? "externally-managed"
+      : decisions.includes("zero-population") ? "zero-population" : "complete";
+    await writeFile(
+      join(reviewRoot, `collection-review-${resourceType}.json`),
+      `${JSON.stringify({
+        id: `collection-review-${resourceType}`,
+        type: "collection-review",
+        title: `${model.collectionReviews[resourceType].title} review`,
+        status: "active",
+        resourceType,
+        scopeResourceIds: ["program-example"],
+        decision: priorDecision,
+        rationale: `Prior notes for ${resourceType}.`,
+        reviewedByIds: ["person-independent-approver-example"],
+        reviewedOn: "2025-01-15",
+        collectionRevision: "prior-collection-revision",
+        scopeRevision: "prior-scope-revision",
+        ...(resourceType === "vendor" ? { authoritativeComponentId: "component-example" } : {})
+      }, null, 2)}\n`,
+      "utf8"
+    );
+  }
+
+  for (const resourceType of Object.keys(model.collectionReviews)) {
+    const scaffold = await scaffoldCollectionReview(root, {
+      resourceType,
+      programId: "program-example",
+      now: "2026-09-01T00:30:00.000Z"
+    });
+    assert.equal(scaffold.reviewedOn, "2026-08-31", resourceType);
+    assert.deepEqual(scaffold.reviewedByIds, ["person-independent-approver-example"], resourceType);
+    assert.equal(scaffold.rationale, `Prior notes for ${resourceType}.`, resourceType);
+    if (resourceType === "vendor") {
+      assert.equal(scaffold.decision, "externally-managed");
+      assert.equal(scaffold.authoritativeComponentId, "component-example");
+    } else {
+      assert.equal(scaffold.decision, "complete", resourceType);
+    }
+  }
+
+  const loaded = await loadWorkspace(root);
+  const componentEntry = loaded.entries.find(({ record }) => record.id === "component-example");
+  await writeFile(
+    componentEntry.path,
+    `${JSON.stringify({ ...componentEntry.record, status: "retired" }, null, 2)}\n`,
+    "utf8"
+  );
+  const retiredSourceScaffold = await scaffoldCollectionReview(root, {
+    resourceType: "vendor",
+    programId: "program-example",
+    now: "2026-09-01T00:30:00.000Z"
+  });
+  assert.equal(retiredSourceScaffold.decision, "zero-population");
+  assert.equal(retiredSourceScaffold.authoritativeComponentId, null);
+});
+
 test("binds a collection confirmation to the exact records and relevant scope", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -148,7 +215,10 @@ test("binds a collection confirmation to the exact records and relevant scope", 
   assert.equal(before.status, "review-required");
   assert.equal(before.recordCount, 2);
   assert.equal(before.configuration.reviewPoints.length, 2);
-  assert.deepEqual(await scaffoldCollectionReview(root, { resourceType: "person" }), {
+  assert.deepEqual(await scaffoldCollectionReview(root, {
+    resourceType: "person",
+    now: "2026-08-03T12:00:00.000Z"
+  }), {
     resourceType: "person",
     decision: "complete",
     rationale: null,

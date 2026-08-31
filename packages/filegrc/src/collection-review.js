@@ -102,17 +102,37 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
   const resourceType = requiredType(loaded, options.resourceType);
   const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
   const allowedDecisions = assessment.configuration.decisions || ["complete"];
+  const now = options.now ? new Date(options.now) : new Date();
+  if (Number.isNaN(now.getTime())) throw new Error("A valid Collection Review time is required.");
+  const priorReview = assessment.review;
+  const v4 = modelSupports(loaded.model, "program-scope");
+  const priorAuthoritativeSourceId = priorReview?.authoritativeComponentId || priorReview?.authoritativeSystemId || null;
+  const priorAuthoritativeSourceActive = priorReview?.decision !== "externally-managed" || loaded.resources.some((record) => (
+    record.type === (v4 ? "component" : "system")
+    && record.id === priorAuthoritativeSourceId
+    && record.status === "active"
+  ));
+  const priorDecisionStillValid = allowedDecisions.includes(priorReview?.decision)
+    && priorAuthoritativeSourceActive
+    && (assessment.records.length
+      ? priorReview.decision !== "zero-population"
+      : priorReview.decision !== "complete");
+  const preservedAuthoritativeSourceId = priorDecisionStillValid && priorReview.decision === "externally-managed"
+    ? priorAuthoritativeSourceId
+    : null;
   return {
     resourceType,
-    decision: assessment.records.length
+    decision: priorDecisionStillValid ? priorReview.decision : (assessment.records.length
       ? "complete"
-      : allowedDecisions.includes("zero-population") ? "zero-population" : null,
-    rationale: null,
-    reviewedByIds: [],
-    reviewedOn: null,
-    ...(modelSupports(loaded.model, "program-scope")
-      ? { authoritativeComponentId: null }
-      : { authoritativeSystemId: null })
+      : allowedDecisions.includes("zero-population") ? "zero-population" : null),
+    rationale: priorReview?.rationale || null,
+    reviewedByIds: [...(priorReview?.reviewedByIds || [])],
+    reviewedOn: priorReview?.reviewedOn
+      ? currentCalendarDate(loaded.workspace.timezone, now)
+      : null,
+    ...(v4
+      ? { authoritativeComponentId: preservedAuthoritativeSourceId }
+      : { authoritativeSystemId: preservedAuthoritativeSourceId })
   };
 }
 

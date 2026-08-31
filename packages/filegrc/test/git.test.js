@@ -2598,6 +2598,54 @@ test("trunk transactions preserve invalid FileGRC writes without creating Git ob
   await assert.rejects(git(fixture.root, ["cat-file", "-e", rejectedObject]));
 });
 
+test("a failed trunk mutation requires reconciliation only when it leaves worktree changes", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-clean-rejection-");
+  await assert.rejects(
+    runBrowserMutation(fixture.root, { message: "Reject without writing" }, async () => {
+      throw new Error("Rejected before writing files.");
+    }),
+    (error) => {
+      assert.equal(error.message, "Rejected before writing files.");
+      assert.doesNotMatch(error.message, /reconcil|Git diff|later browser mutations/i);
+      return true;
+    }
+  );
+  assert.equal((await git(fixture.root, ["status", "--porcelain"])).stdout, "");
+
+  const retry = await runBrowserMutation(fixture.root, {
+    message: "No-op after clean rejection",
+    allowNoChanges: true
+  }, async () => ({ unchanged: true }));
+  assert.equal(retry.unchanged, true);
+  assert.equal(retry.synchronization.status, "unchanged");
+});
+
+test("a failed trunk mutation treats ignored authoritative files as reconciliation residue", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-ignored-rejection-");
+  const ignoredPath = join(fixture.root, "data", "people", "person-ignored.json");
+  await writeFile(join(fixture.root, ".git", "info", "exclude"), "data/people/person-ignored.json\n", "utf8");
+
+  await assert.rejects(
+    runBrowserMutation(fixture.root, { message: "Reject ignored authoritative file" }, async () => {
+      const owner = JSON.parse(await readFile(join(fixture.root, "data", "people", "person-owner.json"), "utf8"));
+      await writeJson(ignoredPath, { ...owner, id: "person-ignored", title: "Ignored Person" });
+      return { changed: true };
+    }),
+    /authoritative data files are ignored[\s\S]*later browser mutations are blocked/i
+  );
+  assert.equal(await readFile(ignoredPath, "utf8").then(Boolean), true);
+
+  let laterTaskRan = false;
+  await assert.rejects(
+    runBrowserMutation(fixture.root, { message: "Block later mutation" }, async () => {
+      laterTaskRan = true;
+      return { changed: false };
+    }),
+    /authoritative data files are ignored/i
+  );
+  assert.equal(laterTaskRan, false);
+});
+
 test("a missing Git identity rejects a browser edit before storing its blob", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-missing-identity-object-");
   const initialState = await createAppState(fixture.root);

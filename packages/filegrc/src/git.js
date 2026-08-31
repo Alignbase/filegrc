@@ -1467,6 +1467,15 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
     assertWorkspaceManifestEqual(beforeValidation, validatedManifest);
     await measureTiming("outside-worktree-check", () => assertNoOutsideWorktreeChangesAsync(root));
   } catch (error) {
+    let changed = false;
+    try {
+      changed = Boolean(await runGitCommand(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+        operation: "check the worktree after a failed browser mutation"
+      })) || ignoredAuthoritativeFiles(root).length > 0;
+    } catch {
+      // Keep the mutation error when Git cannot prove that the failed action left changes.
+    }
+    if (!changed) throw error;
     throw new Error(`${error.message} FileGRC preserved every current file instead of guessing which edits it owns. Review the Git diff; later browser mutations are blocked until the worktree is reconciled.`);
   }
 
@@ -2071,6 +2080,7 @@ async function requireTrunkPreconditionsAsync(root, config, options = {}) {
   }
   if (state.operationInProgress) throw new Error(state.message);
   if (!state.wholeWorktreeClean) throw new Error(state.message);
+  assertNoIgnoredAuthoritativeFiles(root);
   if (!options.allowAhead && state.ahead > 0) {
     throw new Error("The authoritative branch has local commits waiting to be pushed. Use Retry sync before making another browser change.");
   }
@@ -2288,12 +2298,16 @@ function assertNoCommitWorkspaceContentFilters(root, commit) {
 }
 
 function assertNoIgnoredAuthoritativeFiles(root) {
-  const ignored = nulFields(gitRaw(root, [
-    "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", "data"
-  ]));
+  const ignored = ignoredAuthoritativeFiles(root);
   if (ignored.length) {
     throw new Error(`FileGRC will not commit while authoritative data files are ignored by Git: ${ignored.slice(0, 5).join(", ")}${ignored.length > 5 ? "…" : ""}. Remove the ignore rule and review the complete staged diff.`);
   }
+}
+
+function ignoredAuthoritativeFiles(root) {
+  return nulFields(gitRaw(root, [
+    "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", "data"
+  ]));
 }
 
 function workspaceByteManifest(root) {

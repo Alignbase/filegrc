@@ -1150,6 +1150,10 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /commit-dialog event-dialog collection-review-dialog/);
   assert.match(APP_SCRIPT, /Before confirming/);
   assert.match(APP_SCRIPT, /FileGRC will ask for another review/);
+  assert.match(APP_SCRIPT, /priorDecisionStillValid[\s\S]*priorDecision !== "zero-population"[\s\S]*priorDecision !== "complete"/);
+  assert.match(APP_SCRIPT, /priorAuthoritativeSourceActive[\s\S]*systems\.some[\s\S]*preservedAuthoritativeSourceId/);
+  assert.match(APP_SCRIPT, /name="reviewedOn" type="date" required value="' \+ esc\(currentDate\(\)\) \+ '">/);
+  assert.doesNotMatch(APP_SCRIPT, /assessment\.review\?\.reviewedOn \|\| currentDate\(\)/);
   assert.match(APP_SCRIPT, /" Note: " \+ esc\(assessment\.review\.rationale\)/);
   assert.doesNotMatch(APP_SCRIPT, /name="scopeRevision"/);
   assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type, collapsed = false\)/);
