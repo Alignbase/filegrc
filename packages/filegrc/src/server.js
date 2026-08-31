@@ -37,6 +37,7 @@ import {
   withGitCommandDeadline
 } from "./git.js";
 import { normalizeResourceMutation, serializeWorkspaceMutation } from "./mutation.js";
+import { renderMarkdown } from "./markdown.js";
 import {
   approveReportingRouteSet,
   assessReportingRouteSets,
@@ -64,7 +65,7 @@ import { activatePolicies } from "./policy-activation.js";
 import { resolveProgram } from "./program.js";
 import { applyReconciliation, dismissReconciliation, planReconciliation } from "./reconciliation.js";
 import { resourceReviewRevisions } from "./retention.js";
-import { createAppBootstrap, createAppState, createAppStateSection, createResourceDetail } from "./state.js";
+import { createAppBootstrap, createAppState, createAppStateSection, createResourceDetail, createResourceHistory } from "./state.js";
 import { setupWorkspace } from "./setup.js";
 import { collectTimings, measureTiming, timingEnabled } from "./timing.js";
 import { fingerprintWorkspace } from "./validate.js";
@@ -86,6 +87,10 @@ const STATE_SECTION_GIT_DEADLINE_MS = 10_000;
 export function createFilegrcServer(input = process.cwd(), options = {}) {
   const stateSessions = new Map();
   const fileDigestCache = new Map();
+  let bootstrapSnapshotPromise = null;
+  let stateInvalidationGeneration = 0;
+  let activeStateMutations = 0;
+  let stateMutationWaiters = [];
   return createHttpServer(async (request, response) => {
     const requestStarted = performance.now();
     if (timingEnabled()) {
@@ -107,7 +112,22 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       const requestOptions = {
         ...options,
         programId: url.searchParams.get("programId") || undefined,
-        invalidateStateSessions: () => invalidateStateSessions(stateSessions)
+        fastResponse: prefersFastMutation(request),
+        beginStateMutation: () => {
+          stateInvalidationGeneration += 1;
+          activeStateMutations += 1;
+          invalidateStateSessions(stateSessions);
+        },
+        endStateMutation: () => {
+          stateInvalidationGeneration += 1;
+          activeStateMutations -= 1;
+          invalidateStateSessions(stateSessions);
+          if (activeStateMutations === 0) {
+            const waiters = stateMutationWaiters;
+            stateMutationWaiters = [];
+            for (const resolve of waiters) resolve();
+          }
+        }
       };
       if (["POST", "PUT", "DELETE"].includes(request.method) && !sameOrigin(request)) {
         return json(response, 403, { error: "Cross-origin writes are not allowed." });
@@ -133,45 +153,51 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           return json(response, 403, { error: "Cross-origin state requests are not allowed." });
         }
         const deadlineAt = performance.now() + STATE_SECTION_GIT_DEADLINE_MS;
-        const [snapshot, repositorySignature] = await withGitCommandDeadline(deadlineAt, () => (
-          serializeWorkspaceMutation(input, (root) => Promise.all([
-            fingerprintWorkspace(root, {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (activeStateMutations > 0) {
+            await awaitWithinDeadline(new Promise((resolve) => stateMutationWaiters.push(resolve)), deadlineAt);
+          }
+          const generation = stateInvalidationGeneration;
+          if (!bootstrapSnapshotPromise) {
+            bootstrapSnapshotPromise = withGitCommandDeadline(deadlineAt, () => stableStateSnapshot(input, {
               fileDigestCache,
               deadlineAt
-            }),
-            getRepositoryStateSignature(root, {
-              timeoutMs: Math.max(1, Math.ceil(deadlineAt - performance.now()))
-            })
-          ]))
-        ));
-        const loaded = snapshot.loaded;
-        const token = randomUUID();
-        const session = {
-          loaded,
-          fingerprint: snapshot.fingerprint,
-          repositorySignature,
-          fileDigestCache,
-          generatedAt: new Date().toISOString(),
-          expiresAt: Date.now() + STATE_SESSION_MAX_AGE_MS,
-          revoked: false,
-          promises: new Map(),
-          verificationPromise: null,
-          gitCommandCache: new Map()
-        };
-        pruneStateSessions(stateSessions);
-        stateSessions.set(token, session);
-        while (stateSessions.size > MAX_STATE_SESSIONS) {
-          const oldestToken = stateSessions.keys().next().value;
-          const oldestSession = stateSessions.get(oldestToken);
-          if (oldestSession) oldestSession.revoked = true;
-          stateSessions.delete(oldestToken);
+            })).finally(() => {
+              bootstrapSnapshotPromise = null;
+            });
+          }
+          const [snapshot, repositorySignature] = await awaitWithinDeadline(bootstrapSnapshotPromise, deadlineAt);
+          const loaded = snapshot.loaded;
+          const token = randomUUID();
+          const session = {
+            loaded,
+            fingerprint: snapshot.fingerprint,
+            repositorySignature,
+            fileDigestCache,
+            generatedAt: new Date().toISOString(),
+            expiresAt: Date.now() + STATE_SESSION_MAX_AGE_MS,
+            revoked: false,
+            promises: new Map(),
+            verificationPromise: null,
+            gitCommandCache: new Map()
+          };
+          const state = await createAppBootstrap(loaded, {
+            generatedAt: session.generatedAt,
+            programId: url.searchParams.get("programId") || undefined
+          });
+          if (activeStateMutations > 0 || generation !== stateInvalidationGeneration) continue;
+          pruneStateSessions(stateSessions);
+          stateSessions.set(token, session);
+          while (stateSessions.size > MAX_STATE_SESSIONS) {
+            const oldestToken = stateSessions.keys().next().value;
+            const oldestSession = stateSessions.get(oldestToken);
+            if (oldestSession) oldestSession.revoked = true;
+            stateSessions.delete(oldestToken);
+          }
+          state.stateToken = token;
+          return json(response, 200, state);
         }
-        const state = await createAppBootstrap(loaded, {
-          generatedAt: session.generatedAt,
-          programId: url.searchParams.get("programId") || undefined
-        });
-        state.stateToken = token;
-        return json(response, 200, state);
+        throw stateSessionExpiredError();
       }
       if (request.method === "GET" && url.pathname.startsWith("/api/state/")) {
         const section = url.pathname.slice("/api/state/".length);
@@ -526,29 +552,35 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       if (request.method === "POST" && url.pathname === "/api/policy-activations") {
         const payload = await readJson(request);
         const result = await browserMutation(input, requestOptions, {
-          message: (activation) => `Activate ${activation.policyIds.length} ${activation.policyIds.length === 1 ? "Policy" : "Policies"}`
+          message: (activation) => `Activate ${activation.policyIds.length} ${activation.policyIds.length === 1 ? "Policy" : "Policies"}`,
+          prefetchToken: payload.prefetchToken
         }, () => activatePolicies(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/document-activations") {
         const payload = await readJson(request);
         const result = await browserMutation(input, requestOptions, {
-          message: (activation) => `Activate ${activation.documentIds.length} governed ${activation.documentIds.length === 1 ? "Document" : "Documents"}`
+          message: (activation) => `Activate ${activation.documentIds.length} governed ${activation.documentIds.length === 1 ? "Document" : "Documents"}`,
+          prefetchToken: payload.prefetchToken
         }, () => activateDocuments(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/governed-content-activations") {
         const payload = await readJson(request);
         const result = await browserMutation(input, requestOptions, {
-          message: (activation) => `Activate ${activation.resourceIds.length} governed-content ${activation.resourceIds.length === 1 ? "record" : "records"}`
+          message: (activation) => `Activate ${activation.resourceIds.length} governed-content ${activation.resourceIds.length === 1 ? "record" : "records"}`,
+          prefetchToken: payload.prefetchToken
         }, () => activateGovernedContent(input, { ...payload, confirmed: true }));
         return json(response, 200, result);
       }
       if (request.method === "POST" && url.pathname === "/api/resources") {
-        const payload = normalizeResourceMutation(await readJson(request));
+        const requestPayload = await readJson(request);
+        const payload = normalizeResourceMutation(requestPayload);
         const { record } = payload;
         const result = await browserMutation(input, requestOptions, {
-          message: () => `Create ${resourceTypeLabel(record.type)}: ${record.title || record.id}`
+          message: () => `Create ${resourceTypeLabel(record.type)}: ${record.title || record.id}`,
+          fastResponse: prefersFastMutation(request),
+          prefetchToken: requestPayload.prefetchToken
         }, () => createResource(input, record, { content: payload.content }));
         return json(response, 201, result);
       }
@@ -566,19 +598,12 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 200, await manualGitResultWithState(input, requestOptions, () => pushWorkspace(input)));
       }
       if (request.method === "POST" && url.pathname === "/api/git/retry-sync") {
-        let result;
-        try {
-          result = await retryBrowserSync(input, {
+        const result = await manualGitResultWithState(input, requestOptions, () => (
+          retryBrowserSync(input, {
             allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites
-          });
-        } finally {
-          requestOptions.invalidateStateSessions();
-        }
-        const state = await createAppState(input, {
-          allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites,
-          includeDetails: false
-        });
-        return json(response, 200, { ...result, state });
+          })
+        ));
+        return json(response, 200, result);
       }
       if (request.method === "GET" && url.pathname === "/api/git/sync-status") {
         const git = { ...await getRepositorySnapshot(input) };
@@ -607,11 +632,16 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       if (request.method === "PUT" && url.pathname === "/api/content") {
         const payload = await readJson(request);
         const result = await browserMutation(input, requestOptions, {
-          message: () => `Update content: ${payload.path}`
+          message: () => `Update content: ${payload.path}`,
+          fastResponse: prefersFastMutation(request),
+          prefetchToken: payload.prefetchToken
         }, () => updateContent(input, payload.path, payload.source, {
           expectedRevision: requireRevision(payload.revision, `content/${payload.path}`)
         }));
-        return json(response, 200, result);
+        return json(response, 200, {
+          ...result,
+          ...(result.stateRefresh ? { html: renderMarkdown(result.source) } : {})
+        });
       }
       const match = /^\/api\/resource\/([^/]+)\/([^/]+)$/.exec(url.pathname);
       if (match) {
@@ -624,9 +654,17 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           const session = token ? stateSessions.get(token) : null;
           if (token && !session) return json(response, 409, { error: "The workspace state expired. Reload it and try again." });
           const includeWorkflow = url.searchParams.get("workflow") === "true";
+          const historyOnly = url.searchParams.get("history") === "only";
+          if (historyOnly) {
+            const history = session
+              ? await loadStateSessionResourceHistory(session, token, type, id, options)
+              : await createResourceHistory(input, type, id);
+            if (!history) return json(response, 404, { error: "Resource not found." });
+            return json(response, 200, history);
+          }
           const entry = session
-            ? await loadStateSessionResource(session, token, type, id, options, requestOptions.programId, includeWorkflow)
-            : await createResourceDetail(input, type, id);
+            ? await loadStateSessionResource(session, token, type, id, options, requestOptions.programId, includeWorkflow, url.searchParams.get("history") !== "false")
+            : await createResourceDetail(input, type, id, { includeHistory: url.searchParams.get("history") !== "false" });
           if (!entry) return json(response, 404, { error: "Resource not found." });
           if (includeWorkflow && !session) {
             const workflow = await assessWorkflow(input, { programId: requestOptions.programId });
@@ -635,10 +673,13 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           return json(response, 200, entry);
         }
         if (request.method === "PUT") {
-          const payload = normalizeResourceMutation(await readJson(request), { requireRevision: true });
+          const requestPayload = await readJson(request);
+          const payload = normalizeResourceMutation(requestPayload, { requireRevision: true });
           const { record } = payload;
           const result = await browserMutation(input, requestOptions, {
-            message: () => `Update ${resourceTypeLabel(type)}: ${record.title || id}`
+            message: () => `Update ${resourceTypeLabel(type)}: ${record.title || id}`,
+            fastResponse: prefersFastMutation(request),
+            prefetchToken: requestPayload.prefetchToken
           }, () => updateResource(input, type, id, record, {
             content: payload.content,
             expectedRevision: payload.revision,
@@ -650,7 +691,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (request.method === "DELETE") {
           const revision = requireRevision(url.searchParams.get("revision"), `${type}/${id}`);
           const result = await browserMutation(input, requestOptions, {
-            message: () => `Delete ${resourceTypeLabel(type)}: ${id}`
+            message: () => `Delete ${resourceTypeLabel(type)}: ${id}`,
+            prefetchToken: url.searchParams.get("prefetchToken") || undefined
           }, () => deleteResource(input, type, id, { expectedRevision: revision }));
           return json(response, 200, {
             deleted: true,
@@ -659,7 +701,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             deletedContent: result.deletedContent,
             synchronization: result.synchronization,
             workflowDelta: result.workflowDelta,
-            state: result.state
+            state: result.state,
+            stateRefresh: result.stateRefresh
           });
         }
       }
@@ -701,6 +744,30 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       json(response, status, { error: publicErrorMessage(error, status) });
     }
   });
+}
+
+async function stableStateSnapshot(input, options) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const first = await fingerprintWorkspace(input, {
+      fileDigestCache: options.fileDigestCache,
+      deadlineAt: options.deadlineAt
+    });
+    const firstRepositorySignature = await getRepositoryStateSignature(input, {
+      timeoutMs: Math.max(1, Math.ceil(options.deadlineAt - performance.now()))
+    });
+    const second = await fingerprintWorkspace(input, {
+      fileDigestCache: options.fileDigestCache,
+      deadlineAt: options.deadlineAt
+    });
+    const secondRepositorySignature = await getRepositoryStateSignature(input, {
+      timeoutMs: Math.max(1, Math.ceil(options.deadlineAt - performance.now()))
+    });
+    if (
+      first.fingerprint === second.fingerprint
+      && firstRepositorySignature === secondRepositorySignature
+    ) return [second, secondRepositorySignature];
+  }
+  throw stateSessionExpiredError();
 }
 
 export async function serveWorkspace(input = process.cwd(), options = {}) {
@@ -761,11 +828,12 @@ function listen(server, port, host) {
 
 function browserMutation(input, requestOptions, mutationOptions, task) {
   const run = () => serializeWorkspaceMutation(input, async (root) => {
-    const fastResponse = mutationOptions.fastResponse === true;
+    const fastResponse = mutationOptions.fastResponse ?? requestOptions.fastResponse;
     const workflowBefore = fastResponse
       ? null
       : await measureTiming("workflow-before", () => assessWorkflow(root, { programId: requestOptions.programId }));
     let result;
+    requestOptions.beginStateMutation?.();
     try {
       result = await measureTiming("mutation", () => runBrowserMutation(root, {
         ...mutationOptions,
@@ -774,7 +842,7 @@ function browserMutation(input, requestOptions, mutationOptions, task) {
         includeValidationProof: !fastResponse
       }, task));
     } finally {
-      requestOptions.invalidateStateSessions?.();
+      requestOptions.endStateMutation?.();
     }
     if (fastResponse) {
       return {
@@ -899,7 +967,7 @@ async function loadStateSessionSection(session, section, serverOptions, programI
   return state;
 }
 
-async function loadStateSessionResource(session, token, type, id, serverOptions, programId, includeWorkflow) {
+async function loadStateSessionResource(session, token, type, id, serverOptions, programId, includeWorkflow, includeHistory = true) {
   assertCurrentStateSession(session);
   const detailDeadlineMs = Number.isFinite(serverOptions.resourceDetailDeadlineMs)
     ? Math.max(0, serverOptions.resourceDetailDeadlineMs)
@@ -907,7 +975,8 @@ async function loadStateSessionResource(session, token, type, id, serverOptions,
   const deadlineAt = performance.now() + detailDeadlineMs;
   return withGitCommandDeadline(deadlineAt, async () => {
     const detail = await withGitCommandCache(session.gitCommandCache, () => createResourceDetail(session.loaded, type, id, {
-      historyDeadlineAt: deadlineAt
+      historyDeadlineAt: deadlineAt,
+      includeHistory
     }));
     if (detail && includeWorkflow) {
       const repository = await loadStateSessionSection(
@@ -931,6 +1000,22 @@ async function loadStateSessionResource(session, token, type, id, serverOptions,
   });
 }
 
+async function loadStateSessionResourceHistory(session, token, type, id, serverOptions) {
+  assertCurrentStateSession(session);
+  const detailDeadlineMs = Number.isFinite(serverOptions.resourceDetailDeadlineMs)
+    ? Math.max(0, serverOptions.resourceDetailDeadlineMs)
+    : RESOURCE_DETAIL_GIT_DEADLINE_MS;
+  const deadlineAt = performance.now() + detailDeadlineMs;
+  return withGitCommandDeadline(deadlineAt, async () => {
+    const history = await withGitCommandCache(session.gitCommandCache, () => createResourceHistory(session.loaded, type, id, {
+      historyDeadlineAt: deadlineAt
+    }));
+    await verifyStateSessionSnapshot(session, performance.now(), deadlineAt);
+    assertCurrentStateSession(session);
+    return history ? { ...history, stateToken: token } : null;
+  });
+}
+
 function prefersFastMutation(request) {
   return String(request.headers.prefer || "")
     .split(",")
@@ -948,10 +1033,11 @@ async function requireManualBrowserGit(input, options) {
 
 async function manualGitResultWithState(input, requestOptions, task) {
   let result;
+  requestOptions.beginStateMutation?.();
   try {
     result = await task();
   } finally {
-    requestOptions.invalidateStateSessions?.();
+    requestOptions.endStateMutation?.();
   }
   const state = await createAppState(input, {
     allowNonAuthoritativeWrites: requestOptions.allowNonAuthoritativeWrites,

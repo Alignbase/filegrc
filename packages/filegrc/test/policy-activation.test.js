@@ -69,7 +69,7 @@ test("activates selected approved Policies through the shared HTTP cutover", asy
   context.after(() => new Promise((resolve) => result.server.close(resolve)));
   const response = await fetch(`${result.url}/api/policy-activations`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", prefer: "respond-async" },
     body: JSON.stringify({
       policyIds,
       effectiveOn: currentCalendarDate("UTC"),
@@ -79,6 +79,9 @@ test("activates selected approved Policies through the shared HTTP cutover", asy
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.policyIds, policyIds);
+  assert.equal(body.stateRefresh, true);
+  assert.equal(body.state, undefined);
+  assert.equal(body.changes.update[0].status, "active");
   const policies = (await loadWorkspace(root)).resources.filter(({ type }) => type === "policy");
   assert.equal(policies.find(({ id }) => id === policyIds[0]).status, "active");
   assert.equal(policies.find(({ id }) => id !== policyIds[0]).status, "approved");

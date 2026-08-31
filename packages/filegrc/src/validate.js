@@ -68,6 +68,7 @@ const COMPLETION_DATE_FIELDS = [
 const COMPLETION_TIMESTAMP_FIELDS = [
   "completedAt", "endedAt", "closedAt", "provisionedOn", "deprovisionedOn"
 ];
+const DEFERRED_VALIDATION_CONCURRENCY = 16;
 
 export async function validateWorkspace(input = process.cwd()) {
   const timingStarted = performance.now();
@@ -90,6 +91,8 @@ async function validateWorkspaceUnmeasured(input) {
   ]));
   const asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC");
   const obligationsByControl = new Map();
+  const deferredDiagnosticTasks = [];
+  const serialContentDiagnosticTasks = [];
   const reviewRecords = loaded.resources.filter((record) => (
     record.status === "active" && ["retention-schedule-item", "requirement-mapping"].includes(record.type)
   ));
@@ -163,7 +166,11 @@ async function validateWorkspaceUnmeasured(input) {
     validateClassification(record, loaded, displayPath, diagnostics);
     validateCompletionDates(record, displayPath, diagnostics);
     validateReportingRouteBinding(record, loaded, displayPath, diagnostics);
-    await validateAttestationBinding(record, loaded.model, loaded.root, byId, displayPath, diagnostics);
+    serialContentDiagnosticTasks.push(async () => {
+      const deferredDiagnostics = [];
+      await validateAttestationBinding(record, loaded.model, loaded.root, byId, displayPath, deferredDiagnostics);
+      return deferredDiagnostics;
+    });
 
     const fields = { ...loaded.model.commonFields, ...definition.fields };
     for (const [fieldName, field] of Object.entries(fields)) {
@@ -173,16 +180,19 @@ async function validateWorkspaceUnmeasured(input) {
         const values = Array.isArray(value) ? value : [value];
         for (const item of values) {
           if (typeof item !== "string") continue;
-          try {
-            const path = resolveDataPath(loaded.root, item);
-            if (!(await stat(path)).isFile()) throw new Error("The data path is not a file.");
-          } catch {
-            diagnostics.push(error(
-              "missing-content",
-              displayPath,
-              `${fieldName} points to unavailable data path "${item}".`
-            ));
-          }
+          deferredDiagnosticTasks.push(async () => {
+            try {
+              const path = resolveDataPath(loaded.root, item);
+              if (!(await stat(path)).isFile()) throw new Error("The data path is not a file.");
+              return [];
+            } catch {
+              return [error(
+                "missing-content",
+                displayPath,
+                `${fieldName} points to unavailable data path "${item}".`
+              )];
+            }
+          });
         }
       }
       if (field.relation) {
@@ -209,8 +219,19 @@ async function validateWorkspaceUnmeasured(input) {
     validateCompletedObligationEvent(record, byId, loaded.model, displayPath, diagnostics);
     validateActionObligationRule(record, byId, displayPath, diagnostics);
     validateImplementedControlSchedules(record, obligationsByControl, displayPath, diagnostics);
-    await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, diagnostics);
-    await validateApprovalBinding(record, loaded.model, loaded.root, displayPath, diagnostics);
+    serialContentDiagnosticTasks.push(async () => {
+      const markdownDiagnostics = [];
+      const approvalDiagnostics = [];
+      await validateMarkdown(record, definition, loaded.model, loaded.root, displayPath, markdownDiagnostics);
+      await validateApprovalBinding(record, loaded.model, loaded.root, displayPath, approvalDiagnostics);
+      return [...markdownDiagnostics, ...approvalDiagnostics];
+    });
+  }
+  for (const deferredDiagnostics of await runDeferredValidationTasks(deferredDiagnosticTasks)) {
+    diagnostics.push(...deferredDiagnostics);
+  }
+  for (const task of serialContentDiagnosticTasks) {
+    diagnostics.push(...await task());
   }
   validateRelationshipConstraints(
     loaded.resources,
@@ -283,6 +304,23 @@ async function validateWorkspaceUnmeasured(input) {
     enumerable: false
   });
   return result;
+}
+
+async function runDeferredValidationTasks(tasks) {
+  const results = new Array(tasks.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(DEFERRED_VALIDATION_CONCURRENCY, tasks.length) },
+    async () => {
+      while (nextIndex < tasks.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await tasks[index]();
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagnostics) {

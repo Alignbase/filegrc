@@ -965,14 +965,22 @@ async function updateContentUnlocked(input, dataRelativePath, source, options) {
   const path = resolveDataPath(loaded.root, dataRelativePath);
   const previous = await readFile(path, "utf8");
   assertRevision(previous, options.expectedRevision, "The Markdown file");
-  const before = await validateWorkspace(loaded);
+  const deferValidation = workspaceValidationDeferred();
+  const before = deferValidation ? null : await validateWorkspace(loaded);
   const nextSource = source.endsWith("\n") ? source : `${source}\n`;
   await writeTextAtomic(path, nextSource);
   try {
-    const result = await validateWorkspace(loaded.root);
-    const introduced = newErrors(result, before);
-    if (introduced.length) throw new Error(formatWriteFailure(introduced, dataRelativePath));
-    return { path, dataRelativePath };
+    if (!deferValidation) {
+      const result = await validateWorkspace(loaded.root);
+      const introduced = newErrors(result, before);
+      if (introduced.length) throw new Error(formatWriteFailure(introduced, dataRelativePath));
+    }
+    return {
+      path,
+      dataRelativePath,
+      source: nextSource,
+      revision: contentRevision(nextSource)
+    };
   } catch (error) {
     await writeTextAtomic(path, previous);
     throw error;

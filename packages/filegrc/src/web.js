@@ -94,6 +94,7 @@ let repositorySyncPollTimer = null;
 let repositorySyncPollInFlight = false;
 let mutationStateRefreshInFlight = false;
 let mutationStateRefreshTimer = null;
+let mutationStateRefreshRequested = false;
 let programSelectionGeneration = 0;
 let expiredStateRefresh = null;
 
@@ -132,7 +133,8 @@ function render() {
   if (nextNavigation) nextNavigation.scrollTop = navigationScrollTop;
   const main = root.querySelector("main");
   const waitingFor = blockingStateSections(route).filter((section) => state.sections?.[section] !== "complete");
-  if (waitingFor.length) renderStateLoading(main, route, waitingFor);
+  if (state.refreshingAfterMutation) renderStateLoading(main, route, []);
+  else if (waitingFor.length) renderStateLoading(main, route, waitingFor);
   else if (route.name === "home") renderHome(main);
   else if (route.name === "stage") renderStageOverview(main, route.stageId, route.params);
   else if (route.name === "obligations") renderObligations(main, route.params);
@@ -660,6 +662,7 @@ function openDocumentActivationDialog(auditId = null) {
     '<label><span>Effective date</span><input name="effectiveOn" type="date" min="' + esc(today) + '" value="' + esc(today) + '" required></label>' +
     '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Activate selected content</button></div></form>';
   document.body.append(dialog);
+  const repositoryPrefetch = prefetchRepositoryForReview(dialog.querySelector(".save-status"));
   const close = () => dialog.close();
   dialog.querySelector(".icon-button").addEventListener("click", close);
   dialog.querySelector('[data-event="cancel"]').addEventListener("click", close);
@@ -674,6 +677,8 @@ function openDocumentActivationDialog(auditId = null) {
     }
     setMutationBusy(dialog, true, "Activating…", "Activate selected content");
     try {
+      const prefetch = await repositoryPrefetch;
+      if (prefetch?.error) throw prefetch.error;
       const response = await localFetch(auditId ? "/api/document-activations" : "/api/governed-content-activations", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -683,6 +688,7 @@ function openDocumentActivationDialog(auditId = null) {
           activatedByIds: [event.currentTarget.elements.activatedById.value],
           activatedOn: event.currentTarget.elements.activatedOn.value,
           effectiveOn: event.currentTarget.elements.effectiveOn.value,
+          prefetchToken: prefetch?.token,
           expectedRevisions: Object.fromEntries(resourceIds.map((resourceId) => [resourceId, entryById.get(resourceId).revision]))
         })
       });
@@ -759,6 +765,7 @@ function openPolicyActivationDialog() {
     '<label><span>Effective date</span><input name="effectiveOn" type="date" min="' + esc(today) + '" value="' + esc(today) + '" required></label>' +
     '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button id="activate-policy" type="submit" class="button primary">Activate selected Policies</button></div></form>';
   document.body.append(dialog);
+  const repositoryPrefetch = prefetchRepositoryForReview(dialog.querySelector(".save-status"));
   const close = () => dialog.close();
   dialog.querySelector(".icon-button").addEventListener("click", close);
   dialog.querySelector('[data-event="cancel"]').addEventListener("click", close);
@@ -773,12 +780,15 @@ function openPolicyActivationDialog() {
     }
     setMutationBusy(dialog, true, "Activating…", "Activate selected Policies");
     try {
+      const prefetch = await repositoryPrefetch;
+      if (prefetch?.error) throw prefetch.error;
       const response = await localFetch("/api/policy-activations", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           policyIds,
           effectiveOn: event.currentTarget.elements.effectiveOn.value,
+          prefetchToken: prefetch?.token,
           expectedRevisions: Object.fromEntries(policyIds.map((policyId) => [policyId, entryById.get(policyId).revision]))
         })
       });
@@ -2686,10 +2696,11 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const definition = state.model.resources[type];
   if (!entry || !definition) return renderNotFound(main);
   if (entry.detailsLoaded === false) {
-    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading" role="status">Loading record content and file history…</section></div>';
+    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading" role="status">Loading record…</section></div>';
     loadResourceDetail(type, id);
     return;
   }
+  if (entry.historyLoaded === false) loadResourceHistory(type, id);
   const fields = { ...state.model.commonFields, ...definition.fields };
   const recordContent = recordContentDefinition(type);
   const narrative = recordNarrative(entry.record, fields);
@@ -2756,13 +2767,16 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const historyPanel = entry.history?.length
     ? '<section class="panel detail-history-panel"><div class="panel-head"><h3>File History</h3></div><div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div></section>'
     : "";
+  const participationPanel = entry.historyLoaded === false
+    ? '<section class="panel detail-support-panel" role="status"><div class="panel-head"><h3>Participation</h3></div><p class="muted">Loading participation and file history…</p></section>'
+    : personParticipation(entry);
   const supportPanels = renderDetailSupport({
     hasRecordBody,
     workflowPanel: workflowGuidance({ type, id, title: "Next steps" }),
     reviewPanel: resourceReviewCriteria(type),
     metadataPanel: '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>',
     attachmentPanel,
-    participationPanel: personParticipation(entry),
+    participationPanel,
     connectionsPanel: resourceConnections(entry),
     historyPanel
   });
@@ -2879,6 +2893,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   main.querySelector("#add-record-content")?.addEventListener("click", () => openEditor(type, entry, { addRecordContent: true }));
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
   main.querySelector("#delete-resource")?.addEventListener("click", async () => {
+    const repositoryPrefetch = prefetchRepositoryForReview();
     if (!await confirmAction({
       kicker: "Delete record",
       title: entry.record.title,
@@ -2887,7 +2902,9 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
       danger: true
     })) return;
     try {
-      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision), { method: "DELETE" });
+      const prefetch = await repositoryPrefetch;
+      if (prefetch?.error) throw prefetch.error;
+      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + "?revision=" + encodeURIComponent(entry.revision) + (prefetch?.token ? "&prefetchToken=" + encodeURIComponent(prefetch.token) : ""), { method: "DELETE" });
       if (!response.ok) return showError(await responseMessage(response));
       applyMutationState(await response.json());
       location.hash = "#/resources/" + encodeURIComponent(type);
@@ -2937,7 +2954,7 @@ async function loadResourceDetail(type, id) {
       let token = state.stateToken;
       let detail = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        const tokenQuery = token ? "?token=" + encodeURIComponent(token) : "";
+        const tokenQuery = token ? "?token=" + encodeURIComponent(token) + "&history=false" : "?history=false";
         const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
         if (response.status === 409 && token) {
           await refreshExpiredAppState(token);
@@ -2965,6 +2982,44 @@ async function loadResourceDetail(type, id) {
         const main = root.querySelector("main");
         if (main) main.innerHTML = '<div class="page"><section class="panel"><div class="dialog-error" role="alert">' + esc(error.message) + '</div></section></div>';
       }
+    } finally {
+      for (const [requestKey, pending] of resourceDetailRequests) {
+        if (pending === request) resourceDetailRequests.delete(requestKey);
+      }
+    }
+  })();
+  resourceDetailRequests.set(key, request);
+  return request;
+}
+
+async function loadResourceHistory(type, id) {
+  const key = (state.stateToken || "live") + "\0history\0" + type + "\0" + id;
+  if (resourceDetailRequests.has(key)) return resourceDetailRequests.get(key);
+  const request = (async () => {
+    try {
+      const token = state.stateToken;
+      const tokenQuery = (token ? "?token=" + encodeURIComponent(token) + "&" : "?") + "history=only";
+      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
+      if (response.status === 409 && token) {
+        await refreshExpiredAppState(token);
+        const route = parseRoute();
+        if (route.name === "detail" && route.type === type && route.id === id) {
+          render();
+          loadStateForRoute();
+        }
+        return;
+      }
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const history = await response.json();
+      if (token && (history.stateToken !== token || state.stateToken !== token)) return;
+      const entry = state.resources.find(({ record }) => record.type === type && record.id === id);
+      if (!entry) return;
+      entry.history = history.history || [];
+      entry.historyLoaded = true;
+      const route = parseRoute();
+      if (route.name === "detail" && route.type === type && route.id === id) render();
+    } catch {
+      // History and participation are supplemental. The record stays usable.
     } finally {
       for (const [requestKey, pending] of resourceDetailRequests) {
         if (pending === request) resourceDetailRequests.delete(requestKey);
@@ -4182,6 +4237,14 @@ function openEditor(type, entry = null, options = {}) {
     '<details class="advanced-editor"><summary>Advanced JSON</summary><p>Use this for optional fields, extensions, or bulk edits. Changes here replace the guided fields above.</p><textarea spellcheck="false" aria-label="Advanced resource JSON">' + esc(JSON.stringify(record, null, 2)) + '</textarea></details><div class="dialog-error" role="alert"></div><div class="save-status" role="status" aria-live="polite"></div><div class="dialog-actions"><button type="button" class="button" data-editor-dismiss>Cancel</button><button type="submit" class="button primary" id="save-record">' + esc(options.saveLabel || "Save file") + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
+  const saveStatus = dialog.querySelector(".save-status");
+  const fastResourceSave = !options.occurrenceReconciliation
+    && !options.auditPopulationCorrection
+    && !options.actionCompletion
+    && !options.obligationCompletion;
+  const repositoryPrefetch = fastResourceSave
+    ? prefetchRepositoryForReview(saveStatus)
+    : Promise.resolve(null);
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelectorAll("[data-editor-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   wireEditorRequirements(dialog, record, fields, oneOfGroups, markdownDefinitions);
@@ -4254,9 +4317,14 @@ function openEditor(type, entry = null, options = {}) {
         [recordContentItem?.path, recordContentItem?.revision]
       ].filter(([path, revision]) => path && revision));
       setMutationBusy(dialog, true, "Saving…", options.saveLabel || "Save file");
+      const prefetch = await repositoryPrefetch;
+      if (prefetch?.error) throw prefetch.error;
       const response = await localFetch(url, {
         method: options.occurrenceReconciliation ? "POST" : entry ? "PUT" : "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(fastResourceSave ? { prefer: "respond-async" } : {})
+        },
         body: JSON.stringify({
           record: updated,
           content,
@@ -4264,7 +4332,8 @@ function openEditor(type, entry = null, options = {}) {
           contentRevisions,
           obligationId: options.obligationCompletion?.obligationId,
           actionItemId: options.actionCompletion?.actionItemId,
-          completedOn: options.actionCompletion?.completedOn
+          completedOn: options.actionCompletion?.completedOn,
+          prefetchToken: prefetch?.token
         })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
@@ -5025,12 +5094,15 @@ function openContentEditor(entry, name) {
   dialog.innerHTML = '<form method="dialog"><div class="dialog-head"><div><p class="kicker">Edit Markdown</p><h2 id="content-editor-title">' + esc(titleCase(entry.record.title)) + '</h2></div><button value="cancel" class="icon-button" aria-label="Close">×</button></div><p><code>' + esc(item.path) + '</code></p><textarea class="markdown-source" spellcheck="true" aria-label="Markdown content">' + esc(item.source) + '</textarea><div class="dialog-error" role="alert"></div><div class="save-status" role="status" aria-live="polite"></div><div class="dialog-actions"><button value="cancel" class="button">Cancel</button><button type="button" class="button primary" id="save-content">Save Markdown</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
+  const repositoryPrefetch = prefetchRepositoryForReview(dialog.querySelector(".save-status"));
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector("#save-content").addEventListener("click", async () => {
     if (dialog.dataset.mutationBusy === "true") return;
     try {
       setMutationBusy(dialog, true, "Saving…", "Save Markdown");
-      const response = await localFetch("/api/content", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: item.path, source: dialog.querySelector(".markdown-source").value, revision: item.revision }) });
+      const prefetch = await repositoryPrefetch;
+      if (prefetch?.error) throw prefetch.error;
+      const response = await localFetch("/api/content", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: item.path, source: dialog.querySelector(".markdown-source").value, revision: item.revision, prefetchToken: prefetch?.token }) });
       if (!response.ok) throw new Error(await responseMessage(response));
       applyMutationState(await response.json());
       dialog.close();
@@ -5503,7 +5575,16 @@ function applyMutationState(result) {
     state = normalizeAppState(result.state);
   } else if (result?.stateRefresh) {
     applyFastMutationPatch(result);
+    state.refreshingAfterMutation = true;
+    state.readOnly = true;
+    state.resources = state.resources.map((entry) => ({
+      ...entry,
+      content: {},
+      history: undefined,
+      detailsLoaded: false
+    }));
     scheduleMutationStateRefresh();
+    render();
   } else {
     throw new Error("The save response did not include the current workspace state.");
   }
@@ -5512,6 +5593,19 @@ function applyMutationState(result) {
 
 function applyFastMutationPatch(result) {
   state.stateToken = null;
+  if (result.deleted && result.type && result.id) {
+    state.resources = state.resources.filter(({ record }) => record.type !== result.type || record.id !== result.id);
+  }
+  if (result.dataRelativePath && typeof result.source === "string") {
+    for (const entry of state.resources) {
+      for (const item of Object.values(entry.content || {})) {
+        if (item.path !== result.dataRelativePath) continue;
+        item.source = result.source;
+        item.revision = result.revision;
+        if (typeof result.html === "string") item.html = result.html;
+      }
+    }
+  }
   if (result.operation === "collection-review" && result.assessment?.resourceType) {
     state.collectionReviews[result.assessment.resourceType] = result.assessment;
   }
@@ -5524,7 +5618,24 @@ function applyFastMutationPatch(result) {
       state.resources.push({ record, content: {}, history: [], detailsLoaded: false });
     }
   }
-  for (const record of [result.workspace, result.program, result.system, result.renderer, result.commitment].filter(Boolean)) {
+  const immediateRecords = [
+    result.record,
+    result.workspace,
+    result.program,
+    result.system,
+    result.renderer,
+    result.commitment,
+    result.audit,
+    result.event,
+    result.created,
+    result.linked,
+    result.dismissal,
+    result.result?.record,
+    result.result?.created,
+    result.result?.linked,
+    ...(result.actions || [])
+  ].filter((record) => record?.id && record?.type);
+  for (const record of immediateRecords) {
     const entry = state.resources.find(({ record: current }) => current.id === record.id);
     if (entry) entry.record = record;
     else state.resources.push({ record, content: {}, history: [], detailsLoaded: false });
@@ -5544,6 +5655,7 @@ function applyFastMutationPatch(result) {
 }
 
 function scheduleMutationStateRefresh(delay = 0) {
+  mutationStateRefreshRequested = true;
   if (mutationStateRefreshTimer || mutationStateRefreshInFlight) return;
   mutationStateRefreshTimer = setTimeout(refreshMutationState, delay);
 }
@@ -5552,6 +5664,7 @@ async function refreshMutationState() {
   mutationStateRefreshTimer = null;
   if (mutationStateRefreshInFlight) return;
   mutationStateRefreshInFlight = true;
+  mutationStateRefreshRequested = false;
   let retry = false;
   try {
     const programQuery = state.selectedProgramId ? "?programId=" + encodeURIComponent(state.selectedProgramId) : "";
@@ -5567,24 +5680,24 @@ async function refreshMutationState() {
   } finally {
     mutationStateRefreshInFlight = false;
   }
-  if (retry) scheduleMutationStateRefresh(1_000);
+  if (retry || mutationStateRefreshRequested) scheduleMutationStateRefresh(retry ? 1_000 : 0);
 }
 
-function prefetchRepositoryForReview(status) {
+function prefetchRepositoryForReview(status = null) {
   if (state.repository?.mode !== "trunk" || state.repository?.developmentOverride) {
     return Promise.resolve(null);
   }
-  status.textContent = "Checking repository…";
+  if (status) status.textContent = "Checking repository…";
   return fetch("/api/git/prefetch", { method: "POST" })
     .then(async (response) => {
       if (!response.ok) throw new Error(await responseMessage(response));
       const result = await response.json();
-      status.textContent = result.status === "checked" ? "Repository checked" : "Ready to save";
+      if (status) status.textContent = result.status === "checked" ? "Repository checked" : "Ready to save";
       return result;
     })
     .catch((error) => {
-      status.textContent = "Repository check failed";
-      return { error };
+      if (status) status.textContent = "Repository check failed";
+      return null;
     });
 }
 
@@ -5697,15 +5810,25 @@ async function localFetch(url, options) {
   }
   const scopedUrl = requestUrl.pathname + requestUrl.search + requestUrl.hash;
   const method = String(options?.method || "GET").toUpperCase();
+  const mutation = ["POST", "PUT", "DELETE"].includes(method);
+  const requestOptions = mutation
+    ? {
+        ...options,
+        headers: {
+          ...Object.fromEntries(new Headers(options?.headers || {}).entries()),
+          prefer: "respond-async"
+        }
+      }
+    : options;
   const synchronizing = state?.repository?.mode === "trunk"
-    && ["POST", "PUT", "DELETE"].includes(method)
+    && mutation
     && !["/api/evidence-packet", "/api/git/prefetch"].includes(requestUrl.pathname);
   const chip = synchronizing ? document.querySelector(".repo-chip") : null;
   const previousChip = chip?.innerHTML;
   let repositoryRefreshed = false;
   if (chip) chip.innerHTML = '<span class="status-dot neutral"></span>Syncing';
   try {
-    const response = await fetch(scopedUrl, options);
+    const response = await fetch(scopedUrl, requestOptions);
     if (synchronizing && !response.ok) {
       try {
         const stateResponse = await fetch("/api/state?programId=" + encodeURIComponent(state.selectedProgramId || ""));

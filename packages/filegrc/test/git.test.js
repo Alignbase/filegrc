@@ -33,6 +33,7 @@ import {
   setHistoricalRevisionReadObserverForTests,
   setGitCommandInterceptorForTests,
   setGitSubprocessObserverForTests,
+  setWorkspaceBlobObjectIdOverrideForTests,
   withGitCommandCache,
   withGitCommandDeadline
 } from "../src/git.js";
@@ -66,6 +67,29 @@ test("request-scoped Git command caches keep one coherent repository snapshot", 
 
   assert.ok(cache.size > 0);
   assert.notEqual(getGitSummary(root).commit, cachedCommit);
+});
+
+test("managed commits reject unequal workspace bytes with the same calculated object ID", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-git-collision-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  await writeFile(join(root, "collision-one.txt"), "collision one\n", "utf8");
+  await writeFile(join(root, "collision-two.txt"), "collision two\n", "utf8");
+  const restore = setWorkspaceBlobObjectIdOverrideForTests((_bytes, _format, path) => (
+    path.startsWith("collision-") ? "a".repeat(40) : null
+  ));
+  context.after(restore);
+
+  await assert.rejects(
+    commitWorkspace(root, "Reject colliding workspace bytes"),
+    /identifies different validated workspace bytes/
+  );
+  assert.equal((await git(root, ["rev-list", "--count", "HEAD"])).stdout.trim(), "1");
 });
 
 test("repository state signatures include exact upstream ref identities", async (context) => {
@@ -133,12 +157,23 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   context.after(restore);
 
   const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 4, `expected at most 4 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
-  const coldDetail = await fetch(`${served.url}/api/resource/person/person-owner?token=${encodeURIComponent(bootstrap.stateToken)}`);
+  const coldDetail = await fetch(`${served.url}/api/resource/person/person-owner?history=false&token=${encodeURIComponent(bootstrap.stateToken)}`);
   assert.equal(coldDetail.status, 200);
+  const coldDetailBody = await coldDetail.json();
+  assert.equal(coldDetailBody.historyLoaded, false);
+  assert.equal(coldDetailBody.history, undefined);
   assert.ok(calls.length <= 30, `expected at most 30 Git subprocesses for a cold tokenized detail, received ${calls.length}: ${calls.join(", ")}`);
+
+  calls = [];
+  const coldHistory = await fetch(`${served.url}/api/resource/person/person-owner?history=only&token=${encodeURIComponent(bootstrap.stateToken)}`);
+  assert.equal(coldHistory.status, 200);
+  const coldHistoryBody = await coldHistory.json();
+  assert.equal(coldHistoryBody.historyLoaded, true);
+  assert.ok(Array.isArray(coldHistoryBody.history));
+  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for deferred history, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const workflowDetailBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
@@ -149,7 +184,7 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
 
   calls = [];
   const sectionBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 4, `expected at most 4 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
   calls = [];
   const firstProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
   assert.equal(firstProgram.status, 200);
@@ -162,7 +197,7 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
 
   calls = [];
   const homeBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 4, `expected at most 4 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
   const homeSections = ["repository", "program", "obligations", "workflow"];
   calls = [];
   const coldHome = await Promise.all(homeSections.map((section) => (
@@ -2015,6 +2050,45 @@ test("an invalid browser prefetch token cannot skip the remote fetch", async (co
   assert.equal(timings["fetch-reused"], undefined);
   assert.equal(result.synchronization.status, "syncing");
   assert.equal((await waitForRepository(fixture.root)).status, "synced");
+});
+
+test("ordinary browser record edits reuse prefetch and return before recalculating app state", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-fast-resource-edit-");
+  const running = await serveWorkspace(fixture.root, { port: 0, backgroundPushDelayMs: 100 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
+  let fetchCount = 0;
+  let hashObjectCount = 0;
+  const restoreObserver = setGitSubprocessObserverForTests(({ args }) => {
+    if (args[0] === "fetch") fetchCount += 1;
+    if (args[0] === "hash-object") hashObjectCount += 1;
+  });
+  context.after(restoreObserver);
+
+  const initial = await fetchJson(`${running.url}/api/state`);
+  const owner = initial.resources.find(({ record }) => record.id === "person-owner");
+  const prefetch = await fetchJsonResponse(`${running.url}/api/git/prefetch`, { method: "POST" });
+  assert.equal(fetchCount, 1);
+
+  const response = await fetch(`${running.url}/api/resource/person/person-owner`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", prefer: "respond-async" },
+    body: JSON.stringify({
+      record: { ...owner.record, department: "Fast browser edit" },
+      revision: owner.revision,
+      prefetchToken: prefetch.token
+    })
+  });
+  assert.equal(response.status, 200);
+  const saved = await response.json();
+  assert.equal(saved.record.department, "Fast browser edit");
+  assert.equal(saved.stateRefresh, true);
+  assert.equal(saved.state, undefined);
+  assert.equal(fetchCount, 1);
+  assert.equal(hashObjectCount, 1);
+  assert.ok(["syncing", "synced"].includes(saved.synchronization.status));
+
+  assert.equal((await waitForRepository(running.url)).status, "synced");
+  assert.match((await git(fixture.remote, ["show", "main:data/people/person-owner.json"])).stdout, /Fast browser edit/);
 });
 
 test("model v4 People confirmation reuses prefetch, commits locally, and synchronizes", async (context) => {

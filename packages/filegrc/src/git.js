@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { devNull } from "node:os";
 import { relative, resolve, sep } from "node:path";
@@ -23,6 +23,7 @@ const backgroundSynchronizations = new Map();
 const browserRemotePrefetches = new Map();
 const browserRemotePrefetchPromises = new Map();
 const repositorySnapshotPromises = new Map();
+const repositoryObjectFormats = new Map();
 const gitCommandCaches = new AsyncLocalStorage();
 const gitCommandDeadlines = new AsyncLocalStorage();
 const gitCommandCacheBytes = new WeakMap();
@@ -30,6 +31,7 @@ let gitCommandInterceptor = null;
 let gitSubprocessObserver = null;
 let historicalBatchInterceptor = null;
 let historicalRevisionReadObserver = null;
+let workspaceBlobObjectIdOverride = null;
 const BROWSER_REMOTE_PREFETCH_MAX_AGE_MS = 30_000;
 const GIT_DEFAULT_TIMEOUT_MS = 10_000;
 const GIT_REMOTE_TIMEOUT_MS = 30_000;
@@ -680,13 +682,48 @@ export function getFileObjectIdAtRevision(input, revision, relativePath) {
 export function getWorkingFileObjectId(input, relativePath) {
   if (!isSafeDataGitPath(relativePath)) return null;
   const root = resolveWorkspaceRoot(input);
+  let descriptor;
   try {
-    const objectId = git(root, ["hash-object", "--no-filters", "--", relativePath]);
-    return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
+    const objectFormat = repositoryObjectFormat(root);
+    if (!objectFormat) return null;
+    descriptor = openSync(resolve(root, relativePath), constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    const before = fstatSync(descriptor);
+    if (!before.isFile()) return null;
+    const hash = createHash(objectFormat).update(`blob ${before.size}\0`);
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let position = 0;
+    while (position < before.size) {
+      const count = readSync(descriptor, buffer, 0, Math.min(buffer.length, before.size - position), position);
+      if (!count) return null;
+      hash.update(buffer.subarray(0, count));
+      position += count;
+    }
+    const after = fstatSync(descriptor);
+    if (
+      after.size !== before.size
+      || after.dev !== before.dev
+      || after.ino !== before.ino
+      || after.mtimeMs !== before.mtimeMs
+      || after.ctimeMs !== before.ctimeMs
+    ) return null;
+    return hash.digest("hex");
   } catch (error) {
     rethrowGitDeadline(error);
     return null;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+function repositoryObjectFormat(root) {
+  if (repositoryObjectFormats.has(root)) return repositoryObjectFormats.get(root);
+  if (!tryGit(root, ["rev-parse", "--git-dir"])) return null;
+  const objectFormat = tryGit(root, ["config", "--get", "extensions.objectFormat"]) || "sha1";
+  if (!["sha1", "sha256"].includes(objectFormat)) {
+    throw new Error(`FileGRC does not support the repository object format "${objectFormat}".`);
+  }
+  repositoryObjectFormats.set(root, objectFormat);
+  return objectFormat;
 }
 
 export function getWorkspaceHistories(input, relativePaths, limitPerFile = 12, options = {}) {
@@ -1415,8 +1452,8 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
     })));
     subject = generatedCommitMessage(typeof options?.message === "function" ? options.message(result) : options?.message);
     assertNoIgnoredAuthoritativeFiles(root);
-    const beforeValidation = workspaceByteManifest(root);
-    const validation = await validateWorkspace(root);
+    const beforeValidation = measureTimingSync("workspace-manifest", () => workspaceByteManifest(root));
+    const validation = await withGitCommandCache(new Map(), () => validateWorkspace(root));
     if (!validation.ok) {
       throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}.`);
     }
@@ -1426,9 +1463,9 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
           validation,
           fingerprint: (await measureTiming("fingerprint", () => fingerprintWorkspace(validation.loaded))).fingerprint
     };
-    validatedManifest = workspaceByteManifest(root);
+    validatedManifest = measureTimingSync("workspace-manifest", () => workspaceByteManifest(root));
     assertWorkspaceManifestEqual(beforeValidation, validatedManifest);
-    await assertNoOutsideWorktreeChangesAsync(root);
+    await measureTiming("outside-worktree-check", () => assertNoOutsideWorktreeChangesAsync(root));
   } catch (error) {
     throw new Error(`${error.message} FileGRC preserved every current file instead of guessing which edits it owns. Review the Git diff; later browser mutations are blocked until the worktree is reconciled.`);
   }
@@ -1454,13 +1491,13 @@ async function runTrunkMutationUnlocked(root, config, options, task) {
   }
   assertValidGitIdentity(root);
   assertNoWorkspaceContentFilters(root);
-  await assertNoOutsideWorktreeChangesAsync(root);
+  await measureTiming("outside-worktree-check", () => assertNoOutsideWorktreeChangesAsync(root));
   let commit;
   let indexReconciled;
   try {
     const expectedRef = `refs/heads/${config.authoritativeBranch}`;
     assertExpectedCheckout(root, expectedRef, synchronized.currentCommit);
-    validatedManifest = writeWorkspaceManifestObjects(root, validatedManifest);
+    validatedManifest = measureTimingSync("workspace-manifest-objects", () => writeWorkspaceManifestObjects(root, validatedManifest));
     ({ commit, indexReconciled } = await measureTiming("commit", () => commitValidatedIndexAsync(root, subject, validatedManifest, {
       expectedParent: synchronized.currentCommit,
       expectedRef
@@ -2261,6 +2298,8 @@ function assertNoIgnoredAuthoritativeFiles(root) {
 
 function workspaceByteManifest(root) {
   assertNoHiddenIndexEntries(root);
+  const objectFormat = repositoryObjectFormat(root);
+  if (!objectFormat) throw new Error("FileGRC could not determine the Git repository object format.");
   const paths = [...new Set(nulFields(gitRaw(root, [
     "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."
   ])))].sort();
@@ -2298,9 +2337,36 @@ function workspaceByteManifest(root) {
       ) {
         throw new Error(`FileGRC will not commit workspace entry "${path}" because it changed while its bytes were being inspected.`);
       }
-      const bytes = readFileSync(descriptor);
-      const objectId = hashWorkspaceBytes(root, bytes);
-      return [path, { objectId, mode: opened.mode & 0o111 ? "100755" : "100644", bytes }];
+      const objectHash = createHash(objectFormat).update(`blob ${opened.size}\0`);
+      const byteHash = createHash("sha256");
+      const buffer = Buffer.allocUnsafe(64 * 1024);
+      let position = 0;
+      while (position < opened.size) {
+        const count = readSync(descriptor, buffer, 0, Math.min(buffer.length, opened.size - position), position);
+        if (!count) throw new Error(`FileGRC could not read complete workspace entry "${path}".`);
+        const chunk = buffer.subarray(0, count);
+        objectHash.update(chunk);
+        byteHash.update(chunk);
+        position += count;
+      }
+      const after = fstatSync(descriptor);
+      if (
+        after.size !== opened.size
+        || after.dev !== opened.dev
+        || after.ino !== opened.ino
+        || after.mtimeMs !== opened.mtimeMs
+        || after.ctimeMs !== opened.ctimeMs
+      ) {
+        throw new Error(`FileGRC will not commit workspace entry "${path}" because it changed while its bytes were being inspected.`);
+      }
+      const calculatedObjectId = objectHash.digest("hex");
+      const objectId = workspaceBlobObjectIdOverride?.(null, objectFormat, path) ?? calculatedObjectId;
+      return [path, {
+        objectId,
+        byteDigest: byteHash.digest("hex"),
+        size: opened.size,
+        mode: opened.mode & 0o111 ? "100755" : "100644"
+      }];
     } finally {
       closeSync(descriptor);
     }
@@ -2316,24 +2382,42 @@ function assertNoHiddenIndexEntries(root) {
   }
 }
 
-function hashWorkspaceBytes(root, bytes, write = false) {
-  return observedExecFileSync("git", ["hash-object", ...(write ? ["-w"] : []), "--stdin"], {
+function writeWorkspaceManifestObjects(root, manifest) {
+  const valuesByObjectId = new Map();
+  for (const value of manifest.values()) {
+    if (!value.objectId) continue;
+    const prior = valuesByObjectId.get(value.objectId);
+    if (prior && (prior.size !== value.size || prior.byteDigest !== value.byteDigest)) {
+      throw new Error(`Git object ${value.objectId} identifies different validated workspace bytes.`);
+    }
+    valuesByObjectId.set(value.objectId, value);
+  }
+  if (!valuesByObjectId.size) return manifest;
+  const entries = [...manifest].filter(([, value]) => value.objectId);
+  const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
+  const workspacePrefix = relative(topLevel, root).split(sep).join("/");
+  if (workspacePrefix === ".." || workspacePrefix.startsWith("../")) {
+    throw new Error("The FileGRC workspace is outside its Git repository.");
+  }
+  const written = observedExecFileSync("git", ["hash-object", "-w", "--stdin-paths"], {
     cwd: root,
-    input: bytes,
+    input: `${entries.map(([path]) => workspacePrefix ? `${workspacePrefix}/${path}` : path).join("\n")}\n`,
     encoding: "utf8",
     stdio: ["pipe", "pipe", "ignore"],
     timeout: 30_000,
     maxBuffer: 20_000_000,
     env: gitEnvironment()
-  }).trim();
-}
-
-function writeWorkspaceManifestObjects(root, manifest) {
-  return new Map([...manifest].map(([path, value]) => (
-    value.objectId
-      ? [path, { ...value, objectId: hashWorkspaceBytes(root, value.bytes, true) }]
-      : [path, value]
-  )));
+  }).trim().split("\n");
+  if (written.length !== entries.length) {
+    throw new Error("Git returned an unexpected number of workspace objects.");
+  }
+  for (let index = 0; index < entries.length; index += 1) {
+    if (written[index] !== entries[index][1].objectId) {
+      throw new Error(`Git wrote an unexpected object while preparing validated workspace bytes for commit.`);
+    }
+  }
+  assertWorkspaceManifestEqual(manifest, workspaceByteManifest(root));
+  return manifest;
 }
 
 function assertWorkspaceManifestEqual(expected, current) {
@@ -2346,7 +2430,11 @@ function workspaceManifestsEqual(expected, current) {
   return expected.size === current.size
     && [...expected].every(([path, value]) => {
       const other = current.get(path);
-      return other && value.objectId === other.objectId && value.mode === other.mode;
+      return other
+        && value.objectId === other.objectId
+        && value.mode === other.mode
+        && value.size === other.size
+        && value.byteDigest === other.byteDigest;
     });
 }
 
@@ -2619,6 +2707,15 @@ export function setHistoricalRevisionReadObserverForTests(observer) {
   const previous = historicalRevisionReadObserver;
   historicalRevisionReadObserver = observer;
   return () => { historicalRevisionReadObserver = previous; };
+}
+
+export function setWorkspaceBlobObjectIdOverrideForTests(override) {
+  if (override !== null && typeof override !== "function") {
+    throw new TypeError("The workspace blob object ID override must be a function or null.");
+  }
+  const previous = workspaceBlobObjectIdOverride;
+  workspaceBlobObjectIdOverride = override;
+  return () => { workspaceBlobObjectIdOverride = previous; };
 }
 
 export function runGitCommand(cwd, args, options = {}) {

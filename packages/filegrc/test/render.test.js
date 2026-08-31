@@ -404,7 +404,7 @@ test("serves state and browser assets", async (context) => {
   ).json();
   const contentResponse = await fetch(`${result.url}/api/content`, {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", prefer: "respond-async" },
     body: JSON.stringify({
       path: contentPath,
       source: "# API Policy\n\nUpdated.",
@@ -412,6 +412,9 @@ test("serves state and browser assets", async (context) => {
     })
   });
   assert.equal(contentResponse.status, 200);
+  const contentResult = await contentResponse.json();
+  assert.equal(contentResult.stateRefresh, true);
+  assert.match(contentResult.html, /Updated/);
   assert.match(await readFile(join(root, "data", contentPath), "utf8"), /Updated/);
   const missingContentResponse = await fetch(`${result.url}/api/content`, {
     method: "PUT",
@@ -1394,9 +1397,13 @@ test("loads calculated state only for the current browser route", () => {
   assert.match(APP_SCRIPT, /data-load-workflow>Calculate action/);
   assert.match(APP_SCRIPT, /loadStateSection\("workflow"\)/);
   assert.match(APP_SCRIPT, /tokenQuery = token \? "\?token="/);
+  assert.match(APP_SCRIPT, /"&history=false"/);
+  assert.match(APP_SCRIPT, /"history=only"/);
+  assert.match(APP_SCRIPT, /entry\.historyLoaded === false/);
   assert.match(APP_SCRIPT, /response\.status === 409 && token/);
   assert.match(APP_SCRIPT, /detail\.stateToken === token && state\.stateToken === token/);
   assert.doesNotMatch(APP_SCRIPT, /fetchJson\("\/api\/state"\)/);
+  assert.match(APP_SCRIPT, /prefer: "respond-async"/);
 });
 
 test("resource detail retries when a concurrent section refresh replaces its state token", async () => {

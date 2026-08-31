@@ -368,13 +368,37 @@ async function createResourceDetailFromLoaded(loaded, type, id, options) {
   const entry = loaded.entries.find(({ record }) => record.type === type && record.id === id);
   if (!entry) return null;
   const relativePath = `data/${entry.relativePath}`;
-  const histories = getWorkspaceHistories(loaded.root, [relativePath], 12, {
-    deadlineAt: options.historyDeadlineAt
-  });
+  const includeHistory = options.includeHistory !== false;
+  const histories = includeHistory
+    ? getWorkspaceHistories(loaded.root, [relativePath], 12, {
+        deadlineAt: options.historyDeadlineAt
+      })
+    : new Map();
   return createStateEntry(loaded, entry, {
     includeDetails: true,
-    history: histories.get(relativePath) ?? []
+    includeHistory,
+    history: includeHistory ? histories.get(relativePath) ?? [] : undefined
   });
+}
+
+export async function createResourceHistory(input, type, id, options = {}) {
+  if (input?.entries && input?.root) return createResourceHistoryFromLoaded(input, type, id, options);
+  return serializeWorkspaceMutation(input, async (root) => {
+    const validation = await validateWorkspace(root);
+    return createResourceHistoryFromLoaded(validation.loaded, type, id, options);
+  });
+}
+
+function createResourceHistoryFromLoaded(loaded, type, id, options) {
+  const entry = loaded.entries.find(({ record }) => record.type === type && record.id === id);
+  if (!entry) return null;
+  const relativePath = `data/${entry.relativePath}`;
+  return {
+    history: getWorkspaceHistories(loaded.root, [relativePath], 12, {
+      deadlineAt: options.historyDeadlineAt
+    }).get(relativePath) ?? [],
+    historyLoaded: true
+  };
 }
 
 async function createStateEntry(loaded, entry, options) {
@@ -401,7 +425,8 @@ async function createStateEntry(loaded, entry, options) {
     relativePath: `data/${entry.relativePath}`,
     revision: contentRevision(entry.source),
     content,
-    history: options.includeDetails ? options.history : undefined,
+    history: options.includeDetails && options.includeHistory !== false ? options.history : undefined,
+    historyLoaded: options.includeDetails ? options.includeHistory !== false : false,
     detailsLoaded: options.includeDetails
   };
 }
