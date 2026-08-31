@@ -73,6 +73,14 @@ test("reconciles a direct-file role change only after explicit event facts", asy
   const preview = await planReconciliation(root);
   assert.equal(preview.candidates.length, 1);
   assert.equal(preview.candidates[0].eventType, "person-role-changed");
+  assert.deepEqual(preview.candidates[0].action, {
+    kind: "reconcile-transition",
+    candidateId: preview.candidates[0].transitionFingerprint,
+    eventType: "person-role-changed",
+    subject: { type: "person", id: "person-owner" },
+    requiredFacts: ["occurredOn"],
+    command: `npx filegrc reconcile --apply --candidate ${preview.candidates[0].transitionFingerprint} --occurred-on YYYY-MM-DD --yes`
+  });
   await assert.rejects(
     applyReconciliation(root, {
       candidateId: preview.candidates[0].id,

@@ -456,6 +456,10 @@ export async function planReconciliation(input = process.cwd(), options = {}) {
 
 function reconciliationCandidate(loaded, transition, record, path, fingerprint, eventId, extra = {}) {
   const needsTimestamp = eventNeedsTimestamp(loaded, transition.eventType);
+  const requiredFacts = [
+    transition.eventType === "person-ended" ? "riskLevel" : null,
+    needsTimestamp ? "occurredAt" : "occurredOn"
+  ].filter(Boolean);
   return {
     id: `reconcile-${fingerprint.slice(0, 16)}`,
     eventId,
@@ -465,12 +469,13 @@ function reconciliationCandidate(loaded, transition, record, path, fingerprint, 
     sourcePath: path,
     state: "needs-confirmation",
     message: transition.message,
-    requiredFacts: [
-      transition.eventType === "person-ended" ? "riskLevel" : null,
-      needsTimestamp ? "occurredAt" : "occurredOn"
-    ].filter(Boolean),
+    requiredFacts,
     action: {
-      kind: "command",
+      kind: "reconcile-transition",
+      candidateId: fingerprint,
+      eventType: transition.eventType,
+      subject: { type: record.type, id: record.id },
+      requiredFacts,
       command: reconciliationCommand(transition.eventType, record.id, fingerprint, needsTimestamp)
     },
     ...extra

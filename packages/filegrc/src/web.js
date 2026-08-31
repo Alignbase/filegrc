@@ -174,7 +174,7 @@ function desiredStateSections(route) {
   const sections = new Set(["repository", ...blockingStateSections(route)]);
   if (route.name === "list" && (["requirement", "requirement-mapping"].includes(route.type) || state.model.collectionReviews?.[route.type])) sections.add("program");
   if (route.name === "detail" && ["policy", "document", "training", "control", "component", "requirement-mapping", "retention-schedule-item"].includes(route.type)) sections.add("program");
-  if (route.name === "detail" && ["policy", "document", "framework", "requirement", "commitment", "system", "component", "vendor", "information-type", "source-coverage", "requirement-mapping", "retention-schedule-item"].includes(route.type)) sections.add("workflow");
+  if (route.name === "detail") sections.add("workflow");
   if (route.name === "detail" && ["obligation", "action-item", "obligation-event"].includes(route.type)) sections.add("obligations");
   if (route.name === "detail" && route.type === "audit") sections.add("audits");
   return [...sections];
@@ -1001,10 +1001,12 @@ function workflowItemHref(item) {
   if (source && ["assigned-work", "obligation-occurrence"].includes(item.kind)) {
     return "#/stage/run?work=" + encodeURIComponent(source.type + ":" + source.id);
   }
-  const commands = [
-    ...(item.actions || []).map((action) => action.command),
-    item.nextAction?.command
-  ].filter(Boolean);
+  const actions = [...(item.actions || []), item.nextAction].filter(Boolean);
+  const reconciliationAction = actions.find((action) => action.kind === "reconcile-transition");
+  if (reconciliationAction?.candidateId) {
+    return "#/stage/run?reconcile=" + encodeURIComponent(reconciliationAction.candidateId);
+  }
+  const commands = actions.map((action) => action.command).filter(Boolean);
   if (item.createResourceType && state.model.resources[item.createResourceType]) {
     const params = new URLSearchParams({ new: "1" });
     if (item.title) params.set("title", item.createResourceType === "commitment"
@@ -1610,6 +1612,16 @@ function renderObligations(main, params = new URLSearchParams()) {
     queueMicrotask(() => {
       main.querySelector(".event-reminders")?.scrollIntoView({ block: "start" });
       if (requestedEvent) main.querySelector('[data-start-event="' + CSS.escape(requestedEvent) + '"]')?.click();
+    });
+  }
+  const requestedReconciliation = params.get("reconcile");
+  if (requestedReconciliation) {
+    queueMicrotask(() => {
+      const candidate = state.reconciliation?.candidates?.find((item) => (
+        item.transitionFingerprint === requestedReconciliation
+        || item.id === requestedReconciliation
+      ));
+      if (candidate) openReconciliationConfirmation(candidate);
     });
   }
   const requestedWork = params.get("work");
@@ -3269,6 +3281,67 @@ function openReconciliationDismissal(candidate) {
       render();
     } catch (error) {
       setMutationBusy(dialog, false, "", "Record dismissal");
+      dialog.querySelector(".dialog-error").textContent = error.message;
+    }
+  });
+}
+
+function openReconciliationConfirmation(candidate) {
+  if (document.querySelector('[data-reconciliation-confirmation="' + CSS.escape(candidate.transitionFingerprint) + '"]')) return;
+  const writeDisabled = state.readOnly
+    ? ' disabled title="Writes are not available in this repository state"'
+    : "";
+  const needsTimestamp = (candidate.requiredFacts || []).includes("occurredAt");
+  const eventField = needsTimestamp
+    ? '<label><span>Event time <small>your local time</small></span><input name="occurredAt" type="datetime-local" required value="' + esc(currentLocalDateTime()) + '"></label>'
+    : '<label><span>Event date</span><input name="occurredOn" type="date" required value="' + esc(currentDate()) + '"></label>';
+  const riskField = (candidate.requiredFacts || []).includes("riskLevel")
+    ? '<label><span>Departure risk</span><select name="riskLevel" required><option value="normal">Normal</option><option value="high">High or involuntary</option></select></label>'
+    : "";
+  const dialog = document.createElement("dialog");
+  dialog.className = "commit-dialog event-dialog";
+  dialog.dataset.reconciliationConfirmation = candidate.transitionFingerprint;
+  dialog.setAttribute("aria-labelledby", "reconciliation-confirmation-title");
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Git transition review</p><h2 id="reconciliation-confirmation-title">' + esc(policyEventName(candidate.eventType)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(candidate.message) + '</p><section class="event-dialog-steps"><div><strong>' + esc(candidate.subject.title || candidate.subject.id) + '</strong><small>' + esc(candidate.sourcePath) + '</small></div></section>' + eventField + riskField + '<label><span>Workflow name <small>optional</small></span><input name="title" maxlength="200" placeholder="' + esc(policyEventName(candidate.eventType)) + '"' + writeDisabled + '></label>' + (state.readOnly ? '<p class="dialog-note">Open this workspace in the local writable renderer or use the CLI to confirm or dismiss this transition.</p>' : "") + '<div class="dialog-error" role="alert"></div><div class="save-status" role="status" aria-live="polite"></div><div class="dialog-actions"><button type="button" class="button" data-dismiss-candidate' + writeDisabled + '>Dismiss false positive</button><button type="button" class="button" data-dismiss-dialog>Cancel</button><button type="submit" class="button primary"' + writeDisabled + '>Confirm and add work</button></div></form>';
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-dismiss-dialog]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-dismiss-candidate]").addEventListener("click", () => {
+    dialog.close();
+    openReconciliationDismissal(candidate);
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    try {
+      setMutationBusy(dialog, true, "Confirming…", "Confirm and add work");
+      const response = await localFetch("/api/reconciliation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          candidateId: candidate.transitionFingerprint,
+          occurredOn: form.elements.occurredOn?.value || undefined,
+          occurredAt: form.elements.occurredAt?.value ? new Date(form.elements.occurredAt.value).toISOString() : undefined,
+          riskLevel: form.elements.riskLevel?.value || undefined,
+          title: form.elements.title.value,
+          confirmed: true
+        })
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const created = await response.json();
+      policyEventFeedback = {
+        name: policyEventName(candidate.eventType),
+        taskCount: created.actions?.length || 0
+      };
+      applyMutationState(created);
+      dialog.close();
+      history.replaceState(null, "", "#/stage/run");
+      render();
+    } catch (error) {
+      setMutationBusy(dialog, false, "", "Confirm and add work");
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });

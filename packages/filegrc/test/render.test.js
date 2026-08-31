@@ -123,6 +123,18 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.doesNotMatch(APP_STYLES, /\.policy-activation-confirm\{/);
 });
 
+test("routes semantic reconciliation actions to a focused browser workflow", () => {
+  assert.match(APP_SCRIPT, /action\.kind === "reconcile-transition"/);
+  assert.match(APP_SCRIPT, /#\/stage\/run\?reconcile=/);
+  assert.match(APP_SCRIPT, /function openReconciliationConfirmation\(candidate\)/);
+  assert.match(APP_SCRIPT, /candidateId: candidate\.transitionFingerprint/);
+  assert.match(APP_SCRIPT, /Confirm and add work/);
+  assert.match(APP_SCRIPT, /Dismiss false positive/);
+  assert.match(APP_SCRIPT, /Open this workspace in the local writable renderer or use the CLI to confirm or dismiss this transition/);
+  assert.match(APP_SCRIPT, /localFetch\("\/api\/reconciliation"/);
+  assert.match(APP_SCRIPT, /if \(route\.name === "detail"\) sections\.add\("workflow"\)/);
+});
+
 test("sends complete Reporting Channel Set lifecycle payloads", () => {
   assert.match(APP_SCRIPT, /routeSetId: entry\.record\.id,\s+expectedRevision: entry\.revision/);
   assert.doesNotMatch(APP_SCRIPT, /routeSetId: entry\.record\.id,\s+revision: entry\.revision/);
@@ -1737,7 +1749,7 @@ test("uses stage names and routes overview cards through stage pages", () => {
   assert.match(APP_SCRIPT, /!selected\.sourceResourceIds\.length \|\| !selected\.targetResourceIds\.length/);
   assert.match(APP_SCRIPT, /!scheduleDocumentId \|\| !selected\.informationTypeIds\.length \|\| !selected\.scopeResourceIds\.length/);
   assert.match(APP_SCRIPT, /resourceType === "retention-schedule-item" && fieldName === "scheduleDocumentId"/);
-  assert.match(APP_SCRIPT, /\["policy", "document", "framework", "requirement", "commitment", "system", "component", "vendor", "information-type", "source-coverage", "requirement-mapping", "retention-schedule-item"\]\.includes\(route\.type\)\) sections\.add\("workflow"\)/);
+  assert.match(APP_SCRIPT, /if \(route\.name === "detail"\) sections\.add\("workflow"\)/);
   assert.match(APP_STYLES, /\.readiness-state\{/);
 });
 
