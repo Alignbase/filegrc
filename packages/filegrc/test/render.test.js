@@ -653,10 +653,10 @@ test("keeps the sidebar fixed while the workspace owns page scrolling", () => {
 test("keeps repository and validation status in separate topbar controls", () => {
   assert.match(APP_SCRIPT, /class="topbar-status">' \+ programSelect \+ topbarProgramReadiness\(\)[\s\S]*class="search topbar-search"/);
   assert.match(APP_SCRIPT, /function topbarProgramReadiness\(\)/);
-  assert.match(APP_SCRIPT, /class="topbar-readiness"/);
+  assert.match(APP_SCRIPT, /class="topbar-readiness/);
   assert.match(APP_SCRIPT, /class="topbar-status"/);
-  assert.match(APP_SCRIPT, /class="validation-chip"/);
-  assert.match(APP_SCRIPT, /class="repo-chip"/);
+  assert.match(APP_SCRIPT, /class="validation-chip/);
+  assert.match(APP_SCRIPT, /class="repo-chip/);
   assert.match(APP_SCRIPT, /Data valid/);
   assert.doesNotMatch(APP_SCRIPT, /class="side-validation"/);
   assert.match(APP_STYLES, /\.topbar-readiness\{display:grid;grid-template-columns:minmax\(0,1fr\);/);
@@ -664,6 +664,432 @@ test("keeps repository and validation status in separate topbar controls", () =>
   assert.match(APP_STYLES, /\.topbar-status\{display:flex;flex:1 1 auto;min-width:0;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto\}/);
   assert.match(APP_STYLES, /\.topbar-status \.topbar-search\{flex:0 1 240px;width:240px;min-width:140px;margin-left:0\}/);
   assert.match(APP_STYLES, /\.repo-chip,\.validation-chip\{display:flex/);
+});
+
+test("shows an accessible spinner in page, detail, status, and mutation loading states", () => {
+  const html = renderIndex();
+  assert.match(html, /class="loading" role="status" aria-live="polite" aria-busy="true"><span class="spinner" aria-hidden="true"><\/span>/);
+  assert.match(APP_SCRIPT, /function loadingIndicator\(label\)/);
+  assert.match(APP_SCRIPT, /function setLoadingContent\(element, label\)/);
+  assert.match(APP_SCRIPT, /function setButtonBusy\(button, busy, label = ""\)/);
+  assert.match(APP_SCRIPT, /class="spinner spinner-large"/);
+  assert.match(APP_SCRIPT, /detail-loading is-loading/);
+  assert.match(APP_SCRIPT, /setLoadingContent\(status, "Checking repository…"\)/);
+  assert.match(APP_SCRIPT, /setButtonBusy\(button, true, "Generating…"\)/);
+  assert.match(APP_STYLES, /@keyframes spinner-rotate/);
+  assert.match(APP_STYLES, /\.spinner\{[^}]*border-right-color:transparent/);
+  assert.match(APP_STYLES, /\.is-loading>\.spinner,\.state-loading>\.spinner\{align-self:center;margin-top:0\}/);
+  assert.match(APP_STYLES, /\.state-loading,\.repository-sync-alert\.is-loading\{align-items:center\}/);
+  assert.match(APP_STYLES, /\.topbar-readiness\.is-loading \.topbar-readiness-copy>strong\{display:flex;align-items:center;justify-content:center\}/);
+  assert.match(APP_STYLES, /@media\(prefers-reduced-motion:reduce\)/);
+});
+
+test("restores a loading button's prior disabled state", () => {
+  const start = APP_SCRIPT.indexOf("function loadingIndicator");
+  const end = APP_SCRIPT.indexOf("start().catch", start);
+  const source = APP_SCRIPT.slice(start, end);
+  const harness = new Function(`
+    const esc = String;
+    ${source}
+    return { setButtonBusy };
+  `)();
+  const makeButton = (disabled) => {
+    const classes = new Set();
+    const attributes = new Map();
+    return {
+      disabled,
+      dataset: {},
+      innerHTML: "Save",
+      textContent: "Save",
+      classList: {
+        add: (value) => classes.add(value),
+        remove: (value) => classes.delete(value)
+      },
+      setAttribute: (name, value) => attributes.set(name, value),
+      removeAttribute: (name) => attributes.delete(name)
+    };
+  };
+
+  const enabledButton = makeButton(false);
+  harness.setButtonBusy(enabledButton, true, "Saving…");
+  assert.equal(enabledButton.disabled, true);
+  harness.setButtonBusy(enabledButton, false);
+  assert.equal(enabledButton.disabled, false);
+  assert.equal(enabledButton.innerHTML, "Save");
+
+  const disabledButton = makeButton(true);
+  harness.setButtonBusy(disabledButton, true, "Saving…");
+  harness.setButtonBusy(disabledButton, false);
+  assert.equal(disabledButton.disabled, true);
+});
+
+test("restores dialog controls after a failed mutation", () => {
+  const helperStart = APP_SCRIPT.indexOf("function loadingIndicator");
+  const helperEnd = APP_SCRIPT.indexOf("start().catch", helperStart);
+  const mutationStart = APP_SCRIPT.indexOf("function setMutationBusy");
+  const mutationEnd = APP_SCRIPT.indexOf("function showError", mutationStart);
+  const source = APP_SCRIPT.slice(helperStart, helperEnd) + APP_SCRIPT.slice(mutationStart, mutationEnd);
+  const harness = new Function(`
+    const esc = String;
+    ${source}
+    return { setMutationBusy };
+  `)();
+  const makeControl = (disabled) => {
+    const classes = new Set();
+    const attributes = new Map();
+    return {
+      disabled,
+      dataset: {},
+      innerHTML: "Save",
+      textContent: "Save",
+      classList: {
+        add: (value) => classes.add(value),
+        remove: (value) => classes.delete(value)
+      },
+      setAttribute: (name, value) => attributes.set(name, value),
+      removeAttribute: (name) => attributes.delete(name)
+    };
+  };
+  const button = makeControl(false);
+  const input = makeControl(false);
+  const lockedInput = makeControl(true);
+  const controls = [button, input, lockedInput];
+  const dialog = {
+    dataset: {},
+    querySelector: (selector) => selector.includes("#save-record") ? button : null,
+    querySelectorAll: () => controls
+  };
+
+  harness.setMutationBusy(dialog, true, "Saving…", "Save");
+  harness.setMutationBusy(dialog, false, "", "Save");
+
+  assert.equal(button.disabled, false);
+  assert.equal(input.disabled, false);
+  assert.equal(lockedInput.disabled, true);
+  assert.equal(button.textContent, "Save");
+});
+
+test("clears review revision binding busy state after a request failure", async () => {
+  const helperStart = APP_SCRIPT.indexOf("function loadingIndicator");
+  const helperEnd = APP_SCRIPT.indexOf("start().catch", helperStart);
+  const bindStart = APP_SCRIPT.indexOf("async function bindCurrentReviewRevisions");
+  const bindEnd = APP_SCRIPT.indexOf("function retentionUseReviewIds", bindStart);
+  const source = APP_SCRIPT.slice(helperStart, helperEnd) + APP_SCRIPT.slice(bindStart, bindEnd);
+  const classes = new Set();
+  const attributes = new Map();
+  const button = {
+    disabled: false,
+    dataset: {},
+    innerHTML: "Bind current revisions",
+    textContent: "Bind current revisions",
+    classList: {
+      add: (value) => classes.add(value),
+      remove: (value) => classes.delete(value)
+    },
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: (name) => attributes.delete(name)
+  };
+  const dialog = {
+    querySelectorAll: (selector) => selector.includes("informationTypeIds")
+      ? [{ value: "information-type-customer" }]
+      : selector.includes("scopeResourceIds")
+        ? [{ value: "system-app" }]
+        : [],
+    querySelector: (selector) => selector.includes("scheduleDocumentId")
+      ? { value: "document-retention" }
+      : null
+  };
+  const harness = new Function("dependencies", `
+    const esc = String;
+    const localFetch = dependencies.localFetch;
+    const responseMessage = async () => "request failed";
+    const retentionUseReviewIds = () => [];
+    ${source}
+    return { bindCurrentReviewRevisions };
+  `)({ localFetch: async () => ({ ok: false }) });
+
+  await assert.rejects(() => harness.bindCurrentReviewRevisions(dialog, button), /request failed/);
+
+  assert.equal(button.disabled, false);
+  assert.equal(button.innerHTML, "Bind current revisions");
+  assert.equal(classes.has("is-loading"), false);
+  assert.equal(attributes.has("aria-busy"), false);
+});
+
+test("clears repository busy state after a failed trunk mutation refreshes state", async () => {
+  const start = APP_SCRIPT.indexOf("async function localFetch");
+  const end = APP_SCRIPT.indexOf("async function fetchJson", start);
+  const source = APP_SCRIPT.slice(start, end);
+  const classes = new Set();
+  const attributes = new Map();
+  const chip = {
+    isConnected: true,
+    innerHTML: '<span class="status-dot good"></span>Ready',
+    classList: {
+      add: (value) => classes.add(value),
+      remove: (value) => classes.delete(value)
+    },
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: (name) => attributes.delete(name)
+  };
+  let requests = 0;
+  let renders = 0;
+  let routeLoads = 0;
+  let polls = 0;
+  const harness = new Function("dependencies", `
+    let state = dependencies.state;
+    let programSelectionGeneration = 0;
+    const location = { origin: "http://localhost" };
+    const document = { querySelector: () => dependencies.chip };
+    const fetch = dependencies.fetch;
+    const loadingIndicator = (label) => "spinner:" + label;
+    const repositoryStatusTone = () => "warn";
+    const normalizeAppState = (value) => value;
+    const render = dependencies.render;
+    const loadStateForRoute = dependencies.loadStateForRoute;
+    const scheduleRepositorySyncPoll = dependencies.scheduleRepositorySyncPoll;
+    const esc = String;
+    ${source}
+    return { localFetch, state: () => state };
+  `)({
+    chip,
+    state: { selectedProgramId: "program-main", repository: { mode: "trunk" } },
+    fetch: async () => {
+      requests += 1;
+      if (requests === 1) return { ok: false, status: 500 };
+      return {
+        ok: true,
+        json: async () => ({
+          selectedProgramId: "program-main",
+          repository: { mode: "trunk", status: "syncing", label: "Syncing" }
+        })
+      };
+    },
+    render: () => { renders += 1; },
+    loadStateForRoute: () => { routeLoads += 1; },
+    scheduleRepositorySyncPoll: () => { polls += 1; }
+  });
+
+  const response = await harness.localFetch("/api/resource/person/person-owner", { method: "PUT" });
+
+  assert.equal(response.status, 500);
+  assert.equal(requests, 2);
+  assert.equal(classes.has("is-loading"), false);
+  assert.equal(attributes.has("aria-busy"), false);
+  assert.match(chip.innerHTML, /Syncing/);
+  assert.equal(harness.state().repository.status, "syncing");
+  assert.equal(renders, 0);
+  assert.equal(routeLoads, 0);
+  assert.equal(polls, 1);
+});
+
+test("discards a failed mutation recovery after the active program changes", async () => {
+  const start = APP_SCRIPT.indexOf("async function localFetch");
+  const end = APP_SCRIPT.indexOf("async function fetchJson", start);
+  const source = APP_SCRIPT.slice(start, end);
+  const classes = new Set();
+  const attributes = new Map();
+  const chip = {
+    isConnected: true,
+    innerHTML: '<span class="status-dot good"></span>Program A ready',
+    classList: {
+      add: (value) => classes.add(value),
+      remove: (value) => classes.delete(value)
+    },
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: (name) => attributes.delete(name)
+  };
+  let resolveMutation;
+  let resolveRecovery;
+  let requests = 0;
+  let polls = 0;
+  const programB = {
+    selectedProgramId: "program-b",
+    repository: { mode: "trunk", status: "synced", label: "Program B ready" }
+  };
+  const harness = new Function("dependencies", `
+    let state = dependencies.state;
+    let programSelectionGeneration = 0;
+    const location = { origin: "http://localhost" };
+    const document = { querySelector: () => dependencies.chip };
+    const fetch = dependencies.fetch;
+    const loadingIndicator = (label) => "spinner:" + label;
+    const repositoryStatusTone = () => "warn";
+    const normalizeAppState = (value) => value;
+    const scheduleRepositorySyncPoll = dependencies.scheduleRepositorySyncPoll;
+    const esc = String;
+    ${source}
+    return {
+      localFetch,
+      state: () => state,
+      switchProgram: (value) => {
+        programSelectionGeneration += 1;
+        state = value;
+      }
+    };
+  `)({
+    chip,
+    state: {
+      selectedProgramId: "program-a",
+      repository: { mode: "trunk", status: "synced", label: "Program A ready" }
+    },
+    fetch: () => {
+      requests += 1;
+      return new Promise((resolve) => {
+        if (requests === 1) resolveMutation = resolve;
+        else resolveRecovery = resolve;
+      });
+    },
+    scheduleRepositorySyncPoll: () => { polls += 1; }
+  });
+
+  const pending = harness.localFetch("/api/resource/person/person-owner", { method: "PUT" });
+  resolveMutation({ ok: false, status: 500 });
+  await new Promise((resolve) => setImmediate(resolve));
+  harness.switchProgram(programB);
+  resolveRecovery({
+    ok: true,
+    json: async () => ({
+      selectedProgramId: "program-a",
+      repository: { mode: "trunk", status: "syncing", label: "Program A syncing" }
+    })
+  });
+  const response = await pending;
+
+  assert.equal(response.status, 500);
+  assert.equal(harness.state(), programB);
+  assert.equal(polls, 0);
+  assert.equal(classes.has("is-loading"), false);
+  assert.equal(attributes.has("aria-busy"), false);
+  assert.match(chip.innerHTML, /Program A ready/);
+});
+
+test("ends supplemental history loading after a request failure", async () => {
+  const start = APP_SCRIPT.indexOf("async function loadResourceHistory");
+  const end = APP_SCRIPT.indexOf("function refreshExpiredAppState", start);
+  const source = APP_SCRIPT.slice(start, end);
+  let renders = 0;
+  const state = {
+    stateToken: "token-a",
+    resources: [{
+      record: { type: "person", id: "person-owner" },
+      historyLoaded: false
+    }]
+  };
+  const harness = new Function("dependencies", `
+    const state = dependencies.state;
+    const resourceDetailRequests = new Map();
+    const localFetch = dependencies.localFetch;
+    const refreshExpiredAppState = async () => {};
+    const responseMessage = async () => "request failed";
+    const parseRoute = () => ({ name: "detail", type: "person", id: "person-owner" });
+    const render = dependencies.render;
+    const loadStateForRoute = () => {};
+    ${source}
+    return { loadResourceHistory };
+  `)({
+    state,
+    localFetch: async () => { throw new Error("history unavailable"); },
+    render: () => { renders += 1; }
+  });
+
+  await harness.loadResourceHistory("person", "person-owner");
+
+  assert.equal(state.resources[0].historyLoaded, true);
+  assert.equal(state.resources[0].historyError, "history unavailable");
+  assert.equal(renders, 1);
+  assert.match(APP_SCRIPT, /entry\.historyError[\s\S]*role="status" aria-live="polite"[\s\S]*Participation and file history are unavailable/);
+  assert.match(APP_SCRIPT, /entry\.historyError[\s\S]*Participation and file history are unavailable/);
+});
+
+test("ignores a supplemental history failure from a stale state snapshot", async () => {
+  const start = APP_SCRIPT.indexOf("async function loadResourceHistory");
+  const end = APP_SCRIPT.indexOf("function refreshExpiredAppState", start);
+  const source = APP_SCRIPT.slice(start, end);
+  let rejectHistory;
+  const freshEntry = {
+    record: { type: "person", id: "person-owner" },
+    historyLoaded: false
+  };
+  const harness = new Function("dependencies", `
+    let state = dependencies.state;
+    const resourceDetailRequests = new Map();
+    const localFetch = dependencies.localFetch;
+    const refreshExpiredAppState = async () => {};
+    const responseMessage = async () => "request failed";
+    const parseRoute = () => ({ name: "detail", type: "person", id: "person-owner" });
+    const render = dependencies.render;
+    const loadStateForRoute = () => {};
+    ${source}
+    return {
+      loadResourceHistory,
+      replaceState: (value) => { state = value; }
+    };
+  `)({
+    state: {
+      stateToken: "token-a",
+      resources: [{ record: { type: "person", id: "person-owner" }, historyLoaded: false }]
+    },
+    localFetch: () => new Promise((resolve, reject) => { rejectHistory = reject; }),
+    render: () => { throw new Error("stale history failure must not render"); }
+  });
+
+  const pending = harness.loadResourceHistory("person", "person-owner");
+  await new Promise((resolve) => setImmediate(resolve));
+  harness.replaceState({ stateToken: "token-b", resources: [freshEntry] });
+  rejectHistory(new Error("old request failed"));
+  await pending;
+
+  assert.equal(freshEntry.historyLoaded, false);
+  assert.equal(freshEntry.historyError, undefined);
+});
+
+test("shows onboarding draft progress on the draft button", () => {
+  const helperStart = APP_SCRIPT.indexOf("function loadingIndicator");
+  const helperEnd = APP_SCRIPT.indexOf("start().catch", helperStart);
+  const busyStart = APP_SCRIPT.indexOf("function setOnboardingBusy");
+  const busyEnd = APP_SCRIPT.indexOf("function positionOnboardingDialog", busyStart);
+  const source = APP_SCRIPT.slice(helperStart, helperEnd) + APP_SCRIPT.slice(busyStart, busyEnd);
+  const makeControl = (text) => ({
+    disabled: false,
+    dataset: {},
+    innerHTML: text,
+    textContent: text,
+    classList: { add: () => {}, remove: () => {} },
+    setAttribute: () => {},
+    removeAttribute: () => {}
+  });
+  const draft = makeControl("Save as planned");
+  const next = makeControl("Confirm scope");
+  const skip = makeControl("Skip onboarding");
+  const controls = [draft, next, skip];
+  const harness = new Function("dependencies", `
+    const esc = String;
+    let onboardingDialog = dependencies.dialog;
+    let onboardingStillWorkingTimer = null;
+    let onboardingBusy = false;
+    const onboardingStep = 0;
+    const onboardingSteps = () => [{}, {}];
+    const renderOnboardingStep = () => {};
+    ${source}
+    return { setOnboardingBusy };
+  `)({
+    dialog: {
+      querySelectorAll: () => controls,
+      querySelector: (selector) => selector.includes('data-onboarding="draft"')
+        ? draft
+        : selector.includes('data-onboarding="next"')
+          ? next
+          : selector.includes('data-onboarding="skip"')
+            ? skip
+            : null
+    }
+  });
+
+  harness.setOnboardingBusy(true, "Saving draft…");
+
+  assert.match(draft.innerHTML, /spinner:|class="spinner"/);
+  assert.equal(next.innerHTML, "Confirm scope");
 });
 
 test("uses compact topbar spacing on wide and narrow screens", () => {
@@ -1021,7 +1447,7 @@ test("saves collection confirmations without a repetitive preview step", () => {
   assert.match(APP_SCRIPT, /<strong>What this saves<\/strong>/);
   assert.match(APP_SCRIPT, /<button type="submit" class="button primary">Confirm and save<\/button>/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/collection-review",/);
-  assert.match(APP_SCRIPT, /saveStatus\.textContent = "Not saved"/);
+  assert.match(APP_SCRIPT, /clearLoadingContent\(saveStatus, "Not saved"\)/);
   assert.doesNotMatch(APP_SCRIPT, /data-preview-collection-review/);
   assert.doesNotMatch(APP_SCRIPT, /localFetch\("\/api\/collection-review\/preview",/);
 });

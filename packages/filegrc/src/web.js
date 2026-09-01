@@ -43,7 +43,7 @@ export function renderIndex(state = null) {
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <div id="app"><div class="loading">Loading workspace…</div></div>
+  <div id="app"><div class="loading" role="status" aria-live="polite" aria-busy="true"><span class="spinner" aria-hidden="true"></span><span>Loading workspace…</span></div></div>
   ${snapshot}
   <script src="./filegrc-app.js" defer></script>
 </body>
@@ -97,6 +97,44 @@ let mutationStateRefreshTimer = null;
 let mutationStateRefreshRequested = false;
 let programSelectionGeneration = 0;
 let expiredStateRefresh = null;
+
+function loadingIndicator(label) {
+  return '<span class="spinner" aria-hidden="true"></span><span>' + esc(label) + '</span>';
+}
+
+function setLoadingContent(element, label) {
+  if (!element) return;
+  element.classList.add("is-loading");
+  element.setAttribute("aria-busy", "true");
+  element.innerHTML = loadingIndicator(label);
+}
+
+function clearLoadingContent(element, label = "") {
+  if (!element) return;
+  element.classList.remove("is-loading");
+  element.removeAttribute("aria-busy");
+  element.textContent = label;
+}
+
+function setButtonBusy(button, busy, label = "") {
+  if (!button) return;
+  if (busy) {
+    if (!button.dataset.loadingIdle) {
+      button.dataset.loadingIdle = button.innerHTML;
+      button.dataset.loadingWasDisabled = String(button.disabled);
+    }
+    button.disabled = true;
+    setLoadingContent(button, label);
+    return;
+  }
+  const idle = button.dataset.loadingIdle;
+  const wasDisabled = button.dataset.loadingWasDisabled === "true";
+  clearLoadingContent(button);
+  if (idle !== undefined) button.innerHTML = idle;
+  button.disabled = wasDisabled;
+  delete button.dataset.loadingIdle;
+  delete button.dataset.loadingWasDisabled;
+}
 
 start().catch((error) => {
   root.innerHTML = '<main class="fatal"><h1>Could Not Load the Workspace</h1><pre></pre></main>';
@@ -188,7 +226,7 @@ function renderStateLoading(main, route, sections) {
   const message = failed
     ? state.sectionErrors?.[failed] || "Reload the workspace and try again."
     : "Records are ready. FileGRC is calculating the information needed for this page.";
-  main.innerHTML = '<div class="page"><section class="panel state-loading" role="status" aria-live="polite"><p class="kicker">' + (failed ? "Loading error" : "One moment") + '</p><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p></section></div>';
+  main.innerHTML = '<div class="page"><section class="panel state-loading" role="' + (failed ? "alert" : "status") + '" aria-live="polite"' + (failed ? "" : ' aria-busy="true"') + '>' + (failed ? "" : '<span class="spinner spinner-large" aria-hidden="true"></span>') + '<div><p class="kicker">' + (failed ? "Loading error" : "One moment") + '</p><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p></div></section></div>';
 }
 
 function loadStateForRoute() {
@@ -373,13 +411,17 @@ function topbar(route) {
   const programSelect = programs.length > 1 && !state.readOnly
     ? '<label class="program-select"><span class="sr-only">Current Program</span><select data-program-select>' + programs.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (record.id === state.selectedProgramId ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label>'
     : "";
-  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><div class="topbar-status">' + programSelect + topbarProgramReadiness() + '<label class="search topbar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="validation-chip" href="#/repository"><span class="status-dot ' + validationTone + '"></span>' + validationLabel + '</a><a class="repo-chip" href="#/repository"><span class="status-dot ' + repositoryTone + '"></span>' + esc(repositoryLabel) + '</a></div>';
+  const validationMark = validationLoading && !repositoryError ? '<span class="spinner" aria-hidden="true"></span>' : '<span class="status-dot ' + validationTone + '"></span>';
+  const repositoryBusy = repositoryLoading && !repositoryError || state.repository?.status === "syncing";
+  const repositoryMark = repositoryBusy ? '<span class="spinner" aria-hidden="true"></span>' : '<span class="status-dot ' + repositoryTone + '"></span>';
+  return '<button class="mobile-nav" type="button" aria-label="Open navigation" aria-controls="sidebar-navigation" aria-expanded="false">☰</button><div><small class="eyebrow">' + esc(state.workspace.organizationName) + '</small><h1>' + esc(titleCase(title)) + '</h1></div><div class="topbar-status">' + programSelect + topbarProgramReadiness() + '<label class="search topbar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"><kbd>/</kbd></label><a class="validation-chip' + (validationLoading && !repositoryError ? ' is-loading' : '') + '" href="#/repository"' + (validationLoading && !repositoryError ? ' aria-busy="true"' : '') + '>' + validationMark + validationLabel + '</a><a class="repo-chip' + (repositoryBusy ? ' is-loading' : '') + '" href="#/repository"' + (repositoryBusy ? ' aria-busy="true"' : '') + '>' + repositoryMark + esc(repositoryLabel) + '</a></div>';
 }
 
 function topbarProgramReadiness() {
   if (state.sections?.program !== "complete") {
-    const label = state.sections?.program === "loading" ? "…" : "View";
-    return '<a class="topbar-readiness" href="#/"><span class="topbar-readiness-copy"><span>Program readiness</span><strong>' + label + '</strong></span><span class="progress" aria-hidden="true"><span style="width:0%"></span></span></a>';
+    const loading = state.sections?.program !== "error";
+    const label = loading ? '<span class="spinner" aria-hidden="true"></span><span class="sr-only">Loading</span>' : "View";
+    return '<a class="topbar-readiness' + (loading ? ' is-loading' : '') + '" href="#/"' + (loading ? ' aria-busy="true"' : '') + '><span class="topbar-readiness-copy"><span>Program readiness</span><strong>' + label + '</strong></span><span class="progress" aria-hidden="true"><span style="width:0%"></span></span></a>';
   }
   const progress = dashboardProgramReadiness(state.programReadiness);
   const detail = progress.complete + " of " + progress.total + " readiness items complete";
@@ -394,7 +436,7 @@ function repositoryStatusTone(status) {
 
 function repositorySyncAlert() {
   if (state.repository?.status === "syncing") {
-    return '<div class="repository-sync-alert syncing" role="status" aria-live="polite"><span class="status-dot neutral"></span><span><strong>Saved and committed locally.</strong> Git push is continuing in the background. Other changes unlock when synchronization finishes.</span><a href="#/repository">View status</a></div>';
+    return '<div class="repository-sync-alert syncing is-loading" role="status" aria-live="polite" aria-busy="true"><span class="spinner" aria-hidden="true"></span><span><strong>Saved and committed locally.</strong> Git push is continuing in the background. Other changes unlock when synchronization finishes.</span><a href="#/repository">View status</a></div>';
   }
   const message = state.repository?.backgroundSyncError;
   if (!message) return "";
@@ -992,8 +1034,10 @@ function openCollectionReviewDialog(type) {
       expectedRevision: assessment.reviewRevision || undefined
     };
     form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = true; });
+    const submit = form.querySelector('button[type="submit"]');
+    setButtonBusy(submit, true, "Saving…");
     try {
-      saveStatus.textContent = "Validating and saving…";
+      setLoadingContent(saveStatus, "Validating and saving…");
       const prefetch = await repositoryPrefetch;
       if (prefetch?.error) throw prefetch.error;
       const response = await localFetch("/api/collection-review", {
@@ -1002,14 +1046,15 @@ function openCollectionReviewDialog(type) {
         body: JSON.stringify({ ...payload, confirmed: true, prefetchToken: prefetch?.token })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
-      saveStatus.textContent = "Saved locally. Refreshing page…";
+      setLoadingContent(saveStatus, "Saved locally. Refreshing page…");
       applyMutationState(await response.json());
       dialog.close();
       render();
     } catch (requestError) {
-      saveStatus.textContent = "Not saved";
+      clearLoadingContent(saveStatus, "Not saved");
       error.textContent = requestError.message;
     } finally {
+      setButtonBusy(submit, false);
       form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = false; });
     }
   });
@@ -1920,8 +1965,7 @@ async function openObligationRuleActivation(ruleId) {
       const approvedByIds = [...form.querySelectorAll('input[name="approver"]:checked')].map(({ value }) => value);
       if (!approvedByIds.length) return void (error.textContent = "Select at least one approver.");
       const button = form.querySelector('button[type="submit"]');
-      button.disabled = true;
-      button.textContent = "Activating…";
+      setButtonBusy(button, true, "Activating…");
       error.textContent = "";
       try {
         const saved = await localFetch("/api/obligation-rule-activations", {
@@ -1942,8 +1986,7 @@ async function openObligationRuleActivation(ruleId) {
         render();
       } catch (caught) {
         error.textContent = caught.message;
-        button.disabled = false;
-        button.textContent = "Activate schedule";
+        setButtonBusy(button, false);
       }
     });
   } catch (error) {
@@ -2079,6 +2122,8 @@ function openObligationEventDialog(trigger) {
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
     form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = true; });
+    const submit = form.querySelector('button[type="submit"]');
+    setButtonBusy(submit, true, "Adding tasks…");
     try {
       const response = await localFetch("/api/obligation-events", {
         method: "POST",
@@ -2103,6 +2148,7 @@ function openObligationEventDialog(trigger) {
       history.replaceState(null, "", "#/stage/run");
       render();
     } catch (error) {
+      setButtonBusy(submit, false);
       form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = false; });
       form.querySelector(".dialog-error").textContent = error.message;
     }
@@ -2135,6 +2181,8 @@ function openExternalReviewerGovernanceDialog() {
     const error = dialog.querySelector(".dialog-error");
     error.textContent = "";
     form.querySelectorAll("button,input,textarea").forEach((control) => { control.disabled = true; });
+    const submit = form.querySelector('[data-preview-governance]');
+    setButtonBusy(submit, true, previewedPayload ? "Applying…" : "Preparing preview…");
     try {
       if (!previewedPayload) {
         const response = await localFetch("/api/external-reviewer-governance/preview", {
@@ -2161,6 +2209,8 @@ function openExternalReviewerGovernanceDialog() {
     } catch (requestError) {
       error.textContent = requestError.message;
     } finally {
+      setButtonBusy(submit, false);
+      submit.textContent = previewedPayload ? "Confirm and apply" : "Preview bundle";
       form.querySelectorAll("button,input,textarea").forEach((control) => { control.disabled = false; });
     }
   });
@@ -2197,6 +2247,8 @@ function openNextAuditCycleDialog(prior) {
     const error = dialog.querySelector(".dialog-error");
     error.textContent = "";
     form.querySelectorAll("button,input").forEach((control) => { control.disabled = true; });
+    const submit = form.querySelector("[data-preview-cycle]");
+    setButtonBusy(submit, true, previewedPayload ? "Creating…" : "Preparing preview…");
     try {
       if (!previewedPayload) {
         const response = await localFetch("/api/audit-cycle/preview", {
@@ -2225,6 +2277,8 @@ function openNextAuditCycleDialog(prior) {
     } catch (requestError) {
       error.textContent = requestError.message;
     } finally {
+      setButtonBusy(submit, false);
+      submit.textContent = previewedPayload ? "Confirm and create" : "Preview carry-forward";
       form.querySelectorAll("button,input").forEach((control) => { control.disabled = false; });
     }
   });
@@ -2314,6 +2368,8 @@ function openApplicabilityReviewDialog(type, entries) {
       ])
     };
     form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = true; });
+    const submit = form.querySelector("[data-preview-review]");
+    setButtonBusy(submit, true, previewedPayload ? "Saving…" : "Preparing preview…");
     try {
       if (!previewedPayload) {
         const response = await localFetch("/api/applicability-review/preview", {
@@ -2327,7 +2383,7 @@ function openApplicabilityReviewDialog(type, entries) {
         dialog.querySelector(".workflow-preview").innerHTML = '<strong>Review before saving</strong><p>' + preview.reviewedIds.length + ' ' + pluralize("decision", preview.reviewedIds.length) + ' will be saved with the reviewer, review date, and current scope recorded automatically.</p>';
         dialog.querySelector("[data-preview-review]").textContent = "Confirm and save";
       } else {
-        saveStatus.textContent = "Validating and saving…";
+        setLoadingContent(saveStatus, "Validating and saving…");
         const prefetch = await repositoryPrefetch;
         if (prefetch?.error) throw prefetch.error;
         const response = await localFetch("/api/applicability-review", {
@@ -2336,14 +2392,17 @@ function openApplicabilityReviewDialog(type, entries) {
           body: JSON.stringify({ ...previewedPayload, confirmed: true, prefetchToken: prefetch?.token })
         });
         if (!response.ok) throw new Error(await responseMessage(response));
-        saveStatus.textContent = "Saved locally. Refreshing page…";
+        setLoadingContent(saveStatus, "Saved locally. Refreshing page…");
         applyMutationState(await response.json());
         dialog.close();
         render();
       }
     } catch (requestError) {
+      clearLoadingContent(saveStatus, "Not saved");
       error.textContent = requestError.message;
     } finally {
+      setButtonBusy(submit, false);
+      submit.textContent = previewedPayload ? "Confirm and save" : "Preview decisions";
       form.querySelectorAll("button,input,select").forEach((control) => { control.disabled = false; });
     }
   });
@@ -2388,8 +2447,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
   main.querySelector("#initialize-audit-work")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;
     const error = main.querySelector(".audit-preparation-error");
-    button.disabled = true;
-    button.textContent = "Initializing…";
+    setButtonBusy(button, true, "Initializing…");
     error.textContent = "";
     try {
       const response = await localFetch("/api/audit-preparation", {
@@ -2402,8 +2460,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
       render();
     } catch (caught) {
       error.textContent = caught.message;
-      button.disabled = false;
-      button.textContent = "Initialize audit work";
+      setButtonBusy(button, false);
     }
   });
   main.querySelector("#packet-form").addEventListener("submit", async (event) => {
@@ -2412,8 +2469,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     if (!form.reportValidity()) return;
     const button = form.querySelector('button[type="submit"]');
     const error = main.querySelector(".dialog-error");
-    button.disabled = true;
-    button.textContent = "Generating…";
+    setButtonBusy(button, true, "Generating…");
     error.textContent = "";
     try {
       const response = await localFetch("/api/evidence-packet", {
@@ -2434,8 +2490,8 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     } catch (caught) {
       error.textContent = caught.message;
     } finally {
+      setButtonBusy(button, false);
       button.disabled = state.readOnly;
-      button.textContent = draft ? "Generate draft" : "Generate packet";
     }
   });
   if (latestPacketResult && latestPacketState === state && latestPacketResult.packet.audit?.id === selected?.id) {
@@ -2707,7 +2763,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const definition = state.model.resources[type];
   if (!entry || !definition) return renderNotFound(main);
   if (entry.detailsLoaded === false) {
-    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading" role="status">Loading record…</section></div>';
+    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading is-loading" role="status" aria-live="polite" aria-busy="true">' + loadingIndicator("Loading record…") + '</section></div>';
     loadResourceDetail(type, id);
     return;
   }
@@ -2779,8 +2835,10 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     ? '<section class="panel detail-history-panel"><div class="panel-head"><h3>File History</h3></div><div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div></section>'
     : "";
   const participationPanel = entry.historyLoaded === false
-    ? '<section class="panel detail-support-panel" role="status"><div class="panel-head"><h3>Participation</h3></div><p class="muted">Loading participation and file history…</p></section>'
-    : personParticipation(entry);
+    ? '<section class="panel detail-support-panel" role="status" aria-live="polite" aria-busy="true"><div class="panel-head"><h3>Participation</h3></div><p class="muted is-loading">' + loadingIndicator("Loading participation and file history…") + '</p></section>'
+    : entry.historyError
+      ? '<section class="panel detail-support-panel" role="status" aria-live="polite"><div class="panel-head"><h3>Participation</h3></div><p class="muted">Participation and file history are unavailable. Reload the record to try again.</p></section>'
+      : personParticipation(entry);
   const supportPanels = renderDetailSupport({
     hasRecordBody,
     workflowPanel: workflowGuidance({ type, id, title: "Next steps" }),
@@ -3007,8 +3065,8 @@ async function loadResourceHistory(type, id) {
   const key = (state.stateToken || "live") + "\0history\0" + type + "\0" + id;
   if (resourceDetailRequests.has(key)) return resourceDetailRequests.get(key);
   const request = (async () => {
+    const token = state.stateToken;
     try {
-      const token = state.stateToken;
       const tokenQuery = (token ? "?token=" + encodeURIComponent(token) + "&" : "?") + "history=only";
       const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
       if (response.status === 409 && token) {
@@ -3029,8 +3087,15 @@ async function loadResourceHistory(type, id) {
       entry.historyLoaded = true;
       const route = parseRoute();
       if (route.name === "detail" && route.type === type && route.id === id) render();
-    } catch {
-      // History and participation are supplemental. The record stays usable.
+    } catch (error) {
+      if (token && state.stateToken !== token) return;
+      const entry = state.resources.find(({ record }) => record.type === type && record.id === id);
+      if (entry) {
+        entry.historyLoaded = true;
+        entry.historyError = error.message;
+      }
+      const route = parseRoute();
+      if (route.name === "detail" && route.type === type && route.id === id) render();
     } finally {
       for (const [requestKey, pending] of resourceDetailRequests) {
         if (pending === request) resourceDetailRequests.delete(requestKey);
@@ -3423,8 +3488,8 @@ async function runRepositoryGitAction(action) {
     status.textContent = "";
     status.classList.remove("error");
   }
+  if (active) setButtonBusy(active, true, label);
   buttons.forEach((button) => { button.disabled = true; });
-  if (active) active.textContent = label;
   try {
     const response = await localFetch("/api/git/" + action, { method: "POST" });
     if (!response.ok) throw new Error(await responseMessage(response));
@@ -3440,8 +3505,8 @@ async function runRepositoryGitAction(action) {
         ? "Synchronized " + result.shortCommit + " with " + result.upstream + "."
         : "Pushed " + result.shortCommit + " to " + result.upstream + ".";
   } catch (cause) {
+    if (active) setButtonBusy(active, false);
     buttons.forEach((button, index) => { button.disabled = disabled[index]; });
-    if (active) active.textContent = action === "pull" ? "Check incoming commits" : action === "retry-sync" ? "Retry sync" : "Push";
     if (status) {
       status.textContent = cause.message;
       status.classList.add("error");
@@ -3467,8 +3532,10 @@ function openCommitDialog() {
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
     const button = form.querySelector('button[type="submit"]');
-    form.querySelectorAll("button,input").forEach((control) => { control.disabled = true; });
-    button.textContent = busyLabel;
+    const controls = [...form.querySelectorAll("button,input")];
+    const disabled = controls.map((control) => control.disabled);
+    setButtonBusy(button, true, busyLabel);
+    controls.forEach((control) => { control.disabled = true; });
     try {
       const response = await localFetch("/api/commit", {
         method: "POST",
@@ -3490,8 +3557,8 @@ function openCommitDialog() {
         status.classList.toggle("error", !result.pushed && !result.pushSkipped);
       }
     } catch (error) {
-      form.querySelectorAll("button,input").forEach((control) => { control.disabled = false; });
-      button.textContent = actionLabel;
+      setButtonBusy(button, false);
+      controls.forEach((control, index) => { control.disabled = disabled[index]; });
       form.querySelector(".dialog-error").textContent = error.message;
     }
   });
@@ -4072,9 +4139,11 @@ function setOnboardingBusy(busy, label = "") {
   onboardingBusy = busy;
   onboardingDialog.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = busy; });
   const next = onboardingDialog.querySelector('[data-onboarding="next"]');
-  if (next && label) next.textContent = label;
+  const draft = onboardingDialog.querySelector('[data-onboarding="draft"]');
   const skip = onboardingDialog.querySelector('[data-onboarding="skip"]');
-  if (skip && label && onboardingStep !== onboardingSteps().length - 1) skip.textContent = label;
+  const retry = onboardingDialog.querySelector(".onboarding-retry-sync");
+  const active = label === "Saving draft…" ? draft : label === "Skipping…" ? skip : label === "Retrying sync…" ? retry : next;
+  if (busy && active && label) setLoadingContent(active, label);
   if (busy && onboardingStep === onboardingSteps().length - 1) {
     onboardingStillWorkingTimer = setTimeout(() => {
       const status = onboardingDialog?.querySelector(".onboarding-save-status");
@@ -4754,12 +4823,8 @@ function wireStructuredObjectEditors(dialog) {
   dialog.querySelector("form").addEventListener("click", (event) => {
     const bind = event.target.closest("[data-bind-review-revisions]");
     if (bind) {
-      const previousLabel = bind.textContent;
       bindCurrentReviewRevisions(dialog, bind).catch((error) => {
         dialog.querySelector(".dialog-error").textContent = error.message;
-      }).finally(() => {
-        bind.disabled = false;
-        if (bind.textContent === "Binding…") bind.textContent = previousLabel;
       });
       return;
     }
@@ -4835,23 +4900,28 @@ async function bindCurrentReviewRevisions(dialog, button) {
     throw new Error("Select the retention schedule, Information Types, and operational scope before binding their current revisions.");
   }
   const ids = [...new Set(Object.values(selected).flat().concat(scheduleDocumentId, retentionUseReviewIds(dialog)).filter(Boolean))];
-  button.disabled = true;
-  button.textContent = "Binding…";
-  const query = ids.map((id) => "id=" + encodeURIComponent(id)).join("&");
-  const response = await localFetch("/api/review-revisions?" + query);
-  if (!response.ok) throw new Error(await responseMessage(response));
-  const { revisions } = await response.json();
-  const editor = button.closest(".string-map-editor");
-  const items = editor.querySelector(".string-map-items");
-  items.replaceChildren();
-  for (const [key, value] of Object.entries(revisions)) {
-    items.append(editor.querySelector("template").content.cloneNode(true));
-    const row = items.lastElementChild;
-    row.querySelector("[data-map-key]").value = key;
-    row.querySelector("[data-map-value]").value = value;
+  setButtonBusy(button, true, "Binding…");
+  let bound = false;
+  try {
+    const query = ids.map((id) => "id=" + encodeURIComponent(id)).join("&");
+    const response = await localFetch("/api/review-revisions?" + query);
+    if (!response.ok) throw new Error(await responseMessage(response));
+    const { revisions } = await response.json();
+    const editor = button.closest(".string-map-editor");
+    const items = editor.querySelector(".string-map-items");
+    items.replaceChildren();
+    for (const [key, value] of Object.entries(revisions)) {
+      items.append(editor.querySelector("template").content.cloneNode(true));
+      const row = items.lastElementChild;
+      row.querySelector("[data-map-key]").value = key;
+      row.querySelector("[data-map-value]").value = value;
+    }
+    bound = true;
+    dialog.querySelector(".dialog-error").textContent = "";
+  } finally {
+    setButtonBusy(button, false);
+    if (bound) button.textContent = "Refresh current revisions";
   }
-  button.textContent = "Refresh current revisions";
-  dialog.querySelector(".dialog-error").textContent = "";
 }
 
 function retentionUseReviewIds(dialog) {
@@ -5698,16 +5768,16 @@ function prefetchRepositoryForReview(status = null) {
   if (state.repository?.mode !== "trunk" || state.repository?.developmentOverride) {
     return Promise.resolve(null);
   }
-  if (status) status.textContent = "Checking repository…";
+  if (status) setLoadingContent(status, "Checking repository…");
   return fetch("/api/git/prefetch", { method: "POST" })
     .then(async (response) => {
       if (!response.ok) throw new Error(await responseMessage(response));
       const result = await response.json();
-      if (status) status.textContent = result.status === "checked" ? "Repository checked" : "Ready to save";
+      if (status) clearLoadingContent(status, result.status === "checked" ? "Repository checked" : "Ready to save");
       return result;
     })
     .catch((error) => {
-      if (status) status.textContent = "Repository check failed";
+      if (status) clearLoadingContent(status, "Repository check failed");
       return null;
     });
 }
@@ -5756,7 +5826,10 @@ function setMutationBusy(dialog, busy, label, idleLabel) {
   clearTimeout(dialog._stillWorkingTimer);
   dialog._stillWorkingTimer = null;
   dialog.dataset.mutationBusy = busy ? "true" : "false";
+  const button = dialog.querySelector("#save-record,#save-content,#activate-policy") || dialog.querySelector('button[type="submit"]');
+  if (busy && button) setButtonBusy(button, true, label);
   dialog.querySelectorAll("button,input,select,textarea").forEach((control) => {
+    if (control === button) return;
     if (busy) {
       control.dataset.mutationWasDisabled = control.disabled ? "true" : "false";
       control.disabled = true;
@@ -5765,13 +5838,15 @@ function setMutationBusy(dialog, busy, label, idleLabel) {
       delete control.dataset.mutationWasDisabled;
     }
   });
-  const button = dialog.querySelector("#save-record,#save-content,#activate-policy");
-  if (button) button.textContent = busy ? label : idleLabel;
+  if (!busy && button) {
+    setButtonBusy(button, false);
+    if (idleLabel) button.textContent = idleLabel;
+  }
   const status = dialog.querySelector(".save-status");
-  if (status) status.textContent = "";
+  if (status) clearLoadingContent(status);
   if (busy) {
     dialog._stillWorkingTimer = setTimeout(() => {
-      if (status) status.textContent = "Still working. Recalculating readiness and repository state.";
+      if (status) setLoadingContent(status, "Still working. Recalculating readiness and repository state.");
     }, 1_500);
   }
 }
@@ -5815,6 +5890,8 @@ async function responseMessage(response) {
   try { return JSON.parse(source).error || source; } catch { return source; }
 }
 async function localFetch(url, options) {
+  const requestProgramId = state?.selectedProgramId || null;
+  const requestProgramGeneration = programSelectionGeneration;
   const requestUrl = new URL(url, location.origin);
   if (state?.selectedProgramId && !requestUrl.searchParams.has("programId")) {
     requestUrl.searchParams.set("programId", state.selectedProgramId);
@@ -5837,17 +5914,24 @@ async function localFetch(url, options) {
   const chip = synchronizing ? document.querySelector(".repo-chip") : null;
   const previousChip = chip?.innerHTML;
   let repositoryRefreshed = false;
-  if (chip) chip.innerHTML = '<span class="status-dot neutral"></span>Syncing';
+  if (chip) {
+    chip.classList.add("is-loading");
+    chip.setAttribute("aria-busy", "true");
+    chip.innerHTML = loadingIndicator("Syncing");
+  }
   try {
     const response = await fetch(scopedUrl, requestOptions);
     if (synchronizing && !response.ok) {
       try {
-        const stateResponse = await fetch("/api/state?programId=" + encodeURIComponent(state.selectedProgramId || ""));
+        const stateResponse = await fetch("/api/state?programId=" + encodeURIComponent(requestProgramId || ""));
         if (stateResponse.ok) {
-          state = await stateResponse.json();
+          const refreshedState = normalizeAppState(await stateResponse.json());
+          if (programSelectionGeneration !== requestProgramGeneration || (state?.selectedProgramId || null) !== requestProgramId) return response;
+          state = refreshedState;
+          repositoryRefreshed = true;
+          scheduleRepositorySyncPoll();
           if (chip?.isConnected) {
             chip.innerHTML = '<span class="status-dot ' + repositoryStatusTone(state.repository.status) + '"></span>' + esc(state.repository.label);
-            repositoryRefreshed = true;
           }
         }
       } catch {
@@ -5858,7 +5942,11 @@ async function localFetch(url, options) {
   } catch {
     throw new Error("The filegrc server is unavailable. Restart npm run serve, or pnpm dev in the monorepo, and try again.");
   } finally {
-    if (!repositoryRefreshed && chip?.isConnected && previousChip) chip.innerHTML = previousChip;
+    if (chip?.isConnected) {
+      chip.classList.remove("is-loading");
+      chip.removeAttribute("aria-busy");
+      if (!repositoryRefreshed && previousChip) chip.innerHTML = previousChip;
+    }
   }
 }
 async function fetchJson(url, options) { const response = await localFetch(url, options); if (!response.ok) throw new Error(await responseMessage(response)); return response.json(); }
@@ -5867,9 +5955,11 @@ function esc(value) { return String(value ?? "").replace(/[&<>"']/g, (character)
 
 export const APP_STYLES = String.raw`
 :root{--ink:#151827;--muted:#5d6475;--line:#dfe3ef;--paper:#f6f7fb;--panel:#fff;--accent:#0000a5;--accent-soft:#eef1ff;--accent-light:#8aa1ff;--focus:#0000e0;--amber:#8a5200;--red:#a13a31;--sidebar:linear-gradient(135deg,#000070 0%,#000035 60%);--primary-gradient:linear-gradient(135deg,#000070 0%,#000035 60%);--surface-soft:#f2f4fa;--surface-muted:#eceff7;--field:#fff;--field-readonly:#eef0f6;--code-bg:#10162b;--code-ink:#e8ebff;--shadow:0 8px 28px rgba(0,0,53,.08);color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none}
-*{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#eef1ff;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:block;width:39px;height:39px;border-radius:10px}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:18px}.brand small{font-size:13.2px;color:#c5cae2;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:15.6px;color:#d5d9ed}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#202066;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#b4bbdc;text-transform:uppercase;letter-spacing:.11em;font-size:12px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none}.chevron:before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transform-origin:center;transition:transform .15s}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:12px;color:#b8bed7}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#000024;border-top:1px solid #34345f;color:#cbd0e5;font-size:13.2px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#9aabff}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:20.4px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:10.8px;margin:0}.search{height:39px;max-width:240px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4fa;border:1px solid #dfe3ef;border-radius:8px;padding:0 10px;color:#5d6475}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:15.6px}.search kbd{background:#fff;border:1px solid #dfe3ef;border-radius:4px;padding:1px 5px;font-size:12px}.mobile-sidebar-search{display:none}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#f8f9ff;background:linear-gradient(120deg,#000070,#000035);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(138,161,255,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#cbd3ff}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:33.6px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#dde1f4;font-size:15.6px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#e6e8f7;border-left:1px solid #6874ab;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:30px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:12px;color:#697184}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:16.8px;margin:4px 0 0}.panel-head>a{font-size:13.2px;color:var(--accent);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:36px;font-weight:500;display:block}.progress-number span{font-size:12px;color:var(--muted)}.progress{height:9px;background:#eceff7;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#0000a5,var(--accent-light));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:10.8px;text-transform:uppercase;letter-spacing:.08em;color:#5d6475}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #e8ebf3;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:12px;color:var(--accent);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:13.2px}.due-list small{font-size:10.8px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:12px}.resource-bars i{height:5px;background:#e8ebf3;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#6676dd;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f2f4fa;border-radius:6px;font-size:12px}.catalog a:hover{background:var(--accent-soft)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:37.2px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:15.6px;margin:0}.button{border:1px solid #d0d5e3;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:14.4px;font-weight:650}.button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:14.4px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:12px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:13.2px}.record-table th{background:#f2f4fa;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:10.8px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #e8ebf3;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:10.8px;color:#5d6475}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#6a7181;margin-top:3px}.record-table td[data-label="Description"]{min-width:260px;max-width:520px;color:var(--muted);line-height:1.45}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#eceff7;padding:3px 7px;font-size:10.8px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:13.2px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:12px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:10.8px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:34.8px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:27.6px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:18px;margin-top:1.7em}.markdown p,.markdown li{font-size:15.6px;line-height:1.65;color:#272c3b}.markdown code{background:#eef0f6;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#10162b;color:#e8ebff;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--accent-light);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:13.2px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #e8ebf3;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;color:#5d6475}.metadata dd{margin:0;font-size:13.2px;min-width:0}.compact-json{white-space:pre-wrap;font-size:10.8px}.git-panel>code{font-size:10.8px;word-break:break-all}.git-panel p{font-size:12px;color:var(--muted)}.relation{color:var(--accent);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #e8ebf3}.history>div:first-child{border-top:0}.history code{font-size:10.8px;color:var(--accent)}.history strong,.history small{display:block}.history strong{font-size:12px}.history small{font-size:10.8px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#697184;text-align:center;font-size:13.2px;background:#f4f5fa;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:13.2px;overflow-wrap:anywhere}.diagnostics code{font-size:10.8px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(0,0,24,.28)}dialog::backdrop{background:rgba(0,0,24,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eceff7;width:32px;height:32px;border-radius:50%;font-size:26.4px;cursor:pointer}.editor form>p{font-size:13.2px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#10162b;color:#e8ebff;padding:15px;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:13.2px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#737a8b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+*{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--paper)}button,input,select,textarea{font:inherit}a{color:inherit}@keyframes spinner-rotate{to{transform:rotate(360deg)}}.spinner{display:inline-block;flex:0 0 auto;width:1em;height:1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spinner-rotate .7s linear infinite}.spinner-large{width:30px;height:30px;border-width:3px}.loading,.detail-loading,.muted.is-loading,.save-status.is-loading,.onboarding-save-status.is-loading,.button.is-loading{display:flex;align-items:center;gap:9px}.loading{min-height:100vh;justify-content:center;color:var(--muted)}.state-loading{display:flex;align-items:flex-start;gap:16px}.state-loading>.spinner{margin-top:5px;color:var(--accent)}.state-loading h2{margin:5px 0 8px}.state-loading p:last-child{margin:0;color:var(--muted)}.skip-link{position:fixed;left:1rem;top:-4rem;z-index:100;padding:.7rem 1rem;background:#fff}.skip-link:focus{top:1rem}.loading,.fatal{padding:3rem}.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:248px;background:var(--sidebar);color:#eef1ff;padding:25px 18px 18px;overflow:auto;z-index:20}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin:0 7px 27px}.brand .mark{display:block;width:39px;height:39px;border-radius:10px}.brand strong,.brand small{display:block}.brand strong{color:#fff;font-size:18px}.brand small{font-size:13.2px;color:#c5cae2;margin-top:2px}.nav-home,.nav-items a{display:flex;justify-content:space-between;align-items:center;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:15.6px;color:#d5d9ed}.nav-home{margin-bottom:9px}.nav-home:hover,.nav-items a:hover,.nav-home.current,.nav-items a.current{background:#202066;color:#fff}.nav-heading{width:100%;border:0;background:none;color:#b4bbdc;text-transform:uppercase;letter-spacing:.11em;font-size:12px;font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:13px 10px 5px;cursor:pointer}.chevron{display:grid;place-items:center;width:14px;height:22px;font-size:0;line-height:1;transform:none}.chevron:before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transform-origin:center;transition:transform .15s}.nav-items{display:none}.nav-group.open .nav-items{display:block}.nav-items small{font-size:12px;color:#b8bed7}.side-foot{position:sticky;bottom:-18px;margin:25px -18px -18px;padding:17px 25px;background:#000024;border-top:1px solid #34345f;color:#cbd0e5;font-size:13.2px;display:flex;align-items:center;gap:8px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa39f;display:inline-block;flex:0 0 auto}.status-dot.good,.badge.good{background:#6abf8c}.status-dot.warn,.badge.warn{background:#e9a445}.status-dot.bad,.badge.bad{background:#dc6c5d}.status-dot.neutral{background:#9aabff}.workspace{grid-column:2;min-width:0}.topbar{height:86px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:23px;position:sticky;top:0;z-index:10}.topbar>div:first-of-type{min-width:190px}.topbar h1{font-size:20.4px;line-height:1.1;margin:3px 0 0}.eyebrow,.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:760;font-size:10.8px;margin:0}.search{height:39px;max-width:240px;flex:1;margin-left:auto;display:flex;align-items:center;gap:9px;background:#f2f4fa;border:1px solid #dfe3ef;border-radius:8px;padding:0 10px;color:#5d6475}.search input{border:0;outline:0;background:none;min-width:0;flex:1;font-size:15.6px}.search kbd{background:#fff;border:1px solid #dfe3ef;border-radius:4px;padding:1px 5px;font-size:12px}.mobile-sidebar-search{display:none}.repo-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.mobile-nav{display:none}.page{padding:30px 34px 70px;max-width:1510px;margin:auto}.hero{color:#f8f9ff;background:linear-gradient(120deg,#000070,#000035);border-radius:13px;padding:28px 31px;display:flex;justify-content:space-between;align-items:end;min-height:158px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:270px;height:270px;border:55px solid rgba(138,161,255,.1);border-radius:50%;right:-80px;top:-145px}.hero .kicker{color:#cbd3ff}.hero h2{font-family:Georgia,serif;font-weight:500;font-size:33.6px;margin:10px 0 8px;letter-spacing:-.02em}.hero p:not(.kicker){margin:0;color:#dde1f4;font-size:15.6px;max-width:650px}.hero-meta{display:flex;gap:15px;position:relative;z-index:1}.hero-meta span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#e6e8f7;border-left:1px solid #6874ab;padding-left:15px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.metric-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:7px}.metric>strong{display:block;font-family:Georgia,serif;font-size:30px;font-weight:500;margin:8px 0 2px}.metric>small{font-size:12px;color:#697184}.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.panel{background:#fff;border:1px solid var(--line);border-radius:11px;padding:21px;min-width:0;box-shadow:0 2px 8px rgba(21,40,33,.025)}.span-2{grid-column:span 2}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{font-size:16.8px;margin:4px 0 0}.panel-head>a{font-size:13.2px;color:var(--accent);font-weight:700}.audit-progress{display:grid;grid-template-columns:105px 1fr;gap:11px 20px;align-items:end}.progress-number strong{font-family:Georgia,serif;font-size:36px;font-weight:500;display:block}.progress-number span{font-size:12px;color:var(--muted)}.progress{height:9px;background:#eceff7;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,#0000a5,var(--accent-light));border-radius:9px}.progress-meta{grid-column:2;display:flex;justify-content:space-between;font-size:10.8px;text-transform:uppercase;letter-spacing:.08em;color:#5d6475}.due-list{display:grid}.due-list a{display:grid;grid-template-columns:60px 1fr;text-decoration:none;border-top:1px solid #e8ebf3;padding:10px 0;align-items:center}.due-list a:first-child{border:0;padding-top:0}.due-list time{font-size:12px;color:var(--accent);font-weight:750}.due-list strong,.due-list small{display:block}.due-list strong{font-size:13.2px}.due-list small{font-size:10.8px;color:var(--muted);margin-top:3px}.resource-bars{display:grid;gap:11px}.resource-bars a{display:grid;grid-template-columns:105px 1fr 20px;gap:9px;align-items:center;text-decoration:none;font-size:12px}.resource-bars i{height:5px;background:#e8ebf3;border-radius:5px;overflow:hidden}.resource-bars b{display:block;height:100%;background:#6676dd;border-radius:5px}.resource-bars strong{text-align:right}.catalog{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.catalog a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 11px;background:#f2f4fa;border-radius:6px;font-size:12px}.catalog a:hover{background:var(--accent-soft)}.page-intro{display:flex;justify-content:space-between;align-items:end;margin-bottom:25px}.page-intro h2,.detail-head h2{font-family:Georgia,serif;font-size:37.2px;font-weight:500;margin:7px 0}.page-intro p:not(.kicker){color:var(--muted);max-width:700px;font-size:15.6px;margin:0}.button{border:1px solid #d0d5e3;background:#fff;border-radius:7px;padding:9px 13px;cursor:pointer;font-size:14.4px;font-weight:650}.button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.button.danger{color:var(--red)}.list-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px}.list-tools label{flex:1}.list-tools input,.list-tools select{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;padding:10px 12px;font-size:14.4px}.list-tools select{width:auto}.list-tools>span{color:var(--muted);font-size:12px}.record-table-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:auto}.record-table{width:100%;border-collapse:collapse;font-size:13.2px}.record-table th{background:#f2f4fa;text-align:left;text-transform:uppercase;letter-spacing:.08em;color:#75817b;font-size:10.8px;padding:11px 14px;border-bottom:1px solid var(--line)}.record-table td{padding:13px 14px;border-bottom:1px solid #e8ebf3;vertical-align:top}.record-table tr:last-child td{border-bottom:0}.record-table code{font-size:10.8px;color:#5d6475}.record-title{display:block;color:var(--ink);font-weight:700;text-decoration:none}.record-table td>small{display:block;color:#6a7181;margin-top:3px}.record-table td[data-label="Description"]{min-width:260px;max-width:520px;color:var(--muted);line-height:1.45}.badge,.tag,.type-pill{display:inline-block;border-radius:99px;background:#eceff7;padding:3px 7px;font-size:10.8px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tag{text-transform:none;margin:1px}.badge.status-active,.badge.status-approved,.badge.status-complete,.badge.status-passed,.badge.status-accepted{background:#ddefe5;color:#176143}.badge.status-open,.badge.status-high,.badge.status-critical,.badge.status-failed{background:#f5ded9;color:#8d352c}.badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#f7e9cf;color:#855717}.breadcrumbs{display:flex;gap:8px;color:var(--muted);font-size:13.2px;margin-bottom:20px}.detail-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:22px}.detail-head h2{margin-bottom:4px}.detail-head>div>code{font-size:12px;color:var(--muted)}.actions{display:flex;gap:7px}.detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:14px}.detail-grid aside{display:grid;gap:14px;align-content:start}.detail-main{padding:29px}.content-label{color:#75817b;text-transform:uppercase;letter-spacing:.08em;font-size:10.8px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:23px}.markdown{max-width:790px}.markdown h1{font-family:Georgia,serif;font-size:34.8px;font-weight:500}.markdown h2{font-family:Georgia,serif;font-size:27.6px;font-weight:500;margin-top:1.8em}.markdown h3{font-size:18px;margin-top:1.7em}.markdown p,.markdown li{font-size:15.6px;line-height:1.65;color:#272c3b}.markdown code{background:#eef0f6;border-radius:3px;padding:1px 4px}.markdown pre{padding:15px;background:#10162b;color:#e8ebff;border-radius:7px;overflow:auto}.markdown blockquote{border-left:3px solid var(--accent-light);padding:4px 15px;color:var(--muted);margin-left:0}.table-wrap{overflow:auto}.markdown table{border-collapse:collapse;width:100%;font-size:13.2px}.markdown th,.markdown td{border:1px solid var(--line);padding:8px;text-align:left}.metadata{margin:0}.metadata>div{display:grid;grid-template-columns:105px 1fr;gap:10px;border-top:1px solid #e8ebf3;padding:10px 0}.metadata>div:first-child{border-top:0;padding-top:0}.metadata dt{font-size:10.8px;text-transform:uppercase;letter-spacing:.06em;color:#5d6475}.metadata dd{margin:0;font-size:13.2px;min-width:0}.compact-json{white-space:pre-wrap;font-size:10.8px}.git-panel>code{font-size:10.8px;word-break:break-all}.git-panel p{font-size:12px;color:var(--muted)}.relation{color:var(--accent);text-decoration:none}.history{display:grid}.history>div{display:grid;grid-template-columns:60px 1fr;gap:8px;padding:8px 0;border-top:1px solid #e8ebf3}.history>div:first-child{border-top:0}.history code{font-size:10.8px;color:var(--accent)}.history strong,.history small{display:block}.history strong{font-size:12px}.history small{font-size:10.8px;color:var(--muted);margin-top:2px}.empty{padding:25px;color:#697184;text-align:center;font-size:13.2px;background:#f4f5fa;border-radius:7px}.changes{padding-left:18px}.changes li{margin:8px 0}.diagnostics>div{display:grid;grid-template-columns:58px minmax(120px,180px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid var(--line);padding:10px 0}.diagnostics p{margin:0;font-size:13.2px;overflow-wrap:anywhere}.diagnostics code{font-size:10.8px;overflow-wrap:anywhere}.editor,.search-results{width:min(760px,calc(100vw - 30px));border:0;border-radius:12px;padding:0;box-shadow:0 25px 80px rgba(0,0,24,.28)}dialog::backdrop{background:rgba(0,0,24,.55)}.editor form,.search-results{padding:23px}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-family:Georgia,serif;font-weight:500;margin:5px 0 0}.icon-button{border:0;background:#eceff7;width:32px;height:32px;border-radius:50%;font-size:26.4px;cursor:pointer}.editor form>p{font-size:13.2px;color:var(--muted)}.editor textarea{width:100%;height:440px;border:1px solid var(--line);border-radius:7px;background:#10162b;color:#e8ebff;padding:15px;font:13.2px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2px}.dialog-actions{display:flex;justify-content:end;gap:8px;margin-top:14px}.dialog-error{color:var(--red);font-size:13.2px;min-height:18px;margin-top:7px}.result-list{display:grid;margin-top:17px;max-height:60vh;overflow:auto}.result-list a{display:block;text-decoration:none;padding:11px;border-top:1px solid var(--line)}.result-list strong,.result-list small{display:block}.result-list small{color:var(--muted);margin-top:3px}.muted{color:#737a8b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .topbar-readiness{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;flex:0 1 220px;min-width:155px;padding:5px 8px;border:1px solid transparent;border-radius:8px;color:var(--ink);text-decoration:none}.topbar-readiness:hover{border-color:var(--accent-light);background:var(--accent-soft)}.topbar-readiness-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}.topbar-readiness-copy>span{overflow:hidden;color:var(--muted);font-size:9.6px;font-weight:700;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}.topbar-readiness-copy>strong{font-size:10.8px;line-height:1}.topbar-readiness>.progress{width:100%;height:5px}.topbar-status{display:flex;flex:1 1 auto;min-width:0;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto}.program-select select{max-width:180px;border:1px solid var(--line);border-radius:8px;padding:9px 28px 9px 10px;background:var(--surface);color:var(--ink);font:inherit}.topbar-status .topbar-search{flex:0 1 240px;width:240px;min-width:140px;margin-left:0}.repo-chip,.validation-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:13.2px;white-space:nowrap;text-decoration:none}.repo-chip:hover,.validation-chip:hover{color:var(--ink);border-color:var(--accent-light)}
-.metadata>div{grid-template-columns:minmax(140px,1fr) minmax(0,2.5fr)}.metadata dt{min-width:0;overflow-wrap:anywhere}
+.metadata>div{grid-template-columns:minmax(140px,1fr) minmax(0,2.5fr)}.metadata dt{min-width:0;overflow-wrap:anywhere}.editor textarea{tab-size:2}
+.is-loading>.spinner,.state-loading>.spinner{align-self:center;margin-top:0}.state-loading,.repository-sync-alert.is-loading{align-items:center}.topbar-readiness.is-loading .topbar-readiness-copy>strong{display:flex;align-items:center;justify-content:center}
+@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
 .audit-progress-empty{padding:11px 13px;border-radius:8px;background:var(--surface-soft)}.audit-progress-empty strong,.audit-progress-empty span{display:block}.audit-progress-empty strong{font-size:13.2px}.audit-progress-empty span{margin-top:4px;color:var(--muted);font-size:10.8px}
 .icon-button{position:relative;display:grid;place-items:center;padding:0;color:var(--ink);font-size:0}.icon-button:before,.icon-button:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.icon-button:after{transform:rotate(-45deg)}
 html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(0,1fr);height:100vh;min-height:0}.sidebar{display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:contain}.workspace{height:100vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
