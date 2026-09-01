@@ -1,0 +1,339 @@
+---
+title: "SOC 2 Recurring Compliance Tasks: Build the Right Schedule"
+description: "Build a SOC 2 compliance schedule from approved policies, controls, risks, and commitments, with owners, deadlines, evidence, and review."
+publishedDate: "2026-09-01"
+lastMod: "2026-09-01"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 recurring compliance tasks",
+    "SOC 2 compliance schedule",
+    "SOC 2 compliance calendar",
+    "ongoing SOC 2 compliance",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc turns approved schedules into owned work with clear windows, completion records, evidence, and review."
+faqs:
+  - question: "What are recurring SOC 2 compliance tasks?"
+    answer: "Recurring SOC 2 compliance tasks are control activities that management schedules more than once, such as access reviews, vendor reviews, risk assessments, policy reviews, training, backup reviews, vulnerability work, or management monitoring. The exact set and cadence should come from the organization's scope, approved policies, controls, risks, commitments, and examination plan."
+  - question: "Does SOC 2 require a monthly or quarterly compliance calendar?"
+    answer: "No universal monthly or quarterly calendar applies to every SOC 2 program. The Trust Services Criteria state outcomes for controls, while management designs the controls and their timing for its system. A policy, customer commitment, risk decision, or control design may create a specific cadence, so record the source and follow it consistently."
+  - question: "How should a startup choose the frequency for a SOC 2 task?"
+    answer: "Start with the approved source that creates the work, then consider the control objective, rate of change, risk, system behavior, customer commitments, staffing, and the planned examination period. Record the reason for the frequency and have the responsible authority approve it. Confirm the design with the CPA firm before relying on it for an examination."
+  - question: "What evidence should each recurring task keep?"
+    answer: "Keep the scheduled window, scope, source population or inputs, performer, actual completion date, result, reviewer, exceptions, follow-up, and linked source evidence. The useful artifact depends on the activity, but it should prove what occurred for the complete period or population rather than only show that someone checked a box."
+  - question: "How do recurring tasks affect a SOC 2 Type 2 examination?"
+    answer: "A Type 2 examination covers control operation over a period, so missing, late, or unsupported occurrences can matter. Management should preserve every applicable occurrence, its source population when relevant, dated proof, exceptions, and follow-up across the exact period. The CPA firm decides its testing approach and whether the evidence is sufficient."
+  - question: "Does filegrc perform recurring controls automatically?"
+    answer: "No. filegrc calculates dated work from approved obligation rules, validates completion records, and links evidence in Git. Identity, cloud, ticketing, training, backup, monitoring, and other operating systems still perform the controls and produce authoritative source evidence."
+furtherReading:
+  - text: "Plan a practical SOC 2 timeline"
+    url: "/blogs/soc-2-timeline-startups"
+  - text: "Compare SOC 2 Type 1 and Type 2 reports"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Prepare complete SOC 2 audit populations"
+    url: "/blogs/soc-2-audit-populations"
+  - text: "Collect useful SOC 2 evidence"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 recurring compliance tasks should come from your approved program, not
+from a universal internet calendar. For each task, record the rule that creates
+it, the owner, scope, cadence, allowed completion window, first overdue date,
+required proof, and reviewer. Keep calendar work separate from event-driven
+work, then preserve one completion record for every applicable occurrence.
+
+## TL;DR
+
+- Build the schedule from policies, controls, risks, commitments, and the
+  planned examination, not a generic monthly list.
+- Give every task a source, owner, scope, recurrence rule, completion window,
+  overdue cutoff, proof requirement, and reviewer.
+- Separate calendar tasks from work triggered by incidents, workforce changes,
+  system changes, and other events.
+- Keep the complete source population when one occurrence reviews many items,
+  including a sourced count of zero.
+- Record late, missed, or failed work honestly. Do not backfill a clean history.
+- Review the schedule when the system or control design changes.
+
+## There is no universal SOC 2 compliance calendar
+
+The
+[AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide criteria for evaluating controls over security and any other selected
+Trust Services Categories. Management designs and operates the controls for its
+system. The criteria do not publish one list of tasks that every company must
+run monthly, quarterly, or annually.
+
+That means a copied calendar can create two problems. It may schedule work your
+control design does not require, which wastes time and can create unsupported
+claims. It may also omit work that your own policy, customer contract, risk
+decision, system, or report scope does require.
+
+Use public control catalogs as design references, not as substitutes for your
+approved program. For example,
+[NIST SP 800-53 Revision 5](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)
+describes flexible, customizable controls tied to organizational risk and
+requirements. It is not a SOC 2 requirement. Its organization-defined timing
+is a useful reminder that the frequency needs a documented source and reason.
+
+A good schedule lets an engineer, manager, or reviewer answer:
+
+1. What approved fact requires this work?
+2. Which systems, people, vendors, controls, or records are in scope?
+3. Who owns the queue item and who reviews the result?
+4. When may work start, when is it due, and when does it become overdue?
+5. What complete input set or population must the performer use?
+6. Which record proves the result, including exceptions and follow-up?
+
+The [SOC 2 compliance checklist for startups](/blogs/soc-2-compliance-checklist-startups)
+covers the full path to a report. This guide focuses on the repeating operating
+work that begins after management has approved and implemented the program.
+
+## Start with the source of each task
+
+Do not begin with a row named “quarterly access review.” Begin with the approved
+rule that says which access must be reviewed, by whom, at what frequency, and
+against which source. Then create the scheduled task from that rule.
+
+| Possible source     | What it may decide                                                        |
+| ------------------- | ------------------------------------------------------------------------- |
+| Policy              | Required outcome, accountable role, timing, escalation, or review trigger |
+| Control             | Operating method, scope, performer, reviewer, and proof                   |
+| Risk decision       | Tighter timing, extra review, or a risk-based monitoring task             |
+| Customer commitment | Contracted frequency, deadline, notice, or reporting work                 |
+| Governed plan       | Exercises, tests, reviews, or maintenance required by the plan            |
+| Examination plan    | Period boundaries, population needs, and fieldwork preparation            |
+
+Store the source relationship with the schedule. If the frequency later
+changes, a reviewer can inspect why it changed and which approved rule now
+governs the work.
+
+A source can also say that work is not yet active. A draft policy should not
+quietly create completed operating history. Configure the schedule while the
+control is being implemented, but start its occurrences only when `obligations
+--json` reports the Obligation as accepted. That gate checks its active rule and
+current owner, active and effective governing Policies, required program
+Documents and Training, and an implemented linked Control when the Obligation
+names Controls.
+
+The [SOC 2 policy template guide](/blogs/soc-2-policy-templates-startups)
+explains how to tailor policy rules, bind approval to the exact text, and avoid
+promising work the company does not perform.
+
+## Choose the frequency from the control
+
+Frequency is part of control design. Pick it after reviewing how often the
+underlying state changes, how quickly a bad state could cause harm, how the
+source system works, and what management has promised.
+
+For each candidate task, consider:
+
+- the control objective and the risk it addresses;
+- the number and rate of changes in the covered population;
+- whether another control detects the same failure sooner;
+- the time needed to collect, review, and correct the work;
+- customer, legal, policy, or contractual timing that applies;
+- whether the planned Type 2 period will contain enough real operation to
+  describe and examine the control as designed; and
+- the people and source access required to perform and review it.
+
+A fast-changing privileged-access population may need more frequent review
+than a stable, low-risk inventory. An annual policy review may still need an
+earlier event-triggered review after a material system or commitment change.
+The resulting cadence is a management decision, so record the rationale and
+have the responsible authority approve it. Confirm the control design with the
+CPA firm before the examination period.
+
+Avoid inventing a precise cadence only because a search result uses it. “Run
+every quarter” sounds concrete, but it is weak when no approved source explains
+why that timing fits the system.
+
+## Define an allowed completion window
+
+A recurrence date alone leaves the performer guessing. Every task needs an
+allowed window that makes three boundaries clear:
+
+- when work may begin;
+- when it is due; and
+- the first date or timestamp on which it is overdue.
+
+Suppose management approves a monthly review anchored to the first day of each
+month. The rule might allow work to start on the first, require completion by
+the fifth, and mark it overdue on the sixth. Those dates are different facts.
+Finishing on the fourth is on time. Finishing on the seventh is a late result,
+even if the reviewer later accepts the work.
+
+Use dates for day-based schedules and timestamps with a timezone when a rule is
+measured in hours. Keep scheduled timing separate from actual completion. A
+commit timestamp can show when a file changed, but it does not replace the
+domain date on which the activity occurred or was reviewed.
+
+The first occurrence should start no earlier than the latest applicable
+recurrence anchor, policy effective date, or required document effective date.
+Never backdate an approved rule to make a late program appear complete.
+
+## Keep calendar work and event work separate
+
+Some control work belongs on a calendar. Other work exists only because a real
+event occurred.
+
+| Calendar occurrence                  | Event-driven occurrence                       |
+| ------------------------------------ | --------------------------------------------- |
+| Access review for a fixed period     | Worker start, role change, or departure       |
+| Vendor review at an approved cadence | New vendor or material vendor change          |
+| Policy review on its planned date    | Material policy, system, or commitment change |
+| Scheduled recovery exercise          | Incident or continuity event                  |
+| Periodic management control test     | Finding, exception, or remediation trigger    |
+
+Putting event work on a monthly calendar can hide the link to the event and its
+deadline. A departure task may be due within hours of the source event, not at
+the end of the month. An incident may require a checklist based on severity,
+affected systems, and exact occurrence time.
+
+Create one event record when the trigger occurs, then generate the applicable
+tasks from the approved event rules. Keep the event, subjects, required
+actions, owners, deadlines, evidence, and final review connected. The
+[SOC 2 onboarding and offboarding checklist](/blogs/soc-2-onboarding-offboarding-checklist)
+shows this pattern for workforce changes.
+
+## Use a schedule that matches the activity
+
+A startup's recurring task set often includes some of the activities below.
+Treat the examples as prompts. Add one only when an approved source makes it
+applicable.
+
+| Activity                   | Scope decision to make                                      | Completion record should show                              |
+| -------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Access review              | Systems, accounts, roles, privileges, and period            | Population, reviewer decisions, removals, exceptions       |
+| Vendor review              | Covered vendor, services, data, risk, and review basis      | Sources reviewed, decision, conditions, follow-up          |
+| Risk assessment            | Systems, threats, commitments, changes, and selected scope  | Method, participants, results, treatments, approval        |
+| Policy review              | Exact policy revision and change triggers                   | Reviewer, inputs considered, decision, approval if changed |
+| Training                   | Audience, approved content revision, assignment, and window | Complete roster, completions, overdue people, follow-up    |
+| Recovery exercise          | Plan, scenario, systems, objectives, and participants       | Actual result, observations, gaps, corrective work         |
+| Backup review or test      | Covered assets, source system, period, and test method      | Source output, test result, failures, remediation          |
+| Vulnerability work         | Assets, scanners or sources, severity rules, and exclusions | Fixed results, triage, due remediation, accepted risk      |
+| Control monitoring or test | Control, objective, period, population, and method          | Procedure, evidence, result, exceptions, review            |
+
+The [SOC 2 controls guide](/blogs/soc-2-controls-startups) explains how to
+connect each activity to a real control, scope, procedure, and evidence source.
+
+Do not make every member of a reviewed population its own scheduled task. When
+one owner, window, population rule, and reconciliation conclusion govern the
+work, use one occurrence and keep member-level decisions and proof inside it.
+Split the work only when a member needs a separate owner, deadline, conclusion,
+or follow-up lifecycle.
+
+## Preserve the complete input set
+
+A recurring task can look complete while covering only the easiest items. Save
+the full source set used for the occurrence when the activity reviews a
+population.
+
+For an access review, record the systems, period, query or report settings,
+timezone, extraction time, item count, exclusions, and completeness and
+accuracy checks. Link the fixed export through an evidence record, then record
+the review decision for every member. Apply the same discipline to vendors,
+changes, training assignments, vulnerabilities, backups, or other repeated
+sets.
+
+A count of zero is still a result. Preserve the source query, filters, time,
+zero-row output or report, and reconciliation. Do not mark a period “not
+applicable” merely because no item appeared. The rule may have remained active
+and the correct population may simply be empty.
+
+During a Type 2 examination, management may need a formal audit population for
+a repeated control. Build that record for the exact engagement and period. The
+CPA firm chooses its own testing and sampling approach.
+
+## Record what actually happened
+
+One completed occurrence should state:
+
+1. The obligation and approved rule revision.
+2. The allowed start, due, and overdue boundaries.
+3. The actual scope and source population or other inputs.
+4. The person who performed the work and the completion date.
+5. The result and every exception or non-applicable member decision.
+6. The linked source evidence.
+7. The person who reviewed the work and the review date.
+8. Any assigned follow-up, owner, deadline, and completion proof.
+
+A checked calendar cell proves little by itself. The completion record should
+make the result reviewable without copying secrets, confidential reports, or
+unnecessary personal data into Git. Keep sensitive source material in an
+approved evidence system when repository access and retention do not fit, then
+link a safe reference and the metadata needed to identify it.
+
+Late work should remain late. Record when it finished, explain the exception,
+and assign corrective action when needed. Do not move the due date after the
+fact or create a backdated completion. Git history helps a reviewer inspect
+what changed, but explicit occurrence dates still carry the compliance fact.
+
+## Review the schedule as the program changes
+
+A schedule is an approved control rule, not a permanent constant. Review it
+when any source fact changes, including:
+
+- a policy, commitment, risk decision, or control objective;
+- the system boundary, evidence source, or population query;
+- the people who perform or review the work;
+- the rate or severity of changes in the covered environment;
+- an incident, failed occurrence, audit result, or repeated exception; or
+- the planned examination period or selected Trust Services Categories.
+
+Create a proposed rule revision, review the recurrence, population selector,
+window, proof, source records, and rationale, then activate the approved rule at
+its real effective time. Preserve the prior rule so historical occurrences can
+still be interpreted against the timing that governed them.
+
+## Run recurring SOC 2 work in filegrc
+
+[filegrc](/) stores approved Obligation rules, completion records, evidence
+links, and reviewable history in Git. An enabled Obligation remains dormant
+until its rule and owner are current, its governing Policies and required
+program Documents and Training are active and effective, and at least one
+linked Control is implemented when it names Controls. The Work Queue reports
+the accepted state and then calculates due, upcoming, overdue, blocked, and
+completed occurrences from the same source files used by the browser and CLI.
+
+Start by inspecting the model and current work:
+
+```sh
+npx filegrc guide obligation --json
+npx filegrc list obligation --json
+npx filegrc obligations --json
+```
+
+For one due occurrence, create the required operating records first. Then
+scaffold the occurrence, review its full population and member results, and
+apply the reconciliation:
+
+```sh
+npx filegrc complete OBLIGATION_ID --scaffold \
+  --window-start YYYY-MM-DD --completed-on YYYY-MM-DD > completion.json
+npx filegrc complete OBLIGATION_ID completion.json --json
+npx filegrc reconcile-obligation OBLIGATION_ID --scaffold \
+  --window-start YYYY-MM-DD > occurrence.json
+npx filegrc reconcile-obligation OBLIGATION_ID occurrence.json --json
+npx filegrc period-health --require-healthy --json
+```
+
+Create every required completion record before reconciliation. The occurrence
+freezes the applicable population, links each member to its completion proof or
+recorded disposition, and records the overall conclusion. A completion record
+by itself does not finalize a rule-based Work Queue occurrence.
+
+filegrc does not run access reviews, scan systems, test backups, train people,
+or perform other controls. The systems that operate the work remain
+authoritative for their source evidence. filegrc records the approved rule,
+calculates the queue, validates the management record, and helps prepare a
+reviewable evidence packet. The licensed CPA firm decides what evidence is
+sufficient and issues the SOC 2 report.
+
+The [SOC 2 compliance-as-code guide](/blogs/soc-2-compliance-as-code) explains
+how policies, controls, schedules, evidence, and Git review fit into the wider
+program.
