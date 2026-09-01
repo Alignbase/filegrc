@@ -40,7 +40,7 @@ import {
 import { reconcileMutationSynchronization } from "../src/server.js";
 import { collectTimings } from "../src/timing.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
-import { makeWorkspace, writeJson } from "./helpers.js";
+import { createGitHistory, makeWorkspace, writeJson } from "./helpers.js";
 
 const execute = promisify(execFile);
 
@@ -676,16 +676,17 @@ test("rejects a shallow repository as an incomplete data history", async (contex
     rm(root, { recursive: true, force: true })
   ]));
   await makeWorkspace(source);
-  await git(source, ["init"]);
-  await git(source, ["config", "user.name", "Test User"]);
-  await git(source, ["config", "user.email", "test@example.test"]);
-  await git(source, ["add", "."]);
-  await git(source, ["commit", "-m", "Initial records"]);
   const ownerPath = join(source, "data", "people", "person-owner.json");
   const owner = JSON.parse(await readFile(ownerPath, "utf8"));
-  await writeFile(ownerPath, `${JSON.stringify({ ...owner, title: "Changed owner" }, null, 2)}\n`, "utf8");
-  await git(source, ["add", "."]);
-  await git(source, ["commit", "-m", "Change owner"]);
+  await createGitHistory(source, [
+    { message: "Initial records" },
+    {
+      message: "Change owner",
+      changes: {
+        "data/people/person-owner.json": `${JSON.stringify({ ...owner, title: "Changed owner" }, null, 2)}\n`
+      }
+    }
+  ]);
   await rm(root, { recursive: true, force: true });
   await execute("git", ["clone", "--depth=1", `file://${source}`, root]);
 

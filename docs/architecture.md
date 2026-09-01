@@ -132,6 +132,8 @@ A generated workspace must be operable by an agent that knows Git and JSON but h
 
 Every model resource must have automated guide and scaffold coverage. Tests require every renderer instruction to match its headless guide. Multi-record commands must validate their domain rules and write through one serialized mutation. This includes obligation completion, Policy Event creation and closure, audit preparation, and evidence attachment management. Program Readiness must use the same domain calculation in the CLI, HTTP state, static state, and browser.
 
+Local tests run in explicit unit and integration tiers. The unit tier does not start Git, CLI, or server subprocesses. Integration tests cover filesystem, Git, CLI, server, packet, and generator boundaries. A built-in scheduler runs each test file in an isolated worker thread, limits active workers through a machine-wide permit pool shared by all worktrees, records per-file timings, and reuses successful exact-input results outside CI. Comprehensive workspace fixtures are built once per worker and copied with filesystem copy-on-write support when available. Git-dependent domain logic accepts a scoped command adapter so most state combinations do not require a real repository, while contract tests continue to cover the native Git boundary.
+
 ## Model registry
 
 The `filegrc` package is the only source of truth for the data model:

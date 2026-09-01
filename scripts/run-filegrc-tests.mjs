@@ -1,42 +1,58 @@
-import { readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { run } from "node:test";
-import { spec } from "node:test/reporters";
 import { fileURLToPath } from "node:url";
+import { discoverTestFiles, runTestSuite } from "./test-scheduler.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const testRoot = join(root, "packages", "filegrc", "test");
-const fullOnly = new Set([
-  "agent.test.js",
-  "cli-process.test.js",
-  "evidence-packet.test.js",
-  "git.test.js",
-  "setup.test.js"
+const packageRoot = join(root, "packages", "filegrc");
+const testRoot = join(packageRoot, "test");
+const unitFiles = new Set([
+  "applicability-scope.test.js",
+  "favicon.test.js",
+  "git-adapter.test.js",
+  "id.test.js",
+  "model.test.js",
+  "parties.test.js",
+  "recurrence.test.js",
+  "source-coverage.test.js",
+  "time.test.js",
 ]);
-const fast = process.argv.includes("--fast");
-const nodeMajor = Number(process.versions.node.split(".")[0]);
-const concurrency = Number(process.env.FILEGRC_TEST_CONCURRENCY || (nodeMajor >= 25 ? 1 : 4));
-if (!Number.isInteger(concurrency) || concurrency < 1) {
-  throw new Error("FILEGRC_TEST_CONCURRENCY must be a positive integer.");
+const tierArgument = argumentValue("--tier");
+const tier =
+  tierArgument || (process.argv.includes("--fast") ? "unit" : "integration");
+if (!new Set(["unit", "integration"]).has(tier)) {
+  throw new Error("FileGRC test tier must be unit or integration.");
 }
-const isolation = nodeMajor >= 25 ? "none" : "process";
-const files = (await discoverTests(testRoot))
-  .filter((path) => !fast || !fullOnly.has(relative(testRoot, path).split(sep).join("/")))
-  .sort();
+const discovered = await discoverTestFiles(testRoot);
+const files = discovered.filter(
+  (path) =>
+    tier === "integration" ||
+    unitFiles.has(relative(testRoot, path).split(sep).join("/")),
+);
 
-process.chdir(join(root, "packages", "filegrc"));
-const stream = run({ files, concurrency, isolation });
-let failed = false;
-stream.on("test:fail", () => { failed = true; });
-stream.compose(spec()).pipe(process.stdout);
-stream.on("end", () => { process.exitCode = failed ? 1 : 0; });
+await runTestSuite({
+  name: `filegrc ${tier}`,
+  cwd: packageRoot,
+  files,
+  toolchainCommands: tier === "integration" ? ["git"] : [],
+  inputPaths: [
+    join(packageRoot, "src"),
+    join(packageRoot, "model"),
+    join(packageRoot, "bin"),
+    testRoot,
+    join(root, "packages", "create-filegrc", "src"),
+    join(root, "packages", "create-filegrc", "template"),
+    join(root, "packages", "create-filegrc", "template-parameters.json"),
+    join(root, "packages", "create-filegrc", "package.json"),
+    join(root, "docs", "data-model.md"),
+    join(packageRoot, "package.json"),
+    join(root, "package.json"),
+    join(root, "package-lock.json"),
+    join(root, "scripts", "dev.mjs"),
+    join(root, "scripts", "run-filegrc-tests.mjs"),
+  ],
+});
 
-async function discoverTests(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const paths = await Promise.all(entries.map((entry) => {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) return discoverTests(path);
-    return entry.isFile() && entry.name.endsWith(".test.js") ? [path] : [];
-  }));
-  return paths.flat();
+function argumentValue(name) {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? null : process.argv[index + 1];
 }

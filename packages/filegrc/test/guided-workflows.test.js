@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -27,7 +27,13 @@ import {
 import { runCli } from "../src/cli.js";
 import { setHistoricalBatchInterceptorForTests } from "../src/git.js";
 import { collectTimings } from "../src/timing.js";
-import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
+import {
+  commitWorkspaceFiles,
+  executeCli,
+  initializeGitWorkspace,
+  makeWorkspace,
+  writeJson
+} from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const executeProcess = promisify(execFile);
@@ -1148,9 +1154,11 @@ async function modelThreeWorkspace(context, prefix) {
 }
 
 async function commitAll(root, message) {
-  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
-  await execute("git", ["config", "user.name", "Test User"], { cwd: root });
-  await execute("git", ["config", "user.email", "test@example.test"], { cwd: root });
-  await execute("git", ["add", "."], { cwd: root });
-  await execute("git", ["commit", "-m", message], { cwd: root });
+  try {
+    await access(join(root, ".git"));
+    await commitWorkspaceFiles(root, message);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    await initializeGitWorkspace(root, { message });
+  }
 }

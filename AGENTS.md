@@ -174,7 +174,9 @@ Before recovering a failed release, query npm for both package versions. If neit
 
 After substantive changes, run `npm run validate`.
 
-Use `npm run validate:fast` while iterating on engine code. It omits the process-heavy Git, packet, server, and headless CLI integration files plus the site validation. It does not replace `npm run validate`, which remains the complete CI and release check. Use `npm run test:full` when you need the complete package tests without the documentation and site checks.
+Use `npm run validate:fast` while iterating on engine code. It runs the subprocess-free unit tier plus model-documentation and README-asset checks. Use `npm run test:integration` for the filesystem, Git, CLI, packet, server, generator, and other package integration tests. Neither command replaces `npm run validate`, which remains the complete CI and release check. Use `npm run test:full` when you need all package tests without the documentation and site checks.
+
+The test scheduler uses at most four machine-wide worker permits shared by every FileGRC worktree. Set `FILEGRC_GLOBAL_TEST_CONCURRENCY` only when the machine needs a different global limit. Successful local runs use an exact-input cache under the system temporary directory; set `FILEGRC_TEST_CACHE=0` or use `CI=true` when measuring a fresh run. The scheduler prints the slowest files after each uncached run. Use Node 24 from `.node-version` or `.nvmrc` so local validation matches the publish workflow.
 
 Run `pnpm dev` from the monorepo root for local UI development. It creates an ignored workspace under `.filegrc/dev-workspace` on first run, serves it with the current local engine, and restarts when imported source files change. This internal development server enables the explicit non-authoritative write override, so browser changes stay local and are never committed or pushed. It prefers port `8787`, or `FILEGRC_DEV_PORT` when set, and automatically selects an available local port when that port is occupied. Delete `.filegrc/dev-workspace` when you need fresh starter data.
 

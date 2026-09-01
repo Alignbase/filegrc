@@ -13,23 +13,31 @@ const childProcessTimeout = 60_000;
 
 test("serve ends startup output with the GitHub star message", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-serve-output-"));
-  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  context.after(() =>
+    import("node:fs/promises").then(({ rm }) =>
+      rm(root, { recursive: true, force: true }),
+    ),
+  );
   await makeWorkspace(root);
 
   const { stdout, stderr, exit } = await runServerUntil(
     [cliPath, "serve", root, "--port", "0"],
-    (output) => output.includes("https://github.com/Alignbase/filegrc")
+    (output) => output.includes("https://github.com/Alignbase/filegrc"),
   );
   assertSuccessfulStop(exit, stderr);
   assert.equal(
     stdout.slice(stdout.lastIndexOf("\n\x1b[38;2;255;184;0m")),
-    "\n\x1b[38;2;255;184;0m⭐️  → ❤️  https://github.com/Alignbase/filegrc\x1b[0m\n\n"
+    "\n\x1b[38;2;255;184;0m⭐️  → ❤️  https://github.com/Alignbase/filegrc\x1b[0m\n\n",
   );
 });
 
 test("serve chooses another port when the preferred port is occupied", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-serve-port-fallback-"));
-  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  context.after(() =>
+    import("node:fs/promises").then(({ rm }) =>
+      rm(root, { recursive: true, force: true }),
+    ),
+  );
   await makeWorkspace(root);
 
   const blocker = createServer();
@@ -42,18 +50,28 @@ test("serve chooses another port when the preferred port is occupied", async (co
 
   const { stdout, stderr, exit } = await runServerUntil(
     [cliPath, "serve", root, "--port", String(occupiedPort)],
-    (output) => output.includes("filegrc workspace:")
+    (output) => output.includes("filegrc workspace:"),
   );
   assertSuccessfulStop(exit, stderr);
-  assert.match(stdout, new RegExp(`Port ${occupiedPort} is already in use\\. Using \\d+ instead\\.`));
+  assert.match(
+    stdout,
+    new RegExp(
+      `Port ${occupiedPort} is already in use\\. Using \\d+ instead\\.`,
+    ),
+  );
   const fallbackPort = Number(stdout.match(/Using (\d+) instead\./)?.[1]);
   assert.ok(Number.isInteger(fallbackPort));
   assert.notEqual(fallbackPort, occupiedPort);
-  assert.match(stdout, new RegExp(`filegrc workspace: http://127\\.0\\.0\\.1:${fallbackPort}`));
+  assert.match(
+    stdout,
+    new RegExp(`filegrc workspace: http://127\\.0\\.0\\.1:${fallbackPort}`),
+  );
 });
 
 function runServerUntil(args, ready) {
-  const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let stdout = "";
   let stderr = "";
   let stopping = false;
@@ -66,11 +84,15 @@ function runServerUntil(args, ready) {
       child.kill("SIGTERM");
     }
   });
-  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
   const exit = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`Timed out waiting for server startup output.\n${stderr}`));
+      reject(
+        new Error(`Timed out waiting for server startup output.\n${stderr}`),
+      );
     }, childProcessTimeout);
     child.once("error", (error) => {
       clearTimeout(timeout);
@@ -86,7 +108,8 @@ function runServerUntil(args, ready) {
 
 function assertSuccessfulStop(exit, stderr) {
   assert.ok(
-    exit.code === 0 || (process.platform === "win32" && exit.signal === "SIGTERM"),
-    stderr || `Server exited with code ${exit.code} and signal ${exit.signal}.`
+    exit.code === 0 ||
+      (process.platform === "win32" && exit.signal === "SIGTERM"),
+    stderr || `Server exited with code ${exit.code} and signal ${exit.signal}.`,
   );
 }

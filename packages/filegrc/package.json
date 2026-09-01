@@ -1,6 +1,6 @@
 {
   "name": "filegrc",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "Zero-dependency Git-native GRC engine",
   "license": "MIT",
   "repository": {
@@ -22,7 +22,9 @@
   ],
   "scripts": {
     "test": "node ../../scripts/run-filegrc-tests.mjs",
-    "test:fast": "node ../../scripts/run-filegrc-tests.mjs --fast",
+    "test:unit": "node ../../scripts/run-filegrc-tests.mjs --tier unit",
+    "test:integration": "node ../../scripts/run-filegrc-tests.mjs --tier integration",
+    "test:fast": "npm run test:unit",
     "test:full": "npm test"
   },
   "engines": {

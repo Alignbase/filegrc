@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { rmSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { threadId } from "node:worker_threads";
 import { loadModel } from "../model/index.js";
 import { markdownEntries } from "../src/resource-markdown.js";
-import { writeJson } from "./helpers.js";
+import { cloneFixture, writeJson } from "./helpers.js";
+
+const comprehensiveFixtures = new Map();
+let fixtureRootPromise;
 
 const TITLES = {
   workspace: "Example Engineering SOC 2 Program",
@@ -50,7 +56,7 @@ const TITLES = {
   "penetration-test": "Annual application penetration test",
   "data-request": "Customer deletion request",
   audit: "2026 SOC 2 Type 2 audit",
-  "audit-request": "User access review evidence"
+  "audit-request": "User access review evidence",
 };
 
 const STATUS_OVERRIDES = {
@@ -95,12 +101,63 @@ const STATUS_OVERRIDES = {
   "penetration-test": "complete",
   "data-request": "in-progress",
   audit: "fieldwork",
-  "audit-request": "submitted"
+  "audit-request": "submitted",
 };
 
 export async function makeComprehensiveWorkspace(root, version) {
+  const key = version == null ? "active" : String(version);
+  let fixturePromise = comprehensiveFixtures.get(key);
+  if (!fixturePromise) {
+    fixturePromise = buildComprehensiveFixture(version, key);
+    comprehensiveFixtures.set(key, fixturePromise);
+  }
+  const fixture = await fixturePromise;
+  await cloneFixture(fixture.root, root);
+  return {
+    model: fixture.model,
+    records: structuredClone(fixture.records),
+  };
+}
+
+async function buildComprehensiveFixture(version, key) {
+  const base = await fixtureRoot();
+  const root = join(base, `comprehensive-${key}`);
+  await mkdir(root, { recursive: true });
+  const result = await buildComprehensiveWorkspace(root, version);
+  return { root, ...result };
+}
+
+async function fixtureRoot() {
+  fixtureRootPromise ??= process.env.FILEGRC_TEST_RUN_ROOT
+    ? mkdir(
+        join(
+          process.env.FILEGRC_TEST_RUN_ROOT,
+          `fixtures-${process.pid}-${threadId}`,
+        ),
+        { recursive: true },
+      ).then(() =>
+        join(
+          process.env.FILEGRC_TEST_RUN_ROOT,
+          `fixtures-${process.pid}-${threadId}`,
+        ),
+      )
+    : mkdtemp(join(tmpdir(), "filegrc-test-fixtures-")).then((root) => {
+        process.once("exit", () =>
+          rmSync(root, { recursive: true, force: true }),
+        );
+        return root;
+      });
+  return fixtureRootPromise;
+}
+
+async function buildComprehensiveWorkspace(root, version) {
   const model = loadModel(version);
-  const ids = Object.fromEntries(Object.keys(model.resources).map((type) => [type, type === "workspace" ? "workspace" : `${type}-example`]));
+  const ids = Object.fromEntries(
+    Object.keys(model.resources).map((type) => [
+      type,
+      type === "workspace" ? "workspace" : `${type}-example`,
+    ]),
+  );
   ids.independentApprover = "person-independent-approver-example";
   await mkdir(join(root, "data", "content"), { recursive: true });
   const records = [];
@@ -110,30 +167,45 @@ export async function makeComprehensiveWorkspace(root, version) {
     const record = {
       id: ids[type],
       type,
-      title: TITLES[type] ?? humanize(type)
+      title: TITLES[type] ?? humanize(type),
     };
     const fields = { ...model.commonFields, ...definition.fields };
     const required = new Set(definition.required ?? []);
     for (const [name, field] of Object.entries(fields)) {
       if (name === "id" || name === "type" || name === "title") continue;
-      if (name === "status" && STATUS_OVERRIDES[type]) record[name] = STATUS_OVERRIDES[type];
-      else if (required.has(name)) record[name] = sampleValue(name, field, ids, model, type);
+      if (name === "status" && STATUS_OVERRIDES[type])
+        record[name] = STATUS_OVERRIDES[type];
+      else if (required.has(name))
+        record[name] = sampleValue(name, field, ids, model, type);
     }
-    if (["document", "training"].includes(type) && record.status === "active" && fields.activationBasis) {
+    if (
+      ["document", "training"].includes(type) &&
+      record.status === "active" &&
+      fields.activationBasis
+    ) {
       record.activationBasis = "recorded";
     }
     for (const [name, field] of Object.entries(fields)) {
-      if (field.requiredWhen && Object.entries(field.requiredWhen).every(([key, value]) => (
-        Array.isArray(value) ? value.includes(record[key]) : record[key] === value
-      ))) {
+      if (
+        field.requiredWhen &&
+        Object.entries(field.requiredWhen).every(([key, value]) =>
+          Array.isArray(value)
+            ? value.includes(record[key])
+            : record[key] === value,
+        )
+      ) {
         record[name] ??= sampleValue(name, field, ids, model, type);
       }
     }
     for (const group of definition.oneOf ?? []) {
       const choices = Array.isArray(group) ? group : group.fields || [];
-      const active = Array.isArray(group) || Object.entries(group.when || {}).every(([key, value]) => (
-        Array.isArray(value) ? value.includes(record[key]) : record[key] === value
-      ));
+      const active =
+        Array.isArray(group) ||
+        Object.entries(group.when || {}).every(([key, value]) =>
+          Array.isArray(value)
+            ? value.includes(record[key])
+            : record[key] === value,
+        );
       if (!active) continue;
       if (!choices.some((name) => record[name] !== undefined)) {
         const name = choices[0];
@@ -142,16 +214,20 @@ export async function makeComprehensiveWorkspace(root, version) {
     }
 
     addUsefulOptionalFields(record, fields, ids, model, type);
-    if (type === "requirement-mapping") record.targetResourceIds = [ids.control];
+    if (type === "requirement-mapping")
+      record.targetResourceIds = [ids.control];
     if (
-      type === "obligation"
-      && model.obligationActivities[record.activityType]?.recurrenceModes?.length === 1
-      && model.obligationActivities[record.activityType].recurrenceModes[0] === "event"
+      type === "obligation" &&
+      model.obligationActivities[record.activityType]?.recurrenceModes
+        ?.length === 1 &&
+      model.obligationActivities[record.activityType].recurrenceModes[0] ===
+        "event"
     ) {
       record.recurrence = { mode: "event", eventType: "person-role-changed" };
       record.window = { precision: "date", startsAfter: 0, dueAfter: 3 };
     }
-    if (Number(model.modelVersion) >= 9) configureRuleBasedObligationFixture(record, ids);
+    if (Number(model.modelVersion) >= 9)
+      configureRuleBasedObligationFixture(record, ids);
     await writeRecord(root, definition, record, model);
     records.push(record);
   }
@@ -161,21 +237,22 @@ export async function makeComprehensiveWorkspace(root, version) {
     title: "Independent Approver",
     status: "active",
     affiliation: "external",
-    email: "approver@example.test"
+    email: "approver@example.test",
   };
   await writeRecord(root, model.resources.person, independentApprover, model);
   records.push(independentApprover);
   const recordsById = new Map(records.map((record) => [record.id, record]));
-  for (const attestation of records.filter((record) => (
-    record.type === "attestation"
-    && record.status === "completed"
-    && record.attestationMethod === "git-approval"
-  ))) {
+  for (const attestation of records.filter(
+    (record) =>
+      record.type === "attestation" &&
+      record.status === "completed" &&
+      record.attestationMethod === "git-approval",
+  )) {
     attestation.contentRevisions = await subjectContentRevisions(
       root,
       model,
       recordsById,
-      attestation.subjectResourceIds
+      attestation.subjectResourceIds,
     );
     await writeRecord(root, model.resources.attestation, attestation, model);
   }
@@ -208,7 +285,8 @@ function configureRuleBasedObligationFixture(record, ids) {
     record.obligationId = ids.obligation;
     record.recurrence = { mode: "event", eventType: "person-role-changed" };
     record.window = { precision: "date", startsAfter: 0, dueAfter: 3 };
-    record.rationale = "Management approved this event window for access changes.";
+    record.rationale =
+      "Management approved this event window for access changes.";
     record.approvedByIds = [ids.independentApprover];
     record.approvedOn = "2026-01-15";
     record.effectiveAt = "2026-01-15T15:30:00Z";
@@ -222,12 +300,14 @@ function configureRuleBasedObligationFixture(record, ids) {
     record.occurrenceKey = "person-role-changed:person-example:2026-06-15";
     record.coverage = { kind: "as-of", on: "2026-06-15" };
     record.membershipCutoffAt = "2026-06-15";
-    record.members = [{
-      resourceId: ids.person,
-      disposition: "expected",
-      result: "passed",
-      completionResourceIds: [ids["access-grant"]]
-    }];
+    record.members = [
+      {
+        resourceId: ids.person,
+        disposition: "expected",
+        result: "passed",
+        completionResourceIds: [ids["access-grant"]],
+      },
+    ];
     record.expectedCount = 1;
     record.completedCount = 1;
     record.conclusion = "complete";
@@ -238,25 +318,44 @@ function configureRuleBasedObligationFixture(record, ids) {
 
 function sampleValue(name, field, ids, model, type) {
   if (field.relation) {
-    if (name === "approverIds" || name === "reviewerIds") return [ids.independentApprover];
-    const targetType = field.relation.find((candidate) => candidate !== "*") ?? "person";
+    if (name === "approverIds" || name === "reviewerIds")
+      return [ids.independentApprover];
+    const targetType =
+      field.relation.find((candidate) => candidate !== "*") ?? "person";
     const id = ids[targetType] ?? ids.person;
     return field.type === "array" ? [id] : id;
   }
-  if (field.format === "data-path") return `${definitionDirectory(type)}/${type}-example.md`;
-  if (field.format === "git-name") return name === "repositoryRemote" ? "origin" : "main";
+  if (field.format === "data-path")
+    return `${definitionDirectory(type)}/${type}-example.md`;
+  if (field.format === "git-name")
+    return name === "repositoryRemote" ? "origin" : "main";
   if (field.type === "array") {
-    if (field.items === "data-path") return [`evidence/${ids.evidence}/access-review.txt`];
+    if (field.items === "data-path")
+      return [`evidence/${ids.evidence}/access-review.txt`];
     if (field.items === "object" && field.itemObjectType) {
       return [sampleObject(field.itemObjectType, ids, model, type)];
     }
-    if (field.items === "object") return [{ name: "External participant", role: "Advisor" }];
+    if (field.items === "object")
+      return [{ name: "External participant", role: "Advisor" }];
     return [sampleText(name)];
   }
   if (field.type === "object") {
-    if (field.objectType) return sampleObject(field.objectType, ids, model, type);
-    if (/rating/i.test(name)) return { likelihood: "possible", impact: "high", score: 12, rating: "high" };
-    if (/recurrence|cadence/i.test(name)) return { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-15" };
+    if (field.objectType)
+      return sampleObject(field.objectType, ids, model, type);
+    if (/rating/i.test(name))
+      return {
+        likelihood: "possible",
+        impact: "high",
+        score: 12,
+        rating: "high",
+      };
+    if (/recurrence|cadence/i.test(name))
+      return {
+        mode: "calendar",
+        unit: "month",
+        interval: 3,
+        anchorDate: "2026-01-15",
+      };
     return { summary: sampleText(name) };
   }
   if (field.type === "boolean") return name === "privileged";
@@ -265,7 +364,8 @@ function sampleValue(name, field, ids, model, type) {
   if (field.type === "timestamp") return "2026-06-15T15:30:00Z";
   if (field.type === "rating") return "high";
   if (field.type === "outcome") return "passed";
-  if (field.type === "enum") return field.values?.[0] ?? Object.keys(model[field.registry] || {})[0];
+  if (field.type === "enum")
+    return field.values?.[0] ?? Object.keys(model[field.registry] || {})[0];
   if (field.type === "id") return ids.person;
   if (name === "dataModelVersion") return model.modelVersion;
   if (name === "classificationId") return "example";
@@ -278,9 +378,11 @@ function sampleValue(name, field, ids, model, type) {
   if (name === "purposeKey") return "security-reporting";
   if (name === "email") return "security@example.test";
   if (name === "source") return "Repository workflow";
-  if (name === "scope") return "Production application and supporting operations";
+  if (name === "scope")
+    return "Production application and supporting operations";
   if (name === "statement") return `Example statement for ${humanize(type)}`;
-  if (name === "description") return `Example description for ${humanize(type)}`;
+  if (name === "description")
+    return `Example description for ${humanize(type)}`;
   if (name === "requestReference") return "PBC-001";
   if (name === "reference") return "CC6.1";
   if (name === "requesterReference") return "case-opaque-001";
@@ -290,15 +392,24 @@ function sampleValue(name, field, ids, model, type) {
 function sampleObject(objectType, ids, model, type) {
   const schema = model.objectTypes[objectType];
   if (objectType === "custom-obligation-activity") {
-    return { title: "Custom evidence review", completionResourceTypes: ["evidence"] };
+    return {
+      title: "Custom evidence review",
+      completionResourceTypes: ["evidence"],
+    };
   }
   if (objectType === "recurrence") {
-    return { mode: "calendar", unit: "month", interval: 3, anchorDate: "2026-01-15" };
+    return {
+      mode: "calendar",
+      unit: "month",
+      interval: 3,
+      anchorDate: "2026-01-15",
+    };
   }
   if (objectType === "string-map") return { example: "Example value" };
   if (objectType === "integer-map") return { example: 1 };
   if (objectType === "json-map") return { example: "Example value" };
-  if (objectType === "extensions") return { "example.test": { customField: "Example value" } };
+  if (objectType === "extensions")
+    return { "example.test": { customField: "Example value" } };
   if (objectType === "content-revisions") return {};
   if (objectType === "coverage-period") {
     return { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" };
@@ -309,10 +420,12 @@ function sampleObject(objectType, ids, model, type) {
   }
   for (const [name, property] of Object.entries(schema.properties || {})) {
     if (
-      property.requiredWhen
-      && Object.entries(property.requiredWhen).every(([field, expected]) => (
-        Array.isArray(expected) ? expected.includes(value[field]) : value[field] === expected
-      ))
+      property.requiredWhen &&
+      Object.entries(property.requiredWhen).every(([field, expected]) =>
+        Array.isArray(expected)
+          ? expected.includes(value[field])
+          : value[field] === expected,
+      )
     ) {
       value[name] ??= sampleValue(name, property, ids, model, type);
     }
@@ -325,8 +438,12 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
     if (fields[name] && record[name] === undefined) record[name] = value;
   };
   set("tags", ["example", "security"]);
-  set("description", `A realistic example ${humanize(type).toLowerCase()} used to exercise the complete workspace.`);
-  if (type === "workspace") set("classificationDefinitions", { example: "Example classification" });
+  set(
+    "description",
+    `A realistic example ${humanize(type).toLowerCase()} used to exercise the complete workspace.`,
+  );
+  if (type === "workspace")
+    set("classificationDefinitions", { example: "Example classification" });
   if (type === "person") set("jobTitle", "Chief Executive Officer");
   set("code", "SEC-01");
   set("dueOn", "2026-08-15");
@@ -348,32 +465,45 @@ function addUsefulOptionalFields(record, fields, ids, model, type) {
     set("frameworkIds", [ids.framework]);
     set("controlIds", [ids.control]);
     set("ownerIds", [ids.appointment]);
-    set("requirementApplicability", [{
-      requirementId: ids.requirement,
-      decision: "applicable",
-      rationale: "The criterion applies to the example Program scope.",
-      reviewedByIds: [ids.person],
-      reviewedOn: "2026-06-30",
-      scopeRevision: "example-scope-revision"
-    }]);
+    set("requirementApplicability", [
+      {
+        requirementId: ids.requirement,
+        decision: "applicable",
+        rationale: "The criterion applies to the example Program scope.",
+        reviewedByIds: [ids.person],
+        reviewedOn: "2026-06-30",
+        scopeRevision: "example-scope-revision",
+      },
+    ]);
   }
   if (type === "component") {
-    record.systemUses = [{
-      systemId: ids.system,
-      roles: ["service-delivery", "control-support", "evidence-source"],
-      rationale: "The Component delivers the example System, supports its Control, and produces authoritative Evidence."
-    }];
-    set("evidenceSourceKinds", [model.evidenceSourceFamilies[0].sourceKinds[0]]);
+    record.systemUses = [
+      {
+        systemId: ids.system,
+        roles: ["service-delivery", "control-support", "evidence-source"],
+        rationale:
+          "The Component delivers the example System, supports its Control, and produces authoritative Evidence.",
+      },
+    ];
+    set("evidenceSourceKinds", [
+      model.evidenceSourceFamilies[0].sourceKinds[0],
+    ]);
     set("evidenceOwnerIds", [ids.person]);
   }
 }
 
 async function writeRecord(root, definition, record, model) {
   const entries = markdownEntries(model, record);
-  const shouldWriteRecord = model.recordContent.defaultResourceTypes.includes(record.type);
+  const shouldWriteRecord = model.recordContent.defaultResourceTypes.includes(
+    record.type,
+  );
   for (const entry of entries) {
     if (definition.markdown || shouldWriteRecord) {
-      await writeMarkdown(root, entry.path, `${record.title} ${entry.label.toLowerCase()}`);
+      await writeMarkdown(
+        root,
+        entry.path,
+        `${record.title} ${entry.label.toLowerCase()}`,
+      );
     }
   }
   const approvalRevisionField = definition.fields.approvedContentRevisions
@@ -386,13 +516,21 @@ async function writeRecord(root, definition, record, model) {
     for (const entry of entries) {
       try {
         const source = await readFile(join(root, "data", entry.path), "utf8");
-        record[approvalRevisionField][entry.path] = createHash("sha256").update(source).digest("hex");
+        record[approvalRevisionField][entry.path] = createHash("sha256")
+          .update(source)
+          .digest("hex");
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
     }
-    if (["document", "training"].includes(record.type) && definition.fields.activatedContentRevisions && record.status === "active") {
-      record.activatedContentRevisions = structuredClone(record.approvedContentRevisions);
+    if (
+      ["document", "training"].includes(record.type) &&
+      definition.fields.activatedContentRevisions &&
+      record.status === "active"
+    ) {
+      record.activatedContentRevisions = structuredClone(
+        record.approvedContentRevisions,
+      );
     }
   }
   if (record.type === "evidence" && record.filePaths) {
@@ -404,13 +542,21 @@ async function writeRecord(root, definition, record, model) {
   }
   const relative = definition.singleton
     ? definition.singleton
-    : join(definition.collection, (definition.recordPath ?? "{id}.json").replaceAll("{id}", record.id));
+    : join(
+        definition.collection,
+        (definition.recordPath ?? "{id}.json").replaceAll("{id}", record.id),
+      );
   const path = join(root, "data", relative);
   await mkdir(join(path, ".."), { recursive: true });
   await writeJson(path, record);
 }
 
-async function subjectContentRevisions(root, model, recordsById, subjectResourceIds) {
+async function subjectContentRevisions(
+  root,
+  model,
+  recordsById,
+  subjectResourceIds,
+) {
   const revisions = {};
   for (const id of subjectResourceIds || []) {
     const subject = recordsById.get(id);
@@ -418,7 +564,9 @@ async function subjectContentRevisions(root, model, recordsById, subjectResource
     for (const entry of markdownEntries(model, subject)) {
       try {
         const source = await readFile(join(root, "data", entry.path), "utf8");
-        revisions[entry.path] = createHash("sha256").update(source).digest("hex");
+        revisions[entry.path] = createHash("sha256")
+          .update(source)
+          .digest("hex");
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -428,21 +576,35 @@ async function subjectContentRevisions(root, model, recordsById, subjectResource
 }
 
 function approvalBound(record) {
-  if (record.type === "policy") return ["approved", "active", "superseded", "retired"].includes(record.status);
-  if (record.type === "document") return ["approved", "active", "superseded", "retired"].includes(record.status);
-  if (record.type === "training") return ["approved", "active", "superseded", "retired"].includes(record.status);
+  if (record.type === "policy")
+    return ["approved", "active", "superseded", "retired"].includes(
+      record.status,
+    );
+  if (record.type === "document")
+    return ["approved", "active", "superseded", "retired"].includes(
+      record.status,
+    );
+  if (record.type === "training")
+    return ["approved", "active", "superseded", "retired"].includes(
+      record.status,
+    );
   return false;
 }
 
 async function writeMarkdown(root, relativePath, title) {
   const path = join(root, "data", relativePath);
   await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, `# ${title}\n\nThis example documents the activity, decisions, results, and follow-up work.\n\n## Review notes\n\n- Scope was confirmed.\n- Evidence was reviewed.\n- Follow-up work is tracked by resource ID.\n`, "utf8");
+  await writeFile(
+    path,
+    `# ${title}\n\nThis example documents the activity, decisions, results, and follow-up work.\n\n## Review notes\n\n- Scope was confirmed.\n- Evidence was reviewed.\n- Follow-up work is tracked by resource ID.\n`,
+    "utf8",
+  );
 }
 
 function dateFor(name) {
   if (/due|expires|end/i.test(name)) return "2026-08-15";
-  if (/start|received|detected|discovered|scheduled/i.test(name)) return "2026-06-15";
+  if (/start|received|detected|discovered|scheduled/i.test(name))
+    return "2026-06-15";
   return "2026-06-30";
 }
 
@@ -455,5 +617,8 @@ function definitionDirectory(type) {
 }
 
 function humanize(value) {
-  return String(value).replaceAll("-", " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase());
+  return String(value)
+    .replaceAll("-", " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
