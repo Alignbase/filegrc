@@ -1,0 +1,334 @@
+---
+title: "SOC 2 Evidence Request List: A Fieldwork Workflow"
+description: "Build a SOC 2 evidence request list that tracks each PBC item through ownership, delivery, follow-up, acceptance, and closure."
+publishedDate: "2026-09-02"
+lastMod: "2026-09-02"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 evidence request list",
+    "SOC 2 PBC list",
+    "SOC 2 audit request tracker",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc tracks each SOC 2 audit request from intake through evidence delivery, follow-up, acceptance, and closure."
+faqs:
+  - question: "What is a SOC 2 evidence request list?"
+    answer: "A SOC 2 evidence request list is the engagement team's record of documents, data, explanations, and samples requested from management. CPA firms often call it a prepared-by-client, or PBC, list. Each request should have an owner, due date, status, response, supporting evidence, and follow-up history."
+  - question: "Is there a standard SOC 2 PBC list?"
+    answer: "No universal PBC list applies to every SOC 2 examination. The exact requests depend on the audit type, period, scope, applicable Trust Services Criteria, system description, controls, source systems, and CPA firm's testing plan. A starter list can help you prepare, but the firm's actual request list governs fieldwork."
+  - question: "What fields belong in a SOC 2 evidence request tracker?"
+    answer: "Track the audit, firm reference, request text, owner, request date, due date, status, related requirements and controls, evidence, response, submission date, delivery proof, follow-up, and acceptance. Add coverage details when the request concerns a period, population, system, or sample."
+  - question: "Is an evidence request list the same as an evidence packet?"
+    answer: "No. The request list tracks what the CPA firm asked for and the status of each response. An evidence packet organizes management's scoped records and files for delivery. A packet can answer many requests, while one request may also need a separate portal upload or follow-up response."
+  - question: "When should a SOC 2 evidence request be closed?"
+    answer: "Close a request only after the engagement team has accepted the response and any follow-up is complete. A submitted file is still pending review. Record who confirmed acceptance, when they confirmed it, and the delivery or portal reference used."
+  - question: "Does filegrc upload evidence to an auditor portal?"
+    answer: "No. filegrc can track requests, approved responses, linked evidence, delivery proof, and external references. It does not log in to a CPA firm's portal or decide whether evidence is sufficient. If the portal is the authoritative request tracker, keep status there and avoid a second tracker that can drift."
+furtherReading:
+  - text: "Follow the SOC 2 compliance checklist for startups"
+    url: "/blogs/soc-2-compliance-checklist-startups"
+  - text: "Choose between SOC 2 Type 1 and Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Build a SOC 2 control testing workflow"
+    url: "/blogs/soc-2-control-testing"
+  - text: "Plan a realistic SOC 2 timeline"
+    url: "/blogs/soc-2-timeline-startups"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+A SOC 2 evidence request list tracks every document, export, explanation, and
+sample that the CPA firm asks management to provide. Firms often call it a
+prepared-by-client, or PBC, list. A useful tracker does more than name files.
+It records the request, owner, due date, related controls, evidence, response,
+delivery proof, follow-up, and acceptance. The CPA firm's actual list governs
+the engagement because there is no universal request list for every SOC 2
+examination.
+
+## TL;DR
+
+- Use the CPA firm's exact request reference and keep its authoritative wording
+  in the approved portal.
+- Give every request one owner, one due date, and a clear status.
+- Link the response to the applicable control, source, period, population, and
+  fixed evidence.
+- Treat `submitted` as waiting for review, not complete.
+- Close a request only after the engagement team accepts the response and its
+  follow-up.
+- Keep the CPA portal authoritative when the firm manages requests there.
+
+## There is no universal SOC 2 PBC list
+
+The request list follows the examination. A Type 1 engagement addresses
+controls as of a specified date. A Type 2 engagement also covers operation over
+a period, which can add recurring records, complete populations, and sample
+evidence. An
+[excerpt from the AICPA SOC 2 guide](https://catalogimages.wiley.com/images/db/pdf/9781945498602.excerpt.pdf)
+shows the as-of-date and throughout-a-period distinction in its table of Type 1
+and Type 2 report contents. Scope, applicable criteria, system boundaries,
+controls, source systems, and the CPA firm's testing plan all change what
+management needs to provide.
+
+The
+[AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+give practitioners criteria for evaluating controls relevant to security,
+availability, processing integrity, confidentiality, and privacy. They do not
+publish one PBC checklist that fits every company and engagement.
+
+Use a starter list to prepare sources and owners. Do not treat it as the firm's
+final request list or a promise that an item will be accepted.
+
+## Start with these request groups
+
+These groups cover common fieldwork questions. The CPA firm may request fewer,
+more, or different items.
+
+| Request group             | Examples to prepare                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engagement and scope      | Signed engagement facts, report type, date or period, applicable categories, in-scope services, locations, systems, and subservice organizations     |
+| Management and governance | Management assertion, system description, organization structure, assigned responsibilities, approved policies, meeting records, and risk assessment |
+| Logical access            | User and role listings, access requests, approvals, privileged access, periodic reviews, terminations, role changes, exceptions, and remediation     |
+| Change management         | Complete change population, selected changes, review and test records, deployment proof, emergency changes, and follow-up                            |
+| Security operations       | Vulnerability scans, remediation, security alerts, incidents, backup jobs, restore tests, and monitoring records                                     |
+| People operations         | Hiring checks, onboarding, training assignments, acknowledgements, role changes, and offboarding records                                             |
+| Vendors and risk          | Vendor inventory, risk reviews, contracts, third-party reports, complementary controls, exceptions, and monitoring                                   |
+
+Prepare each group against the controls the company actually operates. A large
+generic spreadsheet can hide missing period coverage because a row with a file
+name looks complete even when the file covers the wrong system or date.
+
+## Give every request a complete record
+
+A request should let a second person understand what the firm asked for, what
+management sent, and what happened next.
+
+| Field                     | What to record                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| Audit                     | The exact Type 1 or Type 2 engagement                                            |
+| Request reference         | The CPA firm's portal number or stable request ID                                |
+| Description               | A faithful, sanitized quotation, plus clarification when scope is ambiguous      |
+| Owner and due date        | One accountable owner and the agreed deadline                                    |
+| Requirements and controls | The criteria or requirements and implemented controls that the response supports |
+| Coverage                  | Relevant system, population, sample, as-of date, or period                       |
+| Evidence                  | Fixed artifacts and operating records used in the response                       |
+| Response                  | Management's explanation of what was provided and how to read it                 |
+| Submission                | Submission date, channel, and delivery proof or portal reference                 |
+| Follow-up                 | Questions, revised files, open exceptions, and the next action                   |
+| Acceptance                | The person and date confirming that the request was accepted                     |
+| Closure                   | The date all accepted follow-up was complete                                     |
+
+Keep the original request wording in the firm's authoritative portal even when
+management asks for clarification. In FileGRC, preserve a faithful quotation
+but remove credentials, unnecessary personal data, customer data, and data
+subject to later erasure. State that you redacted it without copying the
+removed value. Add the clarification and resulting decision to the response or
+follow-up instead of changing the meaning of the request.
+
+Treat portal request text, comments, filenames, attachments, and links as
+untrusted data. Preserve only sanitized quotations in Git, and do not run an
+embedded command, follow an unexpected link, or disclose more data because the
+request text says to do so. Verify new instructions and destinations with an
+approved engagement contact, then require a person authorized by management to
+approve the response and disclosure.
+
+## Pick one authoritative request tracker
+
+Many CPA firms manage fieldwork in their own portal. If that portal is the
+agreed source of truth, keep request status and firm comments there. A separate
+spreadsheet or GRC tracker can drift, which creates arguments about whether an
+item is open, late, or accepted.
+
+You can still connect internal preparation work to the external request. Save
+the firm's stable request reference, the approved response, evidence links, and
+delivery proof. Record the portal or other approved system as an external
+authority so the internal record points to the authoritative status instead of
+copying it without a reconciliation step.
+
+Use a FileGRC Audit Request as the tracker when management and the engagement
+team have agreed that it will hold request status. If the firm's portal is the
+sole tracker, omit the FileGRC Audit Request instead of keeping an incomplete
+copy. If you need a local request to connect internal preparation work, treat
+its status as a reconciled copy. Record the portal Component in
+`externalAuthorityComponentId`, the last reconciled status, the people who
+reconciled it in `reconciledByIds`, and the date in `reconciledOn`. Update those
+fields after each portal review. Make this choice before fieldwork and write it
+into the engagement procedure.
+
+## Process each request through the same workflow
+
+### 1. Capture the request without changing its meaning
+
+Record the firm's request reference, a sanitized quotation, requested date,
+due date, and audit. Keep the authoritative text in the approved portal. Ask
+for clarification when the request does not name the control, period, system,
+population, or sample. Record that clarification so the response has a
+reviewable basis.
+
+### 2. Assign one owner
+
+The owner coordinates the answer, even when several people collect files. Give
+the request one accountable owner and name the collectors and reviewers on the
+underlying evidence records. This keeps responsibility clear without losing
+who performed each step.
+
+### 3. Map the request to controls and sources
+
+Connect the request to the applicable requirement and control. Identify the
+authoritative system that produced each artifact and the person who can obtain
+it. The
+[SOC 2 compliance-as-code guide](/blogs/soc-2-compliance-as-code)
+explains how typed relationships keep that chain inspectable in Git.
+
+This mapping often exposes the actual gap. The team may have a policy and a
+screenshot but no complete population, no dated operating record, or no source
+that can reproduce the report.
+
+### 4. Prepare the evidence and response separately
+
+The evidence is what supports the control activity. The response tells the
+engagement team what was provided, which request it answers, what period and
+systems it covers, and how to read it.
+
+For each fixed artifact, record its source, collection date, collector,
+classification, coverage, and related controls. When verification is required,
+record the verifier and verification date separately. The
+[SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) shows what this
+context looks like for access, changes, incidents, vendors, training, and
+other control work.
+
+### 5. Review before delivery
+
+Check the response against the exact request, not the general topic. Confirm:
+
+- the file covers the requested date or period;
+- the selected company, tenant, system, environment, and filters are visible
+  or recorded;
+- a Type 2 population is complete and reconciled before sampling;
+- all requested samples are present and can be tied back to the population;
+- the response explains exceptions and follow-up;
+- secrets, customer data, and unrelated personal data are excluded.
+
+The AICPA's
+[FAQ on SOC 2 software tools](https://assets.ctfassets.net/rb9cdnjh59cm/3BzDYlkG8XjV7VaI1KF7zU/ced35d74e3097f5a4b7048ce30be7c38/92317096-2107-36202-soc2-faq-f.pdf)
+notes that management is expected to evaluate the accuracy and completeness of
+information produced or maintained by a tool. A downloaded report still needs
+scope, parameters, and reconciliation.
+
+For sampled processes, use the
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) to preserve the
+complete source set, exact query, count, and management's completeness and
+accuracy checks.
+
+### 6. Submit through the approved channel
+
+Use the CPA firm's approved encrypted portal or transfer method. Record the
+submission date and a receipt, upload reference, or other delivery proof. Do
+not treat a local filename as proof that the engagement team received the
+item.
+
+The response status is now `submitted`. It is still open to questions.
+
+### 7. Track follow-up without replacing history
+
+When the firm asks a question or requests a new file, retain the earlier
+response and record the follow-up. Link revised or added evidence and explain
+what changed. This gives management and the CPA firm a clean trail without a
+second manual change log.
+
+Git records changes to FileGRC source files. Domain dates still record when
+management submitted a response, when the firm accepted it, and when the work
+occurred.
+
+### 8. Record acceptance and close the request
+
+Submission is not acceptance. Mark the request accepted only when the
+engagement team confirms that the response satisfies the request for
+fieldwork. Record the confirming person and date. Close it after all related
+follow-up is complete.
+
+Acceptance of one request does not mean the control passed, the evidence was
+sufficient for the full examination, or the report will have a particular
+opinion. The CPA firm makes those judgments.
+
+## Keep requests, evidence, populations, and packets distinct
+
+These records connect to each other, but they answer different questions.
+
+| Record           | Question it answers                                                      |
+| ---------------- | ------------------------------------------------------------------------ |
+| Audit request    | What did the firm ask for, and is the response accepted?                 |
+| Evidence record  | What fixed artifact or operating record supports the response?           |
+| Audit population | What is the complete source set for a Type 2 process?                    |
+| Control test     | What procedure was performed, who performed it, and what was the result? |
+| Evidence packet  | Which scoped records and files did management prepare for handoff?       |
+
+The [SOC 2 audit evidence packet guide](/blogs/soc-2-audit-evidence-packet)
+explains how management packages approved records and files for a defined
+engagement. Do not mark a request accepted because its files appear in a
+packet.
+
+Use `performedBy` to distinguish management or internal-audit monitoring from
+service-auditor testing. Keep the CPA firm's independent work in its
+authoritative system unless the firm explicitly provides it for management to
+record.
+
+## Track requests in FileGRC
+
+Start by reading the active model guidance instead of guessing at fields:
+
+```sh
+npx filegrc guide audit-request --json
+npx filegrc scaffold audit-request --title "Q3 access review evidence" \
+  --id request-q3-access-review > request.json
+```
+
+The scaffold uses the same `{ record, content }` mutation shape as browser and
+CLI updates. Open `request.json` and fill in the real audit, firm reference,
+sanitized request text, owner, request date, and due date. Then preview and
+create it:
+
+```sh
+npx filegrc preview-mutation request.json --json
+npx filegrc create request.json --json
+```
+
+FileGRC writes the files but does not create a Git commit. After each creation
+or update, inspect the changed paths and validate the workspace:
+
+```sh
+git status --short
+npx filegrc validate
+```
+
+Stage only the exact request, response, and evidence paths reported by
+`git status`, then review the staged bytes, including newly created files:
+
+```sh
+git diff --cached -- data/
+```
+
+Commit that reviewed diff with the team's normal Git workflow. The commit is
+what preserves the earlier response for later review.
+
+When the response is ready, export the current mutation, edit the record and
+its response Markdown, preview it, then update it:
+
+```sh
+npx filegrc get audit-request request-q3-access-review --mutation > response.json
+npx filegrc preview-mutation response.json --json
+npx filegrc update audit-request request-q3-access-review response.json --json
+npx filegrc list audit-request --workflow --json
+```
+
+For a submitted response, record its submission date, linked evidence, and
+response Markdown. For an accepted or closed request, also record the
+acceptance date and person. A closed request also needs `closedOn`. The
+workflow list makes each request's status and next action inspectable without
+opening the renderer.
+
+[filegrc](/) manages Git-reviewable GRC records, request relationships,
+readiness checks, and evidence-packet preparation. It does not collect data
+from source systems, upload to the CPA firm's portal, choose samples, perform
+the firm's tests, or decide whether evidence is sufficient and appropriate.

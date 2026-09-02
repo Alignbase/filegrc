@@ -440,7 +440,7 @@ test("requires a real committed Reporting Channel Set proposal in Step 1", async
   assert.ok(item.issues.some(({ code }) => code === "reporting-route-commit-required"));
 
   await git(root, "add", ".");
-  await git(root, "commit", "-m", "Commit reporting channel proposal");
+  await gitCommitAt(root, "2026-08-30T12:00:00Z", "Commit reporting channel proposal");
   readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
   item = readiness.stages.find(({ id }) => id === "scope").items
     .find(({ id }) => id === "security-reporting-route-set");
@@ -497,7 +497,7 @@ test("requires a new proposal when proposed requirements outgrow a committed rou
   await git(root, "config", "user.name", "Test User");
   await git(root, "config", "user.email", "test@example.test");
   await git(root, "add", ".");
-  await git(root, "commit", "-m", "Commit primary reporting proposal");
+  await gitCommitAt(root, "2026-08-30T12:00:00Z", "Commit primary reporting proposal");
 
   let readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
   let item = readiness.stages.find(({ id }) => id === "scope").items
