@@ -1,0 +1,378 @@
+---
+title: "SOC 2 Policy Approval: A Review and Activation Workflow"
+description: "Run SOC 2 policy approval with a separate reviewer, an exact content revision, a real approval date, controlled activation, and recorded follow-up."
+publishedDate: "2026-09-03"
+lastMod: "2026-09-03"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 policy approval",
+    "SOC 2 policy review",
+    "security policy approval process",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc separates policy drafting, approval of the exact text, activation, acknowledgement, and later review."
+faqs:
+  - question: "What is SOC 2 policy approval?"
+    answer: "SOC 2 policy approval is management's recorded acceptance of a policy's exact requirements and text. A useful approval identifies the policy, approver, approval date, reviewed revision, scope, and any conditions. Approval alone does not prove that related controls operate."
+  - question: "Who should approve a SOC 2 policy?"
+    answer: "Use a management reviewer with enough authority and context to challenge the policy owner. Keep the approver separate from the owner. The policy approver performs a management role and is not the CPA firm conducting the independent examination."
+  - question: "Does SOC 2 require annual policy approval?"
+    answer: "SOC 2 does not set one universal approval cadence for every policy. Management should define a schedule that fits its control design and commitments, then also review policies after material changes. FileGRC's model calls for at least annual review, but the recorded rule and actual operation need to agree."
+  - question: "Is policy approval the same as an effective date?"
+    answer: "No. Approval records management's acceptance of the reviewed text. The effective date records when the policy starts governing work. Separating them gives the team time to implement controls, configure schedules, communicate the policy, and prepare affected people before activation."
+  - question: "Does a policy approval need a signature?"
+    answer: "The approval method should prove who approved which text and when. That may be a workflow record, signed resolution, meeting record, or another controlled approval method. Confirm any signature or evidence format expected by your CPA firm, contracts, or internal rules."
+  - question: "What happens when an approved policy changes?"
+    answer: "Return any edit to approved policy text through review, approve the new exact revision, and choose its effective date. Collect new acknowledgements when the edit changes responsibilities. Preserve the prior approved version and dates so historical control operation remains understandable."
+furtherReading:
+  - text: "Run a practical SOC 2 risk assessment"
+    url: "/blogs/soc-2-risk-assessment-startups"
+  - text: "Write a connected SOC 2 system description"
+    url: "/blogs/soc-2-system-description-template"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Prepare a SOC 2 audit evidence packet"
+    url: "/blogs/soc-2-audit-evidence-packet"
+  - text: "Read the Git-native FileGRC story"
+    url: "/blogs/soc-2-in-git"
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Choose between SOC 2 Type 1 and Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+---
+
+SOC 2 policy approval should record who accepted a policy, when they accepted
+it, and the exact text they reviewed. Keep that approval separate from the
+policy owner, the effective date, control implementation, and the CPA
+examination. That separation lets a team prove what management decided without
+claiming that a document alone made the related controls work.
+
+## TL;DR
+
+- Keep the policy in draft until its scope, requirements, owner, and linked work
+  are ready for review.
+- Give the approval to a management reviewer who can challenge the owner.
+- Bind the approval to the exact policy text, not only a filename or version
+  label.
+- Record the real approval date and any conditions or follow-up.
+- Activate the policy when the company is ready to follow it. Do not backdate
+  adoption.
+- Review the policy on its stated schedule and after material changes, then
+  approve changed text again.
+
+## What SOC 2 policy approval needs to establish
+
+A useful approval answers six questions:
+
+1. Which policy did management review?
+2. Which exact text did the reviewer see?
+3. Who owned the draft and who approved it?
+4. When did approval happen?
+5. When will the requirements take effect?
+6. What follow-up must happen before or after activation?
+
+The [AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+provide criteria for evaluating controls relevant to security, availability,
+processing integrity, confidentiality, and privacy. They do not prescribe one
+universal policy pack, approver title, signature format, or approval calendar.
+Management designs a policy process that fits the scoped system and its
+controls, then operates the process it describes.
+
+NIST Cybersecurity Framework 2.0 offers a useful cross-check. Its
+[Policy category](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf)
+calls for cybersecurity policy to be established, communicated, enforced,
+reviewed, and updated as requirements, threats, technology, and the
+organization change. NIST is not a substitute for the Trust Services Criteria,
+but that lifecycle is a practical way to test whether a policy approval process
+ends too early.
+
+## Keep four policy events separate
+
+Teams often compress drafting, approval, activation, and review into one status
+and one date. Each event answers a different question.
+
+| Event      | What it records                                             | What it does not prove                                 |
+| ---------- | ----------------------------------------------------------- | ------------------------------------------------------ |
+| Drafting   | The proposed requirements and policy text                   | Management acceptance or actual operation              |
+| Approval   | Management accepted the exact reviewed text                 | The requirements have taken effect or controls operate |
+| Activation | The approved requirements became effective on a real date   | Every control operated effectively after that date     |
+| Review     | A later check reached a recorded result and named follow-up | A changed policy revision was separately approved      |
+
+This distinction matters when a team approves a policy before the related
+controls, schedules, training, or procedures are ready. Early approval can be
+honest if it accepts the requirements management intends to implement. The
+policy should become effective only when the company is prepared to follow it,
+with any known gap documented and handled through the program's normal risk or
+exception process.
+
+The same rule works in the other direction. A production control may already
+operate before a new policy is approved. That control history does not
+backdate the policy. Keep the actual control records and the policy lifecycle
+dates as separate facts.
+
+## Assign an approver who can challenge the owner
+
+The owner maintains the policy and makes sure its linked work stays current.
+The approver checks the proposed requirements and accepts them on management's
+behalf. Give the approval to someone with enough authority and context to ask
+for changes.
+
+For a small company, the approver may be another founder or functional leader.
+If one person holds every internal role, management may appoint a qualified
+external reviewer. Record that management role clearly. The reviewer should
+not be presented as the independent CPA auditor simply because the company is
+preparing for a SOC 2 examination.
+
+Before approving, the reviewer should check:
+
+- the policy scope matches the service, systems, data, people, and locations it
+  is meant to govern;
+- every requirement reflects current or ready-to-start practice;
+- the named roles exist and have accepted their work;
+- controls, procedures, plans, training, and schedules can apply the rules;
+- deadlines, exceptions, and escalation paths are specific enough to operate;
+- the proposed effective date leaves enough time for implementation and
+  communication; and
+- the review schedule and change triggers match management's decision.
+
+If one of those inputs is missing, record the policy as draft or in review.
+An approval date should describe an approval that occurred, not a target date
+or a placeholder for a future meeting.
+
+## Bind approval to the exact text
+
+A filename such as `information-security-policy-v1.md` does not prove which
+words the approver accepted. Neither does a Git commit by itself. Git can show
+who changed a file, when the commit was created, and what the diff contained,
+but those facts do not say that an assigned management reviewer approved the
+content.
+
+Record the policy identity, approver, approval date, and an immutable revision
+of the reviewed body. A content hash works well in a file-based system because
+the team can verify the current Markdown against the approved revision. A
+controlled document platform may use its own immutable revision ID. The method
+matters less than the ability to retrieve the exact approved text.
+
+Use a record like this as a review checklist:
+
+| Approval fact     | Example question                                             |
+| ----------------- | ------------------------------------------------------------ |
+| Policy identity   | Is this the right policy and business scope?                 |
+| Owner             | Who maintains the requirements and linked work?              |
+| Approver          | Who accepted the text, and are they separate from the owner? |
+| Reviewed revision | Can we retrieve and verify the exact approved text?          |
+| Approval date     | When did the reviewer make the decision?                     |
+| Effective date    | When do the requirements start governing work?               |
+| Conditions        | Which gaps, exceptions, communication, or follow-up remain?  |
+| Review rule       | When will management check this policy again?                |
+
+Do not put secrets, private keys, credentials, confidential evidence, or
+personal data that may need erasure into an immutable Git history. Policy text
+should state durable rules. Sensitive operational proof belongs in an approved
+restricted system with an opaque external reference when repository access or
+retention is unsuitable. Attach a local file to an Evidence record only when
+the repository's access and retention rules explicitly permit that data.
+
+## Use an approval-to-activation workflow
+
+The following sequence keeps the management decision connected to the work it
+governs.
+
+### 1. Prepare a reviewable draft
+
+Start with the real service boundary, risks, commitments, and control design.
+The [SOC 2 policy templates guide](/blogs/soc-2-policy-templates-startups)
+explains how to remove false claims and separate durable rules from procedures
+and configuration details.
+
+Give the draft an owner, audience, scope, and links to the requirements and
+controls it governs. Mark open questions plainly instead of approving
+placeholders.
+
+### 2. Review the policy and linked work
+
+Read the whole policy, not just its latest diff. Then inspect the controls,
+procedures, schedules, training, reporting routes, and acknowledgements needed
+to apply it. A reviewer should be able to trace each policy promise to a real
+owner and planned operating record.
+
+This review can find a policy problem or an implementation problem. Fix an
+incorrect requirement in the draft. Track unfinished implementation in the
+control, action, risk, or exception record where that work belongs.
+
+### 3. Record management approval
+
+Once the text is ready, record the approver, actual approval date, and exact
+content revision. Keep any conditions or follow-up visible. Approval accepts
+the requirements, so it should not silently mark related controls implemented
+or create evidence that does not exist.
+
+### 4. Finish the activation inputs
+
+Implement the linked controls and authoritative evidence sources. Configure
+recurring and event-driven tasks with owners, deadlines, and completion rules.
+Approve and activate any governed plans or training required for operation.
+
+The [SOC 2 controls for startups guide](/blogs/soc-2-controls-startups) shows
+how to connect a policy requirement to a control, procedure, source system, and
+expected evidence. The
+[recurring compliance tasks guide](/blogs/soc-2-recurring-compliance-tasks)
+shows how to turn approved rules into scheduled work without inventing a
+universal compliance calendar.
+
+### 5. Activate on the real effective date
+
+Review the complete cutover set, including known gaps and time-bound
+exceptions. Choose the date when the company actually starts operating under
+the approved requirements. Do not use the drafting date, planned date, or an
+earlier date that makes the record look cleaner.
+
+If approval and activation happen on the same day, keep both facts. They still
+mean different things, and a later policy may need time between them.
+
+### 6. Communicate and acknowledge
+
+Send the active policy to its defined audience. When acknowledgement is part
+of management's control design, bind each acknowledgement to the applicable
+policy revision. A list of names without the revision cannot show which rules
+people received.
+
+### 7. Operate, review, and revise
+
+Complete the work the policy requires and keep dated records from the real
+source systems. Review the policy on its stated schedule and after material
+changes such as a new service, major provider, contract requirement, incident,
+control failure, role change, or technology shift.
+
+A completed review should identify its scope, reviewer, date, evidence,
+outcome, changes required, and follow-up. If the text changes, edit the policy
+through a new review and approval cycle. Do not treat the review record itself
+as approval of replacement text.
+
+## What evidence should support policy approval?
+
+The approval record is evidence of the decision, but the full trail may include
+more context:
+
+- the exact approved policy revision;
+- the assigned owner and approver;
+- the approval date and meeting, resolution, ticket, or workflow record;
+- reviewer comments and how the owner resolved them;
+- activation assessment and actual effective date;
+- communication and revision-bound acknowledgements when required;
+- the scheduled or event-driven policy review record;
+- changed-text approval and supersession history; and
+- linked actions, risks, findings, or exceptions for unresolved work.
+
+Keep each source authoritative. Do not copy a second approval history into the
+policy body when the structured lifecycle record already owns those facts. Git
+should supply file history and diffs. The policy record should supply the
+management decision and domain dates.
+
+For fieldwork, use the
+[SOC 2 audit readiness checklist](/blogs/soc-2-audit-readiness-checklist) to
+confirm that the current approved and active policies match the engagement
+scope and that supporting control records are ready. The CPA firm still decides
+which approval and operating evidence is sufficient for its procedures.
+
+## Run the workflow in filegrc
+
+[filegrc](/) stores policy metadata in JSON, policy text in companion Markdown,
+and file history in Git. It keeps `draft`, `in-review`, `approved`, `active`,
+`superseded`, and `retired` states distinct. Policy approval records a separate
+approver, the real approval date, and the approved Markdown revision. A
+dedicated activation step applies the effective date after implementation
+review.
+
+Inspect the current model and policy before changing anything:
+
+```sh
+npx filegrc guide policy --json
+npx filegrc list policy --workflow --json
+npx filegrc get policy policy-information-security --mutation \
+  > /tmp/filegrc-policy-mutation.json
+npx filegrc references policy-information-security --json
+```
+
+Edit the returned mutation instead of building a payload from memory. For the
+approval update, set the real `approverIds`, `approvedOn`, and `status` after
+review. FileGRC manages the approved content revision when it applies the
+update. Preview the whole record and Markdown change together:
+
+```sh
+npx filegrc preview-mutation /tmp/filegrc-policy-mutation.json --json
+npx filegrc update policy policy-information-security \
+  /tmp/filegrc-policy-mutation.json --json
+npx filegrc validate --json
+```
+
+CLI writes do not create Git commits. Review and commit the exact approval
+change so the earlier record and Markdown remain retrievable:
+
+```sh
+git status --short
+git add data/policies/policy-information-security.json \
+  data/policies/policy-information-security.md
+git diff --cached -- data/policies/policy-information-security.json \
+  data/policies/policy-information-security.md
+git commit -m "Approve information security policy"
+```
+
+The trunk-mode browser creates a focused commit for a successful save. When you
+use the CLI, your team owns this Git review and commit step.
+
+Approval does not activate the policy. After linked controls, evidence sources,
+schedules, governed content, and known gaps are ready, review the activation
+assessment and the generated cutover payload:
+
+```sh
+npx filegrc program-readiness --json
+npx filegrc activate-policies --scaffold \
+  > /tmp/filegrc-policy-activation.json
+npx filegrc activate-policies \
+  /tmp/filegrc-policy-activation.json --preview --json
+npx filegrc activate-policies \
+  /tmp/filegrc-policy-activation.json --yes --json
+npx filegrc program-readiness --summary --json
+```
+
+The scaffold may include every approved inactive Policy. Before previewing,
+edit `policyIds` to the exact reviewed cutover set, keep matching entries in
+`expectedRevisions` only, and set the real `effectiveOn` date. For the one-policy
+example here, select only `policy-information-security`. The revisions stop a
+stale review from replacing newer work silently. FileGRC rejects a past
+effective date because adoption must not be backdated.
+
+After activation, validate, review, and commit every selected Policy JSON. The
+following command is complete only because the example selected one Policy:
+
+```sh
+npx filegrc validate --json
+git add data/policies/policy-information-security.json
+git diff --cached -- data/policies/policy-information-security.json
+git commit -m "Activate information security policy"
+```
+
+If the reviewed cutover contains more Policies, add each exact JSON path to the
+`git add` and `git diff --cached` commands before committing.
+
+When any approved text changes, move the policy back to review and change the
+Markdown through the same validated mutation. Approve the new exact revision,
+activate it on the real date, and commit each lifecycle change so Git preserves
+the prior record. Use materiality to decide whether an out-of-cycle review or
+new acknowledgement is needed, not whether changed text needs reapproval.
+Record the later operating check as a `policy-review`, including its scope,
+reviewer, outcome, evidence, coverage, completion date, and follow-up.
+
+filegrc manages GRC records and audit evidence. It does not operate identity,
+cloud, endpoint, backup, monitoring, training, signature, or incident-detection
+systems. It also does not approve management policies or replace the
+independent CPA examination.
+
+Use the
+[SOC 2 compliance-as-code workflow](/blogs/soc-2-compliance-as-code) to connect
+policy approval to the rest of the file-based program, or
+[see filegrc on GitHub](https://github.com/Alignbase/filegrc) to inspect the
+model and run it locally.
