@@ -1,0 +1,462 @@
+---
+title: "SOC 2 Complementary User Entity Controls: A Practical Workflow"
+description: "Define SOC 2 complementary user entity controls by linking each customer duty to the system and control that depend on it, then review the full set."
+publishedDate: "2026-09-04"
+lastMod: "2026-09-04"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 complementary user entity controls",
+    "CUEC examples",
+    "SOC 2 customer controls",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc links each complementary user entity control to the customer action, system boundary, and internal control that depends on it."
+faqs:
+  - question: "What are complementary user entity controls in SOC 2?"
+    answer: "Complementary user entity controls, or CUECs, are specific controls a service organization assumes its customers will operate because those controls are necessary, together with the service organization's controls, to achieve its service commitments and system requirements."
+  - question: "What is an example of a complementary user entity control?"
+    answer: "A service may require each customer to approve and remove access for its own users because the service organization cannot decide who the customer should authorize. The CUEC should name that action and the service-organization control that relies on it."
+  - question: "Is every customer responsibility a CUEC?"
+    answer: "No. Contract duties, product instructions, and general security advice are not automatically CUECs. A customer responsibility belongs in the SOC 2 description as a CUEC only when a control in the scoped service depends on the customer action."
+  - question: "What is the difference between a CUEC and a complementary subservice organization control?"
+    answer: "A CUEC assigns the action to a customer, which SOC guidance calls a user entity. A complementary subservice organization control assigns the action to a provider whose controls are carved out of the service organization's report. Keep the responsible party and dependency separate."
+  - question: "What should I do with CUECs in a vendor's SOC 2 report?"
+    answer: "Check which CUECs apply to the exact service and configuration you use, map them to your own controls, verify that owners and evidence exist, and record any gap in the vendor review, risk register, or action workflow. Do not treat receipt of the report as proof that your company operates those controls."
+  - question: "Can a SOC 2 report have no complementary user entity controls?"
+    answer: "Yes, when no scoped service-organization control depends on a customer action. Management should review the complete control and system scope and record that conclusion instead of leaving the section blank or assuming that every report needs a standard list."
+furtherReading:
+  - text: "Run a practical SOC 2 risk assessment"
+    url: "/blogs/soc-2-risk-assessment-startups"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Prepare a SOC 2 audit evidence packet"
+    url: "/blogs/soc-2-audit-evidence-packet"
+  - text: "Approve SOC 2 policies and activate them separately"
+    url: "/blogs/soc-2-policy-approval"
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 complementary user entity controls, usually shortened to CUECs, are
+specific controls a service organization assumes its customers will operate.
+Those customer controls must be necessary, together with the service
+organization's controls, to achieve its service commitments and system
+requirements. A product instruction, contract term, or general security
+recommendation is not automatically a CUEC. Start with the dependent internal
+control, name the customer action it needs, connect both to the scoped system,
+and review the full set with the CPA firm.
+
+## TL;DR
+
+- Add a CUEC only when a scoped service-organization control depends on a
+  customer action.
+- Write the action so a customer can tell who must do what and where it applies.
+- Link the CUEC to the exact system, internal control, requirement, or service
+  commitment that depends on it.
+- Keep customer controls separate from controls operated by a carved-out
+  provider and from management's own controls.
+- When reviewing a vendor's report, treat its CUECs as inputs to your controls
+  and vendor decision.
+- Record a reviewed zero-population conclusion when no customer or carved-out
+  provider dependency exists.
+
+## What complementary user entity controls mean in SOC 2
+
+In SOC terminology, the company receiving the service is the user entity. The
+[2018 SOC 2 Description Criteria](https://www.aicpa-cima.com/resources/download/get-description-criteria-for-your-organizations-soc-2-r-report)
+define CUECs as controls that user entities are assumed to implement and that
+are necessary, together with the service organization's controls, to provide
+reasonable assurance that the service commitments and system requirements are
+achieved. DC6 calls for the system description to state those controls when
+they exist. Management prepares the description, and the CPA firm evaluates it
+as part of the engagement. That dependency test rules out a generic list copied
+into every report.
+
+A useful CUEC answers four questions:
+
+1. What exact action must the customer perform?
+2. Which customer role or function would normally own it?
+3. Which service and system boundary does it affect?
+4. Which service-organization control and commitment or requirement depend on
+   it?
+
+If you cannot answer the fourth question, you probably have product guidance
+or a contract duty rather than a CUEC.
+
+## Separate four kinds of responsibility
+
+Shared systems create several kinds of responsibility, but they should not be
+mixed into one list.
+
+| Responsibility                                | Who operates it                                   | Why it exists                                                                       | Where to record it                                                                     |
+| --------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Management control                            | The service organization                          | Implements the service organization's policy and requirements                       | The service organization's control catalog                                             |
+| Complementary user entity control             | The customer                                      | A scoped service-organization control depends on this customer action               | The SOC 2 system description and linked CUEC record                                    |
+| Complementary subservice organization control | A carved-out provider                             | A scoped control depends on an action at the provider                               | Subservice treatment, provider responsibility, and linked complementary-control record |
+| Product or contract responsibility            | The party named by the product terms or agreement | Defines correct use or a legal duty without necessarily supporting a report control | Product documentation, contract, policy, or procedure                                  |
+
+The distinction changes depending on which report you are reading. In your own
+SOC 2 report, a customer's access-administration duty may be a CUEC. In a
+provider's report that your company receives, the same duty is your internal
+control responsibility. Do not copy it into your own CUEC list as if your
+customers owed it to you.
+
+The [SOC 2 vendor review guide](/blogs/soc-2-vendor-review) explains how to
+review the provider's scope, opinion, exceptions, subservices, report period,
+and customer responsibilities together.
+
+## Test whether a proposed CUEC belongs in the report
+
+Use a dependency test before writing the statement.
+
+### 1. Start with a control you operate
+
+Name the service-organization control first. It might require the company to
+enforce authorization decisions received from each customer, restrict tenant
+administration to customer-approved users, or process customer configuration
+changes through an authenticated workflow.
+
+The control must describe work your company actually performs. A CUEC cannot
+repair a vague or unimplemented service-organization control.
+
+### 2. Ask what the control cannot decide or perform
+
+Identify the part that only the customer can do. Your company may enforce a
+customer's approved access list, but it cannot know who the customer still
+employs or which duties each person should have. The dependency is the
+customer's timely approval, review, and removal of its users.
+
+### 3. Confirm that the action affects the scoped service
+
+Tie the action to the system, product, tenant, integration, or data flow in the
+report. A broad instruction to “maintain appropriate security” gives customers
+no usable boundary and gives reviewers no dependent control to trace.
+
+### 4. Check who is really responsible
+
+Do not transfer a control to the customer when management still controls the
+action. If the service organization can enforce a setting centrally, owns the
+relevant decision, or promised to perform the work, describe it as
+management's control.
+
+If a carved-out provider operates the action, classify it as a complementary
+subservice organization control and connect it to that provider and supplied
+component. The customer and the provider are different responsible parties.
+
+### 5. Remove duplicates and advice
+
+Merge statements that name the same action, system, and dependency. Move
+setup tips, recommended settings, acceptable-use rules, and contract duties to
+their authoritative documents unless a report control truly relies on them.
+
+## Write CUECs that a customer can operate
+
+A useful statement is specific without prescribing the customer's entire
+control design.
+
+Weak statement:
+
+> Customers are responsible for security.
+
+More useful statement:
+
+> Customer administrators approve access to their production tenant, review
+> privileged access on the customer's approved schedule, and notify the service
+> organization promptly when access must be removed.
+
+The second statement names actions and scope. The linked service-organization
+control should explain what your company does with those approved decisions,
+such as authenticating administrators, enforcing assigned roles, recording
+changes, and processing removal requests.
+
+Do not promise that every customer uses one job title, ticket system, review
+cadence, or approval format unless the service and contract require it. The
+CUEC should state the required outcome. The customer decides how to operate
+its own control within that boundary.
+
+The [SOC 2 controls guide](/blogs/soc-2-controls-startups) shows how to keep a
+control's owner, procedure, schedule, source system, and evidence connected.
+
+## Review CUECs in a vendor's SOC 2 report
+
+When your company is the user entity, the provider's CUEC list is a set of
+assumptions about your controls. Review it against the exact product and
+configuration you use.
+
+For each applicable CUEC:
+
+1. Map it to an existing internal control, or identify the missing control.
+2. Confirm the owner, system scope, procedure, and operating schedule.
+3. Confirm that the source system can produce dated evidence.
+4. Check whether the provider's exceptions or subservice treatment change the
+   risk.
+5. Record any gap as a risk, finding, or action item with an owner and deadline.
+6. Limit, condition, or reject the vendor use when the unresolved risk exceeds
+   management's approved threshold.
+
+Classify the provider's report, bridge material, and operating exports before
+storing them. Put confidential customer data, regulated personal data, and
+personal data that may need erasure in an approved restricted evidence store.
+Attach a local file only when the data classification, repository access,
+retention, and the provider's distribution terms all permit it. A filegrc
+Evidence Artifact can retain the minimum safe source, coverage, collector, and
+verification metadata plus an opaque reference ID without putting the source
+file into the repository. Never commit credentials, tokens, session material,
+or signed URLs.
+
+Receiving the provider's report does not prove that your company performed its
+CUECs. Your local control records and operating evidence support that
+conclusion. Your CPA firm still decides which evidence is sufficient for your
+engagement.
+
+## Record a real zero-population decision
+
+Some systems have no complementary customer or carved-out provider controls.
+That can be a valid conclusion when management reviewed the complete current
+scope.
+
+Do not support “none” with a blank spreadsheet or an empty section. Review:
+
+- every in-scope system and service commitment;
+- each internal control and the outside actions it depends on;
+- customer-managed identities, data, configuration, integrations, and
+  communications;
+- carved-out providers and the components they supply;
+- contracts and product documentation that assign responsibilities; and
+- changes since the last review.
+
+Record who performed the review, when it happened, the scope and source set,
+and why no dependency met the CUEC or complementary subservice-control test.
+Repeat the review for each audit and after a material change to customer
+responsibilities, contracts, integrations, vendors, or the service boundary.
+
+A new control, system, or component may make the earlier zero-population
+decision stale. Treat that as a prompt to review the collection again, not as
+proof that the earlier conclusion was wrong when management made it.
+
+## Keep the system description and audit scope in sync
+
+The CUEC inventory is a source for the system description, not a substitute
+for it. The description should explain customer responsibilities in context so
+a report reader can understand which controls depend on them.
+
+Use the
+[SOC 2 system description workflow](/blogs/soc-2-system-description-template)
+to connect DC6 to the current systems, commitments, controls, and customer
+dependencies. If the engagement identifies complementary controls, select the
+applicable records in the audit scope. If none apply, record the
+not-applicable conclusion and its basis.
+
+Before fieldwork, the
+[SOC 2 audit readiness checklist](/blogs/soc-2-audit-readiness-checklist)
+should catch conclusion and selection conflicts, such as active CUECs in scope
+with an audit marked not applicable or an identified conclusion with no
+selected records. The Collection Review must separately confirm that each
+statement names a real dependency and links the related Control. FileGRC does
+not infer that relationship from prose.
+
+Keep the CPA firm involved in final wording and presentation. Software can
+validate relationships and expose missing work, but it cannot decide whether
+the system description is fairly presented or whether the engagement evidence
+is sufficient.
+
+## Manage complementary controls in filegrc
+
+[filegrc](/) stores each customer or carved-out provider dependency as a
+`complementary-control` record. The record names the responsible party,
+statement, affected Systems, and linked Controls. It can also connect relevant
+Requirements, Commitments, Documents, Vendors, and Components.
+
+Inspect the model and current relationship candidates before writing:
+
+```sh
+npx filegrc guide complementary-control --json
+npx filegrc list system --workflow --json
+npx filegrc list control --workflow --json
+npx filegrc list complementary-control --workflow --json
+```
+
+Create a scaffold instead of building a mutation from memory:
+
+```sh
+filegrc_cuec_dir="$(mktemp -d)" || exit 1
+cuec_mutation="$filegrc_cuec_dir/complementary-control.json"
+cuec_applicability="$filegrc_cuec_dir/applicability-review.json"
+cuec_review="$filegrc_cuec_dir/collection-review.json"
+filegrc_cuec_cleanup() {
+  rm -f "$cuec_mutation" "$cuec_applicability" "$cuec_review"
+  rmdir "$filegrc_cuec_dir"
+}
+
+chmod 700 "$filegrc_cuec_dir" || {
+  filegrc_cuec_cleanup
+  exit 1
+}
+
+npx filegrc scaffold complementary-control \
+  --title "Customer production access administration" \
+  --id complementary-control-customer-production-access \
+  > "$cuec_mutation" || {
+  filegrc_cuec_cleanup
+  exit 1
+}
+```
+
+Fill the generated `{ record, content }` envelope with current facts. This
+shortened example shows the important links:
+
+```json
+{
+  "record": {
+    "id": "complementary-control-customer-production-access",
+    "type": "complementary-control",
+    "title": "Customer production access administration",
+    "status": "active",
+    "responsibleParty": "user-entity",
+    "statement": "Customer administrators approve, review, and request removal of access to their production tenant.",
+    "systemIds": ["system-customer-platform"],
+    "relatedControlIds": ["control-enforce-customer-access-decisions"],
+    "commitmentIds": ["commitment-customer-access-boundary"],
+    "sourceDocumentIds": ["document-soc2-system-description"],
+    "effectiveOn": "2026-09-04"
+  }
+}
+```
+
+Use IDs returned by your workspace. If the responsible party is a carved-out
+provider, set `responsibleParty` to `subservice-organization` and also connect
+the applicable `vendorId` and `componentIds`. Keep the service organization's
+dependent controls in `relatedControlIds`.
+
+Preview and create the record, then generate the required applicability review:
+
+```sh
+npx filegrc preview-mutation "$cuec_mutation" --json &&
+  npx filegrc create "$cuec_mutation" --json &&
+  npx filegrc validate --json &&
+  npx filegrc review-applicability \
+    --scaffold --type complementary-control > "$cuec_applicability" || {
+  filegrc_cuec_cleanup
+  exit 1
+}
+```
+
+The applicability scaffold includes every current complementary-control record
+that needs review. For this single-record workflow, remove every other entry
+from the `decisions` array and leave only the new record's ID. Review the other
+pending records in a separate batch instead of changing them as a side effect.
+Fill the actual reviewer, review date, and fact-backed decision and rationale.
+Keep the scaffold's `basis` unchanged because it binds the decision to the
+scope you reviewed. Use `applicable` only after management confirms the real
+dependency. Do not change the workspace between this scaffold and apply.
+
+Preview and apply the reviewed decisions before committing the record. Inspect
+the workflow output to confirm that the applicability review is current:
+
+```sh
+npx filegrc review-applicability "$cuec_applicability" --preview --json &&
+  npx filegrc review-applicability "$cuec_applicability" --yes --json &&
+  npx filegrc validate --json &&
+  npx filegrc workflow --json || {
+  filegrc_cuec_cleanup
+  exit 1
+}
+cuec_record=data/complementary-controls/complementary-control-customer-production-access.json
+git status --short
+git diff --cached --quiet || {
+  printf '%s\n' "Stop: the index already contains staged work." >&2
+  filegrc_cuec_cleanup
+  exit 1
+}
+git add "$cuec_record" &&
+  git diff --cached &&
+  git diff --quiet -- "$cuec_record" &&
+  git commit -m "Record customer production access responsibility" || {
+  printf '%s\n' "Stop: the record changed after it was staged." >&2
+  filegrc_cuec_cleanup
+  exit 1
+}
+```
+
+The clean-index check prevents the commit from including earlier staged work.
+Stop if `git status` shows an unexpected file, if the complete staged diff is
+not the record you intend to commit, or if the same record has unstaged changes.
+The committed active record now includes the applicability decision and its
+scope binding.
+
+After reviewing the full collection, record either a complete or
+zero-population decision. First commit every current input to the reviewed
+scope, including the Program's System and Control selections and all linked
+records. FileGRC binds the Collection Review to that clean Git revision and
+refuses to preview or apply a temporal review while the workspace is dirty.
+
+```sh
+review_scope_revision="$(git rev-parse HEAD)" || {
+  filegrc_cuec_cleanup
+  exit 1
+}
+test -z "$(git status --porcelain=v1 -- .)" &&
+  npx filegrc review-collection complementary-control --scaffold \
+    > "$cuec_review" || {
+  printf '%s\n' "Stop: commit the complete review scope first." >&2
+  filegrc_cuec_cleanup
+  exit 1
+}
+printf 'Expected scope revision: %s\n' "$review_scope_revision"
+```
+
+Fill the real decision, rationale, and reviewer IDs. Set `reviewedOn` to today's
+date in the workspace timezone because FileGRC rejects a backdated current
+review. To reconstruct an older decision, check out the historical population
+from Git instead. Also add `scopeRevision` with the exact revision printed by
+the preceding command. Use `complete` when the reviewed collection contains
+the applicable records. Use `zero-population` only after confirming that no
+in-scope control depends on a customer or carved-out provider action.
+
+Preview and apply only if the worktree is still clean and `HEAD` is still the
+revision you reviewed:
+
+```sh
+test "$(git rev-parse HEAD)" = "$review_scope_revision" &&
+  test -z "$(git status --porcelain=v1 -- .)" &&
+  npx filegrc review-collection complementary-control \
+    "$cuec_review" --preview --json &&
+  test "$(git rev-parse HEAD)" = "$review_scope_revision" &&
+  test -z "$(git status --porcelain=v1 -- .)" &&
+  npx filegrc review-collection complementary-control \
+    "$cuec_review" --yes --json &&
+  npx filegrc program-readiness --summary --json || {
+  printf '%s\n' "Stop: the scope changed or a review step failed." >&2
+  filegrc_cuec_cleanup
+  exit 1
+}
+git status --short
+```
+
+CLI writes do not create Git commits. After the command succeeds, only its
+Collection Review changes should be dirty. A renewed review may create a new
+review record and retire the prior one, so stage each exact path reported by
+`git status` instead of assuming there is one fixed filename. Verify the
+complete staged diff, confirm those files have no unstaged changes, and commit
+the reviewed index. Do not edit a complementary-control or another scope input
+in the same commit because the review's `scopeRevision` points to the earlier
+clean commit.
+
+After the Collection Review records are committed, delete the three temporary
+files and remove the private temporary directory:
+
+```sh
+filegrc_cuec_cleanup
+unset -f filegrc_cuec_cleanup
+```
+
+Use the
+[SOC 2 compliance-as-code workflow](/blogs/soc-2-compliance-as-code) to connect
+these records to the rest of the program. filegrc manages GRC records and audit
+evidence. It does not operate customer controls, provider controls,
+infrastructure, identity, monitoring, or other source systems, and it does not
+replace the CPA examination.
