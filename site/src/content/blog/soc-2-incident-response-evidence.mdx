@@ -1,0 +1,490 @@
+---
+title: "SOC 2 Incident Response Evidence: Build the Full Record"
+description: "Collect SOC 2 incident response evidence that connects alerts, incident decisions, response work, exercises, corrective actions, and complete Type 2 populations."
+publishedDate: "2026-09-05"
+lastMod: "2026-09-05"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 incident response evidence",
+    "SOC 2 incident response checklist",
+    "SOC 2 incident log",
+    "SOC 2 tabletop exercise evidence",
+  ]
+featured: true
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects incident records, source evidence, exercises, corrective work, and Type 2 populations without treating them as one artifact."
+faqs:
+  - question: "What incident response evidence is needed for SOC 2?"
+    answer: "Useful SOC 2 incident response evidence connects the approved response plan and controls to alert sources, triage decisions, incident timelines, containment and recovery work, communication decisions, exercises, findings, corrective actions, and a complete Type 2 event population when applicable. The CPA firm decides the exact evidence needed for the engagement."
+  - question: "Do we need evidence when no security incidents occurred?"
+    answer: "For a Type 2 period, a zero-incident conclusion should still name the authoritative source, exact period, report or query parameters, generation time, timezone, count, and completeness and accuracy checks. Do not create a dummy incident record. Preserve the source report that supports the zero count."
+  - question: "Does a tabletop exercise count as SOC 2 incident response evidence?"
+    answer: "A tabletop can show that the organization exercised its approved response process and recorded participants, decisions, findings, and follow-up. It does not replace records for real incidents that occurred, source evidence for alert handling, or a complete Type 2 incident population."
+  - question: "What should a SOC 2 incident record include?"
+    answer: "Record the occurrence and detection times, source, severity, owner, affected systems and providers, declaration and response timeline, evidence preserved, containment, eradication, recovery, communication and notification decisions, findings, corrective actions, and closure review. Keep raw sensitive artifacts in an approved restricted system when they do not belong in Git."
+  - question: "Is every security alert a SOC 2 incident?"
+    answer: "No. Apply the organization's approved event-evaluation and incident-declaration rules. Preserve enough source and triage evidence to show why an alert was closed as benign, remained under investigation, or became an incident instead of inflating the incident log with every alert."
+  - question: "Does filegrc collect incident evidence from monitoring systems?"
+    answer: "No. filegrc records incidents, exercises, obligations, findings, Evidence Artifacts, and audit populations, then links them in Git. Monitoring, case-management, cloud, identity, and other source systems still detect events, operate controls, and produce authoritative evidence."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 incident response evidence should show how your team evaluated security
+events, handled declared incidents, recovered affected systems, and corrected
+weaknesses. A response plan describes the design. Alert and case records show
+what the source systems detected. Incident records explain management's
+decisions and actions. Exercises test the process. For a Type 2 period, a
+complete incident population supports the claim that you included every
+relevant event, even when the final count is zero.
+
+## TL;DR
+
+- Keep the response plan, source alerts, incident records, exercises, and
+  period population separate because they answer different questions.
+- Record occurrence, detection, declaration, containment, recovery, and closure
+  as business timestamps. Git commit time does not replace them.
+- Preserve the source and rationale for alerts that did not become incidents.
+- Link each declared incident to affected Systems, Components, Vendors,
+  Evidence Artifacts, Findings, and corrective work.
+- Treat a tabletop as exercise evidence, not a substitute for real-event
+  records or a complete Type 2 population.
+- Support a zero-incident conclusion with a fixed source report, exact query,
+  period, timezone, count, and reconciliation.
+- Let the CPA firm set its procedures and decide whether the evidence is
+  sufficient for the engagement.
+
+## What SOC 2 incident response evidence needs to prove
+
+The
+[AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+place security-event evaluation, incident response, and incident recovery in
+separate criteria. CC7.3 addresses evaluating security events and deciding
+whether they are incidents. CC7.4 addresses responding to identified
+incidents. CC7.5 addresses recovery and changes needed after an incident.
+
+That sequence matters because a policy and a closed ticket do not show the
+whole path. A reviewer needs to understand how the event entered the process,
+why management classified it as it did, what the team did, whether the system
+recovered, and how the company handled any resulting weakness.
+
+[NIST SP 800-61 Revision 3](https://csrc.nist.gov/pubs/sp/800/61/r3/final)
+also treats incident response as part of ongoing cybersecurity risk management.
+It connects preparation, detection, response, recovery, and improvement to the
+broader risk program. NIST is a useful implementation reference, but it does
+not replace the criteria, your approved controls, or the CPA firm's judgment.
+
+Use the criteria to define the outcome, then use your system, risks, policies,
+commitments, and sources to design the controls. The evidence should match that
+real design. Do not copy a universal incident checklist and assume every row
+applies.
+
+## Keep six evidence layers separate
+
+Teams often place every incident-related file in one folder. That makes it hard
+to tell what each item proves.
+
+| Evidence layer        | What it should establish                                                                | Typical record or source                                                        |
+| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Approved design       | Who reports, declares, leads, escalates, communicates, recovers, and closes incidents   | Approved policy, response plan, Control, approved Reporting Channel Set         |
+| Detection and triage  | Which events were detected, reviewed, and classified, including non-incidents           | Monitoring configuration, alert log, case export, triage decision               |
+| Incident operation    | What happened and how management directed the response                                  | Incident record, timeline, affected scope, owners, decisions                    |
+| Response and recovery | What the team contained, eradicated, restored, communicated, and verified               | Source logs, tickets, recovery checks, communication and notification decisions |
+| Exercise              | Which parts of the plan and alert path were tested and what the team learned            | Exercise record, scenario, participants, decisions, Evidence, Findings          |
+| Period completeness   | Whether the Type 2 source set includes every in-scope event and incident for the period | Population export, query, count, reconciliation, fixed source artifact          |
+
+One artifact may support more than one layer, but keep the facts explicit. An
+incident-management export might show alerts, triage, and incident status. The
+Incident record can still explain management's severity decision, affected
+scope, communication review, root cause, and follow-up without making a
+reviewer infer those facts from tool fields.
+
+## Do not turn every alert into an incident
+
+An alert is a signal. An incident is a management classification under the
+company's approved criteria. Keeping those concepts separate prevents two bad
+records: an incident log filled with routine false positives, or an empty log
+that hides alerts nobody evaluated.
+
+For each relevant event, preserve enough source context to answer:
+
+1. Which Component produced or received the alert?
+2. When did the event occur and when did the team detect it?
+3. Which person or team evaluated it?
+4. Which severity and declaration criteria applied?
+5. What evidence supported the decision?
+6. Did the event remain suspected, become a declared incident, or close as a
+   non-incident?
+7. Did the decision create a Finding, Exception, Risk update, or corrective
+   Action Item?
+
+Do not invent a declared incident merely to prove the process operated. Keep
+the source alert and triage result. If a qualifying incident did occur, create
+the Incident record promptly and update it as facts change.
+
+## Build the incident record while the response happens
+
+A retrospective written months later can miss the decisions that mattered.
+Start the record when the event is reported or detected, then add facts as the
+team investigates.
+
+### Record timing as separate facts
+
+Keep these timestamps distinct when they apply:
+
+- `occurredAt`: the best supported time the event began;
+- `detectedAt`: when the organization detected or received the report;
+- `declaredAt`: when an authorized person declared an incident;
+- `containedAt`: when containment was achieved;
+- `eradicatedAt`: when the identified cause or unwanted presence was removed;
+- `recoveredAt`: when the affected service returned to its approved operating
+  state; and
+- `closedAt`: when the closure criteria and review were complete.
+
+The times may change as the investigation develops. Record the corrected
+business fact and preserve the Git diff that explains the change. Do not use
+the file's commit time as the occurrence, declaration, or recovery time.
+
+### Connect the scope and decisions
+
+Name the affected Systems, Components, Vendors, data classes, known Risks, and
+Vulnerabilities. Record the owner and severity, then explain the current impact
+and the evidence behind it.
+
+The long-form incident record should cover:
+
+- source reports and the initial triage;
+- the known event timeline and affected boundary;
+- containment, eradication, and recovery work;
+- customer, contractual, privacy, legal, insurance, and regulatory questions
+  reviewed with qualified people when applicable;
+- each communication or notification decision and its basis;
+- preserved Evidence Artifacts and any chain-of-custody needs;
+- root-cause or contributing-factor analysis;
+- confirmed Findings, corrective Action Items, owners, and deadlines; and
+- closure criteria, validation, lessons learned, and remaining risk.
+
+Do not state that no notification was required without recording who reviewed
+the real facts and which obligations they considered. FileGRC can store the
+decision and relationships. It cannot make legal, contractual, insurance, or
+regulatory judgments.
+
+## Keep sensitive incident material out of ordinary Git history
+
+Incident sources may contain credentials, tokens, personal data, customer
+data, forensic images, exploit details, or material covered by legal
+privilege. A private repository does not make every artifact suitable for an
+immutable Git history.
+
+Classify the Incident and each Evidence Artifact before adding content. Keep
+raw material in an approved restricted evidence or case system when the
+repository's access, retention, or later-deletion rules do not permit it. The
+FileGRC Evidence Artifact can store a safe source description, collector,
+coverage, classification, and opaque external reference without copying the
+restricted file. Never store a credential, session value, access token, or
+expiring signed URL in the record.
+
+Use a sanitized summary in Markdown. Remove unnecessary names, customer
+details, payloads, secrets, and personal data that may need erasure. State what
+you removed and where an authorized reviewer can find the approved source.
+
+## A tabletop proves an exercise, not an incident population
+
+A tabletop can test roles, alternate plan access, escalation, communications,
+decision authority, containment choices, and recovery coordination. It is most
+useful when the scenario matches the company's actual Systems, dependencies,
+Risks, and response plan.
+
+Record the exercise's:
+
+- scenario and objective;
+- scheduled and actual timing;
+- facilitator and participants;
+- Systems, Components, teams, and procedures tested;
+- decision points and participant responses;
+- alert-path generation, receipt, acknowledgement, escalation, and fallback
+  results when those paths are in scope;
+- outcome, observations, Findings, and Exceptions;
+- Evidence Artifacts; and
+- corrective work with owners and deadlines.
+
+The AICPA criteria do not publish one universal annual tabletop schedule for
+every service organization. Your approved response Control, plan, customer
+commitment, or risk decision may require a specific exercise and cadence. The
+FileGRC Security starter proposes an annual incident-response and alert-path
+exercise, but that proposal must be reviewed and adopted against the real
+organization before it governs work.
+
+Use the
+[SOC 2 recurring compliance tasks workflow](/blogs/soc-2-recurring-compliance-tasks)
+to activate the right Exercise Obligation only after its Policy, governed plan,
+Control, owner, recurrence, and proof requirements are ready.
+
+## Prove a zero-incident conclusion from the source
+
+"No incidents occurred" is a conclusion, not an artifact. For a Type 2 period,
+start with the Components that are authoritative for security monitoring and
+incident cases. Export the complete source set for the exact period after it
+closes.
+
+The fixed population artifact should record:
+
+| Fact               | What to preserve                                                                    |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| Coverage           | Exact Type 2 start and end dates                                                    |
+| Source Component   | Monitoring, case, or other Component that owns the population                       |
+| Query or report    | Filters, environments, status rules, exclusions, and report name                    |
+| Generation         | Timestamp and timezone used by the source                                           |
+| Population count   | Number of events or incidents returned, including zero                              |
+| Completeness check | How management confirmed every in-scope source and period was included              |
+| Accuracy check     | How management checked identifiers, timestamps, status, and classification          |
+| Reconciliation     | How alerts, cases, Incident records, duplicates, and excluded non-incidents tie out |
+| Fixed source       | Retained export or approved restricted reference used for the conclusion            |
+
+If monitoring and incident cases live in different Components, do not hide the
+split behind one unexplained total. Preserve and reconcile each source. If an
+alert report returned 48 events and the incident system returned zero declared
+incidents, explain how the 48 events were evaluated and why none met the
+approved incident criteria.
+
+Do not create a dummy Incident with `status: closed` to represent a zero count.
+The source export and reconciled Audit Population carry the zero-event fact.
+
+## Type 1 and Type 2 need different incident evidence
+
+A Type 1 examination addresses control design and implementation as of the
+specified date. Current policy and plan revisions, assigned roles, configured
+Components, response and recovery Controls, a representative Exercise, and any
+real Incident records may support that point-in-time work.
+
+A Type 2 examination also addresses operation over a period. Preserve the
+complete event and incident population, every applicable real Incident record,
+scheduled Exercise occurrence, linked source evidence, Findings, corrective
+work, and late or missed activities across the firm-agreed period.
+
+Do not use an exercise to erase a real incident, and do not use one real
+incident to prove the scheduled exercise happened. They are different control
+activities. The CPA firm decides which records to test and whether the evidence
+is sufficient and appropriate.
+
+## Manage incident evidence in filegrc
+
+[filegrc](/) stores each qualifying security or privacy event as an `incident`
+record. Detailed work belongs in its companion Markdown. Source exports,
+screenshots, and fixed reports belong in Evidence Artifacts when they are safe
+to retain or reference. Exercises, Findings, Action Items, Obligations, and
+Audit Populations remain separate linked records.
+
+Run incident commands in a private, non-recorded terminal because structured
+output can include incident metadata and workflow state. Inspect the model and
+current records before writing:
+
+```sh
+npx filegrc guide incident --json
+npx filegrc list incident --workflow --json
+npx filegrc guide exercise --json
+npx filegrc obligations --program PROGRAM_ID --json
+npx filegrc guide audit-population --json
+```
+
+Replace the scaffold prompts with current facts and IDs returned by your
+workspace. This shortened initial payload records a declared incident without
+claiming that containment or recovery already happened:
+
+```json
+{
+  "record": {
+    "id": "incident-suspicious-administrative-access",
+    "type": "incident",
+    "title": "Suspicious administrative access",
+    "status": "declared",
+    "severity": "high",
+    "ownerIds": ["appointment-incident-lead"],
+    "occurredAt": "2026-09-05T14:05:00Z",
+    "detectedAt": "2026-09-05T14:12:00Z",
+    "declaredAt": "2026-09-05T14:20:00Z",
+    "description": "An administrative sign-in from an unexpected source requires investigation.",
+    "systemIds": ["system-customer-platform"],
+    "componentIds": ["component-identity-provider"],
+    "classificationId": "restricted"
+  },
+  "content": {
+    "record": "# Incident record\n\n## Scope and inputs\n\nRecord the current affected scope and sources.\n\n## Work performed\n\nRecord response work as it happens.\n\n## Results and decisions\n\nRecord decisions and their basis.\n\n## Evidence\n\nList approved evidence references.\n\n## Exceptions and follow-up\n\nTrack open work without claiming closure."
+  }
+}
+```
+
+Create and apply that payload with a fresh private temp file in one scoped
+subshell. Set `EDITOR` to your approved editor executable. The cleanup runs on
+normal exit and interruption, including when scaffold, editing, preview,
+creation, or validation fails:
+
+```sh
+(
+  set -eu
+  incident_mutation="$(mktemp)" || exit 1
+  cleanup_incident_mutation() {
+    rm -f -- "$incident_mutation" "${incident_result:-}"
+  }
+  trap cleanup_incident_mutation EXIT
+  trap 'exit 1' HUP INT TERM
+  incident_result="$(mktemp)" || exit 1
+  chmod 600 "$incident_mutation" "$incident_result"
+  incident_editor="${EDITOR:?Set EDITOR to your approved editor executable}"
+  run_incident_command() {
+    if "$@" > "$incident_result" 2>&1; then
+      return 0
+    fi
+    "$incident_editor" "$incident_result"
+    return 1
+  }
+
+  npx filegrc scaffold incident \
+    --title "Suspicious administrative access" \
+    --id incident-suspicious-administrative-access \
+    > "$incident_mutation"
+  "$incident_editor" "$incident_mutation"
+  run_incident_command \
+    npx filegrc preview-mutation "$incident_mutation" --json
+  "$incident_editor" "$incident_result"
+  run_incident_command npx filegrc create "$incident_mutation" --json
+  "$incident_editor" "$incident_result"
+  run_incident_command npx filegrc validate --json
+  "$incident_editor" "$incident_result"
+)
+```
+
+Commit the sanitized declaration before the record changes again. Use the
+repository's approved, hook-aware commit process instead of a generic incident
+script. Review and scan the exact Incident JSON and Markdown before staging,
+verify the final staged tree contains only approved paths and revisions, then
+verify the resulting commit matches that tree. Abort and clean the index if a
+hook, formatter, or other process changes it after approval. Do not print
+incident content into shared terminal logs.
+
+If `obligations --json` shows active `material-incident` event Obligations for
+this Program, trigger their approved checklist with the real declaration time:
+
+```sh
+npx filegrc trigger material-incident \
+  --occurred-at 2026-09-05T14:20:00Z \
+  --program PROGRAM_ID \
+  --subject incident-suspicious-administrative-access \
+  --json
+```
+
+Do not run the trigger when the event was not material or no active approved
+rule uses it. The Incident record remains the event record. The trigger creates
+the event work required by active Obligations; it does not decide severity,
+materiality, notification, or remediation for management.
+
+As the response progresses, use a new scoped temp file to regenerate and edit a
+current mutation. Update the lifecycle status, its required timestamps,
+relationships, and Markdown from supported facts. A closed Incident requires
+linked Evidence and the completed Incident Markdown. Preview the same payload
+before applying it. This subshell also deletes the payload on every exit:
+
+```sh
+(
+  set -eu
+  incident_mutation="$(mktemp)" || exit 1
+  cleanup_incident_mutation() {
+    rm -f -- "$incident_mutation" "${incident_result:-}"
+  }
+  trap cleanup_incident_mutation EXIT
+  trap 'exit 1' HUP INT TERM
+  incident_result="$(mktemp)" || exit 1
+  chmod 600 "$incident_mutation" "$incident_result"
+  incident_editor="${EDITOR:?Set EDITOR to your approved editor executable}"
+  run_incident_command() {
+    if "$@" > "$incident_result" 2>&1; then
+      return 0
+    fi
+    "$incident_editor" "$incident_result"
+    return 1
+  }
+
+  if ! npx filegrc get incident \
+    incident-suspicious-administrative-access \
+    --mutation > "$incident_mutation" 2> "$incident_result"; then
+    "$incident_editor" "$incident_result"
+    exit 1
+  fi
+  "$incident_editor" "$incident_mutation"
+  run_incident_command \
+    npx filegrc preview-mutation "$incident_mutation" --json
+  "$incident_editor" "$incident_result"
+  run_incident_command npx filegrc update incident \
+    incident-suspicious-administrative-access \
+    "$incident_mutation" --json
+  "$incident_editor" "$incident_result"
+  run_incident_command npx filegrc validate --json
+  "$incident_editor" "$incident_result"
+)
+```
+
+After real closure, trigger `incident-closed` only when active event
+Obligations use it. A trigger creates one Obligation Event and its linked Action
+Items. Complete every Action Item with the requested proof, then close the event
+using its current revision. Use the same private temp-file pattern for each
+completion mutation:
+
+```sh
+npx filegrc complete-action ACTION_ITEM_ID \
+  --scaffold \
+  --program PROGRAM_ID \
+  --completed-on YYYY-MM-DD > PRIVATE_MUTATION
+
+npx filegrc complete-action ACTION_ITEM_ID \
+  PRIVATE_MUTATION \
+  --completed-on YYYY-MM-DD \
+  --json
+
+npx filegrc get OBLIGATION_EVENT_ID --mutation
+
+npx filegrc complete-event OBLIGATION_EVENT_ID \
+  --program PROGRAM_ID \
+  --completed-on YYYY-MM-DD \
+  --expected-revision REVISION \
+  --json
+```
+
+Use the `revision` returned by `get` as `REVISION` after every Action Item is
+complete.
+
+Do not mark the Incident or Obligation Event closed merely to clear the queue.
+
+Repeat that exact-path content and index review after each material lifecycle
+change. Commit the contained, recovered, and closed states separately when they
+matter to the record. Include only approved Incident files, safe Evidence
+metadata, event work, Findings, and Action Items created in that step. Keep raw
+restricted material outside Git when policy requires it. These normal commits
+preserve the reviewed states and related Git facts without storing a second
+change log inside the Incident record.
+
+For Type 2 preparation, inspect the incident population and its fixed export:
+
+```sh
+npx filegrc list audit-population --workflow --json
+npx filegrc audit-readiness AUDIT_ID --json
+```
+
+FileGRC checks record shape, required lifecycle fields, relationships,
+population bindings, and shared readiness rules. It does not inspect live
+alerts, collect forensic data, perform incident response, make notification
+decisions, select CPA samples, or decide whether evidence is sufficient.
+
+Use the
+[SOC 2 system description workflow](/blogs/soc-2-system-description-template)
+to reconcile significant-incident statements to the source population, and
+use the
+[SOC 2 evidence request workflow](/blogs/soc-2-evidence-request-list)
+to prepare the exact response and delivery proof requested by the CPA firm.
+The
+[SOC 2 compliance-as-code guide](/blogs/soc-2-compliance-as-code)
+explains how the linked JSON, Markdown, and Git history remain reviewable
+without turning source control into the monitoring or case-management system.
