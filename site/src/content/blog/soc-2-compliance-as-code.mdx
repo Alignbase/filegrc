@@ -2,9 +2,15 @@
 title: "SOC 2 Compliance as Code: A Practical Git Workflow"
 description: "Run SOC 2 compliance as code with structured records, Markdown, Git history, CLI validation, and clear boundaries for evidence and CPA judgment."
 publishedDate: "2026-08-13"
-lastMod: "2026-08-28"
+lastMod: "2026-09-06"
 author: "Abe Wheeler"
-tags: ["SOC 2 compliance as code", "GRC as code", "SOC 2 CLI", "file-based GRC"]
+tags:
+  [
+    "SOC 2 compliance as code",
+    "GRC as code",
+    "SOC 2 Git workflow",
+    "file-based GRC",
+  ]
 featured: true
 image: "https://filegrc.com/og-image.png"
 imageCaption: "filegrc uses structured records, Markdown, Git history, and CLI checks for SOC 2 program work."
@@ -241,6 +247,10 @@ npx filegrc list control --workflow --json
 npx filegrc workflow --through 2026-09-30 --json
 npx filegrc program-readiness --json
 ```
+
+The [SOC 2 CLI guide](/blogs/soc-2-cli) separates that command surface into
+read-only inspection, ordinary record writes, governed work, readiness gates,
+and audit output.
 
 When you need a new record, scaffold a validated mutation shape first:
 
