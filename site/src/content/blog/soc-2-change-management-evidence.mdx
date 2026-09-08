@@ -1,0 +1,374 @@
+---
+title: "SOC 2 Change Management Evidence: Prove Every Release Path"
+description: "Build SOC 2 change management evidence from complete production populations, linked reviews and tests, emergency changes, and source records."
+publishedDate: "2026-09-08"
+lastMod: "2026-09-08"
+author: "Abe Wheeler"
+tags:
+  [
+    "SOC 2 change management evidence",
+    "SOC 2 CC8.1 evidence",
+    "SOC 2 deployment evidence",
+    "SOC 2 change management controls",
+  ]
+featured: false
+image: "https://filegrc.com/og-image.png"
+imageCaption: "A complete change record connects the production event to its request, review, test, release identity, and follow-up."
+faqs:
+  - question: "What counts as SOC 2 change management evidence?"
+    answer: "Useful change management evidence connects an in-scope production change to its purpose, exact released revision, review or approval required by policy, test result, deployment actor and time, and any exception or follow-up. Configuration and access-control records also help show that the stated workflow was enforced."
+  - question: "Is an approved pull request enough for SOC 2 change management evidence?"
+    answer: "Usually not by itself. A pull request can show the proposed code, author, review, and test checks, but it may not prove that the reviewed revision reached production. Connect it to an authoritative deployment or configuration record and preserve the population from every in-scope production path."
+  - question: "How do you build a complete Type 2 production-change population?"
+    answer: "Start with each system that can change production, export every in-scope event for the exact period, preserve the raw results, and record the queries, filters, timezone, generation time, and counts. Reconcile each source separately, then explain duplicates, canceled work, rollbacks, automated releases, and missing links before the CPA firm selects samples."
+  - question: "How should emergency changes be documented for SOC 2?"
+    answer: "Follow the emergency path management approved before the event. Preserve the reason, incident or change ID, people involved, timestamps, testing performed, exact production revision, and the required later review and follow-up. An emergency change is not automatically an exception when the approved control permits and governs that path."
+  - question: "Do you need Type 2 change management evidence when no production changes occurred?"
+    answer: "Yes, when the control and production path remained in scope during the Type 2 period. Keep the authoritative query or report, exact period, timezone, zero-row export, count of zero, and management's completeness and accuracy checks. A written statement alone does not establish that the population was empty."
+  - question: "Does FileGRC collect deployment evidence from source systems?"
+    answer: "No. Your release, infrastructure, database, identity, and monitoring systems produce the source records. FileGRC catalogs those sources and stores or references fixed evidence, population records, control tests, findings, and audit indexes in a reviewable Git workspace."
+furtherReading:
+  - text: "Browse practical SOC 2 guides"
+    url: "/blog"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 change management evidence should connect every in-scope production
+change to the path that authorized, tested, reviewed, and released it. For a
+Type 1 examination, show how the control is designed and implemented as of the
+specified date. For Type 2, also preserve and reconcile the complete period
+population from every production path. The CPA firm selects its samples and
+decides whether the evidence supports its work.
+
+## TL;DR
+
+- Define every way production can change, including application releases,
+  infrastructure, data changes, runtime configuration, and emergency access.
+- Use the production event as the population anchor. A merged change that was
+  never released is different from a release that bypassed the normal path.
+- Preserve the exact revision or artifact identity, review, test result,
+  deployment actor and time, and any rollback or later review.
+- For Type 2, export the complete period from each authoritative source and
+  record the query, filters, timezone, generation time, count, and
+  reconciliation.
+- Keep standard, higher-risk, automated, and emergency paths consistent with
+  the process management actually approved.
+- Give the complete population to the CPA firm. Do not choose or narrow the
+  firm's sample.
+
+## What SOC 2 change management evidence needs to prove
+
+The AICPA's
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+are criteria for evaluating and reporting on controls over security,
+availability, processing integrity, confidentiality, and privacy. Common
+Criterion CC8.1 covers controls for changes to infrastructure, data, software,
+and procedures, including authorization, design, development or acquisition,
+configuration, documentation, testing, approval, and implementation.
+
+That criterion does not prescribe one ticket system, branching model, approval
+count, or change board. Management must design controls that fit the service,
+risks, commitments, team, and technology. The evidence should show that the
+approved process operated as described.
+
+For a software release, a reviewer should be able to answer:
+
+1. Why was the change made?
+2. Which source revision or release artifact was deployed?
+3. Who authored, reviewed, approved, and released it?
+4. Which tests or other checks ran, and when?
+5. What reached which production environment, and when?
+6. Did the release succeed, roll back, or need follow-up?
+7. Which approved path governed the event?
+
+The answers may come from several systems. Keep the stable IDs and timestamps
+that connect them instead of replacing the source trail with a summary written
+during fieldwork.
+
+## Match the evidence to Type 1 or Type 2
+
+A Type 1 examination addresses control design and implementation as of a
+specified date. Change management evidence may include the approved Policy and
+procedure, current Control, source inventory, access and enforcement
+configuration, and current records that show how the process is implemented.
+The CPA firm decides which procedures and examples it needs.
+
+A Type 2 examination also addresses operation over a specified period. That is
+where complete populations, period configuration history, sampled item trails,
+exceptions, and changes to the control itself matter. A current screenshot or
+one clean release cannot establish what happened throughout the period.
+
+Do not create an Audit Population for a Type 1 examination. FileGRC uses that
+record for a complete Type 2 source set tied to the formal engagement period.
+
+## Define the full production-change boundary
+
+Start with a map of what can alter the scoped service. Application source
+control is one path, but it is rarely the whole boundary.
+
+| Change path              | Events that may belong in scope                                        | Likely authoritative source                               |
+| ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| Application release      | Code, dependencies, build output, release configuration                | Release or deployment system                              |
+| Infrastructure           | Network, compute, storage, managed-service, and infrastructure changes | Infrastructure deployment and cloud audit records         |
+| Database and data        | Schema migrations, production scripts, corrections, and bulk jobs      | Migration runner, job system, database audit record       |
+| Runtime configuration    | Feature switches, environment settings, service configuration          | Configuration service or application audit record         |
+| Privileged manual action | Console, command-line, break-glass, or direct administrative change    | Cloud, host, database, identity, or privileged-access log |
+| Vendor-managed service   | Provider releases or configuration changes that affect the service     | Provider notice, service record, or internal review       |
+
+Do not include a path just because it exists in a generic checklist. Tie it to
+the actual Systems, Components, data, commitments, and risks in scope. Also do
+not omit a path because it sits outside the main engineering repository. A
+direct production configuration change can affect the service even when no
+code changed.
+
+For each path, record:
+
+- the authoritative source and the people who can obtain its records;
+- the event that marks a production change;
+- the environments and services included;
+- the stable item ID, revision, digest, or configuration version;
+- the expected review, test, approval, and release steps;
+- the standard, higher-risk, and emergency variants that apply;
+- the retention period and export method; and
+- the reconciliation used to find missing or duplicated events.
+
+Run a test export before the Type 2 period depends on it. If a source keeps only
+short-lived logs or cannot export stable IDs, fix the collection plan while the
+records still exist.
+
+## Anchor the population on production, not on proposed work
+
+A pull request or change ticket begins a useful trail, but it is not necessarily
+a production event. Some merged changes never ship. Some releases bundle many
+changes. A rollback may create another production event. A manual or automated
+path may reach production without a pull request.
+
+Build the population from the authoritative production source for each path.
+Then connect each event back to the reviewed work.
+
+| Source set                    | What it proves                                            | What it does not prove alone                       |
+| ----------------------------- | --------------------------------------------------------- | -------------------------------------------------- |
+| Requests or work items        | Purpose, owner, risk, scope, and planned treatment        | That a change reached production                   |
+| Source changes and reviews    | Proposed revision, author, discussion, checks, and review | That the reviewed bytes were released              |
+| Build and test records        | Which checks ran against a revision or artifact           | That the artifact reached the scoped environment   |
+| Production deployment records | Released identity, environment, actor, status, and time   | Why the change was authorized or adequately tested |
+| Runtime validation records    | Health, monitoring, rollback, or later review             | That pre-release requirements were followed        |
+
+Choose one population key that survives the joins. The key may be a deployment
+ID, release ID, artifact digest, source revision, migration ID, or configuration
+version. Preserve the source values. Do not invent a new ID and discard the
+identifiers needed to trace the event.
+
+The [SOC 2 audit populations guide](/blogs/soc-2-audit-populations) explains
+how to fix the period, retain raw exports, and keep management's population
+work separate from the CPA firm's sample.
+
+## Preserve evidence for one release from end to end
+
+Use one real release to test the trail before relying on it for a full period.
+The exact evidence depends on the control, but this record map catches common
+breaks.
+
+### Purpose and scope
+
+Keep the request, issue, incident, risk decision, or other record that explains
+why the change was needed. Identify the affected service and environment. A
+short code diff does not explain whether the change altered authentication,
+customer data, infrastructure, or another higher-risk part of the system.
+
+### Exact source or artifact identity
+
+Retain the source revision and, when the pipeline builds a separate artifact,
+the artifact version or digest. Connect the reviewed revision to the built
+output and the deployed output. A screenshot of a green pipeline without that
+identity can belong to a different release.
+
+NIST's [Secure Software Development Framework](https://csrc.nist.gov/projects/ssdf)
+is not a SOC 2 requirement, but it is a useful public reference for software
+release records. Its version 1.1 includes practices for tracking security
+requirements and design decisions and for collecting provenance data for
+software-release components. Use those ideas where they fit your development
+process and risk.
+
+### Review and approval
+
+Preserve reviewer identity, decision, and timestamp. Confirm that the review
+happened before the point required by the control and that the reviewer had the
+right authority at that time. If policy requires separation between author and
+reviewer, test the identities rather than assuming a platform setting enforced
+it.
+
+Approval may be a code review, a release decision, a risk approval, or a
+combination. Do not add a second ceremonial approval merely to copy an internet
+example. Describe and test the approval that governs the real risk.
+
+### Test and release checks
+
+Keep the result of the checks the control requires, with the revision and time.
+That may include automated tests, a security check, migration rehearsal,
+manual acceptance, or another risk-based step. A generic statement that tests
+passed cannot be traced to the release.
+
+Record the production environment, release actor or service identity, start and
+finish time, status, and exact deployed revision. When automated delivery uses
+a service identity, keep the authorization and access-control records that show
+who can invoke or change that path.
+
+### Result and follow-up
+
+Keep the release result, rollback, alert, smoke check, or other post-release
+record required by the approved process. A failed or rolled-back release is not
+automatically a control failure. Preserve the original outcome, then create a
+Finding and owned corrective work when review confirms a control gap or the
+remediation needs its own tracking lifecycle. Do not rewrite the original event
+as clean after remediation.
+
+The [SOC 2 evidence examples guide](/blogs/soc-2-evidence-examples) shows how
+to record source, collector, time, scope, verification, and retention for fixed
+artifacts.
+
+## Build and reconcile the Type 2 population
+
+For each in-scope production path, use the same sequence.
+
+### 1. Fix the period and source
+
+Use the exact Type 2 period recorded for the engagement. Name one authoritative
+Component and one repeatable query or report for the population. Split paths
+when different sources or queries govern them.
+
+### 2. Export the raw events
+
+Preserve the fixed source export before samples are selected or rows are
+cleaned. Record the period boundaries, timezone, filters, generation time, and
+raw count.
+
+Inspect the export before storing it. Do not commit plaintext credentials,
+tokens, session material, secret values, sensitive configuration, regulated
+personal data, or personal data that may need erasure to Git. When repository
+access and retention do not fit the artifact, keep it in an approved restricted
+evidence store and link only an opaque reference and safe metadata from the GRC
+record.
+
+### 3. Apply documented population rules
+
+Define how the population treats failed deployments, canceled work, rollbacks,
+retries, duplicate notifications, test environments, bundled releases,
+scheduled jobs, and out-of-scope services. Keep the raw source so a reviewer
+can reproduce each transformation.
+
+### 4. Reconcile completeness
+
+Compare the production source with an independent source that can expose a
+gap. For example, reconcile deployment events to release artifacts, cloud
+configuration events to approved infrastructure changes, or database changes
+to migration records. A list of reviewed pull requests cannot reveal an
+unreviewed direct production change if it starts from the same filtered set.
+
+### 5. Check key fields for accuracy
+
+Trace selected rows back to the source interface or API and confirm that IDs,
+timestamps, environments, actors, statuses, and revisions mean what the export
+says they mean. Record the check, person, date, exceptions, and conclusion.
+
+### 6. Freeze the reconciled result
+
+Retain the raw and final counts, fixed export, transformations, checks, and
+conclusion. State whether the population is complete, complete with named
+exceptions, or incomplete. Do not present an unresolved source gap as a clean
+population.
+
+### 7. Let the CPA firm select samples
+
+Supply the complete population and source context. The CPA firm sets its
+sampling and testing approach. Management may run a separate monitoring test,
+but that sample and result remain management's work.
+
+Use the
+[SOC 2 control testing workflow](/blogs/soc-2-control-testing) when management
+wants to test selected changes, record exceptions, or verify remediation before
+fieldwork.
+
+## Handle standard, automated, and emergency changes honestly
+
+A single workflow may not fit every production event. Define each path before
+it is needed and preserve the facts that distinguish it.
+
+| Path                   | Questions the record should answer                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| Routine change         | Did the normal request, review, test, and release steps occur in the required order?                |
+| Preapproved automation | Who approved the automated rule, who can change it, which inputs triggered it, and what did it do?  |
+| Higher-risk change     | Which added review, test, approval, backup, or rollback steps did policy require?                   |
+| Emergency change       | What made it urgent, who used the path, what checks were possible, and when did later review occur? |
+| Rollback               | Which release was reversed, why, by whom, when, and what follow-up remained?                        |
+
+An emergency path is a control design choice, not a free-form bypass. Record
+the reason, incident or change ID, people, timestamps, exact revision, tests
+performed, production result, and the retrospective review required by policy.
+If the team missed that approved path, record the deviation and follow-up.
+
+Connect security-driven emergency changes to the
+[SOC 2 incident response evidence workflow](/blogs/soc-2-incident-response-evidence)
+when an incident triggered the release. Keep the incident, change, deployment,
+and corrective actions as linked records with their own owners and dates.
+
+## Treat a zero-change period as a sourced result
+
+A startup may have no event on a narrow production path during the period. If
+the path and control remained applicable, keep:
+
+- the authoritative source and query;
+- the exact period, timezone, environment, and filters;
+- the fixed zero-row export or report;
+- a count of zero;
+- the completeness and accuracy checks; and
+- the reconciler, date, and conclusion.
+
+Do not mark the path not applicable merely because its count is zero. Also do
+not create a fake change record to satisfy a checklist. The sourced zero result
+is the population evidence.
+
+## Common change-evidence gaps
+
+| Gap                                        | Why it causes follow-up                                          | Better record                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Hand-picked approved changes               | The source set can hide bypasses and failed releases             | Export every production event, then let the CPA firm choose samples  |
+| Pull request without deployment identity   | The reviewed revision may not be what reached production         | Link review, build artifact, and production event by stable identity |
+| Current configuration only                 | It does not show whether enforcement changed during the period   | Retain dated configuration and change records                        |
+| One application repository as the boundary | Infrastructure, data, runtime, and direct changes may be missing | Inventory every production path and source                           |
+| Screenshot without query or time           | Scope and period cannot be reproduced                            | Keep fixed export metadata and source context                        |
+| Emergency work removed from the population | The higher-risk path disappears from testing                     | Include the event and apply the documented emergency rules           |
+| Failed or rolled-back release omitted      | The period trail loses a real production event and outcome       | Preserve the event; link a Finding only for a confirmed control gap  |
+
+## Manage change evidence in FileGRC
+
+[FileGRC](/) keeps the GRC records around a production change in JSON,
+Markdown, and Git. Catalog each authoritative release or configuration source
+as a Component, link fixed exports and item artifacts through Evidence records,
+record Type 2 source sets as Audit Populations, and connect management tests,
+Findings, and Action Items without copying the source system's history into a
+second change log.
+
+Use these read-only commands inside a generated workspace to inspect the model
+before preparing records:
+
+```sh
+npx filegrc guide component --json
+npx filegrc guide evidence --json
+npx filegrc guide audit-population --json
+npx filegrc guide control-test --json
+npx filegrc audit-readiness AUDIT_ID --json
+npx filegrc evidence-packet --audit AUDIT_ID --preview --json
+```
+
+Git supplies the FileGRC record history. The release, infrastructure, database,
+identity, and monitoring systems still supply their own source facts. FileGRC
+does not query those systems, operate the change control, select the CPA firm's
+sample, perform the examination, or decide whether evidence is sufficient.
+
+The [SOC 2 compliance-as-code guide](/blogs/soc-2-compliance-as-code) explains
+how to use model-driven files, validation, and Git review for the surrounding
+program. Keep the production trail in its authoritative systems, then use
+FileGRC to connect the control, sources, population, evidence, exceptions, and
+audit output another reviewer needs to follow.
