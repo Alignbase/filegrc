@@ -1,0 +1,350 @@
+---
+title: "DIY SOC 2: What Founders Can Do Themselves"
+description: "A practical DIY SOC 2 plan for founders, including what your team can own, when to hire help, and what only a CPA firm can do."
+publishedDate: "2026-09-10"
+lastMod: "2026-09-10"
+author: "Abe Wheeler"
+tags: ["DIY SOC 2", "do SOC 2 yourself", "SOC 2 without compliance software"]
+featured: false
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects policies, controls, evidence, and audit work in one Git repository using JSON and Markdown."
+faqs:
+  - question: "Can a startup do SOC 2 itself?"
+    answer: "A startup can own most preparation and ongoing program work, including scope records, policies, controls, risk decisions, recurring tasks, evidence collection, management documents, and audit responses. A CPA firm still performs the independent examination and issues the SOC 2 report."
+  - question: "Can a company issue its own SOC 2 report?"
+    answer: "No. Management prepares the system description and assertion and supplies the supporting records. A qualified CPA firm performs the examination, evaluates the subject matter and evidence, and issues the SOC 2 report."
+  - question: "Do you need compliance software for SOC 2?"
+    answer: "No specific software product is required. You do need a dependable way to connect scope, criteria, policies, controls, owners, due work, source evidence, approvals, exceptions, and audit material. Test that workflow before choosing files, general-purpose tools, or a GRC product."
+  - question: "When should a DIY SOC 2 team engage a CPA firm?"
+    answer: "Engage a CPA firm early enough to review the planned report type, scope, criteria, date or period, management responsibilities, and fieldwork assumptions before you rely on an evidence period or promise a delivery date to a customer."
+  - question: "What is the hardest part of DIY SOC 2?"
+    answer: "The hard part is sustained operation. Policies and control lists are easy to draft, but a Type 2 examination needs consistent work and dated evidence across the specified period, including complete source populations when sampling may apply and honest treatment of missed work and exceptions."
+  - question: "What does DIY SOC 2 still cost?"
+    answer: "Budget for the CPA examination, staff time, systems that operate controls, security work, evidence collection, remediation, and any outside assessment or advice your scope requires. Avoiding a GRC software license removes one possible cost, not the rest of the program."
+furtherReading:
+  - text: "Build a realistic SOC 2 budget"
+    url: "/blogs/soc-2-compliance-cost-startups"
+  - text: "See practical SOC 2 evidence examples"
+    url: "/blogs/soc-2-evidence-examples"
+  - text: "Draft a SOC 2 system description"
+    url: "/blogs/soc-2-system-description-template"
+  - text: "Reconcile a SOC 2 management assertion"
+    url: "/blogs/soc-2-management-assertion"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+You can do most SOC 2 preparation and program work yourself. Your team can
+define scope, approve policies, implement controls, run scheduled work, collect
+evidence, prepare management documents, and answer audit requests. You cannot
+issue your own SOC 2 report. A qualified CPA firm performs the independent
+examination, evaluates the work, and issues the report.
+
+The useful DIY question is which work your team can own reliably. Keep the
+answer tied to named people, source systems, dates, and records rather than a
+promise that one founder will somehow handle everything.
+
+## TL;DR
+
+- Confirm what a customer needs before choosing the report, scope, schedule, or
+  software.
+- Put one person in charge, then name the owner and reviewer for each policy,
+  control, evidence source, risk, and recurring task.
+- Engage a CPA firm early enough to test the planned scope and timing before
+  relying on an evidence period.
+- Use outside help for a bounded gap when the team lacks time, skill, access,
+  or review separation. Keep management decisions with management.
+- Operate technical controls in their real systems and retain fixed, reviewed
+  evidence from those systems.
+- Treat Type 2 as sustained operations across a period, not a document project
+  completed during fieldwork.
+
+## Can you do SOC 2 yourself?
+
+The AICPA defines SOC 2 as an
+[examination of controls at a service organization](https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2/)
+relevant to security, availability, processing integrity, confidentiality, or
+privacy. Management owns the system and its controls. The CPA firm performs the
+examination.
+
+That split leaves substantial work for a startup to do in-house. A founder-led
+team can build and operate its own program when it has a clear owner, enough
+time, access to the source systems, and people who can review important
+decisions. The team may use files, a general-purpose work tracker, or a GRC
+product to manage the records.
+
+Use this ownership table before deciding how much to do yourself:
+
+| Work                   | Your team can own                                                                          | Outside role                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Business request       | Ask, record, and translate the buyer's report, scope, and timing need                      | Buyer confirms what it will accept                                     |
+| Program scope          | Define the service, systems, people, data, vendors, commitments, and selected criteria     | CPA firm reviews the planned examination scope                         |
+| Policies and controls  | Write, approve, implement, and maintain what the company actually does                     | Adviser may help with a bounded design gap                             |
+| Security operations    | Configure systems, manage access, deploy changes, monitor, respond, back up, and test      | Specialist may perform an assessment that needs skills or independence |
+| Evidence               | Collect fixed source records, verify them, record coverage, and protect sensitive material | CPA firm requests and evaluates evidence for its procedures            |
+| Type 2 populations     | Prepare complete source sets and reconcile their queries, periods, counts, and exports     | CPA firm chooses its samples and testing method                        |
+| Management documents   | Prepare and approve the system description, assertion, and engagement responses            | CPA firm reviews engagement-specific form and consistency              |
+| Examination and report | Supply accurate records and answer questions                                               | CPA firm plans and performs the examination and issues the report      |
+
+The business-request row belongs to management, while the customer supplies the
+acceptance criteria. Record the customer's answer instead when it will affect
+scope, report type, or delivery timing.
+
+The broad
+[SOC 2 compliance checklist for startups](/blogs/soc-2-compliance-checklist-startups)
+lists the full path to a report. This guide helps decide who should perform each
+part of that path.
+
+## Test whether DIY SOC 2 fits your team
+
+DIY is a reasonable operating model when all of these statements are true:
+
+1. One person has time and authority to coordinate the program.
+2. The product boundary and supporting systems are understandable to the team.
+3. Control owners already administer the identity, cloud, code, deployment,
+   monitoring, endpoint, backup, workforce, and vendor systems in scope.
+4. Another qualified person can review policies, evidence, risk decisions, and
+   exceptions where separation matters.
+5. Source systems can produce dated records for the required scope and period.
+6. The team can keep recurring and event-driven work current while it ships the
+   product.
+7. The schedule leaves time to fix real gaps before a Type 1 date or during a
+   Type 2 planning phase.
+
+Bring in help for the condition that fails. For example, a founder may keep
+program ownership while hiring a specialist to test a public application,
+review a complex privacy scope, or help design a control. Define the output,
+owner, reviewer, source files, and handoff before the work begins.
+
+Consider a more managed operating model when no one can spend time on the work,
+the service boundary is hard to explain, the company has several legal
+entities or products, evidence sits across many owners, or the customer date
+leaves no room for discovery. A software subscription cannot repair those
+ownership gaps by itself. The
+[SOC 2 software guide for startups](/blogs/soc-2-software-startups) explains how
+to test a managed or self-hosted record system before buying it.
+
+## Start with the buyer decision and CPA conversation
+
+Ask the customer or partner what it will accept:
+
+- Type 1, Type 2, or either;
+- Security only or named optional Trust Services Categories;
+- a named product, service, region, or legal entity;
+- a delivery deadline that affects the deal; and
+- any interim material it will review while the examination is underway.
+
+Write the answer down with its source. Then prepare a one-page planning brief
+for CPA firms with the service, customers, systems, data, vendors, intended
+criteria, preferred report type, and target date or period.
+
+For a SOC 2 engagement, scope all 33 Security Common Criteria and address all
+nine Description Criteria in the system description. Management may add
+Availability, Processing Integrity, Confidentiality, or Privacy. When a
+criterion in a selected optional category is not relevant, record that decision
+under DC8 instead of omitting a Description Criterion.
+
+The AICPA's
+[Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+are criteria used to evaluate controls over security, availability, processing
+integrity, confidentiality, or privacy. The
+[Description Criteria](https://www.aicpa-cima.com/resources/download/get-description-criteria-for-your-organizations-soc-2-r-report)
+guide management's description of the service organization's system. Use these
+sources to understand the work, then ask the CPA firm to confirm the planned
+engagement.
+
+An early CPA conversation does not transfer management's program work to the
+firm. It reduces the risk that your team spends months operating the wrong
+scope or promises a date that the examination plan cannot support. Use the
+[Type 1 versus Type 2 decision guide](/blogs/soc-2-type-1-vs-type-2) before
+fixing the route.
+
+## Build the management record before the evidence period
+
+A DIY program needs one inspectable source for its decisions and work. Before
+relying on a Type 1 date or Type 2 period, connect these records:
+
+| Record set | What it must answer                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| Scope      | Which service, systems, data, locations, people, vendors, and commitments are covered?                             |
+| Criteria   | Which Trust Services Criteria apply, and how did management handle optional-category decisions?                    |
+| Governance | Who owns the program, policies, controls, risks, evidence sources, and approvals?                                  |
+| Policies   | What rules has management approved, when do they take effect, and which exact text was reviewed?                   |
+| Risks      | What could prevent the service from meeting its commitments, and what treatment did management choose?             |
+| Controls   | Who performs each activity, for what scope, on what trigger or schedule, and with what result?                     |
+| Sources    | Which system is authoritative for each evidence kind, who can access it, and how is a repeatable export made?      |
+| Work       | Which recurring obligations and policy events are due, complete, late, excepted, or blocked?                       |
+| Evidence   | What happened, who collected and verified the record, what period it covers, and where the fixed artifact is kept? |
+
+Templates help with discovery, but their contents remain proposals until
+management tailors and approves them. Delete claims the company cannot support.
+Add organization facts to their authoritative records instead of copying them
+into several policies.
+
+The AICPA's
+[illustrative SOC 2 report](https://www.aicpa-cima.com/resources/download/illustrative-soc-2-r-report-with-description-and-assertion)
+shows the relationship among management's assertion, the system description,
+the service auditor's report, and tests of controls and results. Your operating
+records should support one consistent story across those parts.
+
+## Implement controls in the systems that operate them
+
+The program record describes a control. The identity, cloud, source-control,
+deployment, monitoring, endpoint, backup, training, signature, procurement,
+and workforce systems perform the work and produce many of the source records.
+
+For every control, answer:
+
+1. Which risk, commitment, or criterion does it address?
+2. What people, systems, data, or events does it cover?
+3. Who performs it and who reviews the result?
+4. Does it operate continuously, on a schedule, or after an event?
+5. What management record captures the decision or conclusion?
+6. Which source system produces external evidence?
+7. How will failures, exceptions, and corrective work be recorded?
+
+Run a dry collection before the planned period. Have an authorized person
+follow the written steps, export the source data with the intended filters, and
+check that the artifact proves the right scope and time. Fix missing access,
+unstable queries, unclear timezones, and incomplete fields while the result is
+still a test.
+
+Use the
+[SOC 2 controls guide for startups](/blogs/soc-2-controls-startups) to turn
+criteria and risks into a control set that matches the actual service.
+
+## Treat Type 2 as an operating commitment
+
+A Type 1 examination addresses the system description and suitability of
+control design as of a specified date. Type 2 adds control operation throughout
+a specified period. That makes a Type 2 DIY effort a sustained operations job.
+
+During the candidate period:
+
+- complete scheduled reviews, tests, and attestations within their approved
+  windows;
+- trigger the right work when people, vendors, systems, incidents, or other
+  policy subjects change;
+- keep occurrence dates separate from completion, review, and approval dates;
+- collect and verify evidence from the named source;
+- preserve failed results and exceptions, then assign corrective work;
+- review scope and control changes before they make prior records stale; and
+- reconcile complete populations before the CPA firm chooses samples.
+
+Do not backdate a missed task or replace a failed record with a clean one. A
+late fix may improve the current control, but it does not change what happened
+earlier in the period.
+
+For each population, retain the source system, exact query or report parameters,
+period, generation timestamp, timezone, item count, completeness and accuracy
+checks, and fixed export. A zero-item population still needs the same source,
+query, period, count, and review.
+
+Use the
+[SOC 2 audit populations guide](/blogs/soc-2-audit-populations) to prepare the
+complete management source before sampling.
+
+## Prepare a clean handoff for fieldwork
+
+Your team should be able to assemble the examination material without hunting
+through private messages or rebuilding spreadsheets at the last minute. A
+fieldwork handoff may include:
+
+- the final scope, criteria, systems, vendors, and control matrix;
+- approved policies and governed program documents;
+- management's system description and assertion;
+- risk, vendor, access, change, incident, recovery, and other operating work;
+- evidence indexes and fixed artifacts;
+- complete Type 2 populations and reconciliations;
+- requested sample evidence and management responses;
+- known exceptions, findings, and corrective actions; and
+- source revisions, file checksums, and handling instructions.
+
+The CPA firm sets its request list, procedures, and sample selection. Track
+each request with an owner, due date, response, evidence links, follow-up, and
+delivery status. Keep the firm's portal authoritative when it is the request
+system, then record only the management facts needed to reconcile your work.
+
+Review every file for credentials, session material, customer data, personal
+data, confidential reports, and material outside the engagement scope. Send
+the approved package through the CPA firm's secure transfer method. A checksum
+can show that a file changed; it does not encrypt the file or prove that the
+CPA firm accepted it.
+
+The
+[SOC 2 audit readiness checklist](/blogs/soc-2-audit-readiness-checklist)
+tests the exact engagement, period, management documents, evidence, populations,
+and delivery package before fieldwork.
+
+## Know when outside help is worth buying
+
+Buy a defined result rather than a vague promise to make the company ready.
+Common bounded needs include:
+
+- scope review for a service with complex vendors, data flows, or customer
+  commitments;
+- control design help where the team lacks security or compliance experience;
+- a security assessment that requires specialist skill or independence;
+- temporary project support when owners cannot keep work current;
+- privacy or legal advice for obligations outside the CPA examination; and
+- remediation work in the systems that operate weak controls.
+
+For each engagement, name the question, deliverable, source material, decision
+owner, reviewer, due date, and handoff format. Keep the editable source and the
+final decision with the company. Confirm that outside work will not leave the
+program dependent on a dashboard or document set the team cannot maintain.
+
+DIY also leaves real costs. Budget for the CPA examination, engineering and
+management time, control systems, security work, evidence retention,
+remediation, and any required outside assessment. GRC software is one budget
+line, so avoiding that license does not make the rest free.
+
+## Run DIY SOC 2 as files in Git
+
+[filegrc](/) keeps structured program records in JSON, long-form policies and
+documents in Markdown, and change history in Git. Its browser and CLI call the
+same validation and workflow rules, so a founder, engineer, or agent can inspect
+the same source and next actions.
+
+Start a private workspace and inspect the current program path:
+
+```sh
+npx create-filegrc@latest company-grc
+cd company-grc
+npm run validate
+
+npx filegrc program-path --next --json
+npx filegrc workflow --json
+npx filegrc program-readiness --summary --json
+```
+
+Before and during a management candidate Type 2 period, inspect period health
+from the recorded candidate dates:
+
+```sh
+npx filegrc period-health --require-healthy --json
+```
+
+After recording the formal engagement, run the engagement-specific period
+check, readiness check, and packet preview:
+
+```sh
+npx filegrc period-health AUDIT_ID --require-healthy --json
+npx filegrc audit-readiness AUDIT_ID --require-ready --json
+npx filegrc evidence-packet --audit AUDIT_ID --preview --require-ready --json
+```
+
+These commands derive missing work and blockers from the current model,
+authoritative records, policy content, and Git state. They do not log in to
+external systems, operate controls, approve management decisions, judge whether
+evidence is sufficient, perform the examination, or issue the report.
+
+Keep the repository private and review its contents before each commit. Do not
+put plaintext credentials, private keys, tokens, recovery codes, regulated
+personal data, or personal data that may need erasure into Git. Keep sensitive
+source data in approved systems, then store or reference only the fixed evidence
+that your access and retention rules allow.
+
+A useful DIY system should leave your team with clear ownership and records it
+can keep operating after the first report. That is the standard to apply to a
+folder, spreadsheet, open source workspace, adviser, or paid platform.
