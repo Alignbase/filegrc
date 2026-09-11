@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import { runCli } from "../src/cli.js";
 import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
 import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, renderIndex } from "../src/web.js";
@@ -13,6 +14,24 @@ import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.meta.url), "utf8");
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const CLI = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+function renderCollectionReviewPanel(assessment) {
+  const start = APP_SCRIPT.indexOf("function collectionReviewPanel");
+  const end = APP_SCRIPT.indexOf("function resourceCreationAllowed");
+  const source = APP_SCRIPT.slice(start, end) + '\ncollectionReviewPanel("framework");';
+  return vm.runInNewContext(source, {
+    state: {
+      collectionReviews: { framework: assessment },
+      model: { resources: { framework: { title: "Framework" } } },
+      resources: [{ record: { id: "person-security-owner", title: "Security Owner With A Deliberately Long Name" } }],
+      readOnly: false
+    },
+    esc: (value) => String(value),
+    properCase: (value) => value[0].toUpperCase() + value.slice(1),
+    formatCalendarDate: (value) => value,
+    pluralize: (value) => value
+  });
+}
 
 test("builds a self-contained read-only site", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-build-"));
@@ -1536,6 +1555,42 @@ test("keeps concise Step-page summaries separate from detailed resource guides",
   assert.match(APP_STYLES, /\.setup-banner,\.page-guide,\.stage-overview-hero/);
 });
 
+test("renders completed collection reviews as a compact closed disclosure", () => {
+  const configuration = {
+    title: "Framework and criteria sources",
+    description: "Confirm the selected framework records.",
+    reviewPoints: ["Confirm the selected criteria."]
+  };
+  const current = renderCollectionReviewPanel({
+    status: "current",
+    recordCount: 2,
+    configuration,
+    review: {
+      decision: "complete",
+      reviewedOn: "2026-09-11",
+      reviewedByIds: ["person-security-owner"],
+      rationale: "The detailed review note stays in the drawer."
+    }
+  });
+  assert.match(current, /class="collection-review-current-row"/);
+  assert.match(current, /<details class="collection-review-details">/);
+  assert.doesNotMatch(current, /<details[^>]*\bopen\b/);
+  assert.match(current, /Show scope confirmation/);
+  assert.match(current, /Review again/);
+  assert.match(current, /Security Owner With A Deliberately Long Name/);
+  assert.match(current, /The detailed review note stays in the drawer/);
+
+  const required = renderCollectionReviewPanel({
+    status: "required",
+    recordCount: 2,
+    configuration,
+    message: "Review the framework records."
+  });
+  assert.match(required, /<details open>/);
+  assert.match(required, /What to review/);
+  assert.match(required, /Review and confirm/);
+});
+
 test("keeps operation status explicit without inline instruction panels", () => {
   const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
   const detailSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderDetail"), APP_SCRIPT.indexOf("function recordNarrative"));
@@ -1581,6 +1636,14 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /name="reviewedOn" type="date" required value="' \+ esc\(currentDate\(\)\) \+ '">/);
   assert.doesNotMatch(APP_SCRIPT, /assessment\.review\?\.reviewedOn \|\| currentDate\(\)/);
   assert.match(APP_SCRIPT, /" Note: " \+ esc\(assessment\.review\.rationale\)/);
+  assert.match(APP_SCRIPT, /current \? "Show scope confirmation" : "What to review"/);
+  assert.match(APP_SCRIPT, /current \? 'class="collection-review-details"' : "open"/);
+  assert.match(APP_SCRIPT, /class="collection-review-complete-summary"/);
+  assert.match(APP_SCRIPT, /class="collection-review-current-row"/);
+  assert.match(APP_STYLES, /\.collection-review-panel\.current details\{margin-top:8px\}/);
+  assert.match(APP_STYLES, /\.collection-review-current-row\{display:flex;align-items:center;gap:10px;flex-wrap:wrap\}/);
+  assert.match(APP_STYLES, /\.collection-review-panel\.current \.collection-review-details\[open\]\{flex-basis:100%;order:3/);
+  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.collection-review-complete-summary\{flex:1 1 180px;min-width:0;flex-wrap:wrap\}/);
   assert.doesNotMatch(APP_SCRIPT, /name="scopeRevision"/);
   assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type, collapsed = false\)/);
   assert.match(APP_SCRIPT, /<summary>Review criteria<\/summary>/);
