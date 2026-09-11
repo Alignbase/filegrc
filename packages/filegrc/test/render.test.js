@@ -1190,7 +1190,7 @@ test("uses the full detail width when a record has no authored body", () => {
   assert.match(detailSource, /const detailMain = hasRecordBody/);
   assert.match(detailSource, /detail-grid-structured/);
   assert.match(detailSource, /function renderDetailSupport/);
-  assert.match(detailSource, /name: "guidance", content: workflowPanel \+ reviewPanel/);
+  assert.match(detailSource, /name: "guidance", content: workflowPanel/);
   assert.match(detailSource, /name: "record", content: metadataPanel \+ attachmentPanel \+ historyPanel/);
   assert.match(detailSource, /name: "relationships", content: participationPanel \+ connectionsPanel/);
   assert.match(detailSource, /const historyPanel = entry\.history\?\.length/);
@@ -1603,7 +1603,7 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
   assert.match(APP_SCRIPT, /<summary>Show ' \+ remaining\.length \+ ' more/);
   assert.match(APP_SCRIPT, /workflow-findings workflow-findings-more/);
-  assert.match(APP_SCRIPT, /returns the same checklist for headless review/);
+  assert.match(APP_SCRIPT, /returns this same checklist for CLI and agent use/);
   assert.match(APP_SCRIPT, /if \(!items\.length\) return "";/);
   assert.doesNotMatch(APP_SCRIPT, /No current blockers/);
   assert.doesNotMatch(APP_SCRIPT, /The assessment will add a checklist item here/);
@@ -1645,10 +1645,14 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_STYLES, /\.collection-review-panel\.current \.collection-review-details\[open\]\{flex-basis:100%;order:3/);
   assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.collection-review-complete-summary\{flex:1 1 180px;min-width:0;flex-wrap:wrap\}/);
   assert.doesNotMatch(APP_SCRIPT, /name="scopeRevision"/);
-  assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type, collapsed = false\)/);
-  assert.match(APP_SCRIPT, /<summary>Review criteria<\/summary>/);
-  assert.match(detailSource, /resourceReviewCriteria\(type\)/);
-  assert.match(detailSource, /workflowPanel: workflowGuidance\(\{ type, id, title: "Next steps" \}\)/);
+  assert.match(APP_SCRIPT, /function resourceReviewCriteria\(type, options = \{\}\)/);
+  assert.doesNotMatch(APP_SCRIPT, /Related program work/);
+  assert.doesNotMatch(APP_SCRIPT, /Continue elsewhere/);
+  assert.match(APP_SCRIPT, /function recordCompletionState\(record\)/);
+  assert.match(APP_SCRIPT, /This record has no direct next step/);
+  assert.match(APP_SCRIPT, /function openCompletionRequirementsDialog\(type\)/);
+  assert.match(APP_SCRIPT, /data-completion-requirements/);
+  assert.match(detailSource, /workflowPanel: workflowGuidance\(\{ type, id, title: "Next steps", workflow: entry\.workflow \}\) \|\| recordCompletionState\(entry\.record\)/);
   assert.match(detailSource, /<h3>Record details<\/h3>/);
   assert.match(detailSource, /detail-metadata-panel/);
   assert.match(APP_SCRIPT, /resourceReviewCriteria\(type, true\)/);
@@ -1890,7 +1894,7 @@ test("loads calculated state only for the current browser route", () => {
   assert.match(APP_SCRIPT, /data-load-workflow>Calculate action/);
   assert.match(APP_SCRIPT, /loadStateSection\("workflow"\)/);
   assert.match(APP_SCRIPT, /tokenQuery = token \? "\?token="/);
-  assert.match(APP_SCRIPT, /"&history=false"/);
+  assert.match(APP_SCRIPT, /"&history=false&workflow=true"/);
   assert.match(APP_SCRIPT, /"history=only"/);
   assert.match(APP_SCRIPT, /entry\.historyLoaded === false/);
   assert.match(APP_SCRIPT, /response\.status === 409 && token/);

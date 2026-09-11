@@ -1,6 +1,6 @@
 # {{company_name}} SOC 2 System Description
 
-> Draft preparation document. Complete every bracketed item, reconcile it to management's authoritative records, and have the service auditor review the final presentation.
+> [Describe the service as it existed for the stated reporting date or period.]
 
 ## Reporting Period and Scope
 
@@ -16,7 +16,7 @@
 
 ## DC2: Service Commitments and System Requirements
 
-[Summarize customer commitments, contractual security promises, internal objectives, and the system requirements needed to meet them. Reconcile the summary to supporting commitment records.]
+[Summarize customer commitments, contractual security promises, internal objectives, and the system requirements needed to meet them.]
 
 ## DC3: System Components
 

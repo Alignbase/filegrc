@@ -2,7 +2,7 @@
 
 ## Use
 
-This schedule records how long {{company_name}} keeps important record classes and what happens when each period ends. The policy owner and data owners must complete the organization-specific rows before approval.
+This schedule records how long {{company_name}} keeps important record classes and what happens when each period ends.
 
 Retention periods may come from law, contract, tax, audit, security, or a documented business need. Use the longest applicable period, but do not keep data indefinitely without a reason.
 
@@ -10,7 +10,7 @@ Retention periods may come from law, contract, tax, audit, security, or a docume
 
 The structured Retention Schedule Items linked to this document are its schedule rows. Each approved item must name the covered Information Types and operational scope, owner, cutoff, period, disposition action, instructions, and authority. Planned items are review prompts and are not approved retention behavior.
 
-Management must cover important information used by Systems, Components, and Vendors, including security logs, backups or alternate recovery copies, governance records, audit evidence, customer and service records, and incident records when those classes exist. No starter period or disposition action is an approved organization value.
+Management must cover important information used by Systems, Components, and Vendors, including security logs, backups or alternate recovery copies, governance records, audit evidence, customer and service records, and incident records when those classes exist. A proposed period or disposition action is not an approved organization value.
 
 ## Holds and exceptions
 

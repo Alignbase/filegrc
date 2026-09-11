@@ -847,13 +847,13 @@ function openPolicyActivationDialog() {
 }
 
 function workflowGuidance(options = {}) {
-  const workflow = state.workflow;
+  const workflow = options.workflow || state.workflow;
   if (!workflow) return "";
   const matches = (item) => {
     if (options.type === "audit" && options.id && item.auditId === options.id) return true;
     if (options.stageId && item.stage !== options.stageId) return false;
-    if (options.type && item.subject?.type !== options.type && item.source?.type !== options.type) return false;
-    if (options.id && item.subject?.id !== options.id && item.source?.id !== options.id) return false;
+    if (options.type && item.subject?.type !== options.type) return false;
+    if (options.id && item.subject?.id !== options.id) return false;
     return true;
   };
   const activeStates = new Set(["blocked", "due", "open", "overdue", "ready", "scheduled", "upcoming", "waiting-external"]);
@@ -880,9 +880,16 @@ function workflowGuidance(options = {}) {
   const rows = visible.map(renderRow).join("");
   const remaining = items.slice(visible.length);
   const more = remaining.length
-    ? '<details class="workflow-guidance-more"><summary>Show ' + remaining.length + ' more ' + pluralize("item", remaining.length) + '</summary><div class="workflow-findings workflow-findings-more">' + remaining.map(renderRow).join("") + '</div><p><code>filegrc workflow --json</code> returns the same checklist for headless review.</p></details>'
+    ? '<details class="workflow-guidance-more"><summary>Show ' + remaining.length + ' more ' + pluralize("item", remaining.length) + '</summary><div class="workflow-findings workflow-findings-more">' + remaining.map(renderRow).join("") + '</div><p><code>filegrc workflow --json</code> returns this same checklist for CLI and agent use.</p></details>'
     : "";
-  return '<section class="workflow-guidance panel detail-support-panel detail-workflow-panel"><div class="panel-head"><div><p class="kicker">To-do</p><h3>' + esc(options.title || "Checklist") + '</h3><p>' + esc(status) + '</p></div><span class="badge ' + (blocking.length ? "warn" : "good") + '">' + (blocking.length ? "Needs work" : "Current") + '</span></div><div class="workflow-findings">' + rows + '</div>' + more + '</section>';
+  const completionRequirements = options.type && resourceReviewCriteria(options.type, { trigger: true });
+  return '<section class="workflow-guidance panel detail-support-panel detail-workflow-panel"><div class="panel-head"><div><p class="kicker">To-do</p><h3>' + esc(options.title || "Checklist") + '</h3></div><span class="badge ' + (blocking.length ? "warn" : "good") + '">' + (blocking.length ? "Needs work" : "Current") + '</span></div><p class="workflow-status">' + esc(status) + (completionRequirements ? '. ' + completionRequirements : "") + '</p><div class="workflow-findings">' + rows + '</div>' + more + '</section>';
+}
+
+function recordCompletionState(record) {
+  const completeStatuses = new Set(["approved", "active", "complete", "completed", "closed", "done", "reconciled"]);
+  if (!completeStatuses.has(record.status)) return "";
+  return '<section class="record-completion-state panel detail-support-panel"><p class="kicker">Record status</p><h3>' + esc(properCase(record.status)) + '</h3><p>This record has no direct next step.</p></section>';
 }
 
 function collectionReviewPanel(type) {
@@ -938,13 +945,31 @@ function collectionEmptyState(type, definition) {
     : "No records exist. Use the scope confirmation above to record an allowed empty-collection conclusion, or add the records management identified.";
 }
 
-function resourceReviewCriteria(type, collapsed = false) {
+function resourceReviewCriteria(type, options = {}) {
+  const collapsed = options === true || options.collapsed;
+  const trigger = typeof options === "object" && options.trigger;
+  const title = typeof options === "object" && options.title ? options.title : "Review criteria";
   const reviewPoints = state.model.resources[type]?.guidance?.reviewPoints || [];
   if (!reviewPoints.length) return "";
+  if (trigger) return '<button type="button" class="workflow-completion-requirements" data-completion-requirements="' + esc(type) + '">Completion requirements</button>';
   const points = '<ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>';
   return collapsed
-    ? '<details class="resource-review-criteria compact"><summary>Review criteria</summary>' + points + '</details>'
-    : '<section class="resource-review-criteria panel detail-support-panel detail-review-panel"><div class="panel-head"><h3>Review criteria</h3></div>' + points + '</section>';
+    ? '<details class="resource-review-criteria compact"><summary>' + esc(title) + '</summary>' + points + '</details>'
+    : '<section class="resource-review-criteria panel detail-support-panel detail-review-panel"><div class="panel-head"><h3>' + esc(title) + '</h3></div>' + points + '</section>';
+}
+
+function openCompletionRequirementsDialog(type) {
+  const definition = state.model.resources[type];
+  const reviewPoints = definition?.guidance?.reviewPoints || [];
+  if (!reviewPoints.length) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "alert-dialog completion-requirements-dialog";
+  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Completion requirements</p><h2>' + esc(titleCase(definition.title)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>Check these before considering this record complete.</p><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul><div class="dialog-actions"><button type="button" class="button primary">Close</button></div>';
+  document.body.append(dialog);
+  const close = () => dialog.close();
+  dialog.querySelectorAll("button").forEach((button) => button.addEventListener("click", close));
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
 }
 
 function recordWorkflowItems(type, id) {
@@ -2848,8 +2873,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
       : personParticipation(entry);
   const supportPanels = renderDetailSupport({
     hasRecordBody,
-    workflowPanel: workflowGuidance({ type, id, title: "Next steps" }),
-    reviewPanel: resourceReviewCriteria(type),
+    workflowPanel: workflowGuidance({ type, id, title: "Next steps", workflow: entry.workflow }) || recordCompletionState(entry.record),
     metadataPanel: '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>',
     attachmentPanel,
     participationPanel,
@@ -2857,6 +2881,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     historyPanel
   });
   main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
+  main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-external-reviewer-governance]")?.addEventListener("click", openExternalReviewerGovernanceDialog);
   main.querySelector("[data-next-audit-cycle]")?.addEventListener("click", () => openNextAuditCycleDialog(entry.record));
@@ -2994,11 +3019,11 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   }
 }
 
-function renderDetailSupport({ hasRecordBody, workflowPanel, reviewPanel, metadataPanel, attachmentPanel, participationPanel, connectionsPanel, historyPanel }) {
-  const panels = workflowPanel + reviewPanel + metadataPanel + attachmentPanel + participationPanel + connectionsPanel + historyPanel;
+function renderDetailSupport({ hasRecordBody, workflowPanel, metadataPanel, attachmentPanel, participationPanel, connectionsPanel, historyPanel }) {
+  const panels = workflowPanel + metadataPanel + attachmentPanel + participationPanel + connectionsPanel + historyPanel;
   if (hasRecordBody) return '<aside>' + panels + '</aside>';
   const stacks = [
-    { name: "guidance", content: workflowPanel + reviewPanel },
+    { name: "guidance", content: workflowPanel },
     { name: "record", content: metadataPanel + attachmentPanel + historyPanel },
     { name: "relationships", content: participationPanel + connectionsPanel }
   ].filter(({ content }) => content);
@@ -3030,7 +3055,7 @@ async function loadResourceDetail(type, id) {
       let token = state.stateToken;
       let detail = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        const tokenQuery = token ? "?token=" + encodeURIComponent(token) + "&history=false" : "?history=false";
+        const tokenQuery = token ? "?token=" + encodeURIComponent(token) + "&history=false&workflow=true" : "?history=false&workflow=true";
         const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
         if (response.status === 409 && token) {
           await refreshExpiredAppState(token);
@@ -6152,6 +6177,9 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .record-table td:has(.relation){min-width:150px}
 .record-table .relation{border-radius:7px;line-height:1.35;overflow-wrap:anywhere;word-break:normal}
 @media(max-width:760px){.record-table td:has(.relation){min-width:0}.record-table td[data-label]>.relation{grid-column:2}}
+@media(max-width:760px){.diagnostics>div{grid-template-columns:max-content minmax(0,1fr)}}
+.workflow-guidance .workflow-status{margin:4px 0 12px;color:var(--muted);font-size:10px}.workflow-completion-requirements{display:inline;appearance:none;-webkit-appearance:none;white-space:nowrap;padding:0;border:0;background:none;color:var(--accent);font:inherit;font-weight:750;cursor:pointer;text-decoration:underline;text-underline-offset:2px}.workflow-completion-requirements:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.completion-requirements-dialog ul{margin:14px 0 0;padding-left:20px;color:var(--muted);font-size:12px;line-height:1.55}
+.record-completion-state{background:var(--surface-soft)}.record-completion-state h3{margin:4px 0 5px;font-size:16.8px}.record-completion-state p:last-child{margin:0;color:var(--muted);font-size:11px;line-height:1.45}
 `;
 
 function safeJson(value) {

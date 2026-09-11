@@ -55,9 +55,10 @@ const DOCUMENT_CONTENT_UPDATES = [
     priorRevision: "45a408e8139bd57f42dda5ca5ae5c8cd4480b4e7bf08834f60058148a3a63475",
     additionalPriorRevisions: new Set([
       "d80b99ce53d1012cc169bbbc2afab8d0597bfbe9f30ac0812a8d5bbeb2ed9f90",
-      "dd11857ae7d881f176bd93947ef3031c33c75ee41e3c0435198fd60c67a94cf7"
+      "dd11857ae7d881f176bd93947ef3031c33c75ee41e3c0435198fd60c67a94cf7",
+      "4a48c15a4e20e4f29028cf2ff8597315eb51878814120125b5268356b923c9db"
     ]),
-    currentRevision: "4a48c15a4e20e4f29028cf2ff8597315eb51878814120125b5268356b923c9db",
+    currentRevision: "1738d29786cd6a027c9a2bb339ce36ce3e15c858a55ec503f4e690e65273598b",
     currentSourcePath: "./policy-library/data-retention-schedule-v2.md",
     replacements: [
       ["FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact.", "Remove each bracketed prompt only after replacing it with a reviewed fact."],
@@ -73,9 +74,10 @@ const DOCUMENT_CONTENT_UPDATES = [
     additionalPriorRevisions: new Set([
       "51a19e22f3e0b31196371676297bfa843f96295d2f6c72e81a969ce7bafc36ae",
       "5107f5c6015089a7c64e87692976aa48f727b8c03988f93f71e8f3e5084a05ac",
-      "970b97c4f594ff54fab554460f3cf44f80ee8079e996f4d5dc1427290f8aa714"
+      "970b97c4f594ff54fab554460f3cf44f80ee8079e996f4d5dc1427290f8aa714",
+      "ff8b5764ba3073d7ab6678c7da607850de5a82de4383cb54417cd74d82c05305"
     ]),
-    currentRevision: "ff8b5764ba3073d7ab6678c7da607850de5a82de4383cb54417cd74d82c05305",
+    currentRevision: "72a6049f2eed25525417fc3eb6263c231e44193d3c5cbbf6675bb98459374d0c",
     replacements: [
       ["## Reporting routes", "## Reporting channels"],
       ["The primary reporting route is {{security_contact_email}}.", "Use the current approved primary security Reporting Route. The Reporting Route record is the source of truth for its channel, destination, owner, priority, and effective period."],
@@ -90,7 +92,14 @@ const DOCUMENT_CONTENT_UPDATES = [
       ["- Restore-validation method and governed schedule", "- Restore-validation method and approved schedule"],
       ["- Dependencies, fallback paths, and validation steps", "- Dependencies, fallback paths, and validation steps\n- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision"],
       ["[Confirm or replace before activation: The starter proposal for important production data is a daily backup, 30-day retention period, and annual restore validation. Record the approved choice for every important System in its Control, Component, System, Retention Schedule, and Obligation records.]", "[Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]"],
-      ["on the approved governed schedule", "on the approved schedule"]
+      ["on the approved governed schedule", "on the approved schedule"],
+      ["[Complete before activation: Describe how workers can find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]", "[Describe how workers find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]"],
+      ["The Policy Owner maintains this plan and ensures that the organization assigns these duties before activation:", "The Policy Owner maintains this plan and ensures that the organization assigns these duties:"],
+      ["[Complete before activation: Record the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]", "[Describe the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]"],
+      ["[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]", "[Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]"],
+      ["[Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]", "[Document the management-approved recovery approach for every important System in its recovery procedures and the Data Retention Schedule. A daily backup, 30-day retention period, and annual restore validation are examples, not approved organization values.]"],
+      ["[Complete before activation: Record the protected alternate location and access method responders will use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]", "[Describe the protected alternate location and access method responders use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]"],
+      ["- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision\n- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision", "- Any recovery targets required by an approved commitment, included Availability criterion, or risk decision"],
     ],
     summary: "Express incident and recovery requirements as a standalone plan, keep FileGRC record-entry guidance outside it, and make numeric recovery targets conditional."
   },
@@ -98,9 +107,12 @@ const DOCUMENT_CONTENT_UPDATES = [
     id: "document-soc2-management-representation",
     path: "documents/document-soc2-management-representation.md",
     priorRevision: "59e7e5929eeb24fa6bc23e1ed1553206901c33ba249b372ad0f42282ab7a64c7",
-    currentRevision: "83de736025d07d8085fba93a212a98e7b3e951aded9894b933eab1e77c3a0d29",
+    additionalPriorRevisions: new Set(["83de736025d07d8085fba93a212a98e7b3e951aded9894b933eab1e77c3a0d29"]),
+    currentRevision: "45fcfa1bfa280fe96c65220df48d55b2bd0f238c54a6dc18e8f2d9ccd38a7f96",
     replacements: [
-      ["Signed letter evidence record: [Evidence ID]", "Signed letter reference: [Approved storage location or evidence reference]"]
+      ["Signed letter evidence record: [Evidence ID]", "Signed letter reference: [Approved storage location or evidence reference]"],
+      ["> The service auditor normally supplies the required representation-letter wording near the end of fieldwork. Replace this preparation note with the agreed final letter, obtain the required management signature, and retain the signed fixed-format copy as linked evidence.", "> [Insert the final management representation agreed with the service auditor.]"],
+      ["Before signing, reconcile the auditor's letter to:", "The signer confirms that the letter agrees with:"]
     ],
     summary: "Keep the representation-letter template independent of FileGRC relationship fields."
   },
@@ -121,11 +133,14 @@ const DOCUMENT_CONTENT_UPDATES = [
     id: "document-soc2-system-description",
     path: "documents/document-soc2-system-description.md",
     priorRevision: "dc15bc2141be0d63a832eb6f7734bc7381e77582030534bcaf636138782f8e84",
-    currentRevision: "929a7cd87ca78a2d9caa349cad0ae23583ad79184f26ba50c1694c62549aab9e",
+    additionalPriorRevisions: new Set(["929a7cd87ca78a2d9caa349cad0ae23583ad79184f26ba50c1694c62549aab9e"]),
+    currentRevision: "0e2e0252e0e0a5be821851de1d168fbcf22bfcca41d80836c657583ab38ba154",
     replacements: [
       ["reconcile it to the filegrc records", "reconcile it to management's authoritative records"],
       ["Link the filegrc commitment records.", "Reconcile the summary to supporting commitment records."],
-      ["Reference the selected criteria and control matrix generated by filegrc.", "Reference the selected criteria and management's control matrix."]
+      ["Reference the selected criteria and control matrix generated by filegrc.", "Reference the selected criteria and management's control matrix."],
+      ["> Draft preparation document. Complete every bracketed item, reconcile it to management's authoritative records, and have the service auditor review the final presentation.", "> [Describe the service as it existed for the stated reporting date or period.]"],
+      ["[Summarize customer commitments, contractual security promises, internal objectives, and the system requirements needed to meet them. Reconcile the summary to supporting commitment records.]", "[Summarize customer commitments, contractual security promises, internal objectives, and the system requirements needed to meet them.]"]
     ],
     summary: "Keep the SOC 2 System Description as a generic management deliverable."
   }

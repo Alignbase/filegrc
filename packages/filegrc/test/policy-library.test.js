@@ -132,6 +132,8 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-data-retention-schedule": {
     path: "document-data-retention-schedule.md",
     replacements: [
+      ["This schedule records how long Test Organization keeps important record classes and what happens when each period ends.", "This schedule records how long Test Organization keeps important record classes and what happens when each period ends. The policy owner and data owners must complete the organization-specific rows before approval."],
+      ["Management must cover important information used by Systems, Components, and Vendors, including security logs, backups or alternate recovery copies, governance records, audit evidence, customer and service records, and incident records when those classes exist. A proposed period or disposition action is not an approved organization value.", "Management must cover important information used by Systems, Components, and Vendors, including security logs, backups or alternate recovery copies, governance records, audit evidence, customer and service records, and incident records when those classes exist. No starter period or disposition action is an approved organization value."],
       [CURRENT_RETENTION_SECTION, PRIOR_RETENTION_SECTION],
       ["| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery needs] | [Complete before approval: expiration or disposal action] | [Complete before approval: recovery need, commitment, or risk decision] |", "| Production backups or alternate recovery copies | [Complete before approval: Systems or Components] | [Complete before approval: owner] | Backup or recovery-copy creation | [Confirm or replace proposed default before approval: 30 days, adjusted to approved System recovery objectives] | [Complete before approval: expiration or disposal action] | [Complete before approval: continuity objective or risk decision] |"],
       ["Remove each bracketed prompt only after replacing it with a reviewed fact.", "FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact."],
@@ -141,6 +143,12 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-security-incident-recovery-plan": {
     path: "document-security-incident-recovery-plan.md",
     replacements: [
+      ["[Describe how workers find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]", "[Complete before activation: Describe how workers can find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]"],
+      ["The Policy Owner maintains this plan and ensures that the organization assigns these duties:", "The Policy Owner maintains this plan and ensures that the organization assigns these duties before activation:"],
+      ["[Describe the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]", "[Complete before activation: Record the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]"],
+      ["[Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]", "[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]"],
+      ["[Document the management-approved recovery approach for every important System in its recovery procedures and the Data Retention Schedule. A daily backup, 30-day retention period, and annual restore validation are examples, not approved organization values.]", "[Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]"],
+      ["[Describe the protected alternate location and access method responders use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]", "[Complete before activation: Record the protected alternate location and access method responders will use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]"],
       ["## Reporting channels", "## Reporting routes"],
       ["People send suspected security concerns through the current approved normal reporting channel, such as the security email address. If that channel is unavailable, compromised, or involved in the concern, they use the approved fallback channel. The Reporting Channel Set is the source of truth for the current destinations, responsible role, and effective period.\n\n[Complete before activation: Describe how workers can find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]", "Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period.\n\n[Complete before activation: Describe how workers can find the alternate Reporting Route when the primary email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the route destination here or include plaintext credentials, private keys, tokens, or recovery codes.]"],
       ["Use the current approved primary security Reporting Route. If it is unavailable, use the current approved alternate Reporting Route. Those records are the source of truth for each channel, destination, owner, priority, and effective period.", "The primary reporting route is security@example.test."],
@@ -158,7 +166,11 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   },
   "document-soc2-management-representation": {
     path: "document-soc2-management-representation.md",
-    replacements: [["Signed letter reference: [Approved storage location or evidence reference]", "Signed letter evidence record: [Evidence ID]"]]
+    replacements: [
+      ["> [Insert the final management representation agreed with the service auditor.]", "> The service auditor normally supplies the required representation-letter wording near the end of fieldwork. Replace this preparation note with the agreed final letter, obtain the required management signature, and retain the signed fixed-format copy as linked evidence."],
+      ["The signer confirms that the letter agrees with:", "Before signing, reconcile the auditor's letter to:"],
+      ["Signed letter reference: [Approved storage location or evidence reference]", "Signed letter evidence record: [Evidence ID]"]
+    ]
   },
   "document-soc2-period-completeness": {
     path: "document-soc2-period-completeness.md",
@@ -172,6 +184,8 @@ const PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS = {
   "document-soc2-system-description": {
     path: "document-soc2-system-description.md",
     replacements: [
+      ["> [Describe the service as it existed for the stated reporting date or period.]", "> Draft preparation document. Complete every bracketed item, reconcile it to management's authoritative records, and have the service auditor review the final presentation."],
+      ["[Summarize customer commitments, contractual security promises, internal objectives, and the system requirements needed to meet them.]", "[Summarize customer commitments, contractual security promises, internal objectives, and the system requirements needed to meet them. Reconcile the summary to supporting commitment records.]"],
       ["reconcile it to management's authoritative records", "reconcile it to the filegrc records"],
       ["Reconcile the summary to supporting commitment records.", "Link the filegrc commitment records."],
       ["Reference the selected criteria and management's control matrix.", "Reference the selected criteria and control matrix generated by filegrc."]
@@ -552,7 +566,7 @@ test("offers standalone governed Documents as a reviewable upgrade and changes n
     new Set(Object.keys(PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS))
   );
   assert.equal(review.proposals[0].changes.every(({ resourceType }) => resourceType === "document"), true);
-  assert.match(review.proposals[0].changes.find(({ resourceId }) => resourceId === "document-soc2-system-description").diff, /management's authoritative records/);
+  assert.match(review.proposals[0].changes.find(({ resourceId }) => resourceId === "document-soc2-system-description").diff, /Describe the service as it existed/);
   for (const [id, update] of Object.entries(PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS)) {
     assert.equal(await readFile(join(root, "data", "documents", update.path), "utf8"), priorSources.get(id));
   }

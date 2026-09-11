@@ -302,20 +302,20 @@ test("creates a complete generic repository with one dependency", async (context
   const recoveryContent = await readFile(join(target, "data", "documents", "document-security-incident-recovery-plan.md"), "utf8");
   assert.doesNotMatch(recoveryContent, /maximum tolerable downtime/);
   assert.match(recoveryContent, /Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them/);
-  assert.match(recoveryContent, /proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation/);
+  assert.match(recoveryContent, /daily backup, 30-day retention period, and annual restore validation are examples, not approved organization values/);
   assert.match(recoveryContent, /protected alternate location and access method/);
   assert.match(recoveryContent, /standing legal retainer is required only when management determines/);
   assert.match(recoveryContent, /the triggering law, contract, Policy, commitment, or management decision/);
   assert.match(recoveryContent, /representative security alert from generation through receipt, acknowledgement, escalation, and fallback/);
   assert.match(recoveryContent, /People send suspected security concerns through the current approved normal reporting channel/);
   assert.match(recoveryContent, /Reporting Channel Set is the source of truth/);
-  assert.match(recoveryContent, /\[Complete before activation: Describe how workers can find the fallback reporting channel/);
+  assert.match(recoveryContent, /\[Describe how workers find the fallback reporting channel/);
   assert.doesNotMatch(recoveryContent, /FileGRC|Obligation records|governed schedule/);
   const retentionSchedule = JSON.parse(await readFile(join(target, "data", "documents", "document-data-retention-schedule.json"), "utf8"));
   assert.equal("approverIds" in retentionSchedule, false);
   const retentionScheduleContent = await readFile(join(target, "data", "documents", "document-data-retention-schedule.md"), "utf8");
   assert.match(retentionScheduleContent, /structured Retention Schedule Items linked to this document are its schedule rows/);
-  assert.match(retentionScheduleContent, /No starter period or disposition action is an approved organization value/);
+  assert.match(retentionScheduleContent, /A proposed period or disposition action is not an approved organization value/);
   assert.doesNotMatch(retentionScheduleContent, /FileGRC/);
   const trainingFiles = (await readdir(join(target, "data", "training"))).filter((file) => file.endsWith(".json"));
   assert.deepEqual(trainingFiles, ["training-security-awareness.json"]);
@@ -552,6 +552,12 @@ test("creates a complete generic repository with one dependency", async (context
     assert.doesNotMatch(content, /FileGRC|npx filegrc|\.filegrc\//i, `${file} should remain a standalone governed artifact`);
   }
   await access(join(target, "data", "documents", "document-soc2-management-assertion.md"));
+  const managementAssertion = await readFile(
+    join(target, "data", "documents", "document-soc2-management-assertion.md"),
+    "utf8"
+  );
+  assert.match(managementAssertion, /<!-- type-1:start -->/);
+  assert.match(managementAssertion, /<!-- type-2:start -->/);
   await access(join(target, "data", "documents", "document-soc2-period-completeness.md"));
   await access(join(target, "data", "documents", "document-soc2-management-representation.md"));
   await access(join(target, ".gitignore"));

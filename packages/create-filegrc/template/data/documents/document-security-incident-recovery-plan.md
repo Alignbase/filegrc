@@ -8,13 +8,13 @@ This plan coordinates reporting, response, recovery, and continuity when a secur
 
 People send suspected security concerns through the current approved normal reporting channel, such as the security email address. If that channel is unavailable, compromised, or involved in the concern, they use the approved fallback channel. The Reporting Channel Set is the source of truth for the current destinations, responsible role, and effective period.
 
-[Complete before activation: Describe how workers can find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]
+[Describe how workers find the fallback reporting channel when the normal email, identity, or collaboration System is unavailable, compromised, or involved in the concern. Do not copy the destination here or include plaintext credentials, private keys, tokens, or recovery codes.]
 
 Reports may describe suspected unauthorized access, malware, data loss, credential exposure, security-Control failure, service disruption, fraud affecting the service, or another policy violation. The recipient records the report, protects confidentiality, preserves relevant information, and assigns an initial owner.
 
 ## Roles and authority
 
-The Policy Owner maintains this plan and ensures that the organization assigns these duties before activation:
+The Policy Owner maintains this plan and ensures that the organization assigns these duties:
 
 - Incident lead with authority to declare, coordinate, escalate, and close an incident
 - Technical recovery lead for containment, restoration, validation, and rollback
@@ -24,7 +24,7 @@ The Policy Owner maintains this plan and ensures that the organization assigns t
 
 If an incident raises a legal, privacy, or insurance question, the incident lead obtains suitable advice at that time. A pre-arranged counsel relationship or standing legal retainer is required only when management determines that the organization's obligations and risk warrant one.
 
-[Complete before activation: Record the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]
+[Describe the emergency contact arrangement, its owner, alternate communication channel, protected storage location, and review schedule.]
 
 ## Assessment and declaration
 
@@ -49,7 +49,7 @@ The team does not destroy Evidence, promise external notification, or make publi
 
 ## Recovery priorities and procedures
 
-[Complete before activation: Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]
+[Identify every important System's recovery priority, dependencies, owner, backup or alternate recovery approach, and critical customer commitments. Record numeric recovery targets only when an approved commitment, included Availability criterion, or risk decision requires them.]
 
 Supporting recovery documentation for each important System must identify:
 
@@ -61,13 +61,13 @@ Supporting recovery documentation for each important System must identify:
 - Dependencies, fallback paths, and validation steps
 - Any recovery targets required by an approved commitment, included Availability criterion, or risk decision
 
-[Confirm or replace before activation: The proposed starting point for important production data is a daily backup, 30-day retention period, and annual restore validation. Document the approved choice for every important System in its recovery procedures and the Data Retention Schedule.]
+[Document the management-approved recovery approach for every important System in its recovery procedures and the Data Retention Schedule. A daily backup, 30-day retention period, and annual restore validation are examples, not approved organization values.]
 
 If no approved objective or procedure exists during an event, the incident lead records an interim decision based on customer impact, data risk, and dependencies, then assigns the missing permanent decision as follow-up work.
 
 ## Alternate plan access
 
-[Complete before activation: Record the protected alternate location and access method responders will use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]
+[Describe the protected alternate location and access method responders use when the primary identity, source-control, or collaboration Systems are unavailable. Confirm that authorized responders can retrieve the plan without exposing plaintext secrets or decryption keys.]
 
 ## Closure and follow-up
 

@@ -168,6 +168,17 @@ test("initializes model-owned Type 2 populations and management document links",
   assert.equal(audit.managementAssertionDocumentId, "document-audit-type-2-soc2-management-assertion");
   assert.equal(audit.periodCompletenessDocumentId, "document-audit-type-2-soc2-period-completeness");
   assert.equal(audit.managementRepresentationDocumentId, "document-audit-type-2-soc2-management-representation");
+  const assertion = loaded.resources.find(({ id }) => id === audit.managementAssertionDocumentId);
+  for (const heading of ["# Type 1 Assertion Draft", "### Type 1 Assertion"]) {
+    await updateResource(root, "document", assertion.id, assertion, {
+      content: { content: `${heading}\n\nManagement asserts that the Type 1 system description is complete.` }
+    });
+    const assessment = await assessAuditPreparation(root, { auditId: audit.id });
+    const assertionItem = assessment.stages
+      .find(({ id }) => id === "fieldwork")
+      .items.find(({ id }) => id === "documents-soc2-management-assertion");
+    assert.match(assertionItem.message, /Remove the Type 1 assertion/);
+  }
   assert.ok(result.createdDocumentIds.every((id) => loaded.resources.find((record) => record.id === id)?.template !== true));
   const populations = loaded.resources.filter((record) => record.type === "audit-population");
   assert.equal(populations.length, 1);

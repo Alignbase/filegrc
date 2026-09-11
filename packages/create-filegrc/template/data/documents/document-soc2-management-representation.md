@@ -1,8 +1,8 @@
 # {{company_name}} Management Representation Letter
 
-> The service auditor normally supplies the required representation-letter wording near the end of fieldwork. Replace this preparation note with the agreed final letter, obtain the required management signature, and retain the signed fixed-format copy as linked evidence.
+> [Insert the final management representation agreed with the service auditor.]
 
-Before signing, reconcile the auditor's letter to:
+The signer confirms that the letter agrees with:
 
 - The final system description and management assertion
 - The reporting date or period, [engagement date or period], and selected criteria

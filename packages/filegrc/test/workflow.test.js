@@ -83,6 +83,23 @@ test("returns one reproducible workflow contract with stable findings", async (c
   assert.equal(scoped.contractVersion, WORKFLOW_CONTRACT_VERSION);
   assert.ok(scoped.findings.some(({ code }) => code === "program.scope.program-goal"));
 
+  const resourceWorkflow = workflowForResource({
+    contractVersion: WORKFLOW_CONTRACT_VERSION,
+    assessments: {},
+    findings: [
+      { key: "direct", state: "ready", subject: { type: "policy", id: "policy-1" } },
+      { key: "related", state: "ready", source: { type: "policy", id: "policy-1" }, subject: { type: "control", id: "control-1" } }
+    ],
+    workItems: [
+      { key: "direct-work", state: "due", subject: { type: "policy", id: "policy-1" } },
+      { key: "related-work", state: "due", source: { type: "policy", id: "policy-1" }, subject: { type: "control", id: "control-1" } }
+    ]
+  }, "policy", "policy-1");
+  assert.deepEqual(resourceWorkflow.findings.map(({ key }) => key), ["direct", "related"]);
+  assert.deepEqual(resourceWorkflow.workItems.map(({ key }) => key), ["direct-work", "related-work"]);
+  assert.deepEqual(resourceWorkflow.related.findings.map(({ key }) => key), ["related"]);
+  assert.deepEqual(resourceWorkflow.related.workItems.map(({ key }) => key), ["related-work"]);
+
   const preview = await previewWorkflowMutation(root, {
     operation: "update",
     record: {

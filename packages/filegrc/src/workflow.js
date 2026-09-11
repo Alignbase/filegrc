@@ -217,18 +217,34 @@ export function buildWorkflowDelta(before, after) {
 }
 
 export function workflowForResource(workflow, type, id) {
-  if (!workflow) return { findings: [], workItems: [], recommended: null };
+  if (!workflow) return {
+    findings: [],
+    workItems: [],
+    related: { findings: [], workItems: [], recommended: null },
+    recommended: null
+  };
   const matches = (item) => item.subject?.type === type && item.subject?.id === id;
-  const findings = workflow.findings.filter(matches);
-  const workItems = workflow.workItems.filter((item) => (
-    matches(item)
-    || item.source?.type === type && item.source?.id === id
-  ));
+  const related = (item) => (
+    item.source?.type === type
+    && item.source?.id === id
+    && !matches(item)
+  );
+  const directFindings = workflow.findings.filter(matches);
+  const directWorkItems = workflow.workItems.filter(matches);
+  const relatedFindings = workflow.findings.filter(related);
+  const relatedWorkItems = workflow.workItems.filter(related);
+  const findings = [...directFindings, ...relatedFindings];
+  const workItems = [...directWorkItems, ...relatedWorkItems];
   return {
     contractVersion: workflow.contractVersion,
     assessments: workflow.assessments,
     findings,
     workItems,
+    related: {
+      findings: relatedFindings,
+      workItems: relatedWorkItems,
+      recommended: [...relatedFindings, ...relatedWorkItems].sort(compareRecommended)[0] || null
+    },
     recommended: [...findings, ...workItems].sort(compareRecommended)[0] || null
   };
 }
@@ -430,7 +446,7 @@ function recordIncompleteReason(record, loaded, program) {
     return {
       state: "ready",
       requiredness: "required",
-      message: "Review this criterion against the current service scope and record the applicability decision."
+      message: "Review this criterion against the current service scope, then record the applicability decision."
     };
   }
   if (record.type === "appointment" && record.status === "planned") {
@@ -440,16 +456,16 @@ function recordIncompleteReason(record, loaded, program) {
     return {
       state: "ready",
       requiredness: appointmentRequiredness(record, loaded.model),
-      message: "Assign a holder, confirm the authority scope and independence needs, then activate this Appointment on its real start date."
+      message: "Assign a holder, confirm the authority and independence needed, then activate this Appointment on its actual start date."
     };
   }
   const messages = {
-    draft: "Complete the record, its relationships, and required Markdown before moving it to review.",
-    planned: "Review this planned record against the actual program and complete its finalization checks.",
-    proposed: "Review the proposed work, owner, schedule, and completion profile before activating it.",
+    draft: "Complete the record, its relationships, and required Markdown before review.",
+    planned: "Check this planned record against the actual program, then complete its finalization checks.",
+    proposed: "Review the proposed work, owner, schedule, and completion requirements before activation.",
     "in-review": "Complete independent review and bind the approval to the exact content revision.",
     open: "Complete or formally dispose of this open work with the required proof.",
-    "in-progress": "Finish the work, record its result, and link its completion proof.",
+    "in-progress": "Finish the work, record the result, and link the completion proof.",
     blocked: "Resolve the recorded blockers before completing this work.",
     "partially-implemented": "Finish the remaining control design, operation, source, and scheduling work."
   };
@@ -517,7 +533,7 @@ function finalizationFields(record, model, resources, program) {
     fields.push({
       field: "applicabilityReview",
       requiredness: "required",
-      message: "Record or refresh the reviewed applicability decision, rationale, reviewer, and date. FileGRC records the current material scope automatically."
+      message: "Record or refresh the applicability decision, rationale, reviewer, and date. FileGRC records the current material scope automatically."
     });
   }
   if (record.type === "policy" && model.resources.policy?.fields?.programRole && !record.programRole) {
@@ -570,7 +586,7 @@ function finalizationFields(record, model, resources, program) {
     fields.push({
       field,
       requiredness: "conditional",
-      message: `Complete ${fieldLabel(field)} before treating this ${fieldLabel(record.type).toLowerCase()} as finalized.`
+      message: `Add ${fieldLabel(field)} before treating this ${fieldLabel(record.type).toLowerCase()} as complete.`
     });
   }
   return fields;
@@ -676,9 +692,9 @@ async function sourceCoverageFindings(loaded, program) {
           ? "The source family has a reviewed authoritative path, valid coverage dates, retrieval ownership, and reconciliation method."
           : record
             ? record.status === "active"
-              ? "Complete any missing source details and link a passed retrieval test after a candidate period is set."
-              : "Finish the planned source-family decision, retrieval method, retention, validity dates, and pre-period dry run when a candidate period is set."
-            : "Create a source-family coverage record and choose FileGRC, an external authoritative System, reviewed zero population, or reviewed not applicable.",
+              ? "Add missing source details and link a passed retrieval test after setting a candidate period."
+              : "Finish the source decision, retrieval method, retention, validity dates, and pre-period dry run after setting a candidate period."
+            : "Create a source-coverage record and choose FileGRC, an external authoritative System, zero population, or not applicable.",
         subject: { type: "source-coverage", ...(record ? { id: record.id } : {}) },
         dependencies: [],
         actions: record

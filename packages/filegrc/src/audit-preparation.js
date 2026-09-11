@@ -1599,6 +1599,12 @@ function containsOpenPlaceholder(source) {
 function managementDocumentContentIssues(source, definition, audit) {
   if (!source) return ["Add the required Markdown content."];
   if (containsOpenPlaceholder(source)) return ["Replace every bracketed preparation placeholder before approval."];
+  if (definition.kind === "soc2-management-assertion" && audit) {
+    const incompatibleKind = audit.auditKind === "soc-2-type-1" ? "Type 2" : "Type 1";
+    if (new RegExp(`^#{1,6}\\s+${incompatibleKind} Assertion(?: Draft)?\\s*$`, "imu").test(source)) {
+      return [`Remove the ${incompatibleKind} assertion from this ${audit.auditKind === "soc-2-type-1" ? "Type 1" : "Type 2"} engagement document.`];
+    }
+  }
   const words = source.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
   if (definition.minimumWords && words.length < definition.minimumWords) {
     return [`Add substantive content; this document has ${words.length} words and the preparation check expects at least ${definition.minimumWords}.`];

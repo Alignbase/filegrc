@@ -861,9 +861,9 @@ Timing: A Control may be implemented while its governing Policy, required progra
 
 When reviewing:
 
-- Confirm the Control is needed for the applicable Requirements, customer Commitments, and current service boundary.
-- Confirm the procedure describes what people actually do, and keep starter-selection and FileGRC record-entry instructions out of the Control statement and activity. A Control may name FileGRC when FileGRC is an actual operating Component or evidence source.
-- Use a not-applicable, external, or zero-population conclusion only when it is factually true for the current scope.
+- Confirm the Control is needed for the applicable Requirements, Commitments, and service boundary.
+- Describe the actual procedure. Put starter-selection and FileGRC record-entry instructions in the UI or guides, unless FileGRC is an operating Component or evidence source.
+- Use not applicable, external, or zero population only when it is true for the current scope.
 
 Default sources: `policy-information-security`
 
@@ -1117,9 +1117,9 @@ Timing: Complete required program Documents in Step 2, obtain approval from a re
 
 When reviewing:
 
-- Write companion Markdown as a standalone company artifact. Keep FileGRC commands, record-entry instructions, readiness states, relationship IDs, and starter-library mechanics in guides and calculated work unless FileGRC itself is the document's subject.
-- Replace every bracketed prompt with a reviewed fact before approval, activation, signature, or delivery.
-- Describe the business fact in ordinary terms and keep resource relationships in the Document record and supporting records.
+- Keep companion Markdown to the policy, procedure, evidence, or narrative the Document records. Put FileGRC instructions and derived actions in the UI or guides unless FileGRC is the subject.
+- Replace every bracketed prompt with a reviewed fact before approval, activation, signing, or delivery.
+- Use ordinary business language; keep resource relationships in this record and its supporting records.
 
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
@@ -1328,9 +1328,9 @@ Timing: Approve the exact training content in Step 2. During Step 3, finish the 
 
 When reviewing:
 
-- Write workforce-facing material as standalone company training. Keep FileGRC commands, record-entry instructions, and data-model terms in guides and assignment records.
-- State required behavior without implying that every user needs a paid product or that customer MFA applies without an approved requirement.
-- Tie each completion to the exact training revision the person reviewed.
+- Keep workforce material focused on required behavior. Put FileGRC commands, record-entry instructions, and data-model terms in guides and assignments.
+- Do not imply every user needs a paid product or that customer MFA applies without an approved requirement.
+- Bind each completion to the exact revision the person reviewed.
 
 Default sources: `policy-information-security`
 
@@ -2259,9 +2259,9 @@ Timing: Create an Evidence Artifact only for a real retained artifact or approve
 
 When reviewing:
 
-- Use artifactKind signed-record and artifactSubtype signed-management-representation for the fixed signed management representation letter.
-- For a signed management representation, record the actual signing timestamp in businessEventAt; collectedOn records when FileGRC received the artifact, not when management signed it.
-- Use artifactKind third-party-report and artifactSubtype soc2-report for the final report issued by the CPA firm, and record the report's actual issuance timestamp in sourceGeneratedAt.
+- For a signed management representation, use artifactKind signed-record and artifactSubtype signed-management-representation.
+- For that representation, record the signing time in businessEventAt; use collectedOn for when FileGRC received it.
+- For a final CPA report, use artifactKind third-party-report and artifactSubtype soc2-report, then record its issuance time in sourceGeneratedAt.
 
 Default sources: `policy-information-security`
 
