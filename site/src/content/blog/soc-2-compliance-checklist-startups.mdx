@@ -2,7 +2,7 @@
 title: "SOC 2 Compliance Checklist for Startups: A Start-to-Report Plan"
 description: "A practical SOC 2 compliance checklist for startups, with the decisions, records, evidence, and CPA handoffs needed at each stage."
 publishedDate: "2026-08-02"
-lastMod: "2026-09-10"
+lastMod: "2026-09-11"
 author: "Abe Wheeler"
 tags:
   [
@@ -156,6 +156,11 @@ The result should be inspectable. Keep a scope record, system inventory, vendor
 inventory, commitments, data classifications, and relationship links. A diagram
 can help people understand the service, but it does not replace those decisions.
 
+Before relying on an evidence period, use the
+[SOC 2 evidence collection workflow](/blogs/soc-2-evidence-collection) to test
+source access, retrieval instructions, export boundaries, collection timing,
+and review.
+
 Once the boundary is clear, use the
 [SOC 2 risk assessment workflow](/blogs/soc-2-risk-assessment-startups) to
 evaluate the systems, vendors, data, commitments, and changes inside it.
@@ -233,7 +238,9 @@ completion window, evidence requirement, and review.
 
 ## 6. Map evidence before relying on a period
 
-Catalog every system that will produce audit evidence. For each source, record:
+Catalog every Component that will produce audit evidence. A Component can
+represent an application, service, platform, or other part of a bounded System.
+For each source Component, record:
 
 - the evidence kinds it can produce;
 - who can access the report or export;
@@ -246,10 +253,12 @@ Catalog every system that will produce audit evidence. For each source, record:
 filegrc includes these checks in Step 3, Implement Controls. The Evidence Ready
 gate requires scope, selected criteria, approved policies, and implemented
 controls with complete authoritative evidence sources. Every selected control
-family must point to active source Systems with current access owners and
-repeatable retrieval instructions. The browser, `program-readiness`, and
-`evidence-map` diagnostic use the same records and checks. A dashboard
-percentage without those records should not start the period.
+family must point to active source Components through
+`evidenceSourceComponentIds`. Those Components need evidence-source roles,
+current access owners, and repeatable retrieval instructions in Markdown. The
+browser, `program-readiness`, and `evidence-map` diagnostic use the same records
+and checks. A dashboard percentage without those records should not start the
+period.
 
 ## 7. Start the candidate period and operate the program
 

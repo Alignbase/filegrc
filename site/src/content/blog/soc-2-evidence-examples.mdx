@@ -2,12 +2,12 @@
 title: "SOC 2 Evidence Examples: What to Collect and Record"
 description: "Practical SOC 2 evidence examples for access, changes, vendors, incidents, training, and more, with the context each item needs."
 publishedDate: "2026-07-29"
-lastMod: "2026-09-02"
+lastMod: "2026-09-11"
 author: "Abe Wheeler"
 tags:
   [
     "SOC 2 evidence examples",
-    "SOC 2 evidence collection",
+    "SOC 2 evidence artifacts",
     "SOC 2 evidence quality",
   ]
 featured: false
@@ -39,6 +39,11 @@ backup tests, vendor reviews, and training completions. A file by itself is
 rarely the whole answer. Record where it came from, what control activity it
 supports, the relevant date or period, who collected it, what happened, and any
 exceptions or follow-up.
+
+Use the
+[SOC 2 evidence collection workflow](/blogs/soc-2-evidence-collection) to map
+those artifacts to authoritative sources, collection timing, operating
+records, verification, and Type 2 coverage before fieldwork.
 
 ## TL;DR
 
@@ -122,22 +127,23 @@ weaker when the product name, selected account, filters, date, or surrounding
 workflow is missing. Add collection notes or a source export when the image
 cannot explain those facts.
 
-## Separate filegrc records from external evidence
+## Separate operating records from Evidence Artifacts
 
 filegrc uses two evidence paths because some control work happens inside the
-workspace and some proof comes from another system.
+workspace and some supporting proof comes from another system.
 
-filegrc Evidence is the dated operating record and its Markdown and Git
+Operating records hold the dated work, decisions, results, Markdown, and Git
 history. Examples include an access review, risk assessment, vendor review,
 incident, vulnerability scan, backup test, meeting, training completion, or
 policy event completed in the workspace.
 
-External Evidence is a fixed artifact collected from another authoritative
-system. Examples include a user export, deployment report, scan output, signed
-acknowledgement, screenshot, or third-party report.
+An Evidence Artifact is a retained export, report, screenshot, signed record,
+fixed file, or approved external reference. Examples include a user export,
+deployment report, scan output, signed acknowledgement, screenshot, or
+third-party report.
 
 Many activities need both. An access review record can state the scope,
-reviewer, decisions, exceptions, and approval. The linked external evidence can
+reviewer, decisions, exceptions, and approval. The linked Evidence Artifact can
 preserve the user and role export that the reviewer examined.
 
 The
@@ -193,31 +199,35 @@ This shortened example shows the context around one fixed export:
 
 ```json
 {
-  "schemaVersion": 1,
   "id": "evidence-production-change-population-2026",
   "type": "evidence",
   "title": "2026 Production Change Population",
   "status": "verified",
-  "evidenceKind": "population-export",
-  "source": "Source control and deployment report",
+  "artifactKind": "population-export",
+  "sourceKind": "file",
+  "sourceDescription": "Source control and deployment report",
   "collectedOn": "2027-01-02",
-  "classification": "Internal",
   "filePaths": [
     "evidence/evidence-production-change-population-2026/production-changes.csv"
   ],
-  "periodStart": "2026-01-01",
-  "periodEnd": "2026-12-31",
+  "coverage": {
+    "kind": "range",
+    "startsOn": "2026-01-01",
+    "endsOn": "2026-12-31"
+  },
   "generatedAt": "2027-01-02T15:30:00Z",
   "timezone": "UTC",
   "queryDescription": "All in-scope production deployments completed in 2026.",
   "populationCount": 184,
   "completenessValidation": "Reconciled to the deployment history.",
   "accuracyValidation": "Checked identifiers, timestamps, and environments.",
-  "sourceSystemId": "system-deployment",
+  "systemIds": ["system-deployment"],
+  "componentIds": ["component-deployment-history"],
   "controlIds": ["control-change-management"],
   "collectorIds": ["person-change-owner"],
   "verifierIds": ["person-security-reviewer"],
-  "verifiedOn": "2027-01-03"
+  "verifiedOn": "2027-01-03",
+  "classificationId": "classification-internal"
 }
 ```
 
