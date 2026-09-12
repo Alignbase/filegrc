@@ -129,7 +129,11 @@ export const PROGRAM_PATH = [
     description: "Finish controls and their evidence sources",
     summary: "Describe each Control and connect its evidence source.",
     sections: [
-      { id: "catalog", title: "Control Catalog", description: "Implement approved requirements, configure retention and Obligations, activate approved program content, finish authoritative evidence sources, then activate the Policies at cutover.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components.", "Review every Retention Schedule Item against current information uses and approved sources. Do not infer periods or disposition behavior.", "Review and enable every calendar and event schedule as an Obligation. Enabled work remains dormant until its governing Policy is active.", "Confirm each source Component is active, has an evidence-source role and rationale in the Control's System scope, has current access owners, and includes repeatable retrieval instructions in Record Markdown.", "Implement every requirement linked from an approved program Document or Training record, then activate the unchanged approved revisions with separate activation dates and bindings.", "Use the activation review to inspect planned or partial Controls, inactive governed content, missing Components or sources, missing schedules, and unresolved Exceptions.", "Choose the approved Policies that should take effect, set the real effective date, and confirm the Step 3 cutover."], types: ["control", "complementary-control", "retention-schedule-item", "obligation"], defaultOpen: true }
+      { id: "controls", title: "Controls", description: "Implement the selected Controls and connect their scope, procedures, mappings, and operation patterns.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components."], types: ["control"], defaultOpen: true },
+      { id: "complementary-controls", title: "Complementary Controls", description: "Record customer or provider responsibilities that form part of the implementation boundary, or confirm there are none.", steps: ["Review whether an in-scope Control depends on a customer or carved-out provider action."], types: ["complementary-control"], defaultOpen: true },
+      { id: "evidence-sources", title: "Evidence Sources", description: "Check that every Control points to an authoritative source that can produce its expected evidence.", steps: ["Confirm each source Component is active, has the right evidence-source role, names current access owners, and includes repeatable retrieval instructions."], types: [], utility: "evidence-sources", defaultOpen: true },
+      { id: "retention", title: "Retention Schedule", description: "Review each retention rule against current information uses and approved sources.", steps: ["Confirm scope, cutoff, period, disposition, sources, owner, and approval for each rule."], types: ["retention-schedule-item"], defaultOpen: true },
+      { id: "obligations", title: "Obligations", description: "Configure the calendar and event schedules that operate the Controls.", steps: ["Review and enable every required calendar and event schedule."], types: ["obligation"], defaultOpen: true }
     ],
     resourceTypes: ["control", "complementary-control", "retention-schedule-item", "obligation"],
     commands: [
@@ -142,6 +146,7 @@ export const PROGRAM_PATH = [
       "filegrc list obligation --json",
       "filegrc review-collection component --scaffold",
       "filegrc review-collection complementary-control --scaffold",
+      "filegrc review-collection control --scaffold",
       "filegrc activate-content --scaffold",
       "filegrc activate-policies --scaffold",
       "filegrc evidence-map --json",

@@ -576,9 +576,7 @@ function finalizationFields(record, model, resources, program) {
     ],
     control: [
       ["procedureRevision", record.status === "implemented"],
-      ["procedureEffectiveOn", record.status === "implemented"],
-      ["implementationReviewedByIds", record.status === "implemented"],
-      ["implementationReviewedOn", record.status === "implemented"]
+      ["procedureEffectiveOn", record.status === "implemented"]
     ]
   }[record.type] || [];
   for (const [field, applies] of requested) {

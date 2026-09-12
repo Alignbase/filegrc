@@ -1299,7 +1299,8 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.deepEqual(section(scopeStage, "System Boundary").types, ["system", "component", "vendor", "classification", "information-type"]);
   assert.equal(section(scopeStage, "Dependencies"), undefined);
   assert.deepEqual(section(scopeStage, "Program and Criteria").types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
-  assert.deepEqual(section(PROGRAM_PATH[2], "Control Catalog").types, ["control", "complementary-control", "retention-schedule-item", "obligation"]);
+  assert.deepEqual(PROGRAM_PATH[2].sections.map(({ title }) => title), ["Controls", "Complementary Controls", "Evidence Sources", "Retention Schedule", "Obligations"]);
+  assert.equal(section(PROGRAM_PATH[2], "Evidence Sources").utility, "evidence-sources");
   assert.equal(section(PROGRAM_PATH[1], "Policies").relatedLinks[0].type, "policy");
   assert.equal(section(auditStage, "Fieldwork").relatedLinks[0].type, "document");
   assert.deepEqual(section(operationStage, "Risk").types, ["risk-assessment", "risk"]);
@@ -1555,6 +1556,13 @@ test("keeps concise Step-page summaries separate from detailed resource guides",
   assert.match(APP_STYLES, /\.setup-banner,\.page-guide,\.stage-overview-hero/);
 });
 
+test("keeps Control collection oversight on the Step 3 finish gate", () => {
+  assert.match(APP_SCRIPT, /function collectionReviewVisible\(type\)/);
+  assert.match(APP_SCRIPT, /id === "collection-review-control"/);
+  assert.match(APP_SCRIPT, /collectionReviewPanel\("control", true\)/);
+  assert.match(APP_SCRIPT, /return type !== "control"/);
+});
+
 test("renders completed collection reviews as a compact closed disclosure", () => {
   const configuration = {
     title: "Framework and criteria sources",
@@ -1759,7 +1767,7 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /current\.countsTowardProgress !== false/);
   assert.match(APP_SCRIPT, /applicable\.filter\(\(current\) => current\.complete\)\.length/);
   assert.match(APP_SCRIPT, /return \{ complete: false, countsTowardProgress: false, label: "Only if needed" \}/);
-  assert.match(APP_SCRIPT, /const collectionReview = destination\.type \? state\.collectionReviews\?\.\[destination\.type\] : null/);
+  assert.match(APP_SCRIPT, /const collectionReview = destination\.type && collectionReviewVisible\(destination\.type\)/);
   assert.match(APP_SCRIPT, /if \(!total\) return \{ percent: 0/);
   assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 5/);
   assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
@@ -1772,7 +1780,9 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.equal(RESOURCE_PAGE_SUMMARIES["reporting-route-set"], "Set the normal and fallback ways people report security concerns.");
   assert.match(PROGRAM_PATH[0].sections[0].description, /normal security reporting channel and its fallback/);
   assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
-  assert.deepEqual(PROGRAM_PATH[2].sections[0].types, ["control", "complementary-control", "retention-schedule-item", "obligation"]);
+  assert.deepEqual(PROGRAM_PATH[2].sections.map(({ title }) => title), ["Controls", "Complementary Controls", "Evidence Sources", "Retention Schedule", "Obligations"]);
+  assert.match(APP_SCRIPT, /function renderFinishStepThree\(\)/);
+  assert.match(APP_SCRIPT, /Program Content Activation/);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
   assert.doesNotMatch(APP_SCRIPT, /Working areas/);
   assert.doesNotMatch(APP_SCRIPT, /Complete This Step/);

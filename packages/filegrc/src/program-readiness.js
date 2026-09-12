@@ -64,7 +64,6 @@ export async function assessProgramReadiness(input, options = {}) {
     .filter(({ resourceType }) => resourceType === "retention-schedule-item")
     .map(collectionReviewReadinessItem));
   const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
-  controlStage.items.push(...governedContent.items);
   const policyActivations = await assessPolicyActivations(
     requiredPolicies(scope, byId),
     scope.controls,
@@ -74,8 +73,22 @@ export async function assessProgramReadiness(input, options = {}) {
     asOf,
     loaded.model
   );
-  controlStage.items.push(...policyActivations.map(policyActivationItem));
-  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. Activate unchanged approved program Documents and Training after their requirements are implemented, then activate approved Policies at the implementation cutover.`;
+  const controlOversight = collectionReviews.find(({ resourceType }) => resourceType === "control");
+  const oversightEligible = Boolean(controlOversight && controlOversightEligible(controlStage.items));
+  if (oversightEligible) {
+    controlStage.items.push(collectionReviewReadinessItem(controlOversight));
+  }
+  const oversightCurrent = oversightEligible && controlOversight.complete === true;
+  controlStage.items.push(...governedContent.items.map((item) => oversightCurrent || item.status === "complete"
+    ? item
+    : { ...item, status: "blocked", message: `Complete the Control collection review before activation. ${item.message}` }));
+  controlStage.items.push(...policyActivations.map((assessment) => {
+    const item = policyActivationItem(assessment);
+    return oversightCurrent || item.status === "complete"
+      ? item
+      : { ...item, status: "blocked", message: `Complete the Control collection review before activation. ${item.message}` };
+  }));
+  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. When implementation is ready, perform one review of the implemented Control collection. Management then activates the unchanged approved program content as the Step 3 cutover.`;
   const scopeReadinessStage = scopeStage(
       program,
       scope,
@@ -164,6 +177,10 @@ export async function assessProgramReadiness(input, options = {}) {
     },
     stages
   };
+}
+
+export function controlOversightEligible(items) {
+  return items.length > 0 && items.every(({ status }) => status === "complete");
 }
 
 export async function assessEvidenceMap(input, options = {}) {
@@ -1300,12 +1317,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       implementationDate: Boolean(control.effectiveOn && control.effectiveOn <= asOf),
       ...(model.resources.control?.fields?.procedureRevision ? {
         procedureRevision: Boolean(control.procedureRevision),
-        procedureEffective: Boolean(control.procedureEffectiveOn && control.procedureEffectiveOn <= asOf),
-        implementationReview: Boolean(
-          control.implementationReviewedOn
-          && control.implementationReviewedOn <= asOf
-          && partiesIndependent(control.ownerIds, control.implementationReviewedByIds, byId)
-        )
+        procedureEffective: Boolean(control.procedureEffectiveOn && control.procedureEffectiveOn <= asOf)
       } : {}),
       policyMapping: (control.policyIds || []).length > 0,
       criteriaMapping: (control.requirementIds || []).length > 0,
@@ -1699,7 +1711,6 @@ function controlCheckLabel(name) {
     implementationDate: "implementation date",
     procedureRevision: "effective procedure revision",
     procedureEffective: "procedure effective date",
-    implementationReview: "independent implementation review",
     policyMapping: "policy mapping",
     criteriaMapping: "criteria mapping",
     workQueue: "running Obligation schedules"

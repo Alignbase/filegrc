@@ -3,17 +3,21 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
+import { modelSupports } from "../model/index.js";
 
 export async function scaffoldPolicyActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
   const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
-  const approved = readiness.policyActivations.filter(({ state }) => (
+  const oversightReady = controlOversightComplete(loaded, readiness);
+  const approved = (oversightReady ? readiness.policyActivations : []).filter(({ state }) => (
     ["approved-implementation-pending", "ready-to-activate"].includes(state)
   ));
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   return {
     available: approved.length > 0,
-    message: approved.length
+    message: !oversightReady
+      ? "Complete the current Control collection review before Program Content Activation."
+      : approved.length
       ? `${approved.length} approved ${approved.length === 1 ? "Policy is" : "Policies are"} available for the Step 3 cutover.`
       : "No Policy is ready for activation. Finish Step 2 approval, then resolve its Step 3 implementation gaps.",
     nextCommand: approved.length ? null : "npx filegrc program-path --next --json",
@@ -26,6 +30,10 @@ export async function scaffoldPolicyActivation(input = process.cwd(), options = 
 
 export async function planPolicyActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
+  const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
+  if (!controlOversightComplete(loaded, readiness)) {
+    throw new Error("Complete the current Control collection review before Program Content Activation.");
+  }
   const policyIds = [...new Set((options.policyIds || []).map(String))];
   if (!policyIds.length) throw new Error("Policy activation needs at least one approved Policy.");
   const effectiveOn = String(options.effectiveOn || "").trim();
@@ -65,6 +73,12 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
       validateWholeWorkspace: true
     }
   };
+}
+
+function controlOversightComplete(loaded, readiness) {
+  if (!modelSupports(loaded.model, "control-collection-oversight") || !readiness.scope.controlIds.length) return true;
+  return readiness.stages.find(({ id }) => id === "controls")?.items
+    .find(({ id }) => id === "collection-review-control")?.status === "complete";
 }
 
 export async function activatePolicies(input = process.cwd(), options = {}) {

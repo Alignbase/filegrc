@@ -901,7 +901,8 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
               : sourceVersion === "6" ? "7"
                 : sourceVersion === "7" ? "8"
                   : sourceVersion === "8" ? "9"
-                    : ACTIVE_MODEL_VERSION;
+                    : sourceVersion === "9" ? "10"
+                      : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -927,8 +928,11 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "8" && requestedTarget === "9") {
     return planV8ToV9Migration(loaded);
   }
-  if (sourceVersion === "9" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "9" && requestedTarget === "10") {
     return planV9ToV10Migration(loaded);
+  }
+  if (sourceVersion === "10" && requestedTarget === ACTIVE_MODEL_VERSION) {
+    return planV10ToV11Migration(loaded);
   }
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
@@ -2402,6 +2406,70 @@ async function planV9ToV10Migration(loaded) {
       expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
       validateWholeWorkspace: true,
       targetModelVersion: "10"
+    }
+  };
+}
+
+async function planV10ToV11Migration(loaded) {
+  if (!loaded.workspace?.id) throw new Error("Model migration requires a valid Workspace record.");
+  const targetModel = loadModel("11");
+  const revisions = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
+  const automatic = [];
+  const reviewRequired = [];
+  const unsupported = [];
+  const missing = [];
+  const manualActions = [];
+  const updates = [];
+  for (const original of loaded.resources) {
+    const record = structuredClone(original);
+    let changed = false;
+    if (record.type === "workspace") {
+      record.dataModelVersion = "11";
+      automatic.push(classifiedChange("automatic", record.id, "dataModelVersion", "Select model v11."));
+      changed = true;
+    }
+    if (record.type === "control") {
+      for (const field of ["implementationReviewedByIds", "implementationReviewedOn"]) {
+        if (!Object.hasOwn(record, field)) continue;
+        delete record[field];
+        automatic.push(classifiedChange("automatic", record.id, field, "Remove the obsolete per-Control implementation review field. Control oversight now uses a periodic Collection Review."));
+        changed = true;
+      }
+    }
+    if (changed) updates.push(record);
+  }
+  const updatedById = new Map(updates.map((record) => [record.id, record]));
+  const migratedRecords = loaded.resources.map((record) => updatedById.get(record.id) || record);
+  await collectTargetValidationActions(loaded, migratedRecords, targetModel, missing, manualActions);
+  for (const item of [...missing, ...manualActions]) {
+    unsupported.push(classifiedChange("unsupported", item.resourceId, item.field, item.message));
+  }
+  return {
+    schemaVersion: 2,
+    sourceModelVersion: "10",
+    targetModelVersion: "11",
+    ready: unsupported.length === 0,
+    missing,
+    conflicts: [],
+    manualActions,
+    classifications: { automatic, reviewRequired, unsupported },
+    notes: [
+      "Control owners can mark Controls implemented without a separate per-Control implementation reviewer.",
+      "Periodic Control oversight is recorded as a Git-bound Collection Review over the Program's selected Controls.",
+      "Policy, Document, and Training approval independence remains unchanged."
+    ],
+    migrationReport: {},
+    summary: { create: 0, update: updates.length, automatic: automatic.length, reviewRequired: 0, unsupported: unsupported.length },
+    fileDiff: {
+      create: [],
+      update: updates.map((record) => ({ type: record.type, id: record.id, before: loaded.resources.find(({ id }) => id === record.id), after: record }))
+    },
+    changes: {
+      create: [],
+      update: updates,
+      expectedRevisions: Object.fromEntries(updates.map(({ id }) => [id, revisions.get(id)])),
+      validateWholeWorkspace: true,
+      targetModelVersion: "11"
     }
   };
 }

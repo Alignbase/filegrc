@@ -1,5 +1,7 @@
 import { modelSupports } from "../model/index.js";
 import { programComponents, selectedRequirementIds } from "./program.js";
+import { retentionReviewResourceIds } from "./retention.js";
+import { documentIsAuditSpecific } from "./program-lifecycle.js";
 
 export function scopedCollectionRecords(loaded, resourceType, program) {
   if (!modelSupports(loaded.model, "program-scope")) {
@@ -35,6 +37,7 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   const selected = {
     system: systemIds,
     component: componentIds,
+    control: controlIds,
     framework: new Set(scopedProgram.frameworkIds || []),
     "complementary-control": new Set(loaded.resources.filter((record) => (
       record.type === "complementary-control"
@@ -51,7 +54,9 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
     )).map(({ id }) => id))
   }[resourceType];
   return loaded.resources.filter((record) => (
-    record.type === resourceType && (!selected || selected.has(record.id))
+    record.type === resourceType
+    && (!selected || selected.has(record.id))
+    && (resourceType !== "control" || record.status === "implemented")
   ));
 }
 
@@ -114,6 +119,20 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
       if (record) records.set(record.id, record);
     }
   };
+  const addPartyIds = (ids) => {
+    const pending = [...(ids || [])];
+    const visited = new Set();
+    while (pending.length) {
+      const id = pending.shift();
+      if (!id || visited.has(id)) continue;
+      visited.add(id);
+      const record = byId.get(id);
+      if (!record) continue;
+      records.set(record.id, record);
+      if (record.type === "team") pending.push(...(record.memberIds || []), ...(record.chairIds || []));
+      if (record.type === "appointment") pending.push(record.holderId);
+    }
+  };
 
   if (resourceType === "framework") {
     addIds(program?.systemIds);
@@ -137,6 +156,66 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
     for (const record of reviewed) {
       addIds([record.vendorId, record.classificationId]);
       addIds((record.informationUses || []).map(({ informationTypeId }) => informationTypeId));
+    }
+  }
+  if (resourceType === "control") {
+    const obligations = loaded.resources.filter((record) => (
+      record.type === "obligation"
+      && record.status === "active"
+      && (record.controlIds || []).some((id) => reviewedIds.has(id))
+    ));
+    const controlCodes = new Set(reviewed.map(({ code }) => code).filter(Boolean));
+    const sourceFamilyIds = new Set((loaded.model.evidenceSourceFamilies || [])
+      .filter((family) => (family.controlCodes || []).some((code) => controlCodes.has(code)))
+      .map(({ id }) => id));
+    const sourceCoverage = loaded.resources.filter((record) => (
+      record.type === "source-coverage"
+      && record.status !== "retired"
+      && sourceFamilyIds.has(record.sourceFamilyId)
+    ));
+    const policyIds = new Set(reviewed.flatMap((record) => record.policyIds || []));
+    const policies = loaded.resources.filter((record) => (
+      record.type === "policy"
+      && policyIds.has(record.id)
+      && record.programRole !== "conditional"
+      && !["superseded", "retired"].includes(record.status)
+    ));
+    const governedIds = new Set([
+      ...policies.flatMap((record) => record.relatedDocumentIds || []),
+      ...obligations.flatMap((record) => [
+        ...(record.scopeResourceIds || []),
+        ...(record.templateResourceId ? [record.templateResourceId] : [])
+      ])
+    ]);
+    const governedContent = loaded.resources.filter((record) => (
+      ["document", "training"].includes(record.type)
+      && !["superseded", "retired"].includes(record.status)
+      && (governedIds.has(record.id) || (record.controlIds || []).some((id) => reviewedIds.has(id)))
+      && (record.type !== "document" || !documentIsAuditSpecific(record, loaded.model))
+    ));
+    addIds(program?.systemIds);
+    addIds(obligations.map(({ id }) => id));
+    addIds(sourceCoverage.map(({ id }) => id));
+    addIds(policies.map(({ id }) => id));
+    addIds(governedContent.map(({ id }) => id));
+    for (const record of reviewed) {
+      addIds(record.componentIds);
+      addIds(record.evidenceSourceComponentIds);
+      addPartyIds(record.ownerIds);
+    }
+    for (const obligation of obligations) addPartyIds(obligation.ownerIds);
+    for (const record of [...policies, ...governedContent]) {
+      addPartyIds([...(record.ownerIds || []), ...(record.approverIds || []), ...(record.approvedByIds || [])]);
+    }
+    for (const coverage of sourceCoverage) {
+      addIds([coverage.componentId]);
+      addIds(coverage.readinessTestEvidenceIds);
+      addIds(coverage.retentionScheduleItemIds);
+      addPartyIds([...(coverage.ownerIds || []), ...(coverage.retrieverIds || [])]);
+      for (const rule of (coverage.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter(Boolean)) {
+        addIds(retentionReviewResourceIds(rule, loaded));
+        addPartyIds([...(rule.ownerIds || []), ...(rule.approvedByIds || [])]);
+      }
     }
   }
   if (resourceType === "information-type" && !legacy) {
@@ -202,12 +281,20 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program) {
   if (resourceType === "system") {
     return { ...common, systemIds: sorted(program?.systemIds) };
   }
-  if (resourceType === "component" || resourceType === "complementary-control") {
-    return {
+  if (resourceType === "component" || resourceType === "complementary-control" || resourceType === "control") {
+    const scope = {
       ...common,
       systemIds: sorted(program?.systemIds),
       controlIds: sorted(program?.controlIds)
     };
+    return resourceType === "control" ? {
+      ...scope,
+      assuranceGoal: program?.assuranceGoal ?? null,
+      frameworkIds: sorted(program?.frameworkIds),
+      requirementIds: sorted(selectedRequirementIds(program || {}, loaded.model)),
+      requirementApplicability: program?.requirementApplicability || [],
+      riskMethodology: program?.riskMethodology || null
+    } : scope;
   }
   return common;
 }
@@ -244,6 +331,21 @@ const dependencyFields = {
     classification: ["id", "type", "status", "rank", "description", "handlingRequirements"],
     "information-type": ["id", "type", "status", "classificationId", "description"]
   },
+  control: {
+    system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
+    component: ["id", "type", "status", "componentKind", "description", "ownerIds", "systemUses", "evidenceSourceKinds", "evidenceOwnerIds"],
+    obligation: ["id", "type", "status", "activityType", "scheduleMode", "ownerIds", "activeRuleId", "policyIds", "controlIds", "ruleIds"],
+    "source-coverage": ["id", "type", "status", "sourceFamilyId", "coverageKind", "scopeResourceIds", "excludedPopulation", "retrieverIds", "collectionCadence", "retentionScheduleItemIds", "reconciliationMethod", "validFrom", "validThrough", "applicabilityReview", "readinessTestEvidenceIds", "ownerIds", "componentId"],
+    evidence: ["id", "type", "status", "artifactKind", "readinessTest", "retrievalResult", "accessConfirmed", "coveredSourceFamilyIds", "sourceComponentId", "componentIds", "systemIds", "collectedOn", "collectorIds", "verifierIds", "verifiedOn"],
+    "retention-schedule-item": ["id", "type", "status", "description", "informationTypeIds", "scopeResourceIds", "scheduleDocumentId", "sourceResourceIds", "ownerIds", "approvedByIds", "approvedOn", "reviewedSourceRevisions", "cutoff", "retentionPeriod", "dispositionAction", "dispositionInstructions"],
+    document: ["id", "type", "documentKind", "workflowScope", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "controlIds"],
+    policy: ["id", "type", "programRole", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "relatedDocumentIds", "controlIds"],
+    training: ["id", "type", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "controlIds"],
+    "information-type": ["id", "type", "status", "classificationId", "description"],
+    person: ["id", "type", "status", "affiliation", "jobTitle"],
+    team: ["id", "type", "status", "memberIds", "chairIds"],
+    appointment: ["id", "type", "status", "appointmentKind", "scopeResourceIds", "holderId", "startsOn", "endsOn"]
+  },
   "information-type": {
     system: ["id", "type", "status", "informationTypeIds"],
     component: ["id", "type", "status", "systemUses", "informationUses"],
@@ -279,6 +381,7 @@ const dependencyContentTypes = {
   framework: new Set(["system"]),
   vendor: new Set(["document"]),
   component: new Set(["system"]),
+  control: new Set(["system", "component", "obligation", "source-coverage", "evidence", "retention-schedule-item", "document", "policy", "training"]),
   "complementary-control": new Set(["system", "control", "document", "component"])
 };
 

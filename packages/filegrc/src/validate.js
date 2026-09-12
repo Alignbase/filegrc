@@ -20,7 +20,7 @@ import {
 } from "./recurrence.js";
 import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { obligationIsEnabled } from "./program-lifecycle.js";
-import { partyPeople } from "./parties.js";
+import { currentPartyPeople, partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 import { recordTiming } from "./timing.js";
@@ -1273,6 +1273,29 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       currentRevision
     }
   );
+  if (current && record.resourceType === "control") {
+    const controls = scopedCollectionRecords(loaded, "control", program);
+    const controlIds = new Set(controls.map(({ id }) => id));
+    const conflictIds = new Set();
+    for (const control of controls) {
+      for (const id of currentPartyPeople(control.ownerIds || [], byId)) conflictIds.add(id);
+    }
+    for (const obligation of loaded.resources.filter((candidate) => (
+      candidate.type === "obligation"
+      && candidate.status === "active"
+      && (candidate.controlIds || []).some((id) => controlIds.has(id))
+    ))) {
+      for (const id of currentPartyPeople(obligation.ownerIds || [], byId)) conflictIds.add(id);
+    }
+    const conflictedReviewers = (record.reviewedByIds || []).filter((id) => conflictIds.has(id));
+    if (conflictedReviewers.length) {
+      diagnostics.push(error(
+        "conflicted-control-collection-reviewer",
+        path,
+        `A Control collection reviewer cannot own an included Control or its enabled Obligation: ${conflictedReviewers.join(", ")}.`
+      ));
+    }
+  }
   if (modelSupports(model, "temporal-collection-reviews")) {
     const temporalValues = [record.coverage, record.knowledgeCutoffAt, record.populationResourceIds];
     const hasTemporalBinding = temporalValues.every((value) => value !== undefined && value !== null);

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { loadModel } from "../model/index.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
@@ -11,9 +12,12 @@ import {
   applyCollectionReview,
   assessCollectionReview,
   buildAgentGuide,
+  collectionRevision,
   loadWorkspace,
   planCollectionReview,
   scaffoldCollectionReview,
+  scaffoldDocumentActivation,
+  scaffoldPolicyActivation,
   serveWorkspace,
   updateResource,
   validateWorkspace
@@ -22,6 +26,176 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace } from "./helpers.js";
 
 const execute = promisify(execFile);
+const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+test("blocks Control collection oversight before the rest of Step 3 is complete", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-review-gate-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await assert.rejects(
+    planCollectionReview(root, {
+      resourceType: "control",
+      decision: "complete",
+      rationale: "Reviewed implemented Controls.",
+      reviewedByIds: ["person-independent-approver-example"],
+      reviewedOn: "2026-09-12"
+    }),
+    /before recording the Control collection review/
+  );
+  await assert.rejects(
+    scaffoldCollectionReview(root, { resourceType: "control" }),
+    /before recording the Control collection review/
+  );
+  const documentScaffold = await scaffoldDocumentActivation(root);
+  assert.equal(documentScaffold.available, false);
+  assert.match(documentScaffold.message, /Control collection review/);
+  const policyScaffold = await scaffoldPolicyActivation(root);
+  assert.equal(policyScaffold.available, false);
+  assert.match(policyScaffold.message, /Control collection review/);
+  await assert.rejects(
+    execute(process.execPath, [cli, "review-collection", "control", "--scaffold", "--root", root]),
+    /before recording the Control collection review/
+  );
+  for (const command of ["activate-content", "activate-policies"]) {
+    const cliScaffold = JSON.parse((await execute(process.execPath, [cli, command, "--scaffold", "--root", root])).stdout);
+    assert.equal(cliScaffold.available, false, command);
+    assert.match(cliScaffold.message, /Control collection review/, command);
+  }
+});
+
+test("offers Control collection oversight only to people outside Control and Obligation ownership", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-reviewer-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const assessment = assessCollectionReview(loaded, "control", { programId: "program-example" });
+  assert.deepEqual(assessment.eligibleReviewerIds, ["person-independent-approver-example"]);
+  assert.deepEqual(assessment.reviewerConflictIds, ["person-example"]);
+});
+
+test("keeps Control oversight bound to independent reviewers and implementation dependencies", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-review-binding-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const initialRevision = collectionRevision(loaded, "control", { programId: "program-example" });
+  const review = {
+    id: "collection-review-control-example",
+    type: "collection-review",
+    title: "Control oversight review",
+    status: "active",
+    resourceType: "control",
+    scopeResourceIds: ["program-example"],
+    decision: "complete",
+    rationale: "Reviewed the current implementation collection.",
+    reviewedByIds: ["person-example"],
+    reviewedOn: "2026-09-12",
+    coverage: { kind: "as-of", on: "2026-09-12" },
+    knowledgeCutoffAt: "2026-09-12T12:00:00.000Z",
+    populationResourceIds: ["control-example"],
+    collectionRevision: initialRevision,
+    scopeRevision: "scope-example"
+  };
+  loaded.resources.push(review);
+  loaded.entries.push({ record: review, source: JSON.stringify(review) });
+  const conflicted = assessCollectionReview(loaded, "control", { programId: "program-example" });
+  assert.equal(conflicted.complete, false);
+  assert.equal(conflicted.status, "review-required");
+  assert.match(conflicted.message, /reviewer who does not own/);
+  await mkdir(join(root, "data", "collection-reviews"), { recursive: true });
+  await writeFile(
+    join(root, "data", "collection-reviews", `${review.id}.json`),
+    `${JSON.stringify(review, null, 2)}\n`,
+    "utf8"
+  );
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.diagnostics.some(({ code }) => (
+    code === "conflicted-control-collection-reviewer"
+  )), true, JSON.stringify(validation.diagnostics, null, 2));
+
+  const changedComponent = structuredClone(loaded);
+  changedComponent.resources.find(({ id }) => id === "component-example").description = "Changed evidence source";
+  assert.notEqual(
+    collectionRevision(changedComponent, "control", { programId: "program-example" }),
+    initialRevision
+  );
+
+  const changedPolicyApproval = structuredClone(loaded);
+  changedPolicyApproval.resources.find(({ id }) => id === "policy-example").approvedOn = "2026-09-13";
+  assert.notEqual(
+    collectionRevision(changedPolicyApproval, "control", { programId: "program-example" }),
+    initialRevision
+  );
+  const changedDocumentApprover = structuredClone(loaded);
+  changedDocumentApprover.resources.find(({ id }) => id === "document-example").approverIds = ["person-example"];
+  assert.notEqual(
+    collectionRevision(changedDocumentApprover, "control", { programId: "program-example" }),
+    initialRevision
+  );
+  const activatedPolicy = structuredClone(loaded);
+  activatedPolicy.resources.find(({ id }) => id === "policy-example").status = "active";
+  activatedPolicy.resources.find(({ id }) => id === "policy-example").effectiveOn = "2026-09-12";
+  assert.equal(
+    collectionRevision(activatedPolicy, "control", { programId: "program-example" }),
+    initialRevision
+  );
+
+  const changedSystem = structuredClone(loaded);
+  changedSystem.resources.find(({ id }) => id === "system-example").boundary = "Changed service boundary";
+  assert.notEqual(
+    collectionRevision(changedSystem, "control", { programId: "program-example" }),
+    initialRevision
+  );
+
+  const changedApplicability = structuredClone(loaded);
+  changedApplicability.resources.find(({ id }) => id === "program-example")
+    .requirementApplicability[0].rationale = "Changed scope rationale";
+  assert.notEqual(
+    collectionRevision(changedApplicability, "control", { programId: "program-example" }),
+    initialRevision
+  );
+
+  const changedObligation = structuredClone(loaded);
+  changedObligation.resources.find(({ id }) => id === "obligation-example").activityType = "access-review";
+  assert.notEqual(
+    collectionRevision(changedObligation, "control", { programId: "program-example" }),
+    initialRevision
+  );
+
+  const changedOwner = structuredClone(loaded);
+  changedOwner.resources.find(({ id }) => id === "person-example").status = "inactive";
+  assert.notEqual(
+    collectionRevision(changedOwner, "control", { programId: "program-example" }),
+    initialRevision
+  );
+
+  const coverageBaseline = structuredClone(loaded);
+  coverageBaseline.resources.find(({ id }) => id === "control-example").code = "HR-01";
+  coverageBaseline.resources.find(({ id }) => id === "source-coverage-example").retentionScheduleItemIds = ["retention-schedule-item-example"];
+  coverageBaseline.resources.find(({ id }) => id === "document-example").status = "approved";
+  const coverageRevision = collectionRevision(coverageBaseline, "control", { programId: "program-example" });
+  const changedCoverage = structuredClone(coverageBaseline);
+  changedCoverage.resources.find(({ id }) => id === "source-coverage-example").collectionCadence = "Monthly";
+  assert.notEqual(
+    collectionRevision(changedCoverage, "control", { programId: "program-example" }),
+    coverageRevision
+  );
+  const activatedSchedule = structuredClone(coverageBaseline);
+  const schedule = activatedSchedule.resources.find(({ id }) => id === "document-example");
+  schedule.status = "active";
+  schedule.activationBasis = "recorded";
+  schedule.activatedOn = "2026-09-12";
+  schedule.activatedByIds = ["person-example"];
+  assert.equal(
+    collectionRevision(activatedSchedule, "control", { programId: "program-example" }),
+    coverageRevision
+  );
+  schedule.approvedOn = "2026-09-13";
+  assert.notEqual(
+    collectionRevision(activatedSchedule, "control", { programId: "program-example" }),
+    coverageRevision
+  );
+});
 
 test("person scope includes operators referenced only by selected Components and Vendors", () => {
   const program = { id: "program-one", type: "program", systemIds: ["system-one"], controlIds: [] };

@@ -13,7 +13,7 @@ import {
 
 test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "10");
+  assert.equal(model.modelVersion, "11");
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -38,13 +38,13 @@ test("active model exposes the complete resource registry", () => {
     "rationale"
   ]);
   assert.ok(model.relationGroups["event-subject"].includes("exception"));
-  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]);
+  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item", "control"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
   assert.deepEqual(
     model.resources["collection-review"].fields.populationResourceIds.relation,
     Object.keys(model.collectionReviews)
   );
-  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item"]) {
+  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item", "control"]) {
     assert.ok(model.collectionReviews[type].description.length >= 60);
     assert.ok(model.collectionReviews[type].reviewPoints.length >= 2);
     assert.ok(model.collectionReviews[type].reviewPoints.length <= 3);
@@ -341,7 +341,7 @@ test("active model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "10");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "11");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");

@@ -752,7 +752,7 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9\|10>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9\|10\|11>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
 });
@@ -913,6 +913,8 @@ test("preserves model v9 Reporting Routes as legacy facts without inventing Rout
     ["add", "."],
     ["commit", "-m", "Create model v9 workspace"]
   ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+  const defaultPlan = await planModelMigration(root);
+  assert.equal(defaultPlan.targetModelVersion, "10");
   const plan = await planModelMigration(root, { targetModelVersion: "10" });
   assert.equal(plan.ready, true, plan.classifications.unsupported.map(({ message }) => message).join("\n"));
   assert.ok(plan.classifications.reviewRequired.some(({ field }) => field === "reporting-route-set"));
@@ -929,6 +931,38 @@ test("preserves model v9 Reporting Routes as legacy facts without inventing Rout
   const attestation = loaded.resources.find(({ type }) => type === "attestation");
   assert.equal(attestation.reportingRouteId, route.id);
   assert.equal(attestation.reportingRouteRevision, reportingRouteRevision(route));
+});
+
+test("migrates per-Control implementation approval to collection oversight without inventing a review", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-model-v11-control-oversight-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "control" && record.status === "implemented");
+  await writeJson(entry.path, {
+    ...entry.record,
+    implementationReviewedByIds: ["person-independent-approver-example"],
+    implementationReviewedOn: "2026-09-12"
+  });
+  for (const args of [
+    ["init", "--initial-branch=main"],
+    ["config", "user.email", "filegrc@example.test"],
+    ["config", "user.name", "FileGRC Test"],
+    ["add", "."],
+    ["commit", "-m", "Create model v10 workspace"]
+  ]) execFileSync("git", args, { cwd: root, stdio: "ignore" });
+  const preview = await planModelMigration(root, { targetModelVersion: "11" });
+  assert.equal(preview.ready, true, preview.classifications.unsupported.map(({ message }) => message).join("\n"));
+  const migrated = preview.fileDiff.update.find(({ id }) => id === entry.record.id).after;
+  assert.equal(migrated.implementationReviewedByIds, undefined);
+  assert.equal(migrated.implementationReviewedOn, undefined);
+  assert.equal(preview.fileDiff.create.length, 0);
+  assert.equal(preview.classifications.reviewRequired.length, 0);
+  const result = await migrateModel(root, { targetModelVersion: "11" });
+  assert.equal(result.applied, true);
+  const current = await loadWorkspace(root);
+  assert.equal(current.workspace.dataModelVersion, "11");
+  assert.equal(current.resources.some(({ type, resourceType }) => type === "collection-review" && resourceType === "control"), false);
 });
 
 test("migrates v5 Training into separate approval, activation, and Obligation scheduling", async (context) => {

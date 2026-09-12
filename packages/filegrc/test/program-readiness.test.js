@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
+import { controlOversightEligible } from "../src/program-readiness.js";
 import {
   assessAuditPreparation,
   assessEvidenceMap,
@@ -22,6 +23,12 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+test("reveals Control oversight only after every earlier Step 3 item is complete", () => {
+  assert.equal(controlOversightEligible([]), false);
+  assert.equal(controlOversightEligible([{ status: "complete" }, { status: "action" }]), false);
+  assert.equal(controlOversightEligible([{ status: "complete" }, { status: "complete" }]), true);
+});
 
 test("reports current and stale Control applicability reviews against the resolved Program", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-control-applicability-readiness-"));
@@ -60,6 +67,24 @@ test("reports current and stale Control applicability reviews against the resolv
   const staleItem = stale.stages.find(({ id }) => id === "controls")
     .items.find(({ id }) => id === `control-${control.id}`);
   assert.equal(staleItem.checks.applicability, false);
+});
+
+test("counts owner-recorded Control implementation before revealing final collection oversight", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-owner-implementation-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const control = loaded.resources.find(({ type, id }) => type === "control" && program.controlIds.includes(id));
+  const readiness = await assessProgramReadiness(root, { asOf: "2026-09-12" });
+  const stage = readiness.stages.find(({ id }) => id === "controls");
+  const item = stage.items.find(({ id }) => id === `control-${control.id}`);
+  const oversight = stage.items.find(({ id }) => id === "collection-review-control");
+  assert.equal(item.checks.implemented, true);
+  assert.equal(item.checks.implementationReview, undefined);
+  assert.doesNotMatch(item.message, /independent implementation review/i);
+  assert.equal(oversight, undefined);
+  assert.ok(stage.counts.complete > 0);
 });
 
 test("requires the starter oversight team to be activated with a separate current chair", async (context) => {
@@ -363,7 +388,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(inactiveReady.evidenceReady, false);
   assert.equal(inactiveReady.policyActivations[0].gapCount, 0);
   assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "control-control-access").status, "complete");
-  assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "policy-activation-policy-access").status, "action");
+  assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "policy-activation-policy-access").status, "blocked");
   assert.equal(inactiveReady.policyActivations[0].label, "Ready to activate");
   assert.equal(inactiveReady.policyActivations[0].canActivateWithDocumentedGaps, true);
   assert.equal((await assessWorkflow(root, { asOf: "2026-07-01" })).assessments.policyActivation.policies[0].state, "ready-to-activate");

@@ -10,12 +10,18 @@ import { loadWorkspace } from "./workspace.js";
 export async function scaffoldDocumentActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
   requireDocumentLifecycle(loaded);
-  const candidates = await activationCandidates(loaded, { ...options, documentsOnly: true });
+  const readiness = options.auditId ? null : await assessProgramReadiness(loaded, { programId: options.programId });
+  const oversightReady = options.auditId || controlOversightComplete(loaded, readiness);
+  const candidates = oversightReady
+    ? await activationCandidates(loaded, { ...options, documentsOnly: true })
+    : [];
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   const today = currentCalendarDate(loaded.workspace.timezone);
   return {
     available: candidates.length > 0,
-    message: candidates.length
+    message: !oversightReady
+      ? "Complete the current Control collection review before Program Content Activation."
+      : candidates.length
       ? `${candidates.length} approved ${candidates.length === 1 ? "Document is" : "Documents are"} ready to activate.`
       : `No ${options.auditId ? "engagement Document" : "program Document"} is ready to activate. Review the current readiness actions first.`,
     nextCommand: candidates.length ? null : options.auditId
@@ -34,6 +40,12 @@ export async function scaffoldDocumentActivation(input = process.cwd(), options 
 export async function planDocumentActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
   requireDocumentLifecycle(loaded);
+  if (!options.auditId && modelSupports(loaded.model, "control-collection-oversight")) {
+    const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
+    if (!controlOversightComplete(loaded, readiness)) {
+      throw new Error("Complete the current Control collection review before Program Content Activation.");
+    }
+  }
   const resourceIds = [...new Set((options.resourceIds || options.documentIds || []).map(String))];
   if (!resourceIds.length) throw new Error("Governed-content activation needs at least one approved program Document or Training record.");
   const activatedByIds = [...new Set((options.activatedByIds || []).map(String))];
@@ -118,6 +130,12 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
   };
 }
 
+function controlOversightComplete(loaded, readiness) {
+  if (!modelSupports(loaded.model, "control-collection-oversight") || !readiness.scope.controlIds.length) return true;
+  return readiness.stages.find(({ id }) => id === "controls")?.items
+    .find(({ id }) => id === "collection-review-control")?.status === "complete";
+}
+
 async function activationCandidates(loaded, options) {
   if (options.auditId) {
     return (await assessAuditDocumentActivations(loaded, {
@@ -150,12 +168,18 @@ export async function scaffoldGovernedContentActivation(input = process.cwd(), o
   if (!modelSupports(loaded.model, "governed-training-activation")) {
     throw new Error("Unified governed-content activation requires a model v6 or later workspace.");
   }
-  const candidates = await activationCandidates(loaded, { ...options, auditId: undefined });
+  const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
+  const oversightReady = controlOversightComplete(loaded, readiness);
+  const candidates = oversightReady
+    ? await activationCandidates(loaded, { ...options, auditId: undefined })
+    : [];
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   const today = currentCalendarDate(loaded.workspace.timezone);
   return {
     available: candidates.length > 0,
-    message: candidates.length
+    message: !oversightReady
+      ? "Complete the current Control collection review before Program Content Activation."
+      : candidates.length
       ? `${candidates.length} approved governed-content ${candidates.length === 1 ? "record is" : "records are"} ready to activate.`
       : "No program Document or Training record is ready to activate. Review the current readiness actions first.",
     nextCommand: candidates.length ? null : "npx filegrc program-path --next --json",

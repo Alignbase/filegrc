@@ -44,13 +44,13 @@ npx filegrc policy-library
 
 The command shows an exact diff only when the current text still matches the prior starter default. It skips customized, approved, active, superseded, and retired Policy content. Accept one named proposal revision only with the command printed by the review, which includes `--accept`, `--proposal-revision`, and `--yes`. Acceptance fails if the proposal changed after review. It changes only the listed defaults and does not approve a Policy, activate it, or mark a Control implemented.
 
-The normal runtime uses data model v6. Start a model v5 upgrade with a read-only preview:
+The normal runtime uses data model v11. Existing model v10 workspaces start with a read-only preview:
 
 ```sh
-npx filegrc migrate --to-model 6 --preview --json
+npx filegrc migrate --to-model 11 --preview --json
 ```
 
-Review every automatic, review-required, and unsupported item. Model v6 gives Training the same separate approval and activation lifecycle as other governed content. It preserves active model v5 Training with a visible legacy basis and removes Training schedule fields, because Obligations now own assignment timing. Resolve unsupported items before applying the same migration with `--yes`. The [model v6 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v6.md) documents the review.
+Review every automatic, review-required, and unsupported item. Model v11 removes the old per-Control implementation approval fields. Owners can record implementation directly, while periodic Control oversight uses one Collection Review at the end of Step 3. Policy, Document, and Training approvals stay independent. Resolve unsupported items before applying the same migration with `--yes`. The [model v11 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v11.md) documents the review.
 
 A model v2 workspace must migrate to v3 first:
 
@@ -66,7 +66,7 @@ A model v1 workspace must migrate to v2 first:
 npx filegrc migrate --to-model 2 --preview --json
 ```
 
-Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then run the model v3, v4, v5, and v6 previews in order.
+Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then migrate one model version at a time through model v11.
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server prefers `127.0.0.1:8787` and chooses another available port when that port is occupied. Set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 

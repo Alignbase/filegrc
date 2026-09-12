@@ -553,7 +553,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       : record.type === "requirement-mapping"
         ? [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])]
         : null;
-    if (!dependencyIds) throw new Error("Review bindings are available for Retention Schedule Items and Requirement Mappings.");
+    if (!dependencyIds) throw new Error("Review bindings are available for Retention Schedule records and Requirement Mappings.");
     const revisions = await resourceReviewRevisions(loaded, dependencyIds);
     const result = {
       resource: { type: record.type, id: record.id, title: record.title },

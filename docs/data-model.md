@@ -1,10 +1,10 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v10.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v11.json. Do not edit by hand. -->
 
-Model version: `10`
+Model version: `11`
 
-Model v10 replaces separate effective Reporting Routes with approved, revisioned Reporting Route Sets and binds assignments to Git commits.
+Model v11 lets Control owners record implementation directly and moves Control oversight into periodic, Git-bound collection reviews. Independent Policy, Document, and Training approvals remain unchanged.
 
 Each structured resource is one UTF-8 JSON file. Long-form work is an implicit Markdown companion beside that JSON file. Git supplies file authors, timestamps, diffs, commit messages, and revisions, so records do not duplicate those fields or file paths.
 
@@ -69,7 +69,7 @@ Describe each Control and connect its evidence source.
 
 - **Controls** (`control`): Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
 - **Complementary controls** (`complementary-control`): Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
-- **Retention Schedule Items** (`retention-schedule-item`): Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
+- **Retention Schedule** (`retention-schedule-item`): Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
 - **Obligations** (`obligation`): Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
 
 Headless commands:
@@ -83,6 +83,7 @@ Headless commands:
 - `npx filegrc list obligation --json`
 - `npx filegrc review-collection component --scaffold`
 - `npx filegrc review-collection complementary-control --scaffold`
+- `npx filegrc review-collection control --scaffold`
 - `npx filegrc activate-content --scaffold`
 - `npx filegrc activate-policies --scaffold`
 - `npx filegrc evidence-map --json`
@@ -157,7 +158,7 @@ Relationship fields use the named groups below. The registry expands each group 
 | Group | Resource types |
 | --- | --- |
 | `accountable-party` | `person`, `team`, `appointment` |
-| `collection-review-population` | `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item` |
+| `collection-review-population` | `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item`, `control` |
 | `appointment-scope` | `workspace`, `person`, `service-account`, `team`, `system`, `asset`, `document`, `evidence`, `obligation`, `obligation-event`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `obligation-scope` | `workspace`, `person`, `appointment`, `service-account`, `team`, `system`, `asset`, `document`, `framework`, `requirement`, `commitment`, `complementary-control`, `control`, `policy`, `training`, `risk`, `vendor`, `access-grant`, `vulnerability`, `incident`, `audit`, `source-coverage`, `retention-schedule-item`, `requirement-mapping`, `component`, `information-type` |
 | `obligation-template` | `person`, `system`, `asset`, `document`, `control`, `policy`, `training`, `retention-schedule-item`, `requirement-mapping` |
@@ -182,6 +183,7 @@ FileGRC derives record issues, but it cannot infer that management reviewed an a
 | `classification` | Information handling classifications | `complete` | Confirm each Classification represents a distinct handling level the organization actually uses. Confirm the ordering and handling expectations match approved information protection decisions. Retire unused or duplicate Classifications only after reviewing every record that references them. |
 | `information-type` | Information Type inventory | `complete`, `zero-population` | Review near-duplicate names and choose one canonical Information Type only after confirming they mean the same thing. Retire superseded records through a reviewed migration that rewrites every relationship. Confirm every active Information Type has an approved classification and a retention schedule item or an explicit management-review prompt. |
 | `retention-schedule-item` | Retention schedule | `complete`, `zero-population` | Confirm schedule coverage across Systems, Components, Vendors, source families, logs, backups, audit records, and the FileGRC repository. Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions. Keep undecided periods and disposition behavior planned for management review. |
+| `control` | Control implementation oversight | `complete` | Perform this one collection review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content. Confirm owners, procedures, scope, operation patterns, mappings, Obligations, and authoritative evidence sources remain current. Record follow-up work separately when the review finds a gap. |
 
 ## Relationship constraints
 
@@ -857,7 +859,7 @@ Instructions: Finish each applicable starter Control with the procedure people f
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, Obligations, and Evidence.
 
-Timing: A Control may be implemented while its governing Policy, required program Document, or Training is approved but inactive. Before marking it implemented, record its owner, actual procedure in Record Markdown, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event Obligations. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled Obligations remain dormant until all of their governing content is active and effective.
+Timing: A Control owner may mark the Control implemented after recording its actual procedure, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event Obligations. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled Obligations remain dormant until all governing content is active and effective. Review the implemented Control collection periodically and after material changes.
 
 When reviewing:
 
@@ -892,8 +894,6 @@ Markdown companions:
 | `applicabilityReview` | object (`applicability-review`) | No | Control applicability review |
 | `procedureRevision` | string | No | Effective procedure revision |
 | `procedureEffectiveOn` | date | No | Procedure effective date |
-| `implementationReviewedByIds` | array of id | No | Implementation reviewers References: `person` |
-| `implementationReviewedOn` | date | No | Implementation reviewed on |
 | `componentIds` | array of id | No | Operating and supporting Components References: `component` |
 | `evidenceSourceComponentIds` | array of id | Conditional | Authoritative evidence-source Components References: `component` Required when `status` is `implemented`. |
 
@@ -962,7 +962,7 @@ Record Markdown: available when needed as an implicit companion file.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `status` | enum | Yes | Values: `planned`, `active`, `retired` |
-| `resourceType` | enum | Yes | Reviewed resource type Values: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item` Values come from the `collectionReviews` registry. |
+| `resourceType` | enum | Yes | Reviewed resource type Values: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item`, `control` Values come from the `collectionReviews` registry. |
 | `decision` | enum | Conditional | Values: `complete`, `zero-population`, `externally-managed`, `not-applicable` Required when `status` is `active`. |
 | `rationale` | string | Conditional | Required when `status` is `active`. |
 | `reviewedByIds` | array of id | Conditional | Reviewed by References: `person` Required when `status` is `active`. |
@@ -975,7 +975,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `supersedesId` | id | No | References: `collection-review` |
 | `coverage` | object (`coverage-period`) | No | Reviewed temporal coverage |
 | `knowledgeCutoffAt` | timestamp | No | Knowledge cutoff |
-| `populationResourceIds` | array of id | No | Reviewed population Relation group: `collection-review-population`. References: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item` |
+| `populationResourceIds` | array of id | No | Reviewed population Relation group: `collection-review-population`. References: `person`, `framework`, `vendor`, `system`, `complementary-control`, `component`, `classification`, `information-type`, `retention-schedule-item`, `control` |
 
 #### `requirement-mapping`
 

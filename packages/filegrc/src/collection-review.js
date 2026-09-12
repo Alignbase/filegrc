@@ -11,6 +11,7 @@ import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
 import { resolveProgram } from "./program.js";
 import { currentCalendarDate } from "./time.js";
+import { currentPartyPeople } from "./parties.js";
 
 export { collectionRevision };
 
@@ -63,11 +64,19 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
       currentRevision
     }
   );
+  const reviewerEligibility = resourceType === "control"
+    ? assessControlReviewers(loaded, records)
+    : null;
+  const reviewersEligible = !reviewerEligibility || Boolean(
+    review?.reviewedByIds?.length
+    && review.reviewedByIds.every((id) => reviewerEligibility.eligibleReviewerIds.includes(id))
+  );
   const complete = Boolean(
     review?.status === "active"
     && allowedDecisions.includes(review.decision)
     && revisionMatches
     && temporalReview
+    && reviewersEligible
   );
   const stale = Boolean(
     review?.status === "active"
@@ -86,8 +95,11 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     collectionRevision: currentRevision,
     status: complete ? "current" : stale ? "stale" : "review-required",
     complete,
+    ...(reviewerEligibility || {}),
     message: complete
       ? `${configuration.title} were reviewed on ${review.reviewedOn}.`
+      : revisionMatches && review?.status === "active" && !reviewersEligible
+        ? "Review the Control collection again with a reviewer who does not own an included Control or its enabled Obligation."
       : stale
         ? `${configuration.title} changed after the last confirmation. Review the current records again.`
         : !records.length && !allowsEmptyCollection
@@ -101,6 +113,7 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
   const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
   const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
+  await requireControlReviewReady(loaded, resourceType, program.id);
   const allowedDecisions = assessment.configuration.decisions || ["complete"];
   const now = options.now ? new Date(options.now) : new Date();
   if (Number.isNaN(now.getTime())) throw new Error("A valid Collection Review time is required.");
@@ -141,6 +154,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
   const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
+  await requireControlReviewReady(loaded, resourceType, program.id);
   const configuration = assessment.configuration;
   const decision = String(options.decision || "").trim();
   const rationale = String(options.rationale || "").trim();
@@ -177,6 +191,13 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   }
   if (!rationale || !reviewedByIds.length || !reviewedOn) {
     throw new Error(`${configuration.title} review needs review notes, a reviewer, and a review date.`);
+  }
+  if (resourceType === "control") {
+    const eligible = new Set(assessment.eligibleReviewerIds || []);
+    const conflicts = reviewedByIds.filter((id) => !eligible.has(id));
+    if (conflicts.length) {
+      throw new Error(`Control collection review needs a reviewer who does not own an included Control or its enabled Obligation: ${conflicts.join(", ")}.`);
+    }
   }
   if (temporalReviews) {
     if (reviewedOn !== today) {
@@ -267,6 +288,44 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
       validateWholeWorkspace: true,
       workflowCapability: INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
     }
+  };
+}
+
+async function requireControlReviewReady(loaded, resourceType, programId) {
+  if (resourceType !== "control") return;
+  const { assessProgramReadiness } = await import("./program-readiness.js");
+  const readiness = await assessProgramReadiness(loaded, { programId });
+  const earlierItems = readiness.stages
+    .find(({ id }) => id === "controls")
+    ?.items.filter(({ id }) => (
+      id !== "collection-review-control"
+      && !id.startsWith("document-activation-")
+      && !id.startsWith("training-activation-")
+      && !id.startsWith("policy-activation-")
+    )) || [];
+  if (!earlierItems.length || earlierItems.some(({ status }) => status !== "complete")) {
+    throw new Error("Complete the Step 3 implementation work before recording the Control collection review. Program content activation follows this review.");
+  }
+}
+
+function assessControlReviewers(loaded, controls) {
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const controlIds = new Set(controls.map(({ id }) => id));
+  const conflictIds = new Set();
+  for (const control of controls) {
+    for (const id of currentPartyPeople(control.ownerIds || [], byId)) conflictIds.add(id);
+  }
+  for (const obligation of loaded.resources.filter((record) => (
+    record.type === "obligation"
+    && record.status === "active"
+    && (record.controlIds || []).some((id) => controlIds.has(id))
+  ))) {
+    for (const id of currentPartyPeople(obligation.ownerIds || [], byId)) conflictIds.add(id);
+  }
+  const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
+  return {
+    eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),
+    reviewerConflictIds: people.map(({ id }) => id).filter((id) => conflictIds.has(id))
   };
 }
 
