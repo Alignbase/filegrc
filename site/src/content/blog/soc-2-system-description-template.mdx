@@ -2,7 +2,7 @@
 title: "SOC 2 System Description Template: A Startup Guide"
 description: "Write a SOC 2 system description from current scope, systems, commitments, controls, vendors, incidents, and changes, then review the exact draft."
 publishedDate: "2026-08-09"
-lastMod: "2026-09-08"
+lastMod: "2026-09-12"
 author: "Abe Wheeler"
 tags:
   [
@@ -96,9 +96,9 @@ dates, controls, exceptions, and signer authority before approval.
 
 Write the scope first. A narrative cannot settle a boundary that management and
 the CPA firm have not agreed. Use the
-[startup SOC 2 checklist](/blogs/soc-2-compliance-checklist-startups) to finish
-the service, criteria, systems, vendors, people, and data decisions that the
-description needs.
+[SOC 2 scope workflow](/blogs/soc-2-scope) to finish the service, criteria,
+systems, Components, vendors, people, information, exclusions, and evidence
+source decisions that the description needs.
 
 ## Build the template from current source records
 
@@ -131,17 +131,17 @@ The FileGRC starter organizes the work under DC1 through DC9. The table below
 paraphrases the preparation questions. Use the official AICPA resource and the
 CPA firm's instructions for the final wording.
 
-| Section | Preparation question                                                                               | Records to reconcile                                       |
-| ------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| DC1     | What services does the startup provide, to whom, and through which main workflows?                 | Scope, systems, service commitments                        |
-| DC2     | Which commitments and system requirements guide the service and its controls?                      | Commitments, requirements, contracts, policies             |
-| DC3     | Which infrastructure, software, people, procedures, and data make up the system?                   | Systems, people, teams, controls, classifications          |
-| DC4     | Which significant incidents matter to understanding the system for the date or period?             | Incident population, incident records, findings            |
-| DC5     | Which criteria apply, and which controls address them?                                             | Framework, requirements, controls, applicability decisions |
-| DC6     | Which controls must customers operate for management's controls to work as intended?               | Complementary user-entity controls, commitments            |
-| DC7     | Which subservice organizations support the system, how are they presented, and what duties remain? | Vendors, vendor reviews, complementary controls            |
-| DC8     | Which criteria inside a selected category are not relevant, and what supports that conclusion?     | Applicability review, scope, commitments, risks            |
-| DC9     | Which significant changes matter to understanding the system for the date or period?               | Change population, system history, policies, incidents     |
+| Section | Preparation question                                                                               | Records to reconcile                                                                   |
+| ------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| DC1     | What services does the startup provide, to whom, and through which main workflows?                 | Scope, Systems, service commitments                                                    |
+| DC2     | Which commitments and system requirements guide the service and its controls?                      | Commitments, requirements, contracts, Policies                                         |
+| DC3     | Which infrastructure, software, people, procedures, and data make up the system?                   | Systems, Components, Information Types, people, teams, Controls, and classifications   |
+| DC4     | Which significant incidents matter to understanding the system for the date or period?             | Incident population, Incident records, and Findings                                    |
+| DC5     | Which criteria apply, and which controls address them?                                             | Framework, requirements, Controls, and applicability decisions                         |
+| DC6     | Which controls must customers operate for management's controls to work as intended?               | Complementary user-entity Controls and Commitments                                     |
+| DC7     | Which subservice organizations support the system, how are they presented, and what duties remain? | Audit subservice conclusion and treatments, Vendors, Components, Controls, and reviews |
+| DC8     | Which criteria inside a selected category are not relevant, and what supports that conclusion?     | Applicability review, scope, Commitments, and Risks                                    |
+| DC9     | Which significant changes matter to understanding the system for the date or period?               | Change population, System history, Policies, and Incidents                             |
 
 Do not answer a section with a policy slogan. Name enough of the real service,
 process, or relationship for a reader to understand the boundary and control
@@ -306,10 +306,12 @@ npx filegrc prepare-audit AUDIT_ID --json
 npx filegrc validate --json
 ```
 
-FileGRC checks that the required description sections have substantive content,
-that preparation placeholders are gone, and that an active governed document's
-approval matches its Markdown revision. It also connects the description to the
-engagement and evidence packet.
+FileGRC checks that the DC1 through DC9 headings are present, the draft meets an
+overall minimum content threshold, the engagement dates appear, preparation
+placeholders are gone, and an active governed document's approval matches its
+Markdown revision. It also connects the description to the engagement and
+evidence packet. Management and the CPA firm still need to review the substance
+of every section.
 
 FileGRC manages GRC records and audit evidence. It does not inspect live
 infrastructure, decide which facts matter to the report, approve management's

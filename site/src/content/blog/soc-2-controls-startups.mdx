@@ -2,7 +2,7 @@
 title: "SOC 2 Controls for Startups: Build the Right Control Set"
 description: "Build SOC 2 controls for a startup from scope, risks, and commitments. Define owners, procedures, evidence sources, and an implementation test."
 publishedDate: "2026-08-07"
-lastMod: "2026-08-30"
+lastMod: "2026-09-12"
 author: "Abe Wheeler"
 tags:
   [
@@ -23,7 +23,7 @@ faqs:
   - question: "Can a startup use a SOC 2 controls list?"
     answer: "A list can prompt discovery, but it should remain a draft until management checks each item against the service boundary, systems, vendors, risks, and commitments. Remove controls that do not apply, add missing controls, and do not mark a control implemented before its real procedure and evidence source work."
   - question: "When is a SOC 2 control implemented?"
-    answer: "Treat a control as implemented when its owner, scope, activity, procedure, operation pattern, governing mappings, authoritative evidence sources, and effective date match current practice. The team should also be able to retrieve the expected source evidence and run any required schedule or event workflow."
+    answer: "Treat a control as implemented when its current applicability review, owner, scope, activity, procedure and effective revision, operation pattern, governing mappings, authoritative evidence sources, effective date, enabled work, and independent implementation review match current practice. The team should also be able to retrieve the expected source evidence."
   - question: "Does SOC 2 software operate a startup's controls?"
     answer: "Not by itself. Software may organize control records, work, and evidence, but people and source systems still enforce access, deploy changes, monitor services, train workers, respond to incidents, and produce source records. The CPA firm performs the independent examination."
 furtherReading:
@@ -91,8 +91,8 @@ performs the independent examination.
 
 Do not begin by copying rows into a control matrix. Finish the relevant scope
 work in the
-[startup SOC 2 checklist](/blogs/soc-2-compliance-checklist-startups), then
-build the control set from these inputs.
+[SOC 2 scope workflow](/blogs/soc-2-scope), then build the control set from
+these inputs.
 
 | Input               | What to ask                                                                     | Control effect                                                          |
 | ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -127,19 +127,21 @@ contain every click in a tool.
 
 Use this design worksheet:
 
-| Field                 | Question the record must answer                                                 |
-| --------------------- | ------------------------------------------------------------------------------- |
-| Statement             | What outcome or safeguard does management maintain?                             |
-| Activity              | What does the team actually do?                                                 |
-| Owner                 | Who is accountable for keeping the control in place?                            |
-| Scope                 | Which systems, services, people, data, or events does it cover?                 |
-| Operation mode        | Is the work manual, automated, or a mix?                                        |
-| Operation pattern     | Does it run continuously, on an event, on a schedule, or through a mix?         |
-| Requirements          | Which criteria, commitments, policies, and system requirements does it address? |
-| Procedure             | Which repeatable steps do performers and reviewers follow?                      |
-| Evidence sources      | Which authoritative systems produce records of operation?                       |
-| Effective date        | When did the implemented control begin operating in this form?                  |
-| Implementation review | Who checked that the control and evidence path work as described, and when?     |
+| Field                 | Question the record must answer                                                     |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| Applicability review  | Who confirmed the Control applies to the current Program scope, when, and why?      |
+| Statement             | What outcome or safeguard does management maintain?                                 |
+| Activity              | What does the team actually do?                                                     |
+| Owner                 | Who is accountable for keeping the control in place?                                |
+| Scope                 | Which systems, services, people, data, or events does it cover?                     |
+| Operation mode        | Is the work manual, automated, or a mix?                                            |
+| Operation pattern     | Does it run continuously, on an event, on a schedule, or through a mix?             |
+| Requirements          | Which criteria, commitments, policies, and system requirements does it address?     |
+| Procedure             | Which repeatable steps do performers and reviewers follow?                          |
+| Procedure revision    | Which Markdown revision is in use, and when did it take effect?                     |
+| Evidence sources      | Which authoritative systems produce records of operation?                           |
+| Effective date        | When did the implemented control begin operating in this form?                      |
+| Implementation review | Which independent person checked that the Control and evidence path work, and when? |
 
 Keep the control statement stable enough to govern the process. Put the
 detailed procedure in versioned Markdown so the team can review operational
@@ -200,25 +202,35 @@ cloud, source control, monitoring, workforce, and other source systems.
 
 An implemented label should describe current facts. Before using it, check that:
 
-1. The control is needed for the current criteria, risks, commitments, and
-   service boundary.
-2. Its statement and activity match what people and systems actually do.
-3. A named owner accepts responsibility for the control.
-4. The procedure covers the real scope, performer, reviewer, decisions,
+1. A current applicability review records an `applicable` decision against the
+   current Program scope.
+2. The Control maps to applicable Requirements and at least one governing
+   Policy.
+3. Its statement and activity match what people and systems actually do.
+4. A named owner accepts responsibility for the Control.
+5. The procedure covers the real scope, performer, reviewer, decisions,
    exceptions, and follow-up.
-5. The operation mode and pattern match the work.
-6. Each authoritative source system is active and has a current person who can
-   retrieve the required record.
-7. The source instructions name the report or query, filters, date range,
+6. `procedureRevision` identifies the Markdown in use, and
+   `procedureEffectiveOn` is the date that revision took effect.
+7. The operation mode and pattern match the work.
+8. Each authoritative evidence-source Component is active, has the required
+   evidence role, and names current people who can retrieve the record.
+9. The Component's Markdown names the report or query, filters, date range,
    timezone, export format, and completeness checks.
-8. Management has tested the retrieval steps and received the expected output.
-9. Required policies are effective and scheduled or event work can run.
-10. The effective date reflects when this implemented form began, not when
+10. Management has tested the retrieval steps and received the expected output.
+11. Governing Policies and required program content are approved, and each
+    required calendar or event Obligation is configured and enabled.
+12. The effective date reflects when this implemented form began, not when
     someone edited the file.
+13. A person independent of the owner reviewed the implementation and recorded
+    the review date.
 
 If one of these facts is missing, keep the control planned or partially
-implemented. Do not backdate implementation to make a timeline look complete.
-The
+implemented. A Control may be implemented while its approved governing content
+is inactive. Its enabled Obligations remain dormant until that content is
+active and effective. Do not begin a candidate evidence period until the full
+program-readiness gate passes, and do not backdate implementation to make a
+timeline look complete. The
 [startup SOC 2 timeline](/blogs/soc-2-timeline-startups) explains why the
 candidate evidence period should begin only after the control and evidence path
 are reliable.

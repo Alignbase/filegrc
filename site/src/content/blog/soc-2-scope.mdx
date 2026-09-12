@@ -1,0 +1,381 @@
+---
+title: "SOC 2 Scope: Define the System Before You Write Controls"
+description: "Define SOC 2 scope for a startup by tracing the service boundary through systems, data, people, vendors, criteria, controls, and evidence."
+publishedDate: "2026-09-12"
+lastMod: "2026-09-12"
+author: "Abe Wheeler"
+tags: ["SOC 2 scope", "SOC 2 scoping", "SOC 2 audit scope"]
+featured: false
+image: "https://filegrc.com/og-image.png"
+imageCaption: "filegrc connects a bounded System to its Program, Components, information, Controls, and evidence sources."
+faqs:
+  - question: "What is SOC 2 scope?"
+    answer: "SOC 2 scope defines the service organization system covered by the examination, including the service boundary, relevant systems and Components, information, people, procedures, vendors, criteria, controls, and specified date or period. The exact scope belongs to a real CPA engagement."
+  - question: "Does a SOC 2 report have to cover the entire company?"
+    answer: "A SOC 2 report may cover a defined service organization system rather than every company activity. The boundary still needs to include the people, technology, procedures, information, and provider dependencies that materially deliver or control that service. Confirm the intended boundary with the CPA firm."
+  - question: "Which systems should be in SOC 2 scope?"
+    answer: "Include systems and Components that materially deliver the scoped service, process its information, operate its controls, produce authoritative evidence, or support relevant operations. Record and challenge exclusions instead of assuming that a nonproduction or back-office system is unrelated."
+  - question: "Are vendors in SOC 2 scope?"
+    answer: "A vendor is relevant when its service, data access, or Components materially affect the scoped system or its controls. Not every vendor is a subservice organization. Management and the CPA firm determine the engagement treatment, including whether a relevant provider uses the carve-out or inclusive method."
+  - question: "Which Trust Services Categories belong in SOC 2 scope?"
+    answer: "A standard SOC 2 scope includes the Security Common Criteria. Management selects Availability, Processing Integrity, Confidentiality, or Privacy when the service, commitments, risks, or customer need make them relevant, then confirms the criteria set with the CPA firm."
+  - question: "When should SOC 2 scope be reviewed?"
+    answer: "Review scope before a candidate period, when planning the CPA engagement, and after a material change to the service, architecture, information, vendors, commitments, criteria, or control design. Recheck the system description, controls, evidence sources, and applicability decisions after a boundary change."
+furtherReading:
+  - text: "Write the SOC 2 system description"
+    url: "/blogs/soc-2-system-description-template"
+  - text: "Build the right SOC 2 control set"
+    url: "/blogs/soc-2-controls-startups"
+  - text: "Choose between SOC 2 Type 1 and Type 2"
+    url: "/blogs/soc-2-type-1-vs-type-2"
+  - text: "Run a practical SOC 2 risk assessment"
+    url: "/blogs/soc-2-risk-assessment-startups"
+  - text: "Read the filegrc source and setup guide"
+    url: "https://github.com/Alignbase/filegrc"
+---
+
+SOC 2 scope defines the service organization system covered by the
+examination. For a startup, that means naming the service boundary, systems and
+Components, information, people, procedures, vendors, criteria, controls, and
+specified date or period. Start with the service customers rely on, then trace
+every material dependency before deciding what is included or excluded.
+
+## TL;DR
+
+- Define the service and management goal before choosing controls.
+- Treat the System as a business and technical boundary, not a list of cloud
+  accounts.
+- Trace information through Components, people, procedures, and vendors.
+- Record exclusions and test whether the service or a control depends on them.
+- Select criteria from commitments, risks, and customer needs.
+- Keep management's candidate scope separate from the CPA engagement's formal
+  scope and coverage.
+- Review scope again after a material change.
+
+## What is SOC 2 scope?
+
+SOC 2 scope answers a simple question: which system is management describing
+and asking a CPA firm to examine?
+
+The AICPA describes SOC 2 as an assertion-based examination of a service
+organization's system description and controls relevant to security,
+availability, processing integrity, confidentiality, or privacy in its
+[authoritative SOC 2 guide](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy).
+The report is therefore about a defined system, not a badge attached to an
+entire company without boundaries.
+
+Scope has three connected layers:
+
+| Layer              | Decision                                                                                                              | Owner                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Management Program | The assurance goal, bounded Systems, criteria, Controls, owners, risk method, and candidate coverage                  | Management                  |
+| Bounded System     | The service, technical and operating boundary, information, Components, dependencies, and exclusions                  | Management                  |
+| CPA engagement     | The exact Program, Systems, framework, Controls, subservice treatment, and specified date or period under examination | Management and the CPA firm |
+
+The management Program can exist before a firm is engaged. Its candidate date
+or period helps the team plan and preserve records. It is not the auditor-agreed
+coverage. The Audit record should hold the formal engagement facts once the CPA
+firm and management settle them.
+
+## Start with the service customers rely on
+
+Do not start SOC 2 scoping with a tool inventory. Start with the product or
+service behind the customer request.
+
+Write down:
+
+- the legal entity responsible for the service;
+- the product, API, platform, or managed service being offered;
+- the users and customers who rely on it;
+- the main workflows and outcomes it provides;
+- the production environments and regions involved;
+- the information it receives, creates, processes, stores, and transmits;
+- the security, availability, confidentiality, privacy, or processing promises
+  made to customers;
+- the date or period the customer expects the report to cover.
+
+One company may operate several products that do not need the same scope. A
+bounded service can be reasonable when the boundary still includes everything
+material to delivering and controlling that service. A narrow product name is
+not enough if shared identity, deployment, monitoring, support, or workforce
+processes sit outside the label.
+
+The
+[startup SOC 2 checklist](/blogs/soc-2-compliance-checklist-startups)
+places this decision before policy and control work because every later record
+inherits the boundary.
+
+## Define one complete bounded System
+
+FileGRC uses a System for the complete boundary being governed or examined.
+The System should describe the service and its important technical and
+operating facts without copying every asset into one record.
+
+Record these System facts:
+
+| Field                  | What to decide                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| Purpose                | Why the System exists and what business outcome it supports                      |
+| Services provided      | The products or service capabilities inside the boundary                         |
+| Boundary               | The included environments, operations, people, and dependencies                  |
+| Exclusions             | Material items considered and left outside, with a reason                        |
+| Owner                  | The person, Team, or appointed role accountable for the boundary                 |
+| Information Types      | Stable categories of information the System processes                            |
+| Highest classification | The strongest handling category that applies                                     |
+| Internet exposure      | Whether the System has an internet-facing surface                                |
+| Criticality            | The approved business impact rating                                              |
+| Continuity objectives  | Recovery targets when the selected scope or an approved commitment requires them |
+
+This shortened example shows a fictional startup System. The values are prompts
+for management review, not facts to copy.
+
+```json
+{
+  "id": "system-customer-api",
+  "type": "system",
+  "title": "Customer API Service",
+  "status": "active",
+  "purpose": "Process customer requests through the production API",
+  "servicesProvided": ["Hosted API and customer administration"],
+  "boundary": "Production API, administration, deployment, identity, monitoring, support, and related workforce procedures",
+  "exclusions": [
+    "Public marketing site, which does not authenticate users or process service data"
+  ],
+  "criticality": "high",
+  "ownerIds": ["appointment-service-owner"],
+  "informationTypeIds": ["information-type-customer-content"],
+  "classificationId": "classification-confidential",
+  "internetExposed": true
+}
+```
+
+An inventory item can support the System without defining its boundary. Keep
+individual laptops, devices, software licenses, and media as Assets when the
+program needs to track their custody or lifecycle.
+
+## Trace the five system component categories
+
+The AICPA's
+[SOC 2 Description Criteria](https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2)
+organize the system description around infrastructure, software, people,
+procedures, and data. Use those categories as a boundary test before drafting
+the narrative.
+
+### Infrastructure
+
+List the production and supporting compute, storage, networks, facilities,
+endpoints, and security services that materially deliver or protect the scoped
+service. Include shared infrastructure when the service depends on it.
+
+### Software
+
+Trace the application, data stores, deployment path, source control, identity,
+monitoring, support, and important internal software. A tool may matter because
+it operates a control or produces evidence even when it does not process
+customer data.
+
+### People
+
+Include the teams and roles that build, operate, secure, support, or govern the
+service. Production access is one test, but it is not the only test. A people
+operations role may trigger offboarding, and a manager may approve access or
+review risk without using production.
+
+### Procedures
+
+Name the manual and automated work that keeps the service operating as
+described. Common areas include access management, change review, incident
+response, vendor review, backup and recovery, vulnerability management,
+training, and oversight.
+
+### Data
+
+Follow stable Information Types through collection, processing, storage,
+transmission, retention, and deletion. Record the classification and handling
+rules without putting live customer records, credentials, or personal data
+that may need later erasure into Git.
+
+In FileGRC, a Component is a logical capability that materially participates
+in the bounded System. Components link back to Systems through `systemUses`.
+Add one when the capability delivers the service, supports a Control, produces
+authoritative evidence, or supports relevant operations. Do not mirror every
+vendor subscription or asset into a Component.
+
+## Decide whether each vendor is a system dependency
+
+A Vendor records the provider relationship. A Component records the provider
+capability used by the System. Keep those decisions separate because a vendor
+may supply several Components, and not every vendor is part of the scoped
+service.
+
+For each material provider, ask:
+
+1. Which service or Component does it supply?
+2. Which bounded System uses that Component, and for what role?
+3. Does it store, process, transmit, or protect in-scope information?
+4. Does a management Control depend on the provider's operation?
+5. Which risks, commitments, and customer responsibilities depend on it?
+6. Who owns the relationship and current review?
+
+Do not choose the engagement's subservice treatment during a rough inventory
+exercise. For the real Audit, management and the CPA firm decide whether a
+relevant provider is a subservice organization and whether the report uses the
+carve-out or inclusive method. Record the Vendor, supplied Components, selected
+System, method, rationale, and any required Controls in that engagement.
+
+Use the
+[complementary user entity controls workflow](/blogs/soc-2-complementary-user-entity-controls)
+to keep customer actions and carved-out provider actions separate when an
+in-scope Control depends on them.
+
+## Select criteria after the boundary and commitments
+
+The
+[AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
+are the benchmarks used to evaluate controls relevant to security,
+availability, processing integrity, confidentiality, and privacy. They do not
+decide the startup's service boundary or write its controls.
+
+For a standard SOC 2 Program, include the complete Security Common Criteria.
+Select Availability, Processing Integrity, Confidentiality, or Privacy when
+the service, customer request, commitments, information, or risks make that
+category relevant. Confirm the planned set with the CPA firm before relying on
+a candidate period.
+
+Keep all nine Description Criteria in the engagement because they evaluate
+management's description of the System. If management includes an optional
+Trust Services Category but concludes that a criterion inside it is not
+relevant, retain the criterion and record the limited circumstances in the DC8
+section of the system description.
+
+The boundary, category selection, and criteria decisions should agree. A
+confidentiality promise cannot disappear because someone selected a
+Security-only template. A category should not be added only because a generic
+checklist includes it.
+
+## Challenge every proposed exclusion
+
+An exclusion is a reviewed decision, not an empty space on an inventory. Write
+what is outside the boundary and why, then test the decision against the
+service and Controls.
+
+Ask these questions:
+
+- Would failure of the excluded item stop or materially affect the service?
+- Does it store, process, transmit, secure, or delete in-scope information?
+- Does it grant access to an in-scope Component?
+- Does a policy, procedure, or Control rely on it?
+- Does it produce the authoritative record used as evidence?
+- Does a customer commitment or legal duty depend on it?
+- Would removing it change the system description or risk assessment?
+
+A public marketing site may sit outside the System when it has no service
+authentication, administration, production dependency, or customer-data role.
+A workforce system may remain relevant when it is the authoritative source for
+departures that trigger access removal. The answer follows the actual
+dependency, not the tool's department label.
+
+Record uncertainty instead of forcing a clean exclusion. Ask the CPA firm to
+review material boundary questions before management invests in controls or an
+evidence period based on them.
+
+## Turn the boundary into controls and evidence sources
+
+Scope becomes operational when each material part of the System has a reason
+to exist in the Program.
+
+For every in-scope Component or process, connect:
+
+- the risk, commitment, or system requirement it affects;
+- the Control that governs or depends on it;
+- the owner and actual procedure;
+- the scheduled or event-driven work needed;
+- the authoritative source Component for evidence;
+- the information classification and handling limits;
+- any customer or provider dependency.
+
+This trace often finds scope errors. An access Control with no authoritative
+Component mapped for identity and access evidence has no source. A backup
+promise with no recovery process leaves the commitment unsupported. A
+monitoring tool with no current access owner may exist in inventory but cannot
+support repeatable evidence collection.
+
+Use the
+[SOC 2 evidence collection workflow](/blogs/soc-2-evidence-collection) to test
+source access, retrieval instructions, dates, review, and Type 2 coverage before
+starting a candidate period.
+
+## Keep candidate scope separate from audit scope
+
+Management can prepare a Program before signing an engagement. In FileGRC, the
+Program records its assurance goal, bounded Systems, framework, applicability
+decisions, Controls, owners, risk method, and candidate coverage.
+
+The real Audit records the CPA engagement. It should select the exact Program,
+Systems, framework, applicable Controls, Type 1 date or Type 2 period,
+subservice conclusion and treatments, management documents, and reviewed Git
+revision.
+
+Do not backdate the Audit or replace its firm-agreed coverage with the Program's
+earlier candidate dates. If the CPA engagement changes the boundary, update the
+source records, recheck applicability and Controls, and decide whether the
+candidate period still supports the planned examination.
+
+## Review scope before relying on it
+
+Run a cross-functional review after the first map is complete.
+
+| Reviewer                  | What to check                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| Service owner             | Product, customers, workflows, service boundary, and commitments                 |
+| Engineering or operations | Architecture, environments, deployment, monitoring, backup, and source systems   |
+| Security or program owner | Criteria, risks, Controls, evidence sources, vendors, and exclusions             |
+| People-process owner      | Workforce roles, access triggers, training, and offboarding sources              |
+| Management                | Goal, ownership, accepted boundary, unresolved questions, and candidate coverage |
+| CPA firm                  | Engagement scope, criteria, specified date or period, and subservice treatment   |
+
+For the formal Audit, record the Git commit management reviewed in
+`scopeRevision`. Do not copy that commit into applicability or collection
+review fields. The `review-applicability` and `review-collection` workflows
+calculate their own revision bindings from the current Program scope and source
+records. A later change to the service, Program, System, Components,
+information, commitments, or framework can make those reviews stale.
+
+Review scope after a material product launch, architecture migration, provider
+change, new information use, acquisition, contract commitment, optional
+category decision, or control redesign. The review should update source records
+first, then the system description and audit documents that depend on them.
+
+## Manage SOC 2 scope in filegrc
+
+[filegrc](/) keeps the scope in connected JSON and Markdown records rather than
+one uncontrolled worksheet. Start by inspecting the model and current records:
+
+```sh
+npx filegrc guide program --json
+npx filegrc guide system --json
+npx filegrc list program --json
+npx filegrc list system --json
+npx filegrc list component --json
+```
+
+Inspect a System and its inbound relationships before changing the boundary:
+
+```sh
+npx filegrc get SYSTEM_ID --mutation
+npx filegrc references SYSTEM_ID --json
+```
+
+After management records the Program, Systems, Components, Information Types,
+commitments, criteria, and Controls, run the shared checks:
+
+```sh
+npx filegrc validate --json
+npx filegrc program-readiness --json
+npx filegrc evidence-map --json
+```
+
+FileGRC can validate record structure and relationships, expose missing source
+coverage, and mark reviews stale when material inputs change. It does not
+inspect live infrastructure, decide the business boundary, select criteria for
+management, operate Controls, or perform the CPA examination.
