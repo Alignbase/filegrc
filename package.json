@@ -4,20 +4,16 @@
   "private": true,
   "workspaces": [
     "packages/filegrc",
-    "packages/create-filegrc",
-    "site"
+    "packages/create-filegrc"
   ],
   "scripts": {
     "dev": "node --watch scripts/dev.mjs",
-    "site:dev": "npm run dev --workspace filegrc-site",
-    "site:build": "npm run build --workspace filegrc-site",
-    "site:validate": "npm run validate --workspace filegrc-site",
     "test": "npm test --workspaces --if-present",
     "test:unit": "npm run test:unit --workspace filegrc",
     "test:integration": "npm run test:integration --workspace filegrc && npm test --workspace create-filegrc",
     "test:fast": "npm run test:unit --workspace filegrc",
     "test:full": "npm test",
-    "validate": "npm test --workspaces --if-present && node packages/filegrc/bin/filegrc.js model --check-docs && node scripts/check-readme-assets.mjs && npm run validate --workspace filegrc-site",
+    "validate": "npm test --workspaces --if-present && node packages/filegrc/bin/filegrc.js model --check-docs && node scripts/check-readme-assets.mjs",
     "validate:fast": "npm run test:unit --workspace filegrc && node packages/filegrc/bin/filegrc.js model --check-docs && node scripts/check-readme-assets.mjs",
     "validate:full": "npm run validate"
   },

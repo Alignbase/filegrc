@@ -18,22 +18,4 @@ for (const screenshot of screenshots) {
   );
 }
 
-assert.deepEqual(
-  await readFile(new URL("../docs/filegrc-social-preview.png", import.meta.url)),
-  await readFile(new URL("../site/public/og-image.png", import.meta.url)),
-  "The root README social preview must match the site Open Graph image"
-);
-
-assert.deepEqual(
-  await readFile(new URL("../site/public/favicon.png", import.meta.url)),
-  await readFile(new URL("../packages/filegrc/src/favicon.png", import.meta.url)),
-  "The marketing site and FileGRC engine must use the same favicon"
-);
-
-assert.deepEqual(
-  await readFile(new URL("../site/public/logo-mark-white.png", import.meta.url)),
-  await readFile(new URL("../packages/filegrc/src/logo-mark-white.png", import.meta.url)),
-  "The marketing site and FileGRC engine must use the same transparent logo mark"
-);
-
-console.log("Root README images and FileGRC logo assets match.");
+console.log("Root README images match the generated workspace assets.");

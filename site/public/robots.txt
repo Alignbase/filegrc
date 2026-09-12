@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://filegrc.com/sitemap-index.xml
