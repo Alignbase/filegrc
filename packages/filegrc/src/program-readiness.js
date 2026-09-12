@@ -194,6 +194,7 @@ function programScope(program, records, byId, model, loaded) {
     return records.filter(fallback);
   };
   return {
+    program,
     systems: (program?.systemIds || [])
       .map((id) => byId.get(id))
       .filter((record) => record?.type === "system" && record.status !== "retired"),

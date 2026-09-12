@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
+import { applicabilityScopeRevision } from "../src/applicability-scope.js";
 import {
   assessAuditPreparation,
   assessEvidenceMap,
@@ -17,9 +18,49 @@ import {
   updateResource
 } from "../src/index.js";
 import { executeCli, makeWorkspace } from "./helpers.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+test("reports current and stale Control applicability reviews against the resolved Program", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-applicability-readiness-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "10");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const control = loaded.resources.find(({ type, id }) => (
+    type === "control" && (program.controlIds || []).includes(id)
+  ));
+  const reviewedControl = {
+    ...control,
+    applicabilityReview: {
+      decision: "applicable",
+      rationale: "This Control implements requirements selected for the Program.",
+      reviewedByIds: ["person-independent-approver-example"],
+      reviewedOn: "2026-09-12",
+      scopeRevision: applicabilityScopeRevision(control, program, loaded.resources, loaded.model)
+    }
+  };
+  const withReview = {
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === control.id ? reviewedControl : record)
+  };
+
+  const current = await assessProgramReadiness(withReview, { asOf: "2026-09-12" });
+  const currentItem = current.stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === `control-${control.id}`);
+  assert.equal(currentItem.checks.applicability, true);
+
+  const changedProgram = { ...program, riskMethodology: "Changed likelihood and impact method" };
+  const stale = await assessProgramReadiness({
+    ...withReview,
+    resources: withReview.resources.map((record) => record.id === program.id ? changedProgram : record)
+  }, { asOf: "2026-09-12" });
+  const staleItem = stale.stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === `control-${control.id}`);
+  assert.equal(staleItem.checks.applicability, false);
+});
 
 test("requires the starter oversight team to be activated with a separate current chair", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-program-ownership-"));
