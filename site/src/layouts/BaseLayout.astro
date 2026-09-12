@@ -66,23 +66,31 @@ const structuredDataItems = Array.isArray(structuredData)
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content={imageAlt} />
-    {ogType === "article" && publishedTime && (
-      <meta
-        property="article:published_time"
-        content={publishedTime.toISOString()}
-      />
-    )}
-    {ogType === "article" && modifiedTime && (
-      <meta
-        property="article:modified_time"
-        content={modifiedTime.toISOString()}
-      />
-    )}
-    {ogType === "article" && author && (
-      <meta property="article:author" content={author} />
-    )}
-    {ogType === "article" &&
-      tags.map((tag) => <meta property="article:tag" content={tag} />)}
+    {
+      ogType === "article" && publishedTime && (
+        <meta
+          property="article:published_time"
+          content={publishedTime.toISOString()}
+        />
+      )
+    }
+    {
+      ogType === "article" && modifiedTime && (
+        <meta
+          property="article:modified_time"
+          content={modifiedTime.toISOString()}
+        />
+      )
+    }
+    {
+      ogType === "article" && author && (
+        <meta property="article:author" content={author} />
+      )
+    }
+    {
+      ogType === "article" &&
+        tags.map((tag) => <meta property="article:tag" content={tag} />)
+    }
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
@@ -97,13 +105,15 @@ const structuredDataItems = Array.isArray(structuredData)
       href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap"
     />
 
-    {structuredDataItems.map((data) => (
-      <script
-        is:inline
-        type="application/ld+json"
-        set:html={JSON.stringify(data)}
-      ></script>
-    ))}
+    {
+      structuredDataItems.map((data) => (
+        <script
+          is:inline
+          type="application/ld+json"
+          set:html={JSON.stringify(data)}
+        />
+      ))
+    }
   </head>
   <body>
     <Nav />

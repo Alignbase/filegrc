@@ -190,13 +190,15 @@ const structuredData = {
       </div>
 
       <div class="question-grid">
-        {questions.map((item) => (
-          <article class="question-card">
-            <span>{item.number}</span>
-            <h3>{item.question}</h3>
-            <p>{item.answer}</p>
-          </article>
-        ))}
+        {
+          questions.map((item) => (
+            <article class="question-card">
+              <span>{item.number}</span>
+              <h3>{item.question}</h3>
+              <p>{item.answer}</p>
+            </article>
+          ))
+        }
       </div>
     </div>
   </section>
@@ -218,22 +220,22 @@ const structuredData = {
           <div>
             <i class="source-dot source-dot--blue"></i>
             <p>
-              <strong>JSON</strong> holds records the engine validates, filters,
-              and connects.
+              <strong>JSON</strong> holds records the engine validates, filters, and
+              connects.
             </p>
           </div>
           <div>
             <i class="source-dot source-dot--amber"></i>
             <p>
-              <strong>Markdown</strong> holds policies, procedures, plans,
-              minutes, and narratives.
+              <strong>Markdown</strong> holds policies, procedures, plans, minutes,
+              and narratives.
             </p>
           </div>
           <div>
             <i class="source-dot source-dot--green"></i>
             <p>
-              <strong>Git</strong> supplies authors, timestamps, revisions,
-              diffs, and commit messages.
+              <strong>Git</strong> supplies authors, timestamps, revisions, diffs,
+              and commit messages.
             </p>
           </div>
         </div>
@@ -292,15 +294,17 @@ const structuredData = {
       </div>
 
       <div class="workflow-list">
-        {steps.map((step) => (
-          <article class="workflow-step">
-            <span class="workflow-number">{step.number}</span>
-            <div>
-              <h3>{step.title}</h3>
-              <p>{step.body}</p>
-            </div>
-          </article>
-        ))}
+        {
+          steps.map((step) => (
+            <article class="workflow-step">
+              <span class="workflow-number">{step.number}</span>
+              <div>
+                <h3>{step.title}</h3>
+                <p>{step.body}</p>
+              </div>
+            </article>
+          ))
+        }
       </div>
 
       <figure class="workflow-product">
@@ -350,14 +354,16 @@ const structuredData = {
       </div>
 
       <div class="command-list">
-        {commands.map(([command, description]) => (
-          <div class="command-row">
-            <code>
-              <span>$</span> npx filegrc {command}
-            </code>
-            <p>{description}</p>
-          </div>
-        ))}
+        {
+          commands.map(([command, description]) => (
+            <div class="command-row">
+              <code>
+                <span>$</span> npx filegrc {command}
+              </code>
+              <p>{description}</p>
+            </div>
+          ))
+        }
       </div>
       <div class="agent-boundary">
         <strong>filegrc manages GRC records and audit evidence.</strong>

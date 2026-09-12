@@ -57,60 +57,62 @@ const structuredData = {
 
   <section class="blog-index">
     <div class="shell">
-      {listedPosts.length > 0 ? (
-        <div class="blog-grid">
-          {listedPosts.map((post) => {
-            const formattedDate = post.data.publishedDate.toLocaleDateString(
-              "en-US",
-              {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-                timeZone: "UTC",
-              },
-            );
+      {
+        listedPosts.length > 0 ? (
+          <div class="blog-grid">
+            {listedPosts.map((post) => {
+              const formattedDate = post.data.publishedDate.toLocaleDateString(
+                "en-US",
+                {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  timeZone: "UTC",
+                },
+              );
 
-            return (
-              <article class="blog-card">
-                <a href={`/blogs/${post.id}`}>
-                  {post.data.featured && (
-                    <span class="blog-card__featured">Featured</span>
-                  )}
-                  <h2>{post.data.title}</h2>
-                  <div class="blog-card__meta">
-                    <span>{post.data.author}</span>
-                    <time datetime={post.data.publishedDate.toISOString()}>
-                      {formattedDate}
-                    </time>
-                  </div>
-                  <p>{post.data.description}</p>
-                  <div class="blog-tags">
-                    {post.data.tags.map((tag: string) => (
-                      <span>{tag}</span>
-                    ))}
-                  </div>
-                  <strong>Read more →</strong>
-                </a>
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <div class="blog-empty">
-          <span class="eyebrow">Articles coming soon</span>
-          <h2>We are writing the guides we wanted when starting SOC 2.</h2>
-          <p>
-            Until then, the filegrc repository explains the full program path
-            and gives you a working local workspace.
-          </p>
-          <a
-            class="button blog-empty__button"
-            href="https://github.com/Alignbase/filegrc"
-          >
-            Read the filegrc README
-          </a>
-        </div>
-      )}
+              return (
+                <article class="blog-card">
+                  <a href={`/blogs/${post.id}`}>
+                    {post.data.featured && (
+                      <span class="blog-card__featured">Featured</span>
+                    )}
+                    <h2>{post.data.title}</h2>
+                    <div class="blog-card__meta">
+                      <span>{post.data.author}</span>
+                      <time datetime={post.data.publishedDate.toISOString()}>
+                        {formattedDate}
+                      </time>
+                    </div>
+                    <p>{post.data.description}</p>
+                    <div class="blog-tags">
+                      {post.data.tags.map((tag: string) => (
+                        <span>{tag}</span>
+                      ))}
+                    </div>
+                    <strong>Read more →</strong>
+                  </a>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div class="blog-empty">
+            <span class="eyebrow">Articles coming soon</span>
+            <h2>We are writing the guides we wanted when starting SOC 2.</h2>
+            <p>
+              Until then, the filegrc repository explains the full program path
+              and gives you a working local workspace.
+            </p>
+            <a
+              class="button blog-empty__button"
+              href="https://github.com/Alignbase/filegrc"
+            >
+              Read the filegrc README
+            </a>
+          </div>
+        )
+      }
     </div>
   </section>
 </BaseLayout>
