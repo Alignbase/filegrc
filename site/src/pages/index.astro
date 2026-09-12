@@ -129,7 +129,9 @@ const structuredData = {
 
         <h1>
           <span>Run your SOC 2</span>
-          <span>program <em>as files</em></span>
+          <span>
+            program <em>as files</em>
+          </span>
           <em>in Git.</em>
         </h1>
         <p class="hero-lede">
@@ -140,8 +142,9 @@ const structuredData = {
 
         <div class="install-command">
           <span class="prompt">$</span>
-          <code id="install-command">npx create-filegrc@latest company-grc</code
-          >
+          <code id="install-command">
+            npx create-filegrc@latest company-grc
+          </code>
           <button
             type="button"
             id="copy-install"
@@ -174,7 +177,9 @@ const structuredData = {
       <div class="section-heading section-heading--split">
         <div>
           <div class="eyebrow">Why filegrc</div>
-          <h2>Let your agent handle SOC 2, <em>for free.</em></h2>
+          <h2>
+            Let your agent handle SOC 2, <em>for free.</em>
+          </h2>
         </div>
         <p>
           Don't pay tens of thousands of dollars for a set of basic create,
@@ -185,15 +190,13 @@ const structuredData = {
       </div>
 
       <div class="question-grid">
-        {
-          questions.map((item) => (
-            <article class="question-card">
-              <span>{item.number}</span>
-              <h3>{item.question}</h3>
-              <p>{item.answer}</p>
-            </article>
-          ))
-        }
+        {questions.map((item) => (
+          <article class="question-card">
+            <span>{item.number}</span>
+            <h3>{item.question}</h3>
+            <p>{item.answer}</p>
+          </article>
+        ))}
       </div>
     </div>
   </section>
@@ -202,7 +205,9 @@ const structuredData = {
     <div class="shell repository-layout">
       <div class="repository-copy">
         <div class="eyebrow eyebrow--light">How it works</div>
-        <h2>The repository <em>is the program.</em></h2>
+        <h2>
+          The repository <em>is the program.</em>
+        </h2>
         <p>
           There is no separate application database. The source stays useful in
           a text editor, the local web app, the CLI, and CI because every
@@ -213,22 +218,22 @@ const structuredData = {
           <div>
             <i class="source-dot source-dot--blue"></i>
             <p>
-              <strong>JSON</strong> holds records the engine validates, filters, and
-              connects.
+              <strong>JSON</strong> holds records the engine validates, filters,
+              and connects.
             </p>
           </div>
           <div>
             <i class="source-dot source-dot--amber"></i>
             <p>
-              <strong>Markdown</strong> holds policies, procedures, plans, minutes,
-              and narratives.
+              <strong>Markdown</strong> holds policies, procedures, plans,
+              minutes, and narratives.
             </p>
           </div>
           <div>
             <i class="source-dot source-dot--green"></i>
             <p>
-              <strong>Git</strong> supplies authors, timestamps, revisions, diffs,
-              and commit messages.
+              <strong>Git</strong> supplies authors, timestamps, revisions,
+              diffs, and commit messages.
             </p>
           </div>
         </div>
@@ -246,7 +251,10 @@ const structuredData = {
           <span>MARKDOWN</span>
           <strong>Access Control Policy</strong>
           <code>policy-access-control.md</code>
-          <i></i><i></i><i></i><i></i>
+          <i></i>
+          <i></i>
+          <i></i>
+          <i></i>
         </div>
         <div class="source-file source-file--middle">
           <span>JSON</span>
@@ -274,7 +282,9 @@ const structuredData = {
     <div class="shell">
       <div class="section-heading section-heading--center">
         <div class="eyebrow">One path</div>
-        <h2>Prepare, operate, <em>then audit.</em></h2>
+        <h2>
+          Prepare, operate, <em>then audit.</em>
+        </h2>
         <p>
           Start with how the company actually works. Build reliable evidence
           before you create the normal audit engagement.
@@ -282,26 +292,28 @@ const structuredData = {
       </div>
 
       <div class="workflow-list">
-        {
-          steps.map((step) => (
-            <article class="workflow-step">
-              <span class="workflow-number">{step.number}</span>
-              <div>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </div>
-            </article>
-          ))
-        }
+        {steps.map((step) => (
+          <article class="workflow-step">
+            <span class="workflow-number">{step.number}</span>
+            <div>
+              <h3>{step.title}</h3>
+              <p>{step.body}</p>
+            </div>
+          </article>
+        ))}
       </div>
 
       <figure class="workflow-product">
         <div class="window-bar">
           <div class="window-dots" aria-hidden="true">
-            <span></span><span></span><span></span>
+            <span></span>
+            <span></span>
+            <span></span>
           </div>
           <span>Program Overview</span>
-          <span class="window-state"><i></i> Data valid</span>
+          <span class="window-state">
+            <i></i> Data valid
+          </span>
         </div>
         <div class="workflow-product__viewport">
           <img
@@ -322,7 +334,9 @@ const structuredData = {
     <div class="shell agent-layout">
       <div class="agent-copy">
         <div class="eyebrow eyebrow--light">For engineers and agents</div>
-        <h2>The browser is helpful. <em>It is not required.</em></h2>
+        <h2>
+          The browser is helpful. <em>It is not required.</em>
+        </h2>
         <p>
           An agent with no filegrc context can discover the model, inspect valid
           relationships, follow the same five steps and page instructions,
@@ -336,16 +350,14 @@ const structuredData = {
       </div>
 
       <div class="command-list">
-        {
-          commands.map(([command, description]) => (
-            <div class="command-row">
-              <code>
-                <span>$</span> npx filegrc {command}
-              </code>
-              <p>{description}</p>
-            </div>
-          ))
-        }
+        {commands.map(([command, description]) => (
+          <div class="command-row">
+            <code>
+              <span>$</span> npx filegrc {command}
+            </code>
+            <p>{description}</p>
+          </div>
+        ))}
       </div>
       <div class="agent-boundary">
         <strong>filegrc manages GRC records and audit evidence.</strong>

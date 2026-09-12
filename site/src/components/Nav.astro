@@ -17,13 +17,11 @@ const navLinks = [
     </a>
 
     <div class="nav-desktop">
-      {
-        navLinks.map((link) => (
-          <a class="nav-link" href={link.href}>
-            {link.label}
-          </a>
-        ))
-      }
+      {navLinks.map((link) => (
+        <a class="nav-link" href={link.href}>
+          {link.label}
+        </a>
+      ))}
       <a
         class="nav-github"
         href="https://github.com/Alignbase/filegrc"
@@ -49,13 +47,11 @@ const navLinks = [
   </div>
 
   <div class="mobile-nav" id="mobile-nav" hidden>
-    {
-      navLinks.map((link) => (
-        <a class="mobile-nav-link" href={link.href}>
-          {link.label}
-        </a>
-      ))
-    }
+    {navLinks.map((link) => (
+      <a class="mobile-nav-link" href={link.href}>
+        {link.label}
+      </a>
+    ))}
     <a
       class="mobile-nav-link"
       href="https://github.com/Alignbase/filegrc"
