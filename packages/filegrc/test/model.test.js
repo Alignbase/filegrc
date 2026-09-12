@@ -67,6 +67,11 @@ test("active model exposes the complete resource registry", () => {
   ]) {
     assert.equal(model.resources[type].guidance.reviewPoints.length, 3);
   }
+  assert.deepEqual(model.resources.control.guidance.reviewPoints, [
+    "Confirm the Control is needed for the applicable Requirements, Commitments, and service boundary.",
+    "Describe what people actually do to operate the Control.",
+    "Use \"Not Applicable\", \"External\", or \"Zero Population\" only when it is true for the current scope."
+  ]);
   for (const type of ["workspace", "renderer-settings", "person", "appointment", "control", "meeting", "risk", "attestation", "evidence", "obligation-event", "audit", "audit-population"]) {
     assert.ok(model.resources[type], `${type} is defined`);
   }

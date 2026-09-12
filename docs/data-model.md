@@ -759,7 +759,7 @@ When reviewing:
 
 - Decide whether this criterion applies to the selected service, Trust Services Categories, customer commitments, and planned audit.
 - Explain the decision using current service and system scope facts, not a generic statement.
-- Before marking it not applicable, confirm that no in-scope promise or control objective depends on it.
+- Before choosing "Not Applicable", confirm that no in-scope promise or Control objective depends on it.
 
 Path: `data/requirements/<id>.json`
 
@@ -786,7 +786,7 @@ When reviewing:
 
 - Confirm the statement reflects a real customer promise, service requirement, or approved business objective that applies to the current scope.
 - Confirm which parts of the service the promise or objective affects.
-- Use an external, zero-population, or not-applicable conclusion only when it is factually true for the current scope.
+- Use "External", "Zero Population", or "Not Applicable" only when it is true for the current scope.
 
 Default sources: `policy-information-security`
 
@@ -825,7 +825,7 @@ When reviewing:
 
 - Confirm that the linked Control actually depends on a customer or carved-out provider action.
 - Make the statement specific enough for the responsible party to perform and for the system description to explain.
-- Before marking it not applicable, confirm that management is not responsible for the action.
+- Before choosing "Not Applicable", confirm that management is not responsible for the action.
 
 Default sources: `policy-information-security`
 
@@ -862,8 +862,8 @@ Timing: A Control may be implemented while its governing Policy, required progra
 When reviewing:
 
 - Confirm the Control is needed for the applicable Requirements, Commitments, and service boundary.
-- Describe the actual procedure. Put starter-selection and FileGRC record-entry instructions in the UI or guides, unless FileGRC is an operating Component or evidence source.
-- Use not applicable, external, or zero population only when it is true for the current scope.
+- Describe what people actually do to operate the Control.
+- Use "Not Applicable", "External", or "Zero Population" only when it is true for the current scope.
 
 Default sources: `policy-information-security`
 
@@ -1117,9 +1117,9 @@ Timing: Complete required program Documents in Step 2, obtain approval from a re
 
 When reviewing:
 
-- Keep companion Markdown to the policy, procedure, evidence, or narrative the Document records. Put FileGRC instructions and derived actions in the UI or guides unless FileGRC is the subject.
+- Make the companion Markdown read as a finished policy, procedure, evidence record, or narrative.
 - Replace every bracketed prompt with a reviewed fact before approval, activation, signing, or delivery.
-- Use ordinary business language; keep resource relationships in this record and its supporting records.
+- Write in ordinary business language. Add resource relationships to this record, not its Markdown.
 
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
@@ -1328,9 +1328,9 @@ Timing: Approve the exact training content in Step 2. During Step 3, finish the 
 
 When reviewing:
 
-- Keep workforce material focused on required behavior. Put FileGRC commands, record-entry instructions, and data-model terms in guides and assignments.
-- Do not imply every user needs a paid product or that customer MFA applies without an approved requirement.
-- Bind each completion to the exact revision the person reviewed.
+- Write the training for the people who must follow it and state the behavior you expect.
+- Include product-license or customer MFA requirements only when an approved requirement calls for them.
+- Link each completion to the exact Training revision the person completed.
 
 Default sources: `policy-information-security`
 
@@ -2259,9 +2259,9 @@ Timing: Create an Evidence Artifact only for a real retained artifact or approve
 
 When reviewing:
 
-- For a signed management representation, use artifactKind signed-record and artifactSubtype signed-management-representation.
-- For that representation, record the signing time in businessEventAt; use collectedOn for when FileGRC received it.
-- For a final CPA report, use artifactKind third-party-report and artifactSubtype soc2-report, then record its issuance time in sourceGeneratedAt.
+- For a signed management representation, choose "Signed Record" for "Artifact Kind" and enter "signed-management-representation" for "Artifact Subtype".
+- Enter when the representation was signed in "Business event time". Use "Collected On" for the date you received it.
+- For a final CPA report, choose "Third Party Report" for "Artifact Kind", enter "soc2-report" for "Artifact Subtype", and enter when the CPA firm issued it in "Source generation time".
 
 Default sources: `policy-information-security`
 
@@ -2328,7 +2328,7 @@ When reviewing:
 
 - Decide whether this source family applies to the current scope and audit period.
 - Confirm the chosen source can produce the complete population or evidence needed.
-- Use not applicable or zero population only when that conclusion is factually true.
+- Use "Not Applicable" or "Zero Population" only when it is true.
 
 Path: `data/source-coverage/<id>.json`
 

@@ -880,7 +880,7 @@ function workflowGuidance(options = {}) {
   const rows = visible.map(renderRow).join("");
   const remaining = items.slice(visible.length);
   const more = remaining.length
-    ? '<details class="workflow-guidance-more"><summary>Show ' + remaining.length + ' more ' + pluralize("item", remaining.length) + '</summary><div class="workflow-findings workflow-findings-more">' + remaining.map(renderRow).join("") + '</div><p><code>filegrc workflow --json</code> returns this same checklist for CLI and agent use.</p></details>'
+    ? '<details class="workflow-guidance-more"><summary>Show ' + remaining.length + ' more ' + pluralize("item", remaining.length) + '</summary><div class="workflow-findings workflow-findings-more">' + remaining.map(renderRow).join("") + '</div></details>'
     : "";
   const completionRequirements = options.type && resourceReviewCriteria(options.type, { trigger: true });
   return '<section class="workflow-guidance panel detail-support-panel detail-workflow-panel"><div class="panel-head"><div><p class="kicker">To-do</p><h3>' + esc(options.title || "Checklist") + '</h3></div><span class="badge ' + (blocking.length ? "warn" : "good") + '">' + (blocking.length ? "Needs work" : "Current") + '</span></div><p class="workflow-status">' + esc(status) + (completionRequirements ? '. ' + completionRequirements : "") + '</p><div class="workflow-findings">' + rows + '</div>' + more + '</section>';
@@ -964,7 +964,7 @@ function openCompletionRequirementsDialog(type) {
   if (!reviewPoints.length) return;
   const dialog = document.createElement("dialog");
   dialog.className = "alert-dialog completion-requirements-dialog";
-  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Completion requirements</p><h2>' + esc(titleCase(definition.title)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>Check these before considering this record complete.</p><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul><div class="dialog-actions"><button type="button" class="button primary">Close</button></div>';
+  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">Completion requirements</p><h2>' + esc(titleCase(definition.title)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>Before you finish this record, make sure:</p><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul><div class="dialog-actions"><button type="button" class="button primary">Close</button></div>';
   document.body.append(dialog);
   const close = () => dialog.close();
   dialog.querySelectorAll("button").forEach((button) => button.addEventListener("click", close));

@@ -1597,13 +1597,14 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.doesNotMatch(APP_SCRIPT, /function resourceWorkflowPanel\(type, entries\)/);
   assert.doesNotMatch(APP_SCRIPT, /class="stage-instructions/);
   assert.match(APP_SCRIPT, /<p class="kicker">To-do<\/p>/);
+  assert.match(APP_SCRIPT, /Before you finish this record, make sure:/);
   assert.doesNotMatch(APP_SCRIPT, />Derived workflow</);
   assert.match(APP_SCRIPT, /function workflowItemHref\(item\)/);
   assert.match(APP_SCRIPT, /workflowItemStatePriority\(left\) - workflowItemStatePriority\(right\)/);
   assert.match(APP_SCRIPT, /workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
   assert.match(APP_SCRIPT, /<summary>Show ' \+ remaining\.length \+ ' more/);
   assert.match(APP_SCRIPT, /workflow-findings workflow-findings-more/);
-  assert.match(APP_SCRIPT, /returns this same checklist for CLI and agent use/);
+  assert.doesNotMatch(APP_SCRIPT, /returns this same checklist for CLI and agent use/);
   assert.match(APP_SCRIPT, /if \(!items\.length\) return "";/);
   assert.doesNotMatch(APP_SCRIPT, /No current blockers/);
   assert.doesNotMatch(APP_SCRIPT, /The assessment will add a checklist item here/);

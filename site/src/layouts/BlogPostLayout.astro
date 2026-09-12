@@ -106,11 +106,16 @@ const faqStructuredData = {
 >
   <div class="blog-page">
     <div class="shell blog-shell">
-      <a class="blog-back" href="/blog"> ← All posts </a>
+      <a class="blog-back" href="/blog">
+        {" "}
+        ← All posts{" "}
+      </a>
       <article class="blog-article">
         <header class="blog-header">
           <div class="blog-tags">
-            {tags.map((tag: string) => <span>{tag}</span>)}
+            {tags.map((tag: string) => (
+              <span>{tag}</span>
+            ))}
           </div>
           <h1>{title}</h1>
           <p class="blog-description">{description}</p>
@@ -136,14 +141,12 @@ const faqStructuredData = {
           </div>
         </header>
 
-        {
-          image && (
-            <figure class="blog-image">
-              <img src={image} alt={imageCaption ?? title} loading="eager" />
-              {imageCaption && <figcaption>{imageCaption}</figcaption>}
-            </figure>
-          )
-        }
+        {image && (
+          <figure class="blog-image">
+            <img src={image} alt={imageCaption ?? title} loading="eager" />
+            {imageCaption && <figcaption>{imageCaption}</figcaption>}
+          </figure>
+        )}
 
         <div class="blog-content">
           <slot />
@@ -151,32 +154,28 @@ const faqStructuredData = {
 
         <BlogCta />
 
-        {
-          furtherReading && furtherReading.length > 0 && (
-            <section class="blog-related">
-              <h2>Further reading</h2>
-              <ul>
-                {furtherReading.map((link: FurtherReadingLink) => (
-                  <li>
-                    <a href={link.url}>{link.text}</a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )
-        }
+        {furtherReading && furtherReading.length > 0 && (
+          <section class="blog-related">
+            <h2>Further reading</h2>
+            <ul>
+              {furtherReading.map((link: FurtherReadingLink) => (
+                <li>
+                  <a href={link.url}>{link.text}</a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section class="blog-faq">
           <h2>Frequently asked questions</h2>
           <div>
-            {
-              faqs.map((faq: BlogFaq) => (
-                <details>
-                  <summary>{faq.question}</summary>
-                  <p>{faq.answer}</p>
-                </details>
-              ))
-            }
+            {faqs.map((faq: BlogFaq) => (
+              <details>
+                <summary>{faq.question}</summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
           </div>
         </section>
       </article>

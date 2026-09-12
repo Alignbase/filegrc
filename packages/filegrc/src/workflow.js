@@ -460,14 +460,14 @@ function recordIncompleteReason(record, loaded, program) {
     };
   }
   const messages = {
-    draft: "Complete the record, its relationships, and required Markdown before review.",
-    planned: "Check this planned record against the actual program, then complete its finalization checks.",
-    proposed: "Review the proposed work, owner, schedule, and completion requirements before activation.",
-    "in-review": "Complete independent review and bind the approval to the exact content revision.",
-    open: "Complete or formally dispose of this open work with the required proof.",
+    draft: "Add the required details, relationships, and Markdown before review.",
+    planned: "Check this planned record against how your program works, then add the missing details.",
+    proposed: "Confirm the work, owner, schedule, and completion requirements before activation.",
+    "in-review": "Have an independent reviewer approve the exact content revision.",
+    open: "Complete this work with the required proof, or formally close it without completion.",
     "in-progress": "Finish the work, record the result, and link the completion proof.",
     blocked: "Resolve the recorded blockers before completing this work.",
-    "partially-implemented": "Finish the remaining control design, operation, source, and scheduling work."
+    "partially-implemented": "Finish the Control procedure, evidence sources, and schedules."
   };
   if (!messages[record.status]) return null;
   const requiredness = recordFinalizationRequiredness(record, loaded, program);
@@ -484,7 +484,7 @@ function recordIncompleteReason(record, loaded, program) {
     state: requiredness === "conditional" ? "scheduled" : "ready",
     requiredness,
     message: requiredness === "conditional"
-      ? "Keep this starter in draft until its recorded audience, program role, or audit stage applies. Finalize or retire it when that decision is made."
+      ? "Keep this starter in \"Draft\" until its audience, program role, or audit stage applies. Complete it when it applies; otherwise retire it."
       : messages[record.status]
   };
 }
@@ -533,7 +533,7 @@ function finalizationFields(record, model, resources, program) {
     fields.push({
       field: "applicabilityReview",
       requiredness: "required",
-      message: "Record or refresh the applicability decision, rationale, reviewer, and date. FileGRC records the current material scope automatically."
+      message: "Review applicability against the current service scope, then record the decision, rationale, reviewer, and date."
     });
   }
   if (record.type === "policy" && model.resources.policy?.fields?.programRole && !record.programRole) {
@@ -694,7 +694,7 @@ async function sourceCoverageFindings(loaded, program) {
             ? record.status === "active"
               ? "Add missing source details and link a passed retrieval test after setting a candidate period."
               : "Finish the source decision, retrieval method, retention, validity dates, and pre-period dry run after setting a candidate period."
-            : "Create a source-coverage record and choose FileGRC, an external authoritative System, zero population, or not applicable.",
+            : "Create a Source Coverage record and choose FileGRC, an external authoritative System, \"Zero Population\", or \"Not Applicable\".",
         subject: { type: "source-coverage", ...(record ? { id: record.id } : {}) },
         dependencies: [],
         actions: record
