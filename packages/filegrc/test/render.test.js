@@ -1210,6 +1210,7 @@ test("uses the full detail width when a record has no authored body", () => {
 test("moves low-frequency record utilities into the header overflow menu", () => {
   assert.match(APP_SCRIPT, /class="record-overflow"/);
   assert.match(APP_SCRIPT, /aria-label="More record actions"/);
+  assert.match(APP_SCRIPT, /<svg viewBox="0 0 18 4" aria-hidden="true"><circle cx="2" cy="2" r="2"><\/circle><circle cx="9" cy="2" r="2"><\/circle><circle cx="16" cy="2" r="2"><\/circle><\/svg>/);
   assert.match(APP_SCRIPT, /data-record-modal="info">Record info/);
   assert.match(APP_SCRIPT, /data-record-modal="connections">Connections/);
   assert.match(APP_SCRIPT, /data-record-modal="history"/);
@@ -1230,6 +1231,8 @@ test("moves low-frequency record utilities into the header overflow menu", () =>
   assert.match(APP_STYLES, /\.record-overflow-menu\{position:absolute;z-index:12/);
   assert.match(APP_STYLES, /\.actions\{align-items:center;justify-content:flex-end;flex-wrap:wrap\}/);
   assert.match(APP_STYLES, /\.record-overflow\{position:relative;flex:0 0 auto;margin-left:auto\}/);
+  assert.match(APP_STYLES, /\.record-overflow>summary svg\{display:block;width:18px;height:4px;fill:currentColor\}/);
+  assert.doesNotMatch(APP_STYLES, /\.record-overflow>summary span\{[^}]*top:/);
   assert.match(APP_STYLES, /\.record-utility-dialog\{width:min\(680px/);
 });
 
