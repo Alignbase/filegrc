@@ -47,11 +47,12 @@ Headless commands:
 
 ### Step 2. Approve Policies
 
-Review and independently approve Policies, program Documents, and Training content.
+Review and independently approve Policies, program Documents, Training content, and the Data Retention Schedule.
 
 - **Policies** (`policy`): Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.
 - **Documents** (`document`): Complete required program Documents in Step 2, assign an owner and separate approver, and bind approval to the intended values and exact Markdown. Implement the linked requirements and activate that approved revision in Step 3. Prepare Audit Documents in Step 5.
 - **Training** (`training`): Review and approve the exact Training content in Step 2, then activate the unchanged revision during Step 3 after its linked Controls and assignment Obligations are ready.
+- **Retention Schedule** (`retention-schedule-item`): Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
 
 Headless commands:
 
@@ -62,14 +63,15 @@ Headless commands:
 - `npx filegrc list document --json`
 - `npx filegrc list training --json`
 - `npx filegrc get POLICY_ID --mutation`
+- `npx filegrc guide retention-schedule-item --json`
+- `npx filegrc review-collection retention-schedule-item --scaffold`
 
 ### Step 3. Implement Controls
 
-Describe each Control and connect its evidence source.
+Implement Controls, configure their operating schedules and evidence sources, then activate the approved program.
 
 - **Controls** (`control`): Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
 - **Complementary controls** (`complementary-control`): Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
-- **Retention Schedule** (`retention-schedule-item`): Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
 - **Obligations** (`obligation`): Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
 
 Headless commands:
@@ -78,8 +80,6 @@ Headless commands:
 - `npx filegrc list control --json`
 - `npx filegrc get CONTROL_ID --mutation`
 - `npx filegrc guide obligation --json`
-- `npx filegrc guide retention-schedule-item --json`
-- `npx filegrc review-collection retention-schedule-item --scaffold`
 - `npx filegrc list obligation --json`
 - `npx filegrc review-collection component --scaffold`
 - `npx filegrc review-collection complementary-control --scaffold`
@@ -182,7 +182,7 @@ FileGRC derives record issues, but it cannot infer that management reviewed an a
 | `component` | Scoped Components | `complete`, `zero-population` | Start with each bounded System and include only Components that deliver its service, support Controls, produce authoritative Evidence, or support relevant operations. Confirm every System use has the right role and a specific rationale. Keep unrelated corporate tools and Vendor relationships outside the reviewed population. |
 | `classification` | Information handling classifications | `complete` | Confirm each Classification represents a distinct handling level the organization actually uses. Confirm the ordering and handling expectations match approved information protection decisions. Retire unused or duplicate Classifications only after reviewing every record that references them. |
 | `information-type` | Information Type inventory | `complete`, `zero-population` | Review near-duplicate names and choose one canonical Information Type only after confirming they mean the same thing. Retire superseded records through a reviewed migration that rewrites every relationship. Confirm every active Information Type has an approved classification and a retention schedule item or an explicit management-review prompt. |
-| `retention-schedule-item` | Retention schedule | `complete`, `zero-population` | Confirm schedule coverage across Systems, Components, Vendors, source families, logs, backups, audit records, and the FileGRC repository. Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions. Keep undecided periods and disposition behavior planned for management review. |
+| `retention-schedule-item` | Data Retention Schedule | `complete`, `zero-population` | Review the Data Retention Schedule document, its Markdown, and every included structured row as one revision. Confirm schedule coverage across the Systems, Components, Vendors, source families, logs, backups, audit records, and FileGRC records the organization actually uses. Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions; keep undecided behavior planned. |
 | `control` | Control implementation oversight | `complete` | Perform this one collection review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content. Confirm owners, procedures, scope, operation patterns, mappings, Obligations, and authoritative evidence sources remain current. Record follow-up work separately when the review finds a gap. |
 
 ## Relationship constraints

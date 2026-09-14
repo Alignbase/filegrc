@@ -12,6 +12,7 @@ import { loadWorkspace } from "./workspace.js";
 import { resolveProgram } from "./program.js";
 import { currentCalendarDate } from "./time.js";
 import { currentPartyPeople } from "./parties.js";
+import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
 
 export { collectionRevision };
 
@@ -66,7 +67,14 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
   );
   const reviewerEligibility = resourceType === "control"
     ? assessControlReviewers(loaded, records)
-    : null;
+    : resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
+      ? assessRetentionScheduleReviewers(loaded, records)
+      : null;
+  const approvalIssues = resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
+    ? retentionScheduleApprovalIssues(loaded, program, records, {
+        informationTypesReviewed: assessCollectionReview(loaded, "information-type", options).complete
+      })
+    : [];
   const reviewersEligible = !reviewerEligibility || Boolean(
     review?.reviewedByIds?.length
     && review.reviewedByIds.every((id) => reviewerEligibility.eligibleReviewerIds.includes(id))
@@ -77,6 +85,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     && revisionMatches
     && temporalReview
     && reviewersEligible
+    && !approvalIssues.length
   );
   const stale = Boolean(
     review?.status === "active"
@@ -96,10 +105,15 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     status: complete ? "current" : stale ? "stale" : "review-required",
     complete,
     ...(reviewerEligibility || {}),
+    ...(approvalIssues.length ? { approvalIssues } : {}),
     message: complete
       ? `${configuration.title} were reviewed on ${review.reviewedOn}.`
+      : approvalIssues.length
+        ? approvalIssues[0].message
       : revisionMatches && review?.status === "active" && !reviewersEligible
-        ? "Review the Control collection again with a reviewer who does not own an included Control or its enabled Obligation."
+        ? resourceType === "retention-schedule-item"
+          ? "Review the Data Retention Schedule again with a reviewer who does not own its governing document or an included schedule row."
+          : "Review the Control collection again with a reviewer who does not own an included Control or its enabled Obligation."
       : stale
         ? `${configuration.title} changed after the last confirmation. Review the current records again.`
         : !records.length && !allowsEmptyCollection
@@ -143,6 +157,9 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
     reviewedOn: priorReview?.reviewedOn
       ? currentCalendarDate(loaded.workspace.timezone, now)
       : null,
+    ...(resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
+      ? { expectedCollectionRevision: assessment.collectionRevision }
+      : {}),
     ...(v4
       ? { authoritativeComponentId: preservedAuthoritativeSourceId }
       : { authoritativeSystemId: preservedAuthoritativeSourceId })
@@ -154,7 +171,14 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
   const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
+  if (options.expectedCollectionRevision && options.expectedCollectionRevision !== assessment.collectionRevision) {
+    throw new Error(`${assessment.configuration.title} changed after it was displayed. Reload and review the current revision before approving it.`);
+  }
+  if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval") && !options.expectedCollectionRevision) {
+    throw new Error("Data Retention Schedule approval requires the displayed collection revision. Reload or scaffold the current review before approving it.");
+  }
   await requireControlReviewReady(loaded, resourceType, program.id);
+  await requireRetentionScheduleReady(loaded, resourceType, program);
   const configuration = assessment.configuration;
   const decision = String(options.decision || "").trim();
   const rationale = String(options.rationale || "").trim();
@@ -197,6 +221,13 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     const conflicts = reviewedByIds.filter((id) => !eligible.has(id));
     if (conflicts.length) {
       throw new Error(`Control collection review needs a reviewer who does not own an included Control or its enabled Obligation: ${conflicts.join(", ")}.`);
+    }
+  }
+  if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")) {
+    const eligible = new Set(assessment.eligibleReviewerIds || []);
+    const conflicts = reviewedByIds.filter((id) => !eligible.has(id));
+    if (conflicts.length) {
+      throw new Error(`Data Retention Schedule approval needs a reviewer who does not own its governing document or an included schedule row: ${conflicts.join(", ")}.`);
     }
   }
   if (temporalReviews) {
@@ -308,6 +339,15 @@ async function requireControlReviewReady(loaded, resourceType, programId) {
   }
 }
 
+async function requireRetentionScheduleReady(loaded, resourceType, program) {
+  if (resourceType !== "retention-schedule-item" || !modelSupports(loaded.model, "retention-schedule-approval")) return;
+  const rows = scopedCollectionRecords(loaded, resourceType, program);
+  const approvalIssues = retentionScheduleApprovalIssues(loaded, program, rows, {
+    informationTypesReviewed: assessCollectionReview(loaded, "information-type", { programId: program.id }).complete
+  });
+  if (approvalIssues.length) throw new Error(approvalIssues[0].message);
+}
+
 function assessControlReviewers(loaded, controls) {
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const controlIds = new Set(controls.map(({ id }) => id));
@@ -321,6 +361,25 @@ function assessControlReviewers(loaded, controls) {
     && (record.controlIds || []).some((id) => controlIds.has(id))
   ))) {
     for (const id of currentPartyPeople(obligation.ownerIds || [], byId)) conflictIds.add(id);
+  }
+  const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
+  return {
+    eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),
+    reviewerConflictIds: people.map(({ id }) => id).filter((id) => conflictIds.has(id))
+  };
+}
+
+function assessRetentionScheduleReviewers(loaded, rows) {
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const conflictIds = new Set();
+  const schedules = loaded.resources.filter((record) => (
+    record.type === "document"
+    && record.documentKind === "schedule"
+    && record.workflowScope === "program"
+    && !["superseded", "retired"].includes(record.status)
+  ));
+  for (const record of [...schedules, ...rows]) {
+    for (const id of currentPartyPeople(record.ownerIds || [], byId)) conflictIds.add(id);
   }
   const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
   return {

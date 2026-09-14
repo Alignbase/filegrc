@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { contentRevision } from "./files.js";
 import { resolveDataPath } from "./paths.js";
 import { programComponents } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { modelSupports } from "../model/index.js";
 
 export async function assessRetentionReadiness(loaded, program, options = {}) {
   if (!loaded.model.resources["retention-schedule-item"]) return [];
@@ -113,7 +115,7 @@ export async function resourceReviewRevisions(loaded, ids) {
     const entry = entries.get(id);
     if (!entry || reviewing.has(id)) return null;
     reviewing.add(id);
-    const parts = [entry.source];
+    const parts = [reviewSource(loaded, entry)];
     for (const markdown of markdownEntries(loaded.model, entry.record)) {
       try {
         parts.push(await readFile(resolveDataPath(loaded.root, markdown.path), "utf8"));
@@ -136,6 +138,37 @@ export async function resourceReviewRevisions(loaded, ids) {
   return new Map([...revisions].filter(([id]) => wanted.has(id)));
 }
 
+export function resourceReviewRevisionsSync(loaded, ids) {
+  const wanted = new Set(ids);
+  const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
+  const revisions = new Map();
+  const reviewing = new Set();
+  const review = (id) => {
+    if (revisions.has(id)) return revisions.get(id);
+    const entry = entries.get(id);
+    if (!entry || reviewing.has(id)) return null;
+    reviewing.add(id);
+    const parts = [reviewSource(loaded, entry)];
+    for (const markdown of markdownEntries(loaded.model, entry.record)) {
+      try {
+        parts.push(readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
+      const revision = review(sourceId);
+      if (revision) parts.push(`${sourceId}:${revision}`);
+    }
+    reviewing.delete(id);
+    const revision = contentRevision(parts.join("\n"));
+    revisions.set(id, revision);
+    return revision;
+  };
+  for (const id of wanted) review(id);
+  return new Map([...revisions].filter(([id]) => wanted.has(id)));
+}
+
 export function retentionUses(loaded, program) {
   const systemIds = new Set(program.systemIds || []);
   const componentIds = new Set(programComponents(loaded, program).map(({ id }) => id));
@@ -155,6 +188,28 @@ export function retentionUses(loaded, program) {
     }
   }
   return [...new Map(uses.map((use) => [`${use.resource.id}:${use.informationTypeId}`, use])).values()];
+}
+
+function reviewSource(loaded, entry) {
+  if (
+    modelSupports(loaded.model, "retention-schedule-approval")
+    && entry.record.type === "document"
+    && entry.record.documentKind === "schedule"
+    && entry.record.workflowScope === "program"
+  ) {
+    const approved = structuredClone(entry.record);
+    if (approved.status === "active") approved.status = "approved";
+    for (const field of [
+      "activationBasis",
+      "activatedByIds",
+      "activatedOn",
+      "activatedContentRevisions",
+      "effectiveOn",
+      "proposedEffectiveOn"
+    ]) delete approved[field];
+    return JSON.stringify(approved);
+  }
+  return entry.source;
 }
 
 export function nearDuplicateInformationTypes(records) {

@@ -99,7 +99,13 @@ test("uses item-level program readiness for the rendered lifecycle summary", () 
 
 test("renders the shared Policy lifecycle and activation assessment states", () => {
   assert.match(APP_SCRIPT, /function renderPolicyApprovalGuidance\(\)/);
-  assert.match(APP_SCRIPT, /function renderPoliciesTable\(\)/);
+  assert.match(APP_SCRIPT, /function renderPoliciesPage\(main, params = new URLSearchParams\(\)\)/);
+  assert.match(APP_SCRIPT, /function renderPoliciesTable\(params = new URLSearchParams\(\)\)/);
+  assert.match(APP_SCRIPT, /aria-label="About Policies"/);
+  assert.match(APP_SCRIPT, /No governed content matches this filter/);
+  assert.match(APP_SCRIPT, /history\.replaceState\(null, "", "#\/policies"/);
+  assert.match(APP_SCRIPT, /function isRetentionScheduleWorkflowItem\(item\)/);
+  assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.policy-content-table>\.section-head\{display:block\}/);
   assert.match(APP_SCRIPT, /<th>Name<\/th><th>Type<\/th><th>Owner<\/th><th>Status<\/th><th>Approval<\/th><th>Next action<\/th>/);
   assert.match(APP_SCRIPT, /data-add-policy-content="policy"/);
   assert.match(APP_SCRIPT, /data-add-policy-content="document"/);
@@ -1235,7 +1241,7 @@ test("uses model-driven controls for fixed-shape object fields", () => {
   assert.match(APP_SCRIPT, /nested\?\.additionalProperties\?\.type === "string"/);
   assert.match(APP_SCRIPT, /function stringMapEditor\(value = \{\}, name = "item", bindCurrent = false\)/);
   assert.match(APP_SCRIPT, /Bind current revisions/);
-  assert.match(APP_SCRIPT, /function renderRetentionReadiness\(\)/);
+  assert.match(APP_SCRIPT, /function renderRetentionScheduleIssues\(\)/);
   assert.match(APP_SCRIPT, /function readStringMap\(container\)/);
   assert.match(APP_SCRIPT, /const label = property\.label \|\| humanize\(name\.replace/);
   assert.match(APP_STYLES, /\.string-map-row\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\) auto/);
@@ -1281,13 +1287,13 @@ test("provides model-driven Record Markdown without exposing its path", () => {
 
 test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /const SHARED_PROGRAM_STAGES = \[/);
-  assert.match(APP_SCRIPT, /const READINESS_STAGES = SHARED_PROGRAM_STAGES\.map/);
+  assert.match(APP_SCRIPT, /let READINESS_STAGES = SHARED_PROGRAM_STAGES\.map/);
   assert.deepEqual(
     PROGRAM_PATH.map(({ number, title, description }) => ({ number, title, description })),
     [
       { number: 1, title: "Define Scope", description: "Ownership, criteria, and service boundary" },
-      { number: 2, title: "Approve Policies", description: "Review governed content and approvals" },
-      { number: 3, title: "Implement Controls", description: "Finish controls and their evidence sources" },
+      { number: 2, title: "Approve Policies", description: "Approve governed content and retention decisions" },
+      { number: 3, title: "Implement Controls", description: "Implement and prepare to operate" },
       { number: 4, title: "Operate the Program", description: "Run the work and retain dated proof" },
       { number: 5, title: "Audit", description: "Firm, formal period, fieldwork, and report" }
     ]
@@ -1299,7 +1305,10 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.deepEqual(section(scopeStage, "System Boundary").types, ["system", "component", "vendor", "classification", "information-type"]);
   assert.equal(section(scopeStage, "Dependencies"), undefined);
   assert.deepEqual(section(scopeStage, "Program and Criteria").types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
-  assert.deepEqual(PROGRAM_PATH[2].sections.map(({ title }) => title), ["Controls", "Complementary Controls", "Evidence Sources", "Retention Schedule", "Obligations"]);
+  assert.deepEqual(PROGRAM_PATH[1].sections.map(({ title }) => title), ["Policies", "Data Retention Schedule"]);
+  assert.equal(PROGRAM_PATH[1].sections[0].relatedLinks[0].href, "#/policies");
+  assert.equal(section(PROGRAM_PATH[1], "Data Retention Schedule").utility, "retention-schedule");
+  assert.deepEqual(PROGRAM_PATH[2].sections.map(({ title }) => title), ["Controls", "Complementary Controls", "Evidence Sources", "Obligations"]);
   assert.equal(section(PROGRAM_PATH[2], "Evidence Sources").utility, "evidence-sources");
   assert.equal(section(PROGRAM_PATH[1], "Policies").relatedLinks[0].type, "policy");
   assert.equal(section(auditStage, "Fieldwork").relatedLinks[0].type, "document");
@@ -1467,9 +1476,14 @@ test("saves collection confirmations without a repetitive preview step", () => {
   assert.match(APP_SCRIPT, /<strong>What this saves<\/strong>/);
   assert.match(APP_SCRIPT, /<button type="submit" class="button primary">Confirm and save<\/button>/);
   assert.match(APP_SCRIPT, /localFetch\("\/api\/collection-review",/);
+  assert.match(APP_SCRIPT, /expectedCollectionRevision: assessment\.collectionRevision/);
+  assert.match(APP_SCRIPT, /Keep exactly one current program Data Retention Schedule document before approval/);
+  assert.match(APP_SCRIPT, /retentionScheduleDocumentReadiness\(document\.id\)/);
+  assert.match(APP_SCRIPT, /documentReadiness\?\.status !== "complete"/);
   assert.match(APP_SCRIPT, /clearLoadingContent\(saveStatus, "Not saved"\)/);
   assert.doesNotMatch(APP_SCRIPT, /data-preview-collection-review/);
   assert.doesNotMatch(APP_SCRIPT, /localFetch\("\/api\/collection-review\/preview",/);
+  assert.match(APP_SCRIPT, /type === "document" \? \{[\s\S]*documentKind: params\.get\("documentKind"\)[\s\S]*workflowScope: documentScope/);
 });
 
 test("uses one accessible confirmation pattern for destructive and evidence-file actions", () => {
@@ -1634,7 +1648,7 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.doesNotMatch(listSource, /workflowGuidance\(/);
   assert.match(listSource, /collectionReviewPanel\(type\)/);
   assert.match(listSource, /<th>Next action<\/th>/);
-  assert.match(APP_SCRIPT, /function recordWorkflowCell\(type, entry\)/);
+  assert.match(APP_SCRIPT, /function recordWorkflowCell\(type, entry, detailContext = ""\)/);
   assert.match(APP_SCRIPT, /No calculated action/);
   assert.match(APP_SCRIPT, /function openCollectionReviewDialog\(type\)/);
   assert.match(APP_SCRIPT, /commit-dialog event-dialog collection-review-dialog/);
@@ -1645,7 +1659,7 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /name="reviewedOn" type="date" required value="' \+ esc\(currentDate\(\)\) \+ '">/);
   assert.doesNotMatch(APP_SCRIPT, /assessment\.review\?\.reviewedOn \|\| currentDate\(\)/);
   assert.match(APP_SCRIPT, /" Note: " \+ esc\(assessment\.review\.rationale\)/);
-  assert.match(APP_SCRIPT, /current \? "Show scope confirmation" : "What to review"/);
+  assert.match(APP_SCRIPT, /scheduleReview \? "Show approved revision" : "Show scope confirmation"/);
   assert.match(APP_SCRIPT, /current \? 'class="collection-review-details"' : "open"/);
   assert.match(APP_SCRIPT, /class="collection-review-complete-summary"/);
   assert.match(APP_SCRIPT, /class="collection-review-current-row"/);
@@ -1773,14 +1787,42 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
   assert.doesNotMatch(APP_SCRIPT, /stage\.steps\.map/);
   assert.equal(PROGRAM_PATH[0].summary, "Name the owners, criteria, service, Systems, and providers in scope.");
-  assert.equal(PROGRAM_PATH[2].summary, "Describe each Control and connect its evidence source.");
+  assert.equal(PROGRAM_PATH[2].summary, "Implement Controls, configure their operating schedules and evidence sources, then activate the approved program.");
   assert.equal(PROGRAM_PATH[3].summary, "Complete scheduled and event work. Keep dated proof.");
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
   assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team", "reporting-route-set"]);
   assert.equal(RESOURCE_PAGE_SUMMARIES["reporting-route-set"], "Set the normal and fallback ways people report security concerns.");
   assert.match(PROGRAM_PATH[0].sections[0].description, /normal security reporting channel and its fallback/);
   assert.deepEqual(PROGRAM_PATH[0].sections[1].types, ["program", "framework", "requirement", "commitment", "requirement-mapping"]);
-  assert.deepEqual(PROGRAM_PATH[2].sections.map(({ title }) => title), ["Controls", "Complementary Controls", "Evidence Sources", "Retention Schedule", "Obligations"]);
+  assert.deepEqual(PROGRAM_PATH[1].sections.map(({ title }) => title), ["Policies", "Data Retention Schedule"]);
+  assert.deepEqual(PROGRAM_PATH[2].sections.map(({ title }) => title), ["Controls", "Complementary Controls", "Evidence Sources", "Obligations"]);
+  assert.match(APP_SCRIPT, /function renderRetentionSchedulePage\(main, params = new URLSearchParams\(\)\)/);
+  assert.match(APP_SCRIPT, /parts\[0\] === "policies"/);
+  assert.match(APP_SCRIPT, /renderStagePageIndex\(stage\) \+ \(stage\.id === "controls"/);
+  assert.match(APP_SCRIPT, /destination\.href === "#\/policies"/);
+  assert.match(APP_SCRIPT, /policiesContext \? "#\/policies"/);
+  assert.match(APP_SCRIPT, /Document and rows are approved together/);
+  assert.match(APP_SCRIPT, /Items to resolve/);
+  assert.match(APP_SCRIPT, /aria-label="About Data Retention Schedule"/);
+  assert.match(APP_SCRIPT, /resourceGuide\("retention-schedule-item"\)/);
+  assert.match(APP_SCRIPT, /stage\.id === "policies" && !modelSupports\("retention-schedule-approval"\).*renderPoliciesPage/);
+  assert.match(APP_SCRIPT, /function wireRetentionScheduleTable\(total\)/);
+  assert.match(APP_SCRIPT, /No schedule rows match this filter/);
+  assert.match(APP_SCRIPT, /params\.set\("history", "1"\)/);
+  assert.match(APP_SCRIPT, /data-retention-history/);
+  assert.match(APP_SCRIPT, /recordWorkflowCell\("retention-schedule-item", entry, "\?stage=policies"\)/);
+  assert.match(APP_SCRIPT, /openCollectionReviewDialog\("retention-schedule-item"\)/);
+  assert.match(APP_SCRIPT, /data-add-retention-document/);
+  assert.match(APP_SCRIPT, /programRole: "required"/);
+  assert.match(APP_SCRIPT, /function openRetentionScheduleItemEditor\(seed = \{\}\)/);
+  assert.match(APP_SCRIPT, /history\.replaceState\(null, "", "#\/retention-schedule"\)/);
+  assert.match(APP_SCRIPT, /collectionReviewType === "retention-schedule-item" && modelSupports\("retention-schedule-approval"\)/);
+  assert.match(APP_SCRIPT, /function retentionScheduleApprovalBlocker\(\)/);
+  assert.match(APP_SCRIPT, /Complete schedule first/);
+  assert.match(APP_SCRIPT, /function retentionCutoffLabel\(cutoff\)/);
+  assert.match(APP_SCRIPT, /const collectionHref = scheduleContext \? "#\/retention-schedule"/);
+  assert.match(APP_SCRIPT, /Review and approve Data Retention Schedule/);
+  assert.match(APP_SCRIPT, /Approve schedule/);
   assert.match(APP_SCRIPT, /function renderFinishStepThree\(\)/);
   assert.match(APP_SCRIPT, /Program Content Activation/);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
@@ -2258,7 +2300,7 @@ test("uses stage names and routes overview cards through stage pages", () => {
   assert.match(APP_SCRIPT, /scopeResourceIds: \[params\.get\("scopeResourceId"\)\]/);
   assert.match(APP_SCRIPT, /scheduleDocumentId: params\.get\("scheduleDocumentId"\)/);
   assert.match(APP_SCRIPT, /scheduleDocuments\.length === 1/);
-  assert.match(APP_SCRIPT, /Show ' \+ \(cards\.length - visibleCount\) \+ ' more retention and mapping items/);
+  assert.match(APP_SCRIPT, /item\.status === "action" && item\.id !== "collection-review-retention-schedule-item"/);
   assert.match(APP_SCRIPT, /function retentionUseReviewIds\(dialog\)/);
   assert.match(APP_SCRIPT, /item\.resourceId \|\| item\.subject\?\.id/);
   assert.match(APP_SCRIPT, /!selected\.sourceResourceIds\.length \|\| !selected\.targetResourceIds\.length/);

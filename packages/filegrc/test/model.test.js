@@ -403,6 +403,7 @@ test("uses named model capabilities at compatibility boundaries", () => {
   assert.equal(MODEL_CAPABILITY_VERSIONS["guided-workflow"], 3);
   assert.equal(MODEL_CAPABILITY_VERSIONS["program-scope"], 4);
   assert.equal(MODEL_CAPABILITY_VERSIONS["governed-document-activation"], 5);
+  assert.equal(MODEL_CAPABILITY_VERSIONS["retention-schedule-approval"], 11);
   assert.equal(modelSupports(loadModel("4"), "program-scope"), true);
   assert.equal(modelSupports("4", "governed-document-activation"), false);
   assert.equal(modelSupports(loadModel("5"), "document-workflow-scope"), true);

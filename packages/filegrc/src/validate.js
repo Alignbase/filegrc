@@ -19,6 +19,7 @@ import {
   validCalendarRecurrence
 } from "./recurrence.js";
 import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
+import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
 import { obligationIsEnabled } from "./program-lifecycle.js";
 import { currentPartyPeople, partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
@@ -1296,6 +1297,32 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       ));
     }
   }
+  if (current && record.resourceType === "retention-schedule-item" && modelSupports(model, "retention-schedule-approval")) {
+    const rows = scopedCollectionRecords(loaded, record.resourceType, program);
+    for (const issue of retentionScheduleApprovalIssues(loaded, program || {}, rows, {
+      informationTypesReviewed: collectionReviewIsCurrent(loaded, "information-type", program)
+    })) {
+      diagnostics.push(error(issue.code, path, issue.message));
+    }
+    const owners = new Set();
+    for (const candidate of loaded.resources.filter((candidate) => (
+      candidate.type === "document"
+        && candidate.documentKind === "schedule"
+        && candidate.workflowScope === "program"
+        && !["superseded", "retired"].includes(candidate.status)
+        || rows.includes(candidate)
+    ))) {
+      for (const id of currentPartyPeople(candidate.ownerIds || [], byId)) owners.add(id);
+    }
+    const conflictedReviewers = (record.reviewedByIds || []).filter((id) => owners.has(id));
+    if (conflictedReviewers.length) {
+      diagnostics.push(error(
+        "conflicted-retention-schedule-reviewer",
+        path,
+        `A Data Retention Schedule reviewer cannot own its governing document or an included schedule row: ${conflictedReviewers.join(", ")}.`
+      ));
+    }
+  }
   if (modelSupports(model, "temporal-collection-reviews")) {
     const temporalValues = [record.coverage, record.knowledgeCutoffAt, record.populationResourceIds];
     const hasTemporalBinding = temporalValues.every((value) => value !== undefined && value !== null);
@@ -1362,6 +1389,25 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       `${configuration.title} must name an active authoritative ${modelSupports(model, "component-sources") ? "Component" : "System"} for an externally managed conclusion.`
     ));
   }
+}
+
+function collectionReviewIsCurrent(loaded, resourceType, program) {
+  const review = loaded.resources.find((record) => (
+    record.type === "collection-review"
+    && record.resourceType === resourceType
+    && record.status === "active"
+    && (!modelSupports(loaded.model, "program-scope") || (record.scopeResourceIds || []).includes(program?.id))
+  ));
+  if (!review || !(loaded.model.collectionReviews?.[resourceType]?.decisions || ["complete"]).includes(review.decision)) return false;
+  const records = scopedCollectionRecords(loaded, resourceType, program);
+  const revisionMatches = collectionRevisionMatches(loaded, resourceType, review.collectionRevision, { program });
+  if (!modelSupports(loaded.model, "temporal-collection-reviews")) return revisionMatches;
+  return revisionMatches
+    && review.coverage?.kind === "as-of"
+    && review.coverage.on === review.reviewedOn
+    && Boolean(review.knowledgeCutoffAt)
+    && Array.isArray(review.populationResourceIds)
+    && JSON.stringify([...review.populationResourceIds].sort()) === JSON.stringify(records.map(({ id }) => id).sort());
 }
 
 function validateCollectionReviewSet(resources, pathById, diagnostics) {

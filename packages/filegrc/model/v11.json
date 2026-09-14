@@ -643,12 +643,12 @@
       ]
     },
     "retention-schedule-item": {
-      "title": "Retention schedule",
-      "description": "Confirm that every active information use has an approved or explicitly planned retention schedule item and that no schedule item invents an organization-specific period or disposition.",
+      "title": "Data Retention Schedule",
+      "description": "Approve the schedule document and its structured rows as one governed schedule. Include only actual information uses and keep undecided organization values planned.",
       "reviewPoints": [
-        "Confirm schedule coverage across Systems, Components, Vendors, source families, logs, backups, audit records, and the FileGRC repository.",
-        "Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions.",
-        "Keep undecided periods and disposition behavior planned for management review."
+        "Review the Data Retention Schedule document, its Markdown, and every included structured row as one revision.",
+        "Confirm schedule coverage across the Systems, Components, Vendors, source families, logs, backups, audit records, and FileGRC records the organization actually uses.",
+        "Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions; keep undecided behavior planned."
       ],
       "decisions": [
         "complete",

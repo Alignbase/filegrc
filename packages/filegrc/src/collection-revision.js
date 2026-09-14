@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { modelSupports } from "../model/index.js";
 import {
   authoritativeSourceRevisionValue,
   collectionRevisionInputs,
@@ -24,7 +25,8 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
   // Version 0.9.2 narrowed this hash basis. Keep unchanged 0.9.1 reviews valid
   // until management records a new review on the current basis.
   return storedRevision === currentRevision
-    || storedRevision === legacyCollectionRevision(loaded, resourceType, options);
+    || (resourceType !== "retention-schedule-item" || !modelSupports(loaded.model, "retention-schedule-approval"))
+      && storedRevision === legacyCollectionRevision(loaded, resourceType, options);
 }
 
 function calculateCollectionRevision(loaded, resourceType, options, legacy) {

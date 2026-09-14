@@ -36,7 +36,7 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 241,
+    total: 228,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -54,7 +54,7 @@ test("creates a complete generic repository with one dependency", async (context
       "information-type": 1,
       requirement: 42,
       "source-coverage": 14,
-      "retention-schedule-item": 14,
+      "retention-schedule-item": 1,
       control: 28,
       obligation: 55,
       "obligation-rule": 55,
@@ -396,6 +396,21 @@ test("creates a complete generic repository with one dependency", async (context
       )),
     true
   );
+  const retentionScheduleItems = generatedRecords.filter(({ type }) => type === "retention-schedule-item");
+  assert.equal(retentionScheduleItems.length, 1);
+  assert.deepEqual(
+    new Set(retentionScheduleItems[0].scopeResourceIds),
+    new Set([
+      "program-soc-2",
+      ...filegrcSourceFamilyIds.map((sourceFamilyId) => `source-coverage-${sourceFamilyId}`)
+    ])
+  );
+  assert.equal(
+    retentionScheduleItems[0].informationTypeIds.includes(programRepository.informationUses[0].informationTypeId)
+      && retentionScheduleItems[0].scopeResourceIds.includes("program-soc-2"),
+    true,
+    "the starter schedule row covers the FileGRC repository information use at Program scope"
+  );
   assert.equal(Object.hasOwn(programRepository, "inScope"), false);
   assert.equal(programRepository.systemUses.length, 0);
   assert.deepEqual(programRepository.informationUses, [{
@@ -565,7 +580,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 241, errors: 0, warnings: 3 });
+  assert.deepEqual(validation.counts, { resources: 228, errors: 0, warnings: 3 });
   assert.equal(
     validation.diagnostics.filter(({ code }) => code === "past-proposed-effective-date").length,
     3
@@ -1060,7 +1075,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 241 records, including 42 requirements, 28 controls, and 55 obligations/);
+  assert.match(output, /Program baseline: 228 records, including 42 requirements, 28 controls, and 55 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -1210,12 +1225,12 @@ test("creates and configures a service from one JSON config", async (context) =>
     configPath
   ]);
   assert.match(output, /Stage foundation: created \(13 records\)/);
-  assert.match(output, /Stage soc2-security: created \(228 records\)/);
+  assert.match(output, /Stage soc2-security: created \(215 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 243, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 230, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.systemIds, undefined);
   const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));

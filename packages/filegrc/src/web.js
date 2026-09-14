@@ -9,7 +9,7 @@ import {
   utcCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
-import { PROGRAM_PATH, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES } from "./program-path.js";
+import { PROGRAM_PATH, programPathForModel, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES } from "./program-path.js";
 import { formatCalendarDate, formatLocalDateTime } from "./time.js";
 
 export function dashboardProgramReadiness(programReadiness = {}) {
@@ -64,7 +64,8 @@ let latestPacketResult = null;
 let latestPacketState = null;
 let policyEventFeedback = null;
 const SHARED_PROGRAM_STAGES = ${JSON.stringify(PROGRAM_PATH)};
-const READINESS_STAGES = SHARED_PROGRAM_STAGES.map((stage) => ({
+const LEGACY_PROGRAM_STAGES = ${JSON.stringify(programPathForModel({ modelVersion: "10" }))};
+let READINESS_STAGES = SHARED_PROGRAM_STAGES.map((stage) => ({
   ...stage,
   number: String(stage.number)
 }));
@@ -73,6 +74,7 @@ const dashboardProgramReadiness = ${dashboardProgramReadiness.toString()};
 const STAGE_PAGE_SUMMARIES = ${JSON.stringify({
   ...RESOURCE_PAGE_SUMMARIES,
   "utility:evidence-sources": "Check that each Control has an authoritative, retrievable evidence source.",
+  "utility:retention-schedule": "Approve the governed schedule document and its structured rows as one revision.",
   "utility:audit-packet": "Review fieldwork readiness and build the indexed evidence packet."
 })};
 const RECORD_TEXT_FIELDS = new Set(["description", "statement", "activity", "purpose", "scope", "objective", "applicabilityRationale", "summary", "rationale", "businessPurpose", "changeSummary", "decisionSummary", "decisionRationale", "recommendation", "remediationPlan", "auditorNotes", "notPerformedReason"]);
@@ -176,6 +178,9 @@ function render() {
   else if (waitingFor.length) renderStateLoading(main, route, waitingFor);
   else if (route.name === "home") renderHome(main);
   else if (route.name === "stage") renderStageOverview(main, route.stageId, route.params);
+  else if (route.name === "policies") renderPoliciesPage(main, route.params);
+  else if (route.name === "retention-schedule" && modelSupports("retention-schedule-approval")) renderRetentionSchedulePage(main, route.params);
+  else if (route.name === "retention-schedule") renderList(main, "retention-schedule-item", route.params);
   else if (route.name === "evidence-sources") renderEvidenceSourcesPage(main);
   else if (route.name === "obligations") renderObligations(main, route.params);
   else if (route.name === "audit-packet") renderAuditPacket(main, route.params);
@@ -188,6 +193,10 @@ function render() {
 }
 
 function normalizeAppState(next) {
+  const stages = Number(next?.model?.modelVersion || 0) >= MODEL_CAPABILITY_VERSIONS["retention-schedule-approval"]
+    ? SHARED_PROGRAM_STAGES
+    : LEGACY_PROGRAM_STAGES;
+  READINESS_STAGES = stages.map((stage) => ({ ...stage, number: String(stage.number) }));
   if (next.sections) return next;
   return {
     ...next,
@@ -208,6 +217,8 @@ function blockingStateSections(route) {
   if (route.name === "obligations" || route.name === "stage" && route.stageId === "run") return ["program", "obligations"];
   if (route.name === "audit-packet") return ["repository", "program", "obligations", "audits"];
   if (route.name === "evidence-sources") return ["program", "workflow"];
+  if (route.name === "policies") return ["program", "workflow"];
+  if (route.name === "retention-schedule") return ["program", "workflow"];
   if (route.name === "stage" && route.stageId === "audit") return ["program", "workflow", "audits"];
   if (route.name === "stage") return ["program", "workflow"];
   return [];
@@ -286,6 +297,8 @@ function parseRoute() {
   if (parts.length === 2 && parts[0] === "stage" && parts[1]) return { name: "stage", stageId: parts[1], params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "obligations") return { name: "obligations", params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "evidence-sources") return { name: "evidence-sources", params: new URLSearchParams(query) };
+  if (parts.length === 1 && parts[0] === "policies") return { name: "policies", params: new URLSearchParams(query) };
+  if (parts.length === 1 && parts[0] === "retention-schedule") return { name: "retention-schedule", params: new URLSearchParams(query) };
   if (parts.length === 1 && parts[0] === "audit-packet") return { name: "audit-packet", params: new URLSearchParams(query) };
   if (parts.length === 2 && parts[0] === "resources" && parts[1]) return { name: "list", type: parts[1], params: new URLSearchParams(query) };
   if (parts.length === 3 && parts[0] === "resource" && parts[1] && parts[2]) return { name: "detail", type: parts[1], id: parts[2], params: new URLSearchParams(query) };
@@ -307,7 +320,9 @@ function buildNavigation(route) {
         || (section.relatedLinks || []).some((link) => route.type === link.type && contextualStageId === stage.id)
         || (section.utility === "obligation-board" && route.name === "obligations")
         || (section.utility === "audit-packet" && route.name === "audit-packet")
-        || (section.utility === "evidence-sources" && route.name === "evidence-sources");
+        || (section.utility === "evidence-sources" && route.name === "evidence-sources")
+        || (section.relatedLinks || []).some((link) => link.href === "#/" + route.name)
+        || (section.utility === "retention-schedule" && route.name === "retention-schedule");
       const sectionOpen = navigationGroupState[sectionKey] ?? (sectionCurrent || section.defaultOpen);
       const resources = section.types
         .map((type) => [type, state.model.resources[type]])
@@ -318,7 +333,8 @@ function buildNavigation(route) {
         return '<a class="' + (direct ? "nav-direct " : "") + (current ? "current" : "") + '" href="#/resources/' + encodeURIComponent(type) + '"><span>' + esc(titleCase(definition.pluralTitle)) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
       }).join("") + (section.relatedLinks || []).map((link) => {
         const current = route.type === link.type && contextualStageId === stage.id
-          || link.href === "#/stage/" + route.stageId;
+          || link.href === "#/stage/" + route.stageId
+          || link.href === "#/" + route.name;
         return '<a class="' + (direct ? "nav-direct " : "") + (current ? "current" : "") + '" href="' + esc(link.href) + '"><span>' + esc(link.label) + '</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
       }).join("") + renderSidebarUtility(section.utility, route, direct);
       if (direct) return links;
@@ -334,6 +350,7 @@ function buildNavigation(route) {
 
 function readinessStageForRoute(route) {
   if (route.name === "stage") return READINESS_STAGES.find((stage) => stage.id === route.stageId);
+  if (route.name === "policies") return READINESS_STAGES.find((stage) => stage.id === "policies");
   const contextualStageId = route.params?.get("stage");
   const contextualStage = contextualStageId && READINESS_STAGES.find((stage) => (
     stage.id === contextualStageId
@@ -345,7 +362,8 @@ function readinessStageForRoute(route) {
     || stage.sections.some((section) => section.types.includes(route.type)
       || (section.utility === "obligation-board" && route.name === "obligations")
       || (section.utility === "audit-packet" && route.name === "audit-packet")
-      || (section.utility === "evidence-sources" && route.name === "evidence-sources"))
+      || (section.utility === "evidence-sources" && route.name === "evidence-sources")
+      || (section.utility === "retention-schedule" && route.name === "retention-schedule"))
   ));
 }
 
@@ -375,6 +393,9 @@ function renderSidebarUtility(utility, route, direct = false) {
   if (utility === "evidence-sources") {
     return '<a class="' + directClass + (route.name === "evidence-sources" ? "current" : "") + '" href="#/evidence-sources"><span>Evidence Sources</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
+  if (utility === "retention-schedule") {
+    return '<a class="' + directClass + (route.name === "retention-schedule" ? "current" : "") + '" href="#/retention-schedule"><span>Data Retention Schedule</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
+  }
   if (utility === "audit-packet") {
     return '<a class="' + directClass + 'audit-packet-link ' + (route.name === "audit-packet" ? "current" : "") + '" href="#/audit-packet"><span>Audit Evidence &amp; Packet</span><span class="nav-control-slot" aria-hidden="true"></span></a>';
   }
@@ -396,6 +417,10 @@ function topbar(route) {
             ? "Audit Readiness"
           : route.name === "evidence-sources"
             ? "Evidence Sources"
+          : route.name === "policies"
+            ? "Policies"
+          : route.name === "retention-schedule"
+            ? "Data Retention Schedule"
             : route.name === "list" && route.type === "document"
               ? documentListTitle(route.params)
               : state.model.resources[route.type]?.pluralTitle || "filegrc";
@@ -535,11 +560,12 @@ function nextProgramStageHref() {
 function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   const stage = READINESS_STAGES.find((candidate) => candidate.id === stageId);
   if (!stage) return renderNotFound(main);
+  if (stage.id === "policies" && !modelSupports("retention-schedule-approval")) return renderPoliciesPage(main, params);
   if (stage.id === "run") return renderObligations(main, params);
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    (stage.id === "policies" ? renderPolicyApprovalGuidance() + renderPoliciesTable() : renderStagePageIndex(stage)) + (stage.id === "controls" ? renderFinishStepThree() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
+    renderStagePageIndex(stage) + (stage.id === "controls" ? renderFinishStepThree() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
   main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
     main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
     event.currentTarget.remove();
@@ -549,6 +575,182 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   main.querySelector("[data-review-audit-document-activation]")?.addEventListener("click", (event) => {
     openDocumentActivationDialog(event.currentTarget.dataset.reviewAuditDocumentActivation);
   });
+}
+
+function renderPoliciesPage(main, params = new URLSearchParams()) {
+  const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About Policies" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
+  main.innerHTML = '<div class="page policies-page"><nav class="breadcrumbs"><a href="#/stage/policies">Step 2</a><span>/</span><span>Policies</span></nav>' +
+    '<div class="page-intro"><div><p class="kicker">Step 2</p><div class="page-title-line"><h2>Policies</h2>' + guideTrigger + '</div><p>Review and approve the Policies, program Documents, and Training content that govern this program.</p></div></div>' + policyContentGuide() +
+    renderPolicyApprovalGuidance() + renderPoliciesTable(params) + '</div>';
+  resourceGuideCleanup = setupResourceGuide(main);
+}
+
+function policyContentGuide() {
+  return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use Policies" hidden><div><span>Instructions</span><p>Open each Policy, program Document, and Training record. Replace starter placeholders, review its Markdown, and confirm its owner, separate approver, relationships, and intended values.</p></div><div><span>Approval</span><p>Bind approval to the exact Markdown revision. Keep approved content inactive until Step 3 confirms implementation and records the activation cutover.</p></div><div><span>Included here</span><p>Use this page for governed program content. The Data Retention Schedule has its own Step 2 page because its document and structured rows are approved together.</p></div></section>';
+}
+
+function renderRetentionSchedulePage(main, params = new URLSearchParams()) {
+  const documentEntries = state.resources.filter(({ record }) => (
+    record.type === "document"
+    && record.documentKind === "schedule"
+    && record.workflowScope === "program"
+    && !["superseded", "retired"].includes(record.status)
+  ));
+  const documentEntry = documentEntries.length === 1 ? documentEntries[0] : null;
+  const rows = resourcesOfType("retention-schedule-item")
+    .sort((left, right) => left.record.title.localeCompare(right.record.title));
+  const activeRows = rows.filter(({ record }) => record.status === "active").length;
+  const documentReadiness = documentEntry ? retentionScheduleDocumentReadiness(documentEntry.record.id) : null;
+  const documentReady = documentEntries.length === 1 && documentReadiness?.status === "complete";
+  const documentAction = documentEntry
+    ? '<a class="button" href="#/resource/document/' + encodeURIComponent(documentEntry.record.id) + '?stage=policies&documentScope=program">Review document</a>'
+    : !documentEntries.length && !state.readOnly ? '<button class="button" type="button" data-add-retention-document>Add document</button>' : "";
+  const documentSummary = documentEntries.length
+    ? documentEntries.map((entry) => '<a href="#/resource/document/' + encodeURIComponent(entry.record.id) + '?stage=policies&documentScope=program"><strong>' + esc(entry.record.title) + '</strong><small>' + (documentEntries.length > 1 ? 'Resolve this duplicate before approval' : documentReadiness?.message || 'Policy, legal holds, exceptions, and disposal requirements') + '</small></a><span class="badge ' + (documentReady ? "good" : "warn") + '">' + (documentEntries.length > 1 ? "Duplicate" : documentReady ? "Ready" : "Needs work") + '</span>').join("")
+    : '<span><strong>No governing document</strong><small>Add the schedule document before approving its rows.</small></span><span class="badge warn">Required</span>';
+  const rowHtml = rows.length
+    ? rows.map((entry) => {
+        const { record } = entry;
+        const informationTypes = (record.informationTypeIds || []).map(referenceTitle).join(", ") || "Not selected";
+        const scope = (record.scopeResourceIds || []).map(referenceTitle).join(", ") || "Not selected";
+        const cutoff = retentionCutoffLabel(record.cutoff);
+        const period = retentionPeriodLabel(record.retentionPeriod);
+        const action = record.dispositionAction ? properCase(record.dispositionAction) : "Not selected";
+        return '<tr data-retention-row data-history="' + (["superseded", "retired"].includes(record.status) ? "true" : "false") + '"><td data-label="Rule" data-primary-field><a class="record-title" href="#/resource/retention-schedule-item/' + encodeURIComponent(record.id) + '?stage=policies">' + esc(record.title) + '</a><small>' + esc(record.description || record.id) + '</small></td><td data-label="Information types">' + esc(informationTypes) + '</td><td data-label="Scope">' + esc(scope) + '</td><td data-label="Retention"><strong>' + esc(period) + '</strong><small>From ' + esc(cutoff) + '</small></td><td data-label="Disposition">' + esc(action) + '</td><td data-label="Status">' + formatValue(displayStatus(record), "status", record.type, true) + '</td><td data-label="Next action">' + recordWorkflowCell("retention-schedule-item", entry, "?stage=policies") + '</td></tr>';
+      }).join("")
+    : '<tr><td colspan="7">' + empty("No retention rules are needed until an actual information use requires one.") + '</td></tr>';
+  const add = state.readOnly ? "" : '<button class="button primary" type="button" data-add-retention-row>Add schedule row</button>';
+  const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About Data Retention Schedule" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
+  const initialFilter = params.get("q") || "";
+  const showHistory = params.get("history") === "1";
+  const tableTools = '<div class="retention-table-tools"><label><span class="sr-only">Filter schedule rows</span><input type="search" data-retention-search placeholder="Filter schedule rows" value="' + esc(initialFilter) + '"></label><label class="history-toggle"><input type="checkbox" data-retention-history ' + (showHistory ? "checked" : "") + '> Show retired</label></div>';
+  main.innerHTML = '<div class="page retention-schedule-page"><nav class="breadcrumbs"><a href="#/stage/policies">Step 2</a><span>/</span><span>Data Retention Schedule</span></nav>' +
+    '<div class="page-intro"><div><p class="kicker">Step 2</p><div class="page-title-line"><h2>Data Retention Schedule</h2>' + guideTrigger + '</div><p>Define the retention rules management has approved. Step 3 checks whether implemented systems and evidence sources follow them.</p></div><div class="actions">' + documentAction + add + '</div></div>' + resourceGuide("retention-schedule-item") +
+    '<div class="retention-summary"><div><span class="retention-summary-label">Governing document</span>' + documentSummary + '</div><div><span class="retention-summary-label">Schedule revision</span><span><strong>' + activeRows + ' active ' + pluralize("row", activeRows) + '</strong><small>Document and rows are approved together</small></span><span class="badge ' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "good" : "warn") + '">' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "Approved" : "Approval needed") + '</span></div></div>' +
+    '<section class="retention-rows"><div class="section-head"><div><p class="kicker">Structured schedule</p><h2>Schedule rows</h2><p>Add a row when an Information Type and its operational scope need a distinct cutoff, period, or disposition rule.</p></div>' + tableTools + '</div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>Rule</th><th>Information types</th><th>Scope</th><th>Retention</th><th>Disposition</th><th>Status</th><th>Next action</th></tr></thead><tbody>' + rowHtml + '</tbody></table></div><p class="retention-filter-empty" data-retention-empty hidden>No schedule rows match this filter.</p><p class="retention-row-count" data-retention-count aria-live="polite"></p></section>' +
+    renderRetentionScheduleIssues() + collectionReviewPanel("retention-schedule-item", true) + '</div>';
+  resourceGuideCleanup = setupResourceGuide(main);
+  wireRetentionScheduleTable(rows.length);
+  main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog("retention-schedule-item"));
+  main.querySelector("[data-add-retention-document]")?.addEventListener("click", () => openEditor("document", null, {
+    seed: {
+      documentKind: "schedule",
+      workflowScope: "program",
+      programRole: "required"
+    },
+    description: "Write the governing Data Retention Schedule, link its Controls, and assign a separate approver before approving the document and schedule rows.",
+    saveLabel: "Save schedule document"
+  }));
+  main.querySelector("[data-add-retention-row]")?.addEventListener("click", () => openRetentionScheduleItemEditor());
+  main.querySelector(".retention-rows tbody")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-load-workflow]")) loadStateSection("workflow");
+  });
+  if (params.get("new") === "1" && !state.readOnly) {
+    const seed = {
+      ...(params.get("title") ? { title: params.get("title") } : {}),
+      ...(params.get("informationTypeId") ? { informationTypeIds: [params.get("informationTypeId")] } : {}),
+      ...(params.get("scopeResourceId") ? { scopeResourceIds: [params.get("scopeResourceId")] } : {}),
+      ...(params.get("scheduleDocumentId") ? { scheduleDocumentId: params.get("scheduleDocumentId") } : {})
+    };
+    history.replaceState(null, "", "#/retention-schedule");
+    queueMicrotask(() => openRetentionScheduleItemEditor(seed));
+  }
+}
+
+function openRetentionScheduleItemEditor(seed = {}) {
+  const scheduleDocuments = resourcesOfType("document").filter(({ record }) => (
+    record.documentKind === "schedule"
+    && record.workflowScope !== "engagement"
+    && !["superseded", "retired"].includes(record.status)
+  ));
+  openEditor("retention-schedule-item", null, {
+    seed: {
+      ...(scheduleDocuments.length === 1 ? { scheduleDocumentId: scheduleDocuments[0].record.id } : {}),
+      ...seed
+    },
+    description: "Define one retention decision. Keep it planned until its scope, cutoff, period, disposition, sources, and approval are complete.",
+    saveLabel: "Save schedule row"
+  });
+}
+
+function wireRetentionScheduleTable(total) {
+  const table = root.querySelector(".retention-rows");
+  if (!table) return;
+  const search = table.querySelector("[data-retention-search]");
+  const historyToggle = table.querySelector("[data-retention-history]");
+  const count = table.querySelector("[data-retention-count]");
+  const noResults = table.querySelector("[data-retention-empty]");
+  const filter = () => {
+    const query = search.value.trim().toLowerCase();
+    let visible = 0;
+    table.querySelectorAll("[data-retention-row]").forEach((row) => {
+      const show = (historyToggle.checked || row.dataset.history !== "true")
+        && (!query || row.textContent.toLowerCase().includes(query));
+      row.hidden = !show;
+      if (show) visible += 1;
+    });
+    noResults.hidden = visible !== 0 || total === 0;
+    count.textContent = visible + " of " + total + " " + pluralize("row", total);
+  };
+  const updateLocation = () => {
+    const params = new URLSearchParams();
+    if (search.value.trim()) params.set("q", search.value.trim());
+    if (historyToggle.checked) params.set("history", "1");
+    history.replaceState(null, "", "#/retention-schedule" + (params.size ? "?" + params : ""));
+  };
+  search.addEventListener("input", () => { filter(); updateLocation(); });
+  historyToggle.addEventListener("change", () => { filter(); updateLocation(); });
+  filter();
+}
+
+function renderRetentionScheduleIssues() {
+  const items = retentionReviewItems("policies", false);
+  const plannedRows = resourcesOfType("retention-schedule-item")
+    .filter(({ record }) => record.status === "planned")
+    .map(({ record }) => ({
+      id: "planned-" + record.id,
+      title: "Complete or retire " + record.title,
+      message: "Planned rows are excluded from the approved schedule. Finish this decision or retire the row before schedule approval.",
+      href: '#/resource/retention-schedule-item/' + encodeURIComponent(record.id) + '?stage=policies'
+    }));
+  const actions = [...plannedRows, ...items.filter((item) => (
+    item.status === "action" && item.id !== "collection-review-retention-schedule-item"
+  ))];
+  if (!actions.length) return "";
+  return '<section class="retention-issues"><div class="section-head"><div><p class="kicker">Before approval</p><h2>Items to resolve</h2></div></div><div class="retention-issue-list">' + actions.map((item) => {
+    const href = item.href || (item.id?.startsWith("retention-use-")
+      ? retentionScheduleItemHref(item)
+      : item.resourceId && item.resourceType
+        ? '#/resource/' + encodeURIComponent(item.resourceType) + '/' + encodeURIComponent(item.resourceId)
+        : '#/resources/' + encodeURIComponent(item.resourceType || "retention-schedule-item"));
+    return '<a href="' + href + '"><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.message) + '</small></span><b>Review</b></a>';
+  }).join("") + '</div></section>';
+}
+
+function retentionScheduleDocumentReadiness(documentId) {
+  return state.programReadiness?.stages
+    ?.find(({ id }) => id === "policies")
+    ?.items.find(({ id }) => id === "document-approval-" + documentId) || null;
+}
+
+function referenceTitle(id) {
+  return state.resources.find(({ record }) => record.id === id)?.record.title || id;
+}
+
+function retentionPeriodLabel(period) {
+  if (!period) return "Not selected";
+  if (period.basis === "permanent") return "Permanent";
+  if (period.basis === "until-event") return "Until " + (period.event || "specified event");
+  if (period.basis === "fixed" && Number.isFinite(period.amount) && period.unit) {
+    return period.amount + " " + period.unit + (period.amount === 1 ? "" : "s");
+  }
+  return properCase(period.basis || "Configured");
+}
+
+function retentionCutoffLabel(cutoff) {
+  if (!cutoff) return "cutoff not selected";
+  if (cutoff.basis === "event") return cutoff.event || "specified event";
+  return properCase(cutoff.basis || "configured cutoff");
 }
 
 function renderEvidenceSourcesPage(main) {
@@ -571,11 +773,11 @@ function renderPolicyApprovalGuidance() {
   return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Step 2 approval</p><h3>Approve the governed content</h3><p>Approval means your company reviewed and accepted the requirements and intended values in each Policy, program Document, and Training record. It does not mean the linked Controls are implemented yet.</p><p>Bind each approval to the exact Markdown revision here. Implement Controls and configure Obligations in Step 3, then activate each unchanged approved revision at implementation cutover.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
 }
 
-function renderPoliciesTable() {
+function renderPoliciesTable(params = new URLSearchParams()) {
   const entries = state.resources.filter(({ record }) => (
     record.type === "policy"
     || record.type === "training"
-    || record.type === "document" && !auditSpecificDocument(record)
+    || record.type === "document" && !auditSpecificDocument(record) && record.documentKind !== "schedule"
   )).sort((left, right) => (
     ["policy", "document", "training"].indexOf(left.record.type) - ["policy", "document", "training"].indexOf(right.record.type)
     || left.record.title.localeCompare(right.record.title)
@@ -604,8 +806,10 @@ function renderPoliciesTable() {
   const add = !state.readOnly
     ? '<details class="policy-content-add"><summary class="button primary">Add</summary><div><button type="button" data-add-policy-content="policy">Policy</button><button type="button" data-add-policy-content="document">Document</button><button type="button" data-add-policy-content="training">Training</button></div></details>'
     : '';
+  const initialFilter = params.get("q") || "";
+  const showHistory = params.get("history") === "1";
   const emptyRow = '<tr><td colspan="6">' + empty('No governed content has been created.') + '</td></tr>';
-  const html = '<section class="policy-content-table"><div class="section-head"><div><p class="kicker">Governed content</p><h2>Policies</h2><p>Review every program artifact in one place. Each row keeps its own type-specific fields and Git file.</p></div><div class="policy-content-tools"><label><span class="sr-only">Filter policies</span><input type="search" data-policy-content-search placeholder="Filter policies"></label><label class="history-toggle"><input type="checkbox" data-policy-content-history> Show retired</label>' + add + '</div></div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>Name</th><th>Type</th><th>Owner</th><th>Status</th><th>Approval</th><th>Next action</th></tr></thead><tbody data-policy-content-body>' + (entries.length ? entries.map(row).join('') : emptyRow) + '</tbody></table></div><p class="policy-content-count" data-policy-content-count></p></section>';
+  const html = '<section class="policy-content-table"><div class="section-head"><div><p class="kicker">Policies, Documents, and Training</p><h2>Governed content</h2><p>Review every program artifact in one place. Each row keeps its own type-specific fields and Git file.</p></div><div class="policy-content-tools"><label><span class="sr-only">Filter policies</span><input type="search" data-policy-content-search placeholder="Filter policies" value="' + esc(initialFilter) + '"></label><label class="history-toggle"><input type="checkbox" data-policy-content-history ' + (showHistory ? "checked" : "") + '> Show retired</label>' + add + '</div></div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>Name</th><th>Type</th><th>Owner</th><th>Status</th><th>Approval</th><th>Next action</th></tr></thead><tbody data-policy-content-body>' + (entries.length ? entries.map(row).join('') : emptyRow) + '</tbody></table></div><p class="policy-content-filter-empty" data-policy-content-empty hidden>No governed content matches this filter.</p><p class="policy-content-count" data-policy-content-count aria-live="polite"></p></section>';
   queueMicrotask(() => wirePoliciesTable(entries.length));
   return html;
 }
@@ -614,21 +818,29 @@ function wirePoliciesTable(total) {
   const table = root.querySelector('.policy-content-table');
   if (!table) return;
   const search = table.querySelector('[data-policy-content-search]');
-  const history = table.querySelector('[data-policy-content-history]');
+  const historyToggle = table.querySelector('[data-policy-content-history]');
   const count = table.querySelector('[data-policy-content-count]');
+  const noResults = table.querySelector('[data-policy-content-empty]');
   const filter = () => {
     const query = search.value.trim().toLowerCase();
     let visible = 0;
     table.querySelectorAll('[data-policy-content-row]').forEach((row) => {
-      const show = (history.checked || row.dataset.history !== 'true')
+      const show = (historyToggle.checked || row.dataset.history !== 'true')
         && (!query || row.textContent.toLowerCase().includes(query));
       row.hidden = !show;
       if (show) visible += 1;
     });
+    noResults.hidden = visible !== 0 || total === 0;
     count.textContent = visible + ' of ' + total + ' ' + pluralize('artifact', total);
   };
-  search.addEventListener('input', filter);
-  history.addEventListener('change', filter);
+  const updateLocation = () => {
+    const params = new URLSearchParams();
+    if (search.value.trim()) params.set("q", search.value.trim());
+    if (historyToggle.checked) params.set("history", "1");
+    history.replaceState(null, "", "#/policies" + (params.size ? "?" + params : ""));
+  };
+  search.addEventListener('input', () => { filter(); updateLocation(); });
+  historyToggle.addEventListener('change', () => { filter(); updateLocation(); });
   table.querySelectorAll('[data-add-policy-content]').forEach((button) => {
     button.addEventListener('click', () => openEditor(button.dataset.addPolicyContent));
   });
@@ -640,7 +852,8 @@ function policyContentWorkflowCell(entry) {
   const items = recordWorkflowItems(record.type, record.id);
   if (!items.length) return '<span class="record-workflow-clear">No calculated action</span>';
   const item = items[0];
-  const href = workflowItemHref(item) || '#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '?stage=policies';
+  let href = workflowItemHref(item) || '#/resource/' + encodeURIComponent(record.type) + '/' + encodeURIComponent(record.id) + '?stage=policies';
+  if (href.startsWith('#/resource/' + encodeURIComponent(record.type) + '/') && !href.includes('?')) href += '?stage=policies';
   const title = ["draft", "in-review"].includes(record.status)
     ? "Complete and approve"
     : record.status === "approved"
@@ -916,30 +1129,60 @@ function collectionReviewPanel(type, force = false) {
   if (!assessment || (!force && !collectionReviewVisible(type))) return "";
   const configuration = assessment.configuration;
   const current = assessment.status === "current";
+  const scheduleReview = type === "retention-schedule-item" && modelSupports("retention-schedule-approval");
+  const scheduleBlocker = scheduleReview ? retentionScheduleApprovalBlocker() : null;
   const needsFirstRecord = collectionNeedsFirstRecord(type);
   const reviewerNames = (assessment.review?.reviewedByIds || [])
     .map((id) => state.resources.find(({ record }) => record.id === id)?.record.title || id);
   const reviewNote = assessment.review?.rationale
     ? " Note: " + esc(assessment.review.rationale)
     : "";
-  const reviewSummary = current
+  const reviewSummary = current && !scheduleBlocker
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + "." + reviewNote + '</span></p>'
-    : '<p class="collection-review-result"><strong>' + (needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(assessment.message) + '</span></p>';
-  const compactReviewSummary = current
+    : '<p class="collection-review-result"><strong>' + (scheduleBlocker ? "Complete schedule first" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(scheduleBlocker || assessment.message) + '</span></p>';
+  const compactReviewSummary = current && !scheduleBlocker
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + ".</span></p>"
     : reviewSummary;
   const action = state.readOnly
     ? ""
+    : scheduleBlocker
+      ? '<button class="button" type="button" disabled title="' + esc(scheduleBlocker) + '">Review and approve schedule</button>'
     : needsFirstRecord
       ? '<a class="button primary" href="#/resources/' + encodeURIComponent(type) + '?new=1">Add first ' + esc(state.model.resources[type].title.toLowerCase()) + '</a>'
-      : '<button class="button ' + (current ? "" : "primary") + '" type="button" data-review-collection="' + esc(type) + '">' + (current ? "Review again" : "Review and confirm") + '</button>';
-  const status = current ? "Reviewed" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Stale" : "Review required";
-  const details = '<details ' + (current ? 'class="collection-review-details"' : "open") + '><summary>' + (current ? "Show scope confirmation" : "What to review") + '</summary><div class="collection-review-detail-content"><div class="collection-review-head"><div><p class="kicker">Scope confirmation</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + status + '</span></div><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>' + (current ? reviewSummary : "") + '</div></details>';
+      : '<button class="button ' + (current ? "" : "primary") + '" type="button" data-review-collection="' + esc(type) + '">' + (current ? scheduleReview ? "Approve a new revision" : "Review again" : scheduleReview ? "Review and approve schedule" : "Review and confirm") + '</button>';
+  const status = scheduleBlocker ? "Not ready" : current ? "Reviewed" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Stale" : "Review required";
+  const details = '<details ' + (current ? 'class="collection-review-details"' : "open") + '><summary>' + (current ? scheduleReview ? "Show approved revision" : "Show scope confirmation" : "What to review") + '</summary><div class="collection-review-detail-content"><div class="collection-review-head"><div><p class="kicker">' + (scheduleReview ? "Schedule approval" : "Scope confirmation") + '</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + status + '</span></div><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>' + (current ? reviewSummary : "") + '</div></details>';
   const summary = current
-    ? '<div class="collection-review-current-row"><div class="collection-review-complete-summary"><span class="kicker">Scope confirmation</span>' + compactReviewSummary + '</div>' + details + action + '</div>'
+    ? '<div class="collection-review-current-row"><div class="collection-review-complete-summary"><span class="kicker">' + (scheduleReview ? "Approved schedule" : "Scope confirmation") + '</span>' + compactReviewSummary + '</div>' + details + action + '</div>'
     : details;
   return '<section class="collection-review-panel panel ' + (current ? "current" : "required") + '">' + summary +
     (current ? "" : '<div class="collection-review-foot">' + reviewSummary + action + '</div>') + '</section>';
+}
+
+function retentionScheduleApprovalBlocker() {
+  if (!modelSupports("retention-schedule-approval")) return null;
+  const documents = state.resources.filter(({ record }) => (
+    record.type === "document"
+    && record.documentKind === "schedule"
+    && record.workflowScope === "program"
+    && !["superseded", "retired"].includes(record.status)
+  )).map(({ record }) => record);
+  const document = documents.length === 1 ? documents[0] : null;
+  if (documents.length > 1) return "Keep exactly one current program Data Retention Schedule document before approval.";
+  if (!document) return "Add the governing Data Retention Schedule document first.";
+  if (!["approved", "active"].includes(document.status) || !document.approvedOn || !document.approvedContentRevisions) {
+    return "Approve the governing document and bind its exact Markdown revision first.";
+  }
+  const documentReadiness = retentionScheduleDocumentReadiness(document.id);
+  if (documentReadiness?.status !== "complete") {
+    return documentReadiness?.message || "Complete the governing document before approving the schedule.";
+  }
+  const planned = resourcesOfType("retention-schedule-item").find(({ record }) => record.status === "planned")?.record;
+  if (planned) return "Complete or retire the planned row: " + planned.title + ".";
+  const incomplete = retentionReviewItems("policies", false).find((item) => (
+    item.status === "action" && item.id !== "collection-review-retention-schedule-item"
+  ));
+  return incomplete?.message || null;
 }
 
 function collectionReviewVisible(type) {
@@ -1048,14 +1291,15 @@ function recordWorkflowItems(type, id) {
   ));
 }
 
-function recordWorkflowCell(type, entry) {
+function recordWorkflowCell(type, entry, detailContext = "") {
   if (state.sections?.workflow !== "complete") {
     return '<button class="text-button record-workflow-clear" type="button" data-load-workflow>Calculate action</button>';
   }
   const items = recordWorkflowItems(type, entry.record.id);
   if (!items.length) return '<span class="record-workflow-clear">No calculated action</span>';
   const item = items[0];
-  const href = workflowItemHref(item) || "#/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id);
+  let href = workflowItemHref(item) || "#/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id);
+  if (detailContext && href.startsWith("#/resource/" + encodeURIComponent(type) + "/") && !href.includes("?")) href += detailContext;
   const title = type === "control" ? "Finish implementation" : item.title;
   return '<a class="record-workflow-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(title) + '</strong><small>' + esc(stagePageItemDetail(item)) + (items.length > 1 ? " +" + (items.length - 1) + " more" : "") + '</small></span></a>';
 }
@@ -1064,7 +1308,10 @@ function openCollectionReviewDialog(type) {
   const assessment = state.collectionReviews?.[type];
   if (!assessment) return;
   const configuration = assessment.configuration;
-  const eligibleReviewerIds = type === "control" ? new Set(assessment.eligibleReviewerIds || []) : null;
+  const scheduleReview = type === "retention-schedule-item" && modelSupports("retention-schedule-approval");
+  const eligibleReviewerIds = assessment.eligibleReviewerIds
+    ? new Set(assessment.eligibleReviewerIds)
+    : null;
   const people = resourcesOfType("person").filter(({ record }) => (
     record.status === "active" && (!eligibleReviewerIds || eligibleReviewerIds.has(record.id))
   ));
@@ -1091,10 +1338,18 @@ function openCollectionReviewDialog(type) {
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog event-dialog collection-review-dialog";
   dialog.setAttribute("aria-labelledby", "collection-review-dialog-title");
-  const reviewerHelp = type === "control" && !people.length
-    ? '<p class="policy-activation-warning">No eligible reviewer is configured. Add an active external Person who does not own these Controls or their enabled Obligations.</p>'
+  const reviewerHelp = eligibleReviewerIds && !people.length
+    ? '<p class="policy-activation-warning">No eligible reviewer is configured. Add an active Person who does not own ' + (scheduleReview ? 'the governing document or any included schedule row.' : 'these Controls or their enabled Obligations.') + '</p>'
     : "";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Scope confirmation</p><h2 id="collection-review-dialog-title">Confirm ' + esc(configuration.title.toLowerCase()) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>Before confirming</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>' + reviewerHelp + '<div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (preservedAuthoritativeSourceId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>Confirm ' + assessment.recordCount + ' current ' + esc(pluralize("record", assessment.recordCount)) + '. If the collection or material scope changes, FileGRC will ask for another review.</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Confirm and save</button></div></form>';
+  const dialogKicker = scheduleReview ? "Schedule approval" : "Scope confirmation";
+  const dialogTitle = scheduleReview ? "Review and approve Data Retention Schedule" : "Confirm " + configuration.title.toLowerCase();
+  const checklistLabel = scheduleReview ? "Before approving" : "Before confirming";
+  const saveDescription = scheduleReview
+    ? 'Approve the governing document and ' + assessment.recordCount + ' current ' + pluralize("schedule row", assessment.recordCount) + ' as one revision. A later document, row, or material scope change requires another approval.'
+    : 'Confirm ' + assessment.recordCount + ' current ' + pluralize("record", assessment.recordCount) + '. If the collection or material scope changes, FileGRC will ask for another review.';
+  const confirmSubmit = '<button type="submit" class="button primary">Confirm and save</button>';
+  const submit = scheduleReview ? '<button type="submit" class="button primary">Approve schedule</button>' : confirmSubmit;
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + dialogKicker + '</p><h2 id="collection-review-dialog-title">' + esc(dialogTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>' + checklistLabel + '</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>' + reviewerHelp + '<div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (preservedAuthoritativeSourceId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>' + esc(saveDescription) + '</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button>' + submit + '</div></form>';
   document.body.append(dialog);
   dialog.showModal();
   const form = dialog.querySelector("form");
@@ -1126,7 +1381,8 @@ function openCollectionReviewDialog(type) {
       reviewedOn: form.elements.reviewedOn.value,
       scopeRevision: state.git?.commit || undefined,
       [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: form.elements.authoritativeSourceId.value || undefined,
-      expectedRevision: assessment.reviewRevision || undefined
+      expectedRevision: assessment.reviewRevision || undefined,
+      expectedCollectionRevision: assessment.collectionRevision
     };
     form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = true; });
     const submit = form.querySelector('button[type="submit"]');
@@ -1195,6 +1451,7 @@ function workflowItemHref(item) {
   const collectionReviewCommand = commands.find((command) => command.includes(" review-collection "));
   const collectionReviewType = collectionReviewCommand?.match(/review-collection\s+([a-z0-9-]+)/)?.[1];
   if (collectionReviewType && state.model.collectionReviews?.[collectionReviewType]) {
+    if (collectionReviewType === "retention-schedule-item" && modelSupports("retention-schedule-approval")) return "#/retention-schedule";
     return "#/resources/" + encodeURIComponent(collectionReviewType) + "?review-collection=1";
   }
   if (
@@ -1251,7 +1508,7 @@ function retentionScheduleItemHref(item) {
     && !["superseded", "retired"].includes(record.status)
   ));
   if (scheduleDocuments.length === 1) params.set("scheduleDocumentId", scheduleDocuments[0].record.id);
-  return "#/resources/retention-schedule-item?" + params;
+  return "#/retention-schedule?" + params;
 }
 
 function workflowItemDetail(item) {
@@ -1328,14 +1585,30 @@ function renderEvidenceReadiness() {
   return '<section class="evidence-map"><div class="evidence-map-head"><div><p class="kicker">Control implementation</p><h2>' + completeCount + ' of ' + items.length + ' evidence ' + (items.length === 1 ? "family" : "families") + ' ready</h2><p>Connect each Control to the ' + sourceLabel + ' that produce its evidence.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/' + sourceType + '">Review ' + sourceLabel + '</a><a class="button primary" href="#/resources/control">Review Controls</a></div></div>' + (cards || empty) + more + '</section>';
 }
 
-function retentionReviewItems() {
+function retentionReviewItems(stageId = null, includeMappings = true) {
+  const scheduleDocumentReviewIds = new Set(state.resources
+    .filter(({ record }) => record.type === "document" && record.documentKind === "schedule" && record.workflowScope === "program")
+    .map(({ record }) => "document-approval-" + record.id));
   return (state.programReadiness?.stages || []).flatMap((stage) => (
     (stage.items || []).filter((item) => (
-      item.id?.startsWith("retention-")
-      || item.id?.startsWith("requirement-mapping-")
+      (!stageId || stage.id === stageId)
+      && (item.id?.startsWith("retention-")
+      || includeMappings && item.id?.startsWith("requirement-mapping-")
       || ["collection-review-information-type", "collection-review-retention-schedule-item"].includes(item.id)
+      || scheduleDocumentReviewIds.has(item.id)
+      )
     )).map((item) => ({ ...item, stage: stage.id }))
   ));
+}
+
+function isRetentionScheduleWorkflowItem(item) {
+  if (item.id?.startsWith("retention-") || item.id === "collection-review-retention-schedule-item") return true;
+  return [item.subject, item.source].filter(Boolean).some((reference) => {
+    if (reference.type === "retention-schedule-item") return true;
+    if (reference.type !== "document" || !reference.id) return false;
+    const record = state.resources.find(({ record }) => record.id === reference.id)?.record;
+    return record?.documentKind === "schedule" && record.workflowScope !== "engagement";
+  });
 }
 
 function programReadinessWorkflowItems() {
@@ -1348,37 +1621,6 @@ function programReadinessWorkflowItems() {
       state: "ready",
       subject: item.resourceId && item.resourceType ? { type: item.resourceType, id: item.resourceId } : { type: item.resourceType || "unknown" }
     }));
-}
-
-function renderRetentionReadiness() {
-  const items = retentionReviewItems();
-  if (!items.length) return "";
-  const actions = items.filter((item) => item.status === "action");
-  const cards = actions.map((item) => {
-    const ids = [...new Set([
-      item.resourceId,
-      item.informationTypeId,
-      ...(item.retentionScheduleItemIds || []),
-      ...(item.staleResourceIds || [])
-    ].filter(Boolean))];
-    const references = ids.length
-      ? '<div class="evidence-map-references">' + ids.map((id) => formatReference(id)).join("") + '</div>'
-      : "";
-    const href = item.id?.startsWith("retention-use-")
-      ? retentionScheduleItemHref(item)
-      : item.id?.startsWith("collection-review-")
-      ? '#/resources/' + encodeURIComponent(item.resourceType)
-      : item.resourceId && item.resourceType
-      ? '#/resource/' + encodeURIComponent(item.resourceType) + '/' + encodeURIComponent(item.resourceId)
-      : '#/resources/' + encodeURIComponent(item.resourceType || "retention-schedule-item");
-    return '<article class="evidence-map-card"><div class="evidence-map-card-head"><div><span class="badge warn">Review</span><h3><a href="' + href + '">' + esc(item.title) + '</a></h3></div></div><p>' + esc(item.message) + '</p>' + references + '</article>';
-  });
-  const visibleCount = 6;
-  const visibleCards = cards.slice(0, visibleCount).join("");
-  const moreCards = cards.length > visibleCount
-    ? '<details class="workflow-guidance-more retention-readiness-more"><summary>Show ' + (cards.length - visibleCount) + ' more retention and mapping items</summary><div class="policy-activation-grid workflow-findings-more">' + cards.slice(visibleCount).join("") + '</div></details>'
-    : "";
-  return '<section class="evidence-map retention-readiness"><div class="evidence-map-head"><div><p class="kicker">Information lifecycle</p><h2>' + (items.length - actions.length) + ' of ' + items.length + ' retention and mapping checks current</h2><p>Review Information Types, schedule coverage, and mappings here when source records or processing uses change.</p></div><div class="evidence-map-actions"><a class="button" href="#/resources/requirement-mapping">Review mappings</a><a class="button primary" href="#/resources/retention-schedule-item">Review schedule</a></div></div>' + (cards.length ? '<div class="policy-activation-grid">' + visibleCards + '</div>' + moreCards : '<article class="evidence-map-card complete"><span class="badge good">Current</span><p>Every retention decision and Requirement Mapping is bound to its current sources.</p></article>') + '</section>';
 }
 
 function evidenceSourceCheckLabel(name) {
@@ -1473,6 +1715,13 @@ function derivedStagePageState(stage, destination) {
       ? { complete: false, label: incomplete + " " + pluralize("source", incomplete) + " need work" }
       : { complete: evidenceItems.length > 0, label: evidenceItems.length ? "Ready" : "Not configured", countsTowardProgress: evidenceItems.length > 0 };
   }
+  if (destination.utility === "retention-schedule") {
+    const assessment = state.collectionReviews?.["retention-schedule-item"];
+    const incomplete = retentionReviewItems("policies", false).filter(({ status }) => status !== "complete").length;
+    return assessment?.status === "current" && !incomplete
+      ? { complete: true, label: "Approved" }
+      : { complete: false, label: incomplete ? incomplete + " " + pluralize("item", incomplete) + " need work" : "Approval needed" };
+  }
   const items = stagePageItems(stage, destination);
   const deferredStates = new Set(["later", "scheduled", "upcoming", "waiting-external"]);
   const blocking = items.filter(({ state }) => !deferredStates.has(state));
@@ -1516,8 +1765,13 @@ function stagePageItems(stage, destination) {
       .filter(({ id, status }) => id.startsWith("source-family-") && status !== "complete")
       .map((item) => ({ ...item, key: item.id, state: item.status, subject: { type: "source-coverage" } }));
   }
-  if (stage.id === "policies" && destination.href === "#/stage/policies") {
-    return items.sort((left, right) => (
+  if (destination.utility === "retention-schedule") {
+    return retentionReviewItems("policies", false)
+      .filter(({ status }) => status !== "complete")
+      .map((item) => ({ ...item, key: item.id, state: item.status, subject: item.resourceId && item.resourceType ? { type: item.resourceType, id: item.resourceId } : { type: item.resourceType || "retention-schedule-item" } }));
+  }
+  if (stage.id === "policies" && destination.href === "#/policies") {
+    return items.filter((item) => !isRetentionScheduleWorkflowItem(item)).sort((left, right) => (
       workflowItemStatePriority(left) - workflowItemStatePriority(right)
       || (left.priority ?? workflowItemPriority(left)) - (right.priority ?? workflowItemPriority(right))
       || left.key.localeCompare(right.key)
@@ -1661,6 +1915,7 @@ function sectionDestinations(section) {
   }
   if (section.utility === "obligation-board") destinations.push({ utility: section.utility, kind: "Working page", label: "Work Queue", href: "#/stage/run", description: "Complete recurring work, Policy Event tasks, and assigned follow-up with its due windows and linked proof." });
   if (section.utility === "evidence-sources") destinations.push({ utility: section.utility, kind: "Coverage page", label: "Evidence Sources", href: "#/evidence-sources", description: section.description });
+  if (section.utility === "retention-schedule") destinations.push({ utility: section.utility, kind: "Governed schedule", label: "Data Retention Schedule", href: "#/retention-schedule", description: section.description });
   if (section.utility === "audit-packet") destinations.push({ utility: section.utility, kind: "Working page", label: "Audit Evidence & Packet", href: "#/audit-packet", description: "Review filegrc Evidence and Evidence Artifacts, prepare fieldwork, and build the indexed packet." });
   return destinations;
 }
@@ -2839,6 +3094,11 @@ function renderList(main, type, params = new URLSearchParams()) {
       ...(params.get("informationTypeId") ? { informationTypeIds: [params.get("informationTypeId")] } : {}),
       ...(params.get("scopeResourceId") ? { scopeResourceIds: [params.get("scopeResourceId")] } : {}),
       ...(params.get("scheduleDocumentId") ? { scheduleDocumentId: params.get("scheduleDocumentId") } : {})
+    } : type === "document" ? {
+      ...(params.get("title") ? { title: params.get("title") } : {}),
+      ...(params.get("documentKind") ? { documentKind: params.get("documentKind") } : {}),
+      ...(documentScope ? { workflowScope: documentScope } : {}),
+      ...relationshipSeed
     } : {
       ...(params.get("title") ? { title: params.get("title") } : {}),
       ...relationshipSeed
@@ -2873,8 +3133,19 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const entry = resourcesOfType(type).find(({ record }) => record.id === id);
   const definition = state.model.resources[type];
   if (!entry || !definition) return renderNotFound(main);
+  const scheduleContext = params.get("stage") === "policies" && (
+    type === "retention-schedule-item"
+    || type === "document" && entry.record.documentKind === "schedule" && entry.record.workflowScope !== "engagement"
+  );
+  const policiesContext = params.get("stage") === "policies" && (
+    type === "policy"
+    || type === "training"
+    || type === "document" && !auditSpecificDocument(entry.record) && entry.record.documentKind !== "schedule"
+  );
+  const collectionHref = scheduleContext ? "#/retention-schedule" : policiesContext ? "#/policies" : "#/resources/" + encodeURIComponent(type);
+  const collectionLabel = scheduleContext ? "Data Retention Schedule" : policiesContext ? "Policies" : titleCase(definition.pluralTitle);
   if (entry.detailsLoaded === false) {
-    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading is-loading" role="status" aria-live="polite" aria-busy="true">' + loadingIndicator("Loading record…") + '</section></div>';
+    main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div></div><section class="panel detail-loading is-loading" role="status" aria-live="polite" aria-busy="true">' + loadingIndicator("Loading record…") + '</section></div>';
     loadResourceDetail(type, id);
     return;
   }
@@ -2959,7 +3230,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     connectionsPanel: resourceConnections(entry),
     historyPanel
   });
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="#/resources/' + encodeURIComponent(type) + '">' + esc(titleCase(definition.pluralTitle)) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelector("[data-external-reviewer-governance]")?.addEventListener("click", openExternalReviewerGovernanceDialog);
@@ -6088,7 +6359,9 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 @media(max-width:520px){.collection-review-complete-summary{flex:1 1 180px;min-width:0;flex-wrap:wrap}.collection-review-complete-summary .collection-review-result{min-width:0;flex-wrap:wrap}.collection-review-complete-summary .collection-review-result span{overflow-wrap:anywhere}.collection-review-panel.current .button{margin-left:0}}
 .evidence-attachments .panel-head{align-items:flex-start}.evidence-attachments .panel-head h3{margin:0}.evidence-attachments .panel-head p{margin:4px 0 0;color:var(--muted);font-size:10px}.evidence-attachments ul{list-style:none;margin:0;padding:0}.evidence-attachments li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.evidence-attachments li:first-child{border-top:0}.evidence-attachments strong,.evidence-attachments small{display:block}.evidence-attachments strong{font-size:11px}.evidence-attachments small{margin-top:2px;color:var(--muted);font-size:9px;overflow-wrap:anywhere}.evidence-attachments .attachment-empty{display:block;color:var(--muted);font-size:10px;line-height:1.45}.danger-text{color:var(--red)}
 .policy-lifecycle-note.single{grid-template-columns:1fr}
-.policy-content-table{margin-top:22px}.policy-content-table>.section-head{align-items:end}.policy-content-table>.section-head h2{font:500 27.6px Georgia,serif;margin:5px 0 6px}.policy-content-table>.section-head p:not(.kicker){max-width:720px;margin:0;color:var(--muted);font-size:12px;line-height:1.5}.policy-content-tools{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.policy-content-tools input[type="search"]{min-width:210px;border:1px solid var(--line);border-radius:7px;background:var(--field);padding:9px 11px}.history-toggle{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}.policy-content-add{position:relative}.policy-content-add>summary{list-style:none}.policy-content-add>summary::-webkit-details-marker{display:none}.policy-content-add>div{position:absolute;right:0;z-index:5;display:grid;min-width:150px;margin-top:6px;padding:5px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow)}.policy-content-add button{border:0;border-radius:5px;background:transparent;padding:8px 10px;color:var(--ink);text-align:left;cursor:pointer}.policy-content-add button:hover{background:var(--accent-soft)}.policy-content-type span,.policy-content-approval span{display:block}.policy-content-type small,.policy-content-approval small{display:block;margin-top:3px;color:var(--muted);font-size:9.6px}.policy-content-count{margin:9px 2px 0;color:var(--muted);font-size:10.8px;text-align:right}
+.policy-content-table{margin-top:22px}.policy-content-table>.section-head{align-items:end}.policy-content-table>.section-head h2{font:500 27.6px Georgia,serif;margin:5px 0 6px}.policy-content-table>.section-head p:not(.kicker){max-width:720px;margin:0;color:var(--muted);font-size:12px;line-height:1.5}.policy-content-tools{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.policy-content-tools input[type="search"]{min-width:210px;border:1px solid var(--line);border-radius:7px;background:var(--field);padding:9px 11px}.history-toggle{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}.policy-content-add{position:relative}.policy-content-add>summary{list-style:none}.policy-content-add>summary::-webkit-details-marker{display:none}.policy-content-add>div{position:absolute;right:0;z-index:5;display:grid;min-width:150px;margin-top:6px;padding:5px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow)}.policy-content-add button{border:0;border-radius:5px;background:transparent;padding:8px 10px;color:var(--ink);text-align:left;cursor:pointer}.policy-content-add button:hover{background:var(--accent-soft)}.policy-content-type span,.policy-content-approval span{display:block}.policy-content-type small,.policy-content-approval small{display:block;margin-top:3px;color:var(--muted);font-size:9.6px}.policy-content-filter-empty{margin:10px 0 0;padding:16px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:12px;text-align:center}.policy-content-count{margin:9px 2px 0;color:var(--muted);font-size:10.8px;text-align:right}
+.policy-stage-pages{margin-top:30px}.retention-schedule-page .page-intro{margin-bottom:18px}.retention-schedule-page .page-intro .actions{flex-wrap:wrap;justify-content:flex-end}.retention-summary{margin-bottom:28px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.retention-summary>div{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:16px;align-items:center;padding:13px 0}.retention-summary>div+div{border-top:1px solid var(--line)}.retention-summary-label{color:var(--muted);font-size:10.8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.retention-summary a{text-decoration:none}.retention-summary strong,.retention-summary small{display:block}.retention-summary strong{font-size:13.2px}.retention-summary small{margin-top:3px;color:var(--muted);font-size:10.8px}.retention-rows h2,.retention-issues h2{font:500 24px Georgia,serif;margin:5px 0 7px}.retention-rows .section-head{align-items:end}.retention-rows .section-head p:not(.kicker){max-width:760px;margin:0;color:var(--muted);font-size:12px;line-height:1.55}.retention-table-tools{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.retention-table-tools input[type="search"]{min-width:210px;border:1px solid var(--line);border-radius:7px;background:var(--field);padding:9px 11px}.retention-rows .record-table-wrap{margin-top:12px}.retention-rows .record-title+small{display:block;max-width:380px;margin-top:4px;color:var(--muted);font-size:9.6px;line-height:1.4}.retention-filter-empty{margin:10px 0 0;padding:16px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:12px;text-align:center}.retention-row-count{margin:9px 2px 0;color:var(--muted);font-size:10.8px;text-align:right}.retention-issues{margin-top:28px}.retention-issue-list{border-top:1px solid var(--line)}.retention-issue-list>a{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 2px;border-bottom:1px solid var(--line);text-decoration:none}.retention-issue-list strong,.retention-issue-list small{display:block}.retention-issue-list strong{font-size:12px}.retention-issue-list small{margin-top:3px;color:var(--muted);font-size:10.4px;line-height:1.45}.retention-issue-list b{color:var(--accent);font-size:11px}.retention-schedule-page>.collection-review-panel{margin-top:28px;margin-bottom:0}
+@media(max-width:760px){.retention-summary>div{grid-template-columns:1fr;gap:7px}.retention-summary>div>.badge{justify-self:start}.retention-schedule-page .page-intro .actions{justify-content:flex-start}}
 .policy-library-proposals{min-width:0}.policy-library-proposals article,.policy-library-proposals details{min-width:0}.policy-library-proposals pre{box-sizing:border-box;max-width:100%;overflow:auto;padding:9px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:9px;line-height:1.45}
 .policy-activation-actions{display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .policy-activation-review-warning{margin-top:14px;padding:12px 14px;border:1px solid #d8bd78;border-radius:8px;background:#fff8e8}.policy-activation-review-warning>strong{font-size:12px}.policy-activation-review-warning ul{display:grid;gap:5px;margin:9px 0;padding-left:20px;font-size:10.8px}.policy-activation-review-warning p{margin:9px 0 0;color:#6d4917;font-size:11px;line-height:1.5}
@@ -6125,6 +6398,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 @media(max-width:760px){.reconciliation-candidate{grid-template-columns:1fr}.reconciliation-actions{justify-items:start}.reconciliation-actions>code{text-align:left}}
 @media(max-width:760px){.detail-grid-structured .detail-support-columns{display:flex;flex-direction:column}.detail-grid-structured .detail-support-stack{display:contents}.detail-grid-structured .detail-history-panel{order:1}}
 @media(max-width:760px){.guide-review ul,.resource-review-criteria ul{grid-template-columns:1fr}.collection-review-head,.collection-review-foot{align-items:stretch;flex-direction:column}.record-workflow-action{min-width:0}}
+@media(max-width:760px){.policy-content-table>.section-head{display:block}.policy-content-tools{justify-content:flex-start;margin-top:15px}.policy-content-tools>label:first-child{flex:1 1 100%;width:100%}.policy-content-tools input[type="search"]{width:100%;min-width:0}}
 @media(max-width:520px){.onboarding-form,.onboarding-sections,.setup-steps{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}.obligation-card-foot{align-items:flex-start;flex-direction:column}.obligation-action{align-self:flex-start}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}
 @media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1}.detail-grid-structured .detail-support-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}

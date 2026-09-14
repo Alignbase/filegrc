@@ -17,7 +17,8 @@ export const MODEL_CAPABILITY_VERSIONS = Object.freeze({
   "temporal-collection-reviews": 9,
   "reporting-routes": 9,
   "reporting-route-sets": 10,
-  "control-collection-oversight": 11
+  "control-collection-oversight": 11,
+  "retention-schedule-approval": 11
 });
 
 export function modelSupports(modelOrVersion, capability) {

@@ -1,11 +1,16 @@
 import { modelSupports } from "../model/index.js";
 import { programComponents, selectedRequirementIds } from "./program.js";
-import { retentionReviewResourceIds } from "./retention.js";
+import { retentionReviewResourceIds, retentionUses } from "./retention.js";
 import { documentIsAuditSpecific } from "./program-lifecycle.js";
 
 export function scopedCollectionRecords(loaded, resourceType, program) {
   if (!modelSupports(loaded.model, "program-scope")) {
     return loaded.resources.filter((record) => record.type === resourceType);
+  }
+  if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")) {
+    return loaded.resources.filter((record) => (
+      record.type === resourceType && !["retired", "superseded"].includes(record.status)
+    ));
   }
   if (resourceType === "person") {
     return scopedProgramPeople(loaded, program);
@@ -225,6 +230,29 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
       .filter((record) => record.type === "vendor" && record.status !== "retired")
       .map(({ id }) => id));
   }
+  if (resourceType === "retention-schedule-item" && !legacy && modelSupports(loaded.model, "retention-schedule-approval")) {
+    const uses = retentionUses(loaded, program || {});
+    addIds(uses.map(({ resource }) => resource.id));
+    addIds(uses.map(({ informationTypeId }) => informationTypeId));
+    const schedules = loaded.resources
+      .filter((record) => (
+        record.type === "document"
+        && record.documentKind === "schedule"
+        && record.workflowScope === "program"
+        && !["superseded", "retired"].includes(record.status)
+      ))
+    addIds(schedules.map(({ id }) => id));
+    for (const schedule of schedules) {
+      addPartyIds([...(schedule.ownerIds || []), ...(schedule.approverIds || [])]);
+    }
+    for (const record of reviewed) {
+      addIds([record.scheduleDocumentId]);
+      addIds(record.informationTypeIds);
+      addIds(record.scopeResourceIds);
+      addIds(record.sourceResourceIds);
+      addPartyIds([...(record.ownerIds || []), ...(record.approvedByIds || [])]);
+    }
+  }
   if (resourceType === "complementary-control") {
     addIds(program?.systemIds);
     addIds(program?.controlIds);
@@ -351,6 +379,21 @@ const dependencyFields = {
     component: ["id", "type", "status", "systemUses", "informationUses"],
     vendor: ["id", "type", "status", "informationTypeIds"]
   },
+  "retention-schedule-item": {
+    document: ["id", "type", "documentKind", "workflowScope", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "controlIds"],
+    policy: ["id", "type", "status", "programRole", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "controlIds"],
+    requirement: ["id", "type", "title", "frameworkId", "reference", "description"],
+    commitment: ["id", "type", "status", "commitmentKind", "statement", "effectiveOn"],
+    control: ["id", "type", "status", "statement", "systemIds", "componentIds"],
+    "information-type": ["id", "type", "status", "classificationId", "description"],
+    system: ["id", "type", "status", "informationTypeIds"],
+    component: ["id", "type", "status", "systemUses", "informationUses"],
+    vendor: ["id", "type", "status", "informationTypeIds"],
+    "source-coverage": ["id", "type", "status", "sourceFamilyId", "coverageKind", "scopeResourceIds", "retentionScheduleItemIds", "componentId"],
+    person: ["id", "type", "status", "affiliation", "jobTitle"],
+    team: ["id", "type", "status", "memberIds", "chairIds"],
+    appointment: ["id", "type", "status", "appointmentKind", "scopeResourceIds", "holderId", "startsOn", "endsOn"]
+  },
   "complementary-control": {
     system: ["id", "type", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
     control: ["id", "type", "status", "statement", "activity", "systemIds", "componentIds", "evidenceSourceComponentIds"],
@@ -382,6 +425,7 @@ const dependencyContentTypes = {
   vendor: new Set(["document"]),
   component: new Set(["system"]),
   control: new Set(["system", "component", "obligation", "source-coverage", "evidence", "retention-schedule-item", "document", "policy", "training"]),
+  "retention-schedule-item": new Set(["document", "policy"]),
   "complementary-control": new Set(["system", "control", "document", "component"])
 };
 

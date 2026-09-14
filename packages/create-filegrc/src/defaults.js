@@ -10,6 +10,7 @@ const INFORMATION_SECURITY_POLICY_ID = "policy-information-security";
 const RETENTION_SCHEDULE_ID = "document-data-retention-schedule";
 const SECURITY_PLAN_ID = "document-security-incident-recovery-plan";
 const FILEGRC_INFORMATION_TYPE_ID = "information-type-grc-records";
+const FILEGRC_RETENTION_ITEM_ID = "retention-schedule-item-filegrc-records";
 const FILEGRC_SOURCE_FAMILIES = [
   "training-acknowledgement",
   "exception-finding",
@@ -1172,7 +1173,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
       ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
       ...(filegrcManaged ? {
         collectionCadence: "Record work when it occurs and export the complete population for the audit period.",
-        retentionScheduleItemIds: [`retention-schedule-item-source-${sourceFamilyId}`],
+        retentionScheduleItemIds: [FILEGRC_RETENTION_ITEM_ID],
         reconciliationMethod: "Export the complete filegrc source-family population, compare it with related in-scope records and Work Queue activity, and investigate omissions or duplicates.",
         validFrom: effectiveDate
       } : {})
@@ -1187,18 +1188,21 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     classificationId: "confidential",
     description: "Structured program records, approvals, work history, and evidence indexes stored in the FileGRC repository."
   };
-  const retentionScheduleItems = SOURCE_FAMILIES.map(([sourceFamilyId, title]) => ({
-    id: `retention-schedule-item-source-${sourceFamilyId}`,
+  const retentionScheduleItems = [{
+    id: FILEGRC_RETENTION_ITEM_ID,
     type: "retention-schedule-item",
-    title: `${title} retention review`,
+    title: "Governance, risk, compliance, and audit records retention",
     status: "planned",
     description: "Management must select the covered Information Types, cutoff, retention period, and disposition behavior before activation.",
-    informationTypeIds: FILEGRC_SOURCE_FAMILIES.includes(sourceFamilyId) ? [FILEGRC_INFORMATION_TYPE_ID] : [],
-    scopeResourceIds: [`source-coverage-${sourceFamilyId}`],
+    informationTypeIds: [FILEGRC_INFORMATION_TYPE_ID],
+    scopeResourceIds: [
+      "program-soc-2",
+      ...FILEGRC_SOURCE_FAMILIES.map((sourceFamilyId) => `source-coverage-${sourceFamilyId}`)
+    ],
     scheduleDocumentId: RETENTION_SCHEDULE_ID,
     sourceResourceIds: [INFORMATION_SECURITY_POLICY_ID, RETENTION_SCHEDULE_ID],
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID]
-  }));
+  }];
 
   const foundation = [
     recordFile("information-types", informationType),

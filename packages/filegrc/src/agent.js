@@ -82,7 +82,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
     instructions: RESOURCE_INSTRUCTIONS[type] || definition.description,
     use: definition.description,
     purpose: definition.description,
-    programStep: resourceProgramContext(type),
+    programStep: resourceProgramContext(type, loaded.model),
     policyBasis: definition.guidance.policyBasis,
     cadence: definition.guidance.cadence,
     emptyState: definition.guidance.emptyState ?? null,

@@ -1,3 +1,5 @@
+import { ACTIVE_MODEL_VERSION, modelSupports } from "../model/index.js";
+
 export const RESOURCE_INSTRUCTIONS = {
   program: "Define one management compliance or assurance Program with its goal, bounded Systems, selected Frameworks, Requirement applicability decisions, Controls, owners, risk method, and candidate period.",
   person: "Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.",
@@ -105,13 +107,14 @@ export const PROGRAM_PATH = [
     id: "policies",
     number: 2,
     title: "Approve Policies",
-    description: "Review governed content and approvals",
-    summary: "Review and independently approve Policies, program Documents, and Training content.",
+    description: "Approve governed content and retention decisions",
+    summary: "Review and independently approve Policies, program Documents, Training content, and the Data Retention Schedule.",
     sections: [
-      { id: "policy-content", title: "Policies", description: "Review every program Policy, Document, and Training record in one table, then bind independent approval to each exact revision.", steps: ["Review each governed Markdown artifact and replace every organization placeholder.", "Confirm the owner, separate approver, linked Controls, audience, and intended values that apply to each artifact.", "Record approval and its date against the exact revision. Leave approved content inactive until its Step 3 implementation cutover."], types: [], relatedLinks: [{ type: "policy", label: "Policies", href: "#/stage/policies" }], defaultOpen: true }
+      { id: "policy-content", title: "Policies", description: "Review every program Policy, Document, and Training record in one table, then bind independent approval to each exact revision.", steps: ["Review each governed Markdown artifact and replace every organization placeholder.", "Confirm the owner, separate approver, linked Controls, audience, and intended values that apply to each artifact.", "Record approval and its date against the exact revision. Leave approved content inactive until its Step 3 implementation cutover."], types: [], relatedLinks: [{ type: "policy", label: "Policies", href: "#/policies" }], defaultOpen: true },
+      { id: "retention", title: "Data Retention Schedule", description: "Approve the schedule document and its structured rows as one governed schedule.", steps: ["Review the schedule policy, legal holds, exceptions, and disposal requirements.", "Define rows only for Information Types and operational sources the organization actually uses.", "Confirm the complete document-and-row revision with one schedule review."], types: [], utility: "retention-schedule", defaultOpen: true }
     ],
     resourceTypes: [],
-    supportingResourceTypes: ["policy", "document", "training"],
+    supportingResourceTypes: ["policy", "document", "training", "retention-schedule-item"],
     commands: [
       "filegrc guide policy --json",
       "filegrc guide document --json",
@@ -119,30 +122,29 @@ export const PROGRAM_PATH = [
       "filegrc list policy --json",
       "filegrc list document --json",
       "filegrc list training --json",
-      "filegrc get POLICY_ID --mutation"
+      "filegrc get POLICY_ID --mutation",
+      "filegrc guide retention-schedule-item --json",
+      "filegrc review-collection retention-schedule-item --scaffold"
     ]
   },
   {
     id: "controls",
     number: 3,
     title: "Implement Controls",
-    description: "Finish controls and their evidence sources",
-    summary: "Describe each Control and connect its evidence source.",
+    description: "Implement and prepare to operate",
+    summary: "Implement Controls, configure their operating schedules and evidence sources, then activate the approved program.",
     sections: [
       { id: "controls", title: "Controls", description: "Implement the selected Controls and connect their scope, procedures, mappings, and operation patterns.", steps: ["Open every planned Control and confirm its mappings and operation pattern.", "Write the real procedure in Record Markdown, add bounded System scope, and map the operating and authoritative evidence-source Components."], types: ["control"], defaultOpen: true },
       { id: "complementary-controls", title: "Complementary Controls", description: "Record customer or provider responsibilities that form part of the implementation boundary, or confirm there are none.", steps: ["Review whether an in-scope Control depends on a customer or carved-out provider action."], types: ["complementary-control"], defaultOpen: true },
       { id: "evidence-sources", title: "Evidence Sources", description: "Check that every Control points to an authoritative source that can produce its expected evidence.", steps: ["Confirm each source Component is active, has the right evidence-source role, names current access owners, and includes repeatable retrieval instructions."], types: [], utility: "evidence-sources", defaultOpen: true },
-      { id: "retention", title: "Retention Schedule", description: "Review each retention rule against current information uses and approved sources.", steps: ["Confirm scope, cutoff, period, disposition, sources, owner, and approval for each rule."], types: ["retention-schedule-item"], defaultOpen: true },
       { id: "obligations", title: "Obligations", description: "Configure the calendar and event schedules that operate the Controls.", steps: ["Review and enable every required calendar and event schedule."], types: ["obligation"], defaultOpen: true }
     ],
-    resourceTypes: ["control", "complementary-control", "retention-schedule-item", "obligation"],
+    resourceTypes: ["control", "complementary-control", "obligation"],
     commands: [
       "filegrc guide control --json",
       "filegrc list control --json",
       "filegrc get CONTROL_ID --mutation",
       "filegrc guide obligation --json",
-      "filegrc guide retention-schedule-item --json",
-      "filegrc review-collection retention-schedule-item --scaffold",
       "filegrc list obligation --json",
       "filegrc review-collection component --scaffold",
       "filegrc review-collection complementary-control --scaffold",
@@ -264,8 +266,51 @@ export const PROGRAM_PATH = [
   }
 ];
 
-export function buildAgentProgramPath(model) {
+export function programPathForModel(model = ACTIVE_MODEL_VERSION) {
+  if (modelSupports(model, "retention-schedule-approval")) return PROGRAM_PATH;
   return PROGRAM_PATH.map((stage) => {
+    if (stage.id === "policies") {
+      return {
+        ...stage,
+        description: "Review governed content and approvals",
+        summary: "Review and independently approve Policies, program Documents, and Training content.",
+        sections: [{
+          ...stage.sections[0],
+          relatedLinks: [{ type: "policy", label: "Policies", href: "#/stage/policies" }]
+        }],
+        supportingResourceTypes: stage.supportingResourceTypes.filter((type) => type !== "retention-schedule-item"),
+        commands: stage.commands.filter((command) => !command.includes("retention-schedule-item"))
+      };
+    }
+    if (stage.id === "controls") {
+      const retention = {
+        id: "retention",
+        title: "Retention Schedule",
+        description: "Review each retention rule against current information uses and approved sources.",
+        steps: ["Confirm scope, cutoff, period, disposition, sources, owner, and approval for each rule."],
+        types: ["retention-schedule-item"],
+        defaultOpen: true
+      };
+      return {
+        ...stage,
+        description: "Finish controls and their evidence sources",
+        summary: "Describe each Control and connect its evidence source.",
+        sections: [...stage.sections.slice(0, 3), retention, ...stage.sections.slice(3)],
+        resourceTypes: [...stage.resourceTypes.slice(0, 2), "retention-schedule-item", ...stage.resourceTypes.slice(2)],
+        commands: [
+          ...stage.commands.slice(0, 5),
+          "filegrc guide retention-schedule-item --json",
+          "filegrc review-collection retention-schedule-item --scaffold",
+          ...stage.commands.slice(5)
+        ]
+      };
+    }
+    return stage;
+  });
+}
+
+export function buildAgentProgramPath(model) {
+  return programPathForModel(model).map((stage) => {
     const programResourceTypes = [...stage.resourceTypes, ...(stage.supportingResourceTypes || [])]
       .filter((type) => model.resources[type]);
     const resourcePages = programResourceTypes.map((type, index) => {
@@ -305,8 +350,8 @@ function agentCommand(command) {
   return command.startsWith("filegrc ") ? `npx ${command}` : command;
 }
 
-export function resourceProgramContext(type) {
-  const stage = PROGRAM_PATH.find((candidate) => (
+export function resourceProgramContext(type, model) {
+  const stage = programPathForModel(model).find((candidate) => (
     candidate.resourceTypes.includes(type) || (candidate.supportingResourceTypes || []).includes(type)
   ));
   if (!stage) return null;

@@ -150,17 +150,7 @@ export async function createAppStateSection(input, section, options = {}) {
       collectionReviews: Object.fromEntries(
         assessCollectionReviews(loaded, { programId: activeProgram.id }).map((assessment) => [
           assessment.resourceType,
-          {
-            resourceType: assessment.resourceType,
-            configuration: assessment.configuration,
-            recordCount: assessment.recordCount,
-            review: assessment.review,
-            reviewRevision: assessment.reviewRevision,
-            collectionRevision: assessment.collectionRevision,
-            status: assessment.status,
-            complete: assessment.complete,
-            message: assessment.message
-          }
+          serializeCollectionReviewAssessment(assessment)
         ])
       ),
       applicabilityConstraints: Object.fromEntries(loaded.resources.flatMap((record) => {
@@ -318,17 +308,7 @@ async function createAppStateUnlocked(input, options) {
   const collectionReviews = Object.fromEntries(
     assessCollectionReviews(loaded, { programId: activeProgram.id }).map((assessment) => [
       assessment.resourceType,
-      {
-        resourceType: assessment.resourceType,
-        configuration: assessment.configuration,
-        recordCount: assessment.recordCount,
-        review: assessment.review,
-        reviewRevision: assessment.reviewRevision,
-        collectionRevision: assessment.collectionRevision,
-        status: assessment.status,
-        complete: assessment.complete,
-        message: assessment.message
-      }
+      serializeCollectionReviewAssessment(assessment)
     ])
   );
   return {
@@ -353,6 +333,23 @@ async function createAppStateUnlocked(input, options) {
     auditPreparations,
     workflow,
     git
+  };
+}
+
+function serializeCollectionReviewAssessment(assessment) {
+  return {
+    resourceType: assessment.resourceType,
+    configuration: assessment.configuration,
+    recordCount: assessment.recordCount,
+    review: assessment.review,
+    reviewRevision: assessment.reviewRevision,
+    collectionRevision: assessment.collectionRevision,
+    status: assessment.status,
+    complete: assessment.complete,
+    message: assessment.message,
+    ...(assessment.eligibleReviewerIds ? { eligibleReviewerIds: assessment.eligibleReviewerIds } : {}),
+    ...(assessment.reviewerConflictIds ? { reviewerConflictIds: assessment.reviewerConflictIds } : {}),
+    ...(assessment.approvalIssues ? { approvalIssues: assessment.approvalIssues } : {})
   };
 }
 

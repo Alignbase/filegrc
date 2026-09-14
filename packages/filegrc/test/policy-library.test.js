@@ -541,7 +541,7 @@ test("offers standalone governed Documents as a reviewable upgrade and changes n
     install: false,
     effectiveDate: "2026-01-01"
   });
-  const organizationSchedulePath = join(root, "data", "retention-schedule-items", "retention-schedule-item-source-governance.json");
+  const organizationSchedulePath = join(root, "data", "retention-schedule-items", "retention-schedule-item-filegrc-records.json");
   const organizationScheduleBefore = await readFile(organizationSchedulePath, "utf8");
   const scheduleRecordPath = join(root, "data", "documents", "document-data-retention-schedule.json");
   const scheduleRecord = JSON.parse(await readFile(scheduleRecordPath, "utf8"));

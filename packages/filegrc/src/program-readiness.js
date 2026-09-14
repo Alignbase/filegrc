@@ -57,12 +57,19 @@ export async function assessProgramReadiness(input, options = {}) {
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
-  controlStage.items.push(...await assessRetentionReadiness(loaded, program, {
+  const retentionItems = await assessRetentionReadiness(loaded, program, {
     informationTypesReviewed: collectionReviews.find(({ resourceType }) => resourceType === "information-type")?.complete === true
-  }));
-  controlStage.items.push(...collectionReviews
+  });
+  const retentionReviewItems = collectionReviews
     .filter(({ resourceType }) => resourceType === "retention-schedule-item")
-    .map(collectionReviewReadinessItem));
+    .map(collectionReviewReadinessItem);
+  if (modelSupports(loaded.model, "retention-schedule-approval")) {
+    policyStage.items.push(...retentionItems.filter(({ id }) => !id.startsWith("retention-source-coverage-")));
+    controlStage.items.push(...retentionItems.filter(({ id }) => id.startsWith("retention-source-coverage-")));
+    policyStage.items.push(...retentionReviewItems);
+  } else {
+    controlStage.items.push(...retentionItems, ...retentionReviewItems);
+  }
   const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
   const policyActivations = await assessPolicyActivations(
     requiredPolicies(scope, byId),
@@ -900,6 +907,11 @@ function requiredGovernedDocuments(scope, records, byId, model) {
     && (
       linkedDocumentIds.has(record.id)
       || obligationDocumentIds.has(record.id)
+      || (
+        modelSupports(model, "retention-schedule-approval")
+        && record.documentKind === "schedule"
+        && record.workflowScope === "program"
+      )
       || (
         record.programRole === "required"
         && (record.controlIds || []).some((id) => selectedControlIds.has(id))
