@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
+import { selectDefaultAudit } from "./audit-selection.js";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import {
   coverageContains,
@@ -63,20 +64,21 @@ export async function assessAuditPreparation(input, options = {}) {
   const records = loaded.resources;
   const byId = new Map(records.map((record) => [record.id, record]));
   const audits = records.filter((record) => record.type === "audit");
+  const calendarAsOf = options.asOf || currentCalendarDate(loaded.workspace?.timezone || "UTC");
   const audit = options.auditId
     ? audits.find((record) => record.id === options.auditId)
     : options.selectDefault === false
       ? null
-      : audits.find((record) => !["complete", "closed", "canceled"].includes(record.status)) || audits[0];
+      : selectDefaultAudit(audits, calendarAsOf);
   if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
 
-  const calendarAsOf = options.asOf || currentCalendarDate(loaded.workspace?.timezone || "UTC");
   const formalPeriodEnd = audit?.auditKind === "soc-2-type-2" ? coverageEnd(audit.coverage) : null;
   const readinessAsOf = formalPeriodEnd && formalPeriodEnd < calendarAsOf ? formalPeriodEnd : calendarAsOf;
   const programReadiness = options.programReadiness || await assessProgramReadiness(loaded, {
     asOf: readinessAsOf,
     generatedAt: options.generatedAt,
-    programId: audit?.programId || options.programId
+    programId: audit?.programId || options.programId,
+    auditId: audit?.id
   });
   const documentActivations = audit && modelSupports(loaded.model, "governed-document-activation")
     ? await auditDocumentActivationAssessments(loaded, audit, byId, calendarAsOf)
@@ -746,6 +748,12 @@ function canonicalScopeValue(value) {
 function programFoundationStage(programReadiness, workspace, audit) {
   const needsOperatingPeriod = audit?.auditKind === "soc-2-type-2";
   const ready = needsOperatingPeriod ? programReadiness.operating : programReadiness.evidenceReady;
+  const setupRemaining = programReadiness.setupProgress?.remaining
+    ?? (programReadiness.progress?.mode === "setup-progress" ? programReadiness.progress.remaining : 0);
+  const activeWindow = programReadiness.progress?.mode === "operating-window";
+  const activeWindowLabel = programReadiness.progress?.source === "audit"
+    ? "audit window"
+    : "candidate operating period";
   return stage("program", "Program Readiness", "The management program can be prepared and operated without an audit record or CPA firm.", [
     item(
       "evidence-ready",
@@ -755,9 +763,13 @@ function programFoundationStage(programReadiness, workspace, audit) {
         ? needsOperatingPeriod
           ? `${programReadiness.target.label} is operating for the selected engagement.`
           : `${programReadiness.target.label} is evidence-ready.`
+        : needsOperatingPeriod && activeWindow
+          ? setupRemaining
+            ? `The ${activeWindowLabel} is active, but ${setupRemaining} required setup ${setupRemaining === 1 ? "action remains" : "actions remain"} across scope, policies, controls, and evidence preparation.`
+            : `The ${activeWindowLabel} is active, but current operating work needs attention before treating the engagement as management-ready.`
         : needsOperatingPeriod && programReadiness.evidenceReady
           ? "Start the candidate period and finish the current operating-readiness work before treating a Type 2 engagement as management-ready."
-          : `${programReadiness.counts.action} program-readiness actions remain across scope, policies, controls, and evidence preparation.`,
+          : `${setupRemaining} required setup ${setupRemaining === 1 ? "action remains" : "actions remain"} across scope, policies, controls, and evidence preparation.`,
       workspace || { type: "workspace" }
     )
   ]);

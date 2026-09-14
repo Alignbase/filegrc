@@ -9,7 +9,12 @@ import { collectionRevision } from "../src/collection-revision.js";
 import { planObligations } from "../src/obligations.js";
 import { assessProgramAmendmentReadiness, planProgramAmendment } from "../src/program-amendment.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
-import { assessRetentionReadiness, nearDuplicateInformationTypes } from "../src/retention.js";
+import {
+  assessRetentionReadiness,
+  nearDuplicateInformationTypes,
+  resourceReviewRevisions,
+  retentionReviewResourceIds
+} from "../src/retention.js";
 import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { assessWorkflow } from "../src/workflow.js";
@@ -46,7 +51,11 @@ test("detects missing, mismatched, and stale retention decisions without inferri
 
   const stale = await assessRetentionReadiness(loaded, resources[1]);
   assert.equal(stale.find(({ id }) => id === "retention-rule-retention-customer").status, "action");
-  assert.equal(stale.filter(({ id }) => id.startsWith("retention-use-")).every(({ status }) => status === "action"), true);
+  const staleUses = stale.filter(({ id }) => id.startsWith("retention-use-"));
+  assert.equal(staleUses.length, 1);
+  assert.equal(staleUses[0].status, "action");
+  assert.deepEqual(staleUses[0].affectedResourceIds, ["system-app", "component-app", "vendor-host"]);
+  assert.deepEqual(staleUses[0].retentionScopeResourceIds, ["program-main"]);
   assert.equal(stale.find(({ id }) => id === "retention-source-coverage-source-coverage-logs").status, "action");
 
   resources[7].scopeResourceIds.push("source-coverage-logs");
@@ -60,10 +69,27 @@ test("detects missing, mismatched, and stale retention decisions without inferri
   ]));
   const current = await assessRetentionReadiness(loaded, resources[1]);
   assert.equal(current.some(({ id }) => id === "retention-rule-retention-customer"), false);
-  assert.equal(current.filter(({ id }) => id.startsWith("retention-use-")).every(({ status }) => status === "complete"), true);
+  const currentUses = current.filter(({ id }) => id.startsWith("retention-use-"));
+  assert.equal(currentUses.length, 1);
+  assert.equal(currentUses[0].status, "complete");
   assert.equal(current.find(({ id }) => id === "retention-source-coverage-source-coverage-logs").status, "complete");
   assert.equal(resources[7].retentionPeriod.amount, 1);
   assert.equal(resources[7].dispositionAction, "delete");
+
+  resources[7].scopeResourceIds = ["system-app"];
+  resources[7].reviewedSourceRevisions = Object.fromEntries(await resourceReviewRevisions(
+    loaded,
+    retentionReviewResourceIds(resources[7], loaded)
+  ));
+  const partialCoverage = await assessRetentionReadiness(loaded, resources[1]);
+  const partialUse = partialCoverage.find(({ id }) => id === "retention-use-information-type-customer-records");
+  assert.deepEqual(partialUse.affectedResourceIds, ["component-app", "vendor-host"]);
+  assert.deepEqual(partialUse.retentionScopeResourceIds, ["component-app", "vendor-host"]);
+  resources[7].scopeResourceIds = ["program-main", "source-coverage-logs"];
+  resources[7].reviewedSourceRevisions = Object.fromEntries(await resourceReviewRevisions(
+    loaded,
+    retentionReviewResourceIds(resources[7], loaded)
+  ));
 
   resources[7].reviewedSourceRevisions["commitment-removed"] = "old-review";
   const extraBinding = await assessRetentionReadiness(loaded, resources[1]);
@@ -387,7 +413,7 @@ test("exposes the program amendment plan through the headless CLI", async (conte
   assert.deepEqual(bindings.result.missingResourceIds, []);
 });
 
-test("shared workflow keeps retention action context for browser and CLI consumers", async (context) => {
+test("shared workflow rolls downstream retention checks into one actionable decision", async (context) => {
   const root = await mkdtemp(`${tmpdir()}/filegrc-retention-workflow-context-`);
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeComprehensiveWorkspace(root, "8");
@@ -401,9 +427,12 @@ test("shared workflow keeps retention action context for browser and CLI consume
   });
 
   const workflow = await assessWorkflow(root);
-  const finding = workflow.findings.find(({ code }) => code.includes(`retention-use-${componentEntry.record.id}-${informationType.id}`));
-  assert.equal(finding.resourceId, componentEntry.record.id);
+  const findings = workflow.findings.filter(({ code }) => code.includes(`retention-use-${informationType.id}`));
+  assert.equal(findings.length, 1);
+  const [finding] = findings;
   assert.equal(finding.informationTypeId, informationType.id);
+  assert.ok(finding.affectedResourceIds.includes(componentEntry.record.id));
+  assert.deepEqual(finding.retentionScopeResourceIds, [loaded.resources.find(({ type }) => type === "program").id]);
 });
 
 test("validation requires active retention and mapping reviews to bind their sources", async (context) => {

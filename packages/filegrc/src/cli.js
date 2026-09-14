@@ -447,16 +447,17 @@ export async function runCli(argv = process.argv.slice(2)) {
     const loaded = await loadWorkspace(root);
     const result = await assessProgramReadiness(loaded, { asOf: flags["as-of"], programId: flags.program });
     const output = flags.summary ? summarizeProgramReadiness(result) : result;
+    const headlineStatus = result.progress.status || result.status;
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else if (flags.summary) {
-      console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} program items complete`);
+      console.log(`${headlineStatus.toUpperCase()}: ${result.progress.label} ${result.progress.percent}%. ${result.progress.detail}`);
       for (const stage of output.stages) {
-        console.log(`${stage.status.toUpperCase()}\t${stage.title}\t${stage.counts.action} actions`);
+        console.log(`${stage.status.toUpperCase()}\t${stage.title}\t${stage.counts.action} checks need action`);
       }
       if (output.firstAction) console.log(`Next: ${output.firstAction.title}\t${output.firstAction.message}`);
     }
     else {
-      console.log(`${result.status.toUpperCase()}: ${result.progress.complete} of ${result.progress.total} program items complete`);
+      console.log(`${headlineStatus.toUpperCase()}: ${result.progress.label} ${result.progress.percent}%. ${result.progress.detail}`);
       console.log(
         `${result.target.label}`
         + (result.target.candidateCoverage?.kind === "range"
@@ -2036,6 +2037,8 @@ function summarizeProgramReadiness(result) {
     suggestedCandidatePeriodStart: result.suggestedCandidatePeriodStart,
     target: result.target,
     progress: result.progress,
+    setupProgress: result.setupProgress,
+    checkProgress: result.checkProgress,
     counts: result.counts,
     scopeCounts: Object.fromEntries(
       Object.entries(result.scope).map(([name, ids]) => [name.replace(/Ids$/, ""), ids.length])

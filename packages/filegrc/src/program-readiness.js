@@ -32,6 +32,94 @@ import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 
+export function calculateProgramProgress({
+  stages = [],
+  target = {},
+  evidenceReady = false,
+  operating = false,
+  asOf,
+  window = null
+} = {}) {
+  const typeTwo = target.goal === "soc-2-type-2";
+  const trackedWindow = normalizeProgressWindow(window || target.candidateCoverage, window ? "audit" : "candidate");
+  const windowStarted = Boolean(
+    typeTwo
+    && trackedWindow
+    && asOf
+    && trackedWindow.start <= asOf
+  );
+  const setupProgress = calculateSetupActionProgress(stages, target, Boolean(trackedWindow));
+  if (windowStarted) {
+    const totalDays = calendarDayDistance(trackedWindow.start, trackedWindow.end) + 1;
+    const elapsedDays = Math.min(
+      totalDays,
+      Math.max(0, calendarDayDistance(trackedWindow.start, asOf) + 1)
+    );
+    const percent = totalDays ? Math.round((elapsedDays / totalDays) * 100) : 0;
+    const complete = elapsedDays >= totalDays;
+    const healthy = Boolean(operating);
+    return {
+      mode: "operating-window",
+      label: trackedWindow.source === "audit" ? "Audit window" : "Operating window",
+      status: healthy ? complete ? "Window complete" : "Operating" : "Needs attention",
+      complete: elapsedDays,
+      total: totalDays,
+      remaining: Math.max(0, totalDays - elapsedDays),
+      percent,
+      unit: "day",
+      start: trackedWindow.start,
+      end: trackedWindow.end,
+      source: trackedWindow.source,
+      detail: complete
+        ? `${totalDays} of ${totalDays} days elapsed.`
+        : `Day ${elapsedDays} of ${totalDays}; ${Math.max(0, totalDays - elapsedDays)} days remain.`,
+      operating
+    };
+  }
+
+  return {
+    mode: "setup-progress",
+    label: "Program setup",
+    status: !setupProgress.remaining
+      ? evidenceReady && typeTwo && trackedWindow?.start > asOf
+        ? "Scheduled"
+        : evidenceReady ? "Evidence ready" : "Ready"
+      : evidenceReady && typeTwo ? "Ready to start" : "Needs work",
+    ...setupProgress,
+    unit: "action",
+    detail: setupProgress.remaining
+      ? `${setupProgress.complete} of ${setupProgress.total} required actions complete.`
+      : `All ${setupProgress.total} required actions are complete.`,
+    operating
+  };
+}
+
+function calculateSetupActionProgress(stages, target, windowMilestoneComplete) {
+  const units = new Map();
+  for (const currentStage of stages.filter(({ id }) => id !== "operation")) {
+    for (const current of currentStage.items || []) {
+      if (["info", "later"].includes(current.status) || current.progressUnit === false) continue;
+      const key = `${currentStage.id}:${current.progressUnitId || current.id}`;
+      const existing = units.get(key);
+      if (!existing || existing.status === "complete" && current.status !== "complete") {
+        units.set(key, current);
+      }
+    }
+  }
+
+  const setupUnits = [...units.values()];
+  const complete = setupUnits.filter(({ status }) => status === "complete").length;
+  const total = setupUnits.length + (target.goal === "soc-2-type-2" ? 1 : 0);
+  const completed = complete + (windowMilestoneComplete ? 1 : 0);
+  const remaining = Math.max(0, total - completed);
+  return {
+    complete: completed,
+    total,
+    remaining,
+    percent: total ? Math.round((completed / total) * 100) : 0
+  };
+}
+
 export async function assessProgramReadiness(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
@@ -41,6 +129,15 @@ export async function assessProgramReadiness(input, options = {}) {
   const workspace = loaded.workspace || records.find((record) => record.type === "workspace");
   const program = resolveProgram(loaded, options.programId);
   const asOf = options.asOf || currentCalendarDate(workspace?.timezone || "UTC");
+  const requestedAudit = options.auditId
+    ? records.find((record) => record.type === "audit" && record.id === options.auditId)
+    : null;
+  const auditWindow = requestedAudit?.auditKind === "soc-2-type-2"
+    ? requestedAudit.coverage
+    : selectedAuditWindow(records, program, asOf);
+  const progressWindow = requestedAudit?.auditKind === "soc-2-type-2"
+    ? normalizeProgressWindow(auditWindow, "audit")
+    : selectedProgressWindow(program?.candidateCoverage, auditWindow, asOf);
   const scope = programScope(program, records, byId, loaded.model, loaded);
   const collectionReviews = assessCollectionReviews(loaded, { programId: program.id });
   const markdown = new Map();
@@ -123,26 +220,54 @@ export async function assessProgramReadiness(input, options = {}) {
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
     ...evidenceGateStages,
-    await operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model)
+    await operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model, progressWindow)
   ];
   finalizeStage(stages.at(-1));
-  const candidateStarted = Boolean(
+  const periodStarted = Boolean(
     program?.assuranceGoal === "soc-2-type-2"
-    && program.candidateCoverage?.kind === "range"
-    && coverageStart(program.candidateCoverage) <= asOf
+    && progressWindow?.start <= asOf
   );
   const obligations = planObligations(records, { programId: program.id, asOf, through: asOf, model: loaded.model });
   const policyLibrary = await assessPolicyLibraryUpgrades(loaded);
-  const operating = evidenceReady && candidateStarted && stages.at(-1).counts.action === 0;
+  const operating = Boolean(
+    evidenceReady
+    && periodStarted
+    && stages.at(-1).counts.action === 0
+  );
   const canStartCandidatePeriod = Boolean(
     evidenceReady
     && program?.assuranceGoal === "soc-2-type-2"
     && !program.candidateCoverage
+    && !periodStarted
   );
   const items = stages.flatMap((current) => current.items);
   const managedItems = items.filter((current) => !["info", "later"].includes(current.status));
   const complete = managedItems.filter((current) => current.status === "complete").length;
   const firstAction = items.find((current) => current.status === "action") || null;
+  const target = {
+    programId: program?.id || null,
+    goal: program?.assuranceGoal || "none",
+    label: assuranceGoalLabel(program?.assuranceGoal),
+    candidateCoverage: program?.candidateCoverage || null
+  };
+  const checkProgress = {
+    complete,
+    total: managedItems.length,
+    percent: managedItems.length ? Math.round((complete / managedItems.length) * 100) : 0
+  };
+  const progress = calculateProgramProgress({
+    stages,
+    target,
+    evidenceReady,
+    operating,
+    asOf,
+    window: progressWindow
+  });
+  const setupProgress = calculateSetupActionProgress(
+    stages,
+    target,
+    Boolean(progressWindow)
+  );
 
   return {
     program,
@@ -150,12 +275,7 @@ export async function assessProgramReadiness(input, options = {}) {
     dataModelVersion: String(loaded.model.modelVersion),
     generatedAt: options.generatedAt || new Date().toISOString(),
     asOf,
-    target: {
-      programId: program?.id || null,
-      goal: program?.assuranceGoal || "none",
-      label: assuranceGoalLabel(program?.assuranceGoal),
-      candidateCoverage: program?.candidateCoverage || null
-    },
+    target,
     status: operating ? "operating" : evidenceReady ? "evidence-ready" : "needs-work",
     evidenceReady,
     operating,
@@ -168,11 +288,9 @@ export async function assessProgramReadiness(input, options = {}) {
       ...policyLibrary.proposals,
       ...legacyPolicyLibraryProposals(records)
     ],
-    progress: {
-      complete,
-      total: managedItems.length,
-      percent: managedItems.length ? Math.round((complete / managedItems.length) * 100) : 0
-    },
+    progress,
+    setupProgress,
+    checkProgress,
     counts: countStatuses(items),
     firstAction,
     scope: {
@@ -724,6 +842,7 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
           : "Appoint a reviewer who is separate from the policy owner. The reviewer may be another person in the organization or an external person, and is separate from the CPA firm that may later perform the audit.",
       appointedReviewer || (reviewerNeedsAssignment ? governedRecords[0] : { type: "person" }),
       {
+        progressUnit: false,
         commands: [
           "npx filegrc list appointment --workflow --json",
           "npx filegrc guide appointment --json",
@@ -1468,7 +1587,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   return stage("sources", "Control Evidence Sources", `Complete the authoritative ${modelSupports(model, "component-sources") ? "Components" : "Systems"} for every selected control family before marking the Controls implemented.`, items);
 }
 
-async function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model) {
+async function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model, progressWindow = null) {
   const goal = workspace?.assuranceGoal || "none";
   if (!evidenceReady) {
     return stage("operation", "Operate the Program", "Run the controls and preserve dated evidence after the Evidence Ready gate passes.", [
@@ -1500,12 +1619,9 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
   }
 
   const obligations = planObligations(records, { programId: workspace.id, asOf, through: asOf, model });
-  const start = workspace.candidateCoverage?.kind === "range"
-    ? coverageStart(workspace.candidateCoverage)
-    : null;
-  const end = workspace.candidateCoverage?.kind === "range"
-    ? coverageEnd(workspace.candidateCoverage)
-    : null;
+  const start = progressWindow?.start || null;
+  const end = progressWindow?.end || null;
+  const formalWindow = progressWindow?.source === "audit";
   const startStatus = !start ? "action" : start <= asOf ? "complete" : "later";
   const sourceCoverage = await assessSourceCoverageReadiness(loaded, scope.controls.map(({ id }) => id), workspace);
   const incompleteSourceCoverage = sourceCoverage.filter(({ complete }) => !complete);
@@ -1517,16 +1633,20 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
       !start
         ? "Set the management candidate period start when the Evidence Ready gate passes. Do not backdate it."
         : start <= asOf
-          ? `Management began the candidate Type 2 evidence period on ${start}. This is not the auditor-agreed report period.`
+          ? formalWindow
+            ? `The auditor-agreed Type 2 period began on ${start}. Keep evidence collection and operating work current through the period.`
+            : `Management began the candidate Type 2 evidence period on ${start}. This is not the auditor-agreed report period.`
           : `Evidence collection is scheduled to begin on ${start}.`,
       workspace
     ),
     item(
       "candidate-period-end",
       end ? "complete" : start ? "later" : "info",
-      "Plan the candidate period end",
+      formalWindow ? "Confirm the auditor-agreed period end" : "Plan the candidate period end",
       end
-        ? `Management candidate period: ${start || "start not set"} through ${end}. The CPA firm may agree to different dates.`
+        ? formalWindow
+          ? `Auditor-agreed period: ${start || "start not set"} through ${end}.`
+          : `Management candidate period: ${start || "start not set"} through ${end}. The CPA firm may agree to different dates.`
         : "Add the management target end when useful. Starting reliable evidence collection is the immediate milestone.",
       workspace
     ),
@@ -1782,6 +1902,61 @@ function countStatuses(items) {
   const counts = { complete: 0, action: 0, later: 0, info: 0 };
   for (const current of items) counts[current.status] = (counts[current.status] || 0) + 1;
   return counts;
+}
+
+export function selectedAuditWindow(records, program, asOf) {
+  if (program?.assuranceGoal !== "soc-2-type-2") return null;
+  const candidates = records.filter((record) => (
+    record.type === "audit"
+    && record.auditKind === "soc-2-type-2"
+    && (!record.programId || record.programId === program.id)
+    && !["canceled", "closed", "complete", "delivered"].includes(record.status)
+    && normalizeProgressWindow(record.coverage)
+    && coverageStart(record.coverage) <= asOf
+  ));
+  const statusOrder = new Map([
+    ["planned", 0],
+    ["in-progress", 1],
+    ["fieldwork", 2],
+    ["report-draft", 3],
+    ["issued", 4]
+  ]);
+  candidates.sort((left, right) => (
+    coverageStart(right.coverage).localeCompare(coverageStart(left.coverage))
+    || (statusOrder.get(right.status) ?? -1) - (statusOrder.get(left.status) ?? -1)
+    || coverageEnd(right.coverage).localeCompare(coverageEnd(left.coverage))
+    || left.id.localeCompare(right.id)
+  ));
+  return candidates[0]?.coverage || null;
+}
+
+export function selectedProgressWindow(candidateCoverage, auditCoverage, asOf) {
+  const candidates = [
+    normalizeProgressWindow(candidateCoverage, "candidate"),
+    normalizeProgressWindow(auditCoverage, "audit")
+  ].filter((window) => window && (!asOf || window.start <= asOf));
+  candidates.sort((left, right) => (
+    right.start.localeCompare(left.start)
+    || Number(right.source === "audit") - Number(left.source === "audit")
+    || right.end.localeCompare(left.end)
+  ));
+  if (candidates.length) return candidates[0];
+  return normalizeProgressWindow(candidateCoverage, "candidate")
+    || normalizeProgressWindow(auditCoverage, "audit");
+}
+
+function normalizeProgressWindow(coverage, source = "candidate") {
+  const start = coverage?.start || coverageStart(coverage);
+  const end = coverage?.end || coverageEnd(coverage);
+  if (!start || !end || end < start) return null;
+  return { start, end, source: coverage?.source || source };
+}
+
+function calendarDayDistance(start, end) {
+  const startTime = Date.parse(`${start}T00:00:00Z`);
+  const endTime = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return 0;
+  return Math.round((endTime - startTime) / 86_400_000);
 }
 
 function shiftYear(value, offset) {

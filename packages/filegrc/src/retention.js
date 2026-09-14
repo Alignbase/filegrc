@@ -32,22 +32,42 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
       ]
     }
   ));
-  items.push(...uses.map((use) => {
-    const matches = usableRules.filter((rule) => ruleCoversUse(rule, use, program));
+  const usesByInformationType = new Map();
+  for (const use of uses) {
+    const grouped = usesByInformationType.get(use.informationTypeId) || [];
+    grouped.push(use);
+    usesByInformationType.set(use.informationTypeId, grouped);
+  }
+  items.push(...[...usesByInformationType].map(([informationTypeId, informationTypeUses]) => {
+    const uncoveredUses = informationTypeUses.filter((use) => (
+      !usableRules.some((rule) => ruleCoversUse(rule, use, program))
+    ));
+    const matches = usableRules.filter((rule) => (
+      informationTypeUses.some((use) => ruleCoversUse(rule, use, program))
+    ));
+    const informationTypeTitle = byId.get(informationTypeId)?.title || informationTypeId;
+    const affectedTitles = uncoveredUses.map(({ resource }) => resource.title);
+    const affectedSummary = affectedTitles.length > 3
+      ? `${affectedTitles.slice(0, 3).join(", ")}, and ${affectedTitles.length - 3} more`
+      : affectedTitles.join(", ");
     return readinessItem(
-      `retention-use-${use.resource.id}-${use.informationTypeId}`,
-      matches.length ? "complete" : "action",
-      `Decide retention for ${byId.get(use.informationTypeId)?.title || use.informationTypeId}`,
-      matches.length
-        ? `${use.resource.title} is covered by ${matches.map(({ title }) => title).join(", ")}.`
-        : `${use.resource.title} uses this Information Type, but no active, current retention schedule item covers both the type and scope. Management must choose the cutoff, period, and disposition.`,
-      use.resource,
+      `retention-use-${informationTypeId}`,
+      uncoveredUses.length ? "action" : "complete",
+      `Decide retention for ${informationTypeTitle}`,
+      uncoveredUses.length
+        ? `${affectedTitles.length} in-scope ${affectedTitles.length === 1 ? "resource uses" : "resources use"} this Information Type without an active, current retention decision, including ${affectedSummary}. Management must choose the cutoff, period, disposition, and whether one program-wide rule or separate scoped rules apply.`
+        : `All ${informationTypeUses.length} in-scope ${informationTypeUses.length === 1 ? "use is" : "uses are"} covered by ${matches.map(({ title }) => title).join(", ")}.`,
+      { type: "retention-schedule-item" },
       {
-        informationTypeId: use.informationTypeId,
+        informationTypeId,
+        affectedResourceIds: uncoveredUses.map(({ resource }) => resource.id),
+        retentionScopeResourceIds: uncoveredUses.length === informationTypeUses.length
+          ? [program.id]
+          : uncoveredUses.map(({ resource }) => resource.id),
         retentionScheduleItemIds: matches.map(({ id }) => id),
         commands: [
           "npx filegrc guide retention-schedule-item --json",
-          `npx filegrc scaffold retention-schedule-item --title ${shellArgument(`Retention for ${byId.get(use.informationTypeId)?.title || use.informationTypeId}`)}`
+          `npx filegrc scaffold retention-schedule-item --title ${shellArgument(`Retention for ${informationTypeTitle}`)}`
         ]
       }
     );

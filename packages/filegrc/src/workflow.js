@@ -1125,6 +1125,8 @@ function normalizeFinding(code, item, context) {
     ...(item.createResourceType ? { createResourceType: item.createResourceType } : {}),
     ...(item.sourceResourceIds ? { sourceResourceIds: item.sourceResourceIds } : {}),
     ...(item.informationTypeId ? { informationTypeId: item.informationTypeId } : {}),
+    ...(item.affectedResourceIds ? { affectedResourceIds: item.affectedResourceIds } : {}),
+    ...(item.retentionScopeResourceIds ? { retentionScopeResourceIds: item.retentionScopeResourceIds } : {}),
     ...(item.retentionScheduleItemIds ? { retentionScheduleItemIds: item.retentionScheduleItemIds } : {}),
     ...(item.staleResourceIds ? { staleResourceIds: item.staleResourceIds } : {}),
     ...(subject ? { subject } : {}),

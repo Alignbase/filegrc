@@ -16,8 +16,16 @@ import {
   updateResource
 } from "../src/index.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
+import { selectDefaultAudit } from "../src/audit-selection.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
+
+test("selects the newest relevant audit without depending on file order", () => {
+  const older = { id: "audit-older", status: "fieldwork", coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" } };
+  const newer = { id: "audit-newer", status: "planned", coverage: { kind: "range", startsOn: "2026-04-01", endsOn: "2026-06-30" } };
+  assert.equal(selectDefaultAudit([older, newer], "2026-05-01").id, newer.id);
+  assert.equal(selectDefaultAudit([newer, older], "2026-05-01").id, newer.id);
+});
 
 test("initializes model-owned Type 2 populations and management document links", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-audit-preparation-"));
@@ -104,6 +112,34 @@ test("initializes model-owned Type 2 populations and management document links",
     .find(({ id }) => id === "occurrences-period-occurrences");
   assert.equal(occurrenceItem.status, "action");
   assert.equal(missedOccurrence.status, "needs-work");
+  const regressedDuringWindow = await assessAuditPreparation(await loadWorkspace(root), {
+    auditId: "audit-type-2",
+    programReadiness: {
+      ...injectedReadiness,
+      evidenceReady: false,
+      operating: false,
+      progress: { mode: "operating-window", source: "audit", remaining: 66 },
+      setupProgress: { complete: 9, total: 11, remaining: 2, percent: 82 }
+    }
+  });
+  const foundation = regressedDuringWindow.stages.find(({ id }) => id === "program").items
+    .find(({ id }) => id === "evidence-ready");
+  assert.match(foundation.message, /audit window is active/);
+  assert.match(foundation.message, /2 required setup actions remain/);
+  assert.doesNotMatch(foundation.message, /66 required setup actions|Start the candidate period/);
+  const candidateWindow = await assessAuditPreparation(await loadWorkspace(root), {
+    auditId: "audit-type-2",
+    programReadiness: {
+      ...injectedReadiness,
+      operating: false,
+      progress: { mode: "operating-window", source: "candidate", remaining: 66 },
+      setupProgress: { complete: 11, total: 11, remaining: 0, percent: 100 }
+    }
+  });
+  assert.match(
+    candidateWindow.stages.find(({ id }) => id === "program").items.find(({ id }) => id === "evidence-ready").message,
+    /candidate operating period is active/
+  );
   await createResource(root, {
     id: "action-unrelated-follow-up",
     type: "action-item",

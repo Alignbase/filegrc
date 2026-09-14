@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { runCli } from "../src/cli.js";
 import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
-import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, renderIndex } from "../src/web.js";
+import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, pageActionIdentity, renderIndex, workflowHrefBelongsToPage } from "../src/web.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
 const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.meta.url), "utf8");
@@ -51,12 +51,15 @@ test("builds a self-contained read-only site", async (context) => {
   await access(join(output, "filegrc.css"));
 });
 
-test("uses item-level program readiness for the rendered lifecycle summary", () => {
+test("renders action and operating-window progress in the lifecycle summary", () => {
   assert.deepEqual(dashboardProgramReadiness({
     progress: { percent: 11, complete: 7, total: 62 },
     evidenceReady: false,
     operating: false
   }), {
+    mode: "setup-progress",
+    label: "Program setup",
+    detail: "7 of 62 required actions complete.",
     percent: 11,
     complete: 7,
     total: 62,
@@ -73,6 +76,9 @@ test("uses item-level program readiness for the rendered lifecycle summary", () 
       candidateCoverage: { kind: "range", startsOn: "2026-09-01", endsOn: "2027-02-28" }
     }
   }), {
+    mode: "setup-progress",
+    label: "Program setup",
+    detail: "62 of 62 required actions complete.",
     percent: 100,
     complete: 62,
     total: 62,
@@ -89,12 +95,49 @@ test("uses item-level program readiness for the rendered lifecycle summary", () 
       candidateCoverage: { kind: "range", startsOn: "2026-08-01", endsOn: "2027-01-31" }
     }
   }), {
+    mode: "setup-progress",
+    label: "Program setup",
+    detail: "62 of 62 required actions complete.",
     percent: 100,
     complete: 62,
     total: 62,
     status: "Operating",
     tone: "good"
   });
+  assert.deepEqual(dashboardProgramReadiness({
+    progress: {
+      mode: "operating-window",
+      label: "Operating window",
+      detail: "Day 24 of 90; 66 days remain.",
+      status: "Needs attention",
+      percent: 27,
+      complete: 24,
+      total: 90
+    },
+    evidenceReady: true,
+    operating: false
+  }), {
+    mode: "operating-window",
+    label: "Operating window",
+    detail: "Day 24 of 90; 66 days remain.",
+    percent: 27,
+    complete: 24,
+    total: 90,
+    status: "Needs attention",
+    tone: "warn"
+  });
+  assert.equal(dashboardProgramReadiness({
+    progress: {
+      mode: "operating-window",
+      label: "Audit window",
+      status: "Needs attention",
+      percent: 100,
+      complete: 90,
+      total: 90
+    },
+    evidenceReady: false,
+    operating: false
+  }).tone, "warn");
 });
 
 test("renders the shared Policy lifecycle and activation assessment states", () => {
@@ -197,6 +240,8 @@ test("static and editable navigation receive the same program readiness progress
   assert.equal(editableState.readOnly, false);
   assert.deepEqual(editableState.programReadiness.progress, staticState.programReadiness.progress);
   assert.deepEqual(staticState.programReadiness.progress, cliSummary.progress);
+  assert.deepEqual(staticState.programReadiness.setupProgress, cliSummary.setupProgress);
+  assert.deepEqual(staticState.programReadiness.checkProgress, cliSummary.checkProgress);
   assert.deepEqual(
     dashboardProgramReadiness(editableState.programReadiness),
     dashboardProgramReadiness(staticState.programReadiness)
@@ -679,6 +724,8 @@ test("keeps repository and validation status in separate topbar controls", () =>
   assert.match(APP_SCRIPT, /class="topbar-status">' \+ programSelect \+ topbarProgramReadiness\(\)[\s\S]*class="search topbar-search"/);
   assert.match(APP_SCRIPT, /function topbarProgramReadiness\(\)/);
   assert.match(APP_SCRIPT, /class="topbar-readiness/);
+  assert.match(APP_SCRIPT, /setupRegression = progress\.mode === "operating-window" && setupRemaining > 0/);
+  assert.match(APP_SCRIPT, /progress\.mode === "operating-window" && !setupRegression \? "#\/stage\/run" : nextProgramStageHref\(\)/);
   assert.match(APP_SCRIPT, /class="topbar-status"/);
   assert.match(APP_SCRIPT, /class="validation-chip/);
   assert.match(APP_SCRIPT, /class="repo-chip/);
@@ -1957,6 +2004,60 @@ test("derives step-page completion from the shared workflow assessment", () => {
   assert.match(APP_STYLES, /\.stage-page-tasks\{position:relative;z-index:2/);
 });
 
+test("assigns each program-step action to the page that presents it", () => {
+  const destinations = PROGRAM_PATH.flatMap((stage) => stage.sections.flatMap((section) => [
+    ...section.types.map((type) => ({ stage: stage.id, type, href: `#/resources/${type}` })),
+    ...(section.relatedLinks || []).map((link) => ({ stage: stage.id, type: link.type, href: link.href })),
+    ...(section.utility ? [{ stage: stage.id, utility: section.utility, href: {
+      "evidence-sources": "#/evidence-sources",
+      "retention-schedule": "#/retention-schedule",
+      "audit-packet": "#/audit-packet",
+      "obligation-board": "#/stage/run"
+    }[section.utility] }] : [])
+  ]));
+  const cases = [
+    ["scope", "#/resource/system/system-app?edit=1", "system"],
+    ["policies", "#/resource/policy/policy-security", "policy"],
+    ["policies", "#/retention-schedule?new=1&informationTypeId=customer", "retention-schedule"],
+    ["controls", "#/resource/control/control-access", "control"],
+    ["controls", "#/evidence-sources", "evidence-sources"],
+    ["controls", "#/resource/obligation/obligation-access-review", "obligation"],
+    ["run", "#/resource/risk/risk-access", "risk"],
+    ["audit", "#/resource/audit/audit-2026", "audit"],
+    ["audit", "#/resource/document/document-assertion?stage=audit", "document"],
+    ["audit", "#/audit-packet?auditId=audit-2026", "audit-packet"]
+  ];
+  for (const [stage, href, expected] of cases) {
+    const owners = destinations.filter((destination) => (
+      destination.stage === stage && workflowHrefBelongsToPage(destination, href)
+    ));
+    assert.equal(owners.length, 1, `${stage} ${href} should have one page owner`);
+    assert.equal(owners[0].utility || owners[0].type, expected);
+  }
+  assert.equal(workflowHrefBelongsToPage(
+    { type: "policy", href: "#/policies" },
+    "#/retention-schedule?new=1&informationTypeId=customer"
+  ), false);
+  assert.equal(
+    pageActionIdentity("#/resource/policy/policy-security?edit=1"),
+    pageActionIdentity("#/resource/policy/policy-security?stage=policies")
+  );
+  assert.notEqual(
+    pageActionIdentity("#/retention-schedule?informationTypeId=customer"),
+    pageActionIdentity("#/retention-schedule?informationTypeId=security-log")
+  );
+  assert.notEqual(
+    pageActionIdentity("#/retention-schedule", "collection-review-information-type"),
+    pageActionIdentity("#/retention-schedule", "collection-review-retention-schedule-item")
+  );
+  assert.match(APP_SCRIPT, /function distinctPageActionItems\(items\)/);
+  assert.match(APP_SCRIPT, /pageActionIdentity\(href, item\.key \|\| item\.id\)/);
+  assert.match(APP_SCRIPT, /workflowItemHref\(item\) \|\| "#\/retention-schedule"/);
+  assert.doesNotMatch(APP_SCRIPT, /\{ type: item\.resourceType \|\| "retention-schedule-item" \}/);
+  assert.doesNotMatch(APP_SCRIPT, /\.\.\.programReadinessWorkflowItems\(\)/);
+  assert.match(APP_SCRIPT, /const audit = selectDefaultAudit\(audits, state\.programReadiness\?\.asOf \|\| currentDate\(\)\)/);
+});
+
 test("loads calculated state only for the current browser route", () => {
   assert.match(APP_SCRIPT, /fetchJson\("\/api\/state\/bootstrap"\)/);
   assert.match(APP_SCRIPT, /function desiredStateSections\(route\)/);
@@ -2266,8 +2367,8 @@ test("renders shared obligation and evidence-packet workflows", () => {
 test("keeps the overview focused on readiness, current work, and the audit", () => {
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
   assert.match(APP_SCRIPT, /class="hero overview-hero"/);
-  assert.match(APP_SCRIPT, /<span>Program readiness<\/span><strong>' \+ progress\.percent \+ '%<\/strong>/);
-  assert.match(APP_SCRIPT, /progress\.complete \+ " of " \+ progress\.total \+ " readiness items complete"/);
+  assert.match(APP_SCRIPT, /<span>' \+ esc\(label\) \+ '<\/span><strong>' \+ progress\.percent \+ '%<\/strong>/);
+  assert.match(APP_SCRIPT, /progress\.mode === "operating-window" && !setupRegression \? "#\/stage\/run" : nextProgramStageHref\(\)/);
   assert.match(APP_SCRIPT, /pluralize\(noun, total\) \+ \(complete === 1 \? " is" : " are"\) \+ " ready\."/);
   assert.match(APP_SCRIPT, /function obligationBoardItems\(items, status\)/);
   assert.match(APP_SCRIPT, /function distinctObligationPreviews\(items, limit\)/);
@@ -2314,7 +2415,10 @@ test("uses stage names and routes overview cards through stage pages", () => {
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
   assert.match(APP_SCRIPT, /params\.get\("new"\) === "1"[\s\S]*queueMicrotask\(\(\) => openEditor\(type, null, \{ seed \}\)\)/);
   assert.match(APP_SCRIPT, /informationTypeIds: \[params\.get\("informationTypeId"\)\]/);
-  assert.match(APP_SCRIPT, /scopeResourceIds: \[params\.get\("scopeResourceId"\)\]/);
+  assert.equal(
+    [...APP_SCRIPT.matchAll(/scopeResourceIds: params\.getAll\("scopeResourceId"\)/g)].length,
+    2
+  );
   assert.match(APP_SCRIPT, /scheduleDocumentId: params\.get\("scheduleDocumentId"\)/);
   assert.match(APP_SCRIPT, /scheduleDocuments\.length === 1/);
   assert.match(APP_SCRIPT, /item\.status === "action" && item\.id !== "collection-review-retention-schedule-item"/);

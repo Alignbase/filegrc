@@ -6,7 +6,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
-import { controlOversightEligible } from "../src/program-readiness.js";
+import {
+  calculateProgramProgress,
+  controlOversightEligible,
+  selectedAuditWindow,
+  selectedProgressWindow
+} from "../src/program-readiness.js";
 import {
   assessAuditPreparation,
   assessEvidenceMap,
@@ -23,6 +28,155 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+test("counts distinct readiness actions until the Type 2 window starts", () => {
+  const input = {
+    stages: [
+      { id: "scope", items: [{ id: "scope", status: "complete" }] },
+      {
+        id: "controls",
+        items: [
+          { id: "control-access", status: "action" },
+          { id: "control-access", status: "action" },
+          { id: "summary", status: "action", progressUnit: false }
+        ]
+      },
+      { id: "operation", items: [{ id: "operation-later", status: "later" }] }
+    ],
+    target: {
+      goal: "soc-2-type-2",
+      candidateCoverage: { kind: "range", startsOn: "2026-10-01", endsOn: "2026-12-29" }
+    },
+    asOf: "2026-09-14"
+  };
+  assert.deepEqual(calculateProgramProgress(input), {
+    mode: "setup-progress",
+    label: "Program setup",
+    status: "Needs work",
+    complete: 2,
+    total: 3,
+    remaining: 1,
+    percent: 67,
+    unit: "action",
+    detail: "2 of 3 required actions complete.",
+    operating: false
+  });
+
+  input.stages[1].items[0].status = "complete";
+  input.stages[1].items[1].status = "complete";
+  assert.equal(calculateProgramProgress(input).percent, 100);
+  assert.equal(calculateProgramProgress(input).remaining, 0);
+  assert.equal(calculateProgramProgress({ ...input, evidenceReady: true }).status, "Scheduled");
+});
+
+test("switches readiness progress to elapsed window time without tracking audit work", () => {
+  const premature = calculateProgramProgress({
+    stages: [{ id: "controls", items: [{ id: "control-access", status: "action" }] }],
+    target: {
+      goal: "soc-2-type-2",
+      candidateCoverage: { kind: "range", startsOn: "2026-09-01", endsOn: "2026-09-30" }
+    },
+    evidenceReady: false,
+    asOf: "2026-09-10"
+  });
+  assert.equal(premature.mode, "operating-window");
+  assert.equal(premature.status, "Needs attention");
+  assert.equal(premature.source, "candidate");
+
+  const progress = calculateProgramProgress({
+    stages: [{ id: "controls", items: [{ id: "control-access", status: "complete" }] }],
+    target: {
+      goal: "soc-2-type-2",
+      candidateCoverage: { kind: "range", startsOn: "2026-09-01", endsOn: "2026-09-30" }
+    },
+    evidenceReady: true,
+    operating: true,
+    asOf: "2026-09-10",
+    window: { kind: "range", startsOn: "2026-09-01", endsOn: "2026-09-10" }
+  });
+  assert.deepEqual(progress, {
+    mode: "operating-window",
+    label: "Audit window",
+    status: "Window complete",
+    complete: 10,
+    total: 10,
+    remaining: 0,
+    percent: 100,
+    unit: "day",
+    start: "2026-09-01",
+    end: "2026-09-10",
+    source: "audit",
+    detail: "10 of 10 days elapsed.",
+    operating: true
+  });
+
+  const candidate = calculateProgramProgress({
+    target: {
+      goal: "soc-2-type-2",
+      candidateCoverage: { kind: "range", startsOn: "2026-09-01", endsOn: "2026-09-30" }
+    },
+    evidenceReady: true,
+    operating: false,
+    asOf: "2026-09-10"
+  });
+  assert.equal(candidate.mode, "operating-window");
+  assert.equal(candidate.label, "Operating window");
+  assert.equal(candidate.status, "Needs attention");
+  assert.equal(candidate.complete, 10);
+  assert.equal(candidate.total, 30);
+  assert.equal(candidate.percent, 33);
+});
+
+test("keeps a started formal audit window visible when readiness regresses", () => {
+  const progress = calculateProgramProgress({
+    stages: [{ id: "controls", items: [{ id: "control-access", status: "action" }] }],
+    target: { goal: "soc-2-type-2" },
+    evidenceReady: false,
+    operating: false,
+    asOf: "2026-09-30",
+    window: { kind: "range", startsOn: "2026-09-01", endsOn: "2026-09-30" }
+  });
+  assert.equal(progress.mode, "operating-window");
+  assert.equal(progress.label, "Audit window");
+  assert.equal(progress.percent, 100);
+  assert.equal(progress.status, "Needs attention");
+});
+
+test("selects the newest started formal audit window deterministically", () => {
+  const program = { id: "program-security", assuranceGoal: "soc-2-type-2" };
+  const audits = [
+    {
+      id: "audit-new-planned",
+      type: "audit",
+      auditKind: "soc-2-type-2",
+      programId: program.id,
+      status: "planned",
+      coverage: { kind: "range", startsOn: "2026-04-01", endsOn: "2026-06-30" }
+    },
+    {
+      id: "audit-old-fieldwork",
+      type: "audit",
+      auditKind: "soc-2-type-2",
+      programId: program.id,
+      status: "fieldwork",
+      coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" }
+    }
+  ];
+  assert.deepEqual(selectedAuditWindow(audits, program, "2026-05-01"), audits[0].coverage);
+  assert.deepEqual(selectedAuditWindow(audits.reverse(), program, "2026-05-01"), audits[1].coverage);
+});
+
+test("selects the newest started window across candidate and formal periods", () => {
+  const candidate = { kind: "range", startsOn: "2026-04-01", endsOn: "2026-06-30" };
+  const olderAudit = { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" };
+  assert.deepEqual(selectedProgressWindow(candidate, olderAudit, "2026-05-01"), {
+    start: "2026-04-01",
+    end: "2026-06-30",
+    source: "candidate"
+  });
+  const futureCandidate = { kind: "range", startsOn: "2027-01-01", endsOn: "2027-06-30" };
+  assert.equal(selectedProgressWindow(futureCandidate, olderAudit, "2026-05-01").source, "audit");
+});
 
 test("reveals Control oversight only after every earlier Step 3 item is complete", () => {
   assert.equal(controlOversightEligible([]), false);
@@ -388,6 +542,9 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(inactiveReady.evidenceReady, false);
   assert.equal(inactiveReady.policyActivations[0].gapCount, 0);
   assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "control-control-access").status, "complete");
+  assert.equal(inactiveReady.progress.total, approvalReady.progress.total);
+  assert.equal(inactiveReady.progress.complete, approvalReady.progress.complete + 1);
+  assert.ok(inactiveReady.progress.percent > approvalReady.progress.percent);
   assert.equal(inactiveReady.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "policy-activation-policy-access").status, "blocked");
   assert.equal(inactiveReady.policyActivations[0].label, "Ready to activate");
   assert.equal(inactiveReady.policyActivations[0].canActivateWithDocumentedGaps, true);
@@ -546,7 +703,22 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
     startsOn: "2026-07-01",
     endsOn: "2026-12-31"
   });
+  assert.equal(operating.progress.mode, "operating-window");
+  assert.equal(operating.progress.label, "Operating window");
+  assert.equal(operating.progress.status, "Needs attention");
+  assert.equal(operating.progress.complete, 2);
   assert.equal(operating.stages.find(({ id }) => id === "operation").items.find(({ id }) => id === "risk-assessment").status, "action");
+  const operatingText = await execute(process.execPath, [
+    cli,
+    "program-readiness",
+    "--root",
+    root,
+    "--as-of",
+    "2026-07-02",
+    "--summary"
+  ]);
+  assert.match(operatingText.stdout, /^NEEDS ATTENTION: Operating window 1%\./);
+  assert.doesNotMatch(operatingText.stdout, /^EVIDENCE-READY:/);
 
   await createResource(root, {
     id: "evidence-risk-assessment-2026",
@@ -582,4 +754,31 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(assessed.stages.find(({ id }) => id === "operation").items.find(({ id }) => id === "risk-assessment").status, "complete");
   assert.equal(assessed.status, "operating");
   assert.equal(assessed.operating, true);
+  assert.equal(assessed.progress.mode, "operating-window");
+  assert.equal(assessed.progress.status, "Operating");
+  assert.equal(assessed.progress.percent, operating.progress.percent);
+
+  const currentProgram = assessed.program;
+  await createResource(root, {
+    id: "audit-older-window",
+    type: "audit",
+    title: "Older Type 2 engagement",
+    status: "planned",
+    auditKind: "soc-2-type-2",
+    frameworkIds: assessed.scope.frameworkIds,
+    scope: "Customer service",
+    ownerIds: ["person-owner"],
+    controlIds: ["control-access"],
+    coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" }
+  });
+  const newerCandidate = await assessProgramReadiness(root, { asOf: "2026-07-02" });
+  assert.equal(newerCandidate.progress.source, "candidate");
+  await updateResource(root, currentProgram.type, currentProgram.id, {
+    ...currentProgram,
+    candidateCoverage: { kind: "range", startsOn: "2027-01-01", endsOn: "2027-06-30" }
+  });
+  const formalWindow = await assessProgramReadiness(root, { asOf: "2026-07-02" });
+  assert.equal(formalWindow.progress.source, "audit");
+  assert.equal(formalWindow.operating, true);
+  assert.equal(formalWindow.stages.find(({ id }) => id === "operation").items.find(({ id }) => id === "evidence-running").status, "complete");
 });

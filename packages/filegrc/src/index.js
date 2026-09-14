@@ -86,7 +86,7 @@ export {
   scaffoldExternalReviewerGovernance,
   setupExternalReviewerGovernance
 } from "./external-reviewer.js";
-export { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
+export { assessEvidenceMap, assessProgramReadiness, calculateProgramProgress } from "./program-readiness.js";
 export {
   approveReportingRouteSet,
   assessReportingRoutePeriod,
