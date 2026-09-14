@@ -1023,8 +1023,7 @@ test("ends supplemental history loading after a request failure", async () => {
   assert.equal(state.resources[0].historyLoaded, true);
   assert.equal(state.resources[0].historyError, "history unavailable");
   assert.equal(renders, 1);
-  assert.match(APP_SCRIPT, /entry\.historyError[\s\S]*role="status" aria-live="polite"[\s\S]*Participation and file history are unavailable/);
-  assert.match(APP_SCRIPT, /entry\.historyError[\s\S]*Participation and file history are unavailable/);
+  assert.match(APP_SCRIPT, /entry\.historyError[\s\S]*File history is unavailable\. Reload the record to try again/);
 });
 
 test("ignores a supplemental history failure from a stale state snapshot", async () => {
@@ -1197,25 +1196,41 @@ test("uses the full detail width when a record has no authored body", () => {
   assert.match(detailSource, /detail-grid-structured/);
   assert.match(detailSource, /function renderDetailSupport/);
   assert.match(detailSource, /name: "guidance", content: workflowPanel/);
-  assert.match(detailSource, /name: "record", content: metadataPanel \+ attachmentPanel \+ historyPanel/);
-  assert.match(detailSource, /name: "relationships", content: participationPanel \+ connectionsPanel/);
-  assert.match(detailSource, /const historyPanel = entry\.history\?\.length/);
-  assert.match(detailSource, /class="panel detail-history-panel"/);
-  assert.doesNotMatch(detailSource, /No committed history for this file/);
+  assert.match(detailSource, /name: "record", content: metadataPanel \+ attachmentPanel/);
+  assert.doesNotMatch(detailSource, /name: "relationships"/);
+  assert.doesNotMatch(detailSource, /const historyPanel =/);
   assert.match(detailSource, /class="detail-support-columns"/);
   assert.doesNotMatch(detailSource, /Add Record Markdown when this record needs context beyond its structured fields/);
   assert.doesNotMatch(detailSource, /<h3>Record<\/h3>/);
   assert.match(APP_STYLES, /\.detail-grid\.detail-grid-structured\{grid-template-columns:1fr\}/);
   assert.match(APP_STYLES, /\.detail-grid-structured \.detail-support-columns\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(APP_STYLES, /@media\(min-width:1300px\)\{\.detail-grid-structured \.detail-support-columns\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}\}/);
   assert.match(APP_STYLES, /\.detail-support-stack\{display:grid;min-width:0;gap:14px;align-content:start\}/);
 });
 
-test("places source attributes first in record metadata", () => {
-  assert.match(APP_SCRIPT, /const sourceMetadata = '<div><dt>Source file<\/dt>/);
+test("moves low-frequency record utilities into the header overflow menu", () => {
+  assert.match(APP_SCRIPT, /class="record-overflow"/);
+  assert.match(APP_SCRIPT, /aria-label="More record actions"/);
+  assert.match(APP_SCRIPT, /data-record-modal="info">Record info/);
+  assert.match(APP_SCRIPT, /data-record-modal="connections">Connections/);
+  assert.match(APP_SCRIPT, /data-record-modal="history"/);
+  assert.match(APP_SCRIPT, /data-delete-resource>Delete record/);
+  assert.match(APP_SCRIPT, /function openRecordUtilityDialog\(entry, view\)/);
+  assert.match(APP_SCRIPT, /<dt>Record ID<\/dt>/);
+  assert.match(APP_SCRIPT, /<dt>Source file<\/dt>/);
   assert.match(APP_SCRIPT, /<dt>Workspace revision<\/dt>/);
-  assert.match(APP_SCRIPT, /<dl class="metadata">' \+ sourceMetadata \+ visible\.map/);
-  assert.doesNotMatch(APP_SCRIPT, /<h3>Source<\/h3>/);
+  assert.match(APP_SCRIPT, /<summary>View raw JSON<\/summary>/);
+  assert.match(APP_SCRIPT, /personParticipation\(entry, true\) \+ resourceConnections\(entry, true\)/);
+  assert.match(APP_SCRIPT, /if \(overflowMenu\.contains\(event\.target\)\) return/);
+  assert.match(APP_SCRIPT, /document\.removeEventListener\("click", dismissOnOutsideClick\)/);
+  assert.match(APP_SCRIPT, /recordOverflowCleanup = stopOutsideDismissal/);
+  assert.match(APP_SCRIPT, /event\.key !== "Escape" \|\| !overflowMenu\.open/);
+  assert.match(APP_SCRIPT, /!\["id", "type", "title", "extensions"\]\.includes\(name\)/);
+  assert.match(APP_SCRIPT, /const recordFieldsPanel = visible\.length/);
+  assert.match(APP_SCRIPT, /<dl class="metadata">' \+ visible\.map/);
+  assert.match(APP_STYLES, /\.record-overflow-menu\{position:absolute;z-index:12/);
+  assert.match(APP_STYLES, /\.actions\{align-items:center;justify-content:flex-end;flex-wrap:wrap\}/);
+  assert.match(APP_STYLES, /\.record-overflow\{position:relative;flex:0 0 auto;margin-left:auto\}/);
+  assert.match(APP_STYLES, /\.record-utility-dialog\{width:min\(680px/);
 });
 
 test("keeps long metadata labels separate from their values", () => {
@@ -1258,7 +1273,7 @@ test("aligns list and record page headers", () => {
   assert.match(APP_SCRIPT, /class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"/);
   assert.doesNotMatch(APP_SCRIPT, /class="type-pill"/);
   assert.match(APP_STYLES, /\.page-intro,\.detail-head\{align-items:center;margin-bottom:12px\}/);
-  assert.match(APP_STYLES, /\.actions\{align-items:center\}/);
+  assert.match(APP_STYLES, /\.actions\{align-items:center;justify-content:flex-end;flex-wrap:wrap\}/);
   assert.match(APP_STYLES, /\.page-guide\{[^}]*margin:0;/);
   assert.doesNotMatch(APP_STYLES, /\.page-guide\{margin-top:-/);
   assert.match(APP_STYLES, /\.detail-head h2\{margin:7px 0\}/);
@@ -1373,7 +1388,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
   assert.match(APP_SCRIPT, /Optional: Engage a CPA Firm Early/);
   assert.match(APP_SCRIPT, /function recordNarrative\(record, fields\)/);
-  assert.match(APP_SCRIPT, /function resourceConnections\(entry\)/);
+  assert.match(APP_SCRIPT, /function resourceConnections\(entry, expanded = false\)/);
   assert.match(APP_SCRIPT, /\.\.\.\(definition\.formFields \|\| \[\]\)/);
   assert.match(APP_SCRIPT, /Linked from /);
   assert.match(APP_SCRIPT, /Linked by /);
@@ -1686,7 +1701,6 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_STYLES, /\.detail-grid aside \.workflow-findings,\.detail-grid aside \.resource-review-criteria ul\{grid-template-columns:1fr\}/);
   assert.match(APP_STYLES, /@media\(max-width:760px\)\{\.detail-grid aside\{order:-1\}\}/);
   assert.match(APP_STYLES, /\.detail-grid-structured \.detail-support-stack\{display:contents\}/);
-  assert.match(APP_STYLES, /\.detail-grid-structured \.detail-history-panel\{order:1\}/);
   assert.match(APP_STYLES, /\.workflow-findings>a:hover\{/);
   assert.match(APP_STYLES, /\.event-dialog label\[hidden\]\{display:none\}/);
   assert.match(APP_SCRIPT, /function controlOperationTracking\(control\)/);

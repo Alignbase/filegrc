@@ -93,6 +93,7 @@ let onboardingPendingDraft = false;
 const resourceDetailRequests = new Map();
 const stateSectionRequests = new Map();
 let resourceGuideCleanup = null;
+let recordOverflowCleanup = null;
 let repositorySyncPollTimer = null;
 let repositorySyncPollInFlight = false;
 let mutationStateRefreshInFlight = false;
@@ -165,6 +166,8 @@ function handleRouteChange() {
 function render() {
   resourceGuideCleanup?.();
   resourceGuideCleanup = null;
+  recordOverflowCleanup?.();
+  recordOverflowCleanup = null;
   const previousNavigation = root.querySelector(".sidebar-nav");
   if (previousNavigation) navigationScrollTop = previousNavigation.scrollTop;
   const route = parseRoute();
@@ -3155,12 +3158,11 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const narrative = recordNarrative(entry.record, fields);
   const narrativeNames = new Set(narrative.map(([name]) => name));
   const visible = Object.entries(entry.record).filter(([name]) => (
-    !["id", "type", "title"].includes(name)
+    !["id", "type", "title", "extensions"].includes(name)
     && !fields[name]?.content
     && !narrativeNames.has(name)
   ));
   const content = Object.entries(entry.content);
-  const sourceMetadata = '<div><dt>Source file</dt><dd><code>' + esc(entry.relativePath) + '</code></dd></div><div><dt>Workspace revision</dt><dd>' + (state.git.available ? '<code>' + esc(state.git.shortCommit) + '</code>' : "Unavailable until the workspace is committed.") + '</dd></div>';
   const narrativeContent = narrative.length
     ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(titleCase(fields[name]?.label || humanize(name))) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
     : "";
@@ -3213,26 +3215,41 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     ? '<section class="panel detail-main">' + narrativeContent + markdownContent + addRecordContent + '</section>'
     : "";
   const attachmentPanel = type === "evidence" ? evidenceAttachmentPanel(entry) : "";
-  const historyPanel = entry.history?.length
-    ? '<section class="panel detail-history-panel"><div class="panel-head"><h3>File History</h3></div><div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div></section>'
+  const recordFieldsPanel = visible.length
+    ? '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>'
     : "";
-  const participationPanel = entry.historyLoaded === false
-    ? '<section class="panel detail-support-panel" role="status" aria-live="polite" aria-busy="true"><div class="panel-head"><h3>Participation</h3></div><p class="muted is-loading">' + loadingIndicator("Loading participation and file history…") + '</p></section>'
-    : entry.historyError
-      ? '<section class="panel detail-support-panel" role="status" aria-live="polite"><div class="panel-head"><h3>Participation</h3></div><p class="muted">Participation and file history are unavailable. Reload the record to try again.</p></section>'
-      : personParticipation(entry);
   const supportPanels = renderDetailSupport({
     hasRecordBody,
     workflowPanel: workflowGuidance({ type, id, title: "Next steps", workflow: entry.workflow }) || recordCompletionState(entry.record),
-    metadataPanel: '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + sourceMetadata + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>',
-    attachmentPanel,
-    participationPanel,
-    connectionsPanel: resourceConnections(entry),
-    historyPanel
+    metadataPanel: recordFieldsPanel,
+    attachmentPanel
   });
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' + (!definition.singleton ? '<button class="button danger" id="delete-resource">Delete</button>' : "") : "") + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
+  const mayDelete = !state.readOnly && !routeSetLocked && !definition.singleton;
+  const recordMenu = '<details class="record-overflow"><summary aria-label="More record actions" title="More record actions"><span aria-hidden="true">•••</span></summary><div class="record-overflow-menu" aria-label="Record actions"><button type="button" data-record-modal="info">Record info</button><button type="button" data-record-modal="connections">Connections</button><button type="button" data-record-modal="history"' + (entry.historyLoaded === false ? ' disabled' : '') + '>File history' + (entry.historyLoaded === false ? ' (loading)' : '') + '</button>' + (mayDelete ? '<div class="record-overflow-separator"></div><button class="danger-text" type="button" data-delete-resource>Delete record</button>' : '') + '</div></details>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
+  main.querySelectorAll("[data-record-modal]").forEach((button) => button.addEventListener("click", () => {
+    button.closest("details")?.removeAttribute("open");
+    openRecordUtilityDialog(entry, button.dataset.recordModal);
+  }));
+  const overflowMenu = main.querySelector(".record-overflow");
+  const stopOutsideDismissal = () => document.removeEventListener("click", dismissOnOutsideClick);
+  const dismissOnOutsideClick = (event) => {
+    if (overflowMenu.contains(event.target)) return;
+    overflowMenu.removeAttribute("open");
+    stopOutsideDismissal();
+  };
+  overflowMenu?.addEventListener("toggle", () => {
+    stopOutsideDismissal();
+    if (overflowMenu.open) queueMicrotask(() => document.addEventListener("click", dismissOnOutsideClick));
+  });
+  overflowMenu?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !overflowMenu.open) return;
+    overflowMenu.removeAttribute("open");
+    overflowMenu.querySelector("summary")?.focus();
+  });
+  recordOverflowCleanup = stopOutsideDismissal;
   main.querySelector("[data-external-reviewer-governance]")?.addEventListener("click", openExternalReviewerGovernanceDialog);
   main.querySelector("[data-next-audit-cycle]")?.addEventListener("click", () => openNextAuditCycleDialog(entry.record));
   main.querySelector("[data-correct-audit-population]")?.addEventListener("click", async () => {
@@ -3343,7 +3360,8 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   }));
   main.querySelector("#add-record-content")?.addEventListener("click", () => openEditor(type, entry, { addRecordContent: true }));
   main.querySelectorAll("[data-edit-content]").forEach((button) => button.addEventListener("click", () => openContentEditor(entry, button.dataset.editContent)));
-  main.querySelector("#delete-resource")?.addEventListener("click", async () => {
+  main.querySelector("[data-delete-resource]")?.addEventListener("click", async () => {
+    main.querySelector(".record-overflow")?.removeAttribute("open");
     const repositoryPrefetch = prefetchRepositoryForReview();
     if (!await confirmAction({
       kicker: "Delete record",
@@ -3369,15 +3387,48 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   }
 }
 
-function renderDetailSupport({ hasRecordBody, workflowPanel, metadataPanel, attachmentPanel, participationPanel, connectionsPanel, historyPanel }) {
-  const panels = workflowPanel + metadataPanel + attachmentPanel + participationPanel + connectionsPanel + historyPanel;
+function renderDetailSupport({ hasRecordBody, workflowPanel, metadataPanel, attachmentPanel }) {
+  const panels = workflowPanel + metadataPanel + attachmentPanel;
   if (hasRecordBody) return '<aside>' + panels + '</aside>';
   const stacks = [
     { name: "guidance", content: workflowPanel },
-    { name: "record", content: metadataPanel + attachmentPanel + historyPanel },
-    { name: "relationships", content: participationPanel + connectionsPanel }
+    { name: "record", content: metadataPanel + attachmentPanel }
   ].filter(({ content }) => content);
   return '<aside class="detail-support-columns">' + stacks.map(({ name, content }) => '<div class="detail-support-stack ' + name + '">' + content + '</div>').join("") + '</aside>';
+}
+
+function openRecordUtilityDialog(entry, view) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "alert-dialog record-utility-dialog";
+  const definitions = {
+    info: {
+      kicker: "Record info",
+      title: entry.record.title,
+      body: '<dl class="metadata record-info"><div><dt>Record ID</dt><dd><code>' + esc(entry.record.id) + '</code></dd></div><div><dt>Type</dt><dd>' + esc(state.model.resources[entry.record.type].title) + '</dd></div><div><dt>Source file</dt><dd><code>' + esc(entry.relativePath) + '</code></dd></div><div><dt>Workspace revision</dt><dd>' + (state.git.available ? '<code>' + esc(state.git.shortCommit) + '</code>' : "Unavailable until the workspace is committed.") + '</dd></div>' + (entry.record.extensions ? '<div><dt>Extensions</dt><dd>' + formatValue(entry.record.extensions, "extensions", entry.record.type) + '</dd></div>' : '') + '</dl><details class="record-json"><summary>View raw JSON</summary><pre class="compact-json">' + esc(JSON.stringify(entry.record, null, 2)) + '</pre></details>'
+    },
+    connections: {
+      kicker: "Connections",
+      title: entry.record.title,
+      body: (personParticipation(entry, true) + resourceConnections(entry, true)) || '<p class="muted">This record has no connected records.</p>'
+    },
+    history: {
+      kicker: "File history",
+      title: entry.record.title,
+      body: entry.historyError
+        ? '<p class="muted">File history is unavailable. Reload the record to try again.</p>'
+        : entry.history?.length
+          ? '<div class="history">' + entry.history.map((commit) => '<div><code>' + esc(commit.shortCommit) + '</code><span><strong>' + esc(commit.subject) + '</strong><small>' + esc(commit.author) + ' · ' + esc(formatLocalDateTime(commit.timestamp)) + '</small></span></div>').join("") + '</div>'
+          : '<p class="muted">No committed history is available for this record.</p>'
+    }
+  };
+  const definition = definitions[view];
+  if (!definition) return;
+  dialog.setAttribute("aria-labelledby", "record-utility-title");
+  dialog.innerHTML = '<div class="dialog-head"><div><p class="kicker">' + esc(definition.kicker) + '</p><h2 id="record-utility-title">' + esc(titleCase(definition.title)) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><div class="record-utility-body">' + definition.body + '</div><div class="dialog-actions"><button type="button" class="button primary">Close</button></div>';
+  document.body.append(dialog);
+  dialog.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
 }
 
 function evidenceAttachmentPanel(entry) {
@@ -3563,7 +3614,7 @@ function recordContentDefinition(type) {
   };
 }
 
-function personParticipation(entry) {
+function personParticipation(entry, expanded = false) {
   if (entry.record.type !== "person") return "";
   const personId = entry.record.id;
   const appointments = resourcesOfType("appointment")
@@ -3603,8 +3654,8 @@ function personParticipation(entry) {
   const count = affiliations.length + assignments.length;
   if (!count) return "";
   return '<section class="panel connections-panel"><div class="panel-head"><h3>Participation</h3><span>' + count + '</span></div>'
-    + personParticipationGroup("Appointments and teams", affiliations, 8, "more appointments or teams")
-    + personParticipationGroup("Assigned records", assignments, 10, "more assigned records")
+    + personParticipationGroup("Appointments and teams", affiliations, expanded ? affiliations.length : 8, "more appointments or teams")
+    + personParticipationGroup("Assigned records", assignments, expanded ? assignments.length : 10, "more assigned records")
     + '</section>';
 }
 
@@ -3617,7 +3668,7 @@ function personParticipationGroup(title, rows, limit, moreLabel) {
     + '</div>';
 }
 
-function resourceConnections(entry) {
+function resourceConnections(entry, expanded = false) {
   const relatedPeopleOnly = entry.record.type === "person";
   const connections = new Map();
   const entriesById = new Map(state.resources.map((item) => [item.record.id, item]));
@@ -3652,7 +3703,7 @@ function resourceConnections(entry) {
     return firstType - secondType || first.entry.record.title.localeCompare(second.entry.record.title);
   });
   if (!sorted.length) return "";
-  const visible = sorted.slice(0, 14);
+  const visible = expanded ? sorted : sorted.slice(0, 14);
   return '<section class="panel connections-panel"><div class="panel-head"><h3>' + (relatedPeopleOnly ? "Related people" : "Connections") + '</h3><span>' + sorted.length + '</span></div><div class="connections">' + visible.map(({ entry: connected, reasons }) => '<a href="#/resource/' + encodeURIComponent(connected.record.type) + '/' + encodeURIComponent(connected.record.id) + '"><strong>' + esc(connected.record.title) + '</strong><small>' + esc([...reasons].join(" · ")) + '</small></a>').join("") + '</div>' + (sorted.length > visible.length ? '<p class="connections-more">' + (sorted.length - visible.length) + ' more connections are available through the linked records.</p>' : "") + '</section>';
 }
 
@@ -6385,7 +6436,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .reconciliation-panel>p{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.5}.reconciliation-candidates{display:grid;gap:9px}.reconciliation-candidate{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);gap:16px;padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.reconciliation-candidate strong{margin-left:8px;font-size:13.2px}.reconciliation-candidate p{margin:7px 0;color:var(--muted);font-size:12px;line-height:1.5}.reconciliation-candidate small{display:block;overflow-wrap:anywhere;color:var(--muted);font-size:9.6px}.reconciliation-actions{display:grid;gap:8px;justify-items:end;align-content:center}.reconciliation-actions>code{max-width:100%;overflow-wrap:anywhere;color:var(--muted);font-size:9.6px;text-align:right}
 .onboarding-save-status{color:var(--muted);font-size:10.8px;line-height:1.35}.onboarding-save-status:empty{display:none}.onboarding-save-status:not(:empty){order:-1;flex-basis:100%;margin-bottom:4px}.onboarding-retry-sync{margin-top:9px}.detail-loading{color:var(--muted)}
 .save-status{min-height:16px;color:var(--muted);font-size:10.8px;line-height:1.35}
-.page-intro,.detail-head{align-items:center;margin-bottom:12px}.actions{align-items:center}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:10.8px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+.page-intro,.detail-head{align-items:center;margin-bottom:12px}.actions{align-items:center;justify-content:flex-end;flex-wrap:wrap}.detail-head>div:first-child{min-width:0}.detail-head h2{margin:7px 0}.detail-head .header-breadcrumbs{margin:0;font-size:10.8px;line-height:normal;min-height:11px;align-items:center}.header-breadcrumbs span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}.record-overflow{position:relative;flex:0 0 auto;margin-left:auto}.record-overflow>summary{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);cursor:pointer;list-style:none}.record-overflow>summary::-webkit-details-marker{display:none}.record-overflow>summary span{position:relative;top:-3px;font-size:18px;letter-spacing:2px;line-height:1}.record-overflow>summary:hover,.record-overflow[open]>summary{border-color:var(--accent-light);background:var(--accent-soft);color:var(--accent)}.record-overflow-menu{position:absolute;z-index:12;top:calc(100% + 6px);right:0;display:grid;width:190px;padding:6px;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 14px 36px rgba(0,0,53,.16)}.record-overflow-menu button{width:100%;border:0;border-radius:6px;padding:9px 10px;background:none;color:var(--ink);font-size:13.2px;text-align:left;cursor:pointer}.record-overflow-menu button:hover{background:var(--surface-soft)}.record-overflow-menu button:disabled{cursor:wait;color:var(--muted)}.record-overflow-menu .danger-text{color:var(--red)}.record-overflow-separator{height:1px;margin:5px 4px;background:var(--line)}.record-utility-dialog{width:min(680px,calc(100vw - 30px));max-height:min(760px,calc(100vh - 30px));overflow:auto}.record-utility-body{display:grid;gap:12px;margin:19px 0}.record-utility-body>.panel{box-shadow:none}.record-info>div:first-child{border-top:0}.record-json{border-top:1px solid var(--line);padding-top:13px}.record-json summary{color:var(--accent);font-size:13.2px;font-weight:750;cursor:pointer}.record-json pre{max-height:360px;overflow:auto;margin:12px 0 0}.record-utility-dialog .history{max-height:none}
 .not-found{max-width:620px;padding:28px}.not-found h2{font-family:Georgia,serif;font-size:37.2px;font-weight:500;margin:7px 0}.not-found>p:not(.kicker){margin:0;color:var(--muted);font-size:15.6px}.not-found .page-actions{justify-content:flex-start;margin-top:22px}
 .button.danger-action{background:var(--red);border-color:var(--red);color:#fff}
 @media(max-width:1200px){.readiness-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.audit-engagement{grid-template-columns:1fr 1fr}.audit-engagement .button{grid-column:1/-1;justify-self:start}}
@@ -6396,13 +6447,12 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .detail-grid aside .panel{width:100%;max-height:min(520px,65vh);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.detail-grid aside .workflow-guidance,.detail-grid aside .resource-review-criteria{margin:0}.detail-grid aside .resource-review-criteria{padding:21px}.detail-grid aside .detail-workflow-panel{max-height:min(440px,60vh)}.detail-grid aside .detail-review-panel{max-height:min(300px,50vh)}.detail-grid aside .workflow-findings,.detail-grid aside .resource-review-criteria ul{grid-template-columns:1fr}.detail-support-stack{display:grid;min-width:0;gap:14px;align-content:start}
 @media(max-width:760px){.detail-grid aside{order:-1}}
 @media(max-width:760px){.reconciliation-candidate{grid-template-columns:1fr}.reconciliation-actions{justify-items:start}.reconciliation-actions>code{text-align:left}}
-@media(max-width:760px){.detail-grid-structured .detail-support-columns{display:flex;flex-direction:column}.detail-grid-structured .detail-support-stack{display:contents}.detail-grid-structured .detail-history-panel{order:1}}
+@media(max-width:760px){.detail-grid-structured .detail-support-columns{display:flex;flex-direction:column}.detail-grid-structured .detail-support-stack{display:contents}}
 @media(max-width:760px){.guide-review ul,.resource-review-criteria ul{grid-template-columns:1fr}.collection-review-head,.collection-review-foot{align-items:stretch;flex-direction:column}.record-workflow-action{min-width:0}}
 @media(max-width:760px){.policy-content-table>.section-head{display:block}.policy-content-tools{justify-content:flex-start;margin-top:15px}.policy-content-tools>label:first-child{flex:1 1 100%;width:100%}.policy-content-tools input[type="search"]{width:100%;min-width:0}}
 @media(max-width:520px){.onboarding-form,.onboarding-sections,.setup-steps{grid-template-columns:1fr}.onboarding-form label.wide{grid-column:auto}.onboarding-actions{flex-wrap:wrap}.onboarding-skip{width:100%;order:3;margin:3px 0 0}.readiness-flow{grid-template-columns:1fr}.obligation-card-foot{align-items:flex-start;flex-direction:column}.obligation-action{align-self:flex-start}}
 @media(min-width:761px){.detail-grid{grid-template-columns:minmax(270px,1fr) minmax(0,2fr)}.detail-grid aside{grid-column:1;grid-row:1}.detail-main{grid-column:2;grid-row:1}}
 @media(min-width:761px){.detail-grid.detail-grid-structured{grid-template-columns:1fr}.detail-grid-structured aside{grid-column:1;grid-row:1}.detail-grid-structured .detail-support-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(min-width:1300px){.detail-grid-structured .detail-support-columns{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.sidebar{visibility:hidden;transition:transform .2s,visibility 0s .2s}.sidebar.shown{visibility:visible;transition-delay:0s}.nav-close{display:grid;place-items:center;position:absolute;top:25px;right:18px;width:34px;height:34px;border:1px solid #5966a4;border-radius:50%;background:#11174a;color:#eef1ff;font-size:24px;cursor:pointer}.nav-scrim{display:block;position:fixed;inset:0;border:0;background:rgba(0,0,24,.38);opacity:0;pointer-events:none;transition:opacity .2s;z-index:15}.sidebar.shown+.nav-scrim{opacity:1;pointer-events:auto}.pagination{justify-content:space-between;gap:8px}.page-status{min-width:0}}
 @media(max-width:760px){.topbar{height:56px}.topbar>div:first-of-type{display:none}.topbar-readiness{flex:0 1 220px;min-width:120px}.nav-close{font-size:0}.nav-close:before,.nav-close:after{content:"";position:absolute;width:13px;height:2px;border-radius:2px;background:currentColor;transform:rotate(45deg)}.nav-close:after{transform:rotate(-45deg)}}
 
