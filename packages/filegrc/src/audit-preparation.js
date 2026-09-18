@@ -105,17 +105,21 @@ export async function assessAuditPreparation(input, options = {}) {
   }
   const items = stages.flatMap((stage) => stage.items);
   const counts = countStatuses(items);
-  const managedItems = items.filter((item) => !["external", "info", "later"].includes(item.status));
-  const completedManagedItems = managedItems.filter((item) => item.status === "complete");
+  const progressUnits = items.flatMap((current) => (
+    current.progressUnit === false || ["external", "info", "later"].includes(current.status)
+      ? []
+      : current.progressUnits?.length ? current.progressUnits : [current]
+  )).filter((current) => !["external", "info", "later"].includes(current.status));
+  const completedProgressUnits = progressUnits.filter((current) => current.status === "complete");
   return {
     schemaVersion: 1,
     generatedAt: options.generatedAt || new Date().toISOString(),
     audit: audit ? auditSummary(audit) : null,
     status: !audit ? "not-started" : counts.action ? "needs-work" : "management-ready",
     progress: {
-      complete: completedManagedItems.length,
-      total: managedItems.length,
-      percent: managedItems.length ? Math.round((completedManagedItems.length / managedItems.length) * 100) : 0
+      complete: completedProgressUnits.length,
+      total: progressUnits.length,
+      percent: progressUnits.length ? Math.round((completedProgressUnits.length / progressUnits.length) * 100) : 0
     },
     counts,
     canInitialize: Boolean(audit
@@ -965,7 +969,7 @@ function occurrenceContinuityStage(audit, records, model, asOf) {
   const gapStatuses = new Set(["overdue", "blocked", "due", "proposed"]);
   const calendarGaps = plan.calendarItems.filter(({ status }) => gapStatuses.has(status));
   const eventGaps = plan.eventRuns
-    .filter((run) => run.occurredOn >= periodStart && run.occurredOn <= periodThrough)
+    .filter((run) => run.status !== "canceled" && run.occurredOn >= periodStart && run.occurredOn <= periodThrough)
     .flatMap((run) => run.actions)
     .filter((action) => (
       (gapStatuses.has(action.status) || action.lateCompletion)
@@ -974,6 +978,57 @@ function occurrenceContinuityStage(audit, records, model, asOf) {
   const gaps = [...calendarGaps, ...eventGaps];
   const lateGaps = eventGaps.filter(({ lateCompletion }) => lateCompletion);
   const firstGap = gaps[0];
+  const progressUnits = occurrenceProgressUnits(plan, {
+    selectedControlIds,
+    periodStart,
+    periodThrough
+  });
+  return occurrenceContinuityStageResult({
+    audit,
+    gaps,
+    lateGaps,
+    firstGap,
+    eventGaps,
+    periodThrough,
+    progressUnits
+  });
+}
+
+export function occurrenceProgressUnits(plan, { selectedControlIds, periodStart, periodThrough }) {
+  return [
+    ...plan.calendarItems.flatMap((occurrence) => {
+      const completedMemberIds = new Set(occurrence.completedMemberIds || []);
+      const conclusionComplete = occurrence.reconciliationStatus === "reconciled"
+        && ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.operatingResult);
+      const occurrenceComplete = conclusionComplete || occurrence.legacySchedule && occurrence.status === "complete";
+      const memberUnits = (occurrence.expectedMemberIds || []).map((resourceId) => ({
+        id: `occurrence-${occurrence.occurrenceKey}-member-${resourceId}`,
+        status: occurrenceComplete || completedMemberIds.has(resourceId) ? "complete" : "action",
+        title: `${occurrence.title} member ${resourceId}`
+      }));
+      const membersComplete = memberUnits.every(({ status }) => status === "complete");
+      return [
+        ...memberUnits,
+        {
+          id: `occurrence-${occurrence.occurrenceKey}-reconciliation`,
+          status: occurrenceComplete ? "complete" : membersComplete && occurrence.membershipFinal ? "action" : "blocked",
+          title: `${occurrence.title} reconciliation`
+        }
+      ];
+    }),
+    ...plan.eventRuns
+      .filter((run) => run.status !== "canceled" && run.occurredOn >= periodStart && run.occurredOn <= periodThrough)
+      .flatMap((run) => run.actions)
+      .filter((action) => action.controlIds.some((id) => selectedControlIds.has(id)))
+      .map((action) => ({
+        id: `event-action-${action.actionItemId || action.key}`,
+        status: action.status === "complete" && !action.lateCompletion ? "complete" : "action",
+        title: action.title
+      }))
+  ];
+}
+
+function occurrenceContinuityStageResult({ audit, gaps, lateGaps, firstGap, eventGaps, periodThrough, progressUnits }) {
   return stage(
     "occurrences",
     "Operating Occurrences",
@@ -997,7 +1052,8 @@ function occurrenceContinuityStage(audit, records, model, asOf) {
         commands: firstGap?.actionItemId ? [
           `npx filegrc get ${firstGap.actionItemId} --json`,
           `npx filegrc scaffold finding --title "Late operating occurrence review"`
-        ] : []
+        ] : [],
+        progressUnits
       }
     )]
   );
@@ -1348,12 +1404,33 @@ function populationsStage(audit, records, byId, model) {
   const items = templates.map((template) => {
     const population = populations.find((record) => record.populationKind === template.kind);
     const result = populationResult(population, audit, byId);
+    const preparationComplete = populationPreparationComplete(population, audit);
     return item(
       `population-${template.kind}`,
       result.status,
       template.title,
       result.message || `Use ${template.sourcePrompt} as the starting point, then record the exact authoritative source.`,
-      population || { type: "audit-population" }
+      population || { type: "audit-population" },
+      {
+        progressUnits: population?.status === "not-applicable" ? [
+          {
+            id: `population-${template.kind}-applicability`,
+            status: result.status,
+            title: `${template.title} applicability decision`
+          }
+        ] : [
+          {
+            id: `population-${template.kind}-preparation`,
+            status: preparationComplete ? "complete" : "action",
+            title: `${template.title} preparation`
+          },
+          {
+            id: `population-${template.kind}-conclusion`,
+            status: result.status === "complete" ? "complete" : preparationComplete ? "action" : "blocked",
+            title: `${template.title} reconciliation conclusion`
+          }
+        ]
+      }
     );
   });
   return stage(
@@ -1400,7 +1477,7 @@ function auditorStage(audit, byId, modelVersion) {
   ]);
 }
 
-function populationResult(population, audit, byId) {
+export function populationResult(population, audit, byId) {
   if (!population) return { status: "action", message: "Initialize this population for the engagement." };
   if (!coverageMatches(
     population.coverage,
@@ -1433,6 +1510,7 @@ function populationResult(population, audit, byId) {
     && evidence.type === "evidence"
     && evidence.artifactKind === "population-export"
     && evidence.status === "verified"
+    && (population.ownerIds || []).length > 0
     && (population.sourceComponentId || population.sourceSystemId)
     && (evidence.sourceComponentId || evidence.sourceSystemId) === (population.sourceComponentId || population.sourceSystemId)
     && coverageMatches(
@@ -1457,6 +1535,21 @@ function populationResult(population, audit, byId) {
     status: "complete",
     message: `${evidence.populationCount} items reconciled from ${evidence.sourceDescription || "the authoritative source"}${population.conclusion === "complete-with-exceptions" ? " with documented exceptions" : ""}.`
   };
+}
+
+function populationPreparationComplete(population, audit) {
+  if (!population || !coverageMatches(
+    population.coverage,
+    coverageStart(audit?.coverage),
+    coverageEnd(audit?.coverage)
+  )) return false;
+  if (population.status === "not-applicable") {
+    return !(population.controlIds || []).length && Boolean(String(population.notApplicableReason || "").trim());
+  }
+  return Boolean(
+    (population.ownerIds || []).length
+    && (population.sourceComponentId || population.sourceSystemId)
+  );
 }
 
 function timestampDate(value, timezone) {
@@ -1730,7 +1823,9 @@ function item(id, status, title, message, resource = {}, options = {}) {
     ...(options.commands?.length ? { commands: options.commands } : {}),
     ...(options.affectedActionItemIds?.length ? { affectedActionItemIds: options.affectedActionItemIds } : {}),
     ...(options.affectedEventIds?.length ? { affectedEventIds: options.affectedEventIds } : {}),
-    ...(options.lateCount ? { lateCount: options.lateCount } : {})
+    ...(options.lateCount ? { lateCount: options.lateCount } : {}),
+    ...(options.progressUnits?.length ? { progressUnits: options.progressUnits } : {}),
+    ...(options.progressUnit === false ? { progressUnit: false } : {})
   };
 }
 

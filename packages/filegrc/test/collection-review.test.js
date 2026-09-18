@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -33,7 +33,8 @@ import {
   validateWorkspace
 } from "../src/index.js";
 import { createAppState, createAppStateSection } from "../src/state.js";
-import { resourceReviewRevisions, retentionReviewResourceIds } from "../src/retention.js";
+import { sourceCoverageComplete } from "../src/source-coverage.js";
+import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace } from "./helpers.js";
 import { currentCalendarDate } from "../src/time.js";
@@ -123,6 +124,183 @@ test("offers Control collection oversight only to people outside Control and Obl
   const assessment = assessCollectionReview(loaded, "control", { programId: "program-example" });
   assert.deepEqual(assessment.eligibleReviewerIds, ["person-independent-approver-example"]);
   assert.deepEqual(assessment.reviewerConflictIds, ["person-example"]);
+});
+
+test("blocks an inventory collection review until every record proposal is complete", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-collection-proposal-gate-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const componentEntry = loaded.entries.find(({ record }) => record.id === "component-example");
+  await writeFile(
+    componentEntry.path,
+    `${JSON.stringify({ ...componentEntry.record, status: "planned" }, null, 2)}\n`,
+    "utf8"
+  );
+  const planned = await loadWorkspace(root);
+  const assessment = assessCollectionReview(planned, "component", { programId: "program-example" });
+  assert.equal(assessment.recordProposals.length, 1);
+  assert.equal(assessment.recordProposals[0].complete, false);
+  assert.match(assessment.message, /before the collection review/);
+  const state = await createAppStateSection(planned, "program", {
+    programId: "program-example",
+    programReadiness: { stages: [] }
+  });
+  assert.deepEqual(state.collectionReviews.component.recordProposals, assessment.recordProposals);
+  assert.deepEqual(state.collectionReviews.component.incompleteRecordProposals, assessment.incompleteRecordProposals);
+  await assert.rejects(
+    planCollectionReview(root, {
+      resourceType: "component",
+      programId: "program-example",
+      decision: "complete",
+      rationale: "Reviewed the Component inventory.",
+      reviewedByIds: ["person-independent-approver-example"],
+      reviewedOn: currentCalendarDate(planned.workspace.timezone)
+    }),
+    /Complete every scoped components record proposal/
+  );
+
+  const unselectedSystem = {
+    ...planned.resources.find(({ id }) => id === "system-example"),
+    id: "system-unselected",
+    title: "Unselected System"
+  };
+  const unrelatedComponent = {
+    ...componentEntry.record,
+    id: "component-unrelated-active",
+    title: "Unrelated active Component",
+    status: "active",
+    systemUses: [{
+      systemId: unselectedSystem.id,
+      roles: ["supporting-operations"],
+      rationale: "Supports a System outside this Program."
+    }]
+  };
+  planned.resources.push(unselectedSystem, unrelatedComponent);
+  planned.entries.push(
+    { record: unselectedSystem, source: JSON.stringify(unselectedSystem) },
+    { record: unrelatedComponent, source: JSON.stringify(unrelatedComponent) }
+  );
+  const singleProgram = assessCollectionReview(planned, "component", { programId: "program-example" });
+  assert.equal(singleProgram.recordProposals.some(({ resourceId }) => resourceId === unrelatedComponent.id), false);
+});
+
+test("requires an active Classification before an Information Type proposal is complete", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-information-type-classification-gate-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  loaded.resources.find(({ id }) => id === "classification-example").status = "retired";
+  const assessment = assessCollectionReview(loaded, "information-type", { programId: "program-example" });
+  assert.equal(
+    assessment.recordProposals.find(({ resourceId }) => resourceId === "information-type-example")?.complete,
+    false
+  );
+});
+
+test("keeps deprecated Components in the proposal queue", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-deprecated-component-gate-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const component = scopedCollectionRecords(
+    loaded,
+    "component",
+    loaded.resources.find(({ id }) => id === "program-example")
+  )[0];
+  component.status = "deprecated";
+  const assessment = assessCollectionReview(loaded, "component", { programId: "program-example" });
+  assert.equal(
+    assessment.recordProposals.find(({ resourceId }) => resourceId === component.id)?.complete,
+    false
+  );
+});
+
+test("excludes historical inventory from proposal progress", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-historical-inventory-progress-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  loaded.resources.find(({ id }) => id === "information-type-example").status = "retired";
+  loaded.resources.find(({ id }) => id === "vendor-example").status = "terminated";
+  assert.equal(
+    (assessCollectionReview(loaded, "information-type", { programId: "program-example" }).recordProposals || [])
+      .some(({ resourceId }) => resourceId === "information-type-example"),
+    false
+  );
+  assert.equal(
+    (assessCollectionReview(loaded, "vendor", { programId: "program-example" }).recordProposals || [])
+      .some(({ resourceId }) => resourceId === "vendor-example"),
+    false
+  );
+});
+
+test("direct-file validation rejects incomplete inventory collection proposals", async (context) => {
+  for (const [resourceType, makeIncomplete] of [
+    ["component", (record) => ({ ...record, status: "planned" })],
+    ["vendor", (record) => ({ ...record, status: "evaluating" })],
+    ["complementary-control", (record) => ({ ...record, status: "planned" })],
+    ["information-type", (record) => ({ ...record, status: "planned" })]
+  ]) {
+    const root = await mkdtemp(join(tmpdir(), `filegrc-direct-${resourceType}-review-`));
+    context.after(() => rm(root, { recursive: true, force: true }));
+    await makeComprehensiveWorkspace(root, "11");
+    let loaded = await loadWorkspace(root);
+    if (resourceType === "vendor") {
+      const componentEntry = loaded.entries.find(({ record }) => record.type === "component");
+      await writeFile(
+        componentEntry.path,
+        `${JSON.stringify({ ...componentEntry.record, vendorId: "vendor-example" }, null, 2)}\n`,
+        "utf8"
+      );
+      loaded = await loadWorkspace(root);
+    }
+    const program = loaded.resources.find(({ id }) => id === "program-example");
+    const scopedId = scopedCollectionRecords(loaded, resourceType, program)[0]?.id;
+    const entry = loaded.entries.find(({ record }) => record.id === scopedId);
+    assert.ok(entry, `scoped ${resourceType} fixture`);
+    await writeFile(entry.path, `${JSON.stringify(makeIncomplete(entry.record), null, 2)}\n`, "utf8");
+    loaded = await loadWorkspace(root);
+    const population = scopedCollectionRecords(loaded, resourceType, program);
+    const reviewedOn = currentCalendarDate(loaded.workspace.timezone);
+    const review = {
+      id: `collection-review-direct-${resourceType}`,
+      type: "collection-review",
+      title: `Direct ${resourceType} review`,
+      status: "active",
+      resourceType,
+      scopeResourceIds: [program.id],
+      decision: "complete",
+      rationale: "Direct-file review fixture.",
+      reviewedByIds: ["person-independent-approver-example"],
+      reviewedOn,
+      coverage: { kind: "as-of", on: reviewedOn },
+      knowledgeCutoffAt: `${reviewedOn}T12:00:00.000Z`,
+      populationResourceIds: population.map(({ id }) => id),
+      collectionRevision: collectionRevision(loaded, resourceType, { programId: program.id }),
+      scopeRevision: "uncommitted"
+    };
+    await mkdir(join(root, "data", "collection-reviews"), { recursive: true });
+    await writeFile(
+      join(root, "data", "collection-reviews", `${review.id}.json`),
+      `${JSON.stringify(review, null, 2)}\n`,
+      "utf8"
+    );
+    const validation = await validateWorkspace(root);
+    assert.equal(
+      validation.diagnostics.some(({ code }) => code === "incomplete-collection-review-proposals"),
+      true,
+      resourceType
+    );
+    const staleRecord = { ...makeIncomplete(entry.record), title: `${entry.record.title} changed after review` };
+    await writeFile(entry.path, `${JSON.stringify(staleRecord, null, 2)}\n`, "utf8");
+    const staleValidation = await validateWorkspace(root);
+    assert.equal(
+      staleValidation.diagnostics.some(({ code }) => code === "incomplete-collection-review-proposals"),
+      false,
+      `${resourceType} stale review`
+    );
+  }
 });
 
 test("binds a Retention Schedule review to the governed document and row collection", async (context) => {
@@ -329,6 +507,28 @@ test("keeps an approved Retention Schedule current through Step 3 activation", a
     assessCollectionReview(loaded, "retention-schedule-item", { programId: "program-example" }).complete,
     true
   );
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", [
+    "-c", "user.name=FileGRC Test",
+    "-c", "user.email=filegrc@example.test",
+    "commit", "-m", "Activate retention schedule"
+  ], { cwd: root });
+  loaded = await loadWorkspace(root);
+  await applyCollectionReview(root, {
+    resourceType: "retention-schedule-item",
+    programId: "program-example",
+    decision: "complete",
+    rationale: "Reapproved the complete active schedule.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: reviewDate,
+    expectedCollectionRevision: collectionRevision(loaded, "retention-schedule-item", { programId: "program-example" }),
+    confirmed: true
+  });
+  loaded = await loadWorkspace(root);
+  const reapprovedSchedule = loaded.resources.find(({ id }) => id === schedule.id);
+  assert.equal(reapprovedSchedule.status, "approved");
+  assert.equal(reapprovedSchedule.activatedOn, undefined);
+  assert.equal(reapprovedSchedule.effectiveOn, undefined);
 });
 
 test("binds a Retention Schedule review to governing-document party membership", async (context) => {
@@ -338,7 +538,7 @@ test("binds a Retention Schedule review to governing-document party membership",
   const loaded = await loadWorkspace(root);
   const schedule = loaded.resources.find(({ id }) => id === "document-example");
   schedule.documentKind = "schedule";
-  schedule.approverIds = ["team-example"];
+  schedule.ownerIds = ["team-example"];
   const initialRevision = collectionRevision(loaded, "retention-schedule-item", { programId: "program-example" });
   const changed = structuredClone(loaded);
   changed.resources.find(({ id }) => id === "team-example").memberIds = [
@@ -412,6 +612,39 @@ test("binds a Retention Schedule review to each resource-to-information-type use
     collectionRevision(changed, "retention-schedule-item", { programId: "program-example" }),
     initialRevision
   );
+});
+
+test("accepts program-wide retention rows in one workspace-wide schedule", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-workspace-coverage-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const firstProgram = loaded.resources.find(({ id }) => id === "program-example");
+  const firstRow = loaded.resources.find(({ type }) => type === "retention-schedule-item");
+  const sharedSystem = loaded.resources.find(({ type }) => type === "system");
+  const informationType = loaded.resources.find(({ type }) => type === "information-type");
+  firstProgram.systemIds = [sharedSystem.id];
+  firstRow.informationTypeIds = [informationType.id];
+  sharedSystem.informationTypeIds = [informationType.id];
+  firstRow.scopeResourceIds = [firstProgram.id];
+  const secondProgram = {
+    ...structuredClone(firstProgram),
+    id: "program-second",
+    title: "Second SOC 2 Program"
+  };
+  const secondRow = {
+    ...structuredClone(firstRow),
+    id: "retention-schedule-item-second-program",
+    title: "Second program retention rule",
+    scopeResourceIds: [secondProgram.id]
+  };
+  loaded.resources.push(secondProgram, secondRow);
+  const covered = assessCollectionReview(loaded, "retention-schedule-item", { programId: firstProgram.id });
+  assert.equal(covered.approvalIssues.some(({ code }) => code === "uncovered-retention-information-use"), false);
+
+  loaded.resources.splice(loaded.resources.indexOf(secondRow), 1);
+  const uncovered = assessCollectionReview(loaded, "retention-schedule-item", { programId: firstProgram.id });
+  assert.equal(uncovered.approvalIssues.some(({ code }) => code === "uncovered-retention-information-use"), true);
 });
 
 test("a current Information Type review resolves the similar-type schedule blocker", async (context) => {
@@ -507,7 +740,15 @@ test("rejects multiple current Data Retention Schedule documents", async (contex
   const loaded = await loadWorkspace(root);
   const rowEntry = loaded.entries.find(({ record }) => record.type === "retention-schedule-item");
   const documentEntry = loaded.entries.find(({ record }) => record.id === "document-example");
-  await writeFile(rowEntry.path, `${JSON.stringify({ ...rowEntry.record, status: "retired" }, null, 2)}\n`, "utf8");
+  await writeFile(rowEntry.path, `${JSON.stringify({
+    ...rowEntry.record,
+    status: "retired",
+    statusTransition: {
+      changedByIds: ["person-example"],
+      changedOn: currentCalendarDate(loaded.workspace.timezone),
+      reason: "No schedule row is required for this zero-population approval test."
+    }
+  }, null, 2)}\n`, "utf8");
   await writeFile(documentEntry.path, `${JSON.stringify({ ...documentEntry.record, documentKind: "schedule" }, null, 2)}\n`, "utf8");
   await writeFile(
     join(documentEntry.path, "..", "document-retention-schedule-duplicate.json"),
@@ -526,32 +767,247 @@ test("rejects multiple current Data Retention Schedule documents", async (contex
   );
 });
 
-test("requires independent approval of the governing Data Retention Schedule document", async (context) => {
+test("approves the governing document in the single Data Retention Schedule review", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-retention-review-document-approval-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
   const loaded = await loadWorkspace(root);
   const rowEntry = loaded.entries.find(({ record }) => record.type === "retention-schedule-item");
   const documentEntry = loaded.entries.find(({ record }) => record.id === "document-example");
-  await writeFile(rowEntry.path, `${JSON.stringify({ ...rowEntry.record, status: "retired" }, null, 2)}\n`, "utf8");
+  const scheduleMarkdown = await readFile(join(root, "data", "documents", "document-example.md"), "utf8");
+  await writeFile(rowEntry.path, `${JSON.stringify({
+    ...rowEntry.record,
+    status: "retired",
+    statusTransition: {
+      changedByIds: ["person-example"],
+      changedOn: currentCalendarDate(loaded.workspace.timezone),
+      reason: "No schedule row is required for this zero-population approval test."
+    }
+  }, null, 2)}\n`, "utf8");
   await writeFile(
     documentEntry.path,
     `${JSON.stringify({
       ...documentEntry.record,
+      status: "approved",
       documentKind: "schedule",
-      approverIds: documentEntry.record.ownerIds
+      approverIds: ["person-example"],
+      approvedOn: "2025-01-01",
+      approvedContentRevisions: {
+        "documents/document-example.md": createHash("sha256").update(scheduleMarkdown).digest("hex")
+      },
+      activationBasis: undefined,
+      activatedByIds: undefined,
+      activatedOn: undefined,
+      activatedContentRevisions: undefined,
+      effectiveOn: undefined
     }, null, 2)}\n`,
     "utf8"
   );
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["-c", "user.name=FileGRC Test", "-c", "user.email=filegrc@example.test", "commit", "-m", "Prepare schedule proposal"], { cwd: root });
   const current = await loadWorkspace(root);
+  const reviewedOn = currentCalendarDate(current.workspace.timezone);
+  await applyCollectionReview(root, {
+    resourceType: "retention-schedule-item",
+    programId: "program-example",
+    decision: "zero-population",
+    rationale: "Reviewed the complete schedule proposal.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn,
+    expectedCollectionRevision: collectionRevision(current, "retention-schedule-item", { programId: "program-example" }),
+    confirmed: true
+  });
+  const approved = await loadWorkspace(root);
+  const approvedDocument = approved.resources.find(({ id }) => id === documentEntry.record.id);
+  assert.equal(approvedDocument.status, "approved");
+  assert.deepEqual(approvedDocument.approverIds, ["person-independent-approver-example"]);
+  assert.equal(approvedDocument.approvedOn, reviewedOn);
+  assert.ok(approvedDocument.approvedContentRevisions["documents/document-example.md"]);
+  assert.equal(assessCollectionReview(approved, "retention-schedule-item", { programId: "program-example" }).complete, true);
 
-  await assert.rejects(
-    planCollectionReview(root, {
-      resourceType: "retention-schedule-item",
-      programId: "program-example",
-      expectedCollectionRevision: collectionRevision(current, "retention-schedule-item", { programId: "program-example" })
-    }),
-    /independently approve the Data Retention Schedule document/
+  const firstProgram = approved.resources.find(({ id }) => id === "program-example");
+  const firstReviewer = approved.resources.find(({ id }) => id === "person-independent-approver-example");
+  const firstScheduleReview = approved.resources.find((record) => (
+    record.type === "collection-review" && record.resourceType === "retention-schedule-item" && record.status === "active"
+  ));
+  await writeFile(join(root, "data", "programs", "program-second.json"), `${JSON.stringify({
+    ...firstProgram,
+    id: "program-second",
+    title: "Second SOC 2 Program"
+  }, null, 2)}\n`, "utf8");
+  await writeFile(join(root, "data", "people", "person-second-reviewer.json"), `${JSON.stringify({
+    ...firstReviewer,
+    id: "person-second-reviewer",
+    title: "Second independent reviewer",
+    email: "second-reviewer@example.test"
+  }, null, 2)}\n`, "utf8");
+  await writeFile(join(root, "data", "collection-reviews", "collection-review-second-legacy.json"), `${JSON.stringify({
+    ...firstScheduleReview,
+    id: "collection-review-second-legacy",
+    title: "Legacy second-program retention review",
+    scopeResourceIds: ["program-second"]
+  }, null, 2)}\n`, "utf8");
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", [
+    "-c", "user.name=FileGRC Test",
+    "-c", "user.email=filegrc@example.test",
+    "commit", "-m", "Add second program"
+  ], { cwd: root });
+  const twoPrograms = await loadWorkspace(root);
+  assert.equal(
+    assessCollectionReview(twoPrograms, "retention-schedule-item", { programId: "program-example" }).complete,
+    false
+  );
+  await applyCollectionReview(root, {
+    resourceType: "retention-schedule-item",
+    programId: "program-second",
+    decision: "zero-population",
+    rationale: "Reviewed the complete shared schedule for the second program.",
+    reviewedByIds: ["person-second-reviewer"],
+    reviewedOn,
+    expectedCollectionRevision: collectionRevision(twoPrograms, "retention-schedule-item", { programId: "program-second" }),
+    confirmed: true
+  });
+  const twiceApproved = await loadWorkspace(root);
+  const sharedDocument = twiceApproved.resources.find(({ id }) => id === documentEntry.record.id);
+  assert.deepEqual(sharedDocument.approverIds, ["person-second-reviewer"]);
+  assert.equal(assessCollectionReview(twiceApproved, "retention-schedule-item", { programId: "program-example" }).complete, true);
+  assert.equal(assessCollectionReview(twiceApproved, "retention-schedule-item", { programId: "program-second" }).complete, true);
+  const currentScheduleReviews = twiceApproved.resources.filter((record) => (
+    record.type === "collection-review"
+    && record.resourceType === "retention-schedule-item"
+    && record.status === "active"
+  ));
+  assert.equal(currentScheduleReviews.length, 1);
+  assert.deepEqual(currentScheduleReviews[0].scopeResourceIds.sort(), ["program-example", "program-second"]);
+  const retiredScheduleReviews = twiceApproved.resources.filter((record) => (
+    record.type === "collection-review"
+    && record.resourceType === "retention-schedule-item"
+    && record.status === "retired"
+  ));
+  assert.equal(retiredScheduleReviews.length, 2);
+  const retiredLegacyValidation = await validateWorkspace(root);
+  assert.equal(
+    retiredLegacyValidation.diagnostics.some(({ code }) => code === "invalid-retention-schedule-review-scope"),
+    false
+  );
+
+  const currentReviewEntry = twiceApproved.entries.find(({ record }) => record.id === currentScheduleReviews[0].id);
+  await writeFile(currentReviewEntry.path, `${JSON.stringify({
+    ...currentReviewEntry.record,
+    scopeResourceIds: ["program-example"]
+  }, null, 2)}\n`, "utf8");
+  const invalidScope = await validateWorkspace(root);
+  assert.equal(invalidScope.diagnostics.some(({ code }) => code === "invalid-retention-schedule-review-scope"), true);
+  await writeFile(currentReviewEntry.path, `${JSON.stringify(currentReviewEntry.record, null, 2)}\n`, "utf8");
+
+  sharedDocument.status = "draft";
+  delete sharedDocument.approverIds;
+  delete sharedDocument.approvedOn;
+  delete sharedDocument.approvedContentRevisions;
+  const withdrawn = assessCollectionReview(twiceApproved, "retention-schedule-item", { programId: "program-example" });
+  assert.equal(withdrawn.complete, false);
+  assert.equal(
+    withdrawn.approvalIssues.some(({ code }) => code === "invalid-retention-schedule-approval-binding"),
+    true
+  );
+});
+
+test("keeps completed retention rows non-authoritative until whole-schedule approval", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-authority-gate-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  let loaded = await loadWorkspace(root);
+  const rowEntry = loaded.entries.find(({ record }) => record.id === "retention-schedule-item-example");
+  const coverageEntry = loaded.entries.find(({ record }) => record.id === "source-coverage-example");
+  const documentEntry = loaded.entries.find(({ record }) => record.id === "document-example");
+  const row = {
+    ...rowEntry.record,
+    status: "active",
+    informationTypeIds: ["information-type-example"],
+    scopeResourceIds: [...new Set([
+      ...(rowEntry.record.scopeResourceIds || []),
+      "program-example",
+      coverageEntry.record.id
+    ])],
+    scheduleDocumentId: documentEntry.record.id,
+    cutoff: { basis: "creation" },
+    retentionPeriod: { basis: "fixed", amount: 7, unit: "year" },
+    dispositionAction: "delete",
+    dispositionInstructions: "Delete the covered records after the approved period unless a legal hold applies.",
+    approvedByIds: undefined,
+    approvedOn: undefined
+  };
+  await writeFile(coverageEntry.path, `${JSON.stringify({
+    ...coverageEntry.record,
+    status: "active",
+    validFrom: "2026-01-01",
+    collectionCadence: "Monthly and after material changes.",
+    reconciliationMethod: "Compare the export count and filters with the source.",
+    retentionScheduleItemIds: [rowEntry.record.id]
+  }, null, 2)}\n`, "utf8");
+  await writeFile(documentEntry.path, `${JSON.stringify({
+    ...documentEntry.record,
+    status: "draft",
+    documentKind: "schedule",
+    workflowScope: "program",
+    approverIds: undefined,
+    approvedOn: undefined,
+    approvedContentRevisions: undefined,
+    activationBasis: undefined,
+    activatedByIds: undefined,
+    activatedOn: undefined,
+    activatedContentRevisions: undefined,
+    effectiveOn: undefined
+  }, null, 2)}\n`, "utf8");
+  loaded = await loadWorkspace(root);
+  row.reviewedSourceRevisions = Object.fromEntries(await resourceReviewRevisions(
+    loaded,
+    retentionReviewResourceIds(row, loaded)
+  ));
+  await writeFile(rowEntry.path, `${JSON.stringify(row, null, 2)}\n`, "utf8");
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["-c", "user.name=FileGRC Test", "-c", "user.email=filegrc@example.test", "commit", "-m", "Prepare schedule proposal"], { cwd: root });
+  loaded = await loadWorkspace(root);
+  const sourceCoverage = loaded.resources.find(({ id }) => id === coverageEntry.record.id);
+  const loadedRow = loaded.resources.find(({ id }) => id === rowEntry.record.id);
+  assert.deepEqual(
+    loadedRow.reviewedSourceRevisions,
+    Object.fromEntries(await resourceReviewRevisions(loaded, retentionReviewResourceIds(loadedRow, loaded)))
+  );
+  assert.equal(
+    retentionRuleIsCurrent(
+      loadedRow,
+      await resourceReviewRevisions(loaded, retentionReviewResourceIds(loadedRow, loaded)),
+      new Map(loaded.resources.map((record) => [record.id, record])),
+      loaded
+    ),
+    true,
+    JSON.stringify(loadedRow)
+  );
+  assert.equal(await sourceCoverageComplete(sourceCoverage, loaded), false);
+
+  const reviewedOn = currentCalendarDate(loaded.workspace.timezone);
+  await applyCollectionReview(root, {
+    resourceType: "retention-schedule-item",
+    programId: "program-example",
+    decision: "complete",
+    rationale: "Reviewed the complete schedule proposal.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn,
+    expectedCollectionRevision: collectionRevision(loaded, "retention-schedule-item", { programId: "program-example" }),
+    confirmed: true
+  });
+  const approved = await loadWorkspace(root);
+  assert.equal(
+    await sourceCoverageComplete(
+      approved.resources.find(({ id }) => id === coverageEntry.record.id),
+      approved
+    ),
+    true,
+    JSON.stringify(approved.resources.find(({ id }) => id === coverageEntry.record.id))
   );
 });
 
@@ -567,11 +1023,11 @@ test("assessment rejects schedule documents with missing Control links or unfini
   assert.equal(
     readiness.stages.find(({ id }) => id === "policies").items
       .some(({ id }) => id === `document-approval-${schedule.id}`),
-    true
+    false
   );
   schedule.controlIds = [];
   let assessment = assessCollectionReview(loaded, "retention-schedule-item", { programId: "program-example" });
-  assert.equal(assessment.approvalIssues.some(({ code }) => code === "unapproved-retention-schedule-document"), true);
+  assert.equal(assessment.approvalIssues.some(({ code }) => code === "incomplete-retention-schedule-document"), true);
 
   const markdownPath = join(root, "data", "documents", "document-example.md");
   const unfinished = "# Data Retention Schedule\n\nTODO: complete the governing retention rules before approval.\n";
@@ -581,7 +1037,7 @@ test("assessment rejects schedule documents with missing Control links or unfini
     "documents/document-example.md": createHash("sha256").update(unfinished).digest("hex")
   };
   assessment = assessCollectionReview(loaded, "retention-schedule-item", { programId: "program-example" });
-  assert.equal(assessment.approvalIssues.some(({ code }) => code === "unapproved-retention-schedule-document"), true);
+  assert.equal(assessment.approvalIssues.some(({ code }) => code === "incomplete-retention-schedule-document"), true);
 });
 
 test("requires the displayed revision token for Data Retention Schedule approval", async (context) => {

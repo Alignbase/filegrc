@@ -1,4 +1,7 @@
 import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
+import { retentionScheduleIsAuthoritative } from "./collection-review.js";
+import { modelSupports } from "../model/index.js";
+import { resolveProgram } from "./program.js";
 
 export async function sourceCoverageComplete(record, loaded, program = loaded.workspace) {
   const structuredRetention = loaded.model.resources["retention-schedule-item"];
@@ -6,6 +9,10 @@ export async function sourceCoverageComplete(record, loaded, program = loaded.wo
     return false;
   }
   if (structuredRetention) {
+    const retentionProgram = modelSupports(loaded.model, "program-scope")
+      ? resolveProgram(loaded, program?.type === "program" ? program.id : undefined)
+      : program;
+    if (!retentionScheduleIsAuthoritative(loaded, retentionProgram)) return false;
     const linkedRules = (record.retentionScheduleItemIds || []).map((id) => (
       loaded.resources.find((resource) => resource.id === id && resource.type === "retention-schedule-item")
     ));

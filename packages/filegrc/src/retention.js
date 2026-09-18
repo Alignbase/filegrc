@@ -10,18 +10,26 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
   if (!loaded.model.resources["retention-schedule-item"]) return [];
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const rules = loaded.resources.filter((record) => (
-    record.type === "retention-schedule-item" && record.status === "active"
+    record.type === "retention-schedule-item"
+    && !["retired", "superseded"].includes(record.status)
   ));
-  const revisions = await resourceReviewRevisions(loaded, rules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
-  const usableRules = rules.filter((rule) => retentionRuleIsCurrent(rule, revisions, byId, loaded));
+  const activeRules = rules.filter(({ status }) => status === "active");
+  const revisions = await resourceReviewRevisions(loaded, activeRules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
+  const usableRules = activeRules.filter((rule) => retentionRuleIsCurrent(rule, revisions, byId, loaded));
+  const proposedRules = rules.filter(retentionRuleHasCoverageProposal);
   const uses = retentionUses(loaded, program);
-  const items = rules.filter((rule) => !usableRules.includes(rule)).map((rule) => readinessItem(
+  const items = rules.map((rule) => readinessItem(
     `retention-rule-${rule.id}`,
-    "action",
-    `Review ${rule.title}`,
-    "This active retention schedule item is incomplete or is not bound to every current source revision. Review it before relying on its period or disposition behavior.",
+    usableRules.includes(rule) ? "complete" : "action",
+    usableRules.includes(rule) ? `${rule.title} proposal is ready` : `Finish ${rule.title}`,
+    usableRules.includes(rule)
+      ? "The owner completed this row and bound it to its current source revisions. It will become part of the authoritative schedule only when the complete schedule is approved."
+      : rule.status === "planned"
+        ? "Finish the type, scope, cutoff, period, disposition, sources, and owner review for this proposed row before requesting schedule approval."
+        : "This row is incomplete or is not bound to every current source revision. Review it before requesting schedule approval.",
     rule,
     {
+      coverageState: usableRules.includes(rule) ? "proposed" : "incomplete",
       sourceResourceIds: retentionReviewResourceIds(rule, loaded),
       commands: [
         `npx filegrc get ${rule.id} --mutation`,
@@ -39,31 +47,41 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
     usesByInformationType.set(use.informationTypeId, grouped);
   }
   items.push(...[...usesByInformationType].map(([informationTypeId, informationTypeUses]) => {
-    const uncoveredUses = informationTypeUses.filter((use) => (
+    const absentUses = informationTypeUses.filter((use) => (
+      !proposedRules.some((rule) => ruleCoversUse(rule, use, program))
+    ));
+    const pendingUses = informationTypeUses.filter((use) => (
       !usableRules.some((rule) => ruleCoversUse(rule, use, program))
     ));
+    const approvalPending = !options.scheduleApproved;
     const matches = usableRules.filter((rule) => (
       informationTypeUses.some((use) => ruleCoversUse(rule, use, program))
     ));
     const informationTypeTitle = byId.get(informationTypeId)?.title || informationTypeId;
-    const affectedTitles = uncoveredUses.map(({ resource }) => resource.title);
+    const affectedTitles = absentUses.map(({ resource }) => resource.title);
     const affectedSummary = affectedTitles.length > 3
       ? `${affectedTitles.slice(0, 3).join(", ")}, and ${affectedTitles.length - 3} more`
       : affectedTitles.join(", ");
     return readinessItem(
       `retention-use-${informationTypeId}`,
-      uncoveredUses.length ? "action" : "complete",
+      absentUses.length ? "action" : pendingUses.length || approvalPending ? "info" : "complete",
       `Decide retention for ${informationTypeTitle}`,
-      uncoveredUses.length
+      absentUses.length
         ? `${affectedTitles.length} in-scope ${affectedTitles.length === 1 ? "resource uses" : "resources use"} this Information Type without an active, current retention decision, including ${affectedSummary}. Management must choose the cutoff, period, disposition, and whether one program-wide rule or separate scoped rules apply.`
-        : `All ${informationTypeUses.length} in-scope ${informationTypeUses.length === 1 ? "use is" : "uses are"} covered by ${matches.map(({ title }) => title).join(", ")}.`,
+        : pendingUses.length
+          ? `Proposed rows cover every in-scope type-and-scope pair. Finish the row review, then approve the complete schedule once instead of approving these coverage checks separately.`
+          : approvalPending
+            ? "Completed row proposals cover every in-scope type-and-scope pair. Approve the complete schedule once; these derived checks are not separate approval work."
+          : `The approved schedule covers all ${informationTypeUses.length} in-scope ${informationTypeUses.length === 1 ? "use" : "uses"}.`,
       { type: "retention-schedule-item" },
       {
+        progressUnit: false,
+        coverageState: absentUses.length ? "absent" : pendingUses.length || approvalPending ? "proposed" : "approved",
         informationTypeId,
-        affectedResourceIds: uncoveredUses.map(({ resource }) => resource.id),
-        retentionScopeResourceIds: uncoveredUses.length === informationTypeUses.length
+        affectedResourceIds: absentUses.map(({ resource }) => resource.id),
+        retentionScopeResourceIds: absentUses.length === informationTypeUses.length
           ? [program.id]
-          : uncoveredUses.map(({ resource }) => resource.id),
+          : absentUses.map(({ resource }) => resource.id),
         retentionScheduleItemIds: matches.map(({ id }) => id),
         commands: [
           "npx filegrc guide retention-schedule-item --json",
@@ -75,6 +93,11 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
 
   for (const coverage of loaded.resources.filter((record) => record.type === "source-coverage" && record.status === "active")) {
     const linked = (coverage.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter(Boolean);
+    const proposed = linked.filter((rule) => (
+      rule.type === "retention-schedule-item"
+      && proposedRules.includes(rule)
+      && (rule.scopeResourceIds || []).includes(coverage.id)
+    ));
     const matching = linked.filter((rule) => (
       rule.type === "retention-schedule-item"
       && rule.status === "active"
@@ -83,13 +106,17 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
     ));
     items.push(readinessItem(
       `retention-source-coverage-${coverage.id}`,
-      matching.length ? "complete" : "action",
+      matching.length && options.scheduleApproved ? "complete" : proposed.length ? "info" : "action",
       `Confirm retained evidence for ${coverage.title}`,
-      matching.length
+      matching.length && options.scheduleApproved
         ? `The source-coverage record references a current schedule item scoped to this population.`
-        : `The source-coverage record must reference an active, current schedule item whose scope includes ${coverage.id}. A draft schedule or unrelated rule does not satisfy this check.`,
+        : proposed.length
+          ? "A proposed schedule row covers this evidence source. Finish that row and approve the complete schedule before relying on it."
+          : `No proposed schedule row covers ${coverage.id}. Add the genuine type-and-scope decision before schedule approval.`,
       coverage,
       {
+        progressUnit: false,
+        coverageState: matching.length && options.scheduleApproved ? "approved" : proposed.length ? "proposed" : "absent",
         retentionScheduleItemIds: matching.map(({ id }) => id),
         commands: [
           `npx filegrc get ${coverage.id} --mutation`,
@@ -218,8 +245,11 @@ function reviewSource(loaded, entry) {
     && entry.record.workflowScope === "program"
   ) {
     const approved = structuredClone(entry.record);
-    if (approved.status === "active") approved.status = "approved";
     for (const field of [
+      "status",
+      "approverIds",
+      "approvedOn",
+      "approvedContentRevisions",
       "activationBasis",
       "activatedByIds",
       "activatedOn",
@@ -252,6 +282,14 @@ function ruleCoversUse(rule, use, program) {
   return scope.has(use.resource.id) || scope.has(program.id);
 }
 
+function retentionRuleHasCoverageProposal(rule) {
+  return Boolean(
+    (rule.informationTypeIds || []).length
+    && (rule.scopeResourceIds || []).length
+    && rule.scheduleDocumentId
+  );
+}
+
 export function retentionReviewResourceIds(rule, loaded) {
   const programUseIds = [];
   if (loaded) {
@@ -279,7 +317,7 @@ export function retentionRuleIsCurrent(rule, revisions, byId = new Map(), loaded
   if (!(rule.informationTypeIds || []).length || !(rule.scopeResourceIds || []).length || !rule.scheduleDocumentId) return false;
   const schedule = byId.get(rule.scheduleDocumentId);
   if (schedule?.type !== "document" || schedule.documentKind !== "schedule" || schedule.workflowScope !== "program" || ["superseded", "retired"].includes(schedule.status)) return false;
-  if (!(rule.ownerIds || []).length || !(rule.approvedByIds || []).length || !rule.approvedOn) return false;
+  if (!(rule.ownerIds || []).length) return false;
   if (!rule.reviewedSourceRevisions || typeof rule.reviewedSourceRevisions !== "object") return false;
   if (!retentionCutoffIsComplete(rule.cutoff) || !retentionPeriodIsComplete(rule.retentionPeriod)) return false;
   if (!["delete", "destroy", "erase", "anonymize", "transfer", "retain-permanently"].includes(rule.dispositionAction)) return false;

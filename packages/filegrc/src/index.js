@@ -49,7 +49,8 @@ export {
   pullWorkspace,
   pushWorkspace,
   retryBrowserSync,
-  runBrowserMutation
+  runBrowserMutation,
+  synchronizeBrowserStartup
 } from "./git.js";
 export { generateModelDocumentation } from "./model-docs.js";
 export { renderMarkdown } from "./markdown.js";

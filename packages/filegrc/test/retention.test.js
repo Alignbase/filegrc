@@ -53,9 +53,10 @@ test("detects missing, mismatched, and stale retention decisions without inferri
   assert.equal(stale.find(({ id }) => id === "retention-rule-retention-customer").status, "action");
   const staleUses = stale.filter(({ id }) => id.startsWith("retention-use-"));
   assert.equal(staleUses.length, 1);
-  assert.equal(staleUses[0].status, "action");
-  assert.deepEqual(staleUses[0].affectedResourceIds, ["system-app", "component-app", "vendor-host"]);
-  assert.deepEqual(staleUses[0].retentionScopeResourceIds, ["program-main"]);
+  assert.equal(staleUses[0].status, "info");
+  assert.equal(staleUses[0].coverageState, "proposed");
+  assert.deepEqual(staleUses[0].affectedResourceIds, []);
+  assert.deepEqual(staleUses[0].retentionScopeResourceIds, []);
   assert.equal(stale.find(({ id }) => id === "retention-source-coverage-source-coverage-logs").status, "action");
 
   resources[7].scopeResourceIds.push("source-coverage-logs");
@@ -67,8 +68,8 @@ test("detects missing, mismatched, and stale retention decisions without inferri
     entry.record.id,
     contentRevision(entry.source)
   ]));
-  const current = await assessRetentionReadiness(loaded, resources[1]);
-  assert.equal(current.some(({ id }) => id === "retention-rule-retention-customer"), false);
+  const current = await assessRetentionReadiness(loaded, resources[1], { scheduleApproved: true });
+  assert.equal(current.find(({ id }) => id === "retention-rule-retention-customer").status, "complete");
   const currentUses = current.filter(({ id }) => id.startsWith("retention-use-"));
   assert.equal(currentUses.length, 1);
   assert.equal(currentUses[0].status, "complete");

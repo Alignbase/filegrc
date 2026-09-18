@@ -98,11 +98,17 @@ function calculateSetupActionProgress(stages, target, windowMilestoneComplete) {
   const units = new Map();
   for (const currentStage of stages.filter(({ id }) => id !== "operation")) {
     for (const current of currentStage.items || []) {
-      if (["info", "later"].includes(current.status) || current.progressUnit === false) continue;
-      const key = `${currentStage.id}:${current.progressUnitId || current.id}`;
-      const existing = units.get(key);
-      if (!existing || existing.status === "complete" && current.status !== "complete") {
-        units.set(key, current);
+      if (current.progressUnit === false) continue;
+      const candidates = current.progressUnits?.length
+        ? current.progressUnits
+        : [current];
+      for (const candidate of candidates) {
+        if (["info", "later"].includes(candidate.status) || candidate.progressUnit === false) continue;
+        const key = `${currentStage.id}:${candidate.progressUnitId || current.progressUnitId || candidate.id || current.id}`;
+        const existing = units.get(key);
+        if (!existing || existing.status === "complete" && candidate.status !== "complete") {
+          units.set(key, candidate);
+        }
       }
     }
   }
@@ -154,13 +160,24 @@ export async function assessProgramReadiness(input, options = {}) {
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
+  const retentionScheduleReview = collectionReviews.find(({ resourceType }) => resourceType === "retention-schedule-item");
   const retentionItems = await assessRetentionReadiness(loaded, program, {
-    informationTypesReviewed: collectionReviews.find(({ resourceType }) => resourceType === "information-type")?.complete === true
+    informationTypesReviewed: collectionReviews.find(({ resourceType }) => resourceType === "information-type")?.complete === true,
+    scheduleApproved: retentionScheduleReview?.complete === true
   });
-  const retentionReviewItems = collectionReviews
-    .filter(({ resourceType }) => resourceType === "retention-schedule-item")
-    .map(collectionReviewReadinessItem);
+  const retentionReviewItems = retentionScheduleReview
+    ? [collectionReviewReadinessItem(retentionScheduleReview)]
+    : [];
   if (modelSupports(loaded.model, "retention-schedule-approval")) {
+    const scheduleDocumentIds = new Set(records.filter((record) => (
+      record.type === "document"
+      && record.documentKind === "schedule"
+      && record.workflowScope === "program"
+      && !["superseded", "retired"].includes(record.status)
+    )).map(({ id }) => id));
+    policyStage.items = policyStage.items.filter(({ id }) => (
+      ![...scheduleDocumentIds].some((documentId) => id === `document-approval-${documentId}`)
+    ));
     policyStage.items.push(...retentionItems.filter(({ id }) => !id.startsWith("retention-source-coverage-")));
     controlStage.items.push(...retentionItems.filter(({ id }) => id.startsWith("retention-source-coverage-")));
     policyStage.items.push(...retentionReviewItems);
@@ -395,7 +412,10 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
         ? `${completeComponents.length} of ${scope.components.length} Components have an active, owned, rationalized role in the selected Systems.`
         : "No Components are selected. This is valid only when the bounded Systems do not rely on a separately managed service-delivery, Control-support, evidence-source, or supporting-operations building block.",
       scope.components[0] || { type: "component" },
-      { componentIds: scope.components.map(({ id }) => id) }
+      {
+        componentIds: scope.components.map(({ id }) => id),
+        progressUnit: false
+      }
     ));
   }
 
@@ -562,7 +582,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   return stage("scope", "Define Scope", "Set program ownership, the management objective, service boundary, criteria, controls, and dependencies.", items);
 }
 
-function reportingRouteSetItem(assessment) {
+export function reportingRouteSetItem(assessment) {
   const current = assessment.routeSets.find(({ effective, canceled }) => effective && !canceled);
   const draft = assessment.routeSets.find(({ record }) => ["draft", "proposed"].includes(record.status));
   const required = assessment.requirements.length > 0;
@@ -571,13 +591,18 @@ function reportingRouteSetItem(assessment) {
     .map(({ purposeKey }) => purposeKey)
     .filter(Boolean))];
   const preparedPurposeKeys = new Set(assessment.routeSets
-    .filter(({ record, committed, canceled, proposedRequirementIssues }) => (
-      ["proposed", "approved"].includes(record.status)
+    .filter(({ record, committed, effective, canceled, proposedRequirementIssues }) => (
+      (["proposed", "approved"].includes(record.status) || effective)
       && committed
       && !canceled
       && proposedRequirementIssues.length === 0
     ))
     .map(({ record }) => record.purposeKey));
+  const requiredPurposeKeys = new Set(assessment.requirements.map(({ purposeKey }) => purposeKey).filter(Boolean));
+  const purposeKeys = [...new Set([
+    ...requiredPurposeKeys,
+    ...proposedPurposeKeys
+  ])];
   const unpreparedPurposeKeys = proposedPurposeKeys.filter((purposeKey) => !preparedPurposeKeys.has(purposeKey));
   const ready = assessment.issues.length === 0
     && (!required || Boolean(current))
@@ -612,6 +637,42 @@ function reportingRouteSetItem(assessment) {
       proposedRequirementIssues: assessment.routeSets.flatMap(({ proposedRequirementIssues }) => proposedRequirementIssues),
       unpreparedPurposeKeys,
       issues: assessment.issues,
+      progressUnits: purposeKeys.flatMap((purposeKey) => {
+        const purposeResourceIds = new Set([
+          ...assessment.routeSets.filter(({ record }) => record.purposeKey === purposeKey).map(({ record }) => record.id),
+          ...assessment.requirements.filter((requirement) => requirement.purposeKey === purposeKey).map(({ sourceId }) => sourceId),
+          ...assessment.proposedRequirements.filter((requirement) => requirement.purposeKey === purposeKey).map(({ sourceId }) => sourceId)
+        ].filter(Boolean));
+        const purposeIssues = assessment.issues.filter(({ resourceId }) => (
+          resourceId === assessment.programId || purposeResourceIds.has(resourceId)
+        ));
+        const approvedSet = assessment.routeSets.find(({ record, effective, canceled }) => (
+          record.purposeKey === purposeKey && effective && !canceled
+        ));
+        const proposedSet = assessment.routeSets.find(({ record, effective, canceled }) => (
+          record.purposeKey === purposeKey
+          && !canceled
+          && (effective || ["proposed", "approved"].includes(record.status))
+        ));
+        const proposalComplete = Boolean(
+          (approvedSet || proposedSet?.committed)
+          && proposedSet?.proposedRequirementIssues.length === 0
+        );
+        return [
+          {
+            id: `reporting-route-proposal-${purposeKey}`,
+            status: proposalComplete ? "complete" : "action",
+            title: `${proposedSet?.record.title || purposeKey} proposal`
+          },
+          {
+            id: `reporting-route-approval-${purposeKey}`,
+            status: approvedSet && purposeIssues.length === 0
+              ? "complete"
+              : requiredPurposeKeys.has(purposeKey) ? "action" : "later",
+            title: `${proposedSet?.record.title || purposeKey} approval`
+          }
+        ];
+      }),
       commands: [
         "npx filegrc reporting-route-sets --json",
         "npx filegrc reporting-route-set --scaffold"
@@ -647,6 +708,11 @@ function reportingRouteItem(records, byId, asOf, timezone = "UTC") {
 }
 
 function collectionReviewReadinessItem(assessment) {
+  const proposalUnits = (assessment.recordProposals || []).map((proposal) => ({
+    id: `${assessment.resourceType}-proposal-${proposal.resourceId}`,
+    status: proposal.complete ? "complete" : "action",
+    title: `${proposal.title} proposal`
+  }));
   return item(
     `collection-review-${assessment.resourceType}`,
     assessment.complete ? "complete" : "action",
@@ -658,6 +724,18 @@ function collectionReviewReadinessItem(assessment) {
     {
       resourceType: assessment.resourceType,
       reviewPoints: assessment.configuration.reviewPoints,
+      ...(proposalUnits.length ? {
+        progressUnits: [
+          ...proposalUnits,
+          {
+            id: `${assessment.resourceType}-collection-review`,
+            status: proposalUnits.every(({ status }) => status === "complete")
+              ? assessment.complete ? "complete" : "action"
+              : "blocked",
+            title: `${assessment.configuration.title} collection review`
+          }
+        ]
+      } : {}),
       commands: [
         `npx filegrc review-collection ${assessment.resourceType} --scaffold`,
         `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --preview --json`

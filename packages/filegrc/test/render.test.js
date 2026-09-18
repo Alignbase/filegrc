@@ -1543,8 +1543,7 @@ test("saves collection confirmations without a repetitive preview step", () => {
   assert.match(APP_SCRIPT, /localFetch\("\/api\/collection-review",/);
   assert.match(APP_SCRIPT, /expectedCollectionRevision: assessment\.collectionRevision/);
   assert.match(APP_SCRIPT, /Keep exactly one current program Data Retention Schedule document before approval/);
-  assert.match(APP_SCRIPT, /retentionScheduleDocumentReadiness\(document\.id\)/);
-  assert.match(APP_SCRIPT, /documentReadiness\?\.status !== "complete"/);
+  assert.match(APP_SCRIPT, /approvalIssue = state\.collectionReviews\?\.\["retention-schedule-item"\]\?\.approvalIssues\?\.\[0\]/);
   assert.match(APP_SCRIPT, /clearLoadingContent\(saveStatus, "Not saved"\)/);
   assert.doesNotMatch(APP_SCRIPT, /data-preview-collection-review/);
   assert.doesNotMatch(APP_SCRIPT, /localFetch\("\/api\/collection-review\/preview",/);
@@ -1576,6 +1575,14 @@ test("paginates large result sets and makes the mobile drawer modal", () => {
   assert.match(APP_STYLES, /\.topbar h1\{overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/);
   assert.match(APP_SCRIPT, /const clearSearch = \(\) => \{[\s\S]*querySelectorAll\("\[data-global-search\]"\)[\s\S]*if \(search\.value\.trim\(\) === query\) search\.value = ""/);
   assert.match(APP_SCRIPT, /querySelector\("\.icon-button"\)\.onclick = \(\) => \{\s+clearSearch\(\)/);
+});
+
+test("counts only completed retention row proposals in the schedule summary", () => {
+  assert.match(APP_SCRIPT, /completedProposalIds = new Set\(state\.programReadiness/);
+  assert.match(APP_SCRIPT, /id\.startsWith\("retention-rule-"\) && status === "complete"/);
+  assert.match(APP_SCRIPT, /completedProposalIds\.has\(record\.id\)/);
+  assert.match(APP_SCRIPT, /new Set\(\["approvedByIds", "approvedOn"\]\)/);
+  assert.match(APP_SCRIPT, /owner review, and current revision bindings are complete/);
 });
 
 test("ships local timestamp formatting while preserving calendar dates", () => {
@@ -1676,6 +1683,23 @@ test("renders completed collection reviews as a compact closed disclosure", () =
   assert.match(required, /<details open>/);
   assert.match(required, /What to review/);
   assert.match(required, /Review and confirm/);
+
+  const proposalsRequired = renderCollectionReviewPanel({
+    status: "review-required",
+    recordCount: 2,
+    configuration,
+    message: "Complete the proposals first.",
+    recordProposals: [
+      { resourceId: "framework-a", title: "A", complete: true },
+      { resourceId: "framework-b", title: "B", complete: false }
+    ],
+    incompleteRecordProposals: [
+      { resourceId: "framework-b", title: "B", complete: false }
+    ]
+  });
+  assert.match(proposalsRequired, /1 of 2 record proposals complete/);
+  assert.match(proposalsRequired, /Complete proposals first/);
+  assert.match(proposalsRequired, /<button class="button" type="button" disabled/);
 });
 
 test("keeps operation status explicit without inline instruction panels", () => {
@@ -1865,13 +1889,15 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /renderStagePageIndex\(stage\) \+ \(stage\.id === "controls"/);
   assert.match(APP_SCRIPT, /destination\.href === "#\/policies"/);
   assert.match(APP_SCRIPT, /policiesContext \? "#\/policies"/);
-  assert.match(APP_SCRIPT, /Document and rows are approved together/);
+  assert.match(APP_SCRIPT, /Final approval follows every row proposal/);
   assert.match(APP_SCRIPT, /Items to resolve/);
   assert.match(APP_SCRIPT, /aria-label="About Data Retention Schedule"/);
   assert.match(APP_SCRIPT, /resourceGuide\("retention-schedule-item"\)/);
   assert.match(APP_SCRIPT, /stage\.id === "policies" && !modelSupports\("retention-schedule-approval"\).*renderPoliciesPage/);
-  assert.match(APP_SCRIPT, /function wireRetentionScheduleTable\(total\)/);
+  assert.match(APP_SCRIPT, /function wireRetentionScheduleTable\(total, initialPage = 1\)/);
   assert.match(APP_SCRIPT, /No schedule rows match this filter/);
+  assert.match(APP_SCRIPT, /class="pagination retention-pagination"/);
+  assert.match(APP_SCRIPT, /filtered\.slice\(start, start \+ LIST_PAGE_SIZE\)/);
   assert.match(APP_SCRIPT, /params\.set\("history", "1"\)/);
   assert.match(APP_SCRIPT, /data-retention-history/);
   assert.match(APP_SCRIPT, /recordWorkflowCell\("retention-schedule-item", entry, "\?stage=policies"\)/);

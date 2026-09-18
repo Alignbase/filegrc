@@ -17,6 +17,7 @@ import {
 } from "../src/index.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 import { selectDefaultAudit } from "../src/audit-selection.js";
+import { occurrenceProgressUnits, populationResult } from "../src/audit-preparation.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 
@@ -25,6 +26,94 @@ test("selects the newest relevant audit without depending on file order", () => 
   const newer = { id: "audit-newer", status: "planned", coverage: { kind: "range", startsOn: "2026-04-01", endsOn: "2026-06-30" } };
   assert.equal(selectDefaultAudit([older, newer], "2026-05-01").id, newer.id);
   assert.equal(selectDefaultAudit([newer, older], "2026-05-01").id, newer.id);
+});
+
+test("counts reconciled exception and legacy occurrence members as completed work", () => {
+  const base = {
+    occurrenceKey: "program:obligation:2026-01-01",
+    title: "Access review",
+    expectedMemberIds: ["person-a", "person-b"],
+    completedMemberIds: ["person-a"],
+    membershipFinal: true,
+    reconciliationStatus: "reconciled",
+    operatingResult: "complete-with-exceptions",
+    legacySchedule: false,
+    status: "complete"
+  };
+  const units = occurrenceProgressUnits({ calendarItems: [base], eventRuns: [] }, {
+    selectedControlIds: new Set(),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(units.map(({ status }) => status), ["complete", "complete", "complete"]);
+
+  const legacyUnits = occurrenceProgressUnits({
+    calendarItems: [{
+      ...base,
+      reconciliationStatus: "unreconciled",
+      operatingResult: null,
+      legacySchedule: true,
+      completedMemberIds: []
+    }],
+    eventRuns: []
+  }, {
+    selectedControlIds: new Set(),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(legacyUnits.map(({ status }) => status), ["complete", "complete", "complete"]);
+});
+
+test("excludes canceled event runs from Type 2 occurrence progress", () => {
+  const units = occurrenceProgressUnits({
+    calendarItems: [],
+    eventRuns: [{
+      status: "canceled",
+      occurredOn: "2026-06-01",
+      actions: [{
+        key: "canceled-action",
+        title: "Canceled action",
+        status: "proposed",
+        controlIds: ["control-access"]
+      }]
+    }]
+  }, {
+    selectedControlIds: new Set(["control-access"]),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(units, []);
+});
+
+test("does not complete population reconciliation without an owner", () => {
+  const audit = { coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-06-30" } };
+  const evidence = {
+    id: "evidence-population",
+    type: "evidence",
+    artifactKind: "population-export",
+    status: "verified",
+    sourceComponentId: "component-source",
+    coverage: audit.coverage,
+    generatedAt: "2026-07-01T12:00:00.000Z",
+    timezone: "UTC",
+    queryDescription: "All records in the audit period.",
+    populationCount: 4,
+    completenessValidation: "Reconciled the export count.",
+    accuracyValidation: "Checked a sample to the source.",
+    sourceDescription: "the source component"
+  };
+  const population = {
+    status: "reconciled",
+    coverage: audit.coverage,
+    sourceEvidenceId: evidence.id,
+    sourceComponentId: "component-source",
+    reconciledByIds: ["person-reviewer"],
+    reconciledOn: "2026-07-02",
+    conclusion: "complete"
+  };
+  const byId = new Map([[evidence.id, evidence]]);
+  assert.equal(populationResult(population, audit, byId).status, "action");
+  assert.equal(populationResult({ ...population, ownerIds: ["person-owner"] }, audit, byId).status, "complete");
 });
 
 test("initializes model-owned Type 2 populations and management document links", async (context) => {
@@ -111,6 +200,11 @@ test("initializes model-owned Type 2 populations and management document links",
   const occurrenceItem = missedOccurrence.stages.find(({ id }) => id === "fieldwork").items
     .find(({ id }) => id === "occurrences-period-occurrences");
   assert.equal(occurrenceItem.status, "action");
+  assert.equal(occurrenceItem.progressUnits.length, 4);
+  assert.deepEqual(
+    occurrenceItem.progressUnits.map(({ status }) => status),
+    ["action", "blocked", "action", "blocked"]
+  );
   assert.equal(missedOccurrence.status, "needs-work");
   const regressedDuringWindow = await assessAuditPreparation(await loadWorkspace(root), {
     auditId: "audit-type-2",
@@ -127,6 +221,15 @@ test("initializes model-owned Type 2 populations and management document links",
   assert.match(foundation.message, /audit window is active/);
   assert.match(foundation.message, /2 required setup actions remain/);
   assert.doesNotMatch(foundation.message, /66 required setup actions|Start the candidate period/);
+  const expectedLockedProgressTotal = regressedDuringWindow.stages
+    .flatMap(({ items }) => items)
+    .flatMap((current) => (
+      current.progressUnit === false || ["external", "info", "later"].includes(current.status)
+        ? []
+        : current.progressUnits?.length ? current.progressUnits : [current]
+    ))
+    .filter(({ status }) => !["external", "info", "later"].includes(status)).length;
+  assert.equal(regressedDuringWindow.progress.total, expectedLockedProgressTotal);
   const candidateWindow = await assessAuditPreparation(await loadWorkspace(root), {
     auditId: "audit-type-2",
     programReadiness: {
@@ -228,6 +331,48 @@ test("initializes model-owned Type 2 populations and management document links",
     && record.periodStart === audit.periodStart
     && record.periodEnd === audit.periodEnd
   )));
+
+  const populationAssessment = await assessAuditPreparation(loaded, {
+    auditId: audit.id,
+    programReadiness: injectedReadiness
+  });
+  const populationItem = populationAssessment.stages.find(({ id }) => id === "fieldwork").items
+    .find(({ id }) => id === "populations-population-access-changes");
+  assert.deepEqual(
+    populationItem.progressUnits.map(({ id, status }) => ({ id, status })),
+    [
+      { id: "population-access-changes-preparation", status: "action" },
+      { id: "population-access-changes-conclusion", status: "blocked" }
+    ]
+  );
+
+  const notApplicablePopulation = {
+    ...populations[0],
+    status: "not-applicable",
+    controlIds: [],
+    notApplicableReason: "No access changes occurred during the period."
+  };
+  const notApplicableLoaded = {
+    ...loaded,
+    resources: loaded.resources.map((record) => (
+      record.id === notApplicablePopulation.id ? notApplicablePopulation : record
+    )),
+    entries: loaded.entries.map((entry) => (
+      entry.record.id === notApplicablePopulation.id
+        ? { ...entry, record: notApplicablePopulation }
+        : entry
+    ))
+  };
+  const notApplicableAssessment = await assessAuditPreparation(notApplicableLoaded, {
+    auditId: audit.id,
+    programReadiness: injectedReadiness
+  });
+  const notApplicableItem = notApplicableAssessment.stages.find(({ id }) => id === "fieldwork").items
+    .find(({ id }) => id === "populations-population-access-changes");
+  assert.deepEqual(
+    notApplicableItem.progressUnits.map(({ id, status }) => ({ id, status })),
+    [{ id: "population-access-changes-applicability", status: "complete" }]
+  );
 
   const second = await prepareAuditWorkspace(root, { auditId: "audit-type-2" });
   assert.deepEqual(second.linkedDocumentIds, []);

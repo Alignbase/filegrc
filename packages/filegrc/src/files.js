@@ -234,6 +234,12 @@ export async function applyGovernedContentActivationBatch(input, changes) {
   ));
 }
 
+export async function applyRetentionScheduleReviewBatch(input, changes) {
+  return serializeWorkspaceMutation(input, (root) => (
+    applyResourceBatchUnlocked(root, changes, "retention-schedule-approval")
+  ));
+}
+
 export async function applyModelMigrationBatch(input, changes) {
   return serializeWorkspaceMutation(input, (root) => (
     applyResourceBatchUnlocked(root, changes, "model-migration")
@@ -1231,7 +1237,13 @@ function assertGovernedContentLifecycleMutation(previousRecord, nextRecord, mode
   const title = getResourceDefinition(model, nextRecord.type).title;
   const approvedStatuses = new Set(["approved", "active", "superseded", "retired"]);
   const activatedStatuses = new Set(["active", "superseded", "retired"]);
-  if (approvedStatuses.has(previousRecord.status) && approvedStatuses.has(nextRecord.status)) {
+  const retentionScheduleReapproval = lifecycleOperation === "retention-schedule-approval"
+    && previousRecord.type === "document"
+    && previousRecord.documentKind === "schedule"
+    && previousRecord.workflowScope === "program"
+    && nextRecord.documentKind === "schedule"
+    && nextRecord.workflowScope === "program";
+  if (approvedStatuses.has(previousRecord.status) && approvedStatuses.has(nextRecord.status) && !retentionScheduleReapproval) {
     assertLifecycleFieldsUnchanged(previousRecord, nextRecord, [
       "approverIds",
       "approvedOn",

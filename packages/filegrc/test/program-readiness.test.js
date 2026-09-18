@@ -9,6 +9,7 @@ import { applicabilityScopeRevision } from "../src/applicability-scope.js";
 import {
   calculateProgramProgress,
   controlOversightEligible,
+  reportingRouteSetItem,
   selectedAuditWindow,
   selectedProgressWindow
 } from "../src/program-readiness.js";
@@ -67,6 +68,143 @@ test("counts distinct readiness actions until the Type 2 window starts", () => {
   assert.equal(calculateProgramProgress(input).percent, 100);
   assert.equal(calculateProgramProgress(input).remaining, 0);
   assert.equal(calculateProgramProgress({ ...input, evidenceReady: true }).status, "Scheduled");
+});
+
+test("counts each retention row proposal and one final schedule approval", () => {
+  const stages = [{
+    id: "policies",
+    items: [
+      { id: "retention-rule-customer", status: "complete" },
+      { id: "retention-rule-security", status: "action" },
+      { id: "collection-review-retention-schedule-item", status: "action" },
+      { id: "retention-use-customer", status: "complete", progressUnit: false }
+    ]
+  }, {
+    id: "controls",
+    items: [
+      { id: "retention-source-coverage-logs", status: "complete", progressUnit: false }
+    ]
+  }];
+  const target = { goal: "soc-2-type-1" };
+  assert.deepEqual(calculateProgramProgress({ stages, target }), {
+    mode: "setup-progress",
+    label: "Program setup",
+    status: "Needs work",
+    complete: 1,
+    total: 3,
+    remaining: 2,
+    percent: 33,
+    unit: "action",
+    detail: "1 of 3 required actions complete.",
+    operating: false
+  });
+  stages[0].items[1].status = "complete";
+  assert.equal(calculateProgramProgress({ stages, target }).complete, 2);
+  stages[0].items[2].status = "complete";
+  assert.equal(calculateProgramProgress({ stages, target }).complete, 3);
+});
+
+test("counts grouped proposals and their final review as separate progress units", () => {
+  const stages = [{
+    id: "scope",
+    items: [{
+      id: "collection-review-component",
+      status: "action",
+      progressUnits: [
+        { id: "component-a", status: "complete" },
+        { id: "component-b", status: "action" },
+        { id: "component-review", status: "blocked" }
+      ]
+    }]
+  }];
+  const progress = calculateProgramProgress({ stages, target: { goal: "soc-2-type-1" } });
+  assert.equal(progress.complete, 1);
+  assert.equal(progress.total, 3);
+  assert.equal(progress.remaining, 2);
+  stages[0].items[0].progressUnits[1].status = "complete";
+  stages[0].items[0].progressUnits[2].status = "complete";
+  assert.equal(calculateProgramProgress({ stages, target: { goal: "soc-2-type-1" } }).percent, 100);
+});
+
+test("does not count a canceled optional Reporting Channel Set as setup work", () => {
+  const item = reportingRouteSetItem({
+    routeSets: [{
+      record: { id: "route-canceled", type: "reporting-route-set", title: "Old channels", status: "canceled", purposeKey: "security-reporting" },
+      canceled: true,
+      effective: false,
+      committed: true,
+      proposedRequirementIssues: []
+    }],
+    requirements: [],
+    proposedRequirements: [],
+    issues: []
+  });
+  assert.equal(item.status, "info");
+  assert.deepEqual(item.progressUnits || [], []);
+});
+
+test("does not count historical optional routes and accepts a still-effective cancellation", () => {
+  const historical = reportingRouteSetItem({
+    routeSets: [{
+      record: { id: "route-historical", type: "reporting-route-set", title: "Historical channels", status: "historical", purposeKey: "security-reporting" },
+      canceled: false,
+      effective: false,
+      committed: true,
+      proposedRequirementIssues: []
+    }],
+    requirements: [],
+    proposedRequirements: [],
+    issues: []
+  });
+  assert.deepEqual(historical.progressUnits || [], []);
+
+  const currentCancellation = reportingRouteSetItem({
+    routeSets: [{
+      record: { id: "route-current", type: "reporting-route-set", title: "Current channels", status: "canceled", purposeKey: "security-reporting" },
+      canceled: false,
+      effective: true,
+      committed: true,
+      proposedRequirementIssues: []
+    }],
+    requirements: [{ purposeKey: "security-reporting" }],
+    proposedRequirements: [],
+    issues: []
+  });
+  assert.equal(currentCancellation.status, "complete");
+  assert.deepEqual(currentCancellation.progressUnits.map(({ status }) => status), ["complete", "complete"]);
+
+  const invalidEffective = reportingRouteSetItem({
+    routeSets: [{
+      record: { id: "route-invalid", type: "reporting-route-set", title: "Invalid channels", status: "approved", purposeKey: "security-reporting" },
+      canceled: false,
+      effective: true,
+      committed: true,
+      proposedRequirementIssues: []
+    }],
+    requirements: [{ purposeKey: "security-reporting" }],
+    proposedRequirements: [],
+    issues: [{ code: "missing-alternate", message: "Add the fallback channel." }]
+  });
+  assert.equal(invalidEffective.status, "action");
+  assert.deepEqual(invalidEffective.progressUnits.map(({ status }) => status), ["complete", "action"]);
+
+  const mixedPurposes = reportingRouteSetItem({
+    programId: "program-example",
+    routeSets: ["security", "privacy"].map((purposeKey) => ({
+      record: { id: `route-${purposeKey}`, type: "reporting-route-set", title: `${purposeKey} channels`, status: "approved", purposeKey },
+      canceled: false,
+      effective: true,
+      committed: true,
+      proposedRequirementIssues: []
+    })),
+    requirements: ["security", "privacy"].map((purposeKey) => ({ purposeKey, sourceId: `policy-${purposeKey}` })),
+    proposedRequirements: [],
+    issues: [{ code: "missing-alternate", resourceId: "route-security", message: "Add the security fallback channel." }]
+  });
+  assert.deepEqual(
+    mixedPurposes.progressUnits.filter(({ id }) => id.includes("approval")).map(({ status }) => status),
+    ["action", "complete"]
+  );
 });
 
 test("switches readiness progress to elapsed window time without tracking audit work", () => {

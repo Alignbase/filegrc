@@ -1774,6 +1774,92 @@ export async function prefetchBrowserRemote(
   return prefetch;
 }
 
+export async function synchronizeBrowserStartup(
+  input = process.cwd(),
+  options = {},
+) {
+  return serializeWorkspaceMutation(input, async (root) => {
+    const config = await getRepositoryConfig(root);
+    if (config.mode !== "trunk" || options.allowNonAuthoritativeWrites === true) {
+      return { status: "not-needed", updated: false };
+    }
+
+    const before = await requireTrunkPreconditionsAsync(root, config, {
+      allowAhead: true,
+    });
+    await fetchConfiguredRemote(root, config);
+    const synchronized = inspectTrunkRepository(
+      root,
+      config,
+      await getRepositorySnapshot(root, { fresh: true }),
+    );
+    if (synchronized.ahead > 0 || synchronized.behind === 0) {
+      return {
+        status: synchronized.ahead > 0 ? "blocked" : "current",
+        updated: false,
+        ahead: synchronized.ahead,
+        behind: synchronized.behind,
+        commit: synchronized.currentCommit,
+      };
+    }
+
+    const target = synchronized.upstreamCommit;
+    const incomingCommits = lines(
+      git(root, [
+        "rev-list",
+        "--reverse",
+        `${synchronized.currentCommit}..${target}`,
+      ]),
+    );
+    assertCommitsInsideWorkspace(root, incomingCommits);
+    for (const commit of incomingCommits) assertNoCommitWorkspaceContentFilters(root, commit);
+    assertExpectedCheckout(
+      root,
+      `refs/heads/${config.authoritativeBranch}`,
+      before.currentCommit,
+    );
+    await gitForWriteAsync(
+      root,
+      [
+        "-c",
+        "core.hooksPath=/dev/null",
+        "merge",
+        "--ff-only",
+        "--no-edit",
+        "--no-stat",
+        target,
+      ],
+      `fast-forward ${config.authoritativeBranch} at server startup`,
+      {
+        expectedCheckout: {
+          expectedRef: `refs/heads/${config.authoritativeBranch}`,
+          expectedCommit: before.currentCommit,
+        },
+        expectedNoOperation: true,
+      },
+    );
+    const after = inspectTrunkRepository(
+      root,
+      config,
+      await getRepositorySnapshot(root, { fresh: true }),
+    );
+    if (after.ahead !== 0 || after.behind !== 0 || after.currentCommit !== target) {
+      throw new Error(
+        "The authoritative branch changed while FileGRC fast-forwarded it. Reconcile the repository with Git, then restart FileGRC.",
+      );
+    }
+    const synchronizedAt = new Date().toISOString();
+    lastSuccessfulSynchronizations.set(root, synchronizedAt);
+    return {
+      status: "updated",
+      updated: true,
+      commit: after.currentCommit,
+      shortCommit: after.currentCommit.slice(0, 8),
+      synchronizedAt,
+    };
+  });
+}
+
 async function prefetchBrowserRemoteCoalesced(root, options) {
   const prepared = await serializeWorkspaceMutation(root, async () => {
     const config = await getRepositoryConfig(root);

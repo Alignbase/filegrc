@@ -182,7 +182,7 @@ FileGRC derives record issues, but it cannot infer that management reviewed an a
 | `component` | Scoped Components | `complete`, `zero-population` | Start with each bounded System and include only Components that deliver its service, support Controls, produce authoritative Evidence, or support relevant operations. Confirm every System use has the right role and a specific rationale. Keep unrelated corporate tools and Vendor relationships outside the reviewed population. |
 | `classification` | Information handling classifications | `complete` | Confirm each Classification represents a distinct handling level the organization actually uses. Confirm the ordering and handling expectations match approved information protection decisions. Retire unused or duplicate Classifications only after reviewing every record that references them. |
 | `information-type` | Information Type inventory | `complete`, `zero-population` | Review near-duplicate names and choose one canonical Information Type only after confirming they mean the same thing. Retire superseded records through a reviewed migration that rewrites every relationship. Confirm every active Information Type has an approved classification and a retention schedule item or an explicit management-review prompt. |
-| `retention-schedule-item` | Data Retention Schedule | `complete`, `zero-population` | Review the Data Retention Schedule document, its Markdown, and every included structured row as one revision. Confirm schedule coverage across the Systems, Components, Vendors, source families, logs, backups, audit records, and FileGRC records the organization actually uses. Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions; keep undecided behavior planned. |
+| `retention-schedule-item` | Data Retention Schedule | `complete`, `zero-population` | Confirm the owner completed every row proposal, then review the Data Retention Schedule document, its Markdown, and every proposed row as one revision. Confirm schedule coverage across the Systems, Components, Vendors, source families, logs, backups, audit records, and FileGRC records the organization actually uses. Confirm every proposed item has a reviewed cutoff, retention period, disposition action, owner, and exact source revisions; keep undecided behavior planned. |
 | `control` | Control implementation oversight | `complete` | Perform this one collection review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content. Confirm owners, procedures, scope, operation patterns, mappings, Obligations, and authoritative evidence sources remain current. Record follow-up work separately when the review finds a gap. |
 
 ## Relationship constraints
@@ -1402,19 +1402,19 @@ Record Markdown: shown by default as an implicit companion file.
 
 #### `retention-schedule-item`
 
-One reviewed schedule item that states which Information Types and operational scope it covers, when retention starts, how long information is kept, and its approved disposition.
+One owner-completed proposal that states which Information Types and operational scope it covers, when retention starts, how long information is kept, and its proposed disposition. It becomes authoritative through the single whole-schedule approval.
 
 Instructions: Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
 
 Policy basis: Management must translate legal, contractual, privacy, security, and business needs into explicit retention and disposition instructions without treating starter periods as organization facts.
 
-Timing: Review before activation and after a source Policy, Requirement, Commitment, information use, System, Component, Vendor, or legal-hold process changes.
+Timing: Complete the proposal before whole-schedule approval and revisit it after a source Policy, Requirement, Commitment, information use, System, Component, Vendor, or legal-hold process changes.
 
 When reviewing:
 
 - Confirm the Information Types and operational scope covered by this item.
-- Confirm the cutoff, retention period, and disposition action from approved management sources.
-- Keep the item planned until management approves every organization-specific value.
+- Confirm the cutoff, retention period, and disposition action from management sources.
+- Keep the item planned until the owner completes every organization-specific value and binds the current source revisions.
 
 Default sources: `policy-information-security`, `document-data-retention-schedule`
 
@@ -1435,8 +1435,8 @@ Record Markdown: available when needed as an implicit companion file.
 | `dispositionAction` | enum | Conditional | Values: `delete`, `destroy`, `erase`, `anonymize`, `transfer`, `retain-permanently` Required when `status` is `active`. |
 | `dispositionInstructions` | string | Conditional | Required when `status` is `active`. |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
-| `approvedByIds` | array of id | Conditional | Approved by References: `person` Required when `status` is `active`. |
-| `approvedOn` | date | Conditional | Required when `status` is `active`. |
+| `approvedByIds` | array of id | No | Legacy row reviewer References: `person` |
+| `approvedOn` | date | No | Legacy row review date |
 | `reviewedSourceRevisions` | object (`string-map`) | Conditional | Reviewed source revisions Required when `status` is `active`. |
 | `supersedesId` | id | No | References: `retention-schedule-item` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `superseded`, `retired`. Allowed when `status` is one of `superseded`, `retired`. |

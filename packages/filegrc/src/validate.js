@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition, modelSupports } from "../model/index.js";
-import { scopedCollectionRecords, selectScopedCollectionRecords } from "./collection-scope.js";
+import { collectionRecordProposals, retentionScheduleReviewScope, scopedCollectionRecords, selectScopedCollectionRecords } from "./collection-scope.js";
 import {
   collectionRevision,
   collectionRevisionMatches
@@ -1224,6 +1224,10 @@ function sameRouteProposal(proposal, finalized) {
   return [...keys].every((key) => allowed.has(key) || JSON.stringify(proposal[key]) === JSON.stringify(finalized[key]));
 }
 
+function sameStringIds(left = [], right = []) {
+  return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
+}
+
 function validateTimestampTimezone(value, timezone, path, diagnostics, label) {
   if (!value || !timezone) return;
   const source = String(value);
@@ -1252,10 +1256,19 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
   const program = modelSupports(model, "program-scope")
     ? (record.scopeResourceIds || []).map((id) => byId.get(id)).find(({ type } = {}) => type === "program")
     : null;
+  const workspaceWideRetentionReview = record.resourceType === "retention-schedule-item"
+    && modelSupports(model, "retention-schedule-approval");
+  const retentionScope = workspaceWideRetentionReview ? retentionScheduleReviewScope(loaded) : null;
   const recordCount = scopedCollectionRecords(loaded, record.resourceType, program).length;
   const currentPopulationIds = scopedCollectionRecords(loaded, record.resourceType, program)
     .map(({ id }) => id)
     .sort();
+  const incompleteProposals = collectionRecordProposals(
+    loaded,
+    record.resourceType,
+    scopedCollectionRecords(loaded, record.resourceType, program),
+    program
+  ).filter(({ complete }) => !complete);
   const currentRevision = collectionRevision(loaded, record.resourceType, {
     program,
     authoritativeSourceId: record.decision === "externally-managed"
@@ -1274,6 +1287,20 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       currentRevision
     }
   );
+  if (current && workspaceWideRetentionReview && !sameStringIds(record.scopeResourceIds, retentionScope.programIds)) {
+    diagnostics.push(error(
+      "invalid-retention-schedule-review-scope",
+      path,
+      "The current Data Retention Schedule review must cover every active Program as one workspace-wide approval."
+    ));
+  }
+  if (current && incompleteProposals.length) {
+    diagnostics.push(error(
+      "incomplete-collection-review-proposals",
+      path,
+      `Complete every ${configuration.title.toLowerCase()} record proposal before the collection review. Remaining: ${incompleteProposals.map(({ title }) => title).join(", ")}.`
+    ));
+  }
   if (current && record.resourceType === "control") {
     const controls = scopedCollectionRecords(loaded, "control", program);
     const controlIds = new Set(controls.map(({ id }) => id));
@@ -1299,8 +1326,11 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
   }
   if (current && record.resourceType === "retention-schedule-item" && modelSupports(model, "retention-schedule-approval")) {
     const rows = scopedCollectionRecords(loaded, record.resourceType, program);
-    for (const issue of retentionScheduleApprovalIssues(loaded, program || {}, rows, {
-      informationTypesReviewed: collectionReviewIsCurrent(loaded, "information-type", program)
+    for (const issue of retentionScheduleApprovalIssues(loaded, retentionScope, rows, {
+      informationTypesReviewed: retentionScope.programIds.every((id) => (
+        collectionReviewIsCurrent(loaded, "information-type", byId.get(id))
+      )),
+      approvalReview: record
     })) {
       diagnostics.push(error(issue.code, path, issue.message));
     }

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { resolveDataPath } from "./paths.js";
-import { currentPartyPeople, partiesIndependent } from "./parties.js";
+import { currentPartyPeople } from "./parties.js";
 import {
   nearDuplicateInformationTypes,
   resourceReviewRevisionsSync,
@@ -26,7 +26,7 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
     && !["superseded", "retired"].includes(record.status)
   ));
   if (!schedules.length) {
-    issues.push(issue("missing-retention-schedule-document", "Add and approve the Data Retention Schedule document before approving the schedule revision."));
+    issues.push(issue("missing-retention-schedule-document", "Add the Data Retention Schedule document before requesting approval of the complete schedule."));
   }
   if (schedules.length !== 1) {
     if (schedules.length) {
@@ -38,17 +38,22 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
   const linkedControl = schedule && (schedule.controlIds || []).some((id) => (program.controlIds || []).includes(id));
   if (
     schedule
-    && (!["approved", "active"].includes(schedule.status)
-    || !schedule.approvedOn
-    || !schedule.approvedContentRevisions
-    || currentPartyPeople(schedule.ownerIds || [], byId).size === 0
-    || !partiesIndependent(schedule.ownerIds, schedule.approverIds, byId)
+    && (currentPartyPeople(schedule.ownerIds || [], byId).size === 0
     || !linkedControl
     || !substantiveMarkdown(scheduleContent)
-    || openPlaceholderCount(scheduleContent) > 0
+    || openPlaceholderCount(scheduleContent) > 0)
+  ) {
+    issues.push(issue("incomplete-retention-schedule-document", "Complete the Data Retention Schedule document, its owner, linked Control, and Markdown before requesting approval of the complete schedule."));
+  }
+  if (
+    schedule
+    && options.approvalReview
+    && (!["approved", "active"].includes(schedule.status)
+    || schedule.approvedOn !== options.approvalReview.reviewedOn
+    || !sameIds(schedule.approverIds, options.approvalReview.reviewedByIds)
     || !approvalBindingsMatch(loaded, schedule))
   ) {
-    issues.push(issue("unapproved-retention-schedule-document", "Complete and independently approve the Data Retention Schedule document before approving the complete schedule."));
+    issues.push(issue("invalid-retention-schedule-approval-binding", "The Data Retention Schedule document no longer matches the recorded whole-schedule approval. Review and approve the current complete schedule again."));
   }
   const activeRows = rows.filter(({ status }) => status === "active");
   const mismatched = schedule
@@ -65,21 +70,30 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
   if (incomplete.length) {
     issues.push(issue("incomplete-retention-schedule-row", `Complete the retention decisions before approving the schedule revision: ${incomplete[0].title}.`));
   }
-  const usableRows = activeRows.filter((row) => !incomplete.includes(row));
-  const uncovered = retentionUses(loaded, program).find((use) => !usableRows.some((row) => (
+  const proposedRows = rows.filter(rowProposesCoverage);
+  const scopedPrograms = program.programIds
+    ? program.programIds.map((id) => byId.get(id)).filter((record) => record?.type === "program")
+    : [program];
+  const uncovered = scopedPrograms.flatMap((candidate) => (
+    retentionUses(loaded, candidate).map((use) => ({ ...use, programId: candidate.id }))
+  )).find((use) => !proposedRows.some((row) => (
     (row.informationTypeIds || []).includes(use.informationTypeId)
-    && ((row.scopeResourceIds || []).includes(use.resource.id) || (row.scopeResourceIds || []).includes(program.id))
+    && ((row.scopeResourceIds || []).includes(use.resource.id) || (row.scopeResourceIds || []).includes(use.programId))
   )));
   if (uncovered) {
     issues.push(issue(
       "uncovered-retention-information-use",
-      `${uncovered.resource.title} uses ${byId.get(uncovered.informationTypeId)?.title || uncovered.informationTypeId}, but no active, current retention schedule row covers both the type and scope.`
+      `${uncovered.resource.title} uses ${byId.get(uncovered.informationTypeId)?.title || uncovered.informationTypeId}, but no proposed retention schedule row covers both the type and scope.`
     ));
   }
   if (nearDuplicateInformationTypes(loaded.resources).length && !options.informationTypesReviewed) {
     issues.push(issue("unreviewed-similar-information-types", "Review similar Information Types before approving the Data Retention Schedule."));
   }
   return issues;
+}
+
+function sameIds(left = [], right = []) {
+  return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
 }
 
 function issue(code, message) {
@@ -99,6 +113,14 @@ function primaryMarkdown(loaded, record) {
   }
 }
 
+function rowProposesCoverage(row) {
+  return Boolean(
+    (row.informationTypeIds || []).length
+    && (row.scopeResourceIds || []).length
+    && row.scheduleDocumentId
+  );
+}
+
 function approvalBindingsMatch(loaded, record) {
   const actual = {};
   for (const entry of markdownEntries(loaded.model, record)) {
@@ -114,8 +136,5 @@ function approvalBindingsMatch(loaded, record) {
   const actualKeys = Object.keys(actual).sort();
   const expectedKeys = Object.keys(expected).sort();
   return actualKeys.length === expectedKeys.length
-    && actualKeys.every((key, index) => (
-      key === expectedKeys[index]
-      && actual[key] === expected[key]
-    ));
+    && actualKeys.every((key, index) => key === expectedKeys[index] && actual[key] === expected[key]);
 }

@@ -65,6 +65,77 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   ));
 }
 
+export function retentionScheduleReviewScope(loaded) {
+  const programs = loaded.resources.filter((record) => (
+    record.type === "program" && record.status !== "retired"
+  ));
+  return {
+    id: "workspace",
+    programIds: programs.map(({ id }) => id).sort(),
+    systemIds: [...new Set(programs.flatMap((record) => record.systemIds || []))],
+    controlIds: [...new Set(programs.flatMap((record) => record.controlIds || []))],
+    frameworkIds: [...new Set(programs.flatMap((record) => record.frameworkIds || []))]
+  };
+}
+
+const RECORD_PROPOSAL_COLLECTIONS = new Set([
+  "component",
+  "vendor",
+  "complementary-control",
+  "information-type"
+]);
+
+export function collectionRecordProposals(loaded, resourceType, records, program) {
+  if (!RECORD_PROPOSAL_COLLECTIONS.has(resourceType)) return [];
+  const currentRecords = records.filter((record) => collectionRecordIsCurrent(record));
+  const scopedIds = new Set(currentRecords.map(({ id }) => id));
+  const candidates = new Map(currentRecords.map((record) => [record.id, record]));
+  const activePrograms = loaded.resources.filter((record) => record.type === "program" && record.status !== "retired");
+  if (activePrograms.length === 1 && activePrograms[0].id === program?.id && ["component", "complementary-control"].includes(resourceType)) {
+    for (const record of loaded.resources) {
+      if (
+        record.type !== resourceType
+        || ["retired", "superseded"].includes(record.status)
+        || collectionRecordProposalComplete(record, loaded)
+      ) continue;
+      candidates.set(record.id, record);
+    }
+  }
+  return [...candidates.values()].map((record) => ({
+    resourceId: record.id,
+    title: record.title,
+    complete: scopedIds.has(record.id) && collectionRecordProposalComplete(record, loaded)
+  }));
+}
+
+function collectionRecordIsCurrent(record) {
+  if (record.type === "vendor") return !["deprecated", "terminated"].includes(record.status);
+  if (record.type === "information-type") return !["superseded", "retired"].includes(record.status);
+  if (record.type === "complementary-control") return !["superseded", "retired"].includes(record.status);
+  return record.status !== "retired";
+}
+
+function collectionRecordProposalComplete(record, loaded) {
+  if (record.type === "vendor") return record.status !== "evaluating";
+  if (record.type === "component") {
+    if (record.status === "planned") return false;
+    if (record.status === "retired") return true;
+    return record.status === "active"
+      && Boolean(String(record.description || "").trim())
+      && (record.ownerIds || []).length > 0
+      && (record.systemUses || []).length > 0
+      && (record.systemUses || []).every(({ roles, rationale }) => (
+        (roles || []).length > 0 && Boolean(String(rationale || "").trim())
+      ));
+  }
+  if (record.type === "information-type") {
+    if (record.status === "retired") return true;
+    const classification = loaded.resources.find(({ id, type }) => type === "classification" && id === record.classificationId);
+    return record.status === "active" && classification?.status === "active";
+  }
+  return record.status !== "planned";
+}
+
 export function selectScopedCollectionRecords(loaded, selector, program) {
   if (!selector?.resourceType) return [];
   return scopedCollectionRecords(loaded, selector.resourceType, program).filter((record) => (
@@ -231,7 +302,10 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
       .map(({ id }) => id));
   }
   if (resourceType === "retention-schedule-item" && !legacy && modelSupports(loaded.model, "retention-schedule-approval")) {
-    const uses = retentionUses(loaded, program || {});
+    const programs = program
+      ? [program]
+      : loaded.resources.filter((record) => record.type === "program" && record.status !== "retired");
+    const uses = programs.flatMap((candidate) => retentionUses(loaded, candidate));
     addIds(uses.map(({ resource }) => resource.id));
     addIds(uses.map(({ informationTypeId }) => informationTypeId));
     const schedules = loaded.resources
@@ -243,14 +317,14 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
       ))
     addIds(schedules.map(({ id }) => id));
     for (const schedule of schedules) {
-      addPartyIds([...(schedule.ownerIds || []), ...(schedule.approverIds || [])]);
+      addPartyIds(schedule.ownerIds || []);
     }
     for (const record of reviewed) {
       addIds([record.scheduleDocumentId]);
       addIds(record.informationTypeIds);
       addIds(record.scopeResourceIds);
       addIds(record.sourceResourceIds);
-      addPartyIds([...(record.ownerIds || []), ...(record.approvedByIds || [])]);
+      addPartyIds(record.ownerIds || []);
     }
   }
   if (resourceType === "complementary-control") {
@@ -267,12 +341,41 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
   return [...records.values()].map((record) => ({
     record,
     value: reviewedIds.has(record.id)
-      ? record
-      : dependencyRevisionValue(resourceType, record, legacy),
+      ? resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
+        ? retentionScheduleRowProposalValue(record)
+        : record
+      : resourceType === "retention-schedule-item"
+        && modelSupports(loaded.model, "retention-schedule-approval")
+        && record.type === "document"
+          ? retentionScheduleDocumentProposalValue(record)
+          : dependencyRevisionValue(resourceType, record, legacy),
     includeContent: legacy
       || reviewedIds.has(record.id)
       || dependencyContentAffectsRevision(resourceType, record.type)
   }));
+}
+
+function retentionScheduleRowProposalValue(record) {
+  return Object.fromEntries(Object.entries(record).filter(([field]) => ![
+    "approvedByIds",
+    "approvedOn"
+  ].includes(field)));
+}
+
+function retentionScheduleDocumentProposalValue(record) {
+  return Object.fromEntries(Object.entries(record).filter(([field]) => ![
+    "status",
+    "approverIds",
+    "approvedOn",
+    "approvedContentRevisions",
+    "activationBasis",
+    "activatedByIds",
+    "activatedOn",
+    "activatedContentRevisions",
+    "effectiveOn",
+    "proposedEffectiveOn",
+    "statusTransition"
+  ].includes(field)));
 }
 
 export function collectionScopeRevisionFacts(loaded, resourceType, program) {
@@ -295,6 +398,19 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program) {
       };
     }
     return common;
+  }
+  if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")) {
+    const programs = loaded.resources
+      .filter((record) => record.type === "program" && record.status !== "retired")
+      .sort((left, right) => left.id.localeCompare(right.id));
+    return {
+      programIds: programs.map(({ id }) => id),
+      programs: programs.map((record) => ({
+        id: record.id,
+        systemIds: sorted(record.systemIds),
+        controlIds: sorted(record.controlIds)
+      }))
+    };
   }
   const common = { programId: program?.id ?? null };
   if (resourceType === "framework") {

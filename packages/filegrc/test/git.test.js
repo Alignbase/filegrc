@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getRepositorySnapshot, getWorkspaceHistories, prefetchBrowserRemote, retryBrowserSync, runBrowserMutation, serveWorkspace, updateResource } from "../src/index.js";
+import { createAppState, createResources, getBrowserRepositoryState, getGitSummary, getRepositorySnapshot, getWorkspaceHistories, prefetchBrowserRemote, retryBrowserSync, runBrowserMutation, serveWorkspace, synchronizeBrowserStartup, updateResource } from "../src/index.js";
 import {
   BROWSER_VALIDATION,
   commitAndPushWorkspace,
@@ -1619,6 +1619,29 @@ test("a trunk browser mutation never integrates incoming commits", async (contex
   await assert.rejects(access(join(fixture.root, "remote-note.txt")), /ENOENT/);
 });
 
+test("server startup fast-forwards a clean authoritative checkout before serving", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-startup-sync-");
+  const peer = join(fixture.parent, "startup-peer");
+  await git(fixture.parent, ["clone", fixture.remote, peer]);
+  await configureGit(peer, "Peer User", "peer@example.test");
+  await writeFile(join(peer, "startup-note.txt"), "Fetched before serving.\n", "utf8");
+  await git(peer, ["add", "."]);
+  await git(peer, ["commit", "-m", "Add startup note"]);
+  await git(peer, ["push"]);
+
+  const synchronization = await synchronizeBrowserStartup(fixture.root);
+  assert.equal(synchronization.status, "updated");
+  assert.equal(await readFile(join(fixture.root, "startup-note.txt"), "utf8"), "Fetched before serving.\n");
+  assert.equal(
+    (await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim(),
+    (await git(peer, ["rev-parse", "HEAD"])).stdout.trim()
+  );
+
+  const running = await serveWorkspace(fixture.root, { port: 0 });
+  context.after(() => new Promise((resolve) => running.server.close(resolve)));
+  assert.equal(running.startupSynchronization.status, "current");
+});
+
 test("a background push will not use a branch switched at the same commit", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-push-checkout-race-");
   const initialState = await createAppState(fixture.root);
@@ -2148,6 +2171,8 @@ test("concurrent browser state requests share one bounded repository inspection"
 
 test("a hung fetch times out without holding the mutation queue or poisoning later requests", async (context) => {
   const fixture = await makeTrunkGitFixture(context, "filegrc-trunk-git-timeout-");
+  const running = await serveWorkspace(fixture.root, { port: 0 });
+  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
   let failFirstFetch;
   let markFetchStarted;
   const fetchStarted = new Promise((resolve) => { markFetchStarted = resolve; });
@@ -2165,8 +2190,6 @@ test("a hung fetch times out without holding the mutation queue or poisoning lat
     return run(cwd, args, options);
   });
   context.after(restoreInterceptor);
-  const running = await serveWorkspace(fixture.root, { port: 0 });
-  context.after(() => running.server.listening ? new Promise((resolve) => running.server.close(resolve)) : undefined);
 
   const prefetchPromise = fetch(`${running.url}/api/git/prefetch`, { method: "POST" });
   await fetchStarted;

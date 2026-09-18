@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import {
   collectionRevision,
   collectionRevisionMatches
 } from "./collection-revision.js";
-import { scopedCollectionRecords } from "./collection-scope.js";
-import { applyResourceBatch, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
+import { collectionRecordProposals, retentionScheduleReviewScope, scopedCollectionRecords } from "./collection-scope.js";
+import { applyResourceBatch, applyRetentionScheduleReviewBatch, contentRevision, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
 import { getGitSummary } from "./git.js";
 import { createResourceId } from "./id.js";
 import { loadWorkspace } from "./workspace.js";
@@ -13,6 +14,8 @@ import { resolveProgram } from "./program.js";
 import { currentCalendarDate } from "./time.js";
 import { currentPartyPeople } from "./parties.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
+import { markdownEntries } from "./resource-markdown.js";
+import { resolveDataPath } from "./paths.js";
 
 export { collectionRevision };
 
@@ -29,13 +32,21 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
   const configuration = loaded.model.collectionReviews?.[resourceType];
   if (!configuration) return null;
   const program = resolveProgram(loaded, options.programId);
+  const workspaceWideRetentionReview = resourceType === "retention-schedule-item"
+    && modelSupports(loaded.model, "retention-schedule-approval");
+  const retentionScope = workspaceWideRetentionReview ? retentionScheduleReviewScope(loaded) : null;
   const records = scopedCollectionRecords(loaded, resourceType, program);
-  const reviewEntry = loaded.entries.find(({ record }) => (
+  const reviewEntries = loaded.entries.filter(({ record }) => (
     record.type === "collection-review"
     && record.resourceType === resourceType
     && record.status !== "retired"
-    && (!modelSupports(loaded.model, "program-scope") || (record.scopeResourceIds || []).includes(program.id))
+    && (workspaceWideRetentionReview
+      || !modelSupports(loaded.model, "program-scope")
+      || (record.scopeResourceIds || []).includes(program.id))
   ));
+  const reviewEntry = workspaceWideRetentionReview
+    ? reviewEntries.find(({ record }) => sameIds(record.scopeResourceIds, retentionScope.programIds)) || reviewEntries[0]
+    : reviewEntries[0];
   const review = reviewEntry?.record || null;
   const authoritativeSourceId = review?.decision === "externally-managed"
     ? review.authoritativeComponentId || review.authoritativeSystemId
@@ -71,26 +82,35 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
       ? assessRetentionScheduleReviewers(loaded, records)
       : null;
   const approvalIssues = resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
-    ? retentionScheduleApprovalIssues(loaded, program, records, {
-        informationTypesReviewed: assessCollectionReview(loaded, "information-type", options).complete
+    ? retentionScheduleApprovalIssues(loaded, retentionScope, records, {
+        informationTypesReviewed: retentionScope.programIds.every((id) => (
+          assessCollectionReview(loaded, "information-type", { programId: id }).complete
+        )),
+        approvalReview: review?.status === "active" ? review : null
       })
     : [];
+  const recordProposals = collectionRecordProposals(loaded, resourceType, records, program);
+  const incompleteRecordProposals = recordProposals.filter(({ complete: ready }) => !ready);
   const reviewersEligible = !reviewerEligibility || Boolean(
     review?.reviewedByIds?.length
     && review.reviewedByIds.every((id) => reviewerEligibility.eligibleReviewerIds.includes(id))
   );
+  const reviewScopeMatches = !workspaceWideRetentionReview
+    || sameIds(review?.scopeResourceIds, retentionScope.programIds);
   const complete = Boolean(
     review?.status === "active"
     && allowedDecisions.includes(review.decision)
     && revisionMatches
     && temporalReview
+    && reviewScopeMatches
     && reviewersEligible
+    && !incompleteRecordProposals.length
     && !approvalIssues.length
   );
   const stale = Boolean(
     review?.status === "active"
     && review.collectionRevision
-    && !revisionMatches
+    && (!revisionMatches || !reviewScopeMatches)
   );
   return {
     resourceType,
@@ -101,15 +121,19 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     reviewRevision: reviewEntry
       ? createHash("sha256").update(reviewEntry.source).digest("hex")
       : null,
+    reviewEntries,
     collectionRevision: currentRevision,
     status: complete ? "current" : stale ? "stale" : "review-required",
     complete,
     ...(reviewerEligibility || {}),
+    ...(recordProposals.length ? { recordProposals, incompleteRecordProposals } : {}),
     ...(approvalIssues.length ? { approvalIssues } : {}),
     message: complete
       ? `${configuration.title} were reviewed on ${review.reviewedOn}.`
       : approvalIssues.length
         ? approvalIssues[0].message
+      : incompleteRecordProposals.length
+        ? `Complete ${incompleteRecordProposals.length} ${configuration.title.toLowerCase()} ${incompleteRecordProposals.length === 1 ? "record proposal" : "record proposals"} before the collection review.`
       : revisionMatches && review?.status === "active" && !reviewersEligible
         ? resourceType === "retention-schedule-item"
           ? "Review the Data Retention Schedule again with a reviewer who does not own its governing document or an included schedule row."
@@ -120,6 +144,11 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
           ? `Add at least one ${loaded.model.resources[resourceType].title.toLowerCase()} before confirming this collection.`
         : `Review ${configuration.title.toLowerCase()} before this page can be ready.`
   };
+}
+
+export function retentionScheduleIsAuthoritative(loaded, program) {
+  return !modelSupports(loaded.model, "retention-schedule-approval")
+    || assessCollectionReview(loaded, "retention-schedule-item", { programId: program?.id }).complete;
 }
 
 export async function scaffoldCollectionReview(input = process.cwd(), options = {}) {
@@ -170,6 +199,9 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   const loaded = await loadWorkspace(input);
   const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
+  const workspaceWideRetentionReview = resourceType === "retention-schedule-item"
+    && modelSupports(loaded.model, "retention-schedule-approval");
+  const retentionScope = workspaceWideRetentionReview ? retentionScheduleReviewScope(loaded) : null;
   const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
   if (options.expectedCollectionRevision && options.expectedCollectionRevision !== assessment.collectionRevision) {
     throw new Error(`${assessment.configuration.title} changed after it was displayed. Reload and review the current revision before approving it.`);
@@ -178,7 +210,8 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     throw new Error("Data Retention Schedule approval requires the displayed collection revision. Reload or scaffold the current review before approving it.");
   }
   await requireControlReviewReady(loaded, resourceType, program.id);
-  await requireRetentionScheduleReady(loaded, resourceType, program);
+  await requireRetentionScheduleReady(loaded, resourceType, program, retentionScope);
+  requireCollectionRecordProposalsReady(assessment);
   const configuration = assessment.configuration;
   const decision = String(options.decision || "").trim();
   const rationale = String(options.rationale || "").trim();
@@ -251,6 +284,9 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     authoritativeSourceId: decision === "externally-managed" ? authoritativeSourceId : null
   });
   const existing = assessment.review;
+  const existingEntries = workspaceWideRetentionReview
+    ? assessment.reviewEntries
+    : assessment.reviewEntries.filter(({ record }) => record.id === existing?.id);
   const preservesReviewHistory = temporalReviews;
   const record = {
     ...(!existing ? {
@@ -264,7 +300,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
       type: "collection-review",
       title: `${configuration.title} review`,
       resourceType,
-      scopeResourceIds: [program.id]
+      scopeResourceIds: workspaceWideRetentionReview ? retentionScope.programIds : [program.id]
     } : preservesReviewHistory ? {
       ...existing,
       id: createResourceId(
@@ -281,6 +317,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     reviewedOn,
     collectionRevision: currentRevision,
     scopeRevision,
+    ...(workspaceWideRetentionReview ? { scopeResourceIds: retentionScope.programIds } : {}),
     ...(temporalReviews ? {
       coverage: { kind: "as-of", on: reviewedOn },
       knowledgeCutoffAt: now.toISOString(),
@@ -294,32 +331,84 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     delete record.authoritativeSystemId;
     delete record.authoritativeComponentId;
   }
+  const creates = !existing || preservesReviewHistory ? [record] : [];
+  const updates = !existing || preservesReviewHistory ? [] : [record];
+  const expectedRevisions = Object.fromEntries(existingEntries.map((entry) => [
+    entry.record.id,
+    entry.record.id === existing?.id && options.expectedRevision
+      ? options.expectedRevision
+      : createHash("sha256").update(entry.source).digest("hex")
+  ]));
+  if (existingEntries.length && preservesReviewHistory) {
+    for (const entry of existingEntries) {
+      updates.push({
+        ...entry.record,
+        status: "retired",
+        statusTransition: {
+          changedByIds: reviewedByIds,
+          changedOn: reviewedOn,
+          reason: `Superseded by ${record.id}.`
+        }
+      });
+    }
+  }
+  if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")) {
+    const scheduleEntry = loaded.entries.find(({ record: candidate }) => (
+      candidate.type === "document"
+      && candidate.documentKind === "schedule"
+      && candidate.workflowScope === "program"
+      && !["superseded", "retired"].includes(candidate.status)
+    ));
+    if (scheduleEntry && ["draft", "approved", "active"].includes(scheduleEntry.record.status)) {
+      const currentContentRevisions = await contentRevisions(loaded, scheduleEntry.record);
+      const approvedSchedule = {
+        ...scheduleEntry.record,
+        status: "approved",
+        approverIds: reviewedByIds,
+        approvedOn: reviewedOn,
+        approvedContentRevisions: currentContentRevisions
+      };
+      for (const field of [
+        "activationBasis",
+        "activatedByIds",
+        "activatedOn",
+        "activatedContentRevisions",
+        "effectiveOn",
+        "statusTransition"
+      ]) delete approvedSchedule[field];
+      updates.push(approvedSchedule);
+      expectedRevisions[scheduleEntry.record.id] = scheduleEntry.revision;
+    }
+  }
   return {
     operation: "collection-review",
     resourceType,
     assessment,
     changes: {
-      ...(!existing || preservesReviewHistory ? { create: [record] } : { update: [record] }),
-      ...(existing && preservesReviewHistory ? {
-        update: [{
-          ...existing,
-          status: "retired",
-          statusTransition: {
-            changedByIds: reviewedByIds,
-            changedOn: reviewedOn,
-            reason: `Superseded by ${record.id}.`
-          }
-        }]
-      } : {}),
-      ...(existing ? {
-        expectedRevisions: {
-          [existing.id]: options.expectedRevision || assessment.reviewRevision
-        }
-      } : {}),
+      ...(creates.length ? { create: creates } : {}),
+      ...(updates.length ? { update: updates } : {}),
+      ...(Object.keys(expectedRevisions).length ? { expectedRevisions } : {}),
       validateWholeWorkspace: true,
       workflowCapability: INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
     }
   };
+}
+
+function requireCollectionRecordProposalsReady(assessment) {
+  const incomplete = assessment.incompleteRecordProposals || [];
+  if (!incomplete.length) return;
+  throw new Error(
+    `Complete every ${assessment.configuration.title.toLowerCase()} record proposal before the collection review. Remaining: ${incomplete.map(({ title }) => title).join(", ")}.`
+  );
+}
+
+async function contentRevisions(loaded, record) {
+  const revisions = {};
+  for (const markdown of markdownEntries(loaded.model, record)) {
+    const source = await readFile(resolveDataPath(loaded.root, markdown.path), "utf8");
+    revisions[markdown.path] = contentRevision(source);
+  }
+  return revisions;
 }
 
 async function requireControlReviewReady(loaded, resourceType, programId) {
@@ -339,11 +428,13 @@ async function requireControlReviewReady(loaded, resourceType, programId) {
   }
 }
 
-async function requireRetentionScheduleReady(loaded, resourceType, program) {
+async function requireRetentionScheduleReady(loaded, resourceType, program, retentionScope) {
   if (resourceType !== "retention-schedule-item" || !modelSupports(loaded.model, "retention-schedule-approval")) return;
   const rows = scopedCollectionRecords(loaded, resourceType, program);
-  const approvalIssues = retentionScheduleApprovalIssues(loaded, program, rows, {
-    informationTypesReviewed: assessCollectionReview(loaded, "information-type", { programId: program.id }).complete
+  const approvalIssues = retentionScheduleApprovalIssues(loaded, retentionScope || program, rows, {
+    informationTypesReviewed: (retentionScope?.programIds || [program.id]).every((id) => (
+      assessCollectionReview(loaded, "information-type", { programId: id }).complete
+    ))
   });
   if (approvalIssues.length) throw new Error(approvalIssues[0].message);
 }
@@ -388,7 +479,7 @@ function assessRetentionScheduleReviewers(loaded, rows) {
   };
 }
 
-function sameIds(left, right) {
+function sameIds(left = [], right = []) {
   return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
 }
 
@@ -397,7 +488,9 @@ export async function applyCollectionReview(input = process.cwd(), options = {})
     throw new Error("Preview the collection review and confirm the write.");
   }
   const plan = await planCollectionReview(input, options);
-  const result = await applyResourceBatch(input, plan.changes);
+  const result = plan.resourceType === "retention-schedule-item"
+    ? await applyRetentionScheduleReviewBatch(input, plan.changes)
+    : await applyResourceBatch(input, plan.changes);
   const loaded = await loadWorkspace(input);
   return {
     ...plan,

@@ -235,6 +235,7 @@ test("requires a real committed Reporting Channel Set proposal in Step 1", async
     .find(({ id }) => id === "security-reporting-route-set");
   assert.equal(item.status, "action");
   assert.deepEqual(item.unpreparedPurposeKeys, ["security-reporting"]);
+  assert.deepEqual(item.progressUnits.map(({ status }) => status), ["action", "later"]);
   await assert.rejects(() => proposeReportingRouteSet(root, { routeSetId: route.id }), /real fallback reporting destination/);
 
   await writeRecord(root, "reporting-route-sets", { ...route, status: "proposed" });
@@ -446,6 +447,7 @@ test("requires a real committed Reporting Channel Set proposal in Step 1", async
     .find(({ id }) => id === "security-reporting-route-set");
   assert.equal(item.status, "complete");
   assert.deepEqual(item.unpreparedPurposeKeys, []);
+  assert.deepEqual(item.progressUnits.map(({ status }) => status), ["complete", "later"]);
   assert.match(item.message, /committed Reporting Channel Set proposal/);
 
   const committedProposal = (await loadWorkspace(root)).resources.find(({ id }) => id === route.id);

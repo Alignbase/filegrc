@@ -33,6 +33,7 @@ import {
   pushWorkspace,
   retryBrowserSync,
   runBrowserMutation,
+  synchronizeBrowserStartup,
   withGitCommandCache,
   withGitCommandDeadline
 } from "./git.js";
@@ -777,6 +778,18 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error("The server port must be an integer from 0 through 65535.");
   }
+  let startupSynchronization;
+  try {
+    startupSynchronization = await synchronizeBrowserStartup(input, {
+      allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true
+    });
+  } catch (error) {
+    startupSynchronization = {
+      status: "failed",
+      updated: false,
+      message: error.message
+    };
+  }
   const loaded = await loadWorkspace(input);
   getResourceDefinition(loaded.model, "workspace");
   const server = createFilegrcServer(loaded.root, {
@@ -806,7 +819,8 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
     address: server.address(),
     url: `http://${urlHost(host)}:${server.address().port}`,
     requestedPort: port,
-    usedFallbackPort
+    usedFallbackPort,
+    startupSynchronization
   };
 }
 

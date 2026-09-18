@@ -347,6 +347,8 @@ function serializeCollectionReviewAssessment(assessment) {
     status: assessment.status,
     complete: assessment.complete,
     message: assessment.message,
+    ...(assessment.recordProposals ? { recordProposals: assessment.recordProposals } : {}),
+    ...(assessment.incompleteRecordProposals ? { incompleteRecordProposals: assessment.incompleteRecordProposals } : {}),
     ...(assessment.eligibleReviewerIds ? { eligibleReviewerIds: assessment.eligibleReviewerIds } : {}),
     ...(assessment.reviewerConflictIds ? { reviewerConflictIds: assessment.reviewerConflictIds } : {}),
     ...(assessment.approvalIssues ? { approvalIssues: assessment.approvalIssues } : {})

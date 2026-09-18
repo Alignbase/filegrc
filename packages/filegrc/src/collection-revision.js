@@ -30,7 +30,12 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
 }
 
 function calculateCollectionRevision(loaded, resourceType, options, legacy) {
-  const program = Object.hasOwn(options, "program")
+  const workspaceWideRetentionReview = resourceType === "retention-schedule-item"
+    && modelSupports(loaded.model, "retention-schedule-approval")
+    && !legacy;
+  const program = workspaceWideRetentionReview
+    ? null
+    : Object.hasOwn(options, "program")
     ? options.program
     : resolveProgram(loaded, options.programId);
   const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program, { legacy })

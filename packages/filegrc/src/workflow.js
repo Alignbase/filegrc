@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelSupports } from "../model/index.js";
 import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
+import { retentionScheduleIsAuthoritative } from "./collection-review.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
@@ -918,6 +919,7 @@ async function auditLifecycleFindings(loaded, audits, program) {
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const retentionRules = loaded.resources.filter((record) => record.type === "retention-schedule-item");
   const retentionRevisions = await resourceReviewRevisions(loaded, retentionRules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
+  const retentionScheduleApproved = retentionScheduleIsAuthoritative(loaded, target);
   const findings = [];
   for (const audit of audits) {
     if (!(audit.controlIds || []).length) {
@@ -1045,7 +1047,7 @@ async function auditLifecycleFindings(loaded, audits, program) {
         `${records.length} ${noun} remain open, so this engagement cannot be treated as closed.`
       ));
     }
-    const linkedRetentionCurrent = (audit.retentionScheduleItemIds || []).some((id) => {
+    const linkedRetentionCurrent = retentionScheduleApproved && (audit.retentionScheduleItemIds || []).some((id) => {
       const rule = byId.get(id);
       return rule?.type === "retention-schedule-item"
         && rule.status === "active"

@@ -136,6 +136,13 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (result.usedFallbackPort) {
       console.log(`Port ${result.requestedPort} is already in use. Using ${result.address.port} instead.`);
     }
+    if (result.startupSynchronization?.status === "updated") {
+      console.log(`Updated the authoritative branch to ${result.startupSynchronization.shortCommit} before serving.`);
+    } else if (result.startupSynchronization?.status === "blocked") {
+      console.warn(`Remote startup sync is blocked because local and remote history diverged (${result.startupSynchronization.ahead} ahead, ${result.startupSynchronization.behind} behind). Reconcile the branch before relying on this server.`);
+    } else if (result.startupSynchronization?.status === "failed") {
+      console.warn(`Remote startup sync did not complete: ${result.startupSynchronization.message}`);
+    }
     console.log(`filegrc workspace: ${result.url}`);
     console.log(`Data: ${result.root}/data`);
     printGithubStarMessage();

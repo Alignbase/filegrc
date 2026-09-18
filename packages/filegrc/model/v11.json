@@ -567,7 +567,7 @@
     },
     "vendor": {
       "title": "Vendor inventory",
-      "description": "Confirm material external provider relationships separately from Program System and Component scope.",
+      "description": "Finish each material external provider record, then confirm the Vendor inventory once as a complete collection separate from Program System and Component scope.",
       "reviewPoints": [
         "Add Vendors for material external commercial or service relationships.",
         "Confirm contracts, due diligence, criticality, information access, and monitoring.",
@@ -593,7 +593,7 @@
     },
     "complementary-control": {
       "title": "Customer and provider responsibilities",
-      "description": "Confirm whether any in-scope Control depends on a customer or carved-out provider action, including when no such dependency exists.",
+      "description": "Finish each customer or carved-out provider responsibility record, then confirm the collection once, including when no such dependency exists.",
       "reviewPoints": [
         "Think through the customer and carved-out provider actions that in-scope Controls depend on, and add any missing Complementary Control.",
         "Confirm each statement names a specific action, responsible party, affected System, and dependent Control.",
@@ -606,7 +606,7 @@
     },
     "component": {
       "title": "Scoped Components",
-      "description": "Confirm the Components that materially participate in the selected Program Systems.",
+      "description": "Finish each Component proposal, then confirm once that the collection materially participating in the selected Program Systems is complete.",
       "reviewPoints": [
         "Start with each bounded System and include only Components that deliver its service, support Controls, produce authoritative Evidence, or support relevant operations.",
         "Confirm every System use has the right role and a specific rationale.",
@@ -631,7 +631,7 @@
     },
     "information-type": {
       "title": "Information Type inventory",
-      "description": "Confirm that Information Types are complete, distinct, and linked to the Systems, Components, and Vendors that use or access them.",
+      "description": "Finish each Information Type proposal, then confirm once that the collection is complete, distinct, and linked to the Systems, Components, and Vendors that use or access it.",
       "reviewPoints": [
         "Review near-duplicate names and choose one canonical Information Type only after confirming they mean the same thing.",
         "Retire superseded records through a reviewed migration that rewrites every relationship.",
@@ -644,11 +644,11 @@
     },
     "retention-schedule-item": {
       "title": "Data Retention Schedule",
-      "description": "Approve the schedule document and its structured rows as one governed schedule. Include only actual information uses and keep undecided organization values planned.",
+      "description": "Complete each structured row proposal, then approve the schedule document and all proposed rows in one independent review. Include only actual information uses and keep undecided organization values planned.",
       "reviewPoints": [
-        "Review the Data Retention Schedule document, its Markdown, and every included structured row as one revision.",
+        "Confirm the owner completed every row proposal, then review the Data Retention Schedule document, its Markdown, and every proposed row as one revision.",
         "Confirm schedule coverage across the Systems, Components, Vendors, source families, logs, backups, audit records, and FileGRC records the organization actually uses.",
-        "Confirm every active item has an approved cutoff, retention period, disposition action, owner, approver, and exact reviewed source revisions; keep undecided behavior planned."
+        "Confirm every proposed item has a reviewed cutoff, retention period, disposition action, owner, and exact source revisions; keep undecided behavior planned."
       ],
       "decisions": [
         "complete",
@@ -7699,14 +7699,14 @@
       "pluralTitle": "Retention Schedule",
       "group": "governance",
       "collection": "retention-schedule-items",
-      "description": "One reviewed schedule item that states which Information Types and operational scope it covers, when retention starts, how long information is kept, and its approved disposition.",
+      "description": "One owner-completed proposal that states which Information Types and operational scope it covers, when retention starts, how long information is kept, and its proposed disposition. It becomes authoritative through the single whole-schedule approval.",
       "guidance": {
         "policyBasis": "Management must translate legal, contractual, privacy, security, and business needs into explicit retention and disposition instructions without treating starter periods as organization facts.",
-        "cadence": "Review before activation and after a source Policy, Requirement, Commitment, information use, System, Component, Vendor, or legal-hold process changes.",
+        "cadence": "Complete the proposal before whole-schedule approval and revisit it after a source Policy, Requirement, Commitment, information use, System, Component, Vendor, or legal-hold process changes.",
         "reviewPoints": [
           "Confirm the Information Types and operational scope covered by this item.",
-          "Confirm the cutoff, retention period, and disposition action from approved management sources.",
-          "Keep the item planned until management approves every organization-specific value."
+          "Confirm the cutoff, retention period, and disposition action from management sources.",
+          "Keep the item planned until the owner completes every organization-specific value and binds the current source revisions."
         ],
         "sourceResourceIds": [
           "policy-information-security",
@@ -7828,16 +7828,11 @@
           "relation": [
             "person"
           ],
-          "requiredWhen": {
-            "status": "active"
-          },
-          "label": "Approved by"
+          "label": "Legacy row reviewer"
         },
         "approvedOn": {
           "type": "date",
-          "requiredWhen": {
-            "status": "active"
-          }
+          "label": "Legacy row review date"
         },
         "reviewedSourceRevisions": {
           "type": "object",
@@ -7891,8 +7886,6 @@
         "retentionPeriod",
         "dispositionAction",
         "dispositionInstructions",
-        "approvedByIds",
-        "approvedOn",
         "reviewedSourceRevisions",
         "supersedesId",
         "statusTransition"

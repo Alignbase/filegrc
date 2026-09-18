@@ -639,7 +639,11 @@ function renderRetentionSchedulePage(main, params = new URLSearchParams()) {
   const documentEntry = documentEntries.length === 1 ? documentEntries[0] : null;
   const rows = resourcesOfType("retention-schedule-item")
     .sort((left, right) => left.record.title.localeCompare(right.record.title));
-  const activeRows = rows.filter(({ record }) => record.status === "active").length;
+  const completedProposalIds = new Set(state.programReadiness?.stages
+    ?.find(({ id }) => id === "policies")
+    ?.items.filter(({ id, status }) => id.startsWith("retention-rule-") && status === "complete")
+    .map(({ id }) => id.slice("retention-rule-".length)) || []);
+  const proposedRows = rows.filter(({ record }) => completedProposalIds.has(record.id)).length;
   const documentReadiness = documentEntry ? retentionScheduleDocumentReadiness(documentEntry.record.id) : null;
   const documentReady = documentEntries.length === 1 && documentReadiness?.status === "complete";
   const documentAction = documentEntry
@@ -656,7 +660,10 @@ function renderRetentionSchedulePage(main, params = new URLSearchParams()) {
         const cutoff = retentionCutoffLabel(record.cutoff);
         const period = retentionPeriodLabel(record.retentionPeriod);
         const action = record.dispositionAction ? properCase(record.dispositionAction) : "Not selected";
-        return '<tr data-retention-row data-history="' + (["superseded", "retired"].includes(record.status) ? "true" : "false") + '"><td data-label="Rule" data-primary-field><a class="record-title" href="#/resource/retention-schedule-item/' + encodeURIComponent(record.id) + '?stage=policies">' + esc(record.title) + '</a><small>' + esc(record.description || record.id) + '</small></td><td data-label="Information types">' + esc(informationTypes) + '</td><td data-label="Scope">' + esc(scope) + '</td><td data-label="Retention"><strong>' + esc(period) + '</strong><small>From ' + esc(cutoff) + '</small></td><td data-label="Disposition">' + esc(action) + '</td><td data-label="Status">' + formatValue(displayStatus(record), "status", record.type, true) + '</td><td data-label="Next action">' + recordWorkflowCell("retention-schedule-item", entry, "?stage=policies") + '</td></tr>';
+        const status = record.status === "active" && state.collectionReviews?.["retention-schedule-item"]?.status !== "current"
+          ? "proposed"
+          : displayStatus(record);
+        return '<tr data-retention-row data-history="' + (["superseded", "retired"].includes(record.status) ? "true" : "false") + '"><td data-label="Rule" data-primary-field><a class="record-title" href="#/resource/retention-schedule-item/' + encodeURIComponent(record.id) + '?stage=policies">' + esc(record.title) + '</a><small>' + esc(record.description || record.id) + '</small></td><td data-label="Information types">' + esc(informationTypes) + '</td><td data-label="Scope">' + esc(scope) + '</td><td data-label="Retention"><strong>' + esc(period) + '</strong><small>From ' + esc(cutoff) + '</small></td><td data-label="Disposition">' + esc(action) + '</td><td data-label="Status">' + formatValue(status, "status", record.type, true) + '</td><td data-label="Next action">' + recordWorkflowCell("retention-schedule-item", entry, "?stage=policies") + '</td></tr>';
       }).join("")
     : '<tr><td colspan="7">' + empty("No retention rules are needed until an actual information use requires one.") + '</td></tr>';
   const add = state.readOnly ? "" : '<button class="button primary" type="button" data-add-retention-row>Add schedule row</button>';
@@ -665,12 +672,12 @@ function renderRetentionSchedulePage(main, params = new URLSearchParams()) {
   const showHistory = params.get("history") === "1";
   const tableTools = '<div class="retention-table-tools"><label><span class="sr-only">Filter schedule rows</span><input type="search" data-retention-search placeholder="Filter schedule rows" value="' + esc(initialFilter) + '"></label><label class="history-toggle"><input type="checkbox" data-retention-history ' + (showHistory ? "checked" : "") + '> Show retired</label></div>';
   main.innerHTML = '<div class="page retention-schedule-page"><nav class="breadcrumbs"><a href="#/stage/policies">Step 2</a><span>/</span><span>Data Retention Schedule</span></nav>' +
-    '<div class="page-intro"><div><p class="kicker">Step 2</p><div class="page-title-line"><h2>Data Retention Schedule</h2>' + guideTrigger + '</div><p>Define the retention rules management has approved. Step 3 checks whether implemented systems and evidence sources follow them.</p></div><div class="actions">' + documentAction + add + '</div></div>' + resourceGuide("retention-schedule-item") +
-    '<div class="retention-summary"><div><span class="retention-summary-label">Governing document</span>' + documentSummary + '</div><div><span class="retention-summary-label">Schedule revision</span><span><strong>' + activeRows + ' active ' + pluralize("row", activeRows) + '</strong><small>Document and rows are approved together</small></span><span class="badge ' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "good" : "warn") + '">' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "Approved" : "Approval needed") + '</span></div></div>' +
-    '<section class="retention-rows"><div class="section-head"><div><p class="kicker">Structured schedule</p><h2>Schedule rows</h2><p>Add a row when an Information Type and its operational scope need a distinct cutoff, period, or disposition rule.</p></div>' + tableTools + '</div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>Rule</th><th>Information types</th><th>Scope</th><th>Retention</th><th>Disposition</th><th>Status</th><th>Next action</th></tr></thead><tbody>' + rowHtml + '</tbody></table></div><p class="retention-filter-empty" data-retention-empty hidden>No schedule rows match this filter.</p><p class="retention-row-count" data-retention-count aria-live="polite"></p></section>' +
+    '<div class="page-intro"><div><p class="kicker">Step 2</p><div class="page-title-line"><h2>Data Retention Schedule</h2>' + guideTrigger + '</div><p>Owners finish each proposed retention row first. A separate reviewer then approves the complete document and all proposed rows once.</p></div><div class="actions">' + documentAction + add + '</div></div>' + resourceGuide("retention-schedule-item") +
+    '<div class="retention-summary"><div><span class="retention-summary-label">Governing document</span>' + documentSummary + '</div><div><span class="retention-summary-label">Schedule revision</span><span><strong>' + proposedRows + ' completed ' + pluralize("proposal", proposedRows) + '</strong><small>Final approval follows every row proposal</small></span><span class="badge ' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "good" : "warn") + '">' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "Approved" : "Approval needed") + '</span></div></div>' +
+    '<section class="retention-rows"><div class="section-head"><div><p class="kicker">Structured schedule</p><h2>Schedule rows</h2><p>Add a row when an Information Type and its operational scope need a distinct cutoff, period, or disposition rule.</p></div>' + tableTools + '</div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>Rule</th><th>Information types</th><th>Scope</th><th>Retention</th><th>Disposition</th><th>Status</th><th>Next action</th></tr></thead><tbody>' + rowHtml + '</tbody></table></div><p class="retention-filter-empty" data-retention-empty hidden>No schedule rows match this filter.</p><p class="retention-row-count" data-retention-count aria-live="polite"></p><nav class="pagination retention-pagination" aria-label="Data Retention Schedule pages" hidden><button class="button" type="button" data-retention-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-retention-page="next">Next</button></nav></section>' +
     renderRetentionScheduleIssues() + collectionReviewPanel("retention-schedule-item", true) + '</div>';
   resourceGuideCleanup = setupResourceGuide(main);
-  wireRetentionScheduleTable(rows.length);
+  wireRetentionScheduleTable(rows.length, Number(params.get("page")) || 1);
   main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog("retention-schedule-item"));
   main.querySelector("[data-add-retention-document]")?.addEventListener("click", () => openEditor("document", null, {
     seed: {
@@ -708,38 +715,54 @@ function openRetentionScheduleItemEditor(seed = {}) {
       ...(scheduleDocuments.length === 1 ? { scheduleDocumentId: scheduleDocuments[0].record.id } : {}),
       ...seed
     },
-    description: "Define one retention decision. Keep it planned until its scope, cutoff, period, disposition, sources, and approval are complete.",
+    description: "Define one retention decision. Keep it planned until its scope, cutoff, period, disposition, sources, owner review, and current revision bindings are complete.",
     saveLabel: "Save schedule row"
   });
 }
 
-function wireRetentionScheduleTable(total) {
+function wireRetentionScheduleTable(total, initialPage = 1) {
   const table = root.querySelector(".retention-rows");
   if (!table) return;
   const search = table.querySelector("[data-retention-search]");
   const historyToggle = table.querySelector("[data-retention-history]");
   const count = table.querySelector("[data-retention-count]");
   const noResults = table.querySelector("[data-retention-empty]");
+  const pagination = table.querySelector(".retention-pagination");
+  const pageStatus = pagination.querySelector(".page-status");
+  const previous = pagination.querySelector('[data-retention-page="previous"]');
+  const next = pagination.querySelector('[data-retention-page="next"]');
+  let pageNumber = Number.isInteger(initialPage) && initialPage > 0 ? initialPage : 1;
   const filter = () => {
     const query = search.value.trim().toLowerCase();
-    let visible = 0;
-    table.querySelectorAll("[data-retention-row]").forEach((row) => {
-      const show = (historyToggle.checked || row.dataset.history !== "true")
-        && (!query || row.textContent.toLowerCase().includes(query));
-      row.hidden = !show;
-      if (show) visible += 1;
-    });
-    noResults.hidden = visible !== 0 || total === 0;
-    count.textContent = visible + " of " + total + " " + pluralize("row", total);
+    const filtered = [...table.querySelectorAll("[data-retention-row]")].filter((row) => (
+      (historyToggle.checked || row.dataset.history !== "true")
+        && (!query || row.textContent.toLowerCase().includes(query))
+    ));
+    const totalPages = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE));
+    pageNumber = Math.min(pageNumber, totalPages);
+    const start = (pageNumber - 1) * LIST_PAGE_SIZE;
+    const visible = new Set(filtered.slice(start, start + LIST_PAGE_SIZE));
+    table.querySelectorAll("[data-retention-row]").forEach((row) => { row.hidden = !visible.has(row); });
+    noResults.hidden = filtered.length !== 0 || total === 0;
+    const firstVisible = filtered.length ? start + 1 : 0;
+    const lastVisible = Math.min(start + LIST_PAGE_SIZE, filtered.length);
+    count.textContent = firstVisible + "–" + lastVisible + " of " + filtered.length + " " + pluralize("row", filtered.length) + (filtered.length === total ? "" : " · " + total + " total");
+    pagination.hidden = totalPages === 1;
+    pageStatus.textContent = "Page " + pageNumber + " of " + totalPages;
+    previous.disabled = pageNumber === 1;
+    next.disabled = pageNumber === totalPages;
   };
   const updateLocation = () => {
     const params = new URLSearchParams();
     if (search.value.trim()) params.set("q", search.value.trim());
     if (historyToggle.checked) params.set("history", "1");
+    if (pageNumber > 1) params.set("page", String(pageNumber));
     history.replaceState(null, "", "#/retention-schedule" + (params.size ? "?" + params : ""));
   };
-  search.addEventListener("input", () => { filter(); updateLocation(); });
-  historyToggle.addEventListener("change", () => { filter(); updateLocation(); });
+  search.addEventListener("input", () => { pageNumber = 1; filter(); updateLocation(); });
+  historyToggle.addEventListener("change", () => { pageNumber = 1; filter(); updateLocation(); });
+  previous.addEventListener("click", () => { pageNumber -= 1; filter(); updateLocation(); });
+  next.addEventListener("click", () => { pageNumber += 1; filter(); updateLocation(); });
   filter();
 }
 
@@ -759,9 +782,16 @@ function renderRetentionScheduleIssues() {
 }
 
 function retentionScheduleDocumentReadiness(documentId) {
-  return state.programReadiness?.stages
-    ?.find(({ id }) => id === "policies")
-    ?.items.find(({ id }) => id === "document-approval-" + documentId) || null;
+  const documentIssueCodes = new Set([
+    "missing-retention-schedule-document",
+    "multiple-retention-schedule-documents",
+    "incomplete-retention-schedule-document"
+  ]);
+  const issue = state.collectionReviews?.["retention-schedule-item"]?.approvalIssues
+    ?.find(({ code }) => documentIssueCodes.has(code));
+  return issue
+    ? { status: "action", message: issue.message }
+    : { status: "complete", message: "The document proposal is complete. Final approval follows all completed row proposals." };
 }
 
 function referenceTitle(id) {
@@ -1162,27 +1192,34 @@ function collectionReviewPanel(type, force = false) {
   const current = assessment.status === "current";
   const scheduleReview = type === "retention-schedule-item" && modelSupports("retention-schedule-approval");
   const scheduleBlocker = scheduleReview ? retentionScheduleApprovalBlocker() : null;
+  const proposalBlocker = assessment.incompleteRecordProposals?.length
+    ? "Complete " + assessment.incompleteRecordProposals.length + " record " + (assessment.incompleteRecordProposals.length === 1 ? "proposal" : "proposals") + " before the collection review."
+    : null;
+  const reviewBlocker = scheduleBlocker || proposalBlocker;
   const needsFirstRecord = collectionNeedsFirstRecord(type);
   const reviewerNames = (assessment.review?.reviewedByIds || [])
     .map((id) => state.resources.find(({ record }) => record.id === id)?.record.title || id);
   const reviewNote = assessment.review?.rationale
     ? " Note: " + esc(assessment.review.rationale)
     : "";
-  const reviewSummary = current && !scheduleBlocker
+  const reviewSummary = current && !reviewBlocker
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + "." + reviewNote + '</span></p>'
-    : '<p class="collection-review-result"><strong>' + (scheduleBlocker ? "Complete schedule first" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(scheduleBlocker || assessment.message) + '</span></p>';
-  const compactReviewSummary = current && !scheduleBlocker
+    : '<p class="collection-review-result"><strong>' + (scheduleBlocker ? "Complete schedule first" : proposalBlocker ? "Complete proposals first" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(reviewBlocker || assessment.message) + '</span></p>';
+  const compactReviewSummary = current && !reviewBlocker
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + ".</span></p>"
     : reviewSummary;
   const action = state.readOnly
     ? ""
-    : scheduleBlocker
-      ? '<button class="button" type="button" disabled title="' + esc(scheduleBlocker) + '">Review and approve schedule</button>'
+    : reviewBlocker
+      ? '<button class="button" type="button" disabled title="' + esc(reviewBlocker) + '">' + (scheduleReview ? "Review and approve schedule" : "Review and confirm") + '</button>'
     : needsFirstRecord
       ? '<a class="button primary" href="#/resources/' + encodeURIComponent(type) + '?new=1">Add first ' + esc(state.model.resources[type].title.toLowerCase()) + '</a>'
       : '<button class="button ' + (current ? "" : "primary") + '" type="button" data-review-collection="' + esc(type) + '">' + (current ? scheduleReview ? "Approve a new revision" : "Review again" : scheduleReview ? "Review and approve schedule" : "Review and confirm") + '</button>';
-  const status = scheduleBlocker ? "Not ready" : current ? "Reviewed" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Stale" : "Review required";
-  const details = '<details ' + (current ? 'class="collection-review-details"' : "open") + '><summary>' + (current ? scheduleReview ? "Show approved revision" : "Show scope confirmation" : "What to review") + '</summary><div class="collection-review-detail-content"><div class="collection-review-head"><div><p class="kicker">' + (scheduleReview ? "Schedule approval" : "Scope confirmation") + '</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + status + '</span></div><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>' + (current ? reviewSummary : "") + '</div></details>';
+  const status = reviewBlocker ? "Not ready" : current ? "Reviewed" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Stale" : "Review required";
+  const proposalSummary = assessment.recordProposals?.length
+    ? '<p class="collection-review-proposal-summary"><strong>' + assessment.recordProposals.filter(({ complete }) => complete).length + ' of ' + assessment.recordProposals.length + ' record proposals complete.</strong> The collection review follows every proposal.</p>'
+    : "";
+  const details = '<details ' + (current ? 'class="collection-review-details"' : "open") + '><summary>' + (current ? scheduleReview ? "Show approved revision" : "Show scope confirmation" : "What to review") + '</summary><div class="collection-review-detail-content"><div class="collection-review-head"><div><p class="kicker">' + (scheduleReview ? "Schedule approval" : "Scope confirmation") + '</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + status + '</span></div>' + proposalSummary + '<ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>' + (current ? reviewSummary : "") + '</div></details>';
   const summary = current
     ? '<div class="collection-review-current-row"><div class="collection-review-complete-summary"><span class="kicker">' + (scheduleReview ? "Approved schedule" : "Scope confirmation") + '</span>' + compactReviewSummary + '</div>' + details + action + '</div>'
     : details;
@@ -1201,15 +1238,8 @@ function retentionScheduleApprovalBlocker() {
   const document = documents.length === 1 ? documents[0] : null;
   if (documents.length > 1) return "Keep exactly one current program Data Retention Schedule document before approval.";
   if (!document) return "Add the governing Data Retention Schedule document first.";
-  if (!["approved", "active"].includes(document.status) || !document.approvedOn || !document.approvedContentRevisions) {
-    return "Approve the governing document and bind its exact Markdown revision first.";
-  }
-  const documentReadiness = retentionScheduleDocumentReadiness(document.id);
-  if (documentReadiness?.status !== "complete") {
-    return documentReadiness?.message || "Complete the governing document before approving the schedule.";
-  }
-  const planned = resourcesOfType("retention-schedule-item").find(({ record }) => record.status === "planned")?.record;
-  if (planned) return "Complete or retire the planned row: " + planned.title + ".";
+  const approvalIssue = state.collectionReviews?.["retention-schedule-item"]?.approvalIssues?.[0];
+  if (approvalIssue) return approvalIssue.message;
   const incomplete = retentionReviewItems("policies", false).find((item) => (
     item.status === "action" && item.id !== "collection-review-retention-schedule-item"
   ));
@@ -4752,6 +4782,9 @@ function openEditor(type, entry = null, options = {}) {
     Array.isArray(group) ? { fields: group } : group
   ));
   const oneOf = new Set(oneOfGroups.flatMap((group) => group.fields || []).filter((name) => !name.startsWith("$markdown:")));
+  const hiddenFields = type === "retention-schedule-item" && modelSupports("retention-schedule-approval")
+    ? new Set(["approvedByIds", "approvedOn"])
+    : new Set();
   const activeOneOf = new Set(oneOfGroups
     .filter((group) => !group.when || conditionMatches(record, group.when))
     .flatMap((group) => group.fields || []));
@@ -4765,6 +4798,7 @@ function openEditor(type, entry = null, options = {}) {
     ...oneOf
   ])].filter((name) => (
     !["id", "type"].includes(name)
+    && !hiddenFields.has(name)
     && fields[name]
     && !(options.occurrenceReview && ["members", "expectedCount", "completedCount", "conclusion"].includes(name))
   ));
