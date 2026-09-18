@@ -22,6 +22,7 @@ import {
 } from "../src/index.js";
 import { executeCli, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { occurrenceMemberIsResolved } from "../src/obligation-members.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const executeProcess = promisify(execFile);
@@ -33,6 +34,51 @@ const planObligations = (resources, options = {}) => planObligationsWithModel(re
   model: MODEL_V2,
   ...options
 });
+
+test("resolves exception members only with an approved exception covering the occurrence", () => {
+  const member = { resourceId: "system-example", disposition: "exception", exceptionId: "exception-access" };
+  const occurrence = {
+    obligationId: "obligation-access-review",
+    coverage: { kind: "range", startsOn: "2026-01-01", endsOn: "2026-03-31" }
+  };
+  const exception = {
+    id: "exception-access",
+    type: "exception",
+    status: "approved",
+    scopeResourceIds: ["system-example"],
+    approval: { approvedOn: "2025-12-15", expiresOn: "2026-04-01" }
+  };
+  assert.equal(occurrenceMemberIsResolved(member, occurrence, new Map([[exception.id, exception]])), true);
+  assert.equal(occurrenceMemberIsResolved(member, occurrence, new Map()), false);
+  assert.equal(occurrenceMemberIsResolved(member, occurrence, new Map([[exception.id, {
+    ...exception,
+    status: "draft"
+  }]])), false);
+  assert.equal(occurrenceMemberIsResolved(member, occurrence, new Map([[exception.id, {
+    ...exception,
+    approval: { ...exception.approval, expiresOn: "2026-02-28" }
+  }]])), false);
+  assert.equal(occurrenceMemberIsResolved(member, occurrence, new Map([[exception.id, {
+    ...exception,
+    status: "closed",
+    resolution: { resolvedOn: "2026-04-15" }
+  }]])), true);
+  assert.equal(occurrenceMemberIsResolved(member, occurrence, new Map([[exception.id, {
+    ...exception,
+    status: "revoked",
+    resolution: { resolvedOn: "2026-02-15" }
+  }]])), false);
+
+  const expected = {
+    resourceId: "system-example",
+    disposition: "expected",
+    result: "passed",
+    completionResourceIds: ["access-review-example"]
+  };
+  assert.equal(occurrenceMemberIsResolved(expected, occurrence, new Map(), () => true), true);
+  assert.equal(occurrenceMemberIsResolved(expected, occurrence, new Map(), () => false), false);
+});
+
 const ACTIVE_OWNER = {
   id: "person-owner",
   type: "person",

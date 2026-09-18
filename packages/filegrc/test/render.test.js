@@ -33,6 +33,67 @@ function renderCollectionReviewPanel(assessment) {
   });
 }
 
+function exerciseRetentionSchedulePagination() {
+  const start = APP_SCRIPT.indexOf("function wireRetentionScheduleTable");
+  const end = APP_SCRIPT.indexOf("function renderRetentionScheduleIssues");
+  const listeners = new Map();
+  const control = (name, values = {}) => ({
+    ...values,
+    addEventListener(event, listener) {
+      listeners.set(`${name}:${event}`, listener);
+    }
+  });
+  const rows = Array.from({ length: 30 }, (_, index) => ({
+    dataset: { history: index >= 16 ? "true" : "false" },
+    textContent: `Schedule row ${index + 1}`,
+    hidden: false
+  }));
+  const search = control("search", { value: "" });
+  const historyToggle = control("history", { checked: false });
+  const count = { textContent: "" };
+  const noResults = { hidden: true };
+  const pageStatus = { textContent: "" };
+  const previous = control("previous", { disabled: false });
+  const next = control("next", { disabled: false });
+  const pagination = {
+    hidden: true,
+    querySelector(selector) {
+      return {
+        ".page-status": pageStatus,
+        '[data-retention-page="previous"]': previous,
+        '[data-retention-page="next"]': next
+      }[selector];
+    }
+  };
+  const table = {
+    querySelector(selector) {
+      return {
+        "[data-retention-search]": search,
+        "[data-retention-history]": historyToggle,
+        "[data-retention-count]": count,
+        "[data-retention-empty]": noResults,
+        ".retention-pagination": pagination
+      }[selector];
+    },
+    querySelectorAll(selector) {
+      return selector === '[data-retention-row][data-history="true"]'
+        ? rows.filter(({ dataset }) => dataset.history === "true")
+        : rows;
+    }
+  };
+  const history = { href: "", replaceState(_state, _title, href) { this.href = href; } };
+  const source = "const LIST_PAGE_SIZE = 25;\n"
+    + APP_SCRIPT.slice(start, end)
+    + "\nwireRetentionScheduleTable(30);";
+  vm.runInNewContext(source, {
+    root: { querySelector: () => table },
+    history,
+    URLSearchParams,
+    pluralize: (word, amount) => amount === 1 ? word : `${word}s`
+  });
+  return { count, history, historyToggle, listeners, next, pageStatus, pagination, previous, rows };
+}
+
 test("builds a self-contained read-only site", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-build-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -1897,9 +1958,10 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /function wireRetentionScheduleTable\(total, initialPage = 1\)/);
   assert.match(APP_SCRIPT, /No schedule rows match this filter/);
   assert.match(APP_SCRIPT, /class="pagination retention-pagination"/);
-  assert.match(APP_SCRIPT, /filtered\.slice\(start, start \+ LIST_PAGE_SIZE\)/);
   assert.match(APP_SCRIPT, /params\.set\("history", "1"\)/);
   assert.match(APP_SCRIPT, /data-retention-history/);
+  assert.match(APP_SCRIPT, /retired hidden/);
+  assert.match(APP_SCRIPT, /Show ' \+ retiredRows \+ ' retired/);
   assert.match(APP_SCRIPT, /recordWorkflowCell\("retention-schedule-item", entry, "\?stage=policies"\)/);
   assert.match(APP_SCRIPT, /openCollectionReviewDialog\("retention-schedule-item"\)/);
   assert.match(APP_SCRIPT, /data-add-retention-document/);
@@ -1944,6 +2006,29 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_STYLES, /\.stage-page-grid\{display:grid/);
   assert.match(APP_STYLES, /\.stage-page-card\{position:relative;display:flex/);
   assert.match(APP_STYLES, /\.stage-page-card-link\{position:absolute;inset:0;z-index:1/);
+});
+
+test("reveals retired schedule rows and paginates the complete schedule", () => {
+  const page = exerciseRetentionSchedulePagination();
+  assert.equal(page.count.textContent, "1–16 of 16 active rows · 14 retired hidden · 30 total");
+  assert.equal(page.pagination.hidden, true);
+  assert.equal(page.rows.filter(({ hidden }) => !hidden).length, 16);
+
+  page.historyToggle.checked = true;
+  page.listeners.get("history:change")();
+  assert.equal(page.count.textContent, "1–25 of 30 shown rows · 30 total");
+  assert.equal(page.pageStatus.textContent, "Page 1 of 2");
+  assert.equal(page.pagination.hidden, false);
+  assert.equal(page.history.href, "#/retention-schedule?history=1");
+  assert.equal(page.rows[16].hidden, false);
+
+  page.listeners.get("next:click")();
+  assert.equal(page.count.textContent, "26–30 of 30 shown rows · 30 total");
+  assert.equal(page.pageStatus.textContent, "Page 2 of 2");
+  assert.equal(page.previous.disabled, false);
+  assert.equal(page.next.disabled, true);
+  assert.equal(page.history.href, "#/retention-schedule?history=1&page=2");
+  assert.equal(page.rows.filter(({ hidden }) => !hidden).length, 5);
 });
 
 test("uses the Step 4 page for compact policy-event triggers and the Work Queue", () => {

@@ -8,6 +8,7 @@ import { runCli } from "../src/cli.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
 import {
   calculateProgramProgress,
+  collectionReviewReadinessItem,
   controlOversightEligible,
   reportingRouteSetItem,
   selectedAuditWindow,
@@ -104,26 +105,85 @@ test("counts each retention row proposal and one final schedule approval", () =>
   assert.equal(calculateProgramProgress({ stages, target }).complete, 3);
 });
 
-test("counts grouped proposals and their final review as separate progress units", () => {
+test("counts a proposal collection and its final review as two progress units", () => {
   const stages = [{
     id: "scope",
     items: [{
       id: "collection-review-component",
       status: "action",
       progressUnits: [
-        { id: "component-a", status: "complete" },
-        { id: "component-b", status: "action" },
+        { id: "component-proposal-batch", status: "action" },
         { id: "component-review", status: "blocked" }
       ]
     }]
   }];
   const progress = calculateProgramProgress({ stages, target: { goal: "soc-2-type-1" } });
-  assert.equal(progress.complete, 1);
-  assert.equal(progress.total, 3);
+  assert.equal(progress.complete, 0);
+  assert.equal(progress.total, 2);
   assert.equal(progress.remaining, 2);
+  stages[0].items[0].progressUnits[0].status = "complete";
   stages[0].items[0].progressUnits[1].status = "complete";
-  stages[0].items[0].progressUnits[2].status = "complete";
   assert.equal(calculateProgramProgress({ stages, target: { goal: "soc-2-type-1" } }).percent, 100);
+});
+
+test("rolls collection proposals into one preparation unit and one review unit", () => {
+  const assessment = {
+    resourceType: "component",
+    complete: false,
+    status: "pending",
+    message: "Finish the proposals, then review the collection.",
+    configuration: {
+      title: "Scoped Components",
+      reviewPoints: ["Confirm the complete set."]
+    },
+    recordProposals: [
+      { resourceId: "component-a", title: "Component A", complete: true },
+      { resourceId: "component-b", title: "Component B", complete: false }
+    ]
+  };
+  const pending = collectionReviewReadinessItem(assessment);
+  assert.deepEqual(pending.progressUnits.map(({ id, status }) => ({ id, status })), [
+    { id: "component-proposal-batch", status: "action" },
+    { id: "component-collection-review", status: "blocked" }
+  ]);
+
+  assessment.recordProposals[1].complete = true;
+  const prepared = collectionReviewReadinessItem(assessment);
+  assert.deepEqual(prepared.progressUnits.map(({ status }) => status), ["complete", "action"]);
+
+  assessment.complete = true;
+  const reviewed = collectionReviewReadinessItem(assessment);
+  assert.deepEqual(reviewed.progressUnits.map(({ status }) => status), ["complete", "complete"]);
+
+  const schedule = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item"
+  });
+  assert.equal(schedule.progressUnits, undefined);
+  assert.equal(schedule.status, "complete");
+
+  assessment.recordProposals[1].complete = false;
+  const blockedSchedule = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false
+  });
+  assert.equal(blockedSchedule.status, "blocked");
+  assessment.recordProposals[1].complete = true;
+
+  const empty = collectionReviewReadinessItem({
+    ...assessment,
+    recordProposals: []
+  });
+  assert.equal(empty.progressUnits, undefined);
+
+  const reviewOnly = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "person",
+    recordCount: 2,
+    recordProposals: undefined
+  });
+  assert.equal(reviewOnly.progressUnits, undefined);
 });
 
 test("does not count a canceled optional Reporting Channel Set as setup work", () => {
@@ -734,6 +794,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(evidenceMap.status, "complete");
   assert.equal(evidenceMap.items.length, 1);
   assert.equal(evidenceMap.items[0].id, "source-family-identity-access");
+  assert.equal(evidenceMap.items[0].progressUnit, false);
   assert.equal(evidenceMap.items[0].evidenceForm, "export");
   assert.match(evidenceMap.items[0].evidencePrompt, /users, roles, privileged access/);
   assert.deepEqual(evidenceMap.items[0].sourceKinds, ["identity-access"]);

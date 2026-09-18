@@ -997,24 +997,30 @@ function occurrenceContinuityStage(audit, records, model, asOf) {
 export function occurrenceProgressUnits(plan, { selectedControlIds, periodStart, periodThrough }) {
   return [
     ...plan.calendarItems.flatMap((occurrence) => {
-      const completedMemberIds = new Set(occurrence.completedMemberIds || []);
+      const resolvedMemberIds = new Set(occurrence.resolvedMemberIds || occurrence.completedMemberIds || []);
+      const membersComplete = occurrence.membershipFinal && (occurrence.expectedMemberIds || [])
+        .every((resourceId) => resolvedMemberIds.has(resourceId));
       const conclusionComplete = occurrence.reconciliationStatus === "reconciled"
-        && ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.operatingResult);
+        && ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.operatingResult)
+        && membersComplete
+        && occurrence.conclusionValid !== false;
       const occurrenceComplete = conclusionComplete || occurrence.legacySchedule && occurrence.status === "complete";
-      const memberUnits = (occurrence.expectedMemberIds || []).map((resourceId) => ({
-        id: `occurrence-${occurrence.occurrenceKey}-member-${resourceId}`,
-        status: occurrenceComplete || completedMemberIds.has(resourceId) ? "complete" : "action",
-        title: `${occurrence.title} member ${resourceId}`
-      }));
-      const membersComplete = memberUnits.every(({ status }) => status === "complete");
-      return [
-        ...memberUnits,
+      const workComplete = occurrenceComplete || membersComplete;
+      const workUnit = {
+        id: `occurrence-${occurrence.occurrenceKey}-work`,
+        status: workComplete ? "complete" : "action",
+        title: `${occurrence.title} occurrence work`
+      };
+      return occurrence.legacySchedule
+        ? [workUnit]
+        : [
+          workUnit,
         {
           id: `occurrence-${occurrence.occurrenceKey}-reconciliation`,
-          status: occurrenceComplete ? "complete" : membersComplete && occurrence.membershipFinal ? "action" : "blocked",
+          status: occurrenceComplete ? "complete" : workComplete && occurrence.membershipFinal ? "action" : "blocked",
           title: `${occurrence.title} reconciliation`
         }
-      ];
+        ];
     }),
     ...plan.eventRuns
       .filter((run) => run.status !== "canceled" && run.occurredOn >= periodStart && run.occurredOn <= periodThrough)

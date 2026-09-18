@@ -28,12 +28,13 @@ test("selects the newest relevant audit without depending on file order", () => 
   assert.equal(selectDefaultAudit([newer, older], "2026-05-01").id, newer.id);
 });
 
-test("counts reconciled exception and legacy occurrence members as completed work", () => {
+test("counts rolled-up occurrence work and reconciliation independently of member count", () => {
   const base = {
     occurrenceKey: "program:obligation:2026-01-01",
     title: "Access review",
     expectedMemberIds: ["person-a", "person-b"],
     completedMemberIds: ["person-a"],
+    resolvedMemberIds: ["person-a", "person-b"],
     membershipFinal: true,
     reconciliationStatus: "reconciled",
     operatingResult: "complete-with-exceptions",
@@ -45,7 +46,7 @@ test("counts reconciled exception and legacy occurrence members as completed wor
     periodStart: "2026-01-01",
     periodThrough: "2026-12-31"
   });
-  assert.deepEqual(units.map(({ status }) => status), ["complete", "complete", "complete"]);
+  assert.deepEqual(units.map(({ status }) => status), ["complete", "complete"]);
 
   const legacyUnits = occurrenceProgressUnits({
     calendarItems: [{
@@ -61,7 +62,71 @@ test("counts reconciled exception and legacy occurrence members as completed wor
     periodStart: "2026-01-01",
     periodThrough: "2026-12-31"
   });
-  assert.deepEqual(legacyUnits.map(({ status }) => status), ["complete", "complete", "complete"]);
+  assert.deepEqual(legacyUnits.map(({ status }) => status), ["complete"]);
+
+  const partialUnits = occurrenceProgressUnits({
+    calendarItems: [{
+      ...base,
+      reconciliationStatus: "unreconciled",
+      operatingResult: null,
+      resolvedMemberIds: ["person-a"],
+      status: "due"
+    }],
+    eventRuns: []
+  }, {
+    selectedControlIds: new Set(),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(partialUnits.map(({ status }) => status), ["action", "blocked"]);
+
+  const mixedDispositionUnits = occurrenceProgressUnits({
+    calendarItems: [{
+      ...base,
+      completedMemberIds: [],
+      resolvedMemberIds: ["person-a", "person-b"],
+      reconciliationStatus: "unreconciled",
+      operatingResult: null,
+      status: "due"
+    }],
+    eventRuns: []
+  }, {
+    selectedControlIds: new Set(),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(mixedDispositionUnits.map(({ status }) => status), ["complete", "action"]);
+
+  const invalidConclusionUnits = occurrenceProgressUnits({
+    calendarItems: [{
+      ...base,
+      conclusionValid: false
+    }],
+    eventRuns: []
+  }, {
+    selectedControlIds: new Set(),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(invalidConclusionUnits.map(({ status }) => status), ["complete", "action"]);
+
+  const openPopulationUnits = occurrenceProgressUnits({
+    calendarItems: [{
+      ...base,
+      expectedMemberIds: [],
+      completedMemberIds: [],
+      membershipFinal: false,
+      reconciliationStatus: "unreconciled",
+      operatingResult: null,
+      status: "due"
+    }],
+    eventRuns: []
+  }, {
+    selectedControlIds: new Set(),
+    periodStart: "2026-01-01",
+    periodThrough: "2026-12-31"
+  });
+  assert.deepEqual(openPopulationUnits.map(({ status }) => status), ["action", "blocked"]);
 });
 
 test("excludes canceled event runs from Type 2 occurrence progress", () => {
@@ -200,10 +265,10 @@ test("initializes model-owned Type 2 populations and management document links",
   const occurrenceItem = missedOccurrence.stages.find(({ id }) => id === "fieldwork").items
     .find(({ id }) => id === "occurrences-period-occurrences");
   assert.equal(occurrenceItem.status, "action");
-  assert.equal(occurrenceItem.progressUnits.length, 4);
+  assert.equal(occurrenceItem.progressUnits.length, 2);
   assert.deepEqual(
     occurrenceItem.progressUnits.map(({ status }) => status),
-    ["action", "blocked", "action", "blocked"]
+    ["action", "action"]
   );
   assert.equal(missedOccurrence.status, "needs-work");
   const regressedDuringWindow = await assessAuditPreparation(await loadWorkspace(root), {

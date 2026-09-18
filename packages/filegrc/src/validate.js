@@ -44,6 +44,7 @@ import {
   recordsAtRevision
 } from "./reporting-route-integrity.js";
 import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
+import { occurrenceMemberExceptionIsValid } from "./obligation-members.js";
 
 let fingerprintFileReadObserver = null;
 
@@ -667,18 +668,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       ));
     }
     if (member.disposition === "exception") {
-      const exception = byId.get(member.exceptionId);
-      const occurrenceStart = record.coverage?.kind === "as-of" ? record.coverage.on : record.coverage?.startsOn;
-      const occurrenceEnd = record.coverage?.kind === "as-of" ? record.coverage.on : record.coverage?.endsOn;
-      const exceptionCoversMember = exception?.scopeResourceIds?.includes(member.resourceId)
-        || exception?.scopeResourceIds?.includes(record.obligationId);
-      if (
-        exception?.type !== "exception"
-        || exception.status !== "approved"
-        || !exceptionCoversMember
-        || exception.approval?.approvedOn > occurrenceStart
-        || exception.approval?.expiresOn < occurrenceEnd
-      ) {
+      if (!occurrenceMemberExceptionIsValid(member, record, byId)) {
         diagnostics.push(error(
           "invalid-member-exception",
           path,

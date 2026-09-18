@@ -670,7 +670,8 @@ function renderRetentionSchedulePage(main, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About Data Retention Schedule" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const initialFilter = params.get("q") || "";
   const showHistory = params.get("history") === "1";
-  const tableTools = '<div class="retention-table-tools"><label><span class="sr-only">Filter schedule rows</span><input type="search" data-retention-search placeholder="Filter schedule rows" value="' + esc(initialFilter) + '"></label><label class="history-toggle"><input type="checkbox" data-retention-history ' + (showHistory ? "checked" : "") + '> Show retired</label></div>';
+  const retiredRows = rows.filter(({ record }) => ["superseded", "retired"].includes(record.status)).length;
+  const tableTools = '<div class="retention-table-tools"><label><span class="sr-only">Filter schedule rows</span><input type="search" data-retention-search placeholder="Filter schedule rows" value="' + esc(initialFilter) + '"></label>' + (retiredRows ? '<label class="history-toggle"><input type="checkbox" data-retention-history ' + (showHistory ? "checked" : "") + '> Show ' + retiredRows + ' retired ' + pluralize("row", retiredRows) + '</label>' : '<input type="checkbox" data-retention-history hidden>') + '</div>';
   main.innerHTML = '<div class="page retention-schedule-page"><nav class="breadcrumbs"><a href="#/stage/policies">Step 2</a><span>/</span><span>Data Retention Schedule</span></nav>' +
     '<div class="page-intro"><div><p class="kicker">Step 2</p><div class="page-title-line"><h2>Data Retention Schedule</h2>' + guideTrigger + '</div><p>Owners finish each proposed retention row first. A separate reviewer then approves the complete document and all proposed rows once.</p></div><div class="actions">' + documentAction + add + '</div></div>' + resourceGuide("retention-schedule-item") +
     '<div class="retention-summary"><div><span class="retention-summary-label">Governing document</span>' + documentSummary + '</div><div><span class="retention-summary-label">Schedule revision</span><span><strong>' + proposedRows + ' completed ' + pluralize("proposal", proposedRows) + '</strong><small>Final approval follows every row proposal</small></span><span class="badge ' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "good" : "warn") + '">' + (state.collectionReviews?.["retention-schedule-item"]?.status === "current" ? "Approved" : "Approval needed") + '</span></div></div>' +
@@ -746,7 +747,13 @@ function wireRetentionScheduleTable(total, initialPage = 1) {
     noResults.hidden = filtered.length !== 0 || total === 0;
     const firstVisible = filtered.length ? start + 1 : 0;
     const lastVisible = Math.min(start + LIST_PAGE_SIZE, filtered.length);
-    count.textContent = firstVisible + "–" + lastVisible + " of " + filtered.length + " " + pluralize("row", filtered.length) + (filtered.length === total ? "" : " · " + total + " total");
+    const hiddenByHistory = historyToggle.checked ? 0 : [...table.querySelectorAll('[data-retention-row][data-history="true"]')]
+      .filter((row) => !query || row.textContent.toLowerCase().includes(query)).length;
+    const matching = filtered.length + hiddenByHistory;
+    count.textContent = firstVisible + "–" + lastVisible + " of " + filtered.length + (historyToggle.checked ? " shown " : " active ") + pluralize("row", filtered.length)
+      + (hiddenByHistory ? " · " + hiddenByHistory + " retired hidden" : "")
+      + (query ? " · " + matching + " matching" : "")
+      + " · " + total + " total";
     pagination.hidden = totalPages === 1;
     pageStatus.textContent = "Page " + pageNumber + " of " + totalPages;
     previous.disabled = pageNumber === 1;

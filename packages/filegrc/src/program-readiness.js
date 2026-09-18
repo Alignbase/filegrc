@@ -707,15 +707,34 @@ function reportingRouteItem(records, byId, asOf, timezone = "UTC") {
   );
 }
 
-function collectionReviewReadinessItem(assessment) {
+export function collectionReviewReadinessItem(assessment) {
   const proposalUnits = (assessment.recordProposals || []).map((proposal) => ({
     id: `${assessment.resourceType}-proposal-${proposal.resourceId}`,
     status: proposal.complete ? "complete" : "action",
     title: `${proposal.title} proposal`
   }));
+  const proposalBatchComplete = proposalUnits.every(({ status }) => status === "complete");
+  const scheduleApprovalBlocked = assessment.resourceType === "retention-schedule-item"
+    && proposalUnits.some(({ status }) => status !== "complete");
+  const batchProgressUnits = assessment.resourceType !== "retention-schedule-item" && proposalUnits.length
+    ? [
+        {
+          id: `${assessment.resourceType}-proposal-batch`,
+          status: proposalBatchComplete ? "complete" : "action",
+          title: `${assessment.configuration.title} proposals`
+        },
+        {
+          id: `${assessment.resourceType}-collection-review`,
+          status: proposalBatchComplete
+            ? assessment.complete ? "complete" : "action"
+            : "blocked",
+          title: `${assessment.configuration.title} collection review`
+        }
+      ]
+    : null;
   return item(
     `collection-review-${assessment.resourceType}`,
-    assessment.complete ? "complete" : "action",
+    assessment.complete ? "complete" : scheduleApprovalBlocked ? "blocked" : "action",
     assessment.status === "stale"
       ? `Review ${assessment.configuration.title.toLowerCase()} again`
       : `Review ${assessment.configuration.title.toLowerCase()}`,
@@ -724,18 +743,7 @@ function collectionReviewReadinessItem(assessment) {
     {
       resourceType: assessment.resourceType,
       reviewPoints: assessment.configuration.reviewPoints,
-      ...(proposalUnits.length ? {
-        progressUnits: [
-          ...proposalUnits,
-          {
-            id: `${assessment.resourceType}-collection-review`,
-            status: proposalUnits.every(({ status }) => status === "complete")
-              ? assessment.complete ? "complete" : "action"
-              : "blocked",
-            title: `${assessment.configuration.title} collection review`
-          }
-        ]
-      } : {}),
+      ...(batchProgressUnits ? { progressUnits: batchProgressUnits } : {}),
       commands: [
         `npx filegrc review-collection ${assessment.resourceType} --scaffold`,
         `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --preview --json`
@@ -1646,6 +1654,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
         : `${coveredControls.length} of ${family.controls.length} selected controls have an active authoritative ${componentSources ? "Component" : "System"} with the required source role, access owners, and extraction instructions.`,
       completeSources[0] || selectedSources[0] || { type: sourceType },
       {
+        progressUnit: false,
         familyId: family.id,
         sourceKinds: family.sourceKinds,
         controlIds: family.controls.map((control) => control.id),

@@ -29,6 +29,7 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./collection-review-integrity.js";
 import { bindAttestationReportingRouteSet, reportingRouteRevision } from "./reporting-route-integrity.js";
 import { selectScopedCollectionRecords } from "./collection-scope.js";
+import { occurrenceMemberIsResolved } from "./obligation-members.js";
 
 const COMPLETION_DATE_FIELDS = [
   "completedOn",
@@ -214,8 +215,22 @@ export function planObligations(resources, options = {}) {
       const completedMemberIds = new Set((reconciliation?.members || [])
         .filter((member) => member.result === "passed" && member.disposition === "expected")
         .map((member) => member.resourceId));
+      const resolvedMemberIds = new Set((reconciliation?.members || [])
+        .filter((member) => occurrenceMemberIsResolved(member, reconciliation, byId, (completionId) => {
+          const completion = byId.get(completionId);
+          return completionTypeMatches(completion, expectedCompletionTypes)
+            && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId)
+            && completionFallsInWindow(completion, window, rule?.timezone || workspace?.timezone || "UTC")
+            && completionPassesActivity(completion, activity);
+        }))
+        .map((member) => member.resourceId));
+      const resolutionsComplete = membershipFinal
+        && expectedMemberIds.every((resourceId) => resolvedMemberIds.has(resourceId));
+      const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(reconciliation?.conclusion)
+        && resolutionsComplete;
       const successful = reconciliation
-        ? reconciliation.status === "reconciled" && ["complete", "complete-with-exceptions", "zero-population"].includes(reconciliation.conclusion)
+        ? reconciliation.status === "reconciled"
+          && conclusionValid
         : legacyCompletions.length > 0;
       const timingStatus = occurrenceStatus(window, asOf, successful);
       const status = timingStatus === "complete" || programStatus === "accepted" ? timingStatus : "proposed";
@@ -244,6 +259,9 @@ export function planObligations(resources, options = {}) {
         completionResourceIds,
         expectedMemberIds,
         completedMemberIds: [...completedMemberIds],
+        resolvedMemberIds: [...resolvedMemberIds],
+        resolutionsComplete,
+        conclusionValid,
         expectedCount: reconciliation?.status === "open" && !membershipFinal
           ? expectedMemberIds.length
           : reconciliation?.expectedCount ?? expectedMemberIds.length,
@@ -282,8 +300,20 @@ export function planObligations(resources, options = {}) {
     const completedMemberIds = (occurrence.members || [])
       .filter(({ disposition, result }) => disposition === "expected" && result === "passed")
       .map(({ resourceId }) => resourceId);
+    const resolvedMemberIds = (occurrence.members || [])
+      .filter((member) => occurrenceMemberIsResolved(member, occurrence, byId, (completionId) => {
+        const completion = byId.get(completionId);
+        return completionTypeMatches(completion, activity.completionResourceTypes)
+          && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId)
+          && completionFallsInWindow(completion, window, rule.timezone || workspace?.timezone || "UTC")
+          && completionPassesActivity(completion, activity);
+      }))
+      .map(({ resourceId }) => resourceId);
+    const resolutionsComplete = (occurrence.members || []).every(({ resourceId }) => resolvedMemberIds.includes(resourceId));
+    const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.conclusion)
+      && resolutionsComplete;
     const successful = occurrence.status === "reconciled"
-      && ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.conclusion);
+      && conclusionValid;
     const timingStatus = occurrenceStatus(window, asOf, successful);
     if (timingStatus === "complete" && !options.includeComplete) continue;
     calendarItems.push({
@@ -307,6 +337,9 @@ export function planObligations(resources, options = {}) {
       completionResourceIds: [...new Set((occurrence.members || []).flatMap(({ completionResourceIds = [] }) => completionResourceIds))],
       expectedMemberIds: (occurrence.members || []).map(({ resourceId }) => resourceId),
       completedMemberIds,
+      resolvedMemberIds,
+      resolutionsComplete,
+      conclusionValid,
       expectedCount: occurrence.expectedCount,
       completedCount: occurrence.completedCount,
       membershipFinal: true,
@@ -1750,8 +1783,8 @@ function plannedCompletionWindow(window) {
   };
 }
 
-function completionFallsInWindow(record, window) {
-  const date = completionDate(record);
+function completionFallsInWindow(record, window, timezone = "UTC") {
+  const date = completionDate(record, timezone);
   return Boolean(date && date >= window.dueWindowStart && date <= window.dueWindowEnd);
 }
 
@@ -1765,11 +1798,11 @@ function completionTypeMatches(record, expectedTypes = []) {
   return Boolean(record && (expectedTypes.length === 0 || expectedTypes.includes(record.type)));
 }
 
-function completionDate(record) {
+function completionDate(record, timezone = "UTC") {
   const coverageDate = coverageEnd(record.coverage);
   if (parseCalendarDate(coverageDate)) return coverageDate;
   for (const field of COMPLETION_TIMESTAMP_FIELDS) {
-    if (isRfc3339Timestamp(record[field])) return record[field].slice(0, 10);
+    if (isRfc3339Timestamp(record[field])) return currentCalendarDate(timezone, new Date(record[field]));
   }
   for (const field of COMPLETION_DATE_FIELDS) {
     if (parseCalendarDate(record[field])) return record[field];

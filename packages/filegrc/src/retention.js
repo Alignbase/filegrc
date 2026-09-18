@@ -137,6 +137,7 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
         : `${duplicates.length} similar pair${duplicates.length === 1 ? " needs" : "s need"} management review. FileGRC will not merge records or rewrite relationships automatically.`,
       { type: "information-type" },
       {
+        progressUnit: false,
         candidates: duplicates,
         commands: [
           "npx filegrc list information-type --workflow --json",

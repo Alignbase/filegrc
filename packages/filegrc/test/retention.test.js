@@ -119,7 +119,7 @@ test("detects missing, mismatched, and stale retention decisions without inferri
   assert.equal(malformed.find(({ id }) => id === "retention-rule-retention-customer").status, "action");
 });
 
-test("surfaces near-duplicate Information Types for review without merging them", () => {
+test("surfaces near-duplicate Information Types without adding a progress unit", async () => {
   const records = [
     { id: "information-type-customer-record", type: "information-type", title: "Customer Record", status: "active" },
     { id: "information-type-customer-records", type: "information-type", title: "Customer Records", status: "active" },
@@ -131,6 +131,18 @@ test("surfaces near-duplicate Information Types for review without merging them"
     score: 1
   }]);
   assert.equal(records.length, 3);
+  const model = loadModel("8");
+  const workspace = { id: "workspace", type: "workspace", title: "Workspace", dataModelVersion: "8" };
+  const program = { id: "program-main", type: "program", title: "Program", status: "active", systemIds: [] };
+  const resources = [workspace, program, ...records];
+  const items = await assessRetentionReadiness({
+    root: process.cwd(),
+    model,
+    workspace,
+    resources,
+    entries: resources.map((record) => ({ record, source: JSON.stringify(record) }))
+  }, program);
+  assert.equal(items.find(({ id }) => id === "retention-information-type-duplicates").progressUnit, false);
 });
 
 test("Information Type inventory reviews track scoped System, Component, and Vendor uses", async (context) => {
