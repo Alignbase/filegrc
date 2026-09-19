@@ -1918,7 +1918,7 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /function stagePageCard\(stage, destination, index\)/);
   assert.match(APP_SCRIPT, /function stagePageItems\(stage, destination\)/);
   assert.match(APP_SCRIPT, /workflowUiStage\(item\.stage\) === stage\.id/);
-  assert.match(APP_SCRIPT, /return stageId === "operation" \? "run" : stageId/);
+  assert.match(APP_SCRIPT, /\["operate", "operation"\]\.includes\(stageId\) \? "run" : stageId/);
   assert.match(APP_SCRIPT, /function stagePageItemDetail\(item\)/);
   assert.match(APP_SCRIPT, /implementation checks remain\. Open the Control to review them/);
   assert.match(APP_SCRIPT, /class="stage-page-tasks"/);
@@ -2005,7 +2005,12 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_STYLES, /\.stage-pages\{margin-top:24px\}/);
   assert.match(APP_STYLES, /\.stage-page-grid\{display:grid/);
   assert.match(APP_STYLES, /\.stage-page-card\{position:relative;display:flex/);
-  assert.match(APP_STYLES, /\.stage-page-card-link\{position:absolute;inset:0;z-index:1/);
+  assert.match(APP_STYLES, /\.stage-page-open::after\{content:"";position:absolute;inset:0;z-index:1/);
+  assert.match(APP_STYLES, /@media\(max-width:520px\)\{\.stage-page-card-head\{align-items:stretch;flex-direction:column/);
+  assert.ok(
+    APP_STYLES.indexOf('@media(max-width:520px){.stage-page-card-head{align-items:stretch')
+      > APP_STYLES.indexOf('.stage-page-card-head{align-items:flex-start}')
+  );
 });
 
 test("reveals retired schedule rows and paginates the complete schedule", () => {
@@ -2105,12 +2110,16 @@ test("derives step-page completion from the shared workflow assessment", () => {
   assert.match(APP_SCRIPT, /previewedPayload = \{ \.\.\.payload, basis: preview\.basis \}/);
   assert.doesNotMatch(APP_SCRIPT, /label: "Review"/);
   assert.match(APP_SCRIPT, /return \{ complete: true, label: "Ready" \}/);
-  assert.match(APP_SCRIPT, /class="stage-page-card-link" href="' \+ destination\.href/);
-  assert.match(APP_SCRIPT, /stage-page-card-head"[\s\S]*completionState[\s\S]*stage-page-card-foot"><span class="stage-page-open"/);
+  assert.doesNotMatch(APP_SCRIPT, /class="stage-page-card-link"/);
+  assert.match(APP_SCRIPT, /stage-page-card-head"[\s\S]*stage-page-card-actions">' \+ completionState \+ '<a class="stage-page-open"/);
+  assert.match(APP_SCRIPT, /class="stage-page-open" href="' \+ destination\.href \+ '" aria-label="Open ' \+ esc\(destination\.label\)/);
+  assert.doesNotMatch(APP_SCRIPT, /class="stage-page-card-foot"/);
   assert.doesNotMatch(APP_SCRIPT, /class="stage-page-rollup"/);
   assert.doesNotMatch(APP_SCRIPT, /function resourceRollup\(/);
   assert.doesNotMatch(APP_SCRIPT, /function utilityRollup\(/);
   assert.match(APP_STYLES, /\.stage-page-card-head\{display:flex;align-items:center/);
+  assert.match(APP_STYLES, /\.stage-page-card-actions\{display:flex;align-items:center/);
+  assert.match(APP_STYLES, /\.stage-page-open::after\{content:"";position:absolute;inset:0;z-index:1/);
   assert.match(APP_STYLES, /\.stage-page-completion-state\{flex:0 0 auto;max-width:150px/);
   assert.match(APP_STYLES, /\.stage-page-tasks\{position:relative;z-index:2/);
 });

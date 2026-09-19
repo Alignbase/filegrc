@@ -27,6 +27,8 @@ import { resolveProgram } from "./program.js";
 import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
 import { signatoryAppointmentIssue, soc2ReportEvidenceIssue, subsequentEventsReviewIssue } from "./soc2.js";
 import { planReconciliation } from "./reconciliation.js";
+import { documentIsAuditSpecific } from "./program-lifecycle.js";
+import { resourceProgramContext } from "./program-path.js";
 import { currentCalendarDate } from "./time.js";
 import { measureTiming } from "./timing.js";
 import { validateWorkspace } from "./validate.js";
@@ -388,10 +390,10 @@ function recordFinalizationFindings(loaded, program) {
     if (["workspace", "renderer-settings"].includes(record.type)) continue;
     const incomplete = recordIncompleteReason(record, loaded, program);
     if (incomplete) {
-      findings.push(finalizationFinding(record, incomplete));
+      findings.push(finalizationFinding(record, incomplete, loaded.model));
     }
     for (const missing of finalizationFields(record, loaded.model, loaded.resources, program)) {
-      findings.push(fieldFinding(record, missing));
+      findings.push(fieldFinding(record, missing, loaded.model));
     }
   }
   return findings;
@@ -591,13 +593,13 @@ function finalizationFields(record, model, resources, program) {
   return fields;
 }
 
-function finalizationFinding(record, details) {
+function finalizationFinding(record, details, model) {
   const code = `record.${record.type}.${record.id}.finalize`;
   return {
     key: code,
     code,
-    assessment: recordAssessment(record.type),
-    stage: recordStage(record.type),
+    assessment: recordAssessment(record, model),
+    stage: recordStage(record, model),
     state: details.state,
     severity: details.state === "blocked" ? "error" : "warning",
     requiredness: details.requiredness,
@@ -609,13 +611,13 @@ function finalizationFinding(record, details) {
   };
 }
 
-function fieldFinding(record, missing) {
+function fieldFinding(record, missing, model) {
   const code = `record.${record.type}.${record.id}.field.${missing.field}`;
   return {
     key: code,
     code,
-    assessment: recordAssessment(record.type),
-    stage: recordStage(record.type),
+    assessment: recordAssessment(record, model),
+    stage: recordStage(record, model),
     state: "ready",
     severity: "warning",
     requiredness: missing.requiredness,
@@ -1732,20 +1734,25 @@ function shellArgument(value) {
     : `'${text.replaceAll("'", "'\\''")}'`;
 }
 
-function recordAssessment(type) {
-  if (["audit", "audit-request", "audit-population"].includes(type)) return "audit-readiness";
-  if (["action-item", "obligation-event", "control-activity"].includes(type)) return "period-health";
+function recordAssessment(record, model) {
+  const stage = workflowStageForRecord(record, model);
+  if (stage === "audit") return "audit-readiness";
+  if (stage === "operate") return "period-health";
   return "program-configuration";
 }
 
-function recordStage(type) {
-  if (["person", "appointment", "team", "framework", "requirement", "commitment", "system", "vendor"].includes(type)) {
-    return "scope";
-  }
-  if (["policy", "document", "training"].includes(type)) return "policies";
-  if (["control", "complementary-control", "source-coverage", "obligation"].includes(type)) return "controls";
-  if (["audit", "audit-request", "audit-population"].includes(type)) return "audit";
+export function workflowStageForRecord(record, model) {
+  const type = record.type;
+  if (documentIsAuditSpecific(record, model)) return "audit";
+  if (type === "source-coverage") return "controls";
+  const stage = resourceProgramContext(type, model)?.id;
+  if (stage === "run") return "operate";
+  if (stage) return stage;
   return "operate";
+}
+
+function recordStage(record, model) {
+  return workflowStageForRecord(record, model);
 }
 
 function appointmentRequiredness(record, model) {

@@ -16,7 +16,8 @@ import {
   workflowForResource,
   WORKFLOW_CONTRACT_VERSION
 } from "../src/index.js";
-import { packetDeliveryIssue } from "../src/workflow.js";
+import { packetDeliveryIssue, workflowStageForRecord } from "../src/workflow.js";
+import { programPathForModel } from "../src/program-path.js";
 import {
   getDataRecordHistoryIndex,
   setGitSubprocessObserverForTests,
@@ -222,6 +223,66 @@ test("keeps planned record dates proposed instead of presenting them as due work
   const item = workflow.workItems.find(({ source }) => source?.id === "audit-planned");
   assert.equal(item.state, "proposed");
   assert.notEqual(workflow.recommended.key, item.key);
+});
+
+test("routes engagement Document work to Step 5 instead of the Step 2 Policies page", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-document-scope-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  await writeJson(join(root, "data", "documents", "document-program-procedure.json"), {
+    id: "document-program-procedure",
+    type: "document",
+    title: "Program Procedure",
+    status: "draft",
+    documentKind: "procedure",
+    workflowScope: "program",
+    ownerIds: ["person-example"],
+    approverIds: ["person-independent-approver-example"]
+  });
+  await writeJson(join(root, "data", "documents", "document-audit-procedure.json"), {
+    id: "document-audit-procedure",
+    type: "document",
+    title: "Audit Procedure",
+    status: "draft",
+    documentKind: "procedure",
+    workflowScope: "engagement",
+    ownerIds: ["person-example"],
+    approverIds: ["person-independent-approver-example"]
+  });
+
+  const workflow = await assessWorkflow(root, {
+    asOf: "2026-08-03",
+    evaluatedAt: "2026-08-03T12:00:00Z"
+  });
+  const programFinding = workflow.findings.find(({ key }) => key === "record.document.document-program-procedure.finalize");
+  const auditFinding = workflow.findings.find(({ key }) => key === "record.document.document-audit-procedure.finalize");
+
+  assert.equal(programFinding.stage, "policies");
+  assert.equal(programFinding.assessment, "program-configuration");
+  assert.equal(auditFinding.stage, "audit");
+  assert.equal(auditFinding.assessment, "audit-readiness");
+  assert.equal(auditFinding.state, "scheduled");
+});
+
+test("routes generic record work through the same resource map as the SOC 2 Program Path", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-program-path-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root);
+  const { model } = await loadWorkspace(root);
+
+  for (const stage of programPathForModel(model)) {
+    const expected = stage.id === "run" ? "operate" : stage.id;
+    for (const type of [...stage.resourceTypes, ...(stage.supportingResourceTypes || [])]) {
+      assert.equal(
+        workflowStageForRecord({ type }, model),
+        expected,
+        `${type} should route to ${expected}`
+      );
+    }
+  }
+
+  assert.equal(workflowStageForRecord({ type: "source-coverage" }, model), "controls");
+  assert.equal(workflowStageForRecord({ type: "collection-review" }, model), "operate");
 });
 
 test("marks immediately actionable record work ready and reserves blocked for named prerequisites", async (context) => {
