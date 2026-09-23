@@ -18,7 +18,7 @@ import {
   parseCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
-import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
+import { resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
 import { obligationIsEnabled } from "./program-lifecycle.js";
 import { currentPartyPeople, partyPeople } from "./parties.js";
@@ -156,7 +156,7 @@ async function validateWorkspaceUnmeasured(input) {
       validateObligationOccurrence(record, loaded.model, loaded.resources, loaded.entries, loaded.root, loaded.workspace.timezone, byId, asOf, displayPath, diagnostics);
     }
     if (record.type === "retention-schedule-item") validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisions, displayPath, diagnostics);
-    if (record.type === "requirement-mapping") validateRequirementMapping(record, currentReviewRevisions, displayPath, diagnostics);
+    if (record.type === "requirement-mapping") validateRequirementMapping(record, loaded, currentReviewRevisions, displayPath, diagnostics);
     if (record.type === "action-item") {
       validateCompletedObligationAction(record, byId, loaded.model, displayPath, diagnostics);
     }
@@ -1998,7 +1998,7 @@ function validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisi
   const sources = retentionReviewResourceIds(record, loaded);
   const revisions = record.reviewedSourceRevisions || {};
   const missing = sources.filter((id) => (
-    !currentReviewRevisions.get(id) || !revisionsMatch("content", revisions[id], currentReviewRevisions.get(id))
+    !resourceReviewRevisionMatches(loaded, currentReviewRevisions, id, revisions[id])
   )).concat(Object.keys(revisions).filter((id) => !sources.includes(id)));
   if (missing.length) {
     diagnostics.push(error(
@@ -2009,7 +2009,7 @@ function validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisi
   }
 }
 
-function validateRequirementMapping(record, currentReviewRevisions, path, diagnostics) {
+function validateRequirementMapping(record, loaded, currentReviewRevisions, path, diagnostics) {
   const overlap = (record.sourceResourceIds || []).filter((id) => (record.targetResourceIds || []).includes(id));
   if (overlap.length) {
     diagnostics.push(error(
@@ -2022,7 +2022,7 @@ function validateRequirementMapping(record, currentReviewRevisions, path, diagno
   const mappedIds = [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])];
   const revisions = record.reviewedSourceRevisions || {};
   const missing = mappedIds.filter((id) => (
-    !currentReviewRevisions.get(id) || !revisionsMatch("content", revisions[id], currentReviewRevisions.get(id))
+    !resourceReviewRevisionMatches(loaded, currentReviewRevisions, id, revisions[id])
   )).concat(Object.keys(revisions).filter((id) => !mappedIds.includes(id)));
   if (missing.length) {
     diagnostics.push(error(

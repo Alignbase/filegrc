@@ -12,8 +12,8 @@ import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { contentRevisionBindingsMatch } from "../src/program-lifecycle.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
-import { resourceReviewRevisions, retentionReviewResourceIds } from "../src/retention.js";
-import { revisionsMatch } from "../src/revisions.js";
+import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
+import { canonicalCalculatedRevisionJson, revisionsMatch } from "../src/revisions.js";
 import { currentCalendarDate } from "../src/time.js";
 import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
@@ -183,6 +183,141 @@ test("scheme-only source labels preserve retention and mapping review bindings",
   documentEntry.record.title = `${documentEntry.record.title} updated`;
   documentEntry.source = `${JSON.stringify(documentEntry.record, null, 2)}\n`;
   assert.notEqual((await resourceReviewRevisions(loaded, [documentEntry.record.id])).get(documentEntry.record.id), original.get(documentEntry.record.id));
+});
+
+test("embedded applicability labels preserve legacy source and collection revisions", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-applicability-review-stability-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const entry = loaded.entries.find(({ record }) => record.type === "control");
+  const digestValue = digest(applicabilityScopeRevision(entry.record, program, loaded.resources, loaded.model));
+  entry.record.applicabilityReview = { scopeRevision: `scope:${digestValue}` };
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.equal(applicabilityReviewIsCurrent(entry.record.applicabilityReview, entry.record, program, loaded.resources, loaded.model), true);
+
+  const target = loaded.resources.find(({ type }) => type === "requirement");
+  const reviewedIds = [entry.record.id, target.id];
+  const reviewedRevisions = await resourceReviewRevisions(loaded, reviewedIds);
+  const mapping = {
+    id: "requirement-mapping-applicability-review",
+    type: "requirement-mapping",
+    title: "Applicability review mapping",
+    status: "active",
+    sourceResourceIds: [entry.record.id],
+    targetResourceIds: [target.id],
+    relationship: "intersects-with",
+    method: "semantic",
+    rationale: "Reviewed both source records.",
+    ownerIds: ["person-example"],
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: "2026-09-23",
+    reviewedSourceRevisions: Object.fromEntries(reviewedRevisions)
+  };
+  loaded.resources.push(mapping);
+
+  const schedule = loaded.resources.find(({ type }) => type === "document");
+  schedule.documentKind = "schedule";
+  const rule = {
+    id: "retention-schedule-item-applicability-review",
+    type: "retention-schedule-item",
+    title: "Applicability review retention",
+    status: "active",
+    description: "Retain the reviewed control record.",
+    informationTypeIds: [loaded.resources.find(({ type }) => type === "information-type").id],
+    scopeResourceIds: [program.id],
+    scheduleDocumentId: schedule.id,
+    sourceResourceIds: [entry.record.id],
+    ownerIds: ["person-example"],
+    cutoff: { basis: "creation" },
+    retentionPeriod: { basis: "fixed", amount: 1, unit: "year" },
+    dispositionAction: "delete",
+    dispositionInstructions: "Delete after the approved period."
+  };
+  const retentionIds = retentionReviewResourceIds(rule, loaded);
+  const retentionRevisions = await resourceReviewRevisions(loaded, retentionIds);
+  rule.reviewedSourceRevisions = Object.fromEntries(retentionRevisions);
+  const version016Revisions = await resourceReviewRevisions(loaded, retentionIds, "digest");
+  const version016Rule = { ...rule, reviewedSourceRevisions: Object.fromEntries(version016Revisions) };
+  const version016Mapping = {
+    ...mapping,
+    id: "requirement-mapping-version-016-review",
+    reviewedSourceRevisions: Object.fromEntries(await resourceReviewRevisions(loaded, reviewedIds, "digest"))
+  };
+  loaded.resources.push(version016Mapping);
+  const ruleCurrent = async (candidate) => retentionRuleIsCurrent(
+    candidate,
+    await resourceReviewRevisions(loaded, retentionIds),
+    new Map(loaded.resources.map((record) => [record.id, record])),
+    loaded
+  );
+
+  const legacySourceRevision = (await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id);
+  const legacyCollectionRevision = collectionRevision(loaded, "control", { program });
+  const version016SourceRevision = version016Revisions.get(entry.record.id);
+  const version016CollectionRevision = collectionRevision(loaded, "control", { program, scopeHashInput: "digest" });
+  assert.notEqual(version016SourceRevision, legacySourceRevision);
+  assert.notEqual(version016CollectionRevision, legacyCollectionRevision);
+  assert.equal(canonicalCalculatedRevisionJson(entry.source), entry.source);
+  assert.equal(canonicalCalculatedRevisionJson(entry.source, "digest"), entry.source.replace(`scope:${digestValue}`, digestValue));
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${mapping.id}`).status, "complete");
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${version016Mapping.id}`).status, "complete");
+  assert.equal(await ruleCurrent(rule), true);
+  assert.equal(await ruleCurrent(version016Rule), true);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016CollectionRevision, { program }), true);
+  assert.equal(applicabilityReviewIsCurrent(entry.record.applicabilityReview, entry.record, program, loaded.resources, loaded.model), true);
+
+  entry.record.applicabilityReview.scopeRevision = `filegrc:applicability-scope:v1:sha256:${digestValue}`;
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.equal((await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id), legacySourceRevision);
+  assert.equal(collectionRevision(loaded, "control", { program }), legacyCollectionRevision);
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${mapping.id}`).status, "complete");
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${version016Mapping.id}`).status, "complete");
+  assert.equal(await ruleCurrent(rule), true);
+  assert.equal(await ruleCurrent(version016Rule), true);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016CollectionRevision, { program }), true);
+
+  entry.record.applicabilityReview.scopeRevision = `filegrc:applicability-scope:v1:sha256:${"b".repeat(64)}`;
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.notEqual((await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id), legacySourceRevision);
+  assert.notEqual(collectionRevision(loaded, "control", { program }), legacyCollectionRevision);
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${mapping.id}`).status, "action");
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${version016Mapping.id}`).status, "action");
+  assert.equal(await ruleCurrent(rule), false);
+  assert.equal(await ruleCurrent(version016Rule), false);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016CollectionRevision, { program }), false);
+
+  entry.record.applicabilityReview.scopeRevision = `filegrc:applicability-scope:v1:sha256:${digestValue}`;
+  const selectedSystem = loaded.resources.find(({ type, id }) => type === "system" && (program.systemIds || []).includes(id));
+  assert.ok(selectedSystem);
+  selectedSystem.boundary = `${selectedSystem.boundary || "Service boundary"} updated`;
+  assert.equal(applicabilityReviewIsCurrent(entry.record.applicabilityReview, entry.record, program, loaded.resources, loaded.model), false);
+});
+
+test("Program applicability labels preserve Control collection scope hashes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-program-applicability-revision-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const review = program.requirementApplicability[0];
+  const requirement = loaded.resources.find(({ id }) => id === review.requirementId);
+  const scopeDigest = digest(applicabilityScopeRevision(requirement, program, loaded.resources, loaded.model));
+  review.scopeRevision = `scope:${scopeDigest}`;
+  const legacyCollection = collectionRevision(loaded, "control", { program });
+  assert.equal(applicabilityReviewIsCurrent(review, requirement, program, loaded.resources, loaded.model), true);
+
+  review.scopeRevision = `filegrc:applicability-scope:v1:sha256:${scopeDigest}`;
+  assert.equal(collectionRevision(loaded, "control", { program }), legacyCollection);
+  assert.equal(collectionRevisionMatches(loaded, "control", legacyCollection, { program }), true);
+  const version016Collection = collectionRevision(loaded, "control", { program, scopeHashInput: "digest", scopeFactsInput: "source" });
+  assert.notEqual(version016Collection, legacyCollection);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016Collection, { program }), true);
+
+  review.scopeRevision = `filegrc:applicability-scope:v1:sha256:${"b".repeat(64)}`;
+  assert.equal(collectionRevisionMatches(loaded, "control", legacyCollection, { program }), false);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016Collection, { program }), false);
 });
 
 test("committed legacy collection, occurrence, and retention bindings stay readable without another review", async (context) => {

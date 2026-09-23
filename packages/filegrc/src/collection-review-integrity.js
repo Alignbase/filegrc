@@ -1,5 +1,5 @@
 import { loadModel } from "../model/index.js";
-import { collectionRevision } from "./collection-revision.js";
+import { collectionRevision, collectionRevisionMatches } from "./collection-revision.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
 import { getDataFilesAtRevision, getFileAtRevision, getRecordIdentityHistory, hasGitRevision } from "./git.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
@@ -70,7 +70,11 @@ export function historicalCollectionReviewSnapshot(root, record, model, timezone
     authoritativeSourceId: record.authoritativeComponentId
   });
   if (
-    !revisionsMatch("collection", record.collectionRevision, currentRevision)
+    !collectionRevisionMatches(snapshot, resourceType, record.collectionRevision, {
+      program,
+      authoritativeSourceId: record.authoritativeComponentId,
+      currentRevision
+    })
     || JSON.stringify([...(record.populationResourceIds || [])].sort()) !== JSON.stringify(collectionIds)
   ) return null;
   const selectedIds = selector

@@ -154,7 +154,7 @@ export async function resourceReviewRevision(loaded, resourceId) {
   return (await resourceReviewRevisions(loaded, [resourceId])).get(resourceId) || null;
 }
 
-export async function resourceReviewRevisions(loaded, ids) {
+export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "legacy") {
   const wanted = new Set(ids);
   const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const revisions = new Map();
@@ -164,7 +164,7 @@ export async function resourceReviewRevisions(loaded, ids) {
     const entry = entries.get(id);
     if (!entry || reviewing.has(id)) return null;
     reviewing.add(id);
-    const parts = [reviewSource(loaded, entry)];
+    const parts = [reviewSource(loaded, entry, scopeHashInput)];
     for (const markdown of markdownEntries(loaded.model, entry.record)) {
       try {
         parts.push(await readFile(resolveDataPath(loaded.root, markdown.path), "utf8"));
@@ -187,7 +187,7 @@ export async function resourceReviewRevisions(loaded, ids) {
   return new Map([...revisions].filter(([id]) => wanted.has(id)));
 }
 
-export function resourceReviewRevisionsSync(loaded, ids) {
+export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy") {
   const wanted = new Set(ids);
   const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const revisions = new Map();
@@ -197,7 +197,7 @@ export function resourceReviewRevisionsSync(loaded, ids) {
     const entry = entries.get(id);
     if (!entry || reviewing.has(id)) return null;
     reviewing.add(id);
-    const parts = [reviewSource(loaded, entry)];
+    const parts = [reviewSource(loaded, entry, scopeHashInput)];
     for (const markdown of markdownEntries(loaded.model, entry.record)) {
       try {
         parts.push(readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8"));
@@ -216,6 +216,16 @@ export function resourceReviewRevisionsSync(loaded, ids) {
   };
   for (const id of wanted) review(id);
   return new Map([...revisions].filter(([id]) => wanted.has(id)));
+}
+
+export function resourceReviewRevisionMatches(loaded, revisions, id, stored) {
+  const current = revisions.get(id);
+  if (!current || !revisionDigest("content", stored)) return false;
+  if (revisionsMatch("content", stored, current)) return true;
+  // Version 0.16.0 used a bare digest as the hash input for scopeRevision.
+  // Read that binding without changing the legacy scope: basis restored here.
+  const compatible = resourceReviewRevisionsSync(loaded, [id], "digest").get(id);
+  return revisionsMatch("content", stored, compatible);
 }
 
 export function retentionUses(loaded, program) {
@@ -239,7 +249,7 @@ export function retentionUses(loaded, program) {
   return [...new Map(uses.map((use) => [`${use.resource.id}:${use.informationTypeId}`, use])).values()];
 }
 
-function reviewSource(loaded, entry) {
+function reviewSource(loaded, entry, scopeHashInput = "legacy") {
   if (
     modelSupports(loaded.model, "retention-schedule-approval")
     && entry.record.type === "document"
@@ -261,7 +271,7 @@ function reviewSource(loaded, entry) {
     ]) delete approved[field];
     return JSON.stringify(approved);
   }
-  return canonicalCalculatedRevisionJson(entry.source);
+  return canonicalCalculatedRevisionJson(entry.source, scopeHashInput);
 }
 
 export function nearDuplicateInformationTypes(records) {
@@ -327,7 +337,7 @@ export function retentionRuleIsCurrent(rule, revisions, byId = new Map(), loaded
   const dependencyIds = retentionReviewResourceIds(rule, loaded);
   if (Object.keys(rule.reviewedSourceRevisions).length !== dependencyIds.length) return false;
   return dependencyIds.every((id) => (
-    revisions.get(id) && revisionsMatch("content", rule.reviewedSourceRevisions?.[id], revisions.get(id))
+    resourceReviewRevisionMatches(loaded, revisions, id, rule.reviewedSourceRevisions?.[id])
   ));
 }
 
