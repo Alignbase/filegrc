@@ -735,7 +735,7 @@ test("binds approvals to exact Markdown revisions and requires reapproval after 
     approvedOn: "2026-08-02",
     effectiveOn: "2026-08-02"
   });
-  assert.match(approved.record.approvedContentRevisions["policies/policy-bound.md"], /^[a-f0-9]{64}$/);
+  assert.match(approved.record.approvedContentRevisions["policies/policy-bound.md"], /^filegrc:content:v1:sha256:[a-f0-9]{64}$/);
   await assert.rejects(
     updateContent(root, "policies/policy-bound.md", "# Bound Policy\n\nUnapproved edit."),
     /Approved content no longer matches/
@@ -810,7 +810,7 @@ test("binds active training to its effective Markdown revision", async (context)
     approvedByIds: ["person-approver"],
     approvedOn: "2026-08-03"
   });
-  assert.match(active.record.effectiveContentRevisions["training/training-security.md"], /^[a-f0-9]{64}$/);
+  assert.match(active.record.effectiveContentRevisions["training/training-security.md"], /^filegrc:content:v1:sha256:[a-f0-9]{64}$/);
   await assert.rejects(
     updateContent(root, "training/training-security.md", "# Security training\n\nUnapproved replacement."),
     /Approved content no longer matches/

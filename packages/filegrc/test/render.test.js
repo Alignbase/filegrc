@@ -433,7 +433,7 @@ test("serves state and browser assets", async (context) => {
   const revisionsResponse = await fetch(`${result.url}/api/review-revisions?id=person-owner`);
   assert.equal(revisionsResponse.status, 200);
   const revisions = await revisionsResponse.json();
-  assert.match(revisions.revisions["person-owner"], /^[a-f0-9]{64}$/);
+  assert.match(revisions.revisions["person-owner"], /^filegrc:content:v1:sha256:[a-f0-9]{64}$/);
   const appResponse = await fetch(`${result.url}/filegrc-app.js`);
   assert.equal(appResponse.status, 200);
   assert.equal(appResponse.headers.get("x-frame-options"), "DENY");

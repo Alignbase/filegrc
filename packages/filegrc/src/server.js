@@ -78,6 +78,7 @@ import {
 } from "./workflow.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
+import { assertWorkspaceEngineVersion } from "./runtime-version.js";
 
 const STATE_SESSION_MAX_AGE_MS = 5 * 60_000;
 const MAX_STATE_SESSIONS = 8;
@@ -86,6 +87,7 @@ const RESOURCE_DETAIL_GIT_DEADLINE_MS = 10_000;
 const STATE_SECTION_GIT_DEADLINE_MS = 10_000;
 
 export function createFilegrcServer(input = process.cwd(), options = {}) {
+  assertWorkspaceEngineVersion(input);
   const stateSessions = new Map();
   const fileDigestCache = new Map();
   let bootstrapSnapshotPromise = null;

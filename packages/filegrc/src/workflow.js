@@ -2,7 +2,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelSupports } from "../model/index.js";
-import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
+import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
 import { retentionScheduleIsAuthoritative } from "./collection-review.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
@@ -533,10 +533,13 @@ function finalizationFields(record, model, resources, program) {
     && model.resources[record.type]?.fields?.applicabilityReview
     && !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, resources, model);
   if (needsReview) {
+    const currentRevision = applicabilityScopeRevision(record, program, resources, model);
     fields.push({
       field: "applicabilityReview",
       requiredness: "required",
-      message: "Review applicability against the current service scope, then record the decision, rationale, reviewer, and date."
+      message: record.applicabilityReview?.scopeRevision
+        ? `Review applicability against the current service scope. Stored revision: ${record.applicabilityReview.scopeRevision}. Current revision: ${currentRevision}. Then record the decision, rationale, reviewer, and date.`
+        : `Review applicability against the current service scope. Current revision: ${currentRevision}. Then record the decision, rationale, reviewer, and date.`
     });
   }
   if (record.type === "policy" && model.resources.policy?.fields?.programRole && !record.programRole) {

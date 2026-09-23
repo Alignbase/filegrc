@@ -126,6 +126,55 @@ test("offers Control collection oversight only to people outside Control and Obl
   assert.deepEqual(assessment.reviewerConflictIds, ["person-example"]);
 });
 
+test("a later reviewer departure does not undo an unchanged Control collection review", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-reviewer-departure-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const reviewer = {
+    id: "person-oversight-reviewer-example",
+    type: "person",
+    title: "Oversight reviewer",
+    status: "active",
+    affiliation: "internal"
+  };
+  loaded.resources.push(reviewer);
+  const initial = assessCollectionReview(loaded, "control", { programId: "program-example" });
+  assert.ok(initial.eligibleReviewerIds.includes(reviewer.id));
+  const review = {
+    id: "collection-review-control-departure-example",
+    type: "collection-review",
+    title: "Control oversight review",
+    status: "active",
+    resourceType: "control",
+    scopeResourceIds: ["program-example"],
+    decision: "complete",
+    rationale: "Reviewed the implemented Controls.",
+    reviewedByIds: [reviewer.id],
+    reviewedOn: "2026-09-12",
+    coverage: { kind: "as-of", on: "2026-09-12" },
+    knowledgeCutoffAt: "2026-09-12T12:00:00.000Z",
+    populationResourceIds: initial.records.map(({ id }) => id),
+    collectionRevision: initial.collectionRevision,
+    scopeRevision: "scope-example"
+  };
+  loaded.resources.push(review);
+  loaded.entries.push({ record: review, source: JSON.stringify(review) });
+  assert.equal(assessCollectionReview(loaded, "control", { programId: "program-example" }).complete, true);
+  reviewer.startDate = "2026-09-13";
+  assert.equal(assessCollectionReview(loaded, "control", { programId: "program-example" }).complete, false);
+  reviewer.startDate = "2026-09-01";
+  reviewer.status = "inactive";
+  reviewer.statusTransition = {
+    changedByIds: ["person-example"],
+    changedOn: "2026-09-13",
+    reason: "Reviewer left after the review."
+  };
+  const afterDeparture = assessCollectionReview(loaded, "control", { programId: "program-example" });
+  assert.equal(afterDeparture.eligibleReviewerIds.includes(reviewer.id), false);
+  assert.equal(afterDeparture.complete, true);
+});
+
 test("blocks an inventory collection review until every record proposal is complete", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-collection-proposal-gate-"));
   context.after(() => rm(root, { recursive: true, force: true }));

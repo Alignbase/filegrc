@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -11,6 +10,7 @@ import {
   retentionRuleIsCurrent,
   retentionUses
 } from "./retention.js";
+import { calculateRevision, revisionsMatch } from "./revisions.js";
 
 export function retentionScheduleApprovalIssues(loaded, program, rows, options = {}) {
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
@@ -125,9 +125,10 @@ function approvalBindingsMatch(loaded, record) {
   const actual = {};
   for (const entry of markdownEntries(loaded.model, record)) {
     try {
-      actual[entry.path] = createHash("sha256")
-        .update(readFileSync(resolveDataPath(loaded.root, entry.path), "utf8"))
-        .digest("hex");
+      actual[entry.path] = calculateRevision(
+        "content",
+        readFileSync(resolveDataPath(loaded.root, entry.path), "utf8")
+      );
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
@@ -136,5 +137,7 @@ function approvalBindingsMatch(loaded, record) {
   const actualKeys = Object.keys(actual).sort();
   const expectedKeys = Object.keys(expected).sort();
   return actualKeys.length === expectedKeys.length
-    && actualKeys.every((key, index) => key === expectedKeys[index] && actual[key] === expected[key]);
+    && actualKeys.every((key, index) => (
+      key === expectedKeys[index] && revisionsMatch("content", actual[key], expected[key])
+    ));
 }

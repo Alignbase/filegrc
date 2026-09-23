@@ -4,6 +4,7 @@ import { assessProgramReadiness } from "./program-readiness.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { modelSupports } from "../model/index.js";
+import { revisionDigest } from "./revisions.js";
 
 export async function scaffoldPolicyActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
@@ -53,7 +54,7 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
     if (entry.record.status !== "approved") {
       throw new Error(`Policy "${policyId}" must be approved and inactive before the Step 3 cutover.`);
     }
-    if (!/^[a-f0-9]{64}$/.test(expectedRevisions[policyId] || "")) {
+    if (!revisionDigest("content", expectedRevisions[policyId])) {
       throw new Error(`Policy activation needs the current revision for "${policyId}". Regenerate the cutover review and try again.`);
     }
     const record = { ...entry.record, status: "active", effectiveOn };

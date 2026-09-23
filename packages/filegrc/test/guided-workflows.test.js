@@ -1054,7 +1054,7 @@ test("records reviewed applicability decisions as one atomic batch", async (cont
     "utf8"
   ));
   assert.equal(requirement.applicability, "applicable");
-  assert.match(requirement.applicabilityReview.scopeRevision, /^scope:[a-f0-9]{64}$/);
+  assert.match(requirement.applicabilityReview.scopeRevision, /^filegrc:applicability-scope:v1:sha256:[a-f0-9]{64}$/);
   await writeJson(join(root, "data", "requirements", "requirement-access.json"), {
     ...requirement,
     description: "Access now includes the production support boundary."

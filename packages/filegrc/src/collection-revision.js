@@ -9,6 +9,7 @@ import {
 import { resolveDataPath } from "./paths.js";
 import { resolveProgram } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
+import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
 
 export function collectionRevision(loaded, resourceType, options = {}) {
   return calculateCollectionRevision(loaded, resourceType, options, false);
@@ -24,9 +25,9 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
     || collectionRevision(loaded, resourceType, options);
   // Version 0.9.2 narrowed this hash basis. Keep unchanged 0.9.1 reviews valid
   // until management records a new review on the current basis.
-  return storedRevision === currentRevision
+  return revisionsMatch("collection", storedRevision, currentRevision)
     || (resourceType !== "retention-schedule-item" || !modelSupports(loaded.model, "retention-schedule-approval"))
-      && storedRevision === legacyCollectionRevision(loaded, resourceType, options);
+      && revisionsMatch("collection", storedRevision, legacyCollectionRevision(loaded, resourceType, options));
 }
 
 function calculateCollectionRevision(loaded, resourceType, options, legacy) {
@@ -68,9 +69,10 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy) {
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const workspaceScope = collectionScopeRevisionFacts(loaded, resourceType, program);
-  return createHash("sha256")
-    .update(JSON.stringify({ resourceType, records, workspaceScope }))
-    .digest("hex");
+  const source = JSON.stringify({ resourceType, records, workspaceScope });
+  return legacy
+    ? createHash("sha256").update(source).digest("hex")
+    : calculateRevision("collection", source);
 }
 
 function canonicalRecordValue(model, resourceType, value) {
@@ -81,14 +83,14 @@ function canonicalRecordValue(model, resourceType, value) {
   return canonicalObject(model, value, fields);
 }
 
-function canonicalObject(model, value, fields = {}) {
+function canonicalObject(model, value, fields = {}, revisionMap = false) {
   return Object.fromEntries(Object.keys(value).sort().map((name) => [
     name,
-    canonicalFieldValue(model, value[name], fields[name])
+    canonicalFieldValue(model, value[name], fields[name], name, revisionMap)
   ]));
 }
 
-function canonicalFieldValue(model, value, field) {
+function canonicalFieldValue(model, value, field, name, revisionMap = false) {
   if (Array.isArray(value)) {
     const objectType = field?.itemObjectType;
     const itemFields = objectType ? model.objectTypes?.[objectType]?.properties : undefined;
@@ -103,9 +105,11 @@ function canonicalFieldValue(model, value, field) {
   }
   if (value && typeof value === "object") {
     const objectType = field?.objectType;
-    return canonicalObject(model, value, objectType ? model.objectTypes?.[objectType]?.properties : undefined);
+    return canonicalObject(model, value, objectType ? model.objectTypes?.[objectType]?.properties : undefined, CALCULATED_REVISION_MAP_FIELDS.has(name));
   }
-  return value;
+  return typeof value === "string" && (revisionMap || CALCULATED_REVISION_FIELDS.has(name))
+    ? canonicalCalculatedRevision(value)
+    : value;
 }
 
 function compareCanonicalValues(left, right) {

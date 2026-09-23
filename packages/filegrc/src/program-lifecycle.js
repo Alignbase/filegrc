@@ -1,5 +1,6 @@
 import { currentPartyPeople } from "./parties.js";
 import { modelSupports } from "../model/index.js";
+import { revisionsMatch } from "./revisions.js";
 
 const requiredDocumentsByControlCache = new WeakMap();
 
@@ -65,8 +66,13 @@ export function governedContentIsOperating(record, asOf, model) {
 
 export function contentRevisionBindingsMatch(left, right) {
   if (!left || !right || Array.isArray(left) || Array.isArray(right)) return false;
-  const normalize = (value) => Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
-  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+  const leftEntries = Object.entries(left).sort(([a], [b]) => a.localeCompare(b));
+  const rightEntries = Object.entries(right).sort(([a], [b]) => a.localeCompare(b));
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every(([path, revision], index) => (
+      rightEntries[index][0] === path
+      && (revision === rightEntries[index][1] || revisionsMatch("content", revision, rightEntries[index][1]))
+    ));
 }
 
 export function obligationGovernedDocuments(obligation, byId, model) {

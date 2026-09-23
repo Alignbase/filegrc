@@ -1,4 +1,5 @@
 import { resourceReviewRevisions } from "./retention.js";
+import { revisionsMatch } from "./revisions.js";
 
 export async function assessRequirementMappingReadiness(loaded) {
   if (!loaded.model.resources["requirement-mapping"]) return [];
@@ -17,7 +18,7 @@ export async function assessRequirementMappingReadiness(loaded) {
       ...(mapping.targetResourceIds || [])
     ])];
     const staleIds = mappedIds.filter((id) => (
-      !revisions.get(id) || mapping.reviewedSourceRevisions?.[id] !== revisions.get(id)
+      !revisions.get(id) || !revisionsMatch("content", mapping.reviewedSourceRevisions?.[id], revisions.get(id))
     )).concat(Object.keys(mapping.reviewedSourceRevisions || {}).filter((id) => !mappedIds.includes(id)));
     const structurallyComplete = mappingStructureIsComplete(mapping);
     const complete = mapping.status === "active" && structurallyComplete && staleIds.length === 0;

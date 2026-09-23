@@ -6,6 +6,7 @@ import { assessProgramReadiness } from "./program-readiness.js";
 import { personWasActiveOn } from "./soc2.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
+import { revisionDigest } from "./revisions.js";
 
 export async function scaffoldDocumentActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
@@ -97,7 +98,7 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
           : `${resourceTitle} "${resourceId}" is not ready for ${workflowScope === "engagement" ? "Step 5" : "Step 3"} activation.`
       );
     }
-    if (!/^[a-f0-9]{64}$/.test(expectedRevisions[resourceId] || "")) {
+    if (!revisionDigest("content", expectedRevisions[resourceId])) {
       throw new Error(`Governed-content activation needs the current record revision for "${resourceId}". Regenerate the activation review and try again.`);
     }
     const record = {

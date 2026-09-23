@@ -53,7 +53,7 @@ test("applicability batch resolves repository revision once and assesses workflo
     applicabilityReview.scopeRevision
   )));
   assert.equal(revisions.size, DECISION_COUNT);
-  assert.ok([...revisions].every((revision) => /^scope:[a-f0-9]{64}$/.test(revision)));
+  assert.ok([...revisions].every((revision) => /^filegrc:applicability-scope:v1:sha256:[a-f0-9]{64}$/.test(revision)));
 });
 
 test("previews 42 applicability decisions within the batch performance budget", async (context) => {
@@ -109,7 +109,7 @@ test("browser preview and apply use the same 42-decision batch", async (context)
     "requirement-01.json"
   ), "utf8"));
   assert.equal(first.applicability, "applicable");
-  assert.match(first.applicabilityReview.scopeRevision, /^scope:[a-f0-9]{64}$/);
+  assert.match(first.applicabilityReview.scopeRevision, /^filegrc:applicability-scope:v1:sha256:[a-f0-9]{64}$/);
 });
 
 test("rejects apply when structured workspace scope changes after preview", async (context) => {
@@ -153,7 +153,7 @@ test("binds dirty structured scope to an exact uncommitted fingerprint", async (
     basis: preview.basis,
     confirmed: true
   });
-  assert.match(applied.changes.update[0].applicabilityReview.scopeRevision, /^scope:[a-f0-9]{64}$/);
+  assert.match(applied.changes.update[0].applicabilityReview.scopeRevision, /^filegrc:applicability-scope:v1:sha256:[a-f0-9]{64}$/);
 });
 
 test("rejects a dirty applicability change made after preview", async (context) => {

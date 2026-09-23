@@ -1179,7 +1179,7 @@ test("scaffolds a complete headless Work Queue mutation with its safe write revi
   assert.deepEqual(scaffold.record.reviewerIds, ["person-owner"]);
   assert.equal(scaffold.record.completedOn, "2026-03-20");
   assert.equal(scaffold.scaffold.dueWindowEnd, "2026-03-31");
-  assert.match(scaffold.revision, /^[a-f0-9]{64}$/);
+  assert.match(scaffold.revision, /^filegrc:content:v1:sha256:[a-f0-9]{64}$/);
   assert.deepEqual(scaffold.record.evidenceIds, []);
 
   await createResource(root, {

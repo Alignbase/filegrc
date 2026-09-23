@@ -19,6 +19,8 @@ npm run serve
 
 Requires Node.js 20 or newer and Git.
 
+Run FileGRC through the version installed by `npm ci`. The CLI, local server, and write APIs stop when that installed version differs from `package-lock.json`. Older revision bindings remain readable after an engine upgrade, so an unchanged review does not need to be repeated or rewritten just to adopt a new engine.
+
 Existing model v10 workspaces must run `npx filegrc migrate --to-model 11 --preview --json` after installing a model v11 package. The migration removes the old per-Control implementation review fields. Owners can record implementation directly, while periodic Control oversight uses a Collection Review. Independent Policy, Document, and Training approvals do not change. Older workspaces migrate one model version at a time. See the [model v11 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v11.md).
 
 ## How it works

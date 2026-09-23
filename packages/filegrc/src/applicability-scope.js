@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
 
 const excludedResourceFields = new Set([
   "applicabilityReview",
@@ -151,7 +151,7 @@ export function applicabilityScopeRevision(record, program, resources, model) {
         "customerFacing"
       ], model))
   };
-  return `scope:${createHash("sha256").update(stableJson(facts)).digest("hex")}`;
+  return calculateRevision("applicability-scope", stableJson(facts));
 }
 
 function compareRecordIds(left, right) {
@@ -162,11 +162,16 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
   if (
     review?.scopeRevision
     && !review.scopeRevision.startsWith("scope:")
+    && !review.scopeRevision.startsWith("filegrc:applicability-scope:")
     && Number(model?.modelVersion || 0) < 7
   ) return true;
   return Boolean(
     review?.scopeRevision
-    && review.scopeRevision === applicabilityScopeRevision(record, program, resources, model)
+    && revisionsMatch(
+      "applicability-scope",
+      review.scopeRevision,
+      applicabilityScopeRevision(record, program, resources, model)
+    )
   );
 }
 
@@ -176,17 +181,17 @@ function pick(record, fields, model, objectType = null) {
     .map((field) => [field, record[field]])));
 }
 
-function canonicalObject(model, type, value) {
+function canonicalObject(model, type, value, revisionMap = false) {
   const fields = model.resources?.[type]
     ? { ...model.commonFields, ...model.resources[type].fields }
     : model.objectTypes?.[type]?.properties || {};
   return Object.fromEntries(Object.keys(value).sort().map((name) => [
     name,
-    canonicalFieldValue(model, value[name], fields[name], name)
+    canonicalFieldValue(model, value[name], fields[name], name, revisionMap)
   ]));
 }
 
-function canonicalFieldValue(model, value, field, name) {
+function canonicalFieldValue(model, value, field, name, revisionMap = false) {
   if (Array.isArray(value)) {
     const items = value.map((item) => field?.itemObjectType && item && typeof item === "object"
       ? canonicalObject(model, field.itemObjectType, item)
@@ -197,9 +202,13 @@ function canonicalFieldValue(model, value, field, name) {
     return items;
   }
   if (value && typeof value === "object") {
-    return field?.objectType ? canonicalObject(model, field.objectType, value) : value;
+    return field?.objectType
+      ? canonicalObject(model, field.objectType, value, CALCULATED_REVISION_MAP_FIELDS.has(name))
+      : value;
   }
-  return value;
+  return typeof value === "string" && (revisionMap || CALCULATED_REVISION_FIELDS.has(name))
+    ? canonicalCalculatedRevision(value)
+    : value;
 }
 
 function stableJson(value) {

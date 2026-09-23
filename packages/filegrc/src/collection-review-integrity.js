@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { loadModel } from "../model/index.js";
 import { collectionRevision } from "./collection-revision.js";
 import { scopedCollectionRecords } from "./collection-scope.js";
 import { getDataFilesAtRevision, getFileAtRevision, getRecordIdentityHistory, hasGitRevision } from "./git.js";
 import { currentCalendarDate, isRfc3339Timestamp } from "./time.js";
+import { calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
 
 export function collectionReviewRevision(record) {
   const reviewedFacts = {
@@ -24,7 +24,17 @@ export function collectionReviewRevision(record) {
     authoritativeComponentId: record.authoritativeComponentId,
     supersedesId: record.supersedesId
   };
-  return createHash("sha256").update(JSON.stringify(reviewedFacts)).digest("hex");
+  return calculateRevision("collection-review", JSON.stringify(canonicalRevisionValue(reviewedFacts)));
+}
+
+function canonicalRevisionValue(value, name = null) {
+  if (Array.isArray(value)) return value.map((item) => canonicalRevisionValue(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, canonicalRevisionValue(item, key)]));
+  }
+  return name === "collectionRevision" && typeof value === "string"
+    ? canonicalCalculatedRevision(value)
+    : value;
 }
 
 export function historicalCollectionReviewSnapshot(root, record, model, timezone, resourceType, cutoff, selector = null, relativePath = null, expectedCommit = null) {
@@ -60,7 +70,7 @@ export function historicalCollectionReviewSnapshot(root, record, model, timezone
     authoritativeSourceId: record.authoritativeComponentId
   });
   if (
-    record.collectionRevision !== currentRevision
+    !revisionsMatch("collection", record.collectionRevision, currentRevision)
     || JSON.stringify([...(record.populationResourceIds || [])].sort()) !== JSON.stringify(collectionIds)
   ) return null;
   const selectedIds = selector
@@ -89,7 +99,7 @@ function committedCollectionReviewMatch(root, record, relativePath, expectedComm
       return historical.type === "collection-review"
         && historical.id === record.id
         && ["active", "retired"].includes(historical.status)
-        && collectionReviewRevision(historical) === expected;
+        && revisionsMatch("collection-review", collectionReviewRevision(historical), expected);
     } catch {
       return false;
     }

@@ -123,6 +123,8 @@ export { createFilegrcServer, serveWorkspace } from "./server.js";
 export { normalizeSetupPayload, planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
 export { createAppState, createResourceDetail } from "./state.js";
 export { currentCalendarDate, formatCalendarDate, formatLocalDateTime } from "./time.js";
+export { assertWorkspaceEngineVersion, workspaceEngineVersion } from "./runtime-version.js";
+export { calculatedRevisionDiagnostic, REVISION_SCHEME_VERSION } from "./revisions.js";
 export { validateWorkspace } from "./validate.js";
 export {
   assessWorkflow,

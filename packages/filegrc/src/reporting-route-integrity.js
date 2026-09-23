@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   getDataRecordHistoryIndex,
   getFileAtRevision,
@@ -12,6 +11,7 @@ import { addCalendarDays } from "./recurrence.js";
 import { coverageContains } from "./coverage.js";
 import { appointmentWasAuthorizedOn } from "./soc2.js";
 import { isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
+import { calculateRevision } from "./revisions.js";
 
 const CONTEMPORANEOUS_COMMIT_WINDOW_MS = 86_400_000;
 const REPORTING_ROUTE_REQUIREMENT_SOURCE_TYPES = new Set(["policy", "document", "commitment", "risk"]);
@@ -32,7 +32,7 @@ export function reportingRouteRevision(record) {
     sourceResourceIds: record.sourceResourceIds,
     ownerIds: record.ownerIds
   };
-  return createHash("sha256").update(JSON.stringify(effectiveFacts)).digest("hex");
+  return calculateRevision("reporting-route", JSON.stringify(effectiveFacts));
 }
 
 export function reportingRouteEventAuthorityIssue(records, routeSet, options = {}) {

@@ -45,6 +45,7 @@ import {
 } from "./reporting-route-integrity.js";
 import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
 import { occurrenceMemberExceptionIsValid } from "./obligation-members.js";
+import { calculateRevision, revisionDigest, revisionsMatch } from "./revisions.js";
 
 let fingerprintFileReadObserver = null;
 
@@ -557,8 +558,8 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       || !(review.scopeResourceIds || []).includes(record.programId)
       || !historicalSnapshot
       || record.collectionReviewCommit !== historicalSnapshot.reviewCommit
-      || record.collectionReviewRevision !== collectionReviewRevision(review)
-      || record.collectionRevision !== review.collectionRevision
+      || !revisionsMatch("collection-review", record.collectionReviewRevision, collectionReviewRevision(review))
+      || !revisionsMatch("collection", record.collectionRevision, review.collectionRevision)
       || record.scopeRevision !== review.scopeRevision
       || !reviewCoversCutoff
       || JSON.stringify(memberIds) !== JSON.stringify(reviewedIds)
@@ -1231,6 +1232,16 @@ function validateTimestampTimezone(value, timezone, path, diagnostics, label) {
 
 function validateCollectionReview(record, loaded, byId, path, diagnostics) {
   if (record.status !== "active") return;
+  const inactiveReviewers = (record.reviewedByIds || []).filter((id) => (
+    !personWasActiveOn(byId.get(id), record.reviewedOn)
+  ));
+  if (inactiveReviewers.length) {
+    diagnostics.push(error(
+      "inactive-collection-reviewer-on-review-date",
+      path,
+      `Collection Review reviewers must have been active on ${record.reviewedOn}: ${inactiveReviewers.join(", ")}.`
+    ));
+  }
   const { model } = loaded;
   const configuration = model.collectionReviews?.[record.resourceType];
   if (!configuration) return;
@@ -1987,13 +1998,13 @@ function validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisi
   const sources = retentionReviewResourceIds(record, loaded);
   const revisions = record.reviewedSourceRevisions || {};
   const missing = sources.filter((id) => (
-    !currentReviewRevisions.get(id) || revisions[id] !== currentReviewRevisions.get(id)
+    !currentReviewRevisions.get(id) || !revisionsMatch("content", revisions[id], currentReviewRevisions.get(id))
   )).concat(Object.keys(revisions).filter((id) => !sources.includes(id)));
   if (missing.length) {
     diagnostics.push(error(
       "stale-retention-review",
       path,
-      `reviewedSourceRevisions must bind the schedule Document, Information Types, operational scope, and authority or source records before activation: ${missing.join(", ")}.`
+      `reviewedSourceRevisions must bind the schedule Document, Information Types, operational scope, and authority or source records before activation: ${revisionMismatchDetails(missing, revisions, currentReviewRevisions)}.`
     ));
   }
 }
@@ -2011,15 +2022,21 @@ function validateRequirementMapping(record, currentReviewRevisions, path, diagno
   const mappedIds = [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])];
   const revisions = record.reviewedSourceRevisions || {};
   const missing = mappedIds.filter((id) => (
-    !currentReviewRevisions.get(id) || revisions[id] !== currentReviewRevisions.get(id)
+    !currentReviewRevisions.get(id) || !revisionsMatch("content", revisions[id], currentReviewRevisions.get(id))
   )).concat(Object.keys(revisions).filter((id) => !mappedIds.includes(id)));
   if (missing.length) {
     diagnostics.push(error(
       "stale-requirement-mapping",
       path,
-      `reviewedSourceRevisions must bind every mapped resource before activation: ${missing.join(", ")}.`
+      `reviewedSourceRevisions must bind every mapped resource before activation: ${revisionMismatchDetails(missing, revisions, currentReviewRevisions)}.`
     ));
   }
+}
+
+function revisionMismatchDetails(ids, stored, current) {
+  return ids.map((id) => (
+    `${id} (stored: ${stored[id] || "missing"}; current: ${current.get(id) || "missing"})`
+  )).join(", ");
 }
 
 function obligationCompletionTypes(model, obligation) {
@@ -2170,7 +2187,7 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
   }
   const invalid = actualPaths.filter((item) => (
     !expectedPaths.has(item)
-    || !/^[a-f0-9]{64}$/.test(String(record.contentRevisions[item] || ""))
+    || !revisionDigest("content", record.contentRevisions[item])
   ));
   const unboundSubjects = [...subjectPaths].filter(([, paths]) => (
     paths.length && !paths.some((item) => actualPaths.includes(item))
@@ -2251,7 +2268,11 @@ function validateReportingRouteBinding(record, loaded, path, diagnostics) {
     .sort((left, right) => right.record.effectiveAt.localeCompare(left.record.effectiveAt))[0] || null;
   const expectedId = route?.record.id;
   const expectedRevision = route ? reportingRouteRevision(route.record) : undefined;
-  if (record.reportingRouteId !== expectedId || record.reportingRouteRevision !== expectedRevision) {
+  if (
+    record.reportingRouteId !== expectedId
+    || (expectedRevision && !revisionsMatch("reporting-route", record.reportingRouteRevision, expectedRevision))
+    || (!expectedRevision && record.reportingRouteRevision !== expectedRevision)
+  ) {
     diagnostics.push(error(
       "invalid-reporting-route-binding",
       path,
@@ -2276,7 +2297,7 @@ async function validateContentBinding(record, model, root, path, diagnostics, bi
   for (const item of markdownEntries(model, record)) {
     try {
       const source = await readFile(resolveDataPath(root, item.path), "utf8");
-      actual[item.path] = createHash("sha256").update(source).digest("hex");
+      actual[item.path] = calculateRevision("content", source);
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
@@ -2284,8 +2305,8 @@ async function validateContentBinding(record, model, root, path, diagnostics, bi
   const expected = record[bindingField];
   const paths = [...new Set([...Object.keys(actual), ...Object.keys(expected)])].sort();
   const invalid = paths.filter((item) => (
-    !/^[a-f0-9]{64}$/.test(String(expected[item] || ""))
-    || expected[item] !== actual[item]
+    !revisionDigest("content", expected[item])
+    || !revisionsMatch("content", expected[item], actual[item])
   ));
   if (invalid.length) {
     diagnostics.push(error(

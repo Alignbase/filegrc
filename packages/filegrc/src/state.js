@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessCollectionReviews } from "./collection-review.js";
@@ -17,6 +16,7 @@ import { assessWorkflow } from "./workflow.js";
 import { measureTiming } from "./timing.js";
 import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 import { modelSupports } from "../model/index.js";
+import { calculateRevision } from "./revisions.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -447,5 +447,5 @@ function renderMarkdownCached(source) {
 }
 
 function contentRevision(source) {
-  return createHash("sha256").update(source).digest("hex");
+  return calculateRevision("content", source);
 }

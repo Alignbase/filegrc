@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { getResourceDefinition, loadModel, modelSupports } from "../model/index.js";
@@ -12,6 +12,7 @@ import { measureTiming } from "./timing.js";
 import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
+import { calculateRevision, revisionsMatch } from "./revisions.js";
 
 export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   auditManagementReconciliation: Symbol("audit-management-reconciliation"),
@@ -692,11 +693,11 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     const legacyReplacement = options.workflowCapability === INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
       && existing.status === "active"
       && next.status === "active";
-    if (!retirement && !legacyReplacement && options.lifecycleOperation !== "model-migration") {
+    if (!retirement && !legacyReplacement && !isMigrationOperation(options.lifecycleOperation)) {
       throw new Error(`Finalized Collection Review "${existing.id}" is immutable. Record a superseding review instead.`);
     }
   }
-  if (options.lifecycleOperation === "model-migration") return;
+  if (isMigrationOperation(options.lifecycleOperation)) return;
   if (
     modelSupports(loaded?.model || 0, "reporting-route-sets")
     && ["policy", "document", "commitment", "risk"].includes(existing.type)
@@ -921,21 +922,21 @@ function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
   if (
     record?.type === "reconciliation-dismissal"
     && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.reconciliationDismissal
-    && options.lifecycleOperation !== "model-migration"
+    && !isMigrationOperation(options.lifecycleOperation)
   ) {
     throw new Error(`Reconciliation dismissal "${record.id || ""}" is workflow-managed. Dismiss the current transition candidate instead of creating it directly.`);
   }
   if (
     record?.type === "collection-review"
     && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.collectionReviewReassessment
-    && options.lifecycleOperation !== "model-migration"
+    && !isMigrationOperation(options.lifecycleOperation)
   ) {
     throw new Error(`Collection Review "${record.id || ""}" is workflow-managed. Preview and confirm the collection review instead of creating it directly.`);
   }
   if (
     record?.type === "reporting-route-set"
     && record.status !== "draft"
-    && options.lifecycleOperation !== "model-migration"
+    && !isMigrationOperation(options.lifecycleOperation)
   ) {
     throw new Error(`Reporting Route Set "${record.id || ""}" must be created as a draft and advanced through managed actions.`);
   }
@@ -1162,13 +1163,14 @@ async function prepareContentWrites(loaded, record, content, options = {}) {
 }
 
 function assertRevision(source, expected, label) {
-  if (expected && contentRevision(source) !== expected) {
-    throw new Error(`${label} changed after you opened it. Reload the workspace and apply your change again.`);
+  const current = contentRevision(source);
+  if (expected && !revisionsMatch("content", expected, current)) {
+    throw new Error(`${label} changed after you opened it. Stored revision: ${expected}. Current revision: ${current}. Reload the workspace and apply your change again.`);
   }
 }
 
 export function contentRevision(source) {
-  return createHash("sha256").update(source).digest("hex");
+  return calculateRevision("content", source);
 }
 
 async function prepareApprovalBinding(loaded, record, contentWrites, previousRecord = null) {
@@ -1223,7 +1225,7 @@ async function prepareApprovalBinding(loaded, record, contentWrites, previousRec
 }
 
 function assertGovernedContentLifecycleMutation(previousRecord, nextRecord, model, lifecycleOperation) {
-  if (lifecycleOperation === "model-migration") return;
+  if (isMigrationOperation(lifecycleOperation)) return;
   const governedTraining = previousRecord?.type === "training"
     && nextRecord?.type === "training"
     && modelSupports(model, "governed-training-activation");
@@ -1267,6 +1269,10 @@ function assertGovernedContentLifecycleMutation(previousRecord, nextRecord, mode
     const step = governedDocument && documentIsAuditSpecific(nextRecord, model) ? "Step 5" : "Step 3";
     throw new Error(`${title} "${nextRecord.id}" must use the dedicated ${step} ${title} activation operation after approval.`);
   }
+}
+
+function isMigrationOperation(operation) {
+  return operation === "model-migration";
 }
 
 function assertLifecycleFieldsUnchanged(previousRecord, nextRecord, fields, eventLabel, resourceTitle) {

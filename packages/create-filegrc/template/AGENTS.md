@@ -119,6 +119,8 @@ npx filegrc migrate --to-model 8 --preview --json
 
 Older workspaces migrate one version at a time. Review every preview’s automatic, review-required, and unsupported classifications before applying it with the same options and `--yes`. The v8 migration preserves legacy retention prose as notes, renames Component processing operations, and creates no retention periods or disposition behavior.
 
+After changing the installed `filegrc` version, run `npm ci` and validate the workspace. FileGRC rejects CLI, server, and write operations when the installed version differs from `package-lock.json`. Older calculated revision bindings remain valid when the reviewed facts have not changed; do not repeat a management review solely because the engine changed.
+
 The [model v11 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v11.md) explains owner-recorded Control implementation and periodic Control collection oversight. The [model v10 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v10.md) explains Reporting Channel Sets and the legacy-route review.
 
 Run these commands when working with records:

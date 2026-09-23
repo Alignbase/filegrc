@@ -292,7 +292,7 @@ test("previews and atomically migrates every model v1 compatibility field", asyn
   assert.equal(records.get("control-example").frequency, undefined);
   assert.deepEqual(records.get("document-example").trainingIds, ["training-example"]);
   assert.equal(records.get("policy-example").reviewCadence, undefined);
-  assert.match(records.get("policy-example").approvedContentRevisions["policies/policy-example.md"], /^[a-f0-9]{64}$/);
+  assert.match(records.get("policy-example").approvedContentRevisions["policies/policy-example.md"], /^filegrc:content:v1:sha256:[a-f0-9]{64}$/);
   assert.ok([...records.values()].some((record) => (
     record.type === "obligation"
     && record.templateResourceId === "policy-example"

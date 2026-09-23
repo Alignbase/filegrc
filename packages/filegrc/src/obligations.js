@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { scaffoldResourceMutation } from "./agent.js";
 import { createResourceId } from "./id.js";
 import {
@@ -30,6 +29,7 @@ import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./
 import { bindAttestationReportingRouteSet, reportingRouteRevision } from "./reporting-route-integrity.js";
 import { selectScopedCollectionRecords } from "./collection-scope.js";
 import { occurrenceMemberIsResolved } from "./obligation-members.js";
+import { calculateRevision, revisionsMatch } from "./revisions.js";
 
 const COMPLETION_DATE_FIELDS = [
   "completedOn",
@@ -993,7 +993,7 @@ export async function scaffoldObligationRuleActivation(input, options = {}) {
 export async function activateObligationRule(input, options = {}) {
   const scaffold = await scaffoldObligationRuleActivation(input, options);
   if (!(options.approvedByIds || []).length) throw new Error("Select at least one person who approved this rule.");
-  if (options.confirmedRevision !== scaffold.review.revision) {
+  if (!revisionsMatch("content", options.confirmedRevision, scaffold.review.revision)) {
     throw new Error("Confirm the current Obligation rule revision before activation.");
   }
   const loaded = await loadWorkspace(input);
@@ -1508,7 +1508,7 @@ function bindEffectiveReportingRoute(loaded, record) {
 }
 
 function contentRevision(source) {
-  return createHash("sha256").update(source).digest("hex");
+  return calculateRevision("content", source);
 }
 
 function calendarWindow(recurrence, configuredWindow, index) {

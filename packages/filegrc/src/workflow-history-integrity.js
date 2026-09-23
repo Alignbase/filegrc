@@ -13,6 +13,7 @@ import { resolveDataPath } from "./paths.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp, timestampFromLocalDateTime } from "./time.js";
 import { recordsAtRevision, reportingRouteFixedEvidence } from "./reporting-route-integrity.js";
+import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, canonicalCalculatedRevision } from "./revisions.js";
 
 const FINAL_STATUSES = new Map([
   ["reconciliation-dismissal", new Set([undefined])],
@@ -823,18 +824,25 @@ function permittedFinalizedTransition(previous, current) {
     && (previous.evidenceIds || []).every((id) => (current.evidenceIds || []).includes(id))
   ) allowed = ["evidenceIds"];
   return [...new Set([...Object.keys(previous), ...Object.keys(current)])].every((key) => (
-    allowed.includes(key) || sameJson(previous[key], current[key])
+    allowed.includes(key) || sameJson(previous[key], current[key], key)
   ));
 }
 
-function sameJson(left, right) {
-  return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
+function sameJson(left, right, field = null) {
+  return JSON.stringify(canonicalJson(left, field)) === JSON.stringify(canonicalJson(right, field));
 }
 
-function canonicalJson(value) {
-  if (Array.isArray(value)) return value.map(canonicalJson);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJson(value[key])]));
+function canonicalJson(value, field = null, revisionMap = false) {
+  if (Array.isArray(value)) return value.map((item) => canonicalJson(item));
+  if (!value || typeof value !== "object") {
+    return typeof value === "string" && (revisionMap || CALCULATED_REVISION_FIELDS.has(field))
+      ? canonicalCalculatedRevision(value)
+      : value;
+  }
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [
+    key,
+    canonicalJson(value[key], key, revisionMap || CALCULATED_REVISION_MAP_FIELDS.has(field))
+  ]));
 }
 
 function proofIds(occurrence, byId) {

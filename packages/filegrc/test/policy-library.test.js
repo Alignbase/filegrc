@@ -398,8 +398,8 @@ test("offers scan-friendly requirement lists as a reviewable upgrade", async (co
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = policyPath(root);
@@ -433,8 +433,8 @@ test("offers the readable policy structure as a reviewable upgrade", async (cont
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = policyPath(root);
@@ -468,8 +468,8 @@ test("offers the glossary-formatted Definitions section as a reviewable upgrade"
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = policyPath(root);
@@ -503,8 +503,8 @@ test("offers the standalone Policy as an explicit upgrade to the immediately pri
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = policyPath(root);
@@ -537,8 +537,8 @@ test("offers standalone governed Documents as a reviewable upgrade and changes n
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const organizationSchedulePath = join(root, "data", "retention-schedule-items", "retention-schedule-item-filegrc-records.json");
@@ -604,8 +604,8 @@ test("leaves customized, approved, and active governed Documents untouched", asy
       policyOwnerEmail: "owner@example.test",
       securityContactEmail: "security@example.test",
       timezone: "UTC",
-      filegrcVersion: "1.2.3",
-      install: false,
+      filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+      install: true,
       effectiveDate: "2026-01-01"
     });
     const update = PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS["document-soc2-system-description"];
@@ -639,8 +639,8 @@ test("preserves customized retention Markdown while proposing additive Control l
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const markdownPath = join(root, "data", "documents", "document-data-retention-schedule.md");
@@ -730,8 +730,8 @@ test("proposes only the missing review schedules in an existing v4 starter works
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
 
@@ -801,8 +801,8 @@ test("reviews and explicitly accepts the vendor-neutral Training correction", as
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = trainingPath(root);
@@ -852,8 +852,8 @@ test("recognizes prior vendor-neutral Training revisions before the ciphertext c
       policyOwnerEmail: "owner@example.test",
       securityContactEmail: "security@example.test",
       timezone: "UTC",
-      filegrcVersion: "1.2.3",
-      install: false,
+      filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+      install: true,
       effectiveDate: "2026-01-01"
     });
     const path = trainingPath(root);
@@ -883,8 +883,8 @@ test("offers generic workforce Training as an explicit upgrade to the immediatel
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = trainingPath(root);
@@ -918,8 +918,8 @@ test("leaves customized and active Training content untouched", async (context) 
       policyOwnerEmail: "owner@example.test",
       securityContactEmail: "security@example.test",
       timezone: "UTC",
-      filegrcVersion: "1.2.3",
-      install: false,
+      filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+      install: true,
       effectiveDate: "2026-01-01"
     });
     const path = trainingPath(root);
@@ -964,8 +964,8 @@ test("reviews the time-bound MFA exception correction without changing the Contr
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = join(root, "data", "controls", "control-strong-authentication.json");
@@ -1001,8 +1001,8 @@ test("reviews generic Control activities without changing planned Controls autom
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const priorActivities = {
@@ -1061,8 +1061,8 @@ test("recognizes prior Training when the organization name is also training voca
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "UTC",
-    filegrcVersion: "1.2.3",
-    install: false,
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
     effectiveDate: "2026-01-01"
   });
   const path = trainingPath(root);

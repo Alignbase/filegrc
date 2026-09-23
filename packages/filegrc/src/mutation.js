@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveWorkspaceRoot } from "./paths.js";
+import { assertWorkspaceEngineVersion } from "./runtime-version.js";
 
 const mutationQueues = new Map();
 const activeMutation = new AsyncLocalStorage();
@@ -7,6 +8,7 @@ const deferredValidation = new AsyncLocalStorage();
 
 export function serializeWorkspaceMutation(input, task) {
   const root = resolveWorkspaceRoot(input);
+  assertWorkspaceEngineVersion(root);
   if (activeMutation.getStore() === root) return task(root);
   const previous = mutationQueues.get(root) ?? Promise.resolve();
   const run = previous.catch(() => {}).then(() => activeMutation.run(root, () => task(root)));

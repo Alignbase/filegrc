@@ -75,6 +75,7 @@ import { searchResources } from "./search.js";
 import { serveWorkspace } from "./server.js";
 import { planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
 import { printGithubStarMessage } from "./startup.js";
+import { assertWorkspaceEngineVersion } from "./runtime-version.js";
 import { createAppState } from "./state.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
@@ -116,6 +117,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (["help", "--help", "-h"].includes(command)) return printHelp();
   if (["version", "--version", "-v"].includes(command)) return printVersion();
   if (flags.help || args.includes("-h")) return printCommandHelp(command);
+  const targetRoot = ["serve", "build", "validate"].includes(command)
+    ? positionals[0] ?? root
+    : root;
+  assertWorkspaceEngineVersion(targetRoot);
 
   if (command === "serve") {
     const result = await serveWorkspace(positionals[0] ?? root, {

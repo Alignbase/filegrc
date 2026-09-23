@@ -5,6 +5,7 @@ import { resolveDataPath } from "./paths.js";
 import { programComponents } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { modelSupports } from "../model/index.js";
+import { canonicalCalculatedRevisionJson, revisionDigest, revisionsMatch } from "./revisions.js";
 
 export async function assessRetentionReadiness(loaded, program, options = {}) {
   if (!loaded.model.resources["retention-schedule-item"]) return [];
@@ -173,7 +174,7 @@ export async function resourceReviewRevisions(loaded, ids) {
     }
     for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
       const revision = await review(sourceId);
-      if (revision) parts.push(`${sourceId}:${revision}`);
+      if (revision) parts.push(`${sourceId}:${revisionDigest("content", revision) || revision}`);
     }
     reviewing.delete(id);
     const revision = contentRevision(parts.join("\n"));
@@ -206,7 +207,7 @@ export function resourceReviewRevisionsSync(loaded, ids) {
     }
     for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
       const revision = review(sourceId);
-      if (revision) parts.push(`${sourceId}:${revision}`);
+      if (revision) parts.push(`${sourceId}:${revisionDigest("content", revision) || revision}`);
     }
     reviewing.delete(id);
     const revision = contentRevision(parts.join("\n"));
@@ -260,7 +261,7 @@ function reviewSource(loaded, entry) {
     ]) delete approved[field];
     return JSON.stringify(approved);
   }
-  return entry.source;
+  return canonicalCalculatedRevisionJson(entry.source);
 }
 
 export function nearDuplicateInformationTypes(records) {
@@ -326,7 +327,7 @@ export function retentionRuleIsCurrent(rule, revisions, byId = new Map(), loaded
   const dependencyIds = retentionReviewResourceIds(rule, loaded);
   if (Object.keys(rule.reviewedSourceRevisions).length !== dependencyIds.length) return false;
   return dependencyIds.every((id) => (
-    revisions.get(id) && rule.reviewedSourceRevisions?.[id] === revisions.get(id)
+    revisions.get(id) && revisionsMatch("content", rule.reviewedSourceRevisions?.[id], revisions.get(id))
   ));
 }
 

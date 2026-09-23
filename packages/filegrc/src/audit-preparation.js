@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
@@ -33,6 +32,7 @@ import {
 } from "./soc2.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
+import { calculateRevision } from "./revisions.js";
 
 const NON_EVIDENCE_RECORD_TYPES = new Set([
   "audit",
@@ -160,7 +160,7 @@ export async function prepareAuditWorkspace(input, options = {}) {
 
   const model = loaded.model.auditReadiness || {};
   const auditEntry = loaded.entries.find((entry) => entry.record.id === audit.id);
-  const auditRevision = createHash("sha256").update(auditEntry.source).digest("hex");
+  const auditRevision = calculateRevision("content", auditEntry.source);
   const documents = loaded.resources.filter((record) => record.type === "document");
   const nextAudit = { ...audit };
   const linkedDocuments = [];

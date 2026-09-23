@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import {
@@ -16,6 +15,8 @@ import { currentPartyPeople } from "./parties.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { resolveDataPath } from "./paths.js";
+import { calculateRevision, calculatedRevisionDiagnostic, revisionsMatch } from "./revisions.js";
+import { personWasActiveOn } from "./soc2.js";
 
 export { collectionRevision };
 
@@ -93,7 +94,10 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
   const incompleteRecordProposals = recordProposals.filter(({ complete: ready }) => !ready);
   const reviewersEligible = !reviewerEligibility || Boolean(
     review?.reviewedByIds?.length
-    && review.reviewedByIds.every((id) => reviewerEligibility.eligibleReviewerIds.includes(id))
+    && review.reviewedByIds.every((id) => (
+      personWasActiveOn(loaded.resources.find((record) => record.id === id), review.reviewedOn)
+      && !reviewerEligibility.reviewerConflictIds.includes(id)
+    ))
   );
   const reviewScopeMatches = !workspaceWideRetentionReview
     || sameIds(review?.scopeResourceIds, retentionScope.programIds);
@@ -119,10 +123,11 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     recordCount: records.length,
     review,
     reviewRevision: reviewEntry
-      ? createHash("sha256").update(reviewEntry.source).digest("hex")
+      ? calculateRevision("content", reviewEntry.source)
       : null,
     reviewEntries,
     collectionRevision: currentRevision,
+    revisionDiagnostic: calculatedRevisionDiagnostic("collection", review?.collectionRevision, currentRevision),
     status: complete ? "current" : stale ? "stale" : "review-required",
     complete,
     ...(reviewerEligibility || {}),
@@ -139,7 +144,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
           ? "Review the Data Retention Schedule again with a reviewer who does not own its governing document or an included schedule row."
           : "Review the Control collection again with a reviewer who does not own an included Control or its enabled Obligation."
       : stale
-        ? `${configuration.title} changed after the last confirmation. Review the current records again.`
+        ? `${configuration.title} changed after the last confirmation. Stored revision: ${review.collectionRevision}. Current revision: ${currentRevision}. Review the current records again.`
         : !records.length && !allowsEmptyCollection
           ? `Add at least one ${loaded.model.resources[resourceType].title.toLowerCase()} before confirming this collection.`
         : `Review ${configuration.title.toLowerCase()} before this page can be ready.`
@@ -203,7 +208,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     && modelSupports(loaded.model, "retention-schedule-approval");
   const retentionScope = workspaceWideRetentionReview ? retentionScheduleReviewScope(loaded) : null;
   const assessment = assessCollectionReview(loaded, resourceType, { programId: program.id });
-  if (options.expectedCollectionRevision && options.expectedCollectionRevision !== assessment.collectionRevision) {
+  if (options.expectedCollectionRevision && !revisionsMatch("collection", options.expectedCollectionRevision, assessment.collectionRevision)) {
     throw new Error(`${assessment.configuration.title} changed after it was displayed. Reload and review the current revision before approving it.`);
   }
   if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval") && !options.expectedCollectionRevision) {
@@ -337,7 +342,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
     entry.record.id,
     entry.record.id === existing?.id && options.expectedRevision
       ? options.expectedRevision
-      : createHash("sha256").update(entry.source).digest("hex")
+      : calculateRevision("content", entry.source)
   ]));
   if (existingEntries.length && preservesReviewHistory) {
     for (const entry of existingEntries) {
@@ -456,7 +461,7 @@ function assessControlReviewers(loaded, controls) {
   const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
   return {
     eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),
-    reviewerConflictIds: people.map(({ id }) => id).filter((id) => conflictIds.has(id))
+    reviewerConflictIds: [...conflictIds].sort()
   };
 }
 
@@ -475,7 +480,7 @@ function assessRetentionScheduleReviewers(loaded, rows) {
   const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
   return {
     eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),
-    reviewerConflictIds: people.map(({ id }) => id).filter((id) => conflictIds.has(id))
+    reviewerConflictIds: [...conflictIds].sort()
   };
 }
 
