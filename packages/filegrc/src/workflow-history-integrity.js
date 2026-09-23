@@ -836,7 +836,7 @@ function canonicalJson(value, field = null, revisionMap = false) {
   if (Array.isArray(value)) return value.map((item) => canonicalJson(item));
   if (!value || typeof value !== "object") {
     return typeof value === "string" && (revisionMap || CALCULATED_REVISION_FIELDS.has(field))
-      ? canonicalCalculatedRevision(value)
+      ? canonicalCalculatedRevision(value, field)
       : value;
   }
   return Object.fromEntries(Object.keys(value).sort().map((key) => [

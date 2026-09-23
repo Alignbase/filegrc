@@ -59,8 +59,17 @@ export function calculatedRevisionDiagnostic(kind, stored, current) {
   };
 }
 
-export function canonicalCalculatedRevision(value) {
+export function canonicalCalculatedRevision(value, field = null, scopeHashInput = "legacy") {
   const text = String(value || "");
+  // Legacy applicability reviews stored their scope digest with a `scope:`
+  // label. Keep that exact hash input when a newer scheme labels the same
+  // decision, including when the review is embedded in another source record.
+  if (field === "scopeRevision" && scopeHashInput === "legacy") {
+    const scopeDigest = revisionDigest("applicability-scope", text);
+    if (scopeDigest && (text.startsWith("scope:") || text.startsWith(PREFIXES["applicability-scope"]))) {
+      return `scope:${scopeDigest}`;
+    }
+  }
   // Keep the original digest as the calculation input. Merely installing a
   // scheme-aware engine must not stale a decision made over unchanged facts.
   if (/^[a-f0-9]{64}$/.test(text)) return text;
@@ -71,22 +80,22 @@ export function canonicalCalculatedRevision(value) {
 
 // Preserve JSON layout because older resource-review bindings hashed the exact
 // source bytes. Only scheme labels in model-defined revision slots may change.
-export function canonicalCalculatedRevisionJson(source) {
+export function canonicalCalculatedRevisionJson(source, scopeHashInput = "legacy") {
   const fieldNames = [...CALCULATED_REVISION_FIELDS].join("|");
   const mapNames = [...CALCULATED_REVISION_MAP_FIELDS].join("|");
   const stringValue = /("(?:\\.|[^"\\])*")(\s*:\s*)("(?:\\.|[^"\\])*")/g;
-  const canonicalValue = (quoted) => {
+  const canonicalValue = (quoted, field) => {
     const value = JSON.parse(quoted);
-    const canonical = canonicalCalculatedRevision(value);
+    const canonical = canonicalCalculatedRevision(value, field, scopeHashInput);
     return canonical === value ? quoted : JSON.stringify(canonical);
   };
   return source
     .replace(new RegExp(`("(?:${fieldNames})")(\\s*:\\s*)("(?:\\\\.|[^"\\\\])*")`, "g"),
-      (_match, key, separator, value) => `${key}${separator}${canonicalValue(value)}`)
+      (_match, key, separator, value) => `${key}${separator}${canonicalValue(value, JSON.parse(key))}`)
     .replace(new RegExp(`("(?:${mapNames})")(\\s*:\\s*\\{)([^{}]*)(\\})`, "g"),
       (_match, key, opening, body, closing) => (
         `${key}${opening}${body.replace(stringValue, (_pair, name, separator, value) => (
-          `${name}${separator}${canonicalValue(value)}`
+          `${name}${separator}${canonicalValue(value, JSON.parse(name))}`
         ))}${closing}`
       ));
 }

@@ -12,25 +12,37 @@ import { markdownEntries } from "./resource-markdown.js";
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
 
 export function collectionRevision(loaded, resourceType, options = {}) {
-  return calculateCollectionRevision(loaded, resourceType, options, false);
+  return calculateCollectionRevision(loaded, resourceType, options, false, options.scopeHashInput || "legacy", options.scopeFactsInput || "legacy");
 }
 
 export function legacyCollectionRevision(loaded, resourceType, options = {}) {
-  return calculateCollectionRevision(loaded, resourceType, options, true);
+  return calculateCollectionRevision(loaded, resourceType, options, true, options.scopeHashInput || "legacy", options.scopeFactsInput || "legacy");
 }
 
 export function collectionRevisionMatches(loaded, resourceType, storedRevision, options = {}) {
   if (!storedRevision) return false;
   const currentRevision = options.currentRevision
     || collectionRevision(loaded, resourceType, options);
-  // Version 0.9.2 narrowed this hash basis. Keep unchanged 0.9.1 reviews valid
-  // until management records a new review on the current basis.
-  return revisionsMatch("collection", storedRevision, currentRevision)
-    || (resourceType !== "retention-schedule-item" || !modelSupports(loaded.model, "retention-schedule-approval"))
-      && revisionsMatch("collection", storedRevision, legacyCollectionRevision(loaded, resourceType, options));
+  // Accept both the pre-0.16 scope: input and the digest-only input used by
+  // 0.16.0, as well as the older collection basis from 0.9.1.
+  if (revisionsMatch("collection", storedRevision, currentRevision)) return true;
+  const allowOlderBasis = resourceType !== "retention-schedule-item"
+    || !modelSupports(loaded.model, "retention-schedule-approval");
+  for (const olderBasis of [false, true]) {
+    if (olderBasis && !allowOlderBasis) continue;
+    for (const scopeHashInput of ["legacy", "digest"]) {
+      for (const scopeFactsInput of ["legacy", "source"]) {
+        if (!olderBasis && scopeHashInput === "legacy" && scopeFactsInput === "legacy") continue;
+        if (revisionsMatch("collection", storedRevision, calculateCollectionRevision(
+          loaded, resourceType, options, olderBasis, scopeHashInput, scopeFactsInput
+        ))) return true;
+      }
+    }
+  }
+  return false;
 }
 
-function calculateCollectionRevision(loaded, resourceType, options, legacy) {
+function calculateCollectionRevision(loaded, resourceType, options, legacy, scopeHashInput = "legacy", scopeFactsInput = "legacy") {
   const workspaceWideRetentionReview = resourceType === "retention-schedule-item"
     && modelSupports(loaded.model, "retention-schedule-approval")
     && !legacy;
@@ -55,7 +67,7 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy) {
     .map(({ record, value, includeContent }) => ({
       id: record.id,
       revision: createHash("sha256")
-        .update(JSON.stringify(canonicalRecordValue(loaded.model, record.type, value)))
+        .update(JSON.stringify(canonicalRecordValue(loaded.model, record.type, value, scopeHashInput)))
         .digest("hex"),
       contentRevisions: (legacy || includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
         try {
@@ -68,35 +80,46 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy) {
       })
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
-  const workspaceScope = collectionScopeRevisionFacts(loaded, resourceType, program);
+  const scopeFacts = collectionScopeRevisionFacts(loaded, resourceType, program);
+  const workspaceScope = scopeFactsInput === "source" ? scopeFacts : canonicalScopeFacts(scopeFacts);
   const source = JSON.stringify({ resourceType, records, workspaceScope });
   return legacy
     ? createHash("sha256").update(source).digest("hex")
     : calculateRevision("collection", source);
 }
 
-function canonicalRecordValue(model, resourceType, value) {
+function canonicalScopeFacts(value, field = null) {
+  if (Array.isArray(value)) return value.map((item) => canonicalScopeFacts(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, canonicalScopeFacts(item, key)]));
+  }
+  return field === "scopeRevision" && typeof value === "string"
+    ? canonicalCalculatedRevision(value, field)
+    : value;
+}
+
+function canonicalRecordValue(model, resourceType, value, scopeHashInput) {
   const fields = {
     ...model.commonFields,
     ...model.resources[resourceType]?.fields
   };
-  return canonicalObject(model, value, fields);
+  return canonicalObject(model, value, fields, false, scopeHashInput);
 }
 
-function canonicalObject(model, value, fields = {}, revisionMap = false) {
+function canonicalObject(model, value, fields = {}, revisionMap = false, scopeHashInput = "legacy") {
   return Object.fromEntries(Object.keys(value).sort().map((name) => [
     name,
-    canonicalFieldValue(model, value[name], fields[name], name, revisionMap)
+    canonicalFieldValue(model, value[name], fields[name], name, revisionMap, scopeHashInput)
   ]));
 }
 
-function canonicalFieldValue(model, value, field, name, revisionMap = false) {
+function canonicalFieldValue(model, value, field, name, revisionMap = false, scopeHashInput = "legacy") {
   if (Array.isArray(value)) {
     const objectType = field?.itemObjectType;
     const itemFields = objectType ? model.objectTypes?.[objectType]?.properties : undefined;
     const items = value.map((item) => (
       item && typeof item === "object" && !Array.isArray(item)
-        ? canonicalObject(model, item, itemFields)
+        ? canonicalObject(model, item, itemFields, false, scopeHashInput)
         : item
     ));
     return field?.type === "array"
@@ -105,10 +128,10 @@ function canonicalFieldValue(model, value, field, name, revisionMap = false) {
   }
   if (value && typeof value === "object") {
     const objectType = field?.objectType;
-    return canonicalObject(model, value, objectType ? model.objectTypes?.[objectType]?.properties : undefined, CALCULATED_REVISION_MAP_FIELDS.has(name));
+    return canonicalObject(model, value, objectType ? model.objectTypes?.[objectType]?.properties : undefined, CALCULATED_REVISION_MAP_FIELDS.has(name), scopeHashInput);
   }
   return typeof value === "string" && (revisionMap || CALCULATED_REVISION_FIELDS.has(name))
-    ? canonicalCalculatedRevision(value)
+    ? canonicalCalculatedRevision(value, name, scopeHashInput)
     : value;
 }
 

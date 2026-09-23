@@ -207,7 +207,7 @@ function canonicalFieldValue(model, value, field, name, revisionMap = false) {
       : value;
   }
   return typeof value === "string" && (revisionMap || CALCULATED_REVISION_FIELDS.has(name))
-    ? canonicalCalculatedRevision(value)
+    ? canonicalCalculatedRevision(value, name)
     : value;
 }
 

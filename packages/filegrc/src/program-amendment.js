@@ -1,5 +1,5 @@
 import { findResourceReferences } from "./agent.js";
-import { resourceReviewRevision, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
+import { resourceReviewRevision, resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { loadWorkspace } from "./workspace.js";
 
 const SOURCE_TYPES = new Set(["policy", "document", "framework", "requirement", "commitment"]);
@@ -114,7 +114,8 @@ export async function planProgramAmendment(input, options = {}) {
     && reviewBindingsDiffer(
       [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])],
       record.reviewedSourceRevisions,
-      currentReviewRevisions
+      currentReviewRevisions,
+      loaded
     )
   ));
   if (staleMappings.length) {
@@ -127,7 +128,7 @@ export async function planProgramAmendment(input, options = {}) {
   const retention = related.filter((record) => (
     record.type === "retention-schedule-item"
     && record.status === "active"
-    && reviewBindingsDiffer(retentionReviewResourceIds(record, loaded), record.reviewedSourceRevisions, currentReviewRevisions)
+    && reviewBindingsDiffer(retentionReviewResourceIds(record, loaded), record.reviewedSourceRevisions, currentReviewRevisions, loaded)
   ));
   if (retention.length) {
     missing.push({
@@ -160,10 +161,10 @@ export async function planProgramAmendment(input, options = {}) {
   };
 }
 
-function reviewBindingsDiffer(expectedIds, reviewed = {}, current) {
+function reviewBindingsDiffer(expectedIds, reviewed = {}, current, loaded) {
   const expected = new Set(expectedIds);
   if (Object.keys(reviewed).length !== expected.size) return true;
-  return [...expected].some((id) => !current.get(id) || reviewed[id] !== current.get(id));
+  return [...expected].some((id) => !resourceReviewRevisionMatches(loaded, current, id, reviewed[id]));
 }
 
 export async function assessProgramAmendmentReadiness(loaded) {
