@@ -3,6 +3,7 @@ import { modelSupports } from "../model/index.js";
 import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessCollectionReviews } from "./collection-review.js";
+import { collectionMembershipSourceTypes, collectionRevisionInputs, collectionScopeRevisionFacts } from "./collection-scope.js";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
@@ -233,6 +234,7 @@ export async function assessProgramReadiness(input, options = {}) {
     policyStage,
     controlStage
   ];
+  const prioritizedSetupItems = prioritizeReviewDependencies(evidenceGateStages, loaded, program);
   for (const current of evidenceGateStages) finalizeStage(current);
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
@@ -260,7 +262,8 @@ export async function assessProgramReadiness(input, options = {}) {
   const items = stages.flatMap((current) => current.items);
   const managedItems = items.filter((current) => !["info", "later"].includes(current.status));
   const complete = managedItems.filter((current) => current.status === "complete").length;
-  const firstAction = items.find((current) => current.status === "action") || null;
+  const firstAction = [...prioritizedSetupItems, ...stages.at(-1).items]
+    .find((current) => current.status === "action") || null;
   const target = {
     programId: program?.id || null,
     goal: program?.assuranceGoal || "none",
@@ -1964,6 +1967,50 @@ function stage(id, title, description, items) {
 function finalizeStage(current) {
   current.counts = countStatuses(current.items);
   current.status = current.counts.action ? "action" : current.counts.later ? "later" : "complete";
+}
+
+// A collection confirmation can be performed early, but an unfinished input
+// would make it stale again. Derive the ordering from the same revision inputs
+// used to decide whether that confirmation is current.
+export function prioritizeReviewDependencies(stages, loaded, program) {
+  const items = stages.flatMap(({ items }) => items);
+  const edges = new Map(items.map((_, index) => [index, new Set()]));
+  const indegree = items.map(() => 0);
+  for (const [reviewIndex, review] of items.entries()) {
+    if (review.status !== "action" || !review.id.startsWith("collection-review-")) continue;
+    const resourceType = review.id.slice("collection-review-".length);
+    if (!loaded.model.collectionReviews?.[resourceType]) continue;
+    const inputTypes = new Set(collectionRevisionInputs(loaded, resourceType, program)
+      .map(({ record }) => record.type));
+    for (const type of collectionMembershipSourceTypes(resourceType)) inputTypes.add(type);
+    const scopeFacts = collectionScopeRevisionFacts(loaded, resourceType, program);
+    if (Object.keys(scopeFacts).some((key) => key !== "programId")) inputTypes.add("program");
+    for (const key of Object.keys(scopeFacts)) {
+      if (!key.endsWith("Ids")) continue;
+      const type = key.slice(0, -3).replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+      if (loaded.model.resources?.[type]) inputTypes.add(type);
+    }
+    for (const [sourceIndex, source] of items.entries()) {
+      if (sourceIndex === reviewIndex || source.status !== "action"
+        || source.id.startsWith("collection-review-")
+        || !inputTypes.has(source.resourceType)) continue;
+      edges.get(sourceIndex).add(reviewIndex);
+      indegree[reviewIndex]++;
+    }
+  }
+  const remaining = new Set(items.map((_, index) => index));
+  const ordered = [];
+  while (remaining.size) {
+    const next = [...remaining].find((index) => indegree[index] === 0);
+    if (next === undefined) break;
+    remaining.delete(next);
+    ordered.push(items[next]);
+    for (const dependent of edges.get(next)) indegree[dependent]--;
+  }
+  if (ordered.length !== items.length) return items;
+  const rank = new Map(ordered.map((item, index) => [item, index]));
+  for (const stage of stages) stage.items.sort((left, right) => rank.get(left) - rank.get(right));
+  return ordered;
 }
 
 function item(id, status, title, message, resource = {}, details = {}) {

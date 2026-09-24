@@ -1846,7 +1846,11 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
       nextActions: (current?.items || []).filter((item) => item.status === "action")
     };
   });
-  const currentStep = stages.find((stage) => !["complete", "operating", "management-ready"].includes(stage.status)) || stages.at(-1);
+  const recommendedStage = readiness.stages.find((stage) => stage.items.includes(readiness.firstAction));
+  const recommendedId = recommendedStage?.id === "operation" ? "run" : recommendedStage?.id;
+  const currentStep = stages.find(({ id }) => id === recommendedId)
+    || stages.find((stage) => !["complete", "operating", "management-ready"].includes(stage.status))
+    || stages.at(-1);
   return {
     schemaVersion: 1,
     dataModelVersion: String(model.modelVersion),

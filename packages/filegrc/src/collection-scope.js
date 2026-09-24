@@ -65,6 +65,24 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
   ));
 }
 
+// These records can change which members enter a collection even when they
+// are not part of its current revision inputs yet.
+const COLLECTION_MEMBERSHIP_SOURCES = {
+  person: ["workspace", "program", "appointment", "team", "system", "component", "vendor", "control", "policy", "document", "obligation"],
+  vendor: ["program", "system", "component", "audit"],
+  component: ["program", "system", "control"],
+  "complementary-control": ["program", "system", "component", "control"],
+  "information-type": ["program", "system", "component", "vendor"],
+  "retention-schedule-item": ["program", "system", "component", "vendor", "control", "information-type", "source-coverage"],
+  framework: ["program"],
+  system: ["program"],
+  control: ["program"]
+};
+
+export function collectionMembershipSourceTypes(resourceType) {
+  return COLLECTION_MEMBERSHIP_SOURCES[resourceType] || [];
+}
+
 export function retentionScheduleReviewScope(loaded) {
   const programs = loaded.resources.filter((record) => (
     record.type === "program" && record.status !== "retired"

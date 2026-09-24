@@ -10,6 +10,7 @@ import {
   calculateProgramProgress,
   collectionReviewReadinessItem,
   controlOversightEligible,
+  prioritizeReviewDependencies,
   reportingRouteSetItem,
   selectedAuditWindow,
   selectedProgressWindow
@@ -30,6 +31,99 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+
+test("orders collection confirmations after unfinished revision inputs while leaving independent reviews actionable", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-review-order-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const stage = { items: [
+    { id: "collection-review-complementary-control", status: "action", resourceType: "complementary-control" },
+    { id: "collection-review-classification", status: "action", resourceType: "classification" },
+    { id: "collection-review-framework", status: "action", resourceType: "framework" },
+    { id: "control-work", status: "action", resourceType: "control" },
+    { id: "system-work", status: "action", resourceType: "system" },
+    { id: "program-work", status: "action", resourceType: "program" }
+  ] };
+  prioritizeReviewDependencies([stage], loaded, program);
+  assert.deepEqual(stage.items.map(({ id }) => id), [
+    "collection-review-classification",
+    "control-work",
+    "system-work",
+    "program-work",
+    "collection-review-complementary-control",
+    "collection-review-framework"
+  ]);
+  assert.ok(stage.items.every(({ status }) => status === "action"));
+
+  const crossStage = [
+    { items: [
+      { id: "collection-review-retention-schedule-item", status: "action", resourceType: "retention-schedule-item" },
+      { id: "collection-review-classification", status: "action", resourceType: "classification" }
+    ] },
+    { items: [{ id: "control-work", status: "action", resourceType: "control" }] }
+  ];
+  const crossLoaded = {
+    ...loaded,
+    resources: [...loaded.resources, {
+      id: "retention-control-test",
+      type: "retention-schedule-item",
+      sourceResourceIds: [program.controlIds[0]]
+    }]
+  };
+  const orderedAcrossStages = prioritizeReviewDependencies(crossStage, crossLoaded, program);
+  assert.deepEqual(orderedAcrossStages.map(({ id }) => id), [
+    "collection-review-classification",
+    "control-work",
+    "collection-review-retention-schedule-item"
+  ]);
+
+  const system = loaded.resources.find(({ type }) => type === "system");
+  const changed = {
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === system.id
+      ? { ...record, status: "planned" }
+      : record)
+  };
+  const readiness = await assessProgramReadiness(changed, { asOf: "2026-09-12" });
+  const scopeActions = readiness.stages.find(({ id }) => id === "scope").items
+    .filter(({ status }) => status === "action").map(({ id }) => id);
+  assert.ok(scopeActions.indexOf("service-boundary") < scopeActions.indexOf("collection-review-framework"));
+  assert.ok(scopeActions.indexOf("service-boundary") < scopeActions.indexOf("collection-review-person"));
+  assert.ok(scopeActions.indexOf("collection-review-classification") < scopeActions.indexOf("service-boundary"));
+
+  const unscopedProgram = { ...program, systemIds: [], controlIds: [] };
+  const unscoped = await assessProgramReadiness({
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === program.id ? unscopedProgram : record)
+  }, { asOf: "2026-09-12" });
+  const unscopedActions = unscoped.stages.find(({ id }) => id === "scope").items
+    .filter(({ status }) => status === "action").map(({ id }) => id);
+  assert.ok(unscopedActions.indexOf("service-boundary") < unscopedActions.indexOf("collection-review-information-type"));
+});
+
+test("CLI and browser state recommend Control work before the dependent collection review", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-review-order-surfaces-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const cliReadiness = JSON.parse((await execute(process.execPath, [
+    cli, "program-readiness", "--root", root, "--json"
+  ])).stdout);
+  const cliActions = cliReadiness.stages.find(({ id }) => id === "controls").items
+    .filter(({ status }) => status === "action").map(({ id }) => id);
+  assert.ok(cliActions.indexOf("control-control-example") < cliActions.indexOf("collection-review-complementary-control"));
+  const path = JSON.parse((await execute(process.execPath, [
+    cli, "program-path", "--root", root, "--json"
+  ])).stdout);
+  assert.deepEqual(path.stages.find(({ id }) => id === "controls").nextActions.map(({ id }) => id), cliActions);
+  const running = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => running.server.close(resolve)));
+  const browserState = await fetch(`${running.url}/api/state`).then((response) => response.json());
+  const browserActions = browserState.programReadiness.stages.find(({ id }) => id === "controls").items
+    .filter(({ status }) => status === "action").map(({ id }) => id);
+  assert.deepEqual(browserActions, cliActions);
+});
 
 test("counts distinct readiness actions until the Type 2 window starts", () => {
   const input = {
