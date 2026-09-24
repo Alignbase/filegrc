@@ -589,6 +589,13 @@ function readinessOverview() {
 }
 
 function nextProgramStageHref() {
+  const firstAction = state.programReadiness?.firstAction;
+  const recommendedStage = state.programReadiness?.stages?.find((stage) => stage.items.some((item) => (
+    item.id === firstAction?.id && item.resourceId === firstAction?.resourceId
+  )));
+  if (recommendedStage) {
+    return "#/stage/" + encodeURIComponent(recommendedStage.id === "operation" ? "run" : recommendedStage.id);
+  }
   const nextStage = READINESS_STAGES.find((stage) => {
     const progress = stageProgress(stage);
     return progress.complete < progress.total;
