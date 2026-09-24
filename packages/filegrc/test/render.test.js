@@ -1838,18 +1838,11 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_STYLES, /\.detail-grid-structured \.detail-support-stack\{display:contents\}/);
   assert.match(APP_STYLES, /\.workflow-findings>a:hover\{/);
   assert.match(APP_STYLES, /\.event-dialog label\[hidden\]\{display:none\}/);
-  assert.match(APP_SCRIPT, /function controlOperationTracking\(control\)/);
-  assert.match(APP_SCRIPT, /Operation tracking/);
-  assert.match(APP_SCRIPT, /Work Queue[\s\S]*linked/);
-  assert.match(APP_SCRIPT, /Running in Work Queue/);
-  assert.match(APP_SCRIPT, /Waiting for policy approval/);
-  assert.match(APP_SCRIPT, /Ready when implemented/);
-  assert.match(APP_SCRIPT, /Work Queue needs attention/);
-  assert.match(APP_SCRIPT, /Not scheduled in Work Queue/);
+  assert.doesNotMatch(APP_SCRIPT, /\$operationTracking|function controlOperationTracking/);
   assert.match(APP_STYLES, /\.operation-tracking strong,\.operation-tracking small\{display:block;overflow-wrap:anywhere\}/);
-  assert.match(APP_SCRIPT, /Show operation with evidence records/);
-  assert.match(APP_SCRIPT, /function workQueueScheduleStatus\(obligation, control = null\)/);
+  assert.match(APP_SCRIPT, /function workQueueScheduleStatus\(obligation\)/);
   assert.match(APP_SCRIPT, /function obligationWorkQueueStatus\(obligation\)/);
+  assert.match(APP_SCRIPT, /route\.name === "list" && route\.type === "obligation"\) return \["obligations"\]/);
   assert.match(APP_SCRIPT, /type === "obligation" \? \["\$workQueueStatus"\]/);
   assert.match(APP_SCRIPT, /type === "obligation" && name === "status"\) return "Configuration"/);
   assert.doesNotMatch(APP_SCRIPT, /Work Queue · ' \+ esc\(label\)/);
@@ -1858,6 +1851,49 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /Complete scheduled work and assigned follow-up here/);
   assert.doesNotMatch(APP_STYLES, /\.stage-instruction-grid/);
   assert.doesNotMatch(APP_STYLES, /\.evidence-instruction-grid/);
+});
+
+test("obligation schedule labels distinguish proposal, approval, and policy cutover", () => {
+  const start = APP_SCRIPT.indexOf("function workQueueScheduleStatus");
+  const end = APP_SCRIPT.indexOf("function empty(message)", start);
+  const source = APP_SCRIPT.slice(start, end);
+  const obligation = { id: "obl-1", status: "proposed", scheduleMode: "rule", policyIds: ["policy-1"], controlIds: ["control-1"] };
+  const rule = { id: "rule-1", type: "obligation-rule", obligationId: obligation.id, status: "proposed" };
+  const policy = { id: "policy-1", type: "policy", status: "approved" };
+  const control = { id: "control-1", type: "control", status: "implemented" };
+  const state = { resources: [rule, policy, control].map((record) => ({ record })), obligations: { asOf: "2026-09-24", programStatuses: { [obligation.id]: "accepted" } } };
+  const label = () => vm.runInNewContext(source + "\nobligationWorkQueueStatus(obligation)", {
+    obligation, state, esc: String, properCase: String,
+    resourcesOfType: (type) => state.resources.filter(({ record }) => record.type === type)
+  });
+
+  assert.match(label(), /<strong>Proposed<\/strong><small>Review schedule before activation/);
+  rule.status = "approved";
+  assert.match(label(), /<strong>Approved<\/strong><small>Activate schedule before operation/);
+  const newerProposal = { id: "rule-2", type: "obligation-rule", obligationId: obligation.id, status: "proposed" };
+  state.resources.push({ record: newerProposal });
+  assert.match(label(), /<strong>Proposed<\/strong>/);
+  state.resources.pop();
+  rule.status = "active";
+  rule.effectiveAt = "2099-01-01T00:00:00Z";
+  obligation.status = "active";
+  obligation.ruleIds = [rule.id];
+  obligation.activeRuleId = rule.id;
+  assert.match(label(), /Waiting for schedule start/);
+  rule.effectiveAt = "2000-01-01T00:00:00Z";
+  assert.match(label(), /Waiting for policy activation/);
+  assert.doesNotMatch(label(), /Waiting for policy approval/);
+  policy.status = "active";
+  policy.effectiveOn = "2026-10-01";
+  assert.match(label(), /Waiting for effective date/);
+  policy.effectiveOn = "2026-09-01";
+  assert.match(label(), /<strong>Running<\/strong>/);
+  state.obligations.programStatuses[obligation.id] = "proposed";
+  assert.match(label(), /Waiting for prerequisites/);
+  delete state.obligations.programStatuses[obligation.id];
+  assert.match(label(), /Not assessed here/);
+  policy.status = "approved";
+  assert.match(label(), /Not assessed here/);
 });
 
 test("handles evidence-source readiness during Control implementation and creates real evidence during operation", () => {

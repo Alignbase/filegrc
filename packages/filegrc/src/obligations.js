@@ -101,6 +101,9 @@ export function planObligations(resources, options = {}) {
     && ["active", "proposed"].includes(record.status)
     && obligationBelongsToProgram(record, obligationProgram, model)
   ));
+  const programStatusByObligationId = new Map(obligations.map((obligation) => [
+    obligation.id, obligationProgramStatus(obligation, byId, asOf, model)
+  ]));
   const obligationIds = new Set(obligations.map(({ id }) => id));
   if (obligations.length > MAX_PLANNED_ITEMS) {
     throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} active obligations.`);
@@ -123,7 +126,7 @@ export function planObligations(resources, options = {}) {
     const schedule = rule || obligation;
     const activity = obligationActivity(model, obligation);
     const expectedCompletionTypes = activity.completionResourceTypes;
-    const programStatus = obligationProgramStatus(obligation, byId, asOf, model);
+    const programStatus = programStatusByObligationId.get(obligation.id);
     const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf) : null;
     if (schedule.recurrence?.mode === "event" && schedule.recurrence.eventType) {
       const eventType = schedule.recurrence.eventType;
@@ -294,7 +297,7 @@ export function planObligations(resources, options = {}) {
     if (!dueWindowStart || !dueWindowEnd || dueWindowStart > through) continue;
     const overdueOn = addCalendarDays(dueWindowEnd, 1);
     const window = { dueWindowStart, dueWindowEnd, overdueOn };
-    const programStatus = obligationProgramStatus(obligation, byId, asOf, model);
+    const programStatus = programStatusByObligationId.get(obligation.id);
     const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf) : null;
     const activity = obligationActivity(model, obligation);
     const completedMemberIds = (occurrence.members || [])
@@ -402,6 +405,7 @@ export function planObligations(resources, options = {}) {
     asOf,
     through,
     from: requestedFrom,
+    programStatuses: Object.fromEntries(programStatusByObligationId),
     counts,
     items,
     calendarItems,

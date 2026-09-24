@@ -246,6 +246,7 @@ function normalizeAppState(next) {
 function blockingStateSections(route) {
   if (route.name === "home") return ["program", "obligations", "workflow"];
   if (route.name === "repository") return ["repository"];
+  if (route.name === "list" && route.type === "obligation") return ["obligations"];
   if (route.name === "obligations" || route.name === "stage" && route.stageId === "run") return ["program", "obligations"];
   if (route.name === "audit-packet") return ["repository", "program", "obligations", "audits"];
   if (route.name === "evidence-sources") return ["program", "workflow"];
@@ -3088,7 +3089,6 @@ function renderList(main, type, params = new URLSearchParams()) {
   const fields = [...new Set([
     "title",
     ...(definition.listFields || []),
-    ...(type === "control" ? ["$operationTracking"] : []),
     ...(type === "obligation" ? ["$workQueueStatus"] : [])
   ])].filter((name) => name !== "title");
   const modelFields = { ...state.model.commonFields, ...definition.fields };
@@ -3131,7 +3131,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + detailContext + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$operationTracking" ? controlOperationTracking(entry.record) : name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + detailContext + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
@@ -5972,7 +5972,6 @@ function setNavigationGroupOpen(group, open) {
 function groupTitle(id) { return state.model.groups.find((group) => group.id === id)?.title || "Program"; }
 function fieldDefinition(type, name) { return state.model.resources[type]?.fields?.[name] || state.model.commonFields[name]; }
 function fieldLabel(type, name) {
-  if (name === "$operationTracking") return "Operation tracking";
   if (name === "$workQueueStatus") return "Work Queue";
   if (type === "obligation" && name === "status") return "Configuration";
   if (name === "title") return state.model.resources[type]?.titleLabel || state.model.commonFields.title.label;
@@ -6083,58 +6082,49 @@ function formatObjectArray(items, objectType, compact = false) {
     return '<div class="object-value"><span class="object-value-facts">' + facts.join("") + '</span>' + (!compact && notes.length ? '<small>' + esc(notes.join(" ")) + '</small>' : "") + '</div>';
   }).join("") + '</div>';
 }
-function controlOperationTracking(control) {
-  const obligations = resourcesOfType("obligation")
-    .map(({ record }) => record)
-    .filter((record) => record.status !== "retired" && (record.controlIds || []).includes(control.id));
-  if (!obligations.length) {
-    return '<span class="operation-tracking evidence"><strong>Not scheduled in Work Queue</strong><small>Show operation with evidence records</small></span>';
+function workQueueScheduleStatus(obligation) {
+  if (obligation.status === "proposed") {
+    const pendingRules = resourcesOfType("obligation-rule")
+      .map(({ record }) => record)
+      .filter((record) => record.obligationId === obligation.id && ["proposed", "approved"].includes(record.status));
+    return pendingRules.length === 1 && pendingRules[0].status === "approved" ? "approved" : "proposed";
   }
-  const counts = obligations.reduce((result, obligation) => {
-    const status = workQueueScheduleStatus(obligation, control);
-    result[status] = (result[status] || 0) + 1;
-    return result;
-  }, {});
-  const scheduleCount = obligations.length + " " + pluralize("schedule", obligations.length);
-  if (counts.running === obligations.length) {
-    return '<a class="operation-tracking running" href="#/stage/run"><strong>Running in Work Queue</strong><small>' + esc(scheduleCount) + '</small></a>';
-  }
-  if (counts["waiting-policy"] === obligations.length) {
-    return '<a class="operation-tracking waiting" href="#/stage/run"><strong>Waiting for policy approval</strong><small>' + esc(scheduleCount) + ' enabled</small></a>';
-  }
-  if (counts["waiting-control"] === obligations.length) {
-    return '<a class="operation-tracking waiting" href="#/stage/run"><strong>Ready when implemented</strong><small>' + esc(scheduleCount) + ' enabled</small></a>';
-  }
-  if (counts.paused === obligations.length) {
-    return '<a class="operation-tracking paused" href="#/stage/run"><strong>Work Queue paused</strong><small>' + esc(scheduleCount) + '</small></a>';
-  }
-  const summary = [
-    counts.running ? counts.running + " running" : "",
-    counts["waiting-policy"] ? counts["waiting-policy"] + " waiting for policy" : "",
-    counts["waiting-control"] ? counts["waiting-control"] + " waiting for implementation" : "",
-    counts.paused ? counts.paused + " paused" : ""
-  ].filter(Boolean).join(" · ");
-  return '<a class="operation-tracking mixed" href="#/stage/run"><strong>Work Queue needs attention</strong><small>' + esc(summary) + '</small></a>';
-}
-function workQueueScheduleStatus(obligation, control = null) {
   if (obligation.status === "paused") return "paused";
   if (obligation.status !== "active") return obligation.status;
+  const programStatus = state.obligations?.programStatuses?.[obligation.id];
+  if (!programStatus) return "not-evaluated";
+  const rule = state.resources.find(({ record }) => record.id === obligation.activeRuleId)?.record;
+  if (obligation.scheduleMode === "rule" && rule?.status !== "active") {
+    return "proposed";
+  }
+  if (rule?.effectiveAt && new Date(rule.effectiveAt) > new Date()) {
+    const prior = state.resources.find(({ record }) => record.id === rule.supersedesId)?.record;
+    if (prior?.obligationId !== obligation.id || !["active", "retired"].includes(prior.status)) {
+      return "waiting-schedule-effective";
+    }
+  }
   const asOf = state.obligations?.asOf || new Date().toISOString().slice(0, 10);
   const policies = (obligation.policyIds || []).map((id) => state.resources.find(({ record }) => record.id === id)?.record);
-  if (!policies.every((policy) => policy?.type === "policy" && policy.status === "active" && policy.effectiveOn && policy.effectiveOn <= asOf)) {
-    return "waiting-policy";
-  }
+  if (policies.some((policy) => policy?.type !== "policy" || !["approved", "active"].includes(policy.status))) return "waiting-policy-approval";
+  if (policies.some((policy) => policy.status !== "active")) return "waiting-policy-activation";
+  if (policies.some((policy) => !policy.effectiveOn || policy.effectiveOn > asOf)) return "waiting-policy-effective";
   const linkedControls = (obligation.controlIds || []).map((id) => state.resources.find(({ record }) => record.id === id)?.record);
-  const implemented = control
-    ? control.status === "implemented"
-    : !linkedControls.length || linkedControls.some((record) => record?.type === "control" && record.status === "implemented");
-  return implemented ? "running" : "waiting-control";
+  const implemented = !linkedControls.length || linkedControls.some((record) => record?.type === "control" && record.status === "implemented");
+  if (!implemented) return "waiting-control";
+  return programStatus === "accepted" ? "running" : "waiting-prerequisites";
 }
 function obligationWorkQueueStatus(obligation) {
   const status = workQueueScheduleStatus(obligation);
+  if (status === "proposed") return '<span class="operation-tracking"><strong>Proposed</strong><small>Review schedule before activation</small></span>';
+  if (status === "approved") return '<span class="operation-tracking"><strong>Approved</strong><small>Activate schedule before operation</small></span>';
   if (status === "running") return '<span class="operation-tracking running"><strong>Running</strong><small>Enabled and policy effective</small></span>';
-  if (status === "waiting-policy") return '<span class="operation-tracking waiting"><strong>Waiting for policy</strong><small>Schedule enabled</small></span>';
+  if (status === "waiting-policy-approval") return '<span class="operation-tracking waiting"><strong>Waiting for policy approval</strong><small>Schedule enabled</small></span>';
+  if (status === "waiting-policy-activation") return '<span class="operation-tracking waiting"><strong>Waiting for policy activation</strong><small>Policy approved</small></span>';
+  if (status === "waiting-policy-effective") return '<span class="operation-tracking waiting"><strong>Waiting for effective date</strong><small>Policy active</small></span>';
+  if (status === "waiting-schedule-effective") return '<span class="operation-tracking waiting"><strong>Waiting for schedule start</strong><small>Approved rule activates at its effective time</small></span>';
   if (status === "waiting-control") return '<span class="operation-tracking waiting"><strong>Waiting for control</strong><small>Implement a linked control</small></span>';
+  if (status === "waiting-prerequisites") return '<span class="operation-tracking waiting"><strong>Waiting for prerequisites</strong><small>Check owner and governed content</small></span>';
+  if (status === "not-evaluated") return '<span class="operation-tracking"><strong>Not assessed here</strong><small>Outside the selected program</small></span>';
   if (status === "paused") return '<span class="operation-tracking paused"><strong>Paused</strong><small>Schedule disabled</small></span>';
   return '<span class="operation-tracking"><strong>' + esc(properCase(status)) + '</strong></span>';
 }

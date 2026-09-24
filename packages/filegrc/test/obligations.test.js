@@ -624,6 +624,7 @@ test("starts an enabled schedule when a linked control becomes implemented", () 
   });
   assert.equal(ready.counts.proposed, 1);
   assert.equal(ready.counts.due, 0);
+  assert.equal(ready.programStatuses[obligation.id], "proposed");
 
   const running = planObligations([ACTIVE_OWNER, policy, { ...control, status: "implemented" }, obligation], {
     asOf: "2026-03-15",
@@ -631,6 +632,7 @@ test("starts an enabled schedule when a linked control becomes implemented", () 
   });
   assert.equal(running.counts.proposed, 0);
   assert.equal(running.counts.due, 1);
+  assert.equal(running.programStatuses[obligation.id], "accepted");
 });
 
 test("keeps team-owned work proposed until the team resolves to a current person", () => {

@@ -4,7 +4,7 @@ filegrc is a zero-dependency Node.js engine for Git-native GRC workspaces. It va
 
 Program Readiness checks management-owned scope, policy adoption, control implementation, and authoritative evidence mapping without requiring an audit record. Audit Readiness starts after CPA engagement and checks the firm-agreed date or period, engagement-specific management documents, operating evidence, and Type 2 population completeness.
 
-Controls linked to filegrc Obligations show whether their scheduled work is waiting for policy approval, ready for implementation, running, paused, or mixed. Marking a fully configured Control implemented starts its enabled work when the governing content is effective.
+The Controls list focuses on implementation and its next action. The Obligations list shows schedule state separately, including proposals, approved schedules, and Policies awaiting activation or their effective date. Enabled work starts when its governing content is effective and a linked Control is implemented.
 
 Most users should create a complete workspace:
 
