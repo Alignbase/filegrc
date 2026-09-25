@@ -33,6 +33,9 @@ export async function createFilegrc(options = {}) {
     project_name: normalizePackageName(basename(target)),
     filegrc_version: engine.version,
     filegrc_version_range: engine.dependency,
+    repository_setup: repository.mode === "trunk"
+      ? `The editable browser uses \`${repository.authoritativeBranch}\` and pushes saved changes to \`${repository.remote}\`. Connect this repository to a dedicated private remote and push \`${repository.authoritativeBranch}\` before using browser writes.`
+      : "In manual mode, browser saves stay local. Review the workspace diff and commit or push with Git when ready.",
     ...starterText
   };
 
@@ -521,13 +524,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.16.4",
+    version: "0.16.5",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.16.4",
+        version: "0.16.5",
         dependencies: { filegrc: versionRange }
       }
     }

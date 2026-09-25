@@ -78,22 +78,22 @@ Git exclusively supplies file authors, commit timestamps, messages, diffs, revis
 
 Domain events still need explicit dates. Keep values such as `occurredOn`, `scheduledFor`, `approvedOn`, `completedOn`, and audit-period dates in their records.
 
-Use a dedicated private repository for your FileGRC workspace. The browser commits and pushes each saved program change, so a standalone repository keeps the compliance audit trail separate from application development history.
+Use a dedicated private repository for your FileGRC workspace. A standalone repository keeps the compliance audit trail separate from application development history.
 
 - Prefer creating or cloning FileGRC as a standalone private repository.
-- Run the editable browser from the authoritative branch's main checkout.
+- In trunk mode, run the editable browser from the configured authoritative branch's main checkout.
 - Do not place a new FileGRC workspace inside an application monorepo unless the organization has explicitly chosen that structure.
 - If FileGRC already lives in a monorepo, do not relocate it automatically.
-- In a monorepo, never include application changes in FileGRC-generated commits.
-- Treat detached and feature-branch copies as read-only unless an explicit development override is active.
+- In trunk mode, FileGRC-generated commits in a monorepo include only this workspace, never application changes.
+- In trunk mode, detached and feature-branch copies are read-only unless an explicit development override is active.
 
-New workspaces use trunk repository mode with `main` as the authoritative branch and `origin` as the remote. Each browser mutation checks the whole Git worktree, fetches the remote, fast-forwards only, rechecks the edited revision, writes through the normal domain function, validates the workspace, stages only this FileGRC workspace, creates a focused commit, and pushes it. Browser onboarding commits its related Workspace, Program, System, Component, and renderer changes together.
+In trunk repository mode, each browser mutation checks the whole Git worktree, fetches the remote, fast-forwards only, rechecks the edited revision, writes through the normal domain function, validates the workspace, stages only this FileGRC workspace, creates a focused commit, and pushes it. Browser onboarding commits its related Workspace, Program, System, Component, and renderer changes together.
 
-The Repository page reports `Synced`, `Syncing`, `Not synced`, `Read-only checkout`, or `Git setup required`. Browser saves return after the validated local commit, then push in the background. Treat `Syncing` as locally durable but not yet durable on the remote, and wait for `Synced` before starting another write. A failed push keeps the local FileGRC commit and offers Retry sync when every ahead commit changes only this workspace. FileGRC never pushes an ahead commit that includes files outside this workspace, and it never merges, rebases, switches branches, resolves conflicts, or changes files outside the workspace.
+In trunk mode, the Repository page reports `Synced`, `Syncing`, `Not synced`, `Read-only checkout`, or `Git setup required`. Browser saves return after the validated local commit, then push in the background. Treat `Syncing` as locally durable but not yet durable on the remote, and wait for `Synced` before starting another write. A failed push keeps the local FileGRC commit and offers Retry sync when every ahead commit changes only this workspace. FileGRC never pushes an ahead commit that includes files outside this workspace, and it never merges, rebases, switches branches, resolves conflicts, or changes files outside the workspace.
 
-Record lifecycle fields are the approval source. Draft, proposed, approved, and retired records may all live on the authoritative branch. Do not use Git branches to represent policy approval.
+Record lifecycle fields are the approval source. Draft, proposed, approved, and retired records may all live on the same branch. Do not use Git branches to represent policy approval.
 
-Manual mode requires an explicit `repositoryMode` in `data/renderer.json`. In manual mode, review the workspace diff and use the Repository controls or Git CLI. Agents and terminal users always own their Git synchronization and should pull, commit, and push directly. FileGRC does not replace repository authentication, authorization, branch protection, or review controls.
+Read `repositoryMode`, `authoritativeBranch`, and `repositoryRemote` from `data/renderer.json`. In manual mode, browser saves stay local, including on feature branches. Review the workspace diff, then commit and push with Git when ready. Agents and terminal users always own their Git synchronization. FileGRC does not replace repository authentication, authorization, branch protection, or review controls.
 
 Use `npx filegrc serve --allow-non-authoritative-writes` only for local development in a task worktree. The override is visible in the UI and never commits or pushes.
 
@@ -148,7 +148,7 @@ Headless agents get the same protection by exporting an edit payload with `fileg
 
 ## Renderer settings and onboarding
 
-`data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`, `authoritativeBranch` to `main`, and `repositoryRemote` to `origin`. In trunk mode, completing or skipping onboarding commits the related change and starts its background push.
+`data/renderer.json` stores committed renderer and repository preferences. New workspaces set `showOnboarding` to `true`; the default Git settings are trunk mode, `main`, and `origin`. Creation can choose manual mode or other branch and remote names. In trunk mode, completing or skipping onboarding commits the related change and starts its background push.
 
 Onboarding explains the file and Git workflow, the program path, policy obligations, and Policy Events before covering report types and the final audit stage. It then collects the initial service boundary, owner, business criticality, highest data classification, internet exposure, and optional program goal. It creates or updates one `system` record, stores that selected system and the management goal on `workspace`, and creates one planned service-commitment prompt. Replace that prompt with the actual customer promise or approved service requirement before activation. Onboarding does not create a Requirement Mapping for the baseline SOC 2 Commitment, mark Controls implemented, or create evidence. Selecting Type 1 or Type 2 does not create an audit engagement. Completing onboarding opens the Step 1 overview so the user can add the real reviewers and operators, finish the oversight team, commit the prepared Reporting Channel Set proposal, and confirm the criteria, commitments, any supplemental mappings, vendors, and systems before approving policies.
 

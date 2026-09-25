@@ -1077,6 +1077,7 @@ test("assessment rejects schedule documents with missing Control links or unfini
   schedule.controlIds = [];
   let assessment = assessCollectionReview(loaded, "retention-schedule-item", { programId: "program-example" });
   assert.equal(assessment.approvalIssues.some(({ code }) => code === "incomplete-retention-schedule-document"), true);
+  assert.equal(assessment.approvalIssues.find(({ code }) => code === "incomplete-retention-schedule-document").resourceId, schedule.id);
 
   const markdownPath = join(root, "data", "documents", "document-example.md");
   const unfinished = "# Data Retention Schedule\n\nTODO: complete the governing retention rules before approval.\n";

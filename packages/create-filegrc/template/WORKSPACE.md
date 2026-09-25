@@ -38,7 +38,7 @@ git add .
 git commit -m "Initialize FileGRC program"
 ```
 
-The editable browser uses `main` and pushes saved changes to `origin`. Connect this repository to a dedicated private remote and push `main` before using browser writes. CLI and file-based users can manage Git on their normal review cadence, but should still commit the baseline before changing program facts.
+{{repository_setup}} CLI and file-based users can manage Git on their normal review cadence, but should still commit the baseline before changing program facts.
 
 {{starter_setup}}
 

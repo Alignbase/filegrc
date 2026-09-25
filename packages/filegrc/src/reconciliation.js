@@ -769,6 +769,7 @@ function validateMergeIdentities(index, model) {
     const identities = new Map();
     for (const parent of parents) {
       const state = recordStateAtCommit(index, model, parent);
+      if (!state) continue;
       let snapshot = snapshots.get(state);
       if (!snapshot) {
         snapshot = state.snapshot || snapshotRecordState(state);
