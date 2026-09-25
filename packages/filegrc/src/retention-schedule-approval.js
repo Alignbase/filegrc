@@ -43,7 +43,7 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
     || !substantiveMarkdown(scheduleContent)
     || openPlaceholderCount(scheduleContent) > 0)
   ) {
-    issues.push(issue("incomplete-retention-schedule-document", "Complete the Data Retention Schedule document, its owner, linked Control, and Markdown before requesting approval of the complete schedule."));
+    issues.push(issue("incomplete-retention-schedule-document", "Complete the Data Retention Schedule document, its owner, linked Control, and Markdown before requesting approval of the complete schedule.", schedule.id));
   }
   if (
     schedule
@@ -60,7 +60,7 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
     ? activeRows.filter(({ scheduleDocumentId }) => scheduleDocumentId !== schedule.id)
     : [];
   if (mismatched.length) {
-    issues.push(issue("retention-row-wrong-schedule-document", `Link every active retention row to the current Data Retention Schedule document before approval: ${mismatched[0].title}.`));
+    issues.push(issue("retention-row-wrong-schedule-document", `Link every active retention row to the current Data Retention Schedule document before approval: ${mismatched[0].title}.`, mismatched[0].id));
   }
   const revisions = resourceReviewRevisionsSync(
     loaded,
@@ -68,7 +68,7 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
   );
   const incomplete = activeRows.filter((row) => !retentionRuleIsCurrent(row, revisions, byId, loaded));
   if (incomplete.length) {
-    issues.push(issue("incomplete-retention-schedule-row", `Complete the retention decisions before approving the schedule revision: ${incomplete[0].title}.`));
+    issues.push(issue("incomplete-retention-schedule-row", `Complete the retention decisions before approving the schedule revision: ${incomplete[0].title}.`, incomplete[0].id));
   }
   const proposedRows = rows.filter(rowProposesCoverage);
   const scopedPrograms = program.programIds
@@ -96,8 +96,8 @@ function sameIds(left = [], right = []) {
   return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
 }
 
-function issue(code, message) {
-  return { code, message };
+function issue(code, message, resourceId) {
+  return { code, message, ...(resourceId ? { resourceId } : {}) };
 }
 
 function primaryMarkdown(loaded, record) {

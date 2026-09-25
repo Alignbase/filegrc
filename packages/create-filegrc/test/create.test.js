@@ -1072,7 +1072,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /Use a dedicated private repository for your FileGRC workspace/);
   assert.match(output, /Git: joined existing worktree/);
   assert.match(output, /This FileGRC workspace joined an existing Git repository/);
-  assert.match(output, /FileGRC recommends a dedicated private repository because browser saves create/);
+  assert.match(output, /FileGRC recommends a dedicated private repository/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
   assert.match(output, /Program baseline: 228 records, including 42 requirements, 28 controls, and 55 obligations/);
@@ -1193,6 +1193,27 @@ test("standalone CLI creation starts on main without a monorepo warning", async 
   assert.doesNotMatch(output, /joined an existing Git repository/);
   assert.doesNotMatch(output, /Monorepo mode remains supported/);
   assert.equal(execFileSync("git", ["branch", "--show-current"], { cwd: target, encoding: "utf8" }).trim(), "main");
+});
+
+test("manual repository mode gives local-save instructions", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "create-filegrc-manual-output-"));
+  const target = join(parent, "program");
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const output = await runCreateCli([
+    target,
+    "--yes",
+    "--filegrc-version", "1.2.3",
+    "--no-install",
+    "--repository-mode", "manual"
+  ]);
+  const readme = await readFile(join(target, "README.md"), "utf8");
+  const agents = await readFile(join(target, "AGENTS.md"), "utf8");
+  assert.match(output, /browser saves stay local until you commit and push with Git/);
+  assert.doesNotMatch(output, /Connect a private origin and push main before using browser writes/);
+  assert.match(readme, /In manual mode, browser saves stay local/);
+  assert.doesNotMatch(readme, /browser uses `main` and pushes saved changes/);
+  assert.match(agents, /In manual mode, browser saves stay local, including on feature branches/);
+  assert.doesNotMatch(agents, /New workspaces set `showOnboarding` to `true`, `repositoryMode` to `trunk`/);
 });
 
 test("creates and configures a service from one JSON config", async (context) => {

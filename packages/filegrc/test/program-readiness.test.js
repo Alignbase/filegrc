@@ -400,6 +400,8 @@ test("rolls collection proposals into one preparation unit and one review unit",
     ]
   };
   const pending = collectionReviewReadinessItem(assessment);
+  assert.equal(pending.resourceId, "component-b");
+  assert.match(pending.commands[1], /get component-b --mutation > MUTATION\.json/);
   assert.deepEqual(pending.progressUnits.map(({ id, status }) => ({ id, status })), [
     { id: "component-proposal-batch", status: "action" },
     { id: "component-collection-review", status: "blocked" }
@@ -408,6 +410,8 @@ test("rolls collection proposals into one preparation unit and one review unit",
   assessment.recordProposals[1].complete = true;
   const prepared = collectionReviewReadinessItem(assessment);
   assert.deepEqual(prepared.progressUnits.map(({ status }) => status), ["complete", "action"]);
+  assert.match(prepared.commands[0], /review-collection component --scaffold > REVIEW\.json/);
+  assert.match(prepared.commands[2], /review-collection component REVIEW\.json --yes --json/);
 
   assessment.complete = true;
   const reviewed = collectionReviewReadinessItem(assessment);
@@ -426,14 +430,77 @@ test("rolls collection proposals into one preparation unit and one review unit",
     resourceType: "retention-schedule-item",
     complete: false
   });
-  assert.equal(blockedSchedule.status, "blocked");
+  assert.equal(blockedSchedule.status, "action");
+  assert.equal(blockedSchedule.resourceId, "component-b");
+  const proposalBeforeApprovalIssue = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false,
+    approvalIssues: [{ code: "missing-retention-schedule-document", message: "Add the schedule document." }],
+    message: "Add the schedule document."
+  });
+  assert.equal(proposalBeforeApprovalIssue.resourceId, "component-b");
+  assert.match(proposalBeforeApprovalIssue.message, /Complete Component B/);
   assessment.recordProposals[1].complete = true;
+
+  const pendingScheduleReview = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false,
+    recordProposals: undefined,
+    records: [{ id: "retention-row-a", status: "planned" }]
+  });
+  assert.equal(pendingScheduleReview.status, "blocked");
+  assert.equal(pendingScheduleReview.unresolvedAssignments[0].resourceId, "retention-row-a");
+
+  const unfinishedScheduleDocument = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false,
+    recordProposals: undefined,
+    records: [{ id: "retention-row-a", status: "active", scheduleDocumentId: "document-retention" }],
+    approvalIssues: [{ code: "incomplete-retention-schedule-document", resourceId: "document-retention", message: "Complete the schedule document." }]
+  });
+  assert.equal(unfinishedScheduleDocument.resourceType, "document");
+  assert.equal(unfinishedScheduleDocument.resourceId, "document-retention");
+  assert.match(unfinishedScheduleDocument.commands[1], /get document-retention --mutation > MUTATION\.json/);
+
+  const missingScheduleDocument = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false,
+    recordProposals: undefined,
+    records: [],
+    approvalIssues: [{ code: "missing-retention-schedule-document" }]
+  });
+  assert.equal(missingScheduleDocument.createResource, true);
+
+  const duplicateScheduleDocuments = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false,
+    recordProposals: undefined,
+    records: [],
+    approvalIssues: [{ code: "multiple-retention-schedule-documents" }]
+  });
+  assert.equal(duplicateScheduleDocuments.createResource, undefined);
+  assert.match(duplicateScheduleDocuments.commands[1], /list document --workflow --json/);
 
   const empty = collectionReviewReadinessItem({
     ...assessment,
     recordProposals: []
   });
   assert.equal(empty.progressUnits, undefined);
+
+  const needsFirstRecord = collectionReviewReadinessItem({
+    ...assessment,
+    complete: false,
+    recordCount: 0,
+    recordProposals: [],
+    configuration: { ...assessment.configuration, decisions: ["complete"] }
+  });
+  assert.equal(needsFirstRecord.resourceId, undefined);
+  assert.match(needsFirstRecord.commands[1], /scaffold component --title "NAME" > MUTATION\.json/);
 
   const reviewOnly = collectionReviewReadinessItem({
     ...assessment,

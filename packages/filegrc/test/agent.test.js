@@ -151,6 +151,8 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(parsedPath.dataModelVersion, String(loaded.model.modelVersion));
   assert.equal(parsedPath.currentStep.number, 1);
   assert.equal(parsedPath.stages.length, 5);
+  assert.equal(parsedPath.stages[4].nextActions[0]?.id, "create-audit");
+  assert.match(parsedPath.stages[4].nextActions[0]?.commands[1] || "", /scaffold audit/);
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
   assert.equal(parsedPath.stages[0].pages.find(({ type }) => type === "system").summary, RESOURCE_PAGE_SUMMARIES.system);
   const pathText = await execute(process.execPath, [cli, "program-path", "--root", root]);

@@ -470,7 +470,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
     )));
     items.push(item(
       "commitments",
-      scope.systems.length && uncoveredSystems.length === 0 && unscopedCommitments.length === 0 ? "complete" : "action",
+      !scope.systems.length ? "later" : uncoveredSystems.length === 0 && unscopedCommitments.length === 0 ? "complete" : "action",
       "Record service commitments and system requirements",
       scope.systems.length
         ? `${completeCommitments.length} complete active ${completeCommitments.length === 1 ? "commitment covers" : "commitments cover"} ${scope.systems.length - uncoveredSystems.length} of ${scope.systems.length} in-scope systems.${unscopedCommitments.length ? ` ${unscopedCommitments.length} Commitment${unscopedCommitments.length === 1 ? " has" : "s have"} no System scope and must be reviewed explicitly.` : ""}`
@@ -711,14 +711,23 @@ function reportingRouteItem(records, byId, asOf, timezone = "UTC") {
 }
 
 export function collectionReviewReadinessItem(assessment) {
+  const firstIncomplete = assessment.incompleteRecordProposals?.[0]
+    || assessment.recordProposals?.find(({ complete }) => !complete);
+  const needsFirstRecord = assessment.recordCount === 0
+    && !(assessment.configuration.decisions || []).some((decision) => ["zero-population", "externally-managed"].includes(decision));
+  const proposalAction = !assessment.complete && firstIncomplete;
+  const pendingRetentionRow = assessment.resourceType === "retention-schedule-item"
+    ? assessment.records?.find(({ status }) => status === "planned")
+    : null;
+  const approvalAction = !proposalAction && !pendingRetentionRow
+    ? collectionApprovalIssueAction(assessment)
+    : null;
   const proposalUnits = (assessment.recordProposals || []).map((proposal) => ({
     id: `${assessment.resourceType}-proposal-${proposal.resourceId}`,
     status: proposal.complete ? "complete" : "action",
     title: `${proposal.title} proposal`
   }));
   const proposalBatchComplete = proposalUnits.every(({ status }) => status === "complete");
-  const scheduleApprovalBlocked = assessment.resourceType === "retention-schedule-item"
-    && proposalUnits.some(({ status }) => status !== "complete");
   const batchProgressUnits = assessment.resourceType !== "retention-schedule-item" && proposalUnits.length
     ? [
         {
@@ -737,22 +746,98 @@ export function collectionReviewReadinessItem(assessment) {
     : null;
   return item(
     `collection-review-${assessment.resourceType}`,
-    assessment.complete ? "complete" : scheduleApprovalBlocked ? "blocked" : "action",
-    assessment.status === "stale"
-      ? `Review ${assessment.configuration.title.toLowerCase()} again`
-      : `Review ${assessment.configuration.title.toLowerCase()}`,
-    assessment.message,
-    assessment.review || { type: assessment.resourceType },
+    assessment.complete ? "complete" : pendingRetentionRow && !proposalAction ? "blocked" : "action",
+    proposalAction
+      ? `Complete ${firstIncomplete.title} proposal`
+      : needsFirstRecord
+        ? `Add a record for ${assessment.configuration.title.toLowerCase()}`
+        : approvalAction
+          ? approvalAction.title
+        : assessment.status === "stale"
+          ? `Review ${assessment.configuration.title.toLowerCase()} again`
+          : `Review ${assessment.configuration.title.toLowerCase()}`,
+    proposalAction
+      ? `Complete ${firstIncomplete.title} before reviewing ${assessment.configuration.title.toLowerCase()}.`
+      : assessment.message,
+    proposalAction
+      ? { id: firstIncomplete.resourceId, type: assessment.resourceType }
+      : needsFirstRecord ? { type: assessment.resourceType }
+        : approvalAction ? { type: approvalAction.resourceType, ...(approvalAction.resourceId ? { id: approvalAction.resourceId } : {}) }
+          : assessment.review || { type: assessment.resourceType },
     {
-      resourceType: assessment.resourceType,
+      resourceType: approvalAction?.resourceType || assessment.resourceType,
       reviewPoints: assessment.configuration.reviewPoints,
+      ...(approvalAction?.createResource ? { createResource: true } : {}),
+      ...(pendingRetentionRow && !proposalAction ? { unresolvedAssignments: [{
+        resourceType: "retention-schedule-item",
+        resourceId: pendingRetentionRow.id,
+        reasons: ["Complete or retire the planned retention row before approving the schedule."]
+      }] } : {}),
       ...(batchProgressUnits ? { progressUnits: batchProgressUnits } : {}),
-      commands: [
-        `npx filegrc review-collection ${assessment.resourceType} --scaffold`,
-        `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --preview --json`
-      ]
+      commands: proposalAction
+        ? [
+            `npx filegrc guide ${assessment.resourceType} --json`,
+            `npx filegrc get ${shellArgument(firstIncomplete.resourceId)} --mutation > MUTATION.json`,
+            `npx filegrc update ${assessment.resourceType} ${shellArgument(firstIncomplete.resourceId)} MUTATION.json --json`
+          ]
+        : needsFirstRecord
+          ? [
+              `npx filegrc guide ${assessment.resourceType} --json`,
+              `npx filegrc scaffold ${assessment.resourceType} --title "NAME" > MUTATION.json`,
+              "npx filegrc create MUTATION.json --json"
+            ]
+          : approvalAction
+            ? approvalAction.commands
+            : [
+              `npx filegrc review-collection ${assessment.resourceType} --scaffold > REVIEW.json`,
+              `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --preview --json`,
+              `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --yes --json`
+            ]
     }
   );
+}
+
+function collectionApprovalIssueAction(assessment) {
+  const issue = assessment.approvalIssues?.[0];
+  if (!issue || issue.code === "invalid-retention-schedule-approval-binding") return null;
+  const rows = assessment.records || [];
+  const documentId = issue.resourceId || rows.find(({ scheduleDocumentId }) => scheduleDocumentId)?.scheduleDocumentId;
+  if (issue.code.includes("retention-schedule-document")) {
+    const resourceId = issue.code === "missing-retention-schedule-document" || issue.code === "multiple-retention-schedule-documents"
+      ? null : documentId;
+    return {
+      title: issue.code === "missing-retention-schedule-document" ? "Add the Data Retention Schedule document"
+        : issue.code === "multiple-retention-schedule-documents" ? "Resolve duplicate Data Retention Schedule documents"
+          : "Complete the Data Retention Schedule document",
+      resourceType: "document",
+      resourceId,
+      createResource: issue.code === "missing-retention-schedule-document",
+      commands: resourceId
+        ? ["npx filegrc guide document --json", `npx filegrc get ${shellArgument(resourceId)} --mutation > MUTATION.json`, `npx filegrc update document ${shellArgument(resourceId)} MUTATION.json --json`]
+        : issue.code === "missing-retention-schedule-document"
+          ? ["npx filegrc guide document --json", 'npx filegrc scaffold document --title "Data Retention Schedule" > MUTATION.json', "npx filegrc create MUTATION.json --json"]
+          : ["npx filegrc guide document --json", "npx filegrc list document --workflow --json"]
+    };
+  }
+  if (["retention-row-wrong-schedule-document", "incomplete-retention-schedule-row"].includes(issue.code)) {
+    const row = rows.find(({ id }) => id === issue.resourceId);
+    if (row) return {
+      title: `Complete ${row.title}`,
+      resourceType: "retention-schedule-item",
+      resourceId: row.id,
+      commands: ["npx filegrc guide retention-schedule-item --json", `npx filegrc get ${shellArgument(row.id)} --mutation > MUTATION.json`, `npx filegrc update retention-schedule-item ${shellArgument(row.id)} MUTATION.json --json`]
+    };
+  }
+  if (issue.code === "unreviewed-similar-information-types") return {
+    title: "Review similar Information Types",
+    resourceType: "information-type",
+    commands: ["npx filegrc list information-type --workflow --json", "npx filegrc review-collection information-type --scaffold > REVIEW.json", "npx filegrc review-collection information-type REVIEW.json --preview --json", "npx filegrc review-collection information-type REVIEW.json --yes --json"]
+  };
+  return {
+    title: "Complete retention schedule coverage",
+    resourceType: "retention-schedule-item",
+    commands: ["npx filegrc guide retention-schedule-item --json", "npx filegrc list retention-schedule-item --workflow --json", 'npx filegrc scaffold retention-schedule-item --title "RETENTION RULE" > MUTATION.json', "npx filegrc create MUTATION.json --json"]
+  };
 }
 
 function requiredAppointmentsItem(records, model) {

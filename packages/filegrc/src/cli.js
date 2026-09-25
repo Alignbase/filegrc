@@ -1830,7 +1830,7 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
   const readinessById = new Map(readiness.stages.map((stage) => [stage.id, stage]));
   const stages = buildAgentProgramPath(model).map((stage) => {
     if (stage.id === "audit") {
-      const auditAction = auditReadiness?.status === "not-started"
+      const auditAction = !auditReadiness || auditReadiness.status === "not-started"
         ? {
             id: "create-audit",
             status: "action",
@@ -2001,11 +2001,11 @@ function nextActionCommands(stage, action) {
   const commands = [`npx filegrc guide ${resourceType} --json`];
   if (action.resourceId) {
     const resourceId = shellArgument(action.resourceId);
-    commands.push(`npx filegrc get ${resourceId} --mutation`);
+    commands.push(`npx filegrc get ${resourceId} --mutation > MUTATION.json`);
     commands.push(`npx filegrc update ${resourceType} ${resourceId} MUTATION.json --json`);
   } else {
     commands.push(`npx filegrc list ${resourceType} --json`);
-    commands.push(`npx filegrc scaffold ${resourceType} --title "NAME"`);
+    commands.push(`npx filegrc scaffold ${resourceType} --title "NAME" > MUTATION.json`);
     commands.push("npx filegrc create MUTATION.json --json");
   }
   return commands;

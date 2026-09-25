@@ -52,6 +52,10 @@
       "source": "resolved-filegrc-version"
     },
     {
+      "key": "repository_setup",
+      "source": "repository-mode"
+    },
+    {
       "key": "program_title",
       "source": "starter-profile"
     },

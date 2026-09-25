@@ -30,20 +30,22 @@ export async function runCli(argv = process.argv.slice(2)) {
     `filegrc ${result.engineVersion}${result.enginePackage ? ` from ${result.enginePackage}` : ""}: ` +
     `${result.install === "installed" ? "installed" : "installation skipped"}`
   );
-  console.log("Use a dedicated private repository for your FileGRC workspace. The browser");
-  console.log("commits and pushes each saved program change, so a standalone repository keeps");
-  console.log("the compliance audit trail separate from application development history.");
+  console.log("Use a dedicated private repository for your FileGRC workspace.");
+  console.log("A standalone repository keeps the compliance audit trail separate from application development history.");
+  console.log(result.repository.mode === "trunk"
+    ? "In trunk mode, browser saves commit and push to the configured remote."
+    : "In manual mode, browser saves stay local until you commit and push with Git.");
   console.log(`Git: ${result.gitMode === "existing-worktree" ? "joined existing worktree" : "initialized new repository"}`);
   if (result.gitMode === "existing-worktree") {
     console.log("");
     console.log("This FileGRC workspace joined an existing Git repository.");
     console.log("");
-    console.log("FileGRC recommends a dedicated private repository because browser saves create");
-    console.log("frequent compliance commits. A standalone repository keeps the GRC audit trail");
+    console.log("FileGRC recommends a dedicated private repository. A standalone repository keeps the GRC audit trail");
     console.log("separate from application development history.");
     console.log("");
-    console.log("Monorepo mode remains supported. Browser Git operations will commit only files");
-    console.log("inside this FileGRC workspace.");
+    console.log(result.repository.mode === "trunk"
+      ? "Monorepo mode remains supported. Browser Git operations commit only this workspace."
+      : "Monorepo mode remains supported. In manual mode, browser saves remain local.");
   }
   if (
     result.gitMode === "existing-worktree"
@@ -90,7 +92,9 @@ export async function runCli(argv = process.argv.slice(2)) {
   console.log("  2. Appoint an independent reviewer who is separate from the policy owner.");
   console.log(result.gitMode === "existing-worktree"
     ? "Review the generated records and commit only this workspace's approved baseline."
-    : "Connect the dedicated private origin and push main before using browser writes.");
+    : result.repository.mode === "trunk"
+      ? `Connect a private ${result.repository.remote} and push ${result.repository.authoritativeBranch} before using browser writes.`
+      : "Review the generated records, then commit and push with Git when ready.");
 }
 
 function shellQuote(value) {

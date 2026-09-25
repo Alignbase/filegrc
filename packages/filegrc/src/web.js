@@ -578,8 +578,8 @@ function readinessOverview() {
     const stage = READINESS_STAGES.find((candidate) => candidate.id === id);
     const current = stageProgress(stage);
     const remaining = current.total - current.complete;
-    const status = !remaining ? "Ready" : current.complete ? remaining + " pages need work" : "Needs work";
-    return [stage.title, stage.summary, href, status, !remaining ? "good" : current.complete ? "warn" : "neutral"];
+    const status = current.status === "In progress" ? remaining + " pages need work" : current.status;
+    return [stage.title, stage.summary, href, status, current.tone];
   };
   const stages = [
     programStage("scope", "#/stage/scope"),
@@ -787,6 +787,7 @@ function wireRetentionScheduleTable(total, initialPage = 1) {
 function renderRetentionScheduleIssues() {
   const actions = retentionSchedulePageItems().filter((item) => (
     item.id !== "collection-review-retention-schedule-item"
+      || !item.commands?.some((command) => command.includes(" review-collection retention-schedule-item"))
   ));
   if (!actions.length) return "";
   return '<section class="retention-issues"><div class="section-head"><div><p class="kicker">Before approval</p><h2>Items to resolve</h2></div></div><div class="retention-issue-list">' + actions.map((item) => {
@@ -1719,7 +1720,7 @@ function retentionSchedulePageItems() {
         key: item.id,
         state: "ready",
         href: item.id === "collection-review-retention-schedule-item"
-          ? "#/retention-schedule"
+          ? retentionCollectionActionHref(item)
           : item.id?.startsWith("retention-use-")
             ? retentionScheduleItemHref(item)
             : item.resourceId && item.resourceType
@@ -1730,6 +1731,19 @@ function retentionSchedulePageItems() {
           : item.subject
       }))
   ]);
+}
+
+function retentionCollectionActionHref(item) {
+  if (item.resourceType === "document") return item.resourceId
+    ? '#/resource/document/' + encodeURIComponent(item.resourceId) + '?stage=policies'
+    : item.createResource
+      ? '#/resources/document?new=1&documentScope=program&documentKind=schedule&programRole=required&title=Data%20Retention%20Schedule'
+      : '#/resources/document';
+  if (item.resourceType === "information-type") return '#/resources/information-type?review-collection=1';
+  if (item.resourceType === "retention-schedule-item" && item.resourceId && item.resourceId !== item.id) {
+    return '#/resource/retention-schedule-item/' + encodeURIComponent(item.resourceId) + '?stage=policies';
+  }
+  return "#/retention-schedule";
 }
 
 function distinctPageActionItems(items) {
@@ -1842,14 +1856,14 @@ function derivedStagePageState(stage, destination) {
       .filter(({ id }) => id.startsWith("source-family-")) || [];
     const incomplete = evidenceItems.filter(({ status }) => status !== "complete").length;
     return incomplete
-      ? { complete: false, label: incomplete + " " + pluralize("source", incomplete) + " need work" }
+      ? { complete: false, label: incomplete + " " + pluralize("source", incomplete) + (incomplete === 1 ? " needs work" : " need work") }
       : { complete: evidenceItems.length > 0, label: evidenceItems.length ? "Ready" : "Not configured", countsTowardProgress: evidenceItems.length > 0 };
   }
   if (destination.utility === "retention-schedule") {
     const incomplete = retentionSchedulePageItems().length;
     return !incomplete
       ? { complete: true, label: "Approved" }
-      : { complete: false, label: incomplete ? incomplete + " " + pluralize("item", incomplete) + " need work" : "Approval needed" };
+      : { complete: false, label: incomplete ? incomplete + " " + pluralize("item", incomplete) + (incomplete === 1 ? " needs work" : " need work") : "Approval needed" };
   }
   const items = stagePageItems(stage, destination);
   const deferredStates = new Set(["later", "scheduled", "upcoming", "waiting-external"]);
@@ -3223,6 +3237,7 @@ function renderList(main, type, params = new URLSearchParams()) {
       ...(params.get("title") ? { title: params.get("title") } : {}),
       ...(params.get("documentKind") ? { documentKind: params.get("documentKind") } : {}),
       ...(documentScope ? { workflowScope: documentScope } : {}),
+      ...(params.get("programRole") ? { programRole: params.get("programRole") } : {}),
       ...relationshipSeed
     } : {
       ...(params.get("title") ? { title: params.get("title") } : {}),

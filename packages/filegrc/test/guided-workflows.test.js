@@ -675,6 +675,28 @@ test("reconciles a skew-dated clean merge transition only once", async (context)
   assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["person-role-changed"]);
 });
 
+test("ignores merge parents before a workspace has any committed records", async (context) => {
+  const root = await modelThreeWorkspace(context, "filegrc-reconcile-pre-workspace-merge-");
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["config", "user.name", "FileGRC Tests"], { cwd: root });
+  await execute("git", ["config", "user.email", "tests@filegrc.dev"], { cwd: root });
+  await writeFile(join(root, "README.md"), "# Existing repository\n", "utf8");
+  await execute("git", ["add", "README.md"], { cwd: root });
+  await execute("git", ["commit", "-m", "Start repository"], { cwd: root });
+  await execute("git", ["switch", "-c", "branch"], { cwd: root });
+  await writeFile(join(root, "branch.txt"), "Branch work\n", "utf8");
+  await execute("git", ["add", "branch.txt"], { cwd: root });
+  await execute("git", ["commit", "-m", "Add branch work"], { cwd: root });
+  await execute("git", ["switch", "main"], { cwd: root });
+  await writeFile(join(root, "main.txt"), "Main work\n", "utf8");
+  await execute("git", ["add", "main.txt"], { cwd: root });
+  await execute("git", ["commit", "-m", "Add main work"], { cwd: root });
+  await execute("git", ["merge", "branch", "--no-edit"], { cwd: root });
+
+  const preview = await planReconciliation(root);
+  assert.deepEqual(preview.candidates.map(({ eventType }) => eventType), ["person-started", "person-started"]);
+});
+
 test("fails validation closed when reconciliation history is unavailable", async (context) => {
   const source = await modelThreeWorkspace(context, "filegrc-reconcile-history-source-");
   await commitAll(source, "Create source workspace");
