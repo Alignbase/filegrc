@@ -69,8 +69,13 @@ export async function assessAuditPreparation(input, options = {}) {
     ? audits.find((record) => record.id === options.auditId)
     : options.selectDefault === false
       ? null
-      : selectDefaultAudit(audits, calendarAsOf);
+      : selectDefaultAudit(options.programId && modelSupports(loaded.model, "program-scope")
+        ? audits.filter((record) => record.programId === options.programId)
+        : audits, calendarAsOf);
   if (options.auditId && !audit) throw new Error(`Audit "${options.auditId}" was not found.`);
+  if (audit && options.programId && modelSupports(loaded.model, "program-scope") && audit.programId !== options.programId) {
+    throw new Error(`Audit "${audit.id}" does not belong to Program "${options.programId}".`);
+  }
 
   const formalPeriodEnd = audit?.auditKind === "soc-2-type-2" ? coverageEnd(audit.coverage) : null;
   const readinessAsOf = formalPeriodEnd && formalPeriodEnd < calendarAsOf ? formalPeriodEnd : calendarAsOf;

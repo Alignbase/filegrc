@@ -16,11 +16,13 @@ import {
   loadWorkspace,
   scaffoldResourceMutation,
   RESOURCE_INSTRUCTIONS,
+  RESOURCE_OUTPUTS,
   RESOURCE_PAGE_SUMMARIES,
   updateResource,
   validateWorkspace
 } from "../src/index.js";
 import { executeCli, makeWorkspace } from "./helpers.js";
+import { loadModel } from "../model/index.js";
 
 const executeProcess = promisify(execFile);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
@@ -32,6 +34,17 @@ test("CLI binary dispatches a focused guide smoke test", async (context) => {
   await makeWorkspace(root);
   const output = await executeProcess(process.execPath, [cli, "guide", "person", "--root", root, "--json"]);
   assert.equal(JSON.parse(output.stdout).type, "person");
+});
+
+test("active Audit step includes engagement Document work and its output", () => {
+  const audit = buildAgentProgramPath(loadModel()).find(({ id }) => id === "audit");
+  const documents = audit.pages.find(({ title }) => title === "Audit Documents");
+  assert.equal(documents.order, "5.e");
+  assert.match(documents.instructions, /link it from its Audit/);
+  assert.match(documents.instructions, /activate that approved revision/);
+  assert.match(documents.output, /Active Audit Documents linked to their Audits/);
+  assert.equal(audit.pages.find(({ utility }) => utility === "audit-packet").order, "5.f");
+  assert.ok(audit.commands.includes("npx filegrc activate-documents --scaffold --audit AUDIT_ID"));
 });
 
 test("agent guides and scaffolds cover every resource type from the model", async (context) => {
@@ -106,6 +119,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(path.length, 5);
   assert.equal(path[0].pages.find(({ type }) => type === "system").summary, RESOURCE_PAGE_SUMMARIES.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").instructions, RESOURCE_INSTRUCTIONS.system);
+  assert.equal(path[0].pages.find(({ type }) => type === "system").output, RESOURCE_OUTPUTS.system);
   assert.equal(path[0].pages.find(({ type }) => type === "system").guide, "npx filegrc guide system --json");
   assert.ok(path.every((stage) => stage.commands.every((command) => command.startsWith("npx filegrc "))));
   assert.deepEqual(path[2].commands.slice(-2), [
@@ -206,6 +220,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     const guide = buildAgentGuide(loaded, type);
     assert.equal(guide.type, type);
     assert.equal(guide.instructions, RESOURCE_INSTRUCTIONS[type] || loaded.model.resources[type].description);
+    assert.equal(guide.output, RESOURCE_OUTPUTS[type] || `A validated ${loaded.model.resources[type].title} record.`);
     assert.equal(guide.use, loaded.model.resources[type].description);
     if (RESOURCE_INSTRUCTIONS[type]) assert.ok(guide.programStep, `${type} has a program step`);
     assert.ok(guide.requiredAtCreation.some(({ name }) => name === "id"));

@@ -104,6 +104,7 @@ export {
   buildAgentProgramPath,
   PROGRAM_PATH,
   RESOURCE_INSTRUCTIONS,
+  RESOURCE_OUTPUTS,
   RESOURCE_PAGE_SUMMARIES,
   resourceProgramContext
 } from "./program-path.js";

@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { runCli } from "../src/cli.js";
-import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
+import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_OUTPUTS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
 import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, pageActionIdentity, renderIndex, workflowHrefBelongsToPage } from "../src/web.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
@@ -215,7 +215,7 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.match(APP_SCRIPT, /data-add-policy-content="document"/);
   assert.match(APP_SCRIPT, /data-add-policy-content="training"/);
   assert.match(APP_SCRIPT, /data-policy-content-history/);
-  assert.match(APP_SCRIPT, /Approval means your company reviewed and accepted the requirements and intended values in each Policy, program Document, and Training record/);
+  assert.match(APP_SCRIPT, /Replace placeholders and confirm the intended values\. Have a separate approver review the exact Markdown revision/);
   assert.match(APP_SCRIPT, /Approve the governed content/);
   assert.doesNotMatch(APP_SCRIPT, /Approve the requirements management expects/);
   assert.doesNotMatch(APP_SCRIPT, /Approval boundary/);
@@ -229,6 +229,7 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.match(APP_SCRIPT, /function renderDocumentActivationAssessments\(\)/);
   assert.match(APP_SCRIPT, /function openDocumentActivationDialog\(auditId = null\)/);
   assert.match(APP_SCRIPT, /function renderAuditDocumentActivationAssessments\(\)/);
+  assert.match(APP_SCRIPT, /\.filter\(\(record\) => !state\.selectedProgramId \|\| record\.programId === state\.selectedProgramId\)/);
   assert.match(APP_SCRIPT, /\/api\/document-activations/);
   assert.match(APP_SCRIPT, /esc\(assessment\.label\)/);
   assert.match(APP_SCRIPT, /Missing ready evidence sources/);
@@ -250,6 +251,26 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.match(APP_STYLES, /\.policy-activation-selection\{/);
   assert.doesNotMatch(APP_SCRIPT, /I reviewed the selected Policy assessments/);
   assert.doesNotMatch(APP_STYLES, /\.policy-activation-confirm\{/);
+});
+
+test("Audit Documents page uses its Step 5 guide and output", () => {
+  const link = PROGRAM_PATH.find(({ id }) => id === "audit").sections
+    .flatMap(({ relatedLinks = [] }) => relatedLinks)
+    .find(({ type }) => type === "document");
+  assert.match(link.instructions, /activate that approved revision/);
+  assert.match(APP_SCRIPT, /resourceGuide\(type, relatedGuidance\)/);
+  assert.match(APP_SCRIPT, /relatedGuidance\?\.summary/);
+  assert.match(APP_SCRIPT, /pageGuidance\?\.instructions/);
+  assert.match(APP_SCRIPT, /pageGuidance\?\.output/);
+});
+
+test("Audit Documents card waits for a real engagement", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function derivedStagePageState"), APP_SCRIPT.indexOf("function stagePageItems"));
+  const result = vm.runInNewContext(source + '\nderivedStagePageState({ id: "audit" }, { type: "document", href: "#/resources/document?stage=audit&documentScope=audit" });', {
+    state: { workflow: { assessments: { auditReadiness: { status: "not-started" } } } }
+  });
+  assert.equal(result.label, "No engagement");
+  assert.equal(result.complete, false);
 });
 
 test("routes semantic reconciliation actions to a focused browser workflow", () => {
@@ -1395,7 +1416,7 @@ test("places list filters before the create action in the page header", () => {
   const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
   assert.match(listSource, /const listTools = '<div class="list-tools list-header-tools">/);
   assert.match(listSource, /records<\/span>' \+ applicabilityButton \+ createButton \+ '<\/div>'/);
-  assert.match(listSource, /\+ listTools \+ '<\/div>' \+ resourceGuide\(type\)/);
+  assert.match(listSource, /\+ listTools \+ '<\/div>' \+ resourceGuide\(type, relatedGuidance\)/);
   assert.match(APP_STYLES, /\.list-header-tools\{flex:1;justify-content:flex-end;margin:0 0 0 28px\}/);
   assert.match(APP_STYLES, /\.page-intro>\.list-header-tools\{justify-content:flex-start;margin:15px 0 0\}/);
 });
@@ -1485,7 +1506,7 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(APP_SCRIPT, /class="organization-nav /);
   assert.doesNotMatch(APP_SCRIPT, /<h3>People and Teams<\/h3>/);
   assert.deepEqual(section(scopeStage, "Program Ownership").types, ["person", "appointment", "team", "reporting-route-set"]);
-  assert.match(section(scopeStage, "Program Ownership").steps.join(" "), /Review the starter Security and Risk Oversight team/);
+  assert.match(section(scopeStage, "Program Ownership").steps.join(" "), /independent reviewer, and oversight team/);
   assert.match(APP_SCRIPT, /Renderer and Repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
   assert.match(APP_SCRIPT, /return \[stage\.title, stage\.summary, href/);
@@ -1662,14 +1683,17 @@ test("keeps concise Step-page summaries separate from detailed resource guides",
   const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
   const detailSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderDetail"), APP_SCRIPT.indexOf("function recordNarrative"));
   const guideSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function resourceGuide"), APP_SCRIPT.indexOf("function setupResourceGuide"));
-  assert.match(APP_SCRIPT, /function resourceGuide\(type\)/);
+  assert.match(APP_SCRIPT, /function resourceGuide\(type, pageGuidance = null\)/);
   assert.match(APP_SCRIPT, /function stagePageSummary\(destination\)/);
   for (const [type, instructions] of Object.entries(RESOURCE_INSTRUCTIONS)) {
     assert.ok(APP_SCRIPT.includes(JSON.stringify(type)), `${type} is included in renderer instructions`);
     assert.ok(APP_SCRIPT.includes(instructions), `${type} renderer instruction matches the headless guide`);
   }
-  assert.match(guideSource, /const instructions = RESOURCE_GUIDE_INSTRUCTIONS\[type\] \|\| definition\.description/);
-  assert.match(listSource, /const pageSummary = STAGE_PAGE_SUMMARIES\[type\] \|\| definition\.description/);
+  assert.deepEqual(Object.keys(RESOURCE_OUTPUTS).sort(), Object.keys(RESOURCE_INSTRUCTIONS).sort());
+  for (const output of Object.values(RESOURCE_OUTPUTS)) assert.ok(APP_SCRIPT.includes(output));
+  assert.match(guideSource, /const output = pageGuidance\?\.output \|\| RESOURCE_GUIDE_OUTPUTS\[type\]/);
+  assert.match(guideSource, /const instructions = pageGuidance\?\.instructions \|\| RESOURCE_GUIDE_INSTRUCTIONS\[type\] \|\| definition\.description/);
+  assert.match(listSource, /const pageSummary = relatedGuidance\?\.summary \|\| STAGE_PAGE_SUMMARIES\[type\] \|\| definition\.description/);
   assert.match(listSource, /esc\(pageSummary\)/);
   assert.match(APP_SCRIPT, /const RESOURCE_GUIDE_INSTRUCTIONS = /);
   for (const [type, summary] of Object.entries(RESOURCE_PAGE_SUMMARIES)) {
@@ -1678,16 +1702,16 @@ test("keeps concise Step-page summaries separate from detailed resource guides",
   assert.match(APP_SCRIPT, /definition\.description/);
   assert.match(APP_SCRIPT, /guidance\.policyBasis/);
   assert.match(APP_SCRIPT, /guidance\.sourceResourceIds/);
-  assert.match(guideSource, /<span>Instructions<\/span><p>' \+ esc\(instructions\)/);
-  assert.match(APP_SCRIPT, /<span>Use<\/span>/);
+  assert.match(guideSource, /<span>Do now<\/span><p>' \+ esc\(instructions\)/);
+  assert.match(guideSource, /<span>Output<\/span><p>' \+ esc\(output\)/);
   assert.match(APP_SCRIPT, /<span>Policy basis<\/span>/);
-  assert.match(guideSource, /<span>Instructions<\/span>[\s\S]*<span>Use<\/span>[\s\S]*<span>Policy basis<\/span>/);
+  assert.match(guideSource, /<span>Do now<\/span>[\s\S]*<span>Output<\/span>[\s\S]*<span>Policy basis<\/span>/);
   assert.match(guideSource, /guidance\.reviewPoints/);
   assert.match(guideSource, /<span>When reviewing<\/span>/);
   assert.doesNotMatch(guideSource, /<span>Timing<\/span>/);
   assert.doesNotMatch(guideSource, /guidance\.cadence/);
   assert.doesNotMatch(guideSource, /guidance\.obligationActivityTypes/);
-  assert.match(listSource, /resourceGuide\(type\)/);
+  assert.match(listSource, /resourceGuide\(type, relatedGuidance\)/);
   assert.match(listSource, /id="resource-guide-trigger"/);
   assert.match(listSource, /M7\.8 7\.5a2\.4 2\.4 0 1 1/);
   assert.match(listSource, /resourceGuideCleanup = setupResourceGuide\(main\)/);
@@ -1763,17 +1787,18 @@ test("renders completed collection reviews as a compact closed disclosure", () =
   assert.match(proposalsRequired, /<button class="button" type="button" disabled/);
 });
 
-test("keeps operation status explicit without inline instruction panels", () => {
+test("keeps operation status explicit and stage instructions available on demand", () => {
   const listSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderList"), APP_SCRIPT.indexOf("function renderDetail"));
   const detailSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderDetail"), APP_SCRIPT.indexOf("function recordNarrative"));
   assert.doesNotMatch(APP_SCRIPT, /function resourceWorkflowPanel\(type, entries\)/);
-  assert.doesNotMatch(APP_SCRIPT, /class="stage-instructions/);
+  assert.match(APP_SCRIPT, /class="stage-instructions/);
+  assert.match(APP_SCRIPT, /section\.steps\.map/);
   assert.match(APP_SCRIPT, /<p class="kicker">To-do<\/p>/);
   assert.match(APP_SCRIPT, /Before you finish this record, make sure:/);
   assert.doesNotMatch(APP_SCRIPT, />Derived workflow</);
   assert.match(APP_SCRIPT, /function workflowItemHref\(item\)/);
   assert.match(APP_SCRIPT, /workflowItemStatePriority\(left\) - workflowItemStatePriority\(right\)/);
-  assert.match(APP_SCRIPT, /workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
+  assert.match(APP_SCRIPT, /workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)/);
   assert.match(APP_SCRIPT, /<summary>Show ' \+ remaining\.length \+ ' more/);
   assert.match(APP_SCRIPT, /workflow-findings workflow-findings-more/);
   assert.doesNotMatch(APP_SCRIPT, /returns this same checklist for CLI and agent use/);
@@ -1826,6 +1851,9 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /function openCompletionRequirementsDialog\(type\)/);
   assert.match(APP_SCRIPT, /data-completion-requirements/);
   assert.match(detailSource, /workflowPanel: workflowGuidance\(\{ type, id, title: "Next steps", workflow: entry\.workflow \}\) \|\| recordCompletionState\(entry\.record\)/);
+  assert.match(APP_SCRIPT, /const findings = workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
+  assert.match(APP_SCRIPT, /function controlApplicabilityPending\(record\)/);
+  assert.match(APP_SCRIPT, /route\.name === "list" && route\.type === "control"\) return \["program"\]/);
   assert.match(detailSource, /<h3>Record details<\/h3>/);
   assert.match(detailSource, /detail-metadata-panel/);
   assert.match(APP_SCRIPT, /resourceReviewCriteria\(type, true\)/);
@@ -1847,7 +1875,7 @@ test("keeps operation status explicit without inline instruction panels", () => 
   assert.match(APP_SCRIPT, /type === "obligation" && name === "status"\) return "Configuration"/);
   assert.doesNotMatch(APP_SCRIPT, /Work Queue · ' \+ esc\(label\)/);
   assert.match(APP_SCRIPT, /governing policies are effective, at least one linked control is implemented/);
-  assert.match(APP_SCRIPT, /Create an Evidence Artifact when the artifact exists or an operating record needs fixed supporting proof/);
+  assert.match(APP_SCRIPT, /Create an Evidence Artifact only when a real file or approved external reference exists/);
   assert.match(APP_SCRIPT, /Complete scheduled work and assigned follow-up here/);
   assert.doesNotMatch(APP_STYLES, /\.stage-instruction-grid/);
   assert.doesNotMatch(APP_STYLES, /\.evidence-instruction-grid/);
@@ -1929,7 +1957,7 @@ test("handles evidence-source readiness during Control implementation and create
   assert.match(APP_SCRIPT, /data-evidence-family-extra hidden/);
   assert.match(APP_SCRIPT, /item\.sourceKinds\.map\(\(kind\) => esc\(properCase\(kind\)\)\)/);
   assert.match(APP_SCRIPT, /Connect each Control to the ' \+ sourceLabel \+ ' that produce its evidence/);
-  assert.match(APP_SCRIPT, /Confirm each source Component is active/);
+  assert.match(APP_SCRIPT, /link an active Component with the required source kind/);
   assert.doesNotMatch(APP_SCRIPT, /evidenceTestDrafts/);
   assert.doesNotMatch(APP_SCRIPT, /api\/evidence-test-drafts/);
   assert.doesNotMatch(APP_SCRIPT, /Create test drafts/);
@@ -1971,9 +1999,11 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /Step ' \+ esc\(stage\.number\) \+ ' of 5/);
   assert.doesNotMatch(APP_SCRIPT, /<h3>Step Plan<\/h3>/);
   assert.doesNotMatch(APP_SCRIPT, /stage\.steps\.map/);
-  assert.equal(PROGRAM_PATH[0].summary, "Name the owners, criteria, service, Systems, and providers in scope.");
-  assert.equal(PROGRAM_PATH[2].summary, "Implement Controls, configure their operating schedules and evidence sources, then activate the approved program.");
-  assert.equal(PROGRAM_PATH[3].summary, "Complete scheduled and event work. Keep dated proof.");
+  assert.equal(PROGRAM_PATH[0].summary, "A reviewed Program scope with owners, criteria, Systems, and material providers.");
+  assert.match(PROGRAM_PATH[0].sections[1].steps[0], /tentative timing/);
+  assert.doesNotMatch(PROGRAM_PATH[0].sections[1].steps[0], /candidate period/);
+  assert.equal(PROGRAM_PATH[2].summary, "Implemented Controls with ready evidence sources and enabled work schedules.");
+  assert.equal(PROGRAM_PATH[3].summary, "Dated operating records and linked proof for work actually performed.");
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
   assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team", "reporting-route-set"]);
   assert.equal(RESOURCE_PAGE_SUMMARIES["reporting-route-set"], "Set the normal and fallback ways people report security concerns.");
@@ -2030,10 +2060,10 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   const boundary = PROGRAM_PATH[0].sections.find(({ id }) => id === "boundary");
   assert.match(boundary.description, /Start with the bounded System/);
   assert.match(boundary.description, /Keep Vendor relationships and specific Assets separate/);
-  assert.match(boundary.steps.join(" "), /Create Vendors for material external provider relationships and link supplied Components when factual/);
+  assert.match(boundary.steps.join(" "), /Add material Components and Vendors with their actual System relationships/);
   const issues = PROGRAM_PATH[3].sections.find(({ id }) => id === "issues");
   assert.equal(issues.title, "Issues and Remediation");
-  assert.match(issues.steps.join(" "), /Create a Finding only when a confirmed gap needs its own owner/);
+  assert.match(issues.steps.join(" "), /Create a Finding for a confirmed gap that needs a separate owner/);
   assert.doesNotMatch(APP_SCRIPT, /function sectionContextNote/);
   assert.doesNotMatch(APP_SCRIPT, /class="relationship-note"/);
   assert.match(APP_STYLES, /\.stage-overview-hero\{display:grid/);

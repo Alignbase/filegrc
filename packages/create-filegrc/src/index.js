@@ -446,7 +446,6 @@ The generated workspace starts with foundational program records:
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
 This profile does not include framework requirements, policies, governed documents, training, controls, obligations, or audit-management templates. Add and review those records for the selected framework before treating Program Readiness or Audit Readiness as meaningful. Do not infer that an absent control, policy, or schedule is unnecessary.`,
-      audit_preparation_guidance: "The foundation profile does not include the local SOC 2 management-document templates used by `prepare-audit`. Add reviewed templates and program scope before initializing audit work. Audit preparation must not invent missing policy, control, or evidence facts.",
       starter_setup: `## Start the program
 
 This foundation profile contains the workspace, initial owner, core Appointments, oversight team, renderer settings, and filegrc system of record. It does not select a framework or create proposed policies, controls, obligations, or evidence.
@@ -479,7 +478,6 @@ The generated workspace starts with the SOC 2 Security category:
 Treat every planned Control as a proposal until its owner, actual procedure in Record Markdown, System scope, cadence, authoritative evidence sources, implementation date, and mappings match actual practice. FileGRC does not infer implementation from Policy prose. Enable the applicable Work Queue schedules during implementation; they remain dormant until the Policy is active and effective. Add Availability, Processing Integrity, Confidentiality, Privacy, employment, anti-bribery, or other broader GRC records only when the company chooses to expand the scope.
 
 The recurring Obligations contain reviewable starter defaults. They remain proposed until the company confirms their scope, owner, cadence, and proof. Enabling a schedule accepts those operational facts but does not start occurrences until the Information Security Policy is active and effective. Create separate completion records, such as meetings, reviews, scans, tests, exercises, and attestations, for each period.`,
-    audit_preparation_guidance: "Preparation creates a separate system description, management assertion, and management representation document for the engagement from the local starter templates. Type 2 preparation also creates a period completeness statement and one `audit-population` record for each standard population. It is safe to run again and does not approve documents, mark controls implemented, or create evidence. Do not reuse one completed management document across engagements.",
     starter_setup: `## Finish initial setup
 
 The starter Policy, Controls, plan, schedule, training, and Obligations are proposals. They do not state that ${companyName} operates the described Controls.
@@ -523,13 +521,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.16.3",
+    version: "0.16.4",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.16.3",
+        version: "0.16.4",
         dependencies: { filegrc: versionRange }
       }
     }

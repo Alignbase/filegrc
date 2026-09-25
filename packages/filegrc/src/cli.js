@@ -289,10 +289,11 @@ export async function runCli(argv = process.argv.slice(2)) {
     const audit = auditId ? loaded.resources.find(({ id, type }) => id === auditId && type === "audit") : null;
     const programId = flags.program || audit?.programId;
     const readiness = await assessProgramReadiness(loaded, { asOf: flags["as-of"], programId });
-    const auditReadiness = auditId ? await assessAuditPreparation(loaded, {
+    const auditReadiness = await assessAuditPreparation(loaded, {
       auditId,
-      asOf: flags["as-of"]
-    }) : null;
+      asOf: flags["as-of"],
+      programId
+    });
     const result = buildProgramPathResult(loaded.model, readiness, auditReadiness);
     const output = selectProgramPathOutput(result, flags);
     if (flags.json) console.log(JSON.stringify(output, null, 2));
@@ -458,15 +459,29 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "program-readiness") {
     const loaded = await loadWorkspace(root);
     const result = await assessProgramReadiness(loaded, { asOf: flags["as-of"], programId: flags.program });
-    const output = flags.summary ? summarizeProgramReadiness(result) : result;
+    if (flags.control && flags.summary) throw new Error("Use either --control or --summary for program-readiness.");
+    const controlItem = flags.control
+      ? result.stages.find(({ id }) => id === "controls")?.items.find(({ resourceType, resourceId }) => (
+          resourceType === "control" && resourceId === flags.control
+        ))
+      : null;
+    if (flags.control && !controlItem) throw new Error(`Control "${flags.control}" is not selected in this Program.`);
+    const output = controlItem
+      ? { asOf: result.asOf, programId: result.program?.id, ...controlItem }
+      : flags.summary ? summarizeProgramReadiness(result) : result;
     const headlineStatus = result.progress.status || result.status;
     if (flags.json) console.log(JSON.stringify(output, null, 2));
+    else if (controlItem) {
+      console.log(`${controlItem.status.toUpperCase()}\t${controlItem.title}`);
+      if (!controlItem.nextSteps?.length) console.log(`  ${controlItem.message}`);
+      printGuidanceSteps(controlItem);
+    }
     else if (flags.summary) {
       console.log(`${headlineStatus.toUpperCase()}: ${result.progress.label} ${result.progress.percent}%. ${result.progress.detail}`);
       for (const stage of output.stages) {
         console.log(`${stage.status.toUpperCase()}\t${stage.title}\t${stage.counts.action} checks need action`);
       }
-      if (output.firstAction) console.log(`Next: ${output.firstAction.title}\t${output.firstAction.message}`);
+      if (output.firstAction) printNextAction(output.firstAction);
     }
     else {
       console.log(`${headlineStatus.toUpperCase()}: ${result.progress.label} ${result.progress.percent}%. ${result.progress.detail}`);
@@ -480,7 +495,10 @@ export async function runCli(argv = process.argv.slice(2)) {
       );
       for (const stage of result.stages) {
         console.log(`\n${stage.title}`);
-        for (const item of stage.items) console.log(`${item.status.toUpperCase()}\t${item.title}\t${item.message}`);
+        for (const item of stage.items) {
+          console.log(`${item.status.toUpperCase()}\t${item.title}${item.nextSteps?.length ? "" : `\t${item.message}`}`);
+          printGuidanceSteps(item);
+        }
       }
       if (result.policyActivations.length) {
         console.log("\nPolicy activation assessments");
@@ -492,7 +510,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         console.log(`\nEvidence Ready: management can start the candidate Type 2 period on or after ${result.suggestedCandidatePeriodStart || result.asOf}.`);
       }
     }
-    if (flags["require-ready"] && !result.evidenceReady) process.exitCode = 2;
+    if (flags["require-ready"] && (controlItem ? controlItem.status !== "complete" : !result.evidenceReady)) process.exitCode = 2;
     return output;
   }
   if (command === "reporting-route-sets") {
@@ -1347,7 +1365,7 @@ Usage:
   filegrc list [resource-type] [--workflow] [--json]
   filegrc search <query> [--type resource-type] [--json]
   filegrc obligations [--program program-id] [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
-  filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary] [--json]
+  filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary | --control CONTROL_ID] [--json]
   filegrc program-amendment <source-resource-id> [--json]
   filegrc review-bindings <retention-or-mapping-id> [--json]
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
@@ -1365,7 +1383,7 @@ Usage:
   filegrc policy-library [--json | --accept proposal-id --proposal-revision revision --yes]
   filegrc trigger <event-type> (--occurred-on YYYY-MM-DD | --occurred-at RFC3339) [--program program-id] [--risk-level normal|high] [--subject resource-id[,resource-id]] [--title text] [--json]
   filegrc evidence-packet [--audit audit-id | --program program-id] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--output .filegrc/path] [--preview] [--require-ready] [--json]
-  filegrc get [resource-type] <id> [--mutation]
+  filegrc get [resource-type] <id> [--mutation|--workflow]
   filegrc references <id> [--json]
   filegrc preview-mutation <preview.json|-> [--json]
   filegrc create <mutation.json|-> [--json]
@@ -1496,8 +1514,9 @@ source. No audit ID or CPA firm is required.
 Options:
   --program <id>     Program to assess when more than one active Program exists
   --as-of <date>     Evaluate effective dates and obligations on YYYY-MM-DD
-  --require-ready    Exit with code 2 unless the Evidence Ready gate passes
+  --require-ready    Exit with code 2 unless the selected Control, or the full program, is ready
   --summary          Omit item details and print stage counts and next actions
+  --control <id>     Show the current setup steps for one selected Control
   --json             Print the result as JSON
   --root <path>      Workspace path
   --help             Show this help`);
@@ -1749,6 +1768,7 @@ function printAgentGuide(result) {
     console.log(`Program step: ${result.programStep.order ? `Step ${result.programStep.order}` : `Step ${result.programStep.number}`} · ${result.programStep.title}`);
   }
   console.log(`Instructions: ${result.instructions}`);
+  console.log(`Output: ${result.output}`);
   console.log(`Use: ${result.use}`);
   console.log(`Policy basis: ${result.policyBasis}`);
   console.log(`Timing: ${result.cadence}`);
@@ -1810,23 +1830,21 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
   const readinessById = new Map(readiness.stages.map((stage) => [stage.id, stage]));
   const stages = buildAgentProgramPath(model).map((stage) => {
     if (stage.id === "audit") {
-      const auditAction = auditReadiness?.firstAction || (
-        auditReadiness?.status === "not-started"
-          ? {
-              id: "create-audit",
-              status: "action",
-              title: "Create the planned CPA engagement",
-              message: "Create a planned Audit from the current management scope, then replace the remaining scaffold values with the CPA firm and firm-agreed scope and dates.",
-              resourceType: "audit",
-              commands: [
-                "npx filegrc guide audit --json",
-                "npx filegrc scaffold audit --title \"YEAR SOC 2 TYPE\" > audit-mutation.json",
-                "npx filegrc create audit-mutation.json --json",
-                "npx filegrc prepare-audit AUDIT_ID --json"
-              ]
-            }
-          : null
-      );
+      const auditAction = auditReadiness?.status === "not-started"
+        ? {
+            id: "create-audit",
+            status: "action",
+            title: "Record the CPA engagement",
+            message: "After engaging the CPA firm, create an Audit with the firm-agreed type, scope, and dates.",
+            resourceType: "audit",
+            commands: [
+              "npx filegrc guide audit --json",
+              "npx filegrc scaffold audit --title \"YEAR SOC 2 TYPE\" > audit-mutation.json",
+              "npx filegrc create audit-mutation.json --json",
+              "npx filegrc prepare-audit AUDIT_ID --json"
+            ]
+          }
+        : auditReadiness?.stages?.flatMap(({ items }) => items).find(({ status }) => status === "action") || null;
       return {
         ...stage,
         status: auditReadiness?.status || "not-started",
@@ -1866,12 +1884,29 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
   };
 }
 
+function printGuidanceSteps(item) {
+  item.nextSteps?.forEach((step, index) => console.log(`  ${index + 1}. ${step}`));
+}
+
+function printNextAction(action) {
+  if (action.nextSteps?.length) {
+    console.log(`Next: ${action.title}`);
+    printGuidanceSteps(action);
+  } else {
+    console.log(`Next: ${action.title} · ${action.message}`);
+  }
+}
+
 function printProgramPath(result) {
   console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
   console.log(`Evidence Ready: ${result.evidenceReady ? "yes" : "no"}; operating: ${result.operating ? "yes" : "no"}`);
   for (const stage of result.stages) {
     console.log(`\nStep ${stage.number}. ${stage.title} [${String(stage.status).toUpperCase()}]`);
     console.log(stage.summary);
+    for (const section of stage.sections) {
+      console.log(`  ${section.title}`);
+      section.steps.forEach((step, index) => console.log(`    ${index + 1}. ${step}`));
+    }
     for (const page of stage.pages) {
       console.log(`${page.order ? `Step ${page.order}` : "Operating area"} · ${page.title} (${page.type || `utility:${page.utility}`})`);
       console.log(`  ${page.summary}`);
@@ -1885,7 +1920,7 @@ function printProgramPath(result) {
     }
     console.log("Commands:");
     for (const command of stage.commands) console.log(`  ${command}`);
-    for (const action of stage.nextActions) console.log(`Next: ${action.title} · ${action.message}`);
+    for (const action of stage.nextActions) printNextAction(action);
   }
 }
 
@@ -1953,6 +1988,7 @@ function summarizePathAction(action) {
     status: action.status,
     title: action.title,
     message: action.message,
+    ...(action.nextSteps?.length ? { nextSteps: action.nextSteps } : {}),
     ...(action.resourceType ? { resourceType: action.resourceType } : {}),
     ...(action.resourceId ? { resourceId: action.resourceId } : {})
   };
@@ -1998,13 +2034,13 @@ function printProgramPathOutput(result, flags) {
       console.log(`${String(stage.status).toUpperCase()}\tStep ${stage.number}\t${stage.title}`);
     }
     const current = result.stages.find(({ id }) => id === result.currentStep.id);
-    if (current?.nextAction) console.log(`Next: ${current.nextAction.title} · ${current.nextAction.message}`);
+    if (current?.nextAction) printNextAction(current.nextAction);
     return;
   }
   if (flags.next) {
     console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
     if (result.step?.nextAction) {
-      console.log(`Next: ${result.step.nextAction.title} · ${result.step.nextAction.message}`);
+      printNextAction(result.step.nextAction);
     }
     for (const command of result.step?.commands || []) console.log(`  ${command}`);
     return;
@@ -2020,7 +2056,8 @@ function printWorkflow(result) {
   console.log(`\n${result.counts.findings.ready || 0} ready findings, ${result.counts.workItems.overdue || 0} overdue Work Items`);
   if (result.recommended) {
     console.log(`Next: ${result.recommended.title}`);
-    if (result.recommended.message) console.log(`  ${result.recommended.message}`);
+    if (!result.recommended.nextSteps?.length && result.recommended.message) console.log(`  ${result.recommended.message}`);
+    printGuidanceSteps(result.recommended);
     const command = result.recommended.nextAction?.command || result.recommended.actions?.[0]?.command;
     if (command) console.log(`  ${command}`);
   }
@@ -2035,6 +2072,7 @@ function summarizeProgramReadiness(result) {
     status: item.status,
     title: item.title,
     ...(options.message === false ? {} : { message: item.message }),
+    ...(item.nextSteps?.length ? { nextSteps: item.nextSteps } : {}),
     ...(item.resourceType ? { resourceType: item.resourceType } : {}),
     ...(item.resourceId ? { resourceId: item.resourceId } : {})
   } : null;

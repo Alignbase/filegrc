@@ -1,7 +1,7 @@
 import { modelSupports } from "../model/index.js";
 import { createResourceId } from "./id.js";
 import { markdownEntries } from "./resource-markdown.js";
-import { RESOURCE_INSTRUCTIONS, resourceProgramContext } from "./program-path.js";
+import { RESOURCE_INSTRUCTIONS, RESOURCE_OUTPUTS, resourceProgramContext } from "./program-path.js";
 import { assessCollectionReview } from "./collection-review.js";
 import { resolveProgram } from "./program.js";
 
@@ -80,6 +80,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
     title: definition.title,
     pluralTitle: definition.pluralTitle,
     instructions: RESOURCE_INSTRUCTIONS[type] || definition.description,
+    output: RESOURCE_OUTPUTS[type] || `A validated ${definition.title} record.`,
     use: definition.description,
     purpose: definition.description,
     programStep: resourceProgramContext(type, loaded.model),

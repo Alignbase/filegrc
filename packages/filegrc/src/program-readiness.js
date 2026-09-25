@@ -1508,10 +1508,12 @@ function legacyPolicyLibraryProposals(records) {
 
 async function controlsStage(scope, byId, readMarkdown, asOf, model) {
   const items = [];
+  const families = selectedControlFamilies(scope.controls, model);
   if (!scope.controls.length) {
     items.push(item("control-scope", "action", "Select the program controls", "No controls are selected for the management program.", { type: "control" }));
   }
   for (const control of scope.controls) {
+    const controlFamilies = families.filter((family) => family.controls.some(({ id }) => id === control.id));
     const source = await readMarkdown(control);
     const sourceSystems = (
       modelSupports(model, "component-sources")
@@ -1523,6 +1525,18 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       && record.status !== "retired"
       && (record.controlIds || []).includes(control.id)
     ));
+    const sourceDetails = await Promise.all(sourceSystems.map(async (sourceRecord) => ({
+      record: sourceRecord,
+      instructions: await readMarkdown(sourceRecord)
+    })));
+    const missingSourceFamilies = controlFamilies.filter((family) => !sourceDetails.some(({ record, instructions }) => (
+      record.status === "active"
+      && (record.evidenceSourceKinds || []).length > 0
+      && (!family.sourceKinds.length || family.sourceKinds.some((kind) => (record.evidenceSourceKinds || []).includes(kind)))
+      && (record.evidenceOwnerIds || []).length > 0
+      && substantiveMarkdown(instructions)
+      && openPlaceholderCount(instructions) === 0
+    )));
     const checks = {
       ...(model.resources.control?.fields?.applicabilityReview ? {
         applicability: control.applicabilityReview?.decision === "applicable"
@@ -1534,6 +1548,9 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       scope: (control.systemIds || []).some((id) => scope.systems.some((system) => system.id === id)),
       operationPattern: Boolean(control.operationPattern),
       evidenceSource: sourceSystems.length > 0,
+      ...(modelSupports(model, "component-sources") ? {
+        evidenceSourceReady: missingSourceFamilies.length === 0
+      } : {}),
       implementationDate: Boolean(control.effectiveOn && control.effectiveOn <= asOf),
       ...(model.resources.control?.fields?.procedureRevision ? {
         procedureRevision: Boolean(control.procedureRevision),
@@ -1547,25 +1564,21 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       } : {})
     };
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
+    const nextSteps = controlImplementationSteps(control, checks, {
+      missingSourceFamilies
+    });
     items.push(item(
       `control-${control.id}`,
       missing.length ? "action" : "complete",
       `${control.code ? `${control.code}: ` : ""}${control.title}`,
       missing.length
-        ? `Complete ${missing.length} ${missing.length === 1 ? "check" : "checks"} before implementation: ${missing.join(", ")}.`
+        ? nextSteps[0] || `Complete the remaining Control checks: ${missing.join(", ")}.`
         : `Implemented ${control.effectiveOn}; owned, scoped, scheduled, documented, mapped, and tied to ${sourceSystems.length} authoritative ${sourceSystems.length === 1 ? "source" : "sources"}.`,
       control,
       {
         checks,
-        commands: [
-          ...(Object.hasOwn(checks, "applicability") && !checks.applicability ? [
-            "npx filegrc review-applicability --scaffold --type control > control-decisions.json",
-            "npx filegrc review-applicability control-decisions.json --preview --json",
-            "npx filegrc review-applicability control-decisions.json --yes --json"
-          ] : []),
-          "npx filegrc evidence-map --json",
-          `npx filegrc get ${shellArgument(control.id)} --mutation`
-        ],
+        nextSteps,
+        commands: [`npx filegrc get ${shellArgument(control.id)} --mutation`],
         workQueue: queueSchedules.length ? {
           enabled: queueSchedules.filter(obligationIsEnabled).length,
           running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf, model)).length,
@@ -1574,7 +1587,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
       }
     ));
   }
-  return stage("controls", "Implement Controls", "Each implemented Control needs an owner, actual procedure, scope, operation pattern, evidence source, mappings, an implementation date, and any required Obligations enabled. Scheduled work stays dormant until its governing Policy, program Documents, and Training are active and effective.", items);
+  return stage("controls", "Implement Controls", "Put each selected Control in place, record how it works, and mark it Implemented when it is working.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
@@ -1930,6 +1943,7 @@ function controlCheckLabel(name) {
     scope: "in-scope systems",
     operationPattern: "operation pattern",
     evidenceSource: "authoritative evidence source",
+    evidenceSourceReady: "usable evidence source",
     implementationDate: "implementation date",
     procedureRevision: "effective procedure revision",
     procedureEffective: "procedure effective date",
@@ -1937,6 +1951,76 @@ function controlCheckLabel(name) {
     criteriaMapping: "criteria mapping",
     workQueue: "running Obligation schedules"
   })[name] || name;
+}
+
+const starterControlSetup = {
+  "control-security-governance": "Name a reviewer outside day-to-day security ownership and set up a quarterly security review.",
+  "control-policy-management": "Assign someone to maintain the Control list and a separate approver for policies and plans. Set up their review path.",
+  "control-security-communication": "Set up how the approved reporting routes, policy changes, and security notices reach staff and outside parties.",
+  "control-workforce-expectations": "Set up the checks, agreements, and policy acknowledgements required before someone receives sensitive access.",
+  "control-security-training": "Choose how new and existing workers receive security training, acknowledge the current material, and get reminders.",
+  "control-risk-assessment": "Use the Program's risk method to assess the scoped service and record the results in FileGRC Risk Assessments and Risks.",
+  "control-monitoring-remediation": "Define how Control problems are reported, reviewed, and verified closed. Use FileGRC Findings for gaps that need separate follow-up.",
+  "control-access-authorization": "Configure unique, least-privilege accounts in the identity system. Restrict account changes to authorized admins.",
+  "control-strong-authentication": "Turn on required MFA and secure sign-in settings for the in-scope Systems. Identify any gap that needs an approved Exception.",
+  "control-access-review-offboarding": "Confirm the identity system can produce a complete access list and admins can promptly remove or change permissions.",
+  "control-physical-workspace-security": "Decide how visitors, work areas, devices, and paper records are protected in the places your team actually works.",
+  "control-data-classification-inventory": "Apply the approved Classifications to important data in the in-scope Systems and record its location in the inventory.",
+  "control-encryption-transmission": "Configure encryption for in-scope data and devices, and assign who manages keys and approved transfer methods.",
+  "control-data-retention-disposal": "Apply the approved retention schedule to live, backup, and vendor-held data. Define how each class is deleted or destroyed.",
+  "control-inventory-configuration": "List important assets and owners, choose their secure settings, and decide how unsupported assets are handled.",
+  "control-endpoint-protection": "Apply the required device settings, updates, encryption, screen lock, and malware protection to devices that access company Systems.",
+  "control-network-security": "Restrict production network paths and remote access, and document the rules that allow traffic between environments.",
+  "control-change-management": "Set up a change path with risk review, testing, approval, deployment, and rollback for software and infrastructure changes.",
+  "control-vulnerability-management": "Choose what will be scanned, how often, who handles findings, and the target times for fixing them.",
+  "control-penetration-testing": "Decide whether independent testing is needed for this service. If it is, set its scope, cadence, and owner.",
+  "control-logging-monitoring": "Enable useful security logs and alerts for important Systems, protect them, and choose who responds to alerts.",
+  "control-incident-response": "Set up a way to report, assign, escalate, contain, and close security incidents using the approved response plan.",
+  "control-incident-exercise": "Choose a realistic incident scenario and an alert path to test, and assign the people who will run the exercise.",
+  "control-backup-restoration": "Choose what needs backup or another recovery path, configure it, and decide how restores will be tested.",
+  "control-continuity-exercise": "Set recovery priorities, contacts, and responsibilities, and choose how the continuity plan will be exercised.",
+  "control-vendor-due-diligence": "Set a security review and contract check before a new Vendor gets sensitive data or becomes a material dependency.",
+  "control-vendor-monitoring": "Choose which Vendors need ongoing review, who reviews them, and what information the review uses.",
+  "control-security-exceptions": "Document how an Exception is reviewed and approved before a departure from policy begins. Record actual decisions in FileGRC Exceptions."
+};
+
+export function controlImplementationSteps(control, checks, options = {}) {
+  const steps = [];
+  if (!checks.implemented) steps.push(starterControlSetup[control.id]
+    || `Set up this Control: ${control.activity || control.statement}`);
+  const record = [];
+  if (!checks.owner) record.push("choose an owner");
+  if (!checks.scope) record.push("select the Systems this covers");
+  if (!checks.operationPattern) record.push("set when it runs");
+  if (!checks.procedure) record.push("write who does what and when in Procedure");
+  if (!checks.evidenceSource) record.push("link the tool or system that can show it happened");
+  if (!checks.policyMapping && checks.policyMapping !== undefined) record.push("link the Policy it implements");
+  if (!checks.criteriaMapping && checks.criteriaMapping !== undefined) record.push("link the criteria it covers");
+  if (checks.implemented && !checks.implementationDate) record.push("enter the date it started working");
+  if (checks.implemented && (checks.procedureRevision === false || checks.procedureEffective === false)) {
+    record.push("record the Procedure revision and effective date");
+  }
+  if (record.length) steps.push(`In this Control, ${record.join("; ")}.`);
+  const sourceFamilies = options.missingSourceFamilies || [];
+  const sourceTargets = sourceFamilies.map((family) => `${family.title}${family.sourceKinds?.length ? ` (${family.sourceKinds.join(" or ")})` : ""}`);
+  const sourceStep = checks.evidenceSourceReady === false
+    ? `Cover the missing evidence families: ${sourceTargets.length ? sourceTargets.join(" and ") : "this Control"}. For each, link an active Component with the matching kind, evidence owners, and report retrieval instructions.`
+    : null;
+  const queueStep = checks.workQueue === false
+    ? "Enable a linked Obligation with the owner and schedule for this Control's recurring or event work."
+    : null;
+  if (!checks.implemented) {
+    if (sourceStep || queueStep) steps.push([sourceStep, queueStep].filter(Boolean).join(" "));
+    else if (checks.applicability === false) steps.push("Confirm this Control applies to the current Program scope with `review-applicability --scaffold --type control`.");
+    else steps.push(checks.procedureRevision === undefined
+      ? "When it works, mark this Control Implemented and enter its start date."
+      : "When it works, mark this Control Implemented. Enter its start date and the Procedure revision and effective date.");
+  } else {
+    if (sourceStep) steps.push(sourceStep);
+    if (queueStep) steps.push(queueStep);
+    if (checks.applicability === false) steps.push("Confirm this Control applies to the current Program scope with `review-applicability --scaffold --type control`.");
+  }
+  return steps;
 }
 
 function assuranceGoalLabel(goal) {

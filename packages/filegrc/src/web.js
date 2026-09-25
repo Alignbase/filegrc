@@ -10,7 +10,7 @@ import {
   utcCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
-import { PROGRAM_PATH, programPathForModel, RESOURCE_INSTRUCTIONS, RESOURCE_PAGE_SUMMARIES } from "./program-path.js";
+import { PROGRAM_PATH, programPathForModel, RESOURCE_INSTRUCTIONS, RESOURCE_OUTPUTS, RESOURCE_PAGE_SUMMARIES } from "./program-path.js";
 import { formatCalendarDate, formatLocalDateTime } from "./time.js";
 
 export function dashboardProgramReadiness(programReadiness = {}) {
@@ -96,6 +96,7 @@ let READINESS_STAGES = SHARED_PROGRAM_STAGES.map((stage) => ({
   number: String(stage.number)
 }));
 const RESOURCE_GUIDE_INSTRUCTIONS = ${JSON.stringify(RESOURCE_INSTRUCTIONS)};
+const RESOURCE_GUIDE_OUTPUTS = ${JSON.stringify(RESOURCE_OUTPUTS)};
 const dashboardProgramReadiness = ${dashboardProgramReadiness.toString()};
 const workflowHrefBelongsToPage = ${workflowHrefBelongsToPage.toString()};
 const pageActionIdentity = ${pageActionIdentity.toString()};
@@ -246,6 +247,7 @@ function normalizeAppState(next) {
 function blockingStateSections(route) {
   if (route.name === "home") return ["program", "obligations", "workflow"];
   if (route.name === "repository") return ["repository"];
+  if (route.name === "list" && route.type === "control") return ["program"];
   if (route.name === "list" && route.type === "obligation") return ["obligations"];
   if (route.name === "obligations" || route.name === "stage" && route.stageId === "run") return ["program", "obligations"];
   if (route.name === "audit-packet") return ["repository", "program", "obligations", "audits"];
@@ -613,7 +615,7 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   const progress = stageProgress(stage);
   main.innerHTML = '<div class="page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(progress) + '</section>' +
-    renderStagePageIndex(stage) + (stage.id === "controls" ? renderFinishStepThree() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
+    renderStageInstructions(stage) + renderStagePageIndex(stage) + (stage.id === "controls" ? renderFinishStepThree() : "") + (stage.id === "audit" ? renderAuditDocumentActivationAssessments() : "") + '</div>';
   main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
     main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
     event.currentTarget.remove();
@@ -634,7 +636,8 @@ function renderPoliciesPage(main, params = new URLSearchParams()) {
 }
 
 function policyContentGuide() {
-  return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use Policies" hidden><div><span>Instructions</span><p>Open each Policy, program Document, and Training record. Replace starter placeholders, review its Markdown, and confirm its owner, separate approver, relationships, and intended values.</p></div><div><span>Approval</span><p>Bind approval to the exact Markdown revision. Keep approved content inactive until Step 3 confirms implementation and records the activation cutover.</p></div><div><span>Included here</span><p>Use this page for governed program content. The Data Retention Schedule has its own Step 2 page because its document and structured rows are approved together.</p></div></section>';
+  const section = READINESS_STAGES.find(({ id }) => id === "policies")?.sections.find(({ id }) => id === "policy-content");
+  return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use Policies" hidden><div><span>Do now</span><p>' + esc(section?.instructions || "Review and approve the program's governing content.") + '</p></div><div><span>Output</span><p>' + esc(section?.output || "Approved content bound to the reviewed revisions.") + '</p></div></section>';
 }
 
 function renderRetentionSchedulePage(main, params = new URLSearchParams()) {
@@ -846,7 +849,7 @@ function renderPolicyApprovalGuidance() {
       : "";
     return '<article><strong>' + esc(proposal.title) + '</strong><p>' + esc(proposal.message) + '</p>' + review + '<div class="evidence-map-references">' + proposal.policyIds.map((id) => formatReference(id)).join("") + '</div></article>';
   }).join("");
-  return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Step 2 approval</p><h3>Approve the governed content</h3><p>Approval means your company reviewed and accepted the requirements and intended values in each Policy, program Document, and Training record. It does not mean the linked Controls are implemented yet.</p><p>Bind each approval to the exact Markdown revision here. Implement Controls and configure Obligations in Step 3, then activate each unchanged approved revision at implementation cutover.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
+  return '<section class="policy-lifecycle-note panel ' + (proposalRows ? "" : "single") + '"><div><p class="kicker">Step 2 approval</p><h3>Approve the governed content</h3><p>Replace placeholders and confirm the intended values. Have a separate approver review the exact Markdown revision and record the approval date.</p></div>' + (proposalRows ? '<div class="policy-library-proposals">' + proposalRows + '</div>' : "") + '</section>';
 }
 
 function renderPoliciesTable(params = new URLSearchParams()) {
@@ -963,7 +966,8 @@ function renderDocumentActivationAssessments() {
 }
 
 function renderAuditDocumentActivationAssessments() {
-  const audits = resourcesOfType("audit").map(({ record }) => record);
+  const audits = resourcesOfType("audit").map(({ record }) => record)
+    .filter((record) => !state.selectedProgramId || record.programId === state.selectedProgramId);
   const audit = selectDefaultAudit(audits, state.programReadiness?.asOf || currentDate());
   const preparation = audit ? state.auditPreparations?.[audit.id] : null;
   const assessments = preparation?.documentActivations || [];
@@ -1182,7 +1186,10 @@ function workflowGuidance(options = {}) {
   const visible = items.slice(0, 6);
   const renderRow = (item) => {
     const href = workflowItemHref(item);
-    const body = '<span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.message || workflowItemDetail(item)) + '</small></span>';
+    const guidance = options.type === "control" && item.nextSteps?.length
+      ? '<ol class="control-next-steps">' + item.nextSteps.map((step) => '<li>' + esc(step) + '</li>').join("") + '</ol>'
+      : '<small>' + esc(item.message || workflowItemDetail(item)) + '</small>';
+    const body = '<span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong>' + guidance + '</span>';
     return href ? '<a href="' + href + '">' + body + '</a>' : '<div>' + body + '</div>';
   };
   const rows = visible.map(renderRow).join("");
@@ -1750,6 +1757,12 @@ function renderStagePageIndex(stage) {
   return '<section class="stage-pages" aria-label="Step ' + esc(stage.number) + ' pages"><div class="stage-page-grid">' + cards + '</div></section>';
 }
 
+function renderStageInstructions(stage) {
+  return '<details class="stage-instructions"><summary>How to complete Step ' + esc(stage.number) + '</summary><div class="stage-instructions-body">' + stage.sections.map((section) => (
+    '<section><h3>' + esc(section.title) + '</h3><ol>' + section.steps.map((step) => '<li>' + esc(step) + '</li>').join("") + '</ol></section>'
+  )).join("") + '</div></details>';
+}
+
 function stagePageDestinations(stage) {
   return stage.sections.flatMap((section) => sectionDestinations(section)
     .filter((destination) => destination.utility !== "obligation-board")
@@ -1820,7 +1833,7 @@ function derivedStagePageState(stage, destination) {
   if (
     stage.id === "audit"
     && state.workflow?.assessments?.auditReadiness?.status === "not-started"
-    && (destination.type === "audit" || destination.utility === "audit-packet")
+    && (destination.type === "audit" || destination.type === "document" && destination.href.includes("documentScope=audit") || destination.utility === "audit-packet")
   ) {
     return { complete: false, label: "No engagement" };
   }
@@ -1854,6 +1867,11 @@ function derivedStagePageState(stage, destination) {
     return collectionReview.status === "current"
       ? { complete: true, label: "Reviewed" }
       : { complete: false, label: "Review scope" };
+  }
+  if (stage.id === "audit" && destination.type === "document" && destination.href.includes("documentScope=audit")) {
+    if (!resourcesOfType("document").some(({ record }) => auditSpecificDocument(record))) {
+      return { complete: false, countsTowardProgress: false, label: "Only if needed" };
+    }
   }
   if (destination.type && resourcesOfType(destination.type).length === 0) {
     return { complete: false, countsTowardProgress: false, label: "Only if needed" };
@@ -2005,7 +2023,7 @@ function sectionDestinations(section) {
     destinations.push({ type, kind: "Record page", label: titleCase(definition.pluralTitle), href: "#/resources/" + encodeURIComponent(type), description: definition.description });
   }
   for (const link of section.relatedLinks || []) {
-    destinations.push({ type: link.type, kind: "Record page", label: link.label, href: link.href, description: section.description });
+    destinations.push({ type: link.type, kind: "Record page", label: link.label, href: link.href, description: link.summary || section.description });
   }
   if (section.utility === "obligation-board") destinations.push({ utility: section.utility, kind: "Working page", label: "Work Queue", href: "#/stage/run", description: "Complete recurring work, Policy Event tasks, and assigned follow-up with its due windows and linked proof." });
   if (section.utility === "evidence-sources") destinations.push({ utility: section.utility, kind: "Coverage page", label: "Evidence Sources", href: "#/evidence-sources", description: section.description });
@@ -2083,6 +2101,7 @@ function renderObligations(main, params = new URLSearchParams()) {
     : "";
   main.innerHTML = '<div class="page obligation-board-page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
+    renderStageInstructions(stage) +
     feedback +
     operationGate +
     activeOperation +
@@ -2744,6 +2763,13 @@ function openNextAuditCycleDialog(prior) {
   });
 }
 
+function controlApplicabilityPending(record) {
+  if (!record.applicabilityReview) return true;
+  const item = state.programReadiness?.stages?.find(({ id }) => id === "controls")?.items
+    .find(({ resourceType, resourceId }) => resourceType === "control" && resourceId === record.id);
+  return item?.checks?.applicability === false;
+}
+
 function openApplicabilityReviewDialog(type, entries) {
   const definition = state.model.resources[type];
   const reviewPoints = definition?.guidance?.reviewPoints || [];
@@ -2752,8 +2778,9 @@ function openApplicabilityReviewDialog(type, entries) {
   const pending = entries.filter(({ record }) => (
     type === "requirement" && modelSupports("program-scope")
       ? !reviewedRequirements.has(record.id)
-      : !record.applicabilityReview
-    || type === "requirement" && record.applicability === "undetermined"
+      : type === "control"
+        ? controlApplicabilityPending(record)
+        : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
   ));
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog applicability-dialog";
@@ -3102,7 +3129,9 @@ function renderList(main, type, params = new URLSearchParams()) {
   const hasPendingApplicability = entries.some(({ record }) => (
     type === "requirement" && modelSupports("program-scope")
       ? !reviewedRequirements.has(record.id)
-      : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
+      : type === "control"
+        ? controlApplicabilityPending(record)
+        : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
   ));
   const applicabilityButton = !state.readOnly
     && ["requirement", "control", "commitment", "complementary-control"].includes(type)
@@ -3112,8 +3141,11 @@ function renderList(main, type, params = new URLSearchParams()) {
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
     filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + applicabilityButton + createButton + '</div>';
-  const pageSummary = STAGE_PAGE_SUMMARIES[type] || definition.description;
-  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(listTitle)) + '</h2>' + guideTrigger + '</div><p>' + esc(pageSummary) + '</p></div>' + listTools + '</div>' + resourceGuide(type) +
+  const relatedGuidance = type === "document" && documentScope === "audit"
+    ? listStage?.sections.flatMap((section) => section.relatedLinks || []).find((link) => link.type === "document" && link.instructions)
+    : null;
+  const pageSummary = relatedGuidance?.summary || STAGE_PAGE_SUMMARIES[type] || definition.description;
+  main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(listTitle)) + '</h2>' + guideTrigger + '</div><p>' + esc(pageSummary) + '</p></div>' + listTools + '</div>' + resourceGuide(type, relatedGuidance) +
     collectionReviewPanel(type) +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Next action</th><th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
@@ -3316,7 +3348,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   });
   const mayDelete = !state.readOnly && !routeSetLocked && !definition.singleton;
   const recordMenu = '<details class="record-overflow"><summary aria-label="More record actions" title="More record actions"><svg viewBox="0 0 18 4" aria-hidden="true"><circle cx="2" cy="2" r="2"></circle><circle cx="9" cy="2" r="2"></circle><circle cx="16" cy="2" r="2"></circle></svg></summary><div class="record-overflow-menu" aria-label="Record actions"><button type="button" data-record-modal="info">Record info</button><button type="button" data-record-modal="connections">Connections</button><button type="button" data-record-modal="history"' + (entry.historyLoaded === false ? ' disabled' : '') + '>File history' + (entry.historyLoaded === false ? ' (loading)' : '') + '</button>' + (mayDelete ? '<div class="record-overflow-separator"></div><button class="danger-text" type="button" data-delete-resource>Delete record</button>' : '') + '</div></details>';
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + '">' + detailMain + supportPanels + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelectorAll("[data-record-modal]").forEach((button) => button.addEventListener("click", () => {
@@ -4251,11 +4283,11 @@ function zonedTimestampFromLocal(value, timezone) {
   return value + offset;
 }
 
-function resourceGuide(type) {
+function resourceGuide(type, pageGuidance = null) {
   const definition = state.model.resources[type];
   const guidance = definition?.guidance;
   if (!definition || !guidance) return "";
-  const instructions = RESOURCE_GUIDE_INSTRUCTIONS[type] || definition.description;
+  const instructions = pageGuidance?.instructions || RESOURCE_GUIDE_INSTRUCTIONS[type] || definition.description;
   const sources = (guidance.sourceResourceIds || [])
     .map((id) => state.resources.find(({ record }) => record.id === id))
     .filter(Boolean);
@@ -4266,7 +4298,8 @@ function resourceGuide(type) {
   const reviewGuide = reviewPoints.length
     ? '<div class="guide-review"><span>When reviewing</span><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></div>'
     : "";
-  return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use ' + esc(definition.pluralTitle) + '" hidden><div><span>Instructions</span><p>' + esc(instructions) + '</p></div><div><span>Use</span><p>' + esc(definition.description) + '</p></div><div><span>Policy basis</span><p>' + esc(guidance.policyBasis) + '</p>' + sourceLinks + '</div>' + reviewGuide + '</section>';
+  const output = pageGuidance?.output || RESOURCE_GUIDE_OUTPUTS[type] || 'A validated ' + definition.title + ' record.';
+  return '<section class="page-guide resource-guide-popover" id="resource-guide" role="dialog" aria-label="How to use ' + esc(definition.pluralTitle) + '" hidden><div><span>Do now</span><p>' + esc(instructions) + '</p></div><div><span>Output</span><p>' + esc(output) + '</p></div><div><span>Policy basis</span><p>' + esc(guidance.policyBasis) + '</p>' + sourceLinks + '</div>' + reviewGuide + '</section>';
 }
 
 function setupResourceGuide(main) {
@@ -6486,6 +6519,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .brand{flex:0 0 auto;margin-bottom:18px}.sidebar-nav{--nav-control-width:14px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding-right:1px}.nav-home{margin-bottom:10px}.nav-stage>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0}.nav-stage>.nav-heading:hover{background:rgba(255,255,255,.08);color:#fff}.nav-stage-number{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(255,255,255,.26);border-radius:50%;font-size:9.6px}.nav-stage-copy,.nav-stage-copy strong,.nav-stage-copy small{display:block;min-width:0}.nav-stage-copy strong{font-size:12px;line-height:1.25}.nav-stage-copy small{margin-top:2px;color:#aeb6d8;font-size:9.6px;line-height:1.25;font-weight:500}.nav-stage>.nav-items{margin:2px 0 8px 17px;padding:1px 0 5px 12px;border-left:1px solid rgba(255,255,255,.14)}.nav-subgroup>.nav-subheading,.nav-subgroup>.nav-items a{width:100%;display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;padding-right:6px}.nav-subgroup>.nav-subheading{border:0;background:none;padding-top:7px;padding-bottom:4px;padding-left:7px;color:#919bc4;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780;cursor:pointer}.nav-control,.nav-control-slot{justify-self:end;width:var(--nav-control-width);text-align:right}.nav-subgroup>.nav-items{padding:1px 0 4px 3px}.nav-subgroup>.nav-items a{padding-top:6px;padding-bottom:6px;padding-left:8px;font-size:13.2px}.nav-group.open>.nav-heading>.chevron:before,.nav-group.open>.nav-subheading>.chevron:before{transform:rotate(45deg)}.nav-stage.open>.nav-items>.nav-subgroup:not(.open)>.nav-items{display:none}.sidebar-footer{flex:0 0 auto;margin:10px -18px -18px;padding:10px 18px 14px;background:#000024;border-top:1px solid rgba(255,255,255,.14)}.organization-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 12px;gap:9px;align-items:center;padding:8px;border-radius:8px;color:#eef1ff;text-decoration:none}.organization-nav:hover,.organization-nav.current{background:rgba(255,255,255,.11)}.organization-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);font-size:13.2px;font-weight:800}.organization-nav strong,.organization-nav small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.organization-nav strong{font-size:12px}.organization-nav small{margin-top:2px;color:#aeb6d8;font-size:9.6px}.organization-arrow{color:#aeb6d8;font-size:19.2px}.organization-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.organization-links{display:grid}.organization-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.organization-links a:first-child{padding-top:0;border-top:0}.organization-links strong,.organization-links small{display:block}.organization-links strong{font-size:13.2px}.organization-links small{margin-top:3px;color:var(--muted);font-size:10.8px;line-height:1.4}.organization-links b{color:var(--accent);font-size:13.2px}.organization-links a:hover strong{color:var(--accent)}
 .nav-stage>.nav-items>a.nav-direct{display:grid;grid-template-columns:minmax(0,1fr) var(--nav-control-width);gap:6px;align-items:center;width:100%;padding:6px 6px 6px 7px;font-size:13.2px}
 .nav-heading-row{display:grid;grid-template-columns:minmax(0,1fr) 24px;gap:2px;align-items:stretch}.nav-heading-row>.nav-heading{display:grid;grid-template-columns:24px minmax(0,1fr);gap:6px;align-items:center;width:100%;padding:7px 6px;border-radius:7px;color:#d5d9ed;text-align:left;text-transform:none;letter-spacing:0;text-decoration:none}.nav-heading-row>.nav-heading:hover,.nav-heading-row>.nav-heading.current{background:rgba(255,255,255,.1);color:#fff}.nav-toggle{display:grid;place-items:center;width:24px;height:auto;min-height:100%;padding:0;border:0;border-radius:6px;background:none;color:#aeb6d8;cursor:pointer}.nav-toggle:hover{background:rgba(255,255,255,.1);color:#fff}.nav-chevron{display:block;width:12px;height:12px;place-self:center;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}.nav-subheading-row{display:grid;grid-template-columns:minmax(0,1fr) 22px;gap:2px;align-items:center;width:100%;padding:0;border:0;border-radius:6px;background:none;color:#919bc4;cursor:pointer}.nav-subheading-row:hover{background:rgba(255,255,255,.1);color:#fff}.nav-subheading-row>.nav-subheading{display:flex;align-items:center;min-width:0;padding:7px;color:inherit;text-align:left;text-transform:uppercase;letter-spacing:.09em;font-size:9.6px;font-weight:780}.nav-group.open>.nav-heading-row .nav-chevron,.nav-group.open>.nav-subheading-row .nav-chevron{transform:rotate(90deg)}
+.stage-instructions{margin-top:14px;padding:0 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px}.stage-instructions>summary{padding:14px 0;cursor:pointer;font-size:12px;font-weight:700}.stage-instructions-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;padding:2px 0 18px}.stage-instructions h3{margin:0 0 7px;font-size:12px}.stage-instructions ol{margin:0;padding-left:20px}.stage-instructions li{margin:0 0 6px;color:var(--muted);font-size:11px;line-height:1.5}
 .stage-overview-hero{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;align-items:center;padding:26px 28px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.stage-overview-hero h2,.group-overview-head h2{font:500 37.2px Georgia,serif;margin:7px 0}.stage-overview-hero>div>p:not(.kicker),.group-overview-head>div>p:not(.kicker){max-width:760px;color:var(--muted);font-size:14.4px;line-height:1.55;margin:0}.stage-progress-card{padding:15px 17px;background:var(--paper);border:1px solid var(--line);border-radius:9px}.stage-progress-card>div:first-child{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}.stage-progress-card>div:first-child>strong{font:500 33.6px Georgia,serif}.stage-progress-card p{color:var(--muted);font-size:10.8px;line-height:1.45;margin:9px 0 0}.badge.neutral{background:#e5e8f2;color:#555e73}.stage-overview-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:15px;margin-top:15px;align-items:start}.stage-plan ol,.group-plan ol{display:grid;gap:12px;padding-left:20px;margin:0}.stage-plan li,.group-plan li{padding-left:4px;color:var(--ink);font-size:13.2px;line-height:1.5}.stage-groups{min-width:0}.stage-groups>.section-head{margin:4px 0 13px}.stage-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-group-card{position:relative;display:block;min-height:138px;padding:18px 38px 17px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(21,40,33,.025)}.stage-group-card:hover{border-color:var(--accent-light)}.stage-group-card h3{font-size:15.6px;margin:0 0 7px}.stage-group-card p{color:var(--muted);font-size:12px;line-height:1.5;margin:0}.stage-group-card small{display:block;color:var(--accent);font-size:9.6px;font-weight:700;margin-top:12px}.stage-group-arrow{position:absolute;right:16px;top:16px;color:var(--accent);font-size:24px}.group-overview-head{display:flex;justify-content:space-between;align-items:end;gap:25px;margin-bottom:15px}.stage-status-link{display:grid;grid-template-columns:auto auto;align-items:center;gap:4px 12px;min-width:155px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;text-decoration:none}.stage-status-link>strong{font:500 28.8px Georgia,serif;text-align:right}.stage-status-link>small{grid-column:1/-1;color:var(--muted);font-size:9.6px;text-align:right}.relationship-note{display:grid;grid-template-columns:250px minmax(0,1fr);gap:20px;align-items:center;margin-bottom:15px;padding:17px 20px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:10px}.relationship-note h3{font-size:15.6px;margin:5px 0 0}.relationship-note>p{color:var(--muted);font-size:12px;line-height:1.55;margin:0}.relationship-note code{font-size:10.8px}.group-plan{margin-bottom:24px}.group-related-links{display:flex;align-items:center;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.group-related-links>span{color:var(--muted);font-size:10.8px;margin-right:auto}.group-destinations>.section-head{margin-bottom:12px}.group-destination-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.group-destination-card{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:16px;min-height:150px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(21,40,33,.025)}.group-destination-card:hover{border-color:var(--accent-light)}.group-destination-card h3{font-size:15.6px;margin:5px 0 7px}.group-destination-card p:not(.kicker){color:var(--muted);font-size:10.8px;line-height:1.5;margin:0}.destination-rollup{align-self:center;text-align:right}.destination-rollup strong,.destination-rollup small{display:block}.destination-rollup strong{font:500 32.4px Georgia,serif}.destination-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:3px}
 .collection-review-panel{margin:16px 0 22px}.collection-review-panel.required{border-color:#d8bd78}.collection-review-panel.current{border-color:#b9dac6}.collection-review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}.collection-review-head h3{margin:4px 0 6px}.collection-review-head p:not(.kicker){max-width:900px;margin:0;color:var(--muted);font-size:11px;line-height:1.5}.collection-review-panel details{margin-top:13px;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-panel summary{cursor:pointer;font-size:11px;font-weight:750}.collection-review-panel ul,.collection-review-checks ul{margin:9px 0 0;padding-left:20px;color:var(--muted);font-size:10.4px;line-height:1.55}.collection-review-foot{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:13px}.collection-review-result{display:flex;align-items:baseline;gap:8px;margin:0}.collection-review-result strong{font-size:11px}.collection-review-result span{color:var(--muted);font-size:10.4px}.collection-review-checks{margin:13px 0;padding:11px 13px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-checks>strong{font-size:11px}.event-dialog-steps.collection-review-checks{margin:15px 0 0;padding:10px;border:0}.collection-review-dialog textarea{box-sizing:border-box;width:100%;resize:vertical}.review-save-status{margin-right:auto;color:var(--muted);font-size:11px}.resource-review-criteria{margin:16px 0 22px;padding:13px 15px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.resource-review-criteria>strong{font-size:11px}.resource-review-criteria ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 28px;margin:9px 0 0;padding-left:20px;color:var(--muted);font-size:10.4px;line-height:1.5}.commit-dialog .resource-review-criteria{margin:12px 0;background:var(--surface-soft)}.record-workflow-action{display:grid;grid-template-columns:auto minmax(140px,1fr);gap:7px;align-items:start;min-width:240px;text-decoration:none}.record-workflow-action strong,.record-workflow-action small{display:block}.record-workflow-action strong{font-size:10.4px}.record-workflow-action small{margin-top:2px;color:var(--muted);font-size:9.2px;line-height:1.35}.record-workflow-clear{color:var(--muted);font-size:10px;white-space:nowrap}.workflow-guidance{margin:16px 0 22px}.workflow-guidance .panel-head{align-items:flex-start;margin-bottom:12px}.workflow-guidance .panel-head h3{margin:4px 0}.workflow-guidance .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:11px}.workflow-findings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.workflow-findings>a,.workflow-findings>div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 11px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft);text-decoration:none}.workflow-findings strong,.workflow-findings small{display:block}.workflow-findings strong{font-size:11px}.workflow-findings small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.workflow-finding-status{min-width:62px;padding:3px 5px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:8.4px;font-weight:750;text-align:center;text-transform:uppercase;letter-spacing:.04em}.workflow-finding-status.overdue,.workflow-finding-status.blocked{background:#f5ded9;color:#8d352c}.workflow-finding-status.ready,.workflow-finding-status.due,.workflow-finding-status.open{background:#f7e9cf;color:#855717}.workflow-finding-status.complete{background:#ddefe5;color:#176143}.workflow-guidance-more{margin:10px 0 0;color:var(--muted);font-size:9.6px}.workflow-guidance-more>summary{cursor:pointer;font-weight:750}.workflow-findings-more{margin-top:9px}.workflow-guidance-more>p{margin:8px 0 0}.context-workflow{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:-8px 0 18px;padding:17px 19px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:10px}.context-workflow h3{font-size:16px;margin:4px 0 5px}.context-workflow p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.5;margin:0;max-width:850px}.context-workflow .button{white-space:nowrap}.policy-lifecycle-note{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr);gap:24px;margin-top:18px}.policy-lifecycle-note h3{margin:5px 0 8px}.policy-lifecycle-note p:not(.kicker),.policy-library-proposals p{color:var(--muted);font-size:11px;line-height:1.55}.policy-library-proposals{display:grid;gap:8px}.policy-library-proposals article{padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.policy-library-proposals p{margin:5px 0 8px}.policy-activation{display:grid;gap:12px;margin-top:22px}.policy-activation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.policy-activation-card{padding:17px 18px;border:1px solid #d8bd78;border-radius:10px;background:var(--panel)}.policy-activation-card.active-and-operating{border-color:#b9dac6}.policy-activation-card h3{margin:7px 0 0}.policy-activation-gaps{display:grid;gap:9px;margin-top:13px}.policy-activation-gaps>div{padding-top:8px;border-top:1px solid var(--line)}.policy-activation-gaps small{display:block;margin-bottom:6px;color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.policy-activation-warning{margin:11px 0 0;padding:9px 10px;border-radius:7px;background:#f7e9cf;color:#6d4917;font-size:10.4px;line-height:1.45}.evidence-map{display:grid;gap:12px;margin-top:18px}.evidence-map-head{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 22px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:11px}.evidence-map-head>div:first-child{max-width:760px}.evidence-map-head h2{font:500 24px Georgia,serif;margin:5px 0 7px}.evidence-map-head p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.55;margin:0}.evidence-map-actions{display:flex;gap:8px}.evidence-map-card{padding:18px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.evidence-map-card.complete{border-color:#b9dac6}.evidence-map-card-head{display:flex;align-items:start;justify-content:space-between;gap:20px}.evidence-map-card-head h3{font-size:16px;margin:7px 0 0}.evidence-map-card-head>small{color:var(--muted);font-size:10px;text-align:right}.evidence-map-card>p{color:var(--muted);font-size:12px;line-height:1.55;margin:12px 0}.evidence-map-expectation{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:11px;line-height:1.5}.evidence-map-expectation strong{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.06em}.evidence-map-expectation code{background:var(--paper);border-radius:4px;padding:2px 5px}.evidence-map-links{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,1.2fr);gap:20px;margin-top:13px;padding-top:13px;border-top:1px solid var(--line)}.evidence-map-links>div>small{display:block;color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}.evidence-map-references,.evidence-map-sources{display:flex;flex-wrap:wrap;gap:5px}.evidence-map-source{display:flex;align-items:center;gap:7px;padding:7px 9px;background:var(--paper);border:1px solid var(--line);border-radius:7px;font-size:11px;text-decoration:none}.evidence-map-source.complete{border-color:#b9dac6;background:#edf7f1}.evidence-map-source small{color:var(--muted);font-size:9px}.evidence-map-status{padding:9px 11px;background:var(--paper);border-radius:7px}.evidence-map-empty{padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:10px}.evidence-map-empty h3{margin:6px 0}.evidence-map-empty p:not(.kicker){color:var(--muted);font-size:12px;margin:0 0 14px}.stage-pages{margin-top:24px}.stage-page-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-page-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025);transition:border-color .15s,box-shadow .15s}.stage-page-card:hover{border-color:var(--accent-light);box-shadow:0 5px 16px rgba(21,40,33,.07)}.stage-page-card.complete{border-color:#b9dac6}.stage-page-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px}.stage-page-card-head h3{font-size:15.6px;line-height:1.35;margin:4px 0 0}.stage-page-card-head>div>small{display:block;color:var(--accent);font-size:9.6px;font-weight:700}.stage-page-card>p{color:var(--muted);font-size:12px;line-height:1.5;margin:13px 0 0}.stage-page-tasks{position:relative;z-index:2;display:grid;gap:6px;margin-top:13px}.stage-page-tasks>a{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft);text-decoration:none}.stage-page-tasks>a:hover{border-color:var(--accent-light)}.stage-page-tasks strong,.stage-page-tasks small{display:block}.stage-page-tasks strong{font-size:10.8px}.stage-page-tasks small{margin-top:2px;color:var(--muted);font-size:9.4px;line-height:1.35}.stage-page-tasks-more{color:var(--muted);font-size:9.4px}.stage-page-rollup{display:flex;flex:0 0 104px;flex-direction:column;justify-content:center;text-align:right}.stage-page-rollup strong,.stage-page-rollup small{display:block}.stage-page-rollup strong{font:500 24px Georgia,serif}.stage-page-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:2px}.stage-page-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:15px}.stage-page-completion-state{color:var(--muted);font-size:10.8px}.stage-page-completion-state.complete{color:#176143;font-weight:700}.stage-page-open{color:var(--accent);font-size:12px;font-weight:700}.work-queue-section{margin-top:28px}.work-queue-section>.section-head{align-items:end}
 .stage-page-card-actions{display:flex;align-items:center;gap:10px}.stage-page-card-actions .stage-page-open{white-space:nowrap}.stage-page-open::after{content:"";position:absolute;inset:0;z-index:1;border-radius:10px}.stage-page-open:focus-visible::after{outline:2px solid var(--focus);outline-offset:2px}.stage-page-open>span{position:relative;z-index:2}
@@ -6669,6 +6703,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 @media(max-width:760px){.record-table td:has(.relation){min-width:0}.record-table td[data-label]>.relation{grid-column:2}}
 @media(max-width:760px){.diagnostics>div{grid-template-columns:max-content minmax(0,1fr)}}
 .workflow-guidance .workflow-status{margin:4px 0 12px;color:var(--muted);font-size:10px}.workflow-completion-requirements{display:inline;appearance:none;-webkit-appearance:none;white-space:nowrap;padding:0;border:0;background:none;color:var(--accent);font:inherit;font-weight:750;cursor:pointer;text-decoration:underline;text-underline-offset:2px}.workflow-completion-requirements:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.completion-requirements-dialog ul{margin:14px 0 0;padding-left:20px;color:var(--muted);font-size:12px;line-height:1.55}
+.control-next-steps{margin:8px 0 9px;padding-left:18px;font-size:12px;line-height:1.5}.control-next-steps li+li{margin-top:7px}.detail-control aside .detail-workflow-panel{max-height:none;overflow:visible}
 .record-completion-state{background:var(--surface-soft)}.record-completion-state h3{margin:4px 0 5px;font-size:16.8px}.record-completion-state p:last-child{margin:0;color:var(--muted);font-size:11px;line-height:1.45}
 `;
 
