@@ -180,7 +180,8 @@ The Control stage reports Control implementation items, evidence-family source c
 4. Add the Component ID to `evidenceSourceComponentIds` on every Control in the family that it supports.
 5. Finish the Control’s owner, procedure, scope, operation pattern, mappings, and implementation date. Put every calendar or event schedule in an Obligation.
 6. Enable each required Obligation. It stays dormant while a governing Policy or required program Document is inactive. The first operating window starts from the latest applicable effective date, so FileGRC does not create overdue work for a period before cutover.
-7. Run `program-readiness --json`, then use `activate-policies --scaffold` to review and atomically activate the selected approved Policies at implementation cutover. A documented gap or approved Exception may support activation, but the candidate period cannot start until Policies are active and Controls are fully implemented and evidence-ready.
+7. Run `program-readiness --json`. When the Control, Evidence Sources, and Obligation work areas are ready, use `review-collection control --scaffold` to record one independent review of the implemented Controls.
+8. Use `activate-content --scaffold` to activate the unchanged approved program Documents and Training. Then use `activate-policies --scaffold` to activate the selected approved Policies at cutover. Check `program-readiness --json` again; a candidate period can start only after Evidence Ready passes.
 
 Use `get RESOURCE_ID --mutation` and `update` so JSON and Markdown change together. `evidence-map --json` remains available when you want only the evidence-family checks. Do not create an Evidence Artifact while designing or implementing a Control. Create one during Step 4 only when the real export, report, screenshot, signed file, or approved external reference exists.
 

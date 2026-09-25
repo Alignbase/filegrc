@@ -9,6 +9,7 @@ import { applicabilityScopeRevision } from "../src/applicability-scope.js";
 import {
   calculateProgramProgress,
   collectionReviewReadinessItem,
+  controlImplementationSteps,
   controlOversightEligible,
   prioritizeReviewDependencies,
   reportingRouteSetItem,
@@ -20,6 +21,7 @@ import {
   assessEvidenceMap,
   assessProgramReadiness,
   assessWorkflow,
+  createAppState,
   createResource,
   createResources,
   loadWorkspace,
@@ -28,6 +30,168 @@ import {
 } from "../src/index.js";
 import { executeCli, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { baselineRecordFiles } from "../../create-filegrc/src/defaults.js";
+
+test("every starter Control gets a short implementation action", () => {
+  const starterControls = baselineRecordFiles("2026-01-01")
+    .map(({ record }) => record).filter(({ type }) => type === "control");
+  assert.ok(starterControls.length > 20);
+  for (const control of starterControls) {
+    const steps = controlImplementationSteps(control, {
+      implemented: false,
+      owner: true,
+      scope: false,
+      operationPattern: true,
+      procedure: false,
+      evidenceSource: false,
+      implementationDate: false
+    });
+    assert.equal(steps.length, 3, control.id);
+    assert.notEqual(steps[0], control.activity, control.id);
+    assert.ok(steps[0].length < 190, control.id);
+    assert.doesNotMatch(steps.join(" "), /applicability|Obligation|Step 4|audit packet/i, control.id);
+    assert.doesNotMatch(steps[0], /choose where staff.*report|decide where risks.*recorded|choose data classes|request and approval path/i, control.id);
+    if (["control-access-authorization", "control-access-review-offboarding"].includes(control.id)) {
+      assert.match(steps[0], /identity system/);
+      assert.doesNotMatch(steps[0], /choose who|assign access reviewers|request path|Access grants|Policy Events/);
+    }
+  }
+});
+
+test("implemented Controls still give actions for remaining readiness checks", () => {
+  const control = { id: "control-example", title: "Example Control" };
+  const checks = {
+    applicability: true,
+    implemented: true,
+    owner: true,
+    procedure: true,
+    scope: true,
+    operationPattern: true,
+    evidenceSource: true,
+    evidenceSourceReady: true,
+    implementationDate: true,
+    procedureRevision: true,
+    procedureEffective: true,
+    policyMapping: true,
+    criteriaMapping: true,
+    workQueue: true
+  };
+  assert.deepEqual(controlImplementationSteps(control, checks), []);
+  const steps = controlImplementationSteps(control, {
+    ...checks,
+    applicability: false,
+    evidenceSourceReady: false,
+    policyMapping: false,
+    criteriaMapping: false,
+    workQueue: false
+  });
+  assert.equal(steps.length, 4);
+  assert.match(steps[0], /link the Policy.*link the criteria/);
+  assert.match(steps[1], /active Component/);
+  assert.match(steps[2], /Enable a linked Obligation/);
+  assert.match(steps[3], /review-applicability --scaffold --type control/);
+});
+
+test("planned Control actions reveal the next prerequisite before implementation", () => {
+  const control = { id: "control-example", title: "Example Control", activity: "Configure the real process." };
+  const checks = {
+    implemented: false,
+    owner: true,
+    scope: true,
+    operationPattern: true,
+    procedure: true,
+    evidenceSource: true,
+    evidenceSourceReady: false,
+    policyMapping: true,
+    criteriaMapping: true,
+    workQueue: false,
+    applicability: false,
+    procedureRevision: false
+  };
+  const setup = controlImplementationSteps(control, checks, {
+    missingSourceFamilies: [{ title: "Identity and Access", sourceKinds: ["identity-access"] }]
+  });
+  assert.match(setup.at(-1), /identity-access.*Enable a linked Obligation/);
+  assert.doesNotMatch(setup.join(" "), /review-applicability|mark this Control Implemented/);
+
+  const applicability = controlImplementationSteps(control, { ...checks, evidenceSourceReady: true, workQueue: true });
+  assert.match(applicability.at(-1), /review-applicability --scaffold --type control/);
+  assert.doesNotMatch(applicability.join(" "), /mark this Control Implemented/);
+
+  const final = controlImplementationSteps(control, { ...checks, evidenceSourceReady: true, workQueue: true, applicability: true });
+  assert.match(final.at(-1), /mark this Control Implemented.*start date.*Procedure revision/);
+});
+
+test("focused Control guidance requires the evidence kind for its source family", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-source-kind-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const input = {
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === control.id ? { ...record, code: "IAM-01" } : record)
+  };
+  const readiness = await assessProgramReadiness(input, { asOf: "2026-09-12" });
+  const item = readiness.stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === `control-${control.id}`);
+  assert.equal(item.checks.evidenceSource, true);
+  assert.equal(item.checks.evidenceSourceReady, false);
+  assert.match(item.nextSteps.join(" "), /Identity and Access \(identity-access\)/);
+});
+
+test("multi-family Control guidance names only the uncovered source family", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-multi-family-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const readiness = await assessProgramReadiness({
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === control.id ? { ...record, code: "HR-01" } : record)
+  }, { asOf: "2026-09-12" });
+  const item = readiness.stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === `control-${control.id}`);
+  assert.equal(item.checks.evidenceSourceReady, false);
+  assert.match(item.nextSteps.join(" "), /Training and Acknowledgements \(training-acknowledgement\)/);
+  assert.doesNotMatch(item.nextSteps.join(" "), /Workforce \(workforce\)/);
+});
+
+test("program path does not select another Program's Audit", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-program-audit-scope-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const audit = loaded.resources.find(({ type }) => type === "audit");
+  await createResource(root, { ...program, id: "program-secondary", title: "Secondary Program" });
+
+  const existingAuditReadiness = await assessAuditPreparation(root, { auditId: audit.id });
+  const expectedAuditAction = existingAuditReadiness.stages.flatMap(({ items }) => items)
+    .find(({ status }) => status === "action");
+  const existingAuditPath = JSON.parse((await execute(process.execPath, [
+    cli, "program-path", "--root", root, "--audit", audit.id, "--json"
+  ])).stdout);
+  assert.equal(existingAuditPath.stages.find(({ id }) => id === "audit").nextActions[0]?.id, expectedAuditAction.id);
+
+  const readiness = await assessAuditPreparation(root, { programId: "program-secondary" });
+  assert.equal(readiness.audit, null);
+  const browserState = await createAppState(root, { programId: "program-secondary" });
+  assert.equal(browserState.selectedProgramId, "program-secondary");
+  assert.equal(browserState.auditPreparations.none.audit, null);
+  const path = JSON.parse((await execute(process.execPath, [
+    cli, "program-path", "--root", root, "--program", "program-secondary", "--json"
+  ])).stdout);
+  assert.equal(path.stages.find(({ id }) => id === "audit").nextActions[0]?.id, "create-audit");
+  await assert.rejects(
+    () => assessAuditPreparation(root, { programId: "program-secondary", auditId: audit.id }),
+    /does not belong to Program "program-secondary"/
+  );
+  await assert.rejects(
+    () => execute(process.execPath, [cli, "program-path", "--root", root, "--program", "program-secondary", "--audit", audit.id]),
+    /does not belong to Program "program-secondary"/
+  );
+});
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
@@ -533,6 +697,65 @@ test("counts owner-recorded Control implementation before revealing final collec
   assert.ok(stage.counts.complete > 0);
 });
 
+test("gives a planned Control plain Step 3 actions in readiness and workflow", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-next-steps-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const control = loaded.resources.find(({ type, id }) => type === "control" && program.controlIds.includes(id));
+  const planned = {
+    ...control,
+    status: "planned",
+    ownerIds: [],
+    systemIds: [],
+    evidenceSourceComponentIds: [],
+    applicabilityReview: undefined,
+    effectiveOn: undefined,
+    procedureRevision: undefined,
+    procedureEffectiveOn: undefined
+  };
+  const input = {
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === control.id ? planned : record)
+  };
+  const readiness = await assessProgramReadiness(input, { asOf: "2026-09-12" });
+  const item = readiness.stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === `control-${control.id}`);
+  assert.equal(item.message, item.nextSteps[0]);
+  assert.equal(item.nextSteps.length, 3);
+  assert.equal(item.nextSteps[0], `Set up this Control: ${control.activity}`);
+  assert.match(item.nextSteps[1], /choose an owner; select the Systems this covers; link the tool or system that can show it happened/);
+  assert.match(item.nextSteps[2], /active Component/);
+  assert.doesNotMatch(item.nextSteps.join(" "), /applicab|Step 4|mark this Control Implemented/i);
+  const workflow = await assessWorkflow(input, { asOf: "2026-09-12", programReadiness: readiness });
+  const finding = workflow.findings.find(({ code }) => code === `program.controls.control-${control.id}`);
+  assert.deepEqual(finding.nextSteps, item.nextSteps);
+
+  await updateResource(root, "control", control.id, { ...planned, ownerIds: control.ownerIds });
+  const persistedItem = (await assessProgramReadiness(root, { asOf: "2026-09-12" }))
+    .stages.find(({ id }) => id === "controls").items.find(({ id }) => id === `control-${control.id}`);
+  const textResult = await execute(process.execPath, [cli, "program-readiness", "--root", root, "--as-of", "2026-09-12"]);
+  const jsonResult = await execute(process.execPath, [cli, "program-readiness", "--root", root, "--as-of", "2026-09-12", "--json"]);
+  const focusedText = await execute(process.execPath, [cli, "program-readiness", "--root", root, "--as-of", "2026-09-12", "--control", control.id]);
+  const focusedJson = await execute(process.execPath, [cli, "program-readiness", "--root", root, "--as-of", "2026-09-12", "--control", control.id, "--json"]);
+  const cliItem = JSON.parse(jsonResult.stdout).stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === `control-${control.id}`);
+  assert.deepEqual(cliItem.nextSteps, persistedItem.nextSteps);
+  assert.deepEqual(JSON.parse(focusedJson.stdout).nextSteps, persistedItem.nextSteps);
+  assert.match(focusedText.stdout, new RegExp(control.code));
+  assert.doesNotMatch(focusedText.stdout, /\nPolicy activation assessments\n/);
+  for (const [index, step] of cliItem.nextSteps.entries()) {
+    assert.ok(textResult.stdout.includes(`  ${index + 1}. ${step}`));
+    assert.ok(focusedText.stdout.includes(`  ${index + 1}. ${step}`));
+  }
+  assert.doesNotMatch(focusedText.stdout, /review-applicability|mark this Control Implemented/);
+  assert.doesNotMatch(focusedText.stdout, /Step 4/);
+  const getResult = await execute(process.execPath, [cli, "get", "control", control.id, "--root", root, "--workflow"]);
+  const getFinding = JSON.parse(getResult.stdout).workflow.findings.find(({ code }) => code === `program.controls.control-${control.id}`);
+  assert.deepEqual(getFinding.nextSteps, persistedItem.nextSteps);
+});
+
 test("requires the starter oversight team to be activated with a separate current chair", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-program-ownership-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -930,6 +1153,10 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(auditReadiness.status, "not-started");
   assert.equal(auditReadiness.stages.find(({ id }) => id === "program").status, "complete");
   assert.equal(auditReadiness.stages.find(({ id }) => id === "engagement").status, "action");
+  const pathWithoutAudit = JSON.parse((await execute(process.execPath, [
+    cli, "program-path", "--root", root, "--as-of", "2026-07-01", "--json"
+  ])).stdout);
+  assert.equal(pathWithoutAudit.stages.find(({ id }) => id === "audit").nextActions[0].id, "create-audit");
 
   const cliResult = await execute(process.execPath, [
     cli,

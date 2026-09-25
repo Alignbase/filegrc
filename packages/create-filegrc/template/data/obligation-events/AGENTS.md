@@ -15,4 +15,4 @@ Complete each action with the requested resource type and proof. Then close the 
 npx filegrc complete-event OBLIGATION_EVENT_ID --completed-on YYYY-MM-DD --expected-revision REVISION
 ```
 
-Read `REVISION` from `npx filegrc get OBLIGATION_EVENT_ID --mutation`. filegrc refuses to close an event with unfinished or unproved actions. Cancel an event only when the triggering event itself was entered in error or did not occur; explain the reason in related records or the commit message.
+Read `REVISION` from `npx filegrc get OBLIGATION_EVENT_ID --mutation`. filegrc refuses to close an event with unfinished or unproved actions. If the triggering event was entered in error or did not occur, get the event with `--mutation`, set its status to `canceled`, and fill `cancellation.canceledByIds`, `cancellation.canceledOn`, and `cancellation.reason` on that event. Cancel its open Action Items with their own cancellation actor, date, and reason, then run `npx filegrc obligations --json` to confirm no tasks remain open for that event.

@@ -78,10 +78,6 @@
     {
       "key": "starter_baseline",
       "source": "starter-profile"
-    },
-    {
-      "key": "audit_preparation_guidance",
-      "source": "starter-profile"
     }
   ]
 }

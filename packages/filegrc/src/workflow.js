@@ -1128,6 +1128,7 @@ function normalizeFinding(code, item, context) {
     severity: findingSeverity(state, context.assessment),
     title: item.title,
     message: item.message,
+    ...(item.nextSteps?.length ? { nextSteps: item.nextSteps } : {}),
     ...(item.resourceId ? { resourceId: item.resourceId } : {}),
     ...(item.createResourceType ? { createResourceType: item.createResourceType } : {}),
     ...(item.sourceResourceIds ? { sourceResourceIds: item.sourceResourceIds } : {}),

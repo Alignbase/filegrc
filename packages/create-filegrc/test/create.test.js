@@ -87,10 +87,10 @@ test("creates a complete generic repository with one dependency", async (context
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
   assert.match(agents, /npx filegrc program-path --next --json/);
-  assert.match(agents, /adds its full set of Action Items to the Work Queue in a single validated write/);
-  assert.match(agents, /`complementary-control\.relatedControlIds` is the source of truth/);
-  assert.match(agents, /The audit record’s `coverage` object stores the dates agreed with the CPA firm/);
-  assert.match(agents, /`subserviceConclusion`/);
+  assert.match(agents, /Use `npx filegrc guide obligation --json` and `data\/AGENTS\.md`/);
+  assert.match(agents, /Program’s `candidateCoverage`/);
+  assert.match(agents, /engagement’s current work/);
+  assert.doesNotMatch(agents, /candidatePeriodStart|candidatePeriodEnd/);
   assert.match(agents, /Do not store plaintext credentials, private keys, tokens, recovery codes, session data/);
   assert.match(agents, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions/);
   assert.match(agents, /Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence\. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject\./);

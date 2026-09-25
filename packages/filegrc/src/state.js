@@ -277,6 +277,7 @@ async function createAppStateUnlocked(input, options) {
     (audits.length ? audits : [null]).map(async (audit) => {
       const preparation = await assessAuditPreparation(loaded, {
         auditId: audit?.id,
+        programId: activeProgram.id,
         asOf,
         generatedAt,
         ...(audit ? {} : { programReadiness })

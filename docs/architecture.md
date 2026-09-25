@@ -319,7 +319,7 @@ Scheduled operating records use `scheduledFor` separately from their actual comp
 
 The renderer adds Audit as the fifth and final lifecycle stage. That stage covers the CPA firm, formal period, FileGRC Evidence, Evidence Artifacts, fieldwork, evidence packet, and report. Criteria remain part of Program scope because management must decide what applies before adopting policies.
 
-The workspace keeps management’s `candidatePeriodStart` and `candidatePeriodEnd`. An audit record keeps the separate CPA-agreed Type 1 date or Type 2 period. The candidate dates let management preserve evidence as soon as collection works, but they do not establish the report period.
+The Program keeps management’s `candidateCoverage`: `{ "kind": "as-of", "on": "YYYY-MM-DD" }` for a Type 1 target or `{ "kind": "range", "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" }` for a Type 2 target. An Audit record keeps the separate CPA-agreed date or period. Candidate coverage does not establish the report period.
 
 ## Audit evidence
 

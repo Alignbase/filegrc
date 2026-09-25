@@ -14,22 +14,22 @@ The renderer, CLI, generated agent instructions, and this reference use the same
 
 ### Step 1. Define Scope
 
-Name the owners, criteria, service, Systems, and providers in scope.
+A reviewed Program scope with owners, criteria, Systems, and material providers.
 
-- **People** (`person`): Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
-- **Appointments** (`appointment`): Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
-- **Teams** (`team`): Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.
-- **Reporting channel sets** (`reporting-route-set`): Prepare the normal and fallback ways people will send each report required by proposed program content, including where each channel goes and the role that keeps it usable. Commit the proposal in Step 1, approve it before cutover, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
-- **Programs** (`program`): Define one management compliance or assurance Program with its goal, bounded Systems, selected Frameworks, Requirement applicability decisions, Controls, owners, risk method, and candidate period.
-- **Frameworks** (`framework`): Confirm the criteria framework and version used for the program.
-- **Requirements** (`requirement`): Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.
-- **Commitments** (`commitment`): Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
-- **Requirement Mappings** (`requirement-mapping`): Use a Requirement Mapping when supplemental policies, contracts, privacy promises, frameworks, or other sources need explicit coverage semantics. Choose the comparison method and relationship, explain the rationale, and bind the review to every mapped source revision.
-- **Systems** (`system`): Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.
-- **Components** (`component`): Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.
-- **Vendors** (`vendor`): Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.
-- **Classifications** (`classification`): Review the starter information-handling categories and ordering against management's actual protection decisions, then use the approved Classifications on inventory and Evidence Artifacts.
-- **Information Types** (`information-type`): Define a stable category of information and its default Classification, then link it from Systems, Components, and Vendors.
+- **People** (`person`): Record the person’s actual job title and current status.
+- **Appointments** (`appointment`): Assign a named authority to one Person with its start date and scope.
+- **Teams** (`team`): Confirm the Team’s members and chair.
+- **Reporting channel sets** (`reporting-route-set`): Replace the reporting-route placeholders with real normal and fallback channels, name the responsible role, and commit the proposal.
+- **Programs** (`program`): Set the Program goal, owners, Systems, Frameworks, criteria decisions, and risk method.
+- **Frameworks** (`framework`): Select the criteria Framework and version used by the Program.
+- **Requirements** (`requirement`): Review whether this criterion applies to the Program and record the decision and rationale.
+- **Commitments** (`commitment`): Record a real customer or service promise and link the Systems and Controls that fulfill it.
+- **Requirement Mappings** (`requirement-mapping`): Compare the supplemental source with the Requirement or Control, record the relationship and rationale, then review the source revisions.
+- **Systems** (`system`): Define the service boundary, exclusions, owners, and information it handles.
+- **Components** (`component`): Record a material service or evidence source and its role in each linked System.
+- **Vendors** (`vendor`): Record each material external provider and the Components it supplies.
+- **Classifications** (`classification`): Confirm the handling categories and apply them to information and evidence.
+- **Information Types** (`information-type`): Name a stable category of information, set its default Classification, and link its uses.
 
 Headless commands:
 
@@ -47,12 +47,12 @@ Headless commands:
 
 ### Step 2. Approve Policies
 
-Review and independently approve Policies, program Documents, Training content, and the Data Retention Schedule.
+Approved Policies, program Documents, Training content, and retention decisions.
 
-- **Policies** (`policy`): Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.
-- **Documents** (`document`): Complete required program Documents in Step 2, assign an owner and separate approver, and bind approval to the intended values and exact Markdown. Implement the linked requirements and activate that approved revision in Step 3. Prepare Audit Documents in Step 5.
-- **Training** (`training`): Review and approve the exact Training content in Step 2, then activate the unchanged revision during Step 3 after its linked Controls and assignment Obligations are ready.
-- **Retention Schedule** (`retention-schedule-item`): Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
+- **Policies** (`policy`): Replace Policy placeholders with actual commitments, then have a separate approver approve the exact Markdown revision.
+- **Documents** (`document`): Complete the Document Markdown and intended values, assign an owner, and have a separate approver approve the exact revision.
+- **Training** (`training`): Complete the content and audience, then have a separate approver approve the exact revision.
+- **Retention Schedule** (`retention-schedule-item`): Set the Information Types, scope, cutoff, period, disposition, and sources for one retention rule.
 
 Headless commands:
 
@@ -68,11 +68,11 @@ Headless commands:
 
 ### Step 3. Implement Controls
 
-Implement Controls, configure their operating schedules and evidence sources, then activate the approved program.
+Implemented Controls with ready evidence sources and enabled work schedules.
 
-- **Controls** (`control`): Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
-- **Complementary controls** (`complementary-control`): Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
-- **Obligations** (`obligation`): Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
+- **Controls** (`control`): Open this Control’s current next steps. Set up the activity, record how it works, and mark it Implemented when it works.
+- **Complementary controls** (`complementary-control`): Record each real customer or carved-out provider dependency, or confirm that the current scope has none.
+- **Obligations** (`obligation`): Confirm the owner, cadence or trigger, deadline, and proof, then enable the rule when its Control is ready.
 
 Headless commands:
 
@@ -91,35 +91,35 @@ Headless commands:
 
 ### Step 4. Operate the Program
 
-Complete scheduled and event work. Keep dated proof.
+Dated operating records and linked proof for work actually performed.
 
 - **Policy Events** (`utility:policy-events`): Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.
 - **Work Queue** (`utility:work-queue`): Complete recurring work, Policy Event tasks, and assigned Action Items within their allowed windows, link the requested dated proof, and resolve overdue items.
 
 Operating record guides:
 
-- **Risk assessments** (`risk-assessment`): Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.
-- **Risks** (`risk`): Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.
-- **Policy Events** (`obligation-event`): When a policy-triggering event occurs, record it here and complete the actions filegrc creates for it.
-- **Data requests** (`data-request`): Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.
-- **Evidence Artifacts** (`evidence`): Create an Evidence Artifact when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source Component, link the Controls and operating records it supports, retain the fixed artifact or reference, and have another person verify it before audit use.
-- **Policy reviews** (`policy-review`): Record scheduled and change-driven reviews of policies and governed documents, including the decision and any follow-up.
-- **Meetings** (`meeting`): Record required oversight meetings, including attendees, decisions, minutes, and follow-up work.
-- **Exceptions** (`exception`): Record and approve any time-limited departure from a policy or control before the departure begins.
-- **Assets** (`asset`): Keep the inventory of important devices, software, media, and records current, including ownership, custody, and status.
-- **Vendor reviews** (`vendor-review`): Document due diligence before relying on a provider, then repeat the review on schedule or after a material change.
-- **Service accounts** (`service-account`): Catalog non-human accounts that need separate tracking, including their owner, purpose, System, privilege, and expiry.
-- **Access grants** (`access-grant`): Record each person’s or service account’s access to a Component, including approval, provisioning, changes, and removal.
-- **Access reviews** (`access-review`): Review access on schedule, record each decision, and assign any access changes that result.
-- **Attestations** (`attestation`): Record each person’s completion or acknowledgement against the exact policy or training revision.
-- **Vulnerability scans** (`vulnerability-scan`): Record each required scan, including its scope, timing, result, and evidence.
-- **Vulnerabilities** (`vulnerability`): Track confirmed weaknesses that need separate remediation, acceptance, or closure.
-- **Penetration tests** (`penetration-test`): Record each penetration test, including its provider, scope, period, result, and evidence.
-- **Incidents** (`incident`): Record qualifying security or privacy events and manage their response and follow-up.
-- **Backup tests** (`backup-test`): Record each restore test, including the Systems tested, result, timing, evidence, and follow-up.
-- **Exercises** (`exercise`): Record each incident or continuity exercise, including its objective, participants, result, and follow-up.
-- **Findings** (`finding`): Create a Finding only for a confirmed gap that needs separate remediation tracking. Keep the report details in the source record’s Markdown, then assign the Finding, set its due date, and verify closure.
-- **Action items** (`action-item`): Create an Action Item only when follow-up needs its own assignee, deadline, and completion proof. Point it to the record that created the work, then work it from Work Queue.
+- **Risk assessments** (`risk-assessment`): Assess the in-scope service, record conclusions, and obtain an independent review.
+- **Risks** (`risk`): Name the threat and impact, assign an owner, rate the risk, and record its response.
+- **Policy Events** (`obligation-event`): Record the actual event date and subject, then complete its linked Work Queue actions.
+- **Data requests** (`data-request`): Record the request scope, decision, response, and supporting evidence.
+- **Evidence Artifacts** (`evidence`): Record a real artifact or approved reference, link its source and supported work, then have another person verify it.
+- **Policy reviews** (`policy-review`): Record the review date, reviewer, decision, and any required follow-up.
+- **Meetings** (`meeting`): Record attendees, decisions, minutes, and assigned follow-up for the meeting.
+- **Exceptions** (`exception`): Record the scope, owner, approval, and expiry before the departure begins.
+- **Assets** (`asset`): Record an important Asset’s owner, custody, location, and status.
+- **Vendor reviews** (`vendor-review`): Review one Vendor’s current risk and evidence, then record the decision and follow-up.
+- **Service accounts** (`service-account`): Record a non-human account’s owner, purpose, System, privilege, and expiry.
+- **Access grants** (`access-grant`): Record the approved privilege, recipient, Component, and provisioning or removal dates.
+- **Access reviews** (`access-review`): Review the current access list, record each decision, and assign the required changes.
+- **Attestations** (`attestation`): Record the person’s dated acknowledgement of the exact active content revision.
+- **Vulnerability scans** (`vulnerability-scan`): Record the scan scope, date, result, and supporting evidence.
+- **Vulnerabilities** (`vulnerability`): Track a confirmed weakness through its owner, response, and closure proof.
+- **Penetration tests** (`penetration-test`): Record the test provider, scope, period, results, evidence, and follow-up.
+- **Incidents** (`incident`): Record the event, response decisions, dates, evidence, and follow-up.
+- **Backup tests** (`backup-test`): Record the restore target, date, result, evidence, and follow-up.
+- **Exercises** (`exercise`): Record the scenario, participants, date, result, and follow-up.
+- **Findings** (`finding`): Record a confirmed gap that needs its own owner, due date, remediation, and verified closure.
+- **Action items** (`action-item`): Assign separate follow-up with an owner, deadline, source record, and completion proof.
 
 Headless commands:
 
@@ -134,20 +134,24 @@ Headless commands:
 
 ### Step 5. Audit
 
-Track the CPA engagement, fieldwork, and evidence packet.
+A CPA engagement record and a reviewable, period-bound evidence packet.
 
-- **Audits** (`audit`): Create this record after engaging the CPA firm, then select the Program and record the agreed scope, criteria, Systems, subservice treatments, and report period. Control Tests and Evidence Artifacts link back with auditId or auditIds.
-- **Audit requests** (`audit-request`): When FileGRC is the approved request tracker, record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
-- **Audit populations** (`audit-population`): Record each complete Type 2 population with its source Component, fixed export, query, count, and reconciliation.
-- **Control tests** (`control-test`): Record a management Control Test only when management performs and reviews one. The CPA firm records its own independent testing separately.
+- **Audits** (`audit`): After engaging the CPA firm, record the agreed type, scope, Systems, criteria, and period.
+- **Audit requests** (`audit-request`): Record the auditor’s request, owner, due date, and approved response.
+- **Audit populations** (`audit-population`): Record the complete Type 2 population, source query, count, fixed export, and reconciliation.
+- **Control tests** (`control-test`): Record a management test only when it was performed and reviewed; link its result and evidence.
+- **Audit Documents** (`document`): Complete each required engagement Document, link it from its Audit, obtain separate approval of the exact Markdown revision, then activate that approved revision for that Audit.
 - **Audit Evidence & Packet** (`utility:audit-packet`): Review FileGRC operating records and Evidence Artifacts for the formal period, complete engagement preparation, and build the indexed audit packet.
 
 Headless commands:
 
 - `npx filegrc guide audit --json`
+- `npx filegrc guide document --json`
+- `npx filegrc list document --json`
 - `npx filegrc scaffold audit --title "YEAR SOC 2 TYPE"`
 - `npx filegrc create AUDIT-MUTATION.json --json`
 - `npx filegrc prepare-audit AUDIT_ID --json`
+- `npx filegrc activate-documents --scaffold --audit AUDIT_ID`
 - `npx filegrc audit-readiness AUDIT_ID --json`
 - `npx filegrc evidence-packet --audit AUDIT_ID --preview --json`
 
@@ -724,7 +728,7 @@ Authoritative systems of record:
 
 Published criteria sets and versions used to define the program and audit scope.
 
-Instructions: Confirm the criteria framework and version used for the program.
+Instructions: Select the criteria Framework and version used by the Program.
 
 Policy basis: The CPA examination uses the selected Framework. filegrc’s starter references provide orientation but do not replace the publisher’s official criteria.
 
@@ -751,7 +755,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Authoritative catalog criteria selected and tailored by Program-scoped applicability decisions.
 
-Instructions: Keep the published criterion as catalog content. Record management applicability and rationale on the selected Program.
+Instructions: Review whether this criterion applies to the Program and record the decision and rationale.
 
 Policy basis: The selected Framework defines the Requirements. Controls show how management addresses each applicable criterion; the publisher’s official text remains authoritative.
 
@@ -778,7 +782,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Customer promises, service requirements, and approved business objectives beyond the baseline Framework and Policies. Link them to the Systems and Controls that fulfill them.
 
-Instructions: Record supplemental customer promises and service requirements that shape the scope or control design. The Commitment’s systemIds and controlIds are authoritative for what fulfills it.
+Instructions: Record a real customer or service promise and link the Systems and Controls that fulfill it.
 
 Policy basis: Contracts, service descriptions, and approved management decisions can create commitments that the system description and control design must address.
 
@@ -817,7 +821,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Actions a customer or carved-out provider must perform for a linked Control to work as described. A Complementary Control record is not required for SOC 2 when no external dependency applies.
 
-Instructions: Review whether any in-scope Control depends on a customer or carved-out provider action. Record each real dependency, or confirm that the current scope has none.
+Instructions: Record each real customer or carved-out provider dependency, or confirm that the current scope has none.
 
 Policy basis: The system description must explain relevant customer and subservice-organization responsibilities so readers understand where management’s Controls depend on others.
 
@@ -855,7 +859,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Management's actual Control implementation, mapped to Requirements, bounded Systems, operating Components, and authoritative evidence-source Components.
 
-Instructions: Finish each applicable starter Control with the procedure people follow, its owner, bounded System scope, operating Components, authoritative evidence-source Components, governing Policy and Requirement mappings, and implementation date. Put calendar and event schedules in Obligations.
+Instructions: Open this Control’s current next steps. Set up the activity, record how it works, and mark it Implemented when it works.
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, Obligations, and Evidence.
 
@@ -901,7 +905,7 @@ Markdown companions:
 
 A test of one Control’s design or operation for a date or period, including method, population, samples, Evidence, result, and exceptions. Management-run Control Tests are not required for SOC 2 because the CPA firm tests independently.
 
-Instructions: Record a management Control Test only when management performs and reviews one. The CPA firm records its own independent testing separately.
+Instructions: Record a management test only when it was performed and reviewed; link its result and evidence.
 
 Policy basis: The information security policy requires management to monitor Controls. The CPA firm performs its own independent testing for the SOC 2 examination.
 
@@ -981,7 +985,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 A reviewed assertion about how one set of Requirements, Commitments, or Controls relates to another without copying the authoritative source content.
 
-Instructions: Use a Requirement Mapping when supplemental policies, contracts, privacy promises, frameworks, or other sources need explicit coverage semantics. Choose the comparison method and relationship, explain the rationale, and bind the review to every mapped source revision.
+Instructions: Compare the supplemental source with the Requirement or Control, record the relationship and rationale, then review the source revisions.
 
 Policy basis: Supplemental policies, contracts, privacy promises, and frameworks need explicit coverage semantics so a link is not mistaken for complete coverage.
 
@@ -1016,7 +1020,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 A management-defined compliance or assurance program with its own goal, scope, criteria, Controls, owners, risk method, and candidate operating period.
 
-Instructions: Define one management compliance or assurance Program with its goal, bounded Systems, selected Frameworks, Requirement applicability decisions, Controls, owners, risk method, and candidate period.
+Instructions: Set the Program goal, owners, Systems, Frameworks, criteria decisions, and risk method.
 
 Policy basis: Management defines the assurance objective, bounded Systems, applicable criteria, Controls, owners, and risk method for each program.
 
@@ -1052,7 +1056,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 One person’s dated appointment to a named organizational or program responsibility, such as CISO, DPO, Policy Owner, or team chair. Use the Person job title for the person’s ordinary organizational position.
 
-Instructions: Record one person’s dated appointment to a named organizational or program responsibility. Scope it to the workspace, a team, or the records governed by that appointment.
+Instructions: Assign a named authority to one Person with its start date and scope.
 
 Policy basis: The information security policy assigns named authority and accountability, while workforce procedures require responsibility changes and departures to be reviewed and transferred.
 
@@ -1082,7 +1086,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Groups that share program responsibility, such as security oversight or incident response. Team records are not required for SOC 2 when named People hold the responsibilities directly.
 
-Instructions: Review the starter Security and Risk Oversight team, including its members and chair. Membership and chairs are authoritative on the Team record.
+Instructions: Confirm the Team’s members and chair.
 
 Policy basis: The information security policy establishes security and risk oversight with independent review, while the continuity plan assigns response and recovery roles. Reviewers may be internal or external.
 
@@ -1109,7 +1113,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Governed plans, schedules, charters, procedures, standards, reports, and templates that are not Policies or another filegrc record type. A general Document catalog is not required for SOC 2. Required program Documents are approved before implementation and activated only after their requirements are implemented. Audit Documents stay with the engagement in Step 5.
 
-Instructions: Complete required program Documents in Step 2, assign an owner and separate approver, and bind approval to the intended values and exact Markdown. Implement the linked requirements and activate that approved revision in Step 3. Prepare Audit Documents in Step 5.
+Instructions: Complete the Document Markdown and intended values, assign an owner, and have a separate approver approve the exact revision.
 
 Policy basis: Policies rely on governed documents for detailed plans, schedules, procedures, charters, and reports. Approval accepts the intended values and exact content. Activation records that the linked requirements were implemented and the approved Document was put into use.
 
@@ -1164,7 +1168,7 @@ Markdown companions:
 
 Management-approved requirements for the program. Approval accepts the requirements; activation makes them effective. Store the Policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.
 
-Instructions: Tailor each Policy to match what the company is committing to. Clear placeholders, assign an owner and separate approver, then bind approval to the reviewed content. Approval does not prove implementation. Activate the Policy during the Step 3 cutover after reviewing its implementation gaps.
+Instructions: Replace Policy placeholders with actual commitments, then have a separate approver approve the exact Markdown revision.
 
 Policy basis: A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
 
@@ -1205,7 +1209,7 @@ Markdown companions:
 
 The result of a scheduled or change-driven review of Policies or governed Documents, including reviewers, decision, evidence, and follow-up. Edit the source record separately when changes are approved.
 
-Instructions: Record scheduled and change-driven reviews of policies and governed documents, including the decision and any follow-up.
+Instructions: Record the review date, reviewer, decision, and any required follow-up.
 
 Policy basis: The Information Security Policy and Security Incident and Recovery Plan require periodic review and another review after specified material changes.
 
@@ -1242,7 +1246,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One person’s acknowledgement, training completion, certification, or assigned-work confirmation. Bind it to the exact content revision and signed Evidence when required.
 
-Instructions: Record each person’s completion or acknowledgement against the exact policy or training revision.
+Instructions: Record the person’s dated acknowledgement of the exact active content revision.
 
 Policy basis: The information security policy requires people to complete assigned training and acknowledge applicable responsibilities.
 
@@ -1284,7 +1288,7 @@ At least one of `evidenceIds` is required when `status` is `completed` and `atte
 
 One governance meeting, including its chair, attendees, agenda, minutes, decisions, raised issues, Evidence, and assigned follow-up.
 
-Instructions: Record required oversight meetings, including attendees, decisions, minutes, and follow-up work.
+Instructions: Record attendees, decisions, minutes, and assigned follow-up for the meeting.
 
 Policy basis: The information security policy requires recorded security and risk oversight. The Security Incident and Recovery Plan requires management review of exercises and unresolved risks.
 
@@ -1320,7 +1324,7 @@ At least one of `attendeeIds`, `externalAttendees` is required when `status` is 
 
 Reusable, governed training content, including its audience, passing criteria, and linked Policies and Controls. Approve the exact content in Step 2, activate it during Step 3 implementation, define assignment schedules in Obligations, and record individual completions in Attestations.
 
-Instructions: Review and approve the exact Training content in Step 2, then activate the unchanged revision during Step 3 after its linked Controls and assignment Obligations are ready.
+Instructions: Complete the content and audience, then have a separate approver approve the exact revision.
 
 Policy basis: The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.
 
@@ -1367,7 +1371,7 @@ Markdown companions:
 
 One privacy, contractual, or other data request tracked by opaque reference, with scope, due date, decision, Evidence, and completion. Data Request tracking is not required for a SOC 2 Security-only report.
 
-Instructions: Record privacy or contractual requests when they apply to the audit scope or the organization’s commitments.
+Instructions: Record the request scope, decision, response, and supporting evidence.
 
 Policy basis: The information security policy requires applicable requests to reach a responsible owner, meet the governing deadline, and keep erasable personal data out of immutable Git history.
 
@@ -1404,7 +1408,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One owner-completed proposal that states which Information Types and operational scope it covers, when retention starts, how long information is kept, and its proposed disposition. It becomes authoritative through the single whole-schedule approval.
 
-Instructions: Use one structured row for each reviewed retention rule. Name its Information Types, scope, cutoff, period, disposition, sources, owner, and approval. Keep unknown organization values planned for management review.
+Instructions: Set the Information Types, scope, cutoff, period, disposition, and sources for one retention rule.
 
 Policy basis: Management must translate legal, contractual, privacy, security, and business needs into explicit retention and disposition instructions without treating starter periods as organization facts.
 
@@ -1475,7 +1479,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 The normal and fallback ways people send a report for one purpose, such as an email address and a hotline for security concerns. The set records where each channel leads, who keeps it usable, and when the approved pair applies.
 
-Instructions: Prepare the normal and fallback ways people will send each report required by proposed program content, including where each channel goes and the role that keeps it usable. Commit the proposal in Step 1, approve it before cutover, use separate approval and ongoing authority Appointments, and create a successor when either channel changes.
+Instructions: Replace the reporting-route placeholders with real normal and fallback channels, name the responsible role, and commit the proposal.
 
 Policy basis: A reporting channel is an email address, phone number, web form, in-person contact, or other destination people use to raise a concern. Policies and other approved decisions say when channels are required; this record stores the current contact details so governed text does not copy them.
 
@@ -1511,7 +1515,7 @@ Markdown companions:
 
 An approved, time-bound departure from a Policy or Control. Record its scope, reason, risk, compensating Controls, owner, approval, and expiry. An Exception record is not required for SOC 2 unless a departure is approved.
 
-Instructions: Record and approve any time-limited departure from a policy or control before the departure begins.
+Instructions: Record the scope, owner, approval, and expiry before the departure begins.
 
 Policy basis: The information security policy allows departures only with a business reason, assessed risk, compensating safeguards, approval, and an expiry or review date.
 
@@ -1543,7 +1547,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One identified threat or business impact that needs treatment or ongoing tracking. Record its owner, ratings, response, affected scope, Controls, acceptance, and follow-up.
 
-Instructions: Record each risk identified by an assessment or operating activity. Assign an owner, rate it, document the chosen response, and link the Controls that treat it from the Risk record.
+Instructions: Name the threat and impact, assign an owner, rate the risk, and record its response.
 
 Policy basis: The information security policy requires identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.
 
@@ -1581,7 +1585,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One approved evaluation of a defined scope using the program’s risk method. It records participants, Systems, Vendors, conclusions, Evidence, and the Risks created or reassessed.
 
-Instructions: Complete and approve an assessment of the risks to the in-scope service, systems, vendors, and commitments.
+Instructions: Assess the in-scope service, record conclusions, and obtain an independent review.
 
 Policy basis: The information security policy requires periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.
 
@@ -1630,7 +1634,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 People who own, approve, review, or perform program work, or receive access and training. Record each person’s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.
 
-Instructions: Record each person’s actual organizational job title. Keep named program authority, such as CISO, DPO, Policy Owner, or team chair, in dated Appointment records.
+Instructions: Record the person’s actual job title and current status.
 
 Policy basis: The information security policy assigns work to named people and requires onboarding, training, role-change, and offboarding records.
 
@@ -1662,7 +1666,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Non-human identities that need separate tracking. Record the account’s purpose, owner, Systems, authentication, privilege, review, and expiry here. A separate register is not required for SOC 2.
 
-Instructions: Catalog non-human accounts that need separate tracking, including their owner, purpose, System, privilege, and expiry.
+Instructions: Record a non-human account’s owner, purpose, System, privilege, and expiry.
 
 Policy basis: The information security policy requires important human and non-human identities to have an owner, protection, periodic review, and prompt removal when no longer needed.
 
@@ -1696,7 +1700,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 One Person’s or Service Account’s access to one System, including business need, privilege, request, approval, provisioning, expiry, removal, ticket, and Evidence.
 
-Instructions: Record each person’s or service account’s access to a Component, including approval, provisioning, changes, and removal.
+Instructions: Record the approved privilege, recipient, Component, and provisioning or removal dates.
 
 Policy basis: The information security policy requires unique identity, documented business need, least privilege, approval, authorized provisioning, and prompt removal.
 
@@ -1733,7 +1737,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 One review of a defined access population for a date or period, including Systems, reviewers, Access Grant decisions, exceptions, approval, Evidence, and source revision.
 
-Instructions: Review access on schedule, record each decision, and assign any access changes that result.
+Instructions: Review the current access list, record each decision, and assign the required changes.
 
 Policy basis: The information security policy requires System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.
 
@@ -1776,7 +1780,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 The complete bounded system being governed or examined, including its services, boundary, information, Components, Controls, dependencies, and any applicable continuity objectives.
 
-Instructions: Start with the complete bounded System management governs or the auditor will examine. Record its purpose, services, boundary, exclusions, Information Types, owners, and any applicable continuity objectives.
+Instructions: Define the service boundary, exclusions, owners, and information it handles.
 
 Policy basis: A SOC 2 program starts with the bounded System and the service commitments and system requirements the company has chosen to meet.
 
@@ -1813,7 +1817,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 Important devices, media, software, records, and other items tracked through acquisition, custody, use, return, and disposal. Assets support controls but do not define the service boundary.
 
-Instructions: Keep the inventory of important devices, software, media, and records current, including ownership, custody, and status.
+Instructions: Record an important Asset’s owner, custody, location, and status.
 
 Policy basis: The information security policy requires important assets to have owners and custodians, protection based on classification, and secure return or disposal.
 
@@ -1848,7 +1852,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 External organizations and commercial relationships, including contracts, due diligence, risk reviews, monitoring, assurance reports, dates, and general information-access facts.
 
-Instructions: Catalog material external provider relationships. Link a supplied Component when it meets the Component inclusion rules, but do not mirror every Vendor into a Component.
+Instructions: Record each material external provider and the Components it supplies.
 
 Policy basis: The information security policy requires an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.
 
@@ -1881,7 +1885,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 One due-diligence or periodic review of a Vendor, covering the service, data, access, assurance, recovery, incidents, contracts, Risks, Evidence, and follow-up.
 
-Instructions: Document due diligence before relying on a provider, then repeat the review on schedule or after a material change.
+Instructions: Review one Vendor’s current risk and evidence, then record the decision and follow-up.
 
 Policy basis: The information security policy requires review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.
 
@@ -1917,7 +1921,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 A controlled information-handling category used consistently across inventory and Evidence Artifacts.
 
-Instructions: Review the starter information-handling categories and ordering against management's actual protection decisions, then use the approved Classifications on inventory and Evidence Artifacts.
+Instructions: Confirm the handling categories and apply them to information and evidence.
 
 Policy basis: Management defines handling categories so information and retained evidence receive consistent protection.
 
@@ -1939,7 +1943,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 A stable category of information processed by Systems, Components, Vendors, and risk workflows.
 
-Instructions: Define a stable category of information and its default Classification, then link it from Systems, Components, and Vendors.
+Instructions: Name a stable category of information, set its default Classification, and link its uses.
 
 Policy basis: Information categories connect system boundaries and operational processing to approved handling rules.
 
@@ -1961,7 +1965,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 A logical operational or technical building block that materially delivers a System, supports a Control, produces authoritative Evidence, or supports relevant operations.
 
-Instructions: Add a Component only when it materially delivers a selected System, supports a Control, produces authoritative Evidence, or supports relevant operations. Give every System use a role and rationale.
+Instructions: Record a material service or evidence source and its role in each linked System.
 
 Policy basis: System boundaries and Control implementations need explicit operational building blocks and evidence sources.
 
@@ -2005,7 +2009,7 @@ Markdown companions:
 
 One confirmed weakness that needs remediation, an approved Exception, or verified closure. A separate Vulnerability register is not required for SOC 2 when the scanner or ticket system retains complete, usable records.
 
-Instructions: Track confirmed weaknesses that need separate remediation, acceptance, or closure.
+Instructions: Track a confirmed weakness through its owner, response, and closure proof.
 
 Policy basis: The information security policy requires confirmed Vulnerabilities to receive owned, risk-based remediation or an approved Exception with compensating Controls.
 
@@ -2049,7 +2053,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One vulnerability scan activity, including tool, scope, Systems, operator, time, result, resulting Vulnerabilities, Evidence, failure reason, and review.
 
-Instructions: Record each required scan, including its scope, timing, result, and evidence.
+Instructions: Record the scan scope, date, result, and supporting evidence.
 
 Policy basis: The information security policy requires management to monitor for weaknesses and scan internet-facing and production Systems.
 
@@ -2090,7 +2094,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One suspected or confirmed security or privacy event, with severity, timeline, scope, owner, affected Systems and Vendors, Evidence, Findings, and corrective work. An Incident record is not required for SOC 2 when no incident occurred.
 
-Instructions: Record qualifying security or privacy events and manage their response and follow-up.
+Instructions: Record the event, response decisions, dates, evidence, and follow-up.
 
 Policy basis: The information security policy requires prompt reporting, investigation, containment, recovery, evidence preservation, and review of notification duties.
 
@@ -2131,7 +2135,7 @@ Markdown companions:
 
 One internal or external penetration test, including provider, scope, period, method, result, affected Systems, Evidence, Vulnerabilities, Findings, and review.
 
-Instructions: Record each penetration test, including its provider, scope, period, result, and evidence.
+Instructions: Record the test provider, scope, period, results, evidence, and follow-up.
 
 Policy basis: The information security policy requires management to decide whether penetration testing is needed from exposure, material changes, customer commitments, technical capability, and risk, then track confirmed findings when testing is performed.
 
@@ -2177,7 +2181,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One continuity, recovery, incident, or privacy simulation, including scenario, objective, participants, scope, result, Evidence, Findings, and follow-up.
 
-Instructions: Record each incident or continuity exercise, including its objective, participants, result, and follow-up.
+Instructions: Record the scenario, participants, date, result, and follow-up.
 
 Policy basis: The information security policy requires incident-response testing. The Security Incident and Recovery Plan requires exercises and another review after material change or disruption.
 
@@ -2211,7 +2215,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One restore or recovery test, including the Systems and operators involved, timing, recovery result, reviewer, Evidence, Findings, and follow-up.
 
-Instructions: Record each restore test, including the Systems tested, result, timing, evidence, and follow-up.
+Instructions: Record the restore target, date, result, evidence, and follow-up.
 
 Policy basis: The information security policy and Security Incident and Recovery Plan require protected backups, monitored failures, and tested proof that important data can be restored and used.
 
@@ -2251,7 +2255,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 A retained export, report, screenshot, signed record, fixed file, or approved external reference. FileGRC operating records may support an audit directly without wrappers.
 
-Instructions: Create an Evidence Artifact when a real export, report, screenshot, signed file, or approved external reference exists. Select its authoritative source Component, link the Controls and operating records it supports, retain the fixed artifact or reference, and have another person verify it before audit use.
+Instructions: Record a real artifact or approved reference, link its source and supported work, then have another person verify it.
 
 Policy basis: The information security policy requires retained proof from authoritative Components when FileGRC operating records do not contain the full result.
 
@@ -2399,7 +2403,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 Reusable schedules for recurring or event-driven work. Obligations feed the Work Queue; completion records and linked Evidence prove that the work occurred. Obligations are not required for SOC 2.
 
-Instructions: Review the recurring work proposed by effective policies. Confirm who owns it, when it is due, and what proof completion requires.
+Instructions: Confirm the owner, cadence or trigger, deadline, and proof, then enable the rule when its Control is ready.
 
 Policy basis: FileGRC uses Obligations to turn approved schedules into owned, dated work linked to scope and required proof. An enabled Obligation remains dormant until every governing Policy and required program Document is active and effective.
 
@@ -2439,7 +2443,7 @@ Markdown companions:
 
 One occurrence of an event such as hiring, departure, material change, or incident. It connects the event to the checklist generated from applicable Obligations. Policy Events are not required for SOC 2.
 
-Instructions: When a policy-triggering event occurs, record it here and complete the actions filegrc creates for it.
+Instructions: Record the actual event date and subject, then complete its linked Work Queue actions.
 
 Policy basis: Policies require specific, time-bound actions after certain events. A Policy Event preserves the trigger, applicable checklist, owners, and completion state.
 
@@ -2466,7 +2470,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 A confirmed gap that needs tracking after a control test, review, risk assessment, security test, incident review, management meeting, or audit. Keep observations and report details in the source record’s Markdown. Create a Finding only when the gap needs its own owner, due date, remediation state, or verified closure. A Finding record is not required for SOC 2 when no confirmed gap needs tracking.
 
-Instructions: Create a Finding only for a confirmed gap that needs separate remediation tracking. Keep the report details in the source record’s Markdown, then assign the Finding, set its due date, and verify closure.
+Instructions: Record a confirmed gap that needs its own owner, due date, remediation, and verified closure.
 
 Policy basis: The information security policy requires confirmed issues from monitoring, audits, incidents, scans, and reviews to remain tracked until corrective action is verified.
 
@@ -2501,7 +2505,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One owned, dated follow-up task linked to the Finding, Policy Event, Risk, Incident, review, test, meeting, Exception, or request that created it. Action Items appear in Work Queue. Use one only when work needs separate assignment, timing, and completion proof. A separate Action Item tracker is not required for SOC 2.
 
-Instructions: Create an Action Item only when follow-up needs its own assignee, deadline, and completion proof. Point it to the record that created the work, then work it from Work Queue.
+Instructions: Assign separate follow-up with an owner, deadline, source record, and completion proof.
 
 Policy basis: Policies require material issues and review decisions to produce owned, dated corrective work with proof of completion.
 
@@ -2603,7 +2607,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One real SOC 2 engagement with a CPA firm, including the auditor-agreed scope and period, requests, fieldwork, Findings, opinion, and final report. Management’s candidate dates remain on the Workspace.
 
-Instructions: Create this record after engaging the CPA firm, then select the Program and record the agreed scope, criteria, Systems, subservice treatments, and report period. Control Tests and Evidence Artifacts link back with auditId or auditIds.
+Instructions: After engaging the CPA firm, record the agreed type, scope, Systems, criteria, and period.
 
 Policy basis: A CPA firm independently examines the scoped service against the selected Framework. Management supplies the system description, Controls, operating records, and Evidence.
 
@@ -2663,7 +2667,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 One complete set of Control-relevant events or items for a Type 2 period, with its source Component, exact query, count, reconciliation, and fixed export, including zero-event populations.
 
-Instructions: Record each complete Type 2 population with its source Component, fixed export, query, count, and reconciliation.
+Instructions: Record the complete Type 2 population, source query, count, fixed export, and reconciliation.
 
 Policy basis: The CPA firm needs complete and accurate populations to select samples and test Controls. The linked population-export Evidence preserves the exact source set management supplied.
 
@@ -2694,7 +2698,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 One auditor request or prepared-by-client item, with its Audit, owner, due date, approved response, Requirements, Controls, Evidence, and follow-up. A separate Audit Request tracker is not required for SOC 2 when the CPA firm’s portal is authoritative.
 
-Instructions: When FileGRC is the approved request tracker, record each request from the audit team, assign an owner and due date, and link the approved response and evidence.
+Instructions: Record the auditor’s request, owner, due date, and approved response.
 
 Policy basis: Audit Requests turn fieldwork into owned, dated deliverables and preserve the exact response and Evidence supplied to the CPA firm.
 
