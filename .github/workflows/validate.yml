@@ -27,7 +27,7 @@ jobs:
           package-manager-cache: false
 
       - name: Update npm
-        run: npm install --global npm@11.19.1
+        run: npm install --global npm@11.20.0
 
       - name: Install from lockfile
         run: npm ci
