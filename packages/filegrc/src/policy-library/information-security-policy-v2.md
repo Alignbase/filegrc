@@ -120,6 +120,8 @@ Removable media containing Confidential or Restricted data requires owner approv
 
 The Data Retention Schedule defines the approved period and disposal method for important in-scope record classes. Supporting standards, procedures, and system records document implementation. Disposal must be suitable for the media and classification, with dated proof when the Control requires it.
 
+Owners document and test how approved deletion requests and retention cutoffs apply to primary data, derived copies, local copies, Vendor-held data, and backups. Procedures identify copies that cannot be removed immediately, their access restrictions and expiry, and any legal hold or contractual limit. Owners verify completion against the approved scope before representing data as deleted.
+
 ## Cryptography, Encryption, Key, and Secrets Management Policy
 
 ### Encryption requirements
@@ -164,6 +166,8 @@ Passwords and other authenticators must meet settings approved for the System's 
 - **Customer and external-user access:** MFA is required when an approved Control, customer commitment, or risk decision requires it.
 - **Exceptions:** Where required MFA is unavailable, management must approve a time-bound Exception with a risk assessment, compensating Controls, an accountable owner, and a review or expiration date.
 
+Owners document customer authentication and workforce authentication separately for each relevant System. They record whether either path uses single sign-on, where MFA is enforced, and how access is revoked. Remote-access methods are selected and approved for the System and risk; a VPN is required only when an approved Control, commitment, or risk decision calls for one.
+
 ## Endpoint, Mobile Device, BYOD, and Malware Protection Policy
 
 ### Company devices and platform protection
@@ -193,6 +197,8 @@ Owners protect important equipment and media against theft, tampering, damage, a
 Owners restrict inbound, outbound, and internal network paths and management interfaces to approved business needs. They use approved encrypted administrative protocols, disable unnecessary services and ports, protect remote production access, and review material access rules on the approved schedule.
 
 Production, development, test, and general-user environments must be separated to the extent needed for their data, exposure, privileges, and change risk. Connections between environments require approved paths and safeguards. Wireless and other local networks used for company work require authentication and encryption appropriate to current risk and technical capability.
+
+When a service processes data for multiple customers, owners define and enforce customer-data boundaries appropriate to the architecture. They verify that access paths and material changes preserve those boundaries, and record the test method, result, and follow-up.
 
 ## Configuration Management and System Maintenance Policy
 
@@ -229,6 +235,8 @@ Penetration testing is performed when an approved Control, customer commitment, 
 Important Systems record and protect the security and operational events needed to investigate misuse, operate the service, and meet approved commitments. Depending on risk, events may include authentication activity, privileged actions, identity and access changes, production changes, access to Restricted data, security alerts, and Control failures.
 
 Logs use synchronized time, restrict alteration and access, and avoid unnecessary secrets or personal data. Each System's retention period belongs in the approved Data Retention Schedule. Owners document risk-based alerts, review paths, thresholds, and response ownership in approved standards, procedures, and schedules.
+
+When an incident may require investigation, responders preserve relevant logs and their context under the incident process, with controlled access and a documented retention or hold decision.
 
 ### Monitoring and alert testing
 

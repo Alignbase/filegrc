@@ -146,6 +146,7 @@ const DOCUMENT_CONTENT_UPDATES = [
   }
 ];
 const PRIOR_STARTER_POLICY_REVISIONS = new Set([
+  "b440eb17797624c1b456f778b12a955c871de308349e565b5d69ab6a25703673",
   "b0f9b988a8bd231fe70ce71b6a732970e709b7af7826c1b55f1532f511b6e511",
   "e87961c6a665d73e9d3cce96ab978df87579668e72ea236248680db1f69a5fa1",
   "2b50c75f4f138eebc7154a6b6e0e50b843f016c228632f7c71239ec27c18cbbf",
@@ -157,6 +158,16 @@ const PRIOR_STARTER_POLICY_REVISIONS = new Set([
 ]);
 
 const CONTROL_UPDATES = [
+  {
+    id: "control-access-review-offboarding",
+    prior: [{
+      activity: "Review access populations, record decisions, and remove dormant, expired, or unneeded access."
+    }],
+    next: {
+      activity: "Review complete access populations, including workers and third parties with customer-data access, record decisions, and remove dormant, expired, or unneeded access."
+    },
+    summary: "Prompt a complete customer-data access population without changing the approved review cadence."
+  },
   {
     id: "control-policy-management",
     prior: [{
@@ -283,15 +294,21 @@ const CONTROL_UPDATES = [
   },
   {
     id: "control-network-security",
-    prior: [{
-      statement: "The organization restricts network paths, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually.",
-      activity: "Manage boundaries, firewall rules, wireless safeguards, and remote production access."
-    }],
+    prior: [
+      {
+        statement: "The organization restricts network paths, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually.",
+        activity: "Manage boundaries, firewall rules, wireless safeguards, and remote production access."
+      },
+      {
+        statement: "The organization restricts network paths, separates production and nonproduction environments according to data and risk, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually.",
+        activity: "Manage boundaries, environment connections, firewall rules, wireless safeguards, and remote production access."
+      }
+    ],
     next: {
       statement: "The organization restricts network paths, separates production and nonproduction environments according to data and risk, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually.",
-      activity: "Manage boundaries, environment connections, firewall rules, wireless safeguards, and remote production access."
+      activity: "Document and verify customer and environment boundaries, approved network rules and deviations by source, wireless safeguards, and remote production access."
     },
-    summary: "Add risk-based production and nonproduction environment separation."
+    summary: "Prompt evidence for customer and environment boundaries and network-rule coverage."
   },
   {
     id: "control-change-management",
@@ -340,23 +357,32 @@ const CONTROL_UPDATES = [
       {
         activity: "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the risk-based schedule recorded in an Obligation when periodic work is needed.",
         requirementIds: ["requirement-soc2-cc6-6", "requirement-soc2-cc6-8", "requirement-soc2-cc7-1"]
+      },
+      {
+        activity: "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the approved risk-based schedule when periodic work is needed.",
+        requirementIds: ["requirement-soc2-cc6-6", "requirement-soc2-cc6-8", "requirement-soc2-cc7-1"]
       }
     ],
     next: {
-      activity: "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the approved risk-based schedule when periodic work is needed.",
+      activity: "Document protection coverage and approved deviations by device or platform class. Use continuous platform protection where supported and verify configuration, updates, and compliance on the approved risk-based schedule when periodic work is needed.",
       requirementIds: ["requirement-soc2-cc6-6", "requirement-soc2-cc6-8", "requirement-soc2-cc7-1"]
     },
-    summary: "Map endpoint malware protection to CC6.8 and keep implementation scheduling out of the Control description."
+    summary: "Prompt platform protection coverage, deviations, and verification without mandating one product."
   },
   {
     id: "control-vulnerability-management",
-    prior: [{
-      activity: "Choose scan coverage and cadence. Review the starter remediation targets of Critical 7 days, High 14 days, Medium 30 days, and Low 90 days, then record the approved targets or time-bound Exceptions."
-    }],
+    prior: [
+      {
+        activity: "Choose scan coverage and cadence. Review the starter remediation targets of Critical 7 days, High 14 days, Medium 30 days, and Low 90 days, then record the approved targets or time-bound Exceptions."
+      },
+      {
+        activity: "Choose scan coverage and cadence, define approved risk-based remediation targets, and document time-bound Exceptions when a target cannot be met."
+      }
+    ],
     next: {
-      activity: "Choose scan coverage and cadence, define approved risk-based remediation targets, and document time-bound Exceptions when a target cannot be met."
+      activity: "Define scan scope and cadence, severity criteria, risk-based remediation and patch targets, and time-bound Exceptions when a target cannot be met."
     },
-    summary: "Keep starter-selection instructions and unapproved remediation targets out of the Control description."
+    summary: "Prompt explicit scan scope, severity criteria, and approved remediation and patch targets."
   },
   {
     id: "control-logging-monitoring",
@@ -403,6 +429,16 @@ const CONTROL_UPDATES = [
       activity: "Assess service, data, access, assurance, recovery, incidents, dependencies, supplied Components, and applicable contract safeguards before access or material reliance."
     },
     summary: "Name the contract outcomes considered when a Vendor handles protected data or supports an important service."
+  },
+  {
+    id: "control-vendor-monitoring",
+    prior: [{
+      activity: "Review vendor performance, assurance, recovery, access, incidents, and contract obligations."
+    }],
+    next: {
+      activity: "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change."
+    },
+    summary: "Prompt review intervals for every customer-data Vendor while keeping the interval risk-based."
   }
 ];
 
@@ -438,6 +474,16 @@ const OBLIGATION_UPDATES = [
     summary: "Review penetration-testing applicability annually without asserting that every service requires an annual test."
   }
 ];
+
+const PRIOR_STARTER_RULE_RATIONALE = "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation.";
+const OBLIGATION_RULE_RATIONALE_UPDATES = [
+  ["obligation-rule-quarterly-privileged-access-review-v1", "Cover privileged and production access. Add other customer-data access only when an approved commitment or risk decision requires quarterly review."],
+  ["obligation-rule-annual-access-review-v1", "Cover other important access, including customer-data paths not assigned to a shorter approved review schedule. Avoid counting the same access twice."],
+  ["obligation-rule-monthly-endpoint-protection-verification-v1", "Confirm device and platform classes, protection coverage, exceptions, evidence, and whether the monthly cadence fits the approved risk decision."],
+  ["obligation-rule-annual-network-access-review-v1", "Confirm the in-scope network and host rule sources, customer and environment boundaries, deviations, and review cadence."],
+  ["obligation-rule-quarterly-vulnerability-scan-v1", "Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly."],
+  ["obligation-rule-annual-critical-vendor-review-v1", "Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed."]
+].map(([id, guidance]) => ({ id, rationale: `${PRIOR_STARTER_RULE_RATIONALE} ${guidance}` }));
 
 const OBLIGATION_ADDITIONS = [
   {
@@ -757,6 +803,37 @@ async function buildPolicyLibraryPlan(loaded) {
       diff: replacementDiff(displayPath, Object.keys(obligationUpdate.next)
         .filter((field) => !sameValue(prior[field], obligationUpdate.next[field]))
         .map((field) => [field, prior[field], obligationUpdate.next[field]]))
+    });
+  }
+
+  for (const { id, rationale } of OBLIGATION_RULE_RATIONALE_UPDATES) {
+    const entry = byId.get(id);
+    const obligation = entry ? byId.get(entry.record.obligationId)?.record : null;
+    const displayPath = `data/obligation-rules/${id}.json`;
+    if (!entry || entry.record.type !== "obligation-rule" || !obligation || obligation.type !== "obligation") {
+      skipped.push(skippedItem(id, "missing", `The starter ${id} Obligation Rule is not present.`));
+      continue;
+    }
+    if (entry.record.rationale === rationale) {
+      skipped.push(skippedItem(id, "current", "The Obligation Rule already contains the current starter guidance."));
+      continue;
+    }
+    if (entry.record.status !== "proposed" || obligation.status !== "proposed") {
+      skipped.push(skippedItem(id, "operating", "Only proposed Obligations and Rules are eligible for starter-library guidance updates."));
+      continue;
+    }
+    if (entry.record.rationale !== PRIOR_STARTER_RULE_RATIONALE || !obligation.ruleIds?.includes(id)) {
+      skipped.push(skippedItem(id, "customized", "The Obligation Rule differs from a recognized prior starter, so FileGRC will not rewrite it."));
+      continue;
+    }
+    updates.push({ ...entry.record, rationale });
+    expectedRevisions[id] = entry.revision;
+    proposalChanges.push({
+      resourceType: "obligation-rule",
+      resourceId: id,
+      path: displayPath,
+      summary: "Add scope and cadence checks to the unchanged proposed starter rule.",
+      diff: replacementDiff(displayPath, [["rationale", entry.record.rationale, rationale]])
     });
   }
 
