@@ -246,7 +246,7 @@ function previousPolicyFormatting(source) {
 }
 
 function previousPolicyDetailLists(source) {
-  return source
+  return previousQuestionnairePolicy(source)
     .replace(CURRENT_POLICY_REPORTING, PRIOR_POLICY_REPORTING)
     .replace(CURRENT_CONTINUITY_POLICY, PRIOR_CONTINUITY_POLICY)
     .replace(CURRENT_BACKUP_POLICY, PRIOR_BACKUP_POLICY)
@@ -254,6 +254,19 @@ function previousPolicyDetailLists(source) {
     .replace(CURRENT_POLICY_KEY_LIST, PRIOR_POLICY_KEY_PARAGRAPH)
     .replace(CURRENT_POLICY_ACCOUNT_LIST, PRIOR_POLICY_ACCOUNT_PARAGRAPH)
     .replace(CURRENT_POLICY_CONTRACT_LIST, PRIOR_POLICY_CONTRACT_PARAGRAPH);
+}
+
+function previousQuestionnairePolicy(source) {
+  const additions = [
+    "Owners document and test how approved deletion requests and retention cutoffs apply to primary data, derived copies, local copies, Vendor-held data, and backups. Procedures identify copies that cannot be removed immediately, their access restrictions and expiry, and any legal hold or contractual limit. Owners verify completion against the approved scope before representing data as deleted.",
+    "Owners document customer authentication and workforce authentication separately for each relevant System. They record whether either path uses single sign-on, where MFA is enforced, and how access is revoked. Remote-access methods are selected and approved for the System and risk; a VPN is required only when an approved Control, commitment, or risk decision calls for one.",
+    "When a service processes data for multiple customers, owners define and enforce customer-data boundaries appropriate to the architecture. They verify that access paths and material changes preserve those boundaries, and record the test method, result, and follow-up.",
+    "When an incident may require investigation, responders preserve relevant logs and their context under the incident process, with controlled access and a documented retention or hold decision."
+  ];
+  return additions.reduce((current, addition) => {
+    assert.ok(current.includes(`\n\n${addition}`), `current Policy source is missing expected text: ${addition}`);
+    return current.replace(`\n\n${addition}`, "");
+  }, source);
 }
 
 const OLD_SECRETS = "Confidential and Restricted data must use approved Systems, encryption in transit over untrusted networks, encryption at rest, least-privilege access, and protected transfer methods. Credentials, private keys, tokens, and recovery codes belong in approved secrets-management Systems and must not appear in source files, tickets, chat, logs, or FileGRC records.";
@@ -384,6 +397,38 @@ test("keeps the fresh-workspace Policy and packaged policy-library content ident
   const source = await readFile(latestStarterPolicy, "utf8");
   assert.equal(source, await readFile(libraryPolicy, "utf8"));
   assert.doesNotMatch(source, /FileGRC/i);
+});
+
+test("offers the questionnaire-driven Policy clarification only for unchanged starter content", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-policy-library-questionnaire-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const root = join(parent, "program");
+  await createFilegrc({
+    target: root,
+    companyName: "Test Organization",
+    policyOwnerName: "Program Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test",
+    timezone: "UTC",
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
+    effectiveDate: "2026-01-01"
+  });
+  const path = policyPath(root);
+  const current = await readFile(path, "utf8");
+  const prior = previousQuestionnairePolicy(current);
+  await writeFile(path, prior, "utf8");
+
+  const review = await assessPolicyLibraryUpgrades(root);
+  assert.deepEqual(review.proposals[0].changes.map(({ resourceId }) => resourceId), ["policy-information-security"]);
+  assert.match(review.proposals[0].changes[0].diff, /customer authentication and workforce authentication separately/);
+
+  await applyPolicyLibraryUpgrade(root, review.proposals[0].id, {
+    confirmed: true,
+    proposalRevision: review.proposals[0].revision
+  });
+  assert.equal(await readFile(path, "utf8"), current);
 });
 
 test("offers scan-friendly requirement lists as a reviewable upgrade", async (context) => {
@@ -1006,8 +1051,11 @@ test("reviews generic Control activities without changing planned Controls autom
     effectiveDate: "2026-01-01"
   });
   const priorActivities = {
+    "control-access-review-offboarding": "Review access populations, record decisions, and remove dormant, expired, or unneeded access.",
     "control-endpoint-protection": "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the risk-based schedule recorded in an Obligation when periodic work is needed.",
+    "control-network-security": "Manage boundaries, environment connections, firewall rules, wireless safeguards, and remote production access.",
     "control-vulnerability-management": "Choose scan coverage and cadence. Review the starter remediation targets of Critical 7 days, High 14 days, Medium 30 days, and Low 90 days, then record the approved targets or time-bound Exceptions.",
+    "control-vendor-monitoring": "Review vendor performance, assurance, recovery, access, incidents, and contract obligations.",
     "control-continuity-exercise": "Maintain the plan, contacts, recovery objectives, exercises, results, and follow-up work."
   };
   const current = new Map();
@@ -1040,6 +1088,57 @@ test("reviews generic Control activities without changing planned Controls autom
     proposalRevision: review.proposals[0].revision
   });
   for (const [id, record] of current) assert.deepEqual(await readControl(root, id), record);
+});
+
+test("offers new guidance for unchanged proposed Obligation Rules", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-policy-library-rules-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const root = join(parent, "program");
+  await createFilegrc({
+    target: root,
+    companyName: "Test Organization",
+    policyOwnerName: "Program Owner",
+    policyOwnerJobTitle: "Chief Executive Officer",
+    policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test",
+    timezone: "UTC",
+    filegrcPackage: fileURLToPath(new URL("../", import.meta.url)),
+    install: true,
+    effectiveDate: "2026-01-01"
+  });
+  const ruleIds = [
+    "obligation-rule-quarterly-privileged-access-review-v1",
+    "obligation-rule-annual-access-review-v1",
+    "obligation-rule-monthly-endpoint-protection-verification-v1",
+    "obligation-rule-annual-network-access-review-v1",
+    "obligation-rule-quarterly-vulnerability-scan-v1",
+    "obligation-rule-annual-critical-vendor-review-v1"
+  ];
+  const current = new Map();
+  const priorRationale = "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation.";
+  for (const id of ruleIds) {
+    const path = join(root, "data", "obligation-rules", `${id}.json`);
+    const record = JSON.parse(await readFile(path, "utf8"));
+    current.set(id, record);
+    await writeJson(path, { ...record, rationale: priorRationale });
+  }
+
+  const review = await assessPolicyLibraryUpgrades(root);
+  assert.deepEqual(new Set(review.proposals[0].changes.map(({ resourceId }) => resourceId)), new Set(ruleIds));
+  await applyPolicyLibraryUpgrade(root, review.proposals[0].id, {
+    confirmed: true,
+    proposalRevision: review.proposals[0].revision
+  });
+  for (const [id, record] of current) {
+    const path = join(root, "data", "obligation-rules", `${id}.json`);
+    assert.deepEqual(JSON.parse(await readFile(path, "utf8")), record);
+  }
+
+  const customizedId = ruleIds[0];
+  const customizedPath = join(root, "data", "obligation-rules", `${customizedId}.json`);
+  await writeJson(customizedPath, { ...current.get(customizedId), rationale: "Organization-approved review population." });
+  const secondReview = await assessPolicyLibraryUpgrades(root);
+  assert.equal(secondReview.proposals.length, 0);
 });
 
 test("recognizes a prior starter when the organization name is also policy vocabulary", async (context) => {

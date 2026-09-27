@@ -1,6 +1,6 @@
 {
   "name": "{{project_name}}",
-  "version": "0.16.6",
+  "version": "0.16.7",
   "private": true,
   "description": "filegrc workspace for a SOC 2 program",
   "type": "module",

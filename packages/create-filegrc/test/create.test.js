@@ -443,6 +443,11 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(controls.find(({ id }) => id === "control-encryption-transmission").statement, /risk-based key lifecycle controls/);
   assert.match(controls.find(({ id }) => id === "control-inventory-configuration").statement, /Unsupported or unneeded important assets are upgraded, isolated, replaced, or retired according to risk/);
   assert.match(controls.find(({ id }) => id === "control-network-security").statement, /separates production and nonproduction environments according to data and risk/);
+  assert.match(controls.find(({ id }) => id === "control-network-security").activity, /customer and environment boundaries/);
+  assert.match(controls.find(({ id }) => id === "control-access-review-offboarding").activity, /customer-data access/);
+  assert.match(controls.find(({ id }) => id === "control-endpoint-protection").activity, /protection coverage and approved deviations/);
+  assert.match(controls.find(({ id }) => id === "control-vulnerability-management").activity, /severity criteria, risk-based remediation and patch targets/);
+  assert.match(controls.find(({ id }) => id === "control-vendor-monitoring").activity, /review intervals by Vendor risk and customer-data access/);
   assert.match(controls.find(({ id }) => id === "control-change-management").statement, /security design or threat analysis suited to their risk/);
   assert.match(controls.find(({ id }) => id === "control-change-management").statement, /protect against unauthorized changes and malicious software/);
   assert.match(controls.find(({ id }) => id === "control-penetration-testing").activity, /Review and record applicability and cadence\. When testing is required/);
@@ -502,6 +507,10 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(obligationsById.get("obligation-monthly-endpoint-protection-verification").activityType, "endpoint-verification");
   assert.equal(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);
+  assert.match(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").rationale, /shorter cadence, such as monthly/);
+  assert.match(rulesByObligationId.get("obligation-quarterly-privileged-access-review").rationale, /Add other customer-data access only when an approved commitment or risk decision requires quarterly review/);
+  assert.match(rulesByObligationId.get("obligation-annual-access-review").rationale, /other important access, including customer-data paths not assigned to a shorter approved review schedule/);
+  assert.match(rulesByObligationId.get("obligation-annual-critical-vendor-review").rationale, /separate review interval for other Vendors/);
   assert.equal(rulesByObligationId.get("obligation-annual-penetration-test").recurrence.unit, "year");
   assert.equal(obligationsById.get("obligation-annual-penetration-test").activityType, "risk-assessment");
   assert.match(obligationsById.get("obligation-annual-penetration-test").title, /applicability and cadence review/);

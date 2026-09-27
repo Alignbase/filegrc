@@ -210,7 +210,7 @@ const controls = [
     title: "Access review and offboarding",
     statement: "Owners review privileged and production access at least quarterly and other important access at least annually. Access ends at or before notice for involuntary or high-risk departures and within 24 hours for other departures.",
     requirements: ["CC6.2", "CC6.3"],
-    activity: "Review access populations, record decisions, and remove dormant, expired, or unneeded access.",
+    activity: "Review complete access populations, including workers and third parties with customer-data access, record decisions, and remove dormant, expired, or unneeded access.",
     controlType: "detective",
     operationMode: "manual",
     operationPattern: "mixed",
@@ -282,7 +282,7 @@ const controls = [
     title: "Endpoint protection",
     statement: "Devices that access company systems use approved configuration, encryption, screen locking, supported software, security updates, and continuous malware protection when supported.",
     requirements: ["CC6.6", "CC6.8", "CC7.1"],
-    activity: "Use continuous platform protection where supported and verify endpoint configuration, update, and compliance state on the approved risk-based schedule when periodic work is needed.",
+    activity: "Document protection coverage and approved deviations by device or platform class. Use continuous platform protection where supported and verify configuration, updates, and compliance on the approved risk-based schedule when periodic work is needed.",
     controlType: "preventive",
     operationMode: "automated",
     operationPattern: "mixed",
@@ -294,7 +294,7 @@ const controls = [
     title: "Network and remote-access security",
     statement: "The organization restricts network paths, separates production and nonproduction environments according to data and risk, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually.",
     requirements: ["CC6.6", "CC6.7"],
-    activity: "Manage boundaries, environment connections, firewall rules, wireless safeguards, and remote production access.",
+    activity: "Document and verify customer and environment boundaries, approved network rules and deviations by source, wireless safeguards, and remote production access.",
     controlType: "preventive",
     operationMode: "hybrid",
     operationPattern: "mixed",
@@ -318,7 +318,7 @@ const controls = [
     title: "Vulnerability management",
     statement: "The organization monitors for vulnerabilities, chooses scan coverage and cadence based on exposure and risk, and assigns each confirmed vulnerability an approved risk-based remediation target or time-bound Exception.",
     requirements: ["CC7.1", "CC7.2", "CC7.3"],
-    activity: "Choose scan coverage and cadence, define approved risk-based remediation targets, and document time-bound Exceptions when a target cannot be met.",
+    activity: "Define scan scope and cadence, severity criteria, risk-based remediation and patch targets, and time-bound Exceptions when a target cannot be met.",
     controlType: "detective",
     operationMode: "hybrid",
     operationPattern: "mixed",
@@ -414,7 +414,7 @@ const controls = [
     title: "Vendor monitoring",
     statement: "Owners review critical and high-risk vendors at least annually and reassess affected vendors within 30 days after a material service change or incident, then track risks, findings, and follow-up work.",
     requirements: ["CC4.1", "CC9.2"],
-    activity: "Review vendor performance, assurance, recovery, access, incidents, and contract obligations.",
+    activity: "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change.",
     controlType: "detective",
     operationMode: "manual",
     operationPattern: "mixed",
@@ -1157,7 +1157,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
       : obligation.recurrence,
     ...(obligation.window ? { window: obligation.window } : {}),
     ...(starterObligationSelector(obligation.id) ? { selector: starterObligationSelector(obligation.id) } : {}),
-    rationale: "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation.",
+    rationale: starterObligationRationale(obligation.id),
     sourceResourceIds: [...(obligation.policyIds || [])]
   }));
   const sourceCoverageRecords = SOURCE_FAMILIES.map(([sourceFamilyId, title]) => {
@@ -1241,6 +1241,18 @@ function starterObligationSelector(obligationId) {
     membershipMode: "as-of",
     cutoff: "window-end"
   } : null;
+}
+
+function starterObligationRationale(obligationId) {
+  const reviews = {
+    "obligation-quarterly-privileged-access-review": "Cover privileged and production access. Add other customer-data access only when an approved commitment or risk decision requires quarterly review.",
+    "obligation-annual-access-review": "Cover other important access, including customer-data paths not assigned to a shorter approved review schedule. Avoid counting the same access twice.",
+    "obligation-monthly-endpoint-protection-verification": "Confirm device and platform classes, protection coverage, exceptions, evidence, and whether the monthly cadence fits the approved risk decision.",
+    "obligation-annual-network-access-review": "Confirm the in-scope network and host rule sources, customer and environment boundaries, deviations, and review cadence.",
+    "obligation-quarterly-vulnerability-scan": "Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly.",
+    "obligation-annual-critical-vendor-review": "Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed."
+  };
+  return `Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. ${reviews[obligationId] || ""}`.trim();
 }
 
 export async function writeBaselineRecords(target, effectiveDate, starter = "security") {
