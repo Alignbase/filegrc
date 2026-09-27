@@ -18,6 +18,10 @@ npx filegrc search "TERM" --json
 
 Use `program-path --next --json` for the current lifecycle step. Use `workflow --json` when you need the full shared assessments, complete checklist, Work Items, and blockers. Use `guide` before any unfamiliar create or status transition. It reports required fields, fields required by a status, enum values, relationship types and candidates, Markdown slots, timing, and exact paths. Use `describe` only when you need the raw model definition.
 
+Before creating a record or asking for a new procedure, inspect matching records and their links with `list`, `search`, `get RESOURCE_ID --workflow --json`, and `references RESOURCE_ID --json`. Read the linked Policy and companion Markdown, Control, Obligations, operating records, Components, and Evidence as applicable. Reuse the authoritative record and update it when needed. Separate a documented design or enabled schedule from proof that work actually occurred. Ask for only the missing business facts, decisions, or external evidence that you cannot verify; do not invent an event or ask for facts already recorded here.
+
+In `get RESOURCE_ID --workflow --json`, inspect `workflow.recommended.context.existing` before using `scaffold`. The listed records are relationship candidates, not proof that work occurred.
+
 After changing a lifecycle fact directly, review `reconcile --preview --json`. A candidate asks whether the change represents a real policy event. Supply the actual event date or timestamp, departure risk when relevant, and explicit confirmation before applying it. If it is a false positive, use `reconcile --dismiss` with the exact candidate fingerprint, a Person reviewer, the review date, a rationale, and `--yes`. The immutable dismissal suppresses only that fingerprint.
 
 ## Choose the right record

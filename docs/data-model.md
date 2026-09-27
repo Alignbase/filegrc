@@ -70,7 +70,7 @@ Headless commands:
 
 Implemented Controls with ready evidence sources and enabled work schedules.
 
-- **Controls** (`control`): Open this Control’s current next steps. Set up the activity, record how it works, and mark it Implemented when it works.
+- **Controls** (`control`): Open this Control’s next steps and inspect linked Policy, Obligations, Components, and operating records. Reuse existing workflows; fill only the implementation gap, and mark it Implemented when it works. Record actual operation separately.
 - **Complementary controls** (`complementary-control`): Record each real customer or carved-out provider dependency, or confirm that the current scope has none.
 - **Obligations** (`obligation`): Confirm the owner, cadence or trigger, deadline, and proof, then enable the rule when its Control is ready.
 
@@ -859,7 +859,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Management's actual Control implementation, mapped to Requirements, bounded Systems, operating Components, and authoritative evidence-source Components.
 
-Instructions: Open this Control’s current next steps. Set up the activity, record how it works, and mark it Implemented when it works.
+Instructions: Open this Control’s next steps and inspect linked Policy, Obligations, Components, and operating records. Reuse existing workflows; fill only the implementation gap, and mark it Implemented when it works. Record actual operation separately.
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, Obligations, and Evidence.
 

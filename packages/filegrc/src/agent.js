@@ -74,6 +74,9 @@ export function buildAgentGuide(loaded, type, options = {}) {
   const location = definition.singleton
     ? `data/${definition.singleton}`
     : `data/${definition.collection}/${(definition.recordPath ?? "{id}.json").replaceAll("{id}", options.id || "{id}")}`;
+  const existingRecords = loaded.resources
+    .filter((item) => item.type === type)
+    .sort((left, right) => `${left.title}:${left.id}`.localeCompare(`${right.title}:${right.id}`));
 
   return {
     type,
@@ -104,6 +107,13 @@ export function buildAgentGuide(loaded, type, options = {}) {
         : null
     },
     location,
+    existingRecordCount: existingRecords.length,
+    existingRecords: existingRecords.slice(0, 25).map(({ id, title, status }) => ({
+      id,
+      title,
+      status: status ?? null
+    })),
+    existingRecordsTruncated: existingRecords.length > 25,
     singleton: Boolean(definition.singleton),
     requiredAtCreation,
     conditionalRequirements,
@@ -113,8 +123,8 @@ export function buildAgentGuide(loaded, type, options = {}) {
     workflow: [
       "Inspect existing records and relation candidates before writing.",
       definition.singleton
-        ? "Open the existing singleton record, then replace every null value and empty required array with facts from an authoritative source."
-        : "Create a scaffold, then replace every null value and empty required array with facts from an authoritative source.",
+        ? "Open the existing singleton record and update only gaps supported by facts from an authoritative source."
+        : "Reuse and update a suitable existing record. Create a scaffold only when no record covers the work, then replace every null value and empty required array with facts from an authoritative source.",
       recommendedMarkdown.length
         ? "Keep model fields in JSON and use the recommended Markdown companion for the detailed work, decisions, results, exceptions, and follow-up that apply to this record."
         : "Keep the current facts and lifecycle state in JSON. Add optional Record Markdown only when the model fields cannot explain the record clearly.",

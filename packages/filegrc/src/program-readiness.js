@@ -2038,41 +2038,41 @@ function controlCheckLabel(name) {
   })[name] || name;
 }
 
-const starterControlSetup = {
-  "control-security-governance": "Name a reviewer outside day-to-day security ownership and set up a quarterly security review.",
-  "control-policy-management": "Assign someone to maintain the Control list and a separate approver for policies and plans. Set up their review path.",
-  "control-security-communication": "Set up how the approved reporting routes, policy changes, and security notices reach staff and outside parties.",
-  "control-workforce-expectations": "Set up the checks, agreements, and policy acknowledgements required before someone receives sensitive access.",
-  "control-security-training": "Choose how new and existing workers receive security training, acknowledge the current material, and get reminders.",
-  "control-risk-assessment": "Use the Program's risk method to assess the scoped service and record the results in FileGRC Risk Assessments and Risks.",
-  "control-monitoring-remediation": "Define how Control problems are reported, reviewed, and verified closed. Use FileGRC Findings for gaps that need separate follow-up.",
-  "control-access-authorization": "Configure unique, least-privilege accounts in the identity system. Restrict account changes to authorized admins.",
-  "control-strong-authentication": "Turn on required MFA and secure sign-in settings for the in-scope Systems. Identify any gap that needs an approved Exception.",
-  "control-access-review-offboarding": "Confirm the identity system can produce a complete access list and admins can promptly remove or change permissions.",
-  "control-physical-workspace-security": "Decide how visitors, work areas, devices, and paper records are protected in the places your team actually works.",
-  "control-data-classification-inventory": "Apply the approved Classifications to important data in the in-scope Systems and record its location in the inventory.",
-  "control-encryption-transmission": "Configure encryption for in-scope data and devices, and assign who manages keys and approved transfer methods.",
-  "control-data-retention-disposal": "Apply the approved retention schedule to live, backup, and vendor-held data. Define how each class is deleted or destroyed.",
-  "control-inventory-configuration": "List important assets and owners, choose their secure settings, and decide how unsupported assets are handled.",
-  "control-endpoint-protection": "Apply the required device settings, updates, encryption, screen lock, and malware protection to devices that access company Systems.",
-  "control-network-security": "Restrict production network paths and remote access, and document the rules that allow traffic between environments.",
-  "control-change-management": "Set up a change path with risk review, testing, approval, deployment, and rollback for software and infrastructure changes.",
-  "control-vulnerability-management": "Choose what will be scanned, how often, who handles findings, and the target times for fixing them.",
-  "control-penetration-testing": "Decide whether independent testing is needed for this service. If it is, set its scope, cadence, and owner.",
-  "control-logging-monitoring": "Enable useful security logs and alerts for important Systems, protect them, and choose who responds to alerts.",
-  "control-incident-response": "Set up a way to report, assign, escalate, contain, and close security incidents using the approved response plan.",
-  "control-incident-exercise": "Choose a realistic incident scenario and an alert path to test, and assign the people who will run the exercise.",
-  "control-backup-restoration": "Choose what needs backup or another recovery path, configure it, and decide how restores will be tested.",
-  "control-continuity-exercise": "Set recovery priorities, contacts, and responsibilities, and choose how the continuity plan will be exercised.",
-  "control-vendor-due-diligence": "Set a security review and contract check before a new Vendor gets sensitive data or becomes a material dependency.",
-  "control-vendor-monitoring": "Choose which Vendors need ongoing review, who reviews them, and what information the review uses.",
-  "control-security-exceptions": "Document how an Exception is reviewed and approved before a departure from policy begins. Record actual decisions in FileGRC Exceptions."
+const starterControlChecks = {
+  "control-security-governance": "Open the security review calendar and attendee roles. Check a reviewer separate from owners and operators examines risks, incidents, findings, and overdue work on the approved schedule.",
+  "control-policy-management": "Open the Control inventory and a recently revised Policy. Check owners are named, the approver is separate, and the change went through review before approval.",
+  "control-security-communication": "Trace how a security notice or Policy change reaches staff and affected outside parties. Check that the approved reporting routes can be used.",
+  "control-workforce-expectations": "Review onboarding for roles with sensitive access. Check that required screening, agreements, and Policy acknowledgements happen before access.",
+  "control-security-training": "Compare the worker roster with training assignments. Check starters and role changes get training on time, with repeats tied to current content and the approved schedule.",
+  "control-risk-assessment": "Open the risk assessment against in-scope Systems and Vendors. Check threats, fraud, dependencies, and changes have owners and high risks get the required review.",
+  "control-monitoring-remediation": "Open the latest Control review, or schedule the first. Check incidents, test results, Exceptions, and overdue work, with owners and verified closure for gaps.",
+  "control-access-authorization": "Open access lists for in-scope Systems and Vendor tools. Check that accounts use unique identities and only needed permissions, and new grants require a business reason and approval.",
+  "control-strong-authentication": "Open the System and Vendor lists. For each tool used for production, source code, email, identity, or sensitive data, check MFA, unique accounts, default credentials, and admin roles.",
+  "control-access-review-offboarding": "Export access lists from key Systems and Vendor tools. Check privileged and other access reviews meet their approved schedules, and departures lose access within the required window.",
+  "control-physical-workspace-security": "Walk through actual work areas and visitor access. Check who can enter nonpublic spaces and how devices, papers, screens, and conversations are protected.",
+  "control-data-classification-inventory": "List important data stores in Systems and Vendor tools. Check each has an owner, classification, approved purpose, and recorded location.",
+  "control-encryption-transmission": "For Systems, Vendor tools, and devices holding Confidential or Restricted data, check encryption at rest and in transit and who can manage the keys.",
+  "control-data-retention-disposal": "Take each class in the retention schedule and locate its live, backup, and vendor-held copies. Check deletion methods and timing against the approved rule.",
+  "control-inventory-configuration": "Compare actual services, devices, software, service accounts, Vendors, and data stores with the inventory. Check owners, secure settings, and unsupported assets.",
+  "control-endpoint-protection": "Review devices allowed into company Systems. Check encryption, screen lock, updates, and malware protection against the approved settings.",
+  "control-network-security": "Open production network and remote-access rules. Check each path has a business reason, approved authentication, and separation; identify rules due for review.",
+  "control-change-management": "Follow a software or infrastructure change from request to deployment. Check the path includes risk review, testing, approval, and a way to recover.",
+  "control-vulnerability-management": "List internet-facing and important Systems. Check each has vulnerability scan coverage or another approved check, and findings have owners and target dates.",
+  "control-penetration-testing": "Review the service's exposure, major changes, and customer commitments. Decide whether independent testing is needed and, if so, set its scope and cadence.",
+  "control-logging-monitoring": "For each important System, open security logs, alert rules, and service-health checks where needed. Check retention and whether test alerts reach an owner.",
+  "control-incident-response": "Walk through how a worker reports an incident. Check who triages, escalates, contains, communicates, and closes it using the approved plan.",
+  "control-incident-exercise": "Send a test alert through a representative incident path. Check acknowledgement, escalation, and fallback, then record participants, failures, and follow-up.",
+  "control-backup-restoration": "For each important System, inspect backup or alternate recovery settings and failure alerts. Run or review a restore test against its recovery needs.",
+  "control-continuity-exercise": "Review recovery priorities, contacts, and owners. Check the plan covers loss of an important System or provider and has an exercise date.",
+  "control-vendor-due-diligence": "Open the Vendor list. For each with sensitive data or a material service role, check its security review and contract terms; review older Vendors already in use.",
+  "control-vendor-monitoring": "Open critical and high-risk Vendors. Check each has a current review, an owner for open issues, and timely reassessment after a material change or incident.",
+  "control-security-exceptions": "Review departures from security rules. Check each has a reason, owner, risk assessment, compensating measure, approval, and expiry or review date."
 };
 
 export function controlImplementationSteps(control, checks, options = {}) {
   const steps = [];
-  if (!checks.implemented) steps.push(starterControlSetup[control.id]
-    || `Set up this Control: ${control.activity || control.statement}`);
+  if (!checks.implemented) steps.push(starterControlChecks[control.id]
+    || "Inspect the systems, people, vendors, or work this Control covers. Compare current practice with its statement and fix any gaps.");
   const record = [];
   if (!checks.owner) record.push("choose an owner");
   if (!checks.scope) record.push("select the Systems this covers");
@@ -2092,7 +2092,7 @@ export function controlImplementationSteps(control, checks, options = {}) {
     ? `Cover the missing evidence families: ${sourceTargets.length ? sourceTargets.join(" and ") : "this Control"}. For each, link an active Component with the matching kind, evidence owners, and report retrieval instructions.`
     : null;
   const queueStep = checks.workQueue === false
-    ? "Enable a linked Obligation with the owner and schedule for this Control's recurring or event work."
+    ? "Check the linked Obligations. Enable one with the owner and schedule for this Control's recurring or event work, or add one if none covers it."
     : null;
   if (!checks.implemented) {
     if (sourceStep || queueStep) steps.push([sourceStep, queueStep].filter(Boolean).join(" "));

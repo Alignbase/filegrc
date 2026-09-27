@@ -2,6 +2,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelSupports } from "../model/index.js";
+import { buildActionContext } from "./action-context.js";
 import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
 import { retentionScheduleIsAuthoritative } from "./collection-review.js";
 import { assessRequiredAppointments } from "./appointments.js";
@@ -194,7 +195,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     findings: findings.sort(compareFindings),
     workItems: workItems.sort(compareWorkItems),
     recommended: recommended
-      ? { ...recommended, rankingReason: rankingReason(recommended) }
+      ? { ...recommended, rankingReason: rankingReason(recommended), context: buildActionContext(loaded, recommended) }
       : null,
     counts: {
       findings: countBy(findings, "state"),
@@ -219,7 +220,7 @@ export function buildWorkflowDelta(before, after) {
   };
 }
 
-export function workflowForResource(workflow, type, id) {
+export function workflowForResource(workflow, type, id, loaded = null) {
   if (!workflow) return {
     findings: [],
     workItems: [],
@@ -246,10 +247,14 @@ export function workflowForResource(workflow, type, id) {
     related: {
       findings: relatedFindings,
       workItems: relatedWorkItems,
-      recommended: [...relatedFindings, ...relatedWorkItems].sort(compareRecommended)[0] || null
+      recommended: contextualAction([...relatedFindings, ...relatedWorkItems].sort(compareRecommended)[0], loaded)
     },
-    recommended: [...findings, ...workItems].sort(compareRecommended)[0] || null
+    recommended: contextualAction([...findings, ...workItems].sort(compareRecommended)[0], loaded)
   };
+}
+
+function contextualAction(item, loaded) {
+  return item && loaded ? { ...item, context: buildActionContext(loaded, item) } : item || null;
 }
 
 export async function previewWorkflowMutation(input, mutation) {
@@ -1129,6 +1134,9 @@ function normalizeFinding(code, item, context) {
     title: item.title,
     message: item.message,
     ...(item.nextSteps?.length ? { nextSteps: item.nextSteps } : {}),
+    ...(item.checks ? { unmetChecks: Object.entries(item.checks)
+      .filter(([, passed]) => passed === false)
+      .map(([name]) => name) } : {}),
     ...(item.resourceId ? { resourceId: item.resourceId } : {}),
     ...(item.createResourceType ? { createResourceType: item.createResourceType } : {}),
     ...(item.sourceResourceIds ? { sourceResourceIds: item.sourceResourceIds } : {}),
