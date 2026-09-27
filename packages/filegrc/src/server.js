@@ -670,8 +670,9 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             : await createResourceDetail(input, type, id, { includeHistory: url.searchParams.get("history") !== "false" });
           if (!entry) return json(response, 404, { error: "Resource not found." });
           if (includeWorkflow && !session) {
-            const workflow = await assessWorkflow(input, { programId: requestOptions.programId });
-            entry.workflow = workflowForResource(workflow, type, id);
+            const loaded = await loadWorkspace(input);
+            const workflow = await assessWorkflow(loaded, { programId: requestOptions.programId });
+            entry.workflow = workflowForResource(workflow, type, id, loaded);
           }
           return json(response, 200, entry);
         }
@@ -1008,7 +1009,7 @@ async function loadStateSessionResource(session, token, type, id, serverOptions,
         historyDeadlineAt: deadlineAt,
         strictHistory: repository?.git?.available === true
       }));
-      detail.workflow = workflowForResource(workflow, type, id);
+      detail.workflow = workflowForResource(workflow, type, id, session.loaded);
     }
     await verifyStateSessionSnapshot(session, performance.now(), deadlineAt);
     assertCurrentStateSession(session);

@@ -21,6 +21,8 @@ npx filegrc program-amendment SOURCE_RESOURCE_ID --json
 
 `program-path --next --json` gives agents the current step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s page summaries, detailed guidance fields, commands, and next actions. The general guide lists every supported action and record type. A type guide adds the checks needed for that resource, including timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
 
+Before proposing a new process or record for a Control, inspect the current Control, its linked Policy and Markdown, Obligations, operating records, Components, and Evidence with `get`, `list`, `search`, and `references`. Read `get CONTROL_ID --workflow --json` and the relevant type guides to find the actual gap. Reuse an existing rule or workflow when it covers the requirement. If the design exists but operation is unproven, ask for the real event, actors, dates, and evidence needed to record it; do not ask management to design the process again. Ask users only for decisions or facts that the repository and available sources cannot verify. Never infer that a Policy or planned Obligation proves the Control operated.
+
 For a new record, generate a mutation envelope:
 
 ```sh
@@ -63,6 +65,8 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 The JSON and Markdown under `data/`, the installed model, policy content, and Git history are the inputs to FileGRC’s shared workflow calculation. Source files hold facts, decisions, relationships, dates, status, and evidence references. They do not each need a copy of the generic audit-readiness instructions or calculated TODO list.
 
 Start with `npx filegrc program-path --next --json` for the current step and next action. Use `npx filegrc workflow --json` when you need the complete derived checklist, named readiness assessments, blockers, and Work Items. `guide`, `list --workflow`, `get --workflow`, mutation previews, the HTTP API, and the browser consume the same calculation. In `get --workflow` output, `findings` and `workItems` preserve the complete checklist relevant to that record. `related` additionally groups downstream work that the record supports but that belongs to another record or program step. Resolve a derived finding by changing its source facts, recording a reviewed applicability decision, accepting an allowed Exception, or completing authoritative assigned work. Never add a separate TODO file or UI-only completion flag for calculated work.
+
+The workflow recommendation's `context` lists existing connected records, the work phase, and unmet checks. Open those records before following a setup prompt. A connected Policy, Obligation, or Evidence record is context; check the dated work and its proof before saying a Control operated.
 
 FileGRC marks an item `blocked` only when named prerequisite records must be resolved first. A missing record, editable error, or management decision is `ready` when you can act on it now, even when it prevents a readiness assessment from passing.
 

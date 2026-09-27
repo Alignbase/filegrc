@@ -31,6 +31,8 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 - The engine must work locally, in CI, and in a basic server environment with only a supported Node.js release and Git.
 - The current repository state must remain useful without a network connection.
 - Data files are authoritative. Rendered pages, indexes, caches, and reports are derived output.
+- Derive next actions from the model, source records, relationships, and Git state before proposing setup or a new record. Reuse existing workflows. Distinguish documented design, configured implementation, and dated proof of operation. Ask users only for facts or decisions available sources cannot verify. Use the same conclusion across browser, HTTP API, and CLI; show plain checks to people and record context to agents.
+- Human Control guidance names the real systems, people, vendors, or work to inspect and the condition to check. Put FileGRC record updates after that practical check.
 - Never fetch external references automatically. A user may open or import one explicitly.
 - Keep the model generic. Organization-specific fields belong in namespaced extensions.
 - Keep the default starter Security-only and as simple as the Security Common Criteria permit. Do not turn optional Trust Services Categories or common implementation choices into default records or readiness gates. Require category-specific details, including numeric recovery objectives, only when management selects that category or an approved commitment or risk decision requires them.

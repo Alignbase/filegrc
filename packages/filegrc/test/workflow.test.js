@@ -17,6 +17,7 @@ import {
   WORKFLOW_CONTRACT_VERSION
 } from "../src/index.js";
 import { packetDeliveryIssue, workflowStageForRecord } from "../src/workflow.js";
+import { buildActionContext } from "../src/action-context.js";
 import { programPathForModel } from "../src/program-path.js";
 import {
   getDataRecordHistoryIndex,
@@ -49,6 +50,82 @@ test("requires a reviewable, approved, and receipted packet delivery record", ()
   assert.match(packetDeliveryIssue({ ...delivery, approvedOn: "2026-06-30" }), /chronological/);
 });
 
+test("scoped next actions show existing records across all five program steps", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-existing-action-context-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const operatingStage = programPathForModel(loaded.model).find(({ number }) => number === 4);
+  assert.equal(operatingStage.id, "run");
+  assert.equal(buildActionContext(loaded, { stage: operatingStage.id }).workPhase, "operation");
+  const types = ["program", "policy", "control", "obligation", "audit"];
+  const phases = ["setup", "setup", "setup", "operation", "audit"];
+  const stages = ["scope", "policies", "controls", "operation", "audit"];
+  const subjects = types
+    .map((type) => loaded.resources.find((record) => record.type === type));
+  const workflow = {
+    contractVersion: WORKFLOW_CONTRACT_VERSION,
+    assessments: {},
+    findings: subjects.map((record, index) => ({
+      key: `next.${record.type}`,
+      state: "ready",
+      stage: stages[index],
+      subject: { type: record.type, id: record.id }
+    })),
+    workItems: []
+  };
+  for (const [index, record] of subjects.entries()) {
+    const scoped = workflowForResource(workflow, record.type, record.id, loaded);
+    assert.equal(scoped.recommended.context.operation, "inspect-existing");
+    assert.equal(scoped.recommended.context.workPhase, phases[index]);
+    assert.equal(scoped.recommended.context.existing[0].id, record.id);
+  }
+  const control = workflowForResource(workflow, "control", subjects[2].id, loaded).recommended.context;
+  assert.ok(control.existing.some(({ type, id }) => type === "policy" && id === "policy-example"));
+  assert.ok(control.existing.some(({ type, id }) => type === "obligation" && id === "obligation-example"));
+  assert.ok(control.existing.some(({ type }) => type === "evidence"));
+  assert.match(control.reminder, /Verify actual operation/);
+  const proposal = {
+    ...workflow,
+    findings: [{ key: "propose.policy", state: "ready", subject: { type: "policy" }, createResourceType: "policy" }]
+  };
+  const candidateContext = buildActionContext(loaded, proposal.findings[0]);
+  assert.equal(candidateContext.operation, "inspect-before-create");
+  assert.ok(candidateContext.existing.some(({ id }) => id === "policy-example"));
+  const linkedProposal = buildActionContext(loaded, {
+    subject: { type: "control", id: "control-example" },
+    createResourceType: "policy"
+  });
+  assert.equal(linkedProposal.operation, "inspect-before-create");
+  assert.ok(linkedProposal.existing.some(({ id }) => id === "policy-example"));
+  const sourcedProposal = buildActionContext(loaded, {
+    resourceId: "control-example",
+    createResourceType: "policy"
+  });
+  assert.equal(sourcedProposal.operation, "inspect-before-create");
+  assert.equal(sourcedProposal.sameTypeCount > 0, true);
+  const manyPolicies = Array.from({ length: 25 }, (_, index) => ({
+    type: "policy",
+    id: `policy-candidate-${index}`,
+    title: `Candidate ${index}`
+  }));
+  const crowdedContext = buildActionContext({
+    ...loaded,
+    resources: [...loaded.resources, ...manyPolicies]
+  }, {
+    subject: { type: "control", id: "control-example" },
+    createResourceType: "policy"
+  });
+  assert.equal(crowdedContext.existingTruncated, true);
+  assert.ok(crowdedContext.existing.some(({ id }) => id === "obligation-example"));
+  assert.ok(crowdedContext.existing.some(({ id }) => id === "policy-example"));
+  const emptyContext = buildActionContext(
+    { ...loaded, resources: loaded.resources.filter(({ type }) => type !== "policy") },
+    proposal.findings[0]
+  );
+  assert.equal(emptyContext.operation, "check-before-create");
+});
+
 test("returns one reproducible workflow contract with stable findings", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-workflow-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -73,6 +150,8 @@ test("returns one reproducible workflow contract with stable findings", async (c
   assert.ok(first.recommended);
   assert.equal(first.recommended.key, "program.scope.program-goal");
   assert.match(first.recommended.rankingReason, /can be acted on now/);
+  assert.equal(first.recommended.context.operation, "inspect-existing");
+  assert.ok(first.recommended.context.existing.some(({ id }) => id === "workspace"));
   assert.equal(first.assessments.programConfiguration.status, "needs-work");
   assert.equal(first.assessments.periodHealth.status, "not-started");
   assert.deepEqual(first.assessments.periodHealth.findingKeys, []);
@@ -142,6 +221,12 @@ test("returns one reproducible workflow contract with stable findings", async (c
   assert.equal(apiWorkflow.contractVersion, WORKFLOW_CONTRACT_VERSION);
   assert.equal(apiWorkflow.input.asOf, "2026-08-03");
   assert.equal(apiWorkflow.recommended.key, "program.scope.program-ownership");
+  assert.deepEqual(apiWorkflow.recommended.context, (await assessWorkflow(root, { asOf: "2026-08-03" })).recommended.context);
+  const resourceResponse = await fetch(`${running.url}/api/resource/workspace/${workspace.id}?workflow=true&history=false`);
+  assert.equal(resourceResponse.status, 200);
+  const resourceDetail = await resourceResponse.json();
+  assert.equal(resourceDetail.workflow.recommended.context.operation, "inspect-existing");
+  assert.ok(resourceDetail.workflow.recommended.context.existing.some(({ id }) => id === workspace.id));
 
   const previewResponse = await fetch(`${running.url}/api/workflow/preview`, {
     method: "POST",

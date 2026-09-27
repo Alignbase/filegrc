@@ -87,6 +87,8 @@ test("creates a complete generic repository with one dependency", async (context
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
   assert.match(agents, /npx filegrc program-path --next --json/);
+  assert.match(agents, /Before proposing a new process or record for a Control, inspect the current Control/);
+  assert.match(agents, /If the design exists but operation is unproven/);
   assert.match(agents, /Use `npx filegrc guide obligation --json` and `data\/AGENTS\.md`/);
   assert.match(agents, /Program’s `candidateCoverage`/);
   assert.match(agents, /engagement’s current work/);
@@ -96,6 +98,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(agents, /Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence\. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject\./);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
   assert.match(dataGuide, /full shared assessments, complete checklist, Work Items, and blockers/);
+  assert.match(dataGuide, /Before creating a record or asking for a new procedure, inspect matching records/);
   assert.match(dataGuide, /Choose an existing Component or scaffold the Component that is authoritative/);
   assert.match(dataGuide, /coverage\.kind: "as-of"/);
   assert.match(dataGuide, /contains no plaintext credentials, private keys, tokens, recovery codes, improperly controlled ciphertext/);

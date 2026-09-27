@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { ACTIVE_MODEL_VERSION, loadModel, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
 import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
+import { buildActionContext } from "./action-context.js";
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
 import { saveAuditPopulation, scaffoldAuditPopulationCorrection } from "./audit-populations.js";
 import { createNextAuditCycle, planNextAuditCycle } from "./audit-transition.js";
@@ -295,7 +296,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       programId
     });
     const result = buildProgramPathResult(loaded.model, readiness, auditReadiness);
-    const output = selectProgramPathOutput(result, flags);
+    const output = selectProgramPathOutput(result, flags, loaded);
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else printProgramPathOutput(output, flags);
     return output;
@@ -935,7 +936,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const output = flags.workflow
       ? {
           record,
-          workflow: workflowForResource(await assessWorkflow(loaded), record.type, record.id)
+          workflow: workflowForResource(await assessWorkflow(loaded), record.type, record.id, loaded)
         }
       : record;
     console.log(JSON.stringify(output, null, 2));
@@ -1773,6 +1774,9 @@ function printAgentGuide(result) {
   console.log(`Policy basis: ${result.policyBasis}`);
   console.log(`Timing: ${result.cadence}`);
   console.log(`JSON: ${result.location}`);
+  console.log(`Existing ${result.pluralTitle}: ${result.existingRecordCount}`);
+  for (const record of result.existingRecords) console.log(`- ${record.id}\t${record.title}\t${record.status || ""}`);
+  if (result.existingRecordsTruncated) console.log("- More records exist. Run filegrc list for the complete set.");
   if (result.reviewRequirements.collectionReview) {
     const review = result.reviewRequirements.collectionReview;
     console.log(`\nCollection review: ${review.title} (${review.status}, ${review.recordCount} ${review.recordCount === 1 ? "record" : "records"})`);
@@ -1924,11 +1928,11 @@ function printProgramPath(result) {
   }
 }
 
-function selectProgramPathOutput(result, flags) {
+function selectProgramPathOutput(result, flags, loaded) {
   const modes = ["summary", "next", "current"].filter((name) => flags[name]);
   if (modes.length > 1) throw new Error("Use only one of --summary, --next, or --current.");
   if (flags.summary) return summarizeProgramPath(result);
-  if (flags.next) return nextProgramPath(result);
+  if (flags.next) return nextProgramPath(result, loaded);
   if (flags.current) {
     const stage = result.stages.find(({ id }) => id === result.currentStep.id);
     return { ...result, stages: stage ? [stage] : [] };
@@ -1957,7 +1961,7 @@ function summarizeProgramPath(result) {
   };
 }
 
-function nextProgramPath(result) {
+function nextProgramPath(result, loaded) {
   const stage = result.stages.find(({ id }) => id === result.currentStep.id);
   const nextAction = stage?.nextActions[0];
   return {
@@ -1975,7 +1979,9 @@ function nextProgramPath(result) {
       title: stage.title,
       status: stage.status,
       summary: stage.summary,
-      nextAction: summarizePathAction(nextAction),
+      nextAction: nextAction
+        ? { ...summarizePathAction(nextAction), context: buildActionContext(loaded, { ...nextAction, stage: stage.id }) }
+        : null,
       commands: nextActionCommands(stage, nextAction)
     } : null
   };

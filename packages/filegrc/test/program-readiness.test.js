@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
+import { buildActionContext } from "../src/action-context.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
 import {
   calculateProgramProgress,
@@ -32,7 +33,7 @@ import { executeCli, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { baselineRecordFiles } from "../../create-filegrc/src/defaults.js";
 
-test("every starter Control gets a short implementation action", () => {
+test("every starter Control starts with a short real-world check", () => {
   const starterControls = baselineRecordFiles("2026-01-01")
     .map(({ record }) => record).filter(({ type }) => type === "control");
   assert.ok(starterControls.length > 20);
@@ -51,10 +52,19 @@ test("every starter Control gets a short implementation action", () => {
     assert.ok(steps[0].length < 190, control.id);
     assert.doesNotMatch(steps.join(" "), /applicability|Obligation|Step 4|audit packet/i, control.id);
     assert.doesNotMatch(steps[0], /choose where staff.*report|decide where risks.*recorded|choose data classes|request and approval path/i, control.id);
-    if (["control-access-authorization", "control-access-review-offboarding"].includes(control.id)) {
-      assert.match(steps[0], /identity system/);
-      assert.doesNotMatch(steps[0], /choose who|assign access reviewers|request path|Access grants|Policy Events/);
-    }
+    assert.doesNotMatch(steps[0], /^(?:Set up|Configure|Enable|Define|Document)\b/, control.id);
+  }
+  const authorization = starterControls.find(({ id }) => id === "control-access-authorization");
+  const authentication = starterControls.find(({ id }) => id === "control-strong-authentication");
+  const firstStep = (id) => controlImplementationSteps(starterControls.find((control) => control.id === id), { implemented: false })[0];
+  assert.match(controlImplementationSteps(authorization, { implemented: false })[0], /access lists.*Systems and Vendor tools.*unique identities.*approval/);
+  assert.match(controlImplementationSteps(authentication, { implemented: false })[0], /System and Vendor lists.*production.*MFA/);
+  assert.match(firstStep("control-security-training"), /worker roster.*approved schedule/);
+  assert.match(firstStep("control-access-review-offboarding"), /access lists.*approved schedules.*required window/);
+  assert.match(firstStep("control-incident-exercise"), /test alert.*acknowledgement.*fallback/);
+  assert.match(firstStep("control-vendor-monitoring"), /Vendors.*current review.*timely reassessment/);
+  for (const control of starterControls) {
+    assert.doesNotMatch(firstStep(control.id), /\b(?:30 days|24 hours|quarterly|annually|annual review|past year)\b/i, control.id);
   }
 });
 
@@ -88,7 +98,7 @@ test("implemented Controls still give actions for remaining readiness checks", (
   assert.equal(steps.length, 4);
   assert.match(steps[0], /link the Policy.*link the criteria/);
   assert.match(steps[1], /active Component/);
-  assert.match(steps[2], /Enable a linked Obligation/);
+  assert.match(steps[2], /Check the linked Obligations.*Enable one/);
   assert.match(steps[3], /review-applicability --scaffold --type control/);
 });
 
@@ -111,7 +121,7 @@ test("planned Control actions reveal the next prerequisite before implementation
   const setup = controlImplementationSteps(control, checks, {
     missingSourceFamilies: [{ title: "Identity and Access", sourceKinds: ["identity-access"] }]
   });
-  assert.match(setup.at(-1), /identity-access.*Enable a linked Obligation/);
+  assert.match(setup.at(-1), /identity-access.*Check the linked Obligations.*Enable one/);
   assert.doesNotMatch(setup.join(" "), /review-applicability|mark this Control Implemented/);
 
   const applicability = controlImplementationSteps(control, { ...checks, evidenceSourceReady: true, workQueue: true });
@@ -791,13 +801,20 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
     .items.find(({ id }) => id === `control-${control.id}`);
   assert.equal(item.message, item.nextSteps[0]);
   assert.equal(item.nextSteps.length, 3);
-  assert.equal(item.nextSteps[0], `Set up this Control: ${control.activity}`);
+  assert.equal(item.nextSteps[0], "Inspect the systems, people, vendors, or work this Control covers. Compare current practice with its statement and fix any gaps.");
   assert.match(item.nextSteps[1], /choose an owner; select the Systems this covers; link the tool or system that can show it happened/);
   assert.match(item.nextSteps[2], /active Component/);
   assert.doesNotMatch(item.nextSteps.join(" "), /applicab|Step 4|mark this Control Implemented/i);
   const workflow = await assessWorkflow(input, { asOf: "2026-09-12", programReadiness: readiness });
   const finding = workflow.findings.find(({ code }) => code === `program.controls.control-${control.id}`);
   assert.deepEqual(finding.nextSteps, item.nextSteps);
+  assert.ok(finding.unmetChecks.includes("implemented"));
+  assert.ok(finding.unmetChecks.includes("scope"));
+  const contextForControl = buildActionContext(input, finding);
+  assert.equal(contextForControl.workPhase, "setup");
+  assert.equal(contextForControl.operationProof, "not-inferred-from-links");
+  assert.ok(contextForControl.existing.some(({ id }) => id === "policy-example"));
+  assert.ok(contextForControl.existing.some(({ id }) => id === "obligation-example"));
 
   await updateResource(root, "control", control.id, { ...planned, ownerIds: control.ownerIds });
   const persistedItem = (await assessProgramReadiness(root, { asOf: "2026-09-12" }))

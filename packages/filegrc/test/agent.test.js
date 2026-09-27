@@ -56,6 +56,11 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(types.length, Object.keys(loaded.model.resources).length);
   const overview = await execute(process.execPath, [cli, "guide", "--root", root, "--json"]);
   const parsedOverview = JSON.parse(overview.stdout);
+  const controlGuide = JSON.parse((await execute(process.execPath, [cli, "guide", "control", "--root", root, "--json"])).stdout);
+  assert.match(controlGuide.instructions, /inspect linked Policy, Obligations, Components, and operating records/);
+  assert.match(controlGuide.instructions, /Record actual operation separately/);
+  assert.match(controlGuide.workflow[0], /Inspect existing records/);
+  assert.match(controlGuide.workflow[1], /Reuse and update a suitable existing record/);
   assert.equal(parsedOverview.programPath.length, 5);
   assert.deepEqual(parsedOverview.programPath.map(({ title }) => title), [
     "Define Scope",
@@ -184,6 +189,8 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   assert.equal(nextPath.currentStep.number, 1);
   assert.equal(nextPath.step.id, "scope");
   assert.equal(nextPath.stages, undefined);
+  assert.equal(nextPath.step.nextAction.context.operation, "inspect-existing");
+  assert.ok(nextPath.step.nextAction.context.existing.some(({ id }) => id === "workspace"));
   assert.deepEqual(nextPath.step.commands, [
     "npx filegrc setup",
     "npx filegrc get workspace --mutation"
@@ -224,6 +231,8 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     assert.equal(guide.instructions, RESOURCE_INSTRUCTIONS[type] || loaded.model.resources[type].description);
     assert.equal(guide.output, RESOURCE_OUTPUTS[type] || `A validated ${loaded.model.resources[type].title} record.`);
     assert.equal(guide.use, loaded.model.resources[type].description);
+    assert.equal(guide.existingRecordCount, loaded.resources.filter((record) => record.type === type).length);
+    assert.equal(guide.existingRecordsTruncated, guide.existingRecordCount > 25);
     if (RESOURCE_INSTRUCTIONS[type]) assert.ok(guide.programStep, `${type} has a program step`);
     assert.ok(guide.requiredAtCreation.some(({ name }) => name === "id"));
     assert.ok(guide.requiredAtCreation.some(({ name }) => name === "title"));
