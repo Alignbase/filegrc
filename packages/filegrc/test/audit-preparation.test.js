@@ -342,6 +342,12 @@ test("initializes model-owned Type 2 populations and management document links",
   assert.ok(directGeneratedAt);
   assert.ok(stateGeneratedAt);
   assert.deepEqual(stateComparable, directComparable);
+  for (const item of directPreparation.stages.flatMap(({ items }) => items)) {
+    if (!item.resourceType) continue;
+    assert.deepEqual(item.destination, item.resourceId
+      ? { kind: "record", resourceType: item.resourceType, resourceId: item.resourceId }
+      : { kind: "collection", resourceType: item.resourceType });
+  }
 
   const before = await assessAuditPreparation(root, { auditId: "audit-type-2" });
   assert.equal(before.canInitialize, true);

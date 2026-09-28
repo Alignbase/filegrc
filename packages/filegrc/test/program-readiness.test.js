@@ -32,6 +32,7 @@ import {
 import { executeCli, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { baselineRecordFiles } from "../../create-filegrc/src/defaults.js";
+import { resolveWorkflowDestination } from "../src/web.js";
 
 test("every starter Control starts with a short real-world check", () => {
   const starterControls = baselineRecordFiles("2026-01-01")
@@ -297,6 +298,24 @@ test("CLI and browser state recommend Control work before the dependent collecti
   const browserActions = browserState.programReadiness.stages.find(({ id }) => id === "controls").items
     .filter(({ status }) => status === "action").map(({ id }) => id);
   assert.deepEqual(browserActions, cliActions);
+  const destinations = browserState.programReadiness.stages.flatMap(({ items }) => items)
+    .concat(browserState.workflow.findings)
+    .map(({ destination }) => destination).filter(Boolean);
+  assert.ok(destinations.length > 0);
+  for (const destination of destinations) {
+    const href = resolveWorkflowDestination(destination, { retentionScheduleApproval: true });
+    assert.ok(href.startsWith("#/"), JSON.stringify(destination));
+    if (destination.kind === "record") {
+      assert.ok(browserState.resources.some(({ record }) => (
+        record.type === destination.resourceType && record.id === destination.resourceId
+      )), href);
+    } else {
+      assert.ok(browserState.model.resources[destination.resourceType], href);
+      if (destination.kind === "collection-review") {
+        assert.ok(browserState.model.collectionReviews[destination.resourceType], href);
+      }
+    }
+  }
 });
 
 test("counts distinct readiness actions until the Type 2 window starts", () => {
@@ -411,6 +430,7 @@ test("rolls collection proposals into one preparation unit and one review unit",
   };
   const pending = collectionReviewReadinessItem(assessment);
   assert.equal(pending.resourceId, "component-b");
+  assert.deepEqual(pending.destination, { kind: "record", resourceType: "component", resourceId: "component-b" });
   assert.match(pending.commands[1], /get component-b --mutation > MUTATION\.json/);
   assert.deepEqual(pending.progressUnits.map(({ id, status }) => ({ id, status })), [
     { id: "component-proposal-batch", status: "action" },
@@ -422,6 +442,7 @@ test("rolls collection proposals into one preparation unit and one review unit",
   assert.deepEqual(prepared.progressUnits.map(({ status }) => status), ["complete", "action"]);
   assert.match(prepared.commands[0], /review-collection component --scaffold > REVIEW\.json/);
   assert.match(prepared.commands[2], /review-collection component REVIEW\.json --yes --json/);
+  assert.deepEqual(prepared.destination, { kind: "collection-review", resourceType: "component" });
 
   assessment.complete = true;
   const reviewed = collectionReviewReadinessItem(assessment);
@@ -473,6 +494,7 @@ test("rolls collection proposals into one preparation unit and one review unit",
   });
   assert.equal(unfinishedScheduleDocument.resourceType, "document");
   assert.equal(unfinishedScheduleDocument.resourceId, "document-retention");
+  assert.deepEqual(unfinishedScheduleDocument.destination, { kind: "record", resourceType: "document", resourceId: "document-retention" });
   assert.match(unfinishedScheduleDocument.commands[1], /get document-retention --mutation > MUTATION\.json/);
 
   const missingScheduleDocument = collectionReviewReadinessItem({
@@ -484,6 +506,7 @@ test("rolls collection proposals into one preparation unit and one review unit",
     approvalIssues: [{ code: "missing-retention-schedule-document" }]
   });
   assert.equal(missingScheduleDocument.createResource, true);
+  assert.deepEqual(missingScheduleDocument.destination, { kind: "collection", resourceType: "document", create: true, scheduleDocument: true });
 
   const duplicateScheduleDocuments = collectionReviewReadinessItem({
     ...assessment,
@@ -510,7 +533,18 @@ test("rolls collection proposals into one preparation unit and one review unit",
     configuration: { ...assessment.configuration, decisions: ["complete"] }
   });
   assert.equal(needsFirstRecord.resourceId, undefined);
+  assert.deepEqual(needsFirstRecord.destination, { kind: "collection", resourceType: "component", create: true });
   assert.match(needsFirstRecord.commands[1], /scaffold component --title "NAME" > MUTATION\.json/);
+
+  const similarInformationTypes = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    complete: false,
+    recordProposals: undefined,
+    records: [],
+    approvalIssues: [{ code: "unreviewed-similar-information-types" }]
+  });
+  assert.deepEqual(similarInformationTypes.destination, { kind: "collection-review", resourceType: "information-type" });
 
   const reviewOnly = collectionReviewReadinessItem({
     ...assessment,
@@ -519,6 +553,16 @@ test("rolls collection proposals into one preparation unit and one review unit",
     recordProposals: undefined
   });
   assert.equal(reviewOnly.progressUnits, undefined);
+  const existingReview = collectionReviewReadinessItem({
+    ...assessment,
+    resourceType: "retention-schedule-item",
+    review: { id: "collection-review-retention", type: "collection-review" },
+    recordCount: 2,
+    recordProposals: undefined
+  });
+  assert.equal(existingReview.resourceId, undefined);
+  assert.deepEqual(existingReview.subject, { type: "collection-review", id: "collection-review-retention" });
+  assert.deepEqual(existingReview.destination, { kind: "collection-review", resourceType: "retention-schedule-item" });
 });
 
 test("does not count a canceled optional Reporting Channel Set as setup work", () => {
