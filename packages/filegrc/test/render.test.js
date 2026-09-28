@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { runCli } from "../src/cli.js";
 import { buildWorkspace, PROGRAM_PATH, renderMarkdown, RESOURCE_INSTRUCTIONS, RESOURCE_OUTPUTS, RESOURCE_PAGE_SUMMARIES, serveWorkspace } from "../src/index.js";
-import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, pageActionIdentity, renderIndex, workflowHrefBelongsToPage } from "../src/web.js";
+import { APP_SCRIPT, APP_STYLES, dashboardProgramReadiness, pageActionIdentity, renderIndex, resolveWorkflowDestination, workflowHrefBelongsToPage } from "../src/web.js";
 import { executeCli, makeWorkspace, writeJson } from "./helpers.js";
 
 const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.meta.url), "utf8");
@@ -1851,14 +1851,14 @@ test("keeps operation status explicit and stage instructions available on demand
   assert.match(APP_SCRIPT, /data-work-source=/);
   assert.match(APP_SCRIPT, /params\.get\("work"\)/);
   assert.match(APP_SCRIPT, /card\.classList\.add\("workflow-target"\)/);
-  assert.match(APP_SCRIPT, /#\/resources\/" \+ encodeURIComponent\(applicabilityType\) \+ "\?review=1"/);
-  assert.match(APP_SCRIPT, /item\.subject\?\.type === applicabilityType[\s\S]*#\/resource\/" \+ encodeURIComponent\(applicabilityType\)/);
-  assert.match(APP_SCRIPT, /command\.includes\(" get "\) && command\.includes\(" --mutation"\)[\s\S]*"\?edit=1"/);
+  assert.match(APP_SCRIPT, /destinationHref\(\{ kind: "collection", resourceType: applicabilityType \}\) \+ "\?review=1"/);
+  assert.match(APP_SCRIPT, /item\.subject\?\.type === applicabilityType[\s\S]*destinationHref\(\{ kind: "record", resourceType: applicabilityType/);
+  assert.match(APP_SCRIPT, /command\.includes\(" get "\) && command\.includes\(" --mutation"\)[\s\S]*edit: true/);
   assert.match(APP_SCRIPT, /function renderDetail\(main, type, id, params = new URLSearchParams\(\)\)/);
   assert.match(APP_SCRIPT, /params\.get\("edit"\) === "1"[\s\S]*main\.querySelector\("#edit-resource"\)\?\.click\(\)/);
   assert.match(APP_SCRIPT, /item\.auditId === options\.id/);
   assert.match(APP_SCRIPT, /scheduled or external/);
-  assert.match(APP_SCRIPT, /missingType[\s\S]*state\.readOnly \? "" : "\?new=1"/);
+  assert.match(APP_SCRIPT, /missingType[\s\S]*destinationHref\(\{ kind: "collection", resourceType: missingType, create: !state\.readOnly \}\)/);
   assert.match(APP_SCRIPT, /params\.get\("review"\) === "1"/);
   assert.doesNotMatch(listSource, /workflowGuidance\(/);
   assert.match(listSource, /collectionReviewPanel\(type\)/);
@@ -2074,7 +2074,7 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /programRole: "required"/);
   assert.match(APP_SCRIPT, /function openRetentionScheduleItemEditor\(seed = \{\}\)/);
   assert.match(APP_SCRIPT, /history\.replaceState\(null, "", "#\/retention-schedule"\)/);
-  assert.match(APP_SCRIPT, /collectionReviewType === "retention-schedule-item" && modelSupports\("retention-schedule-approval"\)/);
+  assert.match(APP_SCRIPT, /destinationHref\(\{ kind: "collection-review", resourceType: collectionReviewType \}\)/);
   assert.match(APP_SCRIPT, /function retentionScheduleApprovalBlocker\(\)/);
   assert.match(APP_SCRIPT, /Complete schedule first/);
   assert.match(APP_SCRIPT, /function retentionCutoffLabel\(cutoff\)/);
@@ -2282,6 +2282,41 @@ test("assigns each program-step action to the page that presents it", () => {
   assert.doesNotMatch(APP_SCRIPT, /\{ type: item\.resourceType \|\| "retention-schedule-item" \}/);
   assert.doesNotMatch(APP_SCRIPT, /\.\.\.programReadinessWorkflowItems\(\)/);
   assert.match(APP_SCRIPT, /const audit = selectDefaultAudit\(audits, state\.programReadiness\?\.asOf \|\| currentDate\(\)\)/);
+});
+
+test("resolves typed workflow destinations without combining a collection type with a review ID", () => {
+  const cases = [
+    [{ kind: "record", resourceType: "component", resourceId: "component-example" }, "#/resource/component/component-example"],
+    [{ kind: "collection", resourceType: "component" }, "#/resources/component"],
+    [{ kind: "collection", resourceType: "document", create: true }, "#/resources/document?new=1"],
+    [{ kind: "collection-review", resourceType: "component" }, "#/resources/component?review-collection=1"],
+    [{ kind: "collection-review", resourceType: "retention-schedule-item" }, "#/retention-schedule"],
+    [{ kind: "collection", resourceType: "document", create: true, scheduleDocument: true }, "#/resources/document?new=1&documentScope=program&documentKind=schedule&programRole=required&title=Data%20Retention%20Schedule"]
+  ];
+  for (const [destination, expected] of cases) {
+    assert.equal(resolveWorkflowDestination(destination, { retentionScheduleApproval: true }), expected);
+  }
+  const review = { kind: "collection-review", resourceType: "retention-schedule-item" };
+  assert.notEqual(resolveWorkflowDestination(review, { retentionScheduleApproval: true }),
+    "#/resource/retention-schedule-item/collection-review-retention");
+  assert.equal(resolveWorkflowDestination(
+    { kind: "record", resourceType: "retention-schedule-item", resourceId: "collection-review-retention" },
+    {
+      retentionScheduleApproval: true,
+      resourceTypes: { "retention-schedule-item": {} },
+      resources: [{ record: { type: "collection-review", id: "collection-review-retention" } }]
+    }
+  ), "#/retention-schedule");
+  assert.equal(resolveWorkflowDestination(
+    { kind: "record", resourceType: "component", resourceId: "component-current", edit: true },
+    { resourceTypes: { component: {} }, resources: [{ record: { type: "component", id: "component-current" } }] }
+  ), "#/resource/component/component-current?edit=1");
+  assert.equal(resolveWorkflowDestination(
+    { kind: "collection", resourceType: "component", create: true },
+    { readOnly: true }
+  ), "#/resources/component");
+  assert.match(APP_SCRIPT, /const resolveWorkflowDestination = function resolveWorkflowDestination/);
+  assert.doesNotMatch(APP_SCRIPT, /function retentionCollectionActionHref/);
 });
 
 test("loads calculated state only for the current browser route", () => {

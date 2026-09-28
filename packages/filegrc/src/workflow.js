@@ -1115,9 +1115,9 @@ export function packetDeliveryIssue(delivery) {
 
 function normalizeFinding(code, item, context) {
   const state = findingState(item.status);
-  const subject = item.resourceType
+  const subject = item.subject || (item.resourceType
     ? { type: item.resourceType, ...(item.resourceId ? { id: item.resourceId } : {}) }
-    : null;
+    : null);
   const dependencies = (item.unresolvedAssignments || []).map((assignment) => ({
     type: assignment.resourceType,
     id: assignment.resourceId,
@@ -1138,6 +1138,7 @@ function normalizeFinding(code, item, context) {
       .filter(([, passed]) => passed === false)
       .map(([name]) => name) } : {}),
     ...(item.resourceId ? { resourceId: item.resourceId } : {}),
+    ...(item.destination ? { destination: item.destination } : {}),
     ...(item.createResourceType ? { createResourceType: item.createResourceType } : {}),
     ...(item.sourceResourceIds ? { sourceResourceIds: item.sourceResourceIds } : {}),
     ...(item.informationTypeId ? { informationTypeId: item.informationTypeId } : {}),

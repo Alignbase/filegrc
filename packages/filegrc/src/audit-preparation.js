@@ -1831,6 +1831,9 @@ function item(id, status, title, message, resource = {}, options = {}) {
     message,
     ...(resource.type ? { resourceType: resource.type } : {}),
     ...(resource.id ? { resourceId: resource.id } : {}),
+    ...(resource.type ? { destination: resource.id
+      ? { kind: "record", resourceType: resource.type, resourceId: resource.id }
+      : { kind: "collection", resourceType: resource.type } } : {}),
     ...(options.commands?.length ? { commands: options.commands } : {}),
     ...(options.affectedActionItemIds?.length ? { affectedActionItemIds: options.affectedActionItemIds } : {}),
     ...(options.affectedEventIds?.length ? { affectedEventIds: options.affectedEventIds } : {}),

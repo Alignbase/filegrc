@@ -774,9 +774,23 @@ export function collectionReviewReadinessItem(assessment) {
       ? { id: firstIncomplete.resourceId, type: assessment.resourceType }
       : needsFirstRecord ? { type: assessment.resourceType }
         : approvalAction ? { type: approvalAction.resourceType, ...(approvalAction.resourceId ? { id: approvalAction.resourceId } : {}) }
-          : assessment.review || { type: assessment.resourceType },
+          : { type: assessment.resourceType },
     {
       resourceType: approvalAction?.resourceType || assessment.resourceType,
+      ...(!proposalAction && !needsFirstRecord && !approvalAction && assessment.review?.id
+        ? { subject: { type: "collection-review", id: assessment.review.id } }
+        : {}),
+      destination: proposalAction
+        ? { kind: "record", resourceType: assessment.resourceType, resourceId: firstIncomplete.resourceId }
+        : needsFirstRecord
+          ? { kind: "collection", resourceType: assessment.resourceType, create: true }
+          : approvalAction
+            ? approvalAction.reviewCollection
+              ? { kind: "collection-review", resourceType: approvalAction.resourceType }
+              : approvalAction.resourceId
+              ? { kind: "record", resourceType: approvalAction.resourceType, resourceId: approvalAction.resourceId }
+              : { kind: "collection", resourceType: approvalAction.resourceType, ...(approvalAction.createResource ? { create: true, scheduleDocument: true } : {}) }
+            : { kind: "collection-review", resourceType: assessment.resourceType },
       reviewPoints: assessment.configuration.reviewPoints,
       ...(approvalAction?.createResource ? { createResource: true } : {}),
       ...(pendingRetentionRow && !proposalAction ? { unresolvedAssignments: [{
@@ -842,6 +856,7 @@ function collectionApprovalIssueAction(assessment) {
   if (issue.code === "unreviewed-similar-information-types") return {
     title: "Review similar Information Types",
     resourceType: "information-type",
+    reviewCollection: true,
     commands: ["npx filegrc list information-type --workflow --json", "npx filegrc review-collection information-type --scaffold > REVIEW.json", "npx filegrc review-collection information-type REVIEW.json --preview --json", "npx filegrc review-collection information-type REVIEW.json --yes --json"]
   };
   return {

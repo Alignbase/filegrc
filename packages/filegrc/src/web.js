@@ -53,6 +53,38 @@ export function pageActionIdentity(href = "", fallback = "") {
   return route.startsWith("#/resource/") ? route : fallback || href;
 }
 
+export function resolveWorkflowDestination(destination, options = {}) {
+  if (!destination?.resourceType) return "";
+  if (options.resourceTypes && !options.resourceTypes[destination.resourceType]) return "";
+  const type = encodeURIComponent(destination.resourceType);
+  if (destination.kind === "record") {
+    const exists = !options.resources || options.resources.some((entry) => {
+      const record = entry.record || entry;
+      return record.type === destination.resourceType && record.id === destination.resourceId;
+    });
+    return destination.resourceId && exists
+      ? `#/resource/${type}/${encodeURIComponent(destination.resourceId)}${destination.edit ? "?edit=1" : ""}`
+      : resolveWorkflowDestination({ kind: "collection", resourceType: destination.resourceType }, options);
+  }
+  if (destination.kind === "collection-review") {
+    if (destination.resourceType === "retention-schedule-item" && options.retentionScheduleApproval) {
+      return "#/retention-schedule";
+    }
+    return `#/resources/${type}?review-collection=1`;
+  }
+  if (destination.kind === "collection") {
+    const create = destination.create && !options.readOnly;
+    if (destination.resourceType === "retention-schedule-item" && options.retentionScheduleApproval) {
+      return create ? "#/retention-schedule?new=1" : "#/retention-schedule";
+    }
+    if (destination.resourceType === "document" && create && destination.scheduleDocument) {
+      return "#/resources/document?new=1&documentScope=program&documentKind=schedule&programRole=required&title=Data%20Retention%20Schedule";
+    }
+    return `#/resources/${type}${create ? "?new=1" : ""}`;
+  }
+  return "";
+}
+
 export function renderIndex(state = null) {
   const snapshot = state
     ? `<script id="filegrc-data" type="application/json">${safeJson(state)}</script>`
@@ -100,6 +132,7 @@ const RESOURCE_GUIDE_OUTPUTS = ${JSON.stringify(RESOURCE_OUTPUTS)};
 const dashboardProgramReadiness = ${dashboardProgramReadiness.toString()};
 const workflowHrefBelongsToPage = ${workflowHrefBelongsToPage.toString()};
 const pageActionIdentity = ${pageActionIdentity.toString()};
+const resolveWorkflowDestination = ${resolveWorkflowDestination.toString()};
 const selectDefaultAudit = ${selectDefaultAudit.toString()};
 const STAGE_PAGE_SUMMARIES = ${JSON.stringify({
   ...RESOURCE_PAGE_SUMMARIES,
@@ -786,11 +819,7 @@ function renderRetentionScheduleIssues() {
   ));
   if (!actions.length) return "";
   return '<section class="retention-issues"><div class="section-head"><div><p class="kicker">Before approval</p><h2>Items to resolve</h2></div></div><div class="retention-issue-list">' + actions.map((item) => {
-    const href = item.href || (item.id?.startsWith("retention-use-")
-      ? retentionScheduleItemHref(item)
-      : item.resourceId && item.resourceType
-        ? '#/resource/' + encodeURIComponent(item.resourceType) + '/' + encodeURIComponent(item.resourceId)
-        : '#/resources/' + encodeURIComponent(item.resourceType || "retention-schedule-item"));
+    const href = item.href || workflowItemHref(item) || "#/retention-schedule";
     return '<a href="' + href + '"><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.message) + '</small></span><b>Review</b></a>';
   }).join("") + '</div></section>';
 }
@@ -1286,9 +1315,7 @@ function renderFinishStepThree() {
   ));
   const next = implementationItems.find(({ status }) => status !== "complete");
   if (!oversightItem) {
-    const href = next?.id?.startsWith("collection-review-") && next.resourceType
-      ? "#/resources/" + encodeURIComponent(next.resourceType) + "?review-collection=1"
-      : next?.id?.startsWith("source-family-")
+    const href = next?.id?.startsWith("source-family-")
         ? "#/evidence-sources"
         : next ? workflowItemHref({ ...next, state: next.status }) || "#/resources/control" : "#/resources/control";
     return '<section class="finish-step panel blocked"><div><p class="kicker">Finish Step 3</p><h2>Complete implementation first</h2><p>' + esc(next?.message || "Finish the Step 3 work areas before the final review becomes available.") + '</p></div><a class="button primary" href="' + esc(href) + '">Continue implementation</a></section>';
@@ -1490,6 +1517,16 @@ function openCollectionReviewDialog(type) {
 }
 
 function workflowItemHref(item) {
+  const destinationOptions = {
+    retentionScheduleApproval: modelSupports("retention-schedule-approval"),
+    readOnly: state.readOnly,
+    resourceTypes: state.model.resources,
+    resources: state.resources
+  };
+  const destinationHref = (destination) => resolveWorkflowDestination(destination, destinationOptions);
+  if (item.destination) {
+    return destinationHref(item.destination);
+  }
   const source = item.source?.id && item.source?.type && item.source.type !== "unknown"
     ? item.source
     : null;
@@ -1518,19 +1555,18 @@ function workflowItemHref(item) {
     && item.subject?.id
     && state.resources.some(({ record }) => record.type === applicabilityType && record.id === item.subject.id)
   ) {
-    return "#/resource/" + encodeURIComponent(applicabilityType) + "/" + encodeURIComponent(item.subject.id);
+    return destinationHref({ kind: "record", resourceType: applicabilityType, resourceId: item.subject.id });
   }
   if (commands.some((command) => command.includes(" scaffold retention-schedule-item"))) {
     return retentionScheduleItemHref(item);
   }
   if (applicabilityType && state.model.resources[applicabilityType]) {
-    return "#/resources/" + encodeURIComponent(applicabilityType) + "?review=1";
+    return destinationHref({ kind: "collection", resourceType: applicabilityType }) + "?review=1";
   }
   const collectionReviewCommand = commands.find((command) => command.includes(" review-collection "));
   const collectionReviewType = collectionReviewCommand?.match(/review-collection\s+([a-z0-9-]+)/)?.[1];
   if (collectionReviewType && state.model.collectionReviews?.[collectionReviewType]) {
-    if (collectionReviewType === "retention-schedule-item" && modelSupports("retention-schedule-approval")) return "#/retention-schedule";
-    return "#/resources/" + encodeURIComponent(collectionReviewType) + "?review-collection=1";
+    return destinationHref({ kind: "collection-review", resourceType: collectionReviewType });
   }
   if (
     commands.some((command) => command.includes(" get ") && command.includes(" --mutation"))
@@ -1538,25 +1574,25 @@ function workflowItemHref(item) {
     && item.subject?.type
     && state.model.resources[item.subject.type]
   ) {
-    return "#/resource/" + encodeURIComponent(item.subject.type) + "/" + encodeURIComponent(item.subject.id) + "?edit=1";
+    return destinationHref({ kind: "record", resourceType: item.subject.type, resourceId: item.subject.id, edit: true });
   }
   if (commands.some((command) => command.includes(" external-reviewer-setup"))) {
     const reviewer = resourcesOfType("appointment")
       .find(({ record }) => record.appointmentKind === "independent-policy-reviewer");
-    if (reviewer) return "#/resource/appointment/" + encodeURIComponent(reviewer.record.id);
+    if (reviewer) return destinationHref({ kind: "record", resourceType: "appointment", resourceId: reviewer.record.id });
   }
   if (commands.some((command) => command.includes(" evidence-map"))) return "#/stage/controls";
   const reference = item.subject?.id && item.subject?.type
     ? item.subject
     : source;
   if (reference && reference.type !== "unknown") {
-    return "#/resource/" + encodeURIComponent(reference.type) + "/" + encodeURIComponent(reference.id);
+    return destinationHref({ kind: "record", resourceType: reference.type, resourceId: reference.id });
   }
   const missingType = item.subject?.type && state.model.resources[item.subject.type]
     ? item.subject.type
     : null;
   if (missingType) {
-    return "#/resources/" + encodeURIComponent(missingType) + (state.readOnly ? "" : "?new=1");
+    return destinationHref({ kind: "collection", resourceType: missingType, create: !state.readOnly });
   }
   if (item.auditId) return "#/audit-packet?auditId=" + encodeURIComponent(item.auditId);
   const stage = {
@@ -1714,31 +1750,14 @@ function retentionSchedulePageItems() {
         ...item,
         key: item.id,
         state: "ready",
-        href: item.id === "collection-review-retention-schedule-item"
-          ? retentionCollectionActionHref(item)
-          : item.id?.startsWith("retention-use-")
+        href: item.id?.startsWith("retention-use-")
             ? retentionScheduleItemHref(item)
-            : item.resourceId && item.resourceType
-              ? '#/resource/' + encodeURIComponent(item.resourceType) + '/' + encodeURIComponent(item.resourceId)
-              : workflowItemHref(item) || "#/retention-schedule",
+            : workflowItemHref(item) || "#/retention-schedule",
         subject: item.resourceId && item.resourceType
           ? { type: item.resourceType, id: item.resourceId }
           : item.subject
       }))
   ]);
-}
-
-function retentionCollectionActionHref(item) {
-  if (item.resourceType === "document") return item.resourceId
-    ? '#/resource/document/' + encodeURIComponent(item.resourceId) + '?stage=policies'
-    : item.createResource
-      ? '#/resources/document?new=1&documentScope=program&documentKind=schedule&programRole=required&title=Data%20Retention%20Schedule'
-      : '#/resources/document';
-  if (item.resourceType === "information-type") return '#/resources/information-type?review-collection=1';
-  if (item.resourceType === "retention-schedule-item" && item.resourceId && item.resourceId !== item.id) {
-    return '#/resource/retention-schedule-item/' + encodeURIComponent(item.resourceId) + '?stage=policies';
-  }
-  return "#/retention-schedule";
 }
 
 function distinctPageActionItems(items) {
@@ -3017,11 +3036,7 @@ function renderAuditPreparation(preparation) {
   const status = preparation.status === "management-ready" ? "Management work complete" : preparation.counts.action + " actions remaining";
   const stages = preparation.stages.map((stage) => {
     const items = stage.items.map((item) => {
-      const href = item.resourceId
-        ? '#/resource/' + encodeURIComponent(item.resourceType) + '/' + encodeURIComponent(item.resourceId)
-        : item.resourceType
-          ? '#/resources/' + encodeURIComponent(item.resourceType)
-          : "";
+      const href = workflowItemHref(item);
       const content = '<span class="preparation-status ' + esc(item.status) + '" aria-hidden="true">' + preparationStatusMark(item.status) + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(item.message) + '</small></span>';
       return href ? '<a href="' + href + '">' + content + '</a>' : '<div>' + content + '</div>';
     }).join("");
