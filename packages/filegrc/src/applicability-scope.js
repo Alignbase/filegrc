@@ -21,7 +21,7 @@ const unorderedStringArrayFields = new Set([
   "tags"
 ]);
 
-export function applicabilityScopeRevision(record, program, resources, model) {
+export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
   const selectedSystemIds = new Set(program?.systemIds || []);
   const selectedFrameworkIds = new Set(program?.frameworkIds || []);
   const selectedControlIds = new Set(program?.controlIds || []);
@@ -117,19 +117,19 @@ export function applicabilityScopeRevision(record, program, resources, model) {
     policies: resources
       .filter(({ type, id }) => type === "policy" && selectedPolicyIds.has(id))
       .sort(compareRecordIds)
-      .map((policy) => pick(policy, [
-        "id",
-        "status",
-        "policyKind",
-        "version",
-        "programRole",
-        "effectiveOn",
-        "requirementIds",
-        "audience",
-        "acknowledgementRequired",
-        "relatedDocumentIds",
-        "approvedContentRevisions"
-      ], model)),
+      .map((policy) => options.legacyPolicyStatus
+        ? pick({
+            ...policy,
+            status: options.legacyPolicyStatus === "approved" && ["in-review", "active"].includes(policy.status)
+              ? "approved" : policy.status,
+            effectiveOn: options.legacyPolicyStatus === "approved" && policy.status === "active"
+              ? undefined : policy.effectiveOn
+          }, [
+            "id", "status", "policyKind", "version", "programRole", "effectiveOn",
+            "requirementIds", "audience", "acknowledgementRequired",
+            "relatedDocumentIds", "approvedContentRevisions"
+          ], model)
+        : pick(policy, ["id", "requirementIds"], model)),
     requirements: resources
       .filter(({ type, frameworkId }) => type === "requirement" && selectedFrameworkIds.has(frameworkId))
       .sort(compareRecordIds)
@@ -165,14 +165,14 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
     && !review.scopeRevision.startsWith("filegrc:applicability-scope:")
     && Number(model?.modelVersion || 0) < 7
   ) return true;
-  return Boolean(
-    review?.scopeRevision
-    && revisionsMatch(
-      "applicability-scope",
-      review.scopeRevision,
-      applicabilityScopeRevision(record, program, resources, model)
-    )
-  );
+  if (!review?.scopeRevision) return false;
+  const matches = (revision) => revisionsMatch("applicability-scope", review.scopeRevision, revision);
+  if (matches(applicabilityScopeRevision(record, program, resources, model))) return true;
+  // Reviews written before the scope fix included Policy lifecycle fields. Accept
+  // that earlier fingerprint only when its material inputs still match.
+  if (matches(applicabilityScopeRevision(record, program, resources, model, { legacyPolicyStatus: "current" }))) return true;
+  return resources.some(({ type, status }) => type === "policy" && ["in-review", "active"].includes(status))
+    && matches(applicabilityScopeRevision(record, program, resources, model, { legacyPolicyStatus: "approved" }));
 }
 
 function pick(record, fields, model, objectType = null) {

@@ -40,6 +40,8 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
       && applicabilityReviewIsCurrent(review, requirementById.get(review.requirementId), program, loaded.resources, loaded.model)
     ))
     .map(({ requirementId }) => requirementId));
+  const requirementReviews = new Map((program.requirementApplicability || [])
+    .map((review) => [review.requirementId, review]));
   const records = loaded.resources.filter((record) => (
     REVIEWABLE_TYPES.has(record.type)
     && (!requestedType || record.type === requestedType)
@@ -56,10 +58,18 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
       .sort((left, right) => `${left.type}:${left.title}:${left.id}`.localeCompare(`${right.type}:${right.title}:${right.id}`))
       .map((record) => {
         const constraint = soc2RequirementApplicabilityConstraint(record, program, loaded.model.modelVersion);
+        const saved = record.type === "requirement" && modelSupports(loaded.model, "program-scope")
+          ? requirementReviews.get(record.id)
+          : record.applicabilityReview;
+        const prior = saved && ["applicable", "not-applicable", "externally-managed", "zero-population"].includes(saved.decision)
+          ? saved : null;
         return {
           id: record.id,
-          decision: constraint?.requiredDecision || null,
-          rationale: constraint?.defaultRationale || null,
+          decision: constraint?.requiredDecision || prior?.decision || null,
+          rationale: constraint?.requiredDecision && constraint.requiredDecision !== prior?.decision
+            ? constraint.defaultRationale || null
+            : prior?.rationale || constraint?.defaultRationale || null,
+          reviewStatus: prior ? "stale" : "missing",
           ...(constraint ? { constraint } : {})
         };
       })

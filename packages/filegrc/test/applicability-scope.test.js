@@ -8,6 +8,7 @@ import {
   applicabilityScopeRevision
 } from "../src/applicability-scope.js";
 import { planApplicabilityReview } from "../src/batch-review.js";
+import { createAppStateSection } from "../src/state.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
@@ -91,7 +92,7 @@ test("model v7 rejects legacy applicability revisions and binds dependent review
   );
   for (const changed of [
     { ...framework, version: "2" },
-    { ...policy, status: "retired" },
+    { ...policy, requirementIds: ["requirement-two"] },
     { ...component, description: "Stores and processes customer data." },
     { ...vendor, criticality: "critical" }
   ]) {
@@ -105,9 +106,18 @@ test("model v7 rejects legacy applicability revisions and binds dependent review
       applicableRevision
     );
   }
+  for (const changed of [
+    { ...policy, status: "in-review" },
+    { ...policy, version: "2", effectiveOn: "2026-09-27" },
+    { ...policy, approvedContentRevisions: { body: "changed" } }
+  ]) {
+    assert.equal(applicabilityScopeRevision(control, program, resources.map((resource) => (
+      resource.id === policy.id ? changed : resource
+    )), model7), applicableRevision);
+  }
   const unselectedControl = { id: "control-two", type: "control", title: "Control two", policyIds: [policy.id] };
   const unselectedRevision = applicabilityScopeRevision(unselectedControl, program, resources, model7);
-  assert.notEqual(
+  assert.equal(
     applicabilityScopeRevision(
       unselectedControl,
       program,
@@ -121,6 +131,55 @@ test("model v7 rejects legacy applicability revisions and binds dependent review
     applicabilityScopeRevision(requirement, program, resources, model7),
     "a Requirement review should not stale only because its own decision was saved"
   );
+});
+
+test("a Policy lifecycle change preserves 42 Requirement and two Commitment scope reviews", () => {
+  const model = loadModel("11");
+  const policy = { id: "policy-one", type: "policy", status: "approved", version: "1" };
+  const system = { id: "system-one", type: "system", title: "Service" };
+  const framework = { id: "framework-one", type: "framework", status: "active", title: "Criteria" };
+  const requirements = Array.from({ length: 42 }, (_, index) => ({
+    id: `requirement-${index + 1}`, type: "requirement", frameworkId: framework.id,
+    reference: `CC${index + 1}`
+  }));
+  const commitments = Array.from({ length: 2 }, (_, index) => ({
+    id: `commitment-${index + 1}`, type: "commitment", status: "active",
+    systemIds: [system.id], requirementIds: [requirements[index].id],
+    policyIds: [policy.id]
+  }));
+  const control = { id: "control-one", type: "control", policyIds: [policy.id] };
+  const program = {
+    id: "program-one", type: "program", systemIds: [system.id],
+    frameworkIds: [framework.id], controlIds: [control.id],
+    requirementApplicability: []
+  };
+  const resources = [policy, system, framework, control, ...requirements, ...commitments];
+  const reviews = [...requirements, ...commitments].map((record) => ({
+    record,
+    review: { decision: "applicable", scopeRevision: applicabilityScopeRevision(
+      record, program, resources, model, { legacyPolicyStatus: "current" }
+    ) }
+  }));
+  const changed = resources.map((record) => record.id === policy.id
+    ? { ...record, status: "in-review" } : record);
+  assert.equal(reviews.filter(({ record, review }) => applicabilityReviewIsCurrent(
+    review, record, program, changed, model
+  )).length, 44);
+  const activated = resources.map((record) => record.id === policy.id
+    ? { ...record, status: "active", effectiveOn: "2026-09-27" } : record);
+  assert.equal(reviews.filter(({ record, review }) => applicabilityReviewIsCurrent(
+    review, record, program, activated, model
+  )).length, 44);
+  const revisedPolicy = activated.map((record) => record.id === policy.id
+    ? { ...record, version: "2" } : record);
+  assert.equal(reviews.every(({ record, review }) => !applicabilityReviewIsCurrent(
+    review, record, program, revisedPolicy, model
+  )), true, "legacy reviews stay stale when their former Policy revision cannot be verified");
+  const changedScope = changed.map((record) => record.id === system.id
+    ? { ...record, boundary: "Expanded service boundary" } : record);
+  assert.equal(reviews.every(({ record, review }) => !applicabilityReviewIsCurrent(
+    review, record, program, changedScope, model
+  )), true);
 });
 
 test("mixed batches bind dependent reviews to the post-review Requirement decisions", async (context) => {
@@ -151,4 +210,28 @@ test("mixed batches bind dependent reviews to the post-review Requirement decisi
     loaded.resources,
     loaded.model
   ), true);
+});
+
+test("browser state distinguishes a stale review from a missing review", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-applicability-status-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const stale = loaded.resources.find(({ type }) => type === "requirement");
+  const missing = { ...stale, id: "requirement-unreviewed" };
+  loaded.resources.push(missing);
+  program.requirementApplicability = [{
+    requirementId: stale.id,
+    decision: "applicable",
+    rationale: "Prior management decision.",
+    scopeRevision: "filegrc:applicability-scope:v1:sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }];
+  const section = await createAppStateSection(loaded, "program", { programId: program.id });
+  assert.equal(section.applicabilityReviewStatuses[stale.id], "stale");
+  assert.equal(section.applicabilityReviewStatuses[missing.id], "missing");
+  const criteria = section.programReadiness.stages.find(({ id }) => id === "scope").items
+    .find(({ id }) => id === "criteria");
+  assert.ok(criteria.staleRequirementIds.includes(stale.id));
+  assert.ok(criteria.missingDecisionRequirementIds.includes(missing.id));
 });

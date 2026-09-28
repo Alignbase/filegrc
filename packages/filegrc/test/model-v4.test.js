@@ -93,6 +93,32 @@ test("treats undetermined Program applicability entries as pending review", asyn
   assert.ok(validation.diagnostics.some(({ code }) => code === "duplicate-program-applicability"));
 });
 
+test("a required decision replaces the rationale for a stale exclusion", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-model-v4-required-rationale-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "4");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const requirement = loaded.resources.find(({ type }) => type === "requirement");
+  await updateResource(root, "requirement", requirement.id, { ...requirement, reference: "CC6.1" });
+  await writeJson(join(root, "data", "programs", `${program.id}.json`), {
+    ...program,
+    assuranceGoal: "readiness",
+    requirementApplicability: [{
+      requirementId: requirement.id,
+      decision: "not-applicable",
+      rationale: "Exclude this requirement from the prior program.",
+      scopeRevision: "filegrc:applicability-scope:v1:sha256:" + "0".repeat(64)
+    }]
+  });
+
+  const scaffold = await scaffoldApplicabilityReview(root, { type: "requirement" });
+  assert.equal(scaffold.decisions[0].reviewStatus, "stale");
+  assert.equal(scaffold.decisions[0].decision, "applicable");
+  assert.match(scaffold.decisions[0].rationale, /required Security Common Criteria baseline/);
+  assert.doesNotMatch(scaffold.decisions[0].rationale, /Exclude this requirement/);
+});
+
 test("requires the actual v4 management-representation signing date", () => {
   const audit = {
     auditKind: "soc-2-type-2",

@@ -247,7 +247,8 @@ function normalizeAppState(next) {
 function blockingStateSections(route) {
   if (route.name === "home") return ["program", "obligations", "workflow"];
   if (route.name === "repository") return ["repository"];
-  if (route.name === "list" && route.type === "control") return ["program"];
+  if (route.name === "list" && ["requirement", "control", "commitment", "complementary-control"].includes(route.type)) return ["program"];
+  if (route.name === "detail" && ["program", "requirement", "control", "commitment", "complementary-control"].includes(route.type)) return ["program"];
   if (route.name === "list" && route.type === "obligation") return ["obligations"];
   if (route.name === "obligations" || route.name === "stage" && route.stageId === "run") return ["program", "obligations"];
   if (route.name === "audit-packet") return ["repository", "program", "obligations", "audits"];
@@ -414,12 +415,6 @@ function activeProgram() {
     ?.record
     || resourcesOfType("program").find(({ record }) => !["retired"].includes(record.status))?.record
     || state.workspace;
-}
-
-function reviewedRequirementIds() {
-  return new Set((activeProgram().requirementApplicability || [])
-    .filter(({ decision }) => ["applicable", "not-applicable"].includes(decision))
-    .map(({ requirementId }) => requirementId));
 }
 
 function renderSidebarUtility(utility, route, direct = false) {
@@ -2778,24 +2773,28 @@ function openNextAuditCycleDialog(prior) {
 }
 
 function controlApplicabilityPending(record) {
+  if (state.applicabilityReviewStatuses?.[record.id]) {
+    return state.applicabilityReviewStatuses[record.id] !== "current";
+  }
   if (!record.applicabilityReview) return true;
   const item = state.programReadiness?.stages?.find(({ id }) => id === "controls")?.items
     .find(({ resourceType, resourceId }) => resourceType === "control" && resourceId === record.id);
   return item?.checks?.applicability === false;
 }
 
+function applicabilityPending(record) {
+  if (state.applicabilityReviewStatuses?.[record.id]) {
+    return state.applicabilityReviewStatuses[record.id] !== "current";
+  }
+  return record.type === "control" ? controlApplicabilityPending(record)
+    : !record.applicabilityReview || record.type === "requirement" && record.applicability === "undetermined";
+}
+
 function openApplicabilityReviewDialog(type, entries) {
   const definition = state.model.resources[type];
   const reviewPoints = definition?.guidance?.reviewPoints || [];
   const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
-  const reviewedRequirements = reviewedRequirementIds();
-  const pending = entries.filter(({ record }) => (
-    type === "requirement" && modelSupports("program-scope")
-      ? !reviewedRequirements.has(record.id)
-      : type === "control"
-        ? controlApplicabilityPending(record)
-        : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
-  ));
+  const pending = entries.filter(({ record }) => applicabilityPending(record));
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog applicability-dialog";
   dialog.setAttribute("aria-labelledby", "applicability-dialog-title");
@@ -2805,10 +2804,19 @@ function openApplicabilityReviewDialog(type, entries) {
     const decisions = constraint?.allowedDecisions || (type === "requirement"
       ? ["applicable", "not-applicable"]
       : ["applicable", "not-applicable", "externally-managed", "zero-population"]);
-    const selected = constraint?.requiredDecision || "";
+    const prior = type === "requirement" && modelSupports("program-scope")
+      ? (activeProgram().requirementApplicability || []).find(({ requirementId }) => requirementId === entry.record.id)
+      : entry.record.applicabilityReview;
+    const selected = constraint?.requiredDecision || (state.applicabilityReviewStatuses?.[entry.record.id] === "stale" ? prior?.decision : "") || "";
+    const rationale = constraint?.requiredDecision && constraint.requiredDecision !== prior?.decision
+      ? constraint.defaultRationale || ""
+      : state.applicabilityReviewStatuses?.[entry.record.id] === "stale"
+        ? prior?.rationale || constraint?.defaultRationale || ""
+        : constraint?.defaultRationale || "";
     const options = decisions.map((decision) => '<option value="' + esc(decision) + '" ' + (decision === selected ? "selected" : "") + '>' + esc(properCase(decision)) + '</option>').join("");
     const note = constraint ? '<small class="applicability-constraint">' + esc(constraint.message) + '</small>' : "";
-    return '<div class="applicability-row" data-review-id="' + esc(entry.record.id) + '"><div><strong>' + esc(entry.record.title) + '</strong><small>' + esc(entry.record.code || entry.record.id) + '</small>' + note + '</div><select name="decision"><option value="">Review later</option>' + options + '</select><input name="rationale" value="' + esc(constraint?.defaultRationale || "") + '" placeholder="Decision rationale"></div>';
+    const stale = state.applicabilityReviewStatuses?.[entry.record.id] === "stale";
+    return '<div class="applicability-row" data-review-id="' + esc(entry.record.id) + '"><div><strong>' + esc(entry.record.title) + '</strong><small>' + esc(entry.record.code || entry.record.id) + (stale ? '<small>Prior review is stale. Confirm this decision against the current scope.</small>' : '') + note + '</div><select name="decision"><option value="">Review later</option>' + options + '</select><input name="rationale" value="' + esc(rationale) + '" placeholder="Decision rationale"></div>';
   }).join("");
   const reviewChecks = reviewPoints.length
     ? '<section class="collection-review-checks"><strong>Before deciding</strong><ul>' + reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>'
@@ -2816,7 +2824,7 @@ function openApplicabilityReviewDialog(type, entries) {
   const baselineNote = constrainedCount
     ? '<p class="applicability-baseline-note"><strong>' + constrainedCount + ' required baseline ' + pluralize("criterion", constrainedCount) + '.</strong> FileGRC has prefilled the only decision compatible with the selected SOC 2 Security goal and a review rationale. Leave an item at Review later only when management is not ready to record it.</p>'
     : '<p>Record only decisions reviewed against the current service scope. Leave an item at Review later when management has not decided it.</p>';
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Batch review</p><h2 id="applicability-dialog-title">Review ' + esc(definition.pluralTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' + baselineNote + reviewChecks + '<div class="form-grid review-context"><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label></div><div class="applicability-rows">' + (rows || empty("Every record already has a reviewed applicability decision.")) + '</div><div class="workflow-preview" role="status"></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary" data-preview-review ' + (pending.length ? "" : "disabled") + '>Preview decisions</button></div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Batch review</p><h2 id="applicability-dialog-title">' + (pending.some(({ record }) => state.applicabilityReviewStatuses?.[record.id] === "stale") ? 'Reconfirm' : 'Review') + ' ' + esc(definition.pluralTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' + baselineNote + reviewChecks + '<div class="form-grid review-context"><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label></div><div class="applicability-rows">' + (rows || empty("Every record already has a reviewed applicability decision.")) + '</div><div class="workflow-preview" role="status"></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary" data-preview-review ' + (pending.length ? "" : "disabled") + '>Preview decisions</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   const form = dialog.querySelector("form");
@@ -3139,18 +3147,12 @@ function renderList(main, type, params = new URLSearchParams()) {
     return { name, label: field.label || humanize(name), values };
   }).filter(({ values }) => values.length > 1);
   const createButton = !state.readOnly && !definition.singleton && !collectionNeedsFirstRecord(type) && resourceCreationAllowed(type) ? '<button class="button primary" id="new-resource">New ' + esc(definition.title.toLowerCase()) + '</button>' : "";
-  const reviewedRequirements = reviewedRequirementIds();
-  const hasPendingApplicability = entries.some(({ record }) => (
-    type === "requirement" && modelSupports("program-scope")
-      ? !reviewedRequirements.has(record.id)
-      : type === "control"
-        ? controlApplicabilityPending(record)
-        : !record.applicabilityReview || type === "requirement" && record.applicability === "undetermined"
-  ));
+  const hasPendingApplicability = entries.some(({ record }) => applicabilityPending(record));
+  const hasStaleApplicability = entries.some(({ record }) => state.applicabilityReviewStatuses?.[record.id] === "stale");
   const applicabilityButton = !state.readOnly
     && ["requirement", "control", "commitment", "complementary-control"].includes(type)
     && hasPendingApplicability
-    ? '<button class="button" id="review-applicability">Review applicability</button>'
+    ? '<button class="button" id="review-applicability">' + (hasStaleApplicability ? 'Reconfirm applicability' : 'Review applicability') + '</button>'
     : "";
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
@@ -3299,6 +3301,9 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     && !fields[name]?.content
     && !narrativeNames.has(name)
   ));
+  if (type === "program" && !Object.hasOwn(entry.record, "requirementApplicability")) {
+    visible.push(["requirementApplicability", []]);
+  }
   const content = Object.entries(entry.content);
   const narrativeContent = narrative.length
     ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(titleCase(fields[name]?.label || humanize(name))) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
@@ -3353,7 +3358,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     : "";
   const attachmentPanel = type === "evidence" ? evidenceAttachmentPanel(entry) : "";
   const recordFieldsPanel = visible.length
-    ? '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type) + '</dd></div>').join("") + '</dl></section>'
+    ? '<section class="panel detail-support-panel detail-metadata-panel"><div class="panel-head"><h3>Record details</h3></div><dl class="metadata">' + visible.map(([name, value]) => '<div><dt>' + esc(fields[name]?.label || humanize(name)) + '</dt><dd>' + formatValue(name === "status" ? displayStatus(entry.record) : value, name, type, false, entry.record) + '</dd></div>').join("") + '</dl></section>'
     : "";
   const supportPanels = renderDetailSupport({
     hasRecordBody,
@@ -3362,9 +3367,17 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     attachmentPanel
   });
   const mayDelete = !state.readOnly && !routeSetLocked && !definition.singleton;
+  const applicabilityStatus = state.applicabilityReviewStatuses?.[entry.record.id];
+  const applicabilityAction = !state.readOnly && ["requirement", "control", "commitment", "complementary-control"].includes(type)
+    && ["stale", "missing"].includes(applicabilityStatus)
+    ? '<a class="button" href="#/resources/' + encodeURIComponent(type) + '?review=1">' + (applicabilityStatus === "stale" ? "Reconfirm" : "Review") + ' applicability</a>'
+    : "";
   const recordMenu = '<details class="record-overflow"><summary aria-label="More record actions" title="More record actions"><svg viewBox="0 0 18 4" aria-hidden="true"><circle cx="2" cy="2" r="2"></circle><circle cx="9" cy="2" r="2"></circle><circle cx="16" cy="2" r="2"></circle></svg></summary><div class="record-overflow-menu" aria-label="Record actions"><button type="button" data-record-modal="info">Record info</button><button type="button" data-record-modal="connections">Connections</button><button type="button" data-record-modal="history"' + (entry.historyLoaded === false ? ' disabled' : '') + '>File history' + (entry.historyLoaded === false ? ' (loading)' : '') + '</button>' + (mayDelete ? '<div class="record-overflow-separator"></div><button class="danger-text" type="button" data-delete-resource>Delete record</button>' : '') + '</div></details>';
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + applicabilityAction + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div><div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + '</div></div>';
   main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
+  main.querySelector("[data-select-program-for-review]")?.addEventListener("click", () => {
+    selectProgram(entry.record.id, "#/resources/requirement?review=1");
+  });
   main.querySelector("#edit-resource")?.addEventListener("click", () => openEditor(type, entry));
   main.querySelectorAll("[data-record-modal]").forEach((button) => button.addEventListener("click", () => {
     button.closest("details")?.removeAttribute("open");
@@ -5770,17 +5783,21 @@ function openContentEditor(entry, name) {
   });
 }
 
+async function selectProgram(programId, destination = null) {
+  const selectionGeneration = ++programSelectionGeneration;
+  const response = await fetch("/api/state/bootstrap?programId=" + encodeURIComponent(programId));
+  if (!response.ok) throw new Error(await responseMessage(response));
+  if (selectionGeneration !== programSelectionGeneration) return;
+  state = normalizeAppState(await response.json());
+  stateSectionRequests.clear();
+  if (destination) history.replaceState(null, "", destination);
+  render();
+  loadStateForRoute();
+}
+
 function bindCommon() {
-  root.querySelector("[data-program-select]")?.addEventListener("change", async (event) => {
-    const programId = event.currentTarget.value;
-    const selectionGeneration = ++programSelectionGeneration;
-    const response = await fetch("/api/state/bootstrap?programId=" + encodeURIComponent(programId));
-    if (!response.ok) throw new Error(await responseMessage(response));
-    if (selectionGeneration !== programSelectionGeneration) return;
-    state = normalizeAppState(await response.json());
-    stateSectionRequests.clear();
-    render();
-    loadStateForRoute();
+  root.querySelector("[data-program-select]")?.addEventListener("change", (event) => {
+    selectProgram(event.currentTarget.value);
   });
   root.querySelectorAll(".nav-toggle, .nav-subgroup-toggle").forEach((button) => button.addEventListener("click", () => {
     const group = button.closest(".nav-group");
@@ -6070,14 +6087,22 @@ function conditionMatchesValues(condition, valueFor) {
 function conditionValueMatches(actual, expected) {
   return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
 }
-function formatValue(value, field, type, compact = false) {
+function formatValue(value, field, type, compact = false, record = null) {
   if (value === undefined || value === null || value === "") return '<span class="muted">Not set</span>';
   const definition = fieldDefinition(type, field);
   if (type === "program" && field === "requirementApplicability" && Array.isArray(value)) {
-    const reviewed = value.filter(({ decision }) => ["applicable", "not-applicable"].includes(decision)).length;
-    const pending = value.length - reviewed;
-    const label = reviewed + " reviewed" + (pending ? " · " + pending + " to review" : "");
-    return '<a class="tag relation" href="#/resources/requirement' + (pending ? "?review=1" : "") + '">' + esc(label) + '</a>';
+    if (record && record.id !== state.selectedProgramId) {
+      return '<button class="button" type="button" data-select-program-for-review="' + esc(record.id) + '">Select this Program to review applicability</button>';
+    }
+    const frameworkIds = new Set(record?.frameworkIds || activeProgram().frameworkIds || []);
+    const requirementIds = state.resources.filter(({ record: candidate }) => (
+      candidate.type === "requirement" && frameworkIds.has(candidate.frameworkId)
+    )).map(({ record: candidate }) => candidate.id);
+    const reviewed = requirementIds.filter((id) => state.applicabilityReviewStatuses?.[id] === "current").length;
+    const stale = requirementIds.filter((id) => state.applicabilityReviewStatuses?.[id] === "stale").length;
+    const pending = requirementIds.length - reviewed - stale;
+    const label = reviewed + " reviewed" + (stale ? " · " + stale + " stale" : "") + (pending ? " · " + pending + " to review" : "");
+    return '<a class="tag relation" href="#/resources/requirement' + (stale || pending ? "?review=1" : "") + '">' + esc(label) + '</a>';
   }
   if (definition?.type === "date") return esc(formatCalendarDate(value));
   if (definition?.type === "timestamp") return esc(formatLocalDateTime(value));
