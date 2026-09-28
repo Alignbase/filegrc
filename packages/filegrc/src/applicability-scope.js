@@ -117,13 +117,16 @@ export function applicabilityScopeRevision(record, program, resources, model, op
     policies: resources
       .filter(({ type, id }) => type === "policy" && selectedPolicyIds.has(id))
       .sort(compareRecordIds)
-      .map((policy) => options.legacyPolicyStatus
+      .map((policy) => options.legacyPolicyStatus || options.legacyPolicyOverrides
         ? pick({
             ...policy,
-            status: options.legacyPolicyStatus === "approved" && ["in-review", "active"].includes(policy.status)
-              ? "approved" : policy.status,
-            effectiveOn: options.legacyPolicyStatus === "approved" && policy.status === "active"
-              ? undefined : policy.effectiveOn
+            status: (options.legacyPolicyOverrides?.[policy.id]?.status || options.legacyPolicyStatus || "current") === "current"
+              ? policy.status : options.legacyPolicyOverrides?.[policy.id]?.status || options.legacyPolicyStatus,
+            effectiveOn: (options.legacyPolicyOverrides?.[policy.id]?.withoutEffectiveOn
+              ?? options.legacyPolicyWithoutEffectiveOn) ? undefined : policy.effectiveOn,
+            approvedContentRevisions: (options.legacyPolicyOverrides?.[policy.id]?.withoutApprovalBinding
+              ?? options.legacyPolicyWithoutApprovalBinding)
+              ? undefined : policy.approvedContentRevisions
           }, [
             "id", "status", "policyKind", "version", "programRole", "effectiveOn",
             "requirementIds", "audience", "acknowledgementRequired",
@@ -168,11 +171,50 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
   if (!review?.scopeRevision) return false;
   const matches = (revision) => revisionsMatch("applicability-scope", review.scopeRevision, revision);
   if (matches(applicabilityScopeRevision(record, program, resources, model))) return true;
-  // Reviews written before the scope fix included Policy lifecycle fields. Accept
-  // that earlier fingerprint only when its material inputs still match.
-  if (matches(applicabilityScopeRevision(record, program, resources, model, { legacyPolicyStatus: "current" }))) return true;
-  return resources.some(({ type, status }) => type === "policy" && ["in-review", "active"].includes(status))
-    && matches(applicabilityScopeRevision(record, program, resources, model, { legacyPolicyStatus: "approved" }));
+  // Older reviews hashed Policy approval metadata alongside scope facts.
+  // Reconstruct each Policy independently because other Policies may already
+  // have been approved when one Policy changes. Material fields stay current.
+  for (const legacyPolicyStatus of ["current", "draft", "in-review", "approved", "active"]) {
+    for (const legacyPolicyWithoutApprovalBinding of [false, true]) {
+      for (const legacyPolicyWithoutEffectiveOn of [false, true]) {
+        if (matches(applicabilityScopeRevision(record, program, resources, model, {
+          legacyPolicyStatus,
+          legacyPolicyWithoutApprovalBinding,
+          legacyPolicyWithoutEffectiveOn
+        }))) return true;
+      }
+    }
+  }
+  const selectedControlIds = new Set(program?.controlIds || []);
+  const selectedPolicyIds = new Set(resources
+    .filter(({ type, id }) => type === "control" && selectedControlIds.has(id))
+    .flatMap(({ policyIds }) => policyIds || []));
+  for (const id of record.policyIds || []) selectedPolicyIds.add(id);
+  const policies = resources.filter(({ type, id }) => type === "policy" && selectedPolicyIds.has(id));
+  // One Policy may advance while the others retain different approval states.
+  // Reconstruct that Policy's former lifecycle fields without changing any
+  // material scope fact or searching combinations of unrelated Policies.
+  for (const policy of policies) {
+    for (const value of legacyPolicyAlternatives(policy)) {
+      if (matches(applicabilityScopeRevision(record, program, resources, model, {
+        legacyPolicyOverrides: { [policy.id]: value }
+      }))) return true;
+    }
+  }
+  return false;
+}
+
+function legacyPolicyAlternatives(policy) {
+  const prior = {
+    active: ["approved", "in-review", "draft"],
+    approved: ["in-review", "draft"],
+    "in-review": ["draft"]
+  }[policy.status] || [];
+  return prior.map((status) => ({
+    status,
+    withoutApprovalBinding: status === "draft" || status === "in-review",
+    withoutEffectiveOn: true
+  }));
 }
 
 function pick(record, fields, model, objectType = null) {
