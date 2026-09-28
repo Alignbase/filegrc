@@ -188,6 +188,30 @@ test("rejects a dirty applicability change made after preview", async (context) 
   );
 });
 
+test("scaffold exposes stale decisions for explicit batch reconfirmation", async (context) => {
+  const root = await applicabilityWorkspace(context, "filegrc-applicability-reconfirm-");
+  const requirementPath = join(root, "data", "requirements", "requirement-01.json");
+  const requirement = JSON.parse(await readFile(requirementPath, "utf8"));
+  await writeJson(requirementPath, {
+    ...requirement,
+    applicability: "applicable",
+    applicabilityReview: {
+      decision: "applicable",
+      rationale: "Prior management decision.",
+      reviewedByIds: ["person-owner"],
+      reviewedOn: "2026-08-18",
+      scopeRevision: "filegrc:applicability-scope:v1:sha256:" + "0".repeat(64)
+    }
+  });
+  const scaffold = await scaffoldApplicabilityReview(root, { type: "requirement" });
+  const decision = scaffold.decisions.find(({ id }) => id === requirement.id);
+  assert.equal(decision.reviewStatus, "stale");
+  assert.equal(decision.decision, "applicable");
+  assert.equal(decision.rationale, "Prior management decision.");
+  assert.deepEqual(scaffold.reviewedByIds, []);
+  assert.equal(scaffold.reviewedOn, null);
+});
+
 async function applicabilityWorkspace(context, prefix) {
   const root = await mkdtemp(join(tmpdir(), prefix));
   context.after(() => rm(root, { recursive: true, force: true }));

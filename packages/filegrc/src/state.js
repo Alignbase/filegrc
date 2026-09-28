@@ -17,6 +17,7 @@ import { measureTiming } from "./timing.js";
 import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 import { modelSupports } from "../model/index.js";
 import { calculateRevision } from "./revisions.js";
+import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -87,6 +88,7 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
     obligations: { loading: true, items: [], triggers: [], counts: {} },
     collectionReviews: {},
     applicabilityConstraints: {},
+    applicabilityReviewStatuses: {},
     programReadiness: null,
     auditPreparations: {},
     workflow: { loading: true, findings: [], workItems: [], assessments: {} },
@@ -156,7 +158,8 @@ export async function createAppStateSection(input, section, options = {}) {
       applicabilityConstraints: Object.fromEntries(loaded.resources.flatMap((record) => {
         const constraint = soc2RequirementApplicabilityConstraint(record, activeProgram, loaded.model.modelVersion);
         return constraint ? [[record.id, constraint]] : [];
-      }))
+      })),
+      applicabilityReviewStatuses: assessApplicabilityReviewStatuses(loaded, activeProgram)
     };
   }
   if (section === "obligations") {
@@ -330,11 +333,27 @@ async function createAppStateUnlocked(input, options) {
     reconciliation,
     collectionReviews,
     applicabilityConstraints,
+    applicabilityReviewStatuses: assessApplicabilityReviewStatuses(loaded, activeProgram),
     programReadiness,
     auditPreparations,
     workflow,
     git
   };
+}
+
+function assessApplicabilityReviewStatuses(loaded, program) {
+  const decisions = new Map((program.requirementApplicability || []).map((review) => [review.requirementId, review]));
+  return Object.fromEntries(loaded.resources
+    .filter(({ type }) => ["requirement", "control", "commitment", "complementary-control"].includes(type))
+    .map((record) => {
+      const review = record.type === "requirement" && modelSupports(loaded.model, "program-scope")
+        ? decisions.get(record.id)
+        : record.applicabilityReview;
+      return [record.id, !review || !["applicable", "not-applicable", "externally-managed", "zero-population"].includes(review.decision)
+        ? "missing" : applicabilityReviewIsCurrent(
+        review, record, program, loaded.resources, loaded.model
+      ) ? "current" : "stale"];
+    }));
 }
 
 function serializeCollectionReviewAssessment(assessment) {

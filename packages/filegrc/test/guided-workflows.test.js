@@ -1055,7 +1055,8 @@ test("records reviewed applicability decisions as one atomic batch", async (cont
   assert.deepEqual(scaffold.decisions, [{
     id: "requirement-access",
     decision: null,
-    rationale: null
+    rationale: null,
+    reviewStatus: "missing"
   }]);
   const options = {
     basis: scaffold.basis,

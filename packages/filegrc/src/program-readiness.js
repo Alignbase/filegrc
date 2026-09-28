@@ -493,12 +493,17 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const requirementById = new Map(records
     .filter(({ type }) => type === "requirement")
     .map((record) => [record.id, record]));
-  const v4Decisions = new Map((workspace?.requirementApplicability || [])
+  const reviewedRequirements = (workspace?.requirementApplicability || [])
     .filter((decision) => (
       requirementById.has(decision.requirementId)
       && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), workspace, records, model)
-    ))
-    .map((decision) => [decision.requirementId, decision.decision]));
+    ));
+  const v4Decisions = new Map(reviewedRequirements.map((decision) => [decision.requirementId, decision.decision]));
+  const staleRequirementIds = new Set((workspace?.requirementApplicability || [])
+    .filter((decision) => requirementById.has(decision.requirementId)
+      && ["applicable", "not-applicable"].includes(decision.decision)
+      && !v4Decisions.has(decision.requirementId))
+    .map(({ requirementId }) => requirementId));
   const applicableRequirements = records.filter((record) => (
     record.type === "requirement"
     && scope.frameworks.some((framework) => framework.id === record.frameworkId)
@@ -514,6 +519,8 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const selectedTrustServicesRequirements = scope.requirements.filter((requirement) => !isDescriptionRequirement(requirement));
   const unresolvedDescriptionRequirements = unresolvedRequirements.filter(isDescriptionRequirement);
   const unresolvedTrustServicesRequirements = unresolvedRequirements.filter((requirement) => !isDescriptionRequirement(requirement));
+  const staleRequirements = unresolvedRequirements.filter(({ id }) => staleRequirementIds.has(id));
+  const missingDecisionRequirements = unresolvedRequirements.filter(({ id }) => !staleRequirementIds.has(id));
   const uncoveredRequirements = scope.requirements.filter((requirement) => (
     !isDescriptionRequirement(requirement)
     && !scope.controls.some((control) => (control.requirementIds || []).includes(requirement.id))
@@ -541,6 +548,8 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const invalidMandatoryDecisions = mandatoryRequirements.filter((requirement) => (
     v4Decisions.get(requirement.id) !== "applicable"
   ));
+  const invalidMandatoryStaleCount = invalidMandatoryDecisions.filter(({ id }) => staleRequirementIds.has(id)).length;
+  const invalidMandatoryOtherCount = invalidMandatoryDecisions.length - invalidMandatoryStaleCount;
   const criteriaComplete = Boolean(
     scope.frameworks.length
     && scope.requirements.length
@@ -564,11 +573,13 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
             ...missingRequiredDescriptionReferences
           ].join(", ")}.`
         : invalidMandatoryDecisions.length
-          ? `Mark all 33 Security Common Criteria and all nine Description Criteria applicable for this SOC 2 Program. ${invalidMandatoryDecisions.length} required ${invalidMandatoryDecisions.length === 1 ? "decision is" : "decisions are"} missing, undetermined, or not applicable.`
-          : `Resolve the program criteria and Controls. ${unresolvedTrustServicesRequirements.length} Trust Services applicability decisions and ${unresolvedDescriptionRequirements.length} Description Criteria decisions remain undetermined, ${missingRequirements.length} applicable criteria are not selected, and ${uncoveredRequirements.length} selected applicable Trust Services criteria have no selected Control. Description Criteria govern the system description and do not map to Controls.`,
+          ? `Mark all 33 Security Common Criteria and all nine Description Criteria applicable for this SOC 2 Program. ${invalidMandatoryDecisions.length} required ${invalidMandatoryDecisions.length === 1 ? "decision needs" : "decisions need"} attention: ${invalidMandatoryStaleCount} prior reviews are stale and ${invalidMandatoryOtherCount} are missing, undetermined, or not applicable.`
+          : `Resolve the program criteria and Controls. ${missingDecisionRequirements.length} applicability decisions are missing or undetermined and ${staleRequirements.length} prior reviews are stale. ${unresolvedTrustServicesRequirements.length} Trust Services criteria and ${unresolvedDescriptionRequirements.length} Description Criteria need current decisions, ${missingRequirements.length} applicable criteria are not selected, and ${uncoveredRequirements.length} selected applicable Trust Services criteria have no selected Control. Description Criteria govern the system description and do not map to Controls.`,
     workspace || { type: "workspace" },
     {
       unresolvedRequirementIds: unresolvedRequirements.map(({ id }) => id),
+      staleRequirementIds: staleRequirements.map(({ id }) => id),
+      missingDecisionRequirementIds: missingDecisionRequirements.map(({ id }) => id),
       missingRequirementIds: missingRequirements.map(({ id }) => id),
       uncoveredRequirementIds: uncoveredRequirements.map(({ id }) => id),
       invalidMandatoryRequirementIds: invalidMandatoryDecisions.map(({ id }) => id),

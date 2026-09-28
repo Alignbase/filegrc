@@ -648,7 +648,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.deepEqual(recoveryPlanReadiness.missingContinuityObjectiveSystemIds, []);
   assert.match(
     programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "criteria").message,
-    /33 Trust Services applicability decisions and 9 Description Criteria decisions remain undetermined/
+    /42 applicability decisions are missing or undetermined and 0 prior reviews are stale/
   );
   const complementaryReview = programReadiness.stages
     .find(({ id }) => id === "controls")

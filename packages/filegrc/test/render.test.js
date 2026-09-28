@@ -15,6 +15,46 @@ const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.met
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const CLI = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
+test("direct Commitment and Program pages load review status before rendering", () => {
+  const source = APP_SCRIPT.slice(
+    APP_SCRIPT.indexOf("function blockingStateSections"),
+    APP_SCRIPT.indexOf("function renderStateLoading")
+  );
+  const context = { state: { model: { collectionReviews: {} } } };
+  const commitment = vm.runInNewContext(source + '\nblockingStateSections({ name: "list", type: "commitment" })', context);
+  const program = vm.runInNewContext(source + '\nblockingStateSections({ name: "detail", type: "program" })', context);
+  const requirementDetail = vm.runInNewContext(source + '\nblockingStateSections({ name: "detail", type: "requirement" })', context);
+  assert.deepEqual([...commitment], ["program"]);
+  assert.deepEqual([...program], ["program"]);
+  assert.deepEqual([...requirementDetail], ["program"]);
+});
+
+test("Program detail labels stale applicability separately and links to reconfirmation", () => {
+  const source = APP_SCRIPT.slice(
+    APP_SCRIPT.indexOf("function formatValue"),
+    APP_SCRIPT.indexOf("function formatObjectArray")
+  );
+  const state = {
+    applicabilityReviewStatuses: { one: "current", two: "stale", three: "missing" },
+    resources: ["one", "two", "three"].map((id) => ({ record: { id, type: "requirement", frameworkId: "framework-one" } }))
+  };
+  const context = {
+    state,
+    activeProgram: () => ({ frameworkIds: ["framework-one"] }),
+    fieldDefinition: () => ({}),
+    esc: (value) => String(value)
+  };
+  const output = vm.runInNewContext(source + '\nformatValue([{ requirementId: "one" }, { requirementId: "two" }], "requirementApplicability", "program")', context);
+  assert.match(output, /1 reviewed · 1 stale · 1 to review/);
+  assert.match(output, /#\/resources\/requirement\?review=1/);
+  const empty = vm.runInNewContext(source + '\nformatValue([], "requirementApplicability", "program")', context);
+  assert.match(empty, /1 reviewed · 1 stale · 1 to review/);
+  const otherProgram = vm.runInNewContext(source + '\nformatValue([], "requirementApplicability", "program", false, { id: "program-other", frameworkIds: ["framework-one"] })', context);
+  assert.match(otherProgram, /Select this Program to review applicability/);
+  const detailSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderDetail"), APP_SCRIPT.indexOf("function recordNarrative"));
+  assert.match(detailSource, /!Object\.hasOwn\(entry\.record, "requirementApplicability"\)/);
+});
+
 function renderCollectionReviewPanel(assessment) {
   const start = APP_SCRIPT.indexOf("function collectionReviewPanel");
   const end = APP_SCRIPT.indexOf("function resourceCreationAllowed");
@@ -1853,7 +1893,7 @@ test("keeps operation status explicit and stage instructions available on demand
   assert.match(detailSource, /workflowPanel: workflowGuidance\(\{ type, id, title: "Next steps", workflow: entry\.workflow \}\) \|\| recordCompletionState\(entry\.record\)/);
   assert.match(APP_SCRIPT, /const findings = workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
   assert.match(APP_SCRIPT, /function controlApplicabilityPending\(record\)/);
-  assert.match(APP_SCRIPT, /route\.name === "list" && route\.type === "control"\) return \["program"\]/);
+  assert.match(APP_SCRIPT, /route\.name === "list" && \["requirement", "control", "commitment", "complementary-control"\]\.includes\(route\.type\)\) return \["program"\]/);
   assert.match(detailSource, /<h3>Record details<\/h3>/);
   assert.match(detailSource, /detail-metadata-panel/);
   assert.match(APP_SCRIPT, /resourceReviewCriteria\(type, true\)/);
