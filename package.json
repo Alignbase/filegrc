@@ -1,6 +1,6 @@
 {
   "name": "filegrc-monorepo",
-  "version": "0.16.11",
+  "version": "0.16.12",
   "private": true,
   "workspaces": [
     "packages/filegrc",

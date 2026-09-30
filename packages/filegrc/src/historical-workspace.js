@@ -1,10 +1,55 @@
 import { loadModel } from "../model/index.js";
-import { getDataFilesAtRevision, getFileAtRevision } from "./git.js";
+import { getDataCommitHistory, getDataFilesAtRevision, getDataRecordHistoryIndex, getFileAtRevision } from "./git.js";
+import { performance } from "node:perf_hooks";
 
-// Rebuild only the authoritative data needed for a historical revision check.
-// The caller must compare current and historical facts before accepting a
-// legacy binding; this snapshot never supplies a new approval.
-export function historicalWorkspace(root, commit) {
+const reviewContexts = new WeakMap();
+
+export function reviewHistoryContext(root, owner) {
+  const key = owner.resources || owner;
+  let context = reviewContexts.get(key);
+  if (context) return context;
+  let index = null;
+  try {
+    // Leave time for the original Git recovery path if this larger index
+    // cannot be built within a browser request.
+    index = getDataRecordHistoryIndex(root, { deadline: performance.now() + 3_000 });
+  } catch (error) {
+    if (error.code !== "FILEGRC_HISTORY_DEADLINE") throw error;
+  }
+  context = { root, index, statesByCommit: new Map(), workspacesByCommit: new Map() };
+  reviewContexts.set(key, context);
+  return context;
+}
+
+export function reviewHistoryCommits(context) {
+  if (context.index?.available) return context.index.commits;
+  context.fallbackCommits ||= getDataCommitHistory(context.root);
+  return context.fallbackCommits;
+}
+
+export function reviewCommitsChangingTypes(index, types) {
+  const paths = new Set();
+  for (const records of index.recordsByCommit.values()) {
+    for (const { record, path } of records.values()) {
+      if (types.has(record.type)) paths.add(path);
+    }
+  }
+  return index.commits.filter((commit) => [...(index.fileChangesByCommit.get(commit)?.keys() || [])]
+    .some((path) => paths.has(path)));
+}
+
+export function reviewHistoricalWorkspace(context, commit) {
+  if (context.index?.available) return indexedHistoricalWorkspace(context, commit);
+  if (context.workspacesByCommit.has(commit)) return context.workspacesByCommit.get(commit);
+  const loaded = historicalWorkspace(context.root, commit);
+  context.workspacesByCommit.set(commit, loaded);
+  if (context.workspacesByCommit.size > 128) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);
+  return loaded;
+}
+
+// Preserve recovery beyond the reconciliation index's size and build limits.
+// It is slower, but still requires the same substantive comparison.
+function historicalWorkspace(root, commit) {
   const entries = [];
   for (const path of getDataFilesAtRevision(root, commit).filter(authoritativeJsonPath)) {
     const source = getFileAtRevision(root, commit, path);
@@ -20,6 +65,59 @@ export function historicalWorkspace(root, commit) {
   if (!workspace) return null;
   try {
     return { root, entries, resources, workspace, model: loadModel(workspace.dataModelVersion) };
+  } catch {
+    return null;
+  }
+}
+
+// The history index already contains every committed JSON and Markdown source.
+// Materialize its first-parent states once instead of asking Git to list and
+// read the entire workspace for every legacy review binding.
+export function indexedHistoricalWorkspace(context, commit) {
+  const { root, index } = context;
+  if (!index?.available || !index.parentsByCommit.has(commit)) return null;
+  // Reuse a full request-sized history for ordinary workspaces while bounding
+  // retained maps when a repository contains many thousands of data files.
+  const cacheLimit = Math.max(1, Math.min(512, Math.floor(200_000 / Math.max(1, index.historicalRecordPaths.size))));
+  if (context.workspacesByCommit.has(commit)) return context.workspacesByCommit.get(commit);
+  let state = context.statesByCommit.get(commit);
+  if (!state) {
+    const lineage = [];
+    let cursor = commit;
+    while (cursor && !context.statesByCommit.has(cursor)) {
+      lineage.push(cursor);
+      cursor = index.parentsByCommit.get(cursor)?.[0] || null;
+    }
+    state = cursor ? context.statesByCommit.get(cursor) : new Map();
+    for (let position = lineage.length - 1; position >= 0; position -= 1) {
+      const changedAt = lineage[position];
+      const next = new Map(state);
+      for (const [path, source] of index.fileChangesByCommit.get(changedAt) || []) {
+        if (source === null) next.delete(path);
+        else next.set(path, source);
+      }
+      context.statesByCommit.set(changedAt, next);
+      if (context.statesByCommit.size > cacheLimit) context.statesByCommit.delete(context.statesByCommit.keys().next().value);
+      state = next;
+    }
+  }
+  const entries = [];
+  for (const [path, source] of state) {
+    if (!authoritativeJsonPath(path)) continue;
+    try {
+      entries.push({ record: JSON.parse(source), source, relativePath: path.slice("data/".length) });
+    } catch {
+      return null;
+    }
+  }
+  const resources = entries.map(({ record }) => record);
+  const workspace = resources.find(({ type }) => type === "workspace");
+  if (!workspace) return null;
+  try {
+    const loaded = { root, entries, resources, workspace, model: loadModel(workspace.dataModelVersion), historicalFiles: state };
+    context.workspacesByCommit.set(commit, loaded);
+    if (context.workspacesByCommit.size > cacheLimit) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);
+    return loaded;
   } catch {
     return null;
   }

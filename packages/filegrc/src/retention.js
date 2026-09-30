@@ -6,8 +6,8 @@ import { programComponents } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { modelSupports } from "../model/index.js";
 import { canonicalCalculatedRevisionJson, revisionDigest, revisionsMatch } from "./revisions.js";
-import { getDataCommitHistory, getFileAtRevision } from "./git.js";
-import { historicalWorkspace } from "./historical-workspace.js";
+import { getFileAtRevision } from "./git.js";
+import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 
 export async function assessRetentionReadiness(loaded, program, options = {}) {
   if (!loaded.model.resources["retention-schedule-item"]) return [];
@@ -203,7 +203,9 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     for (const markdown of markdownEntries(loaded.model, entry.record)) {
       try {
         const source = historicalCommit
-          ? getFileAtRevision(loaded.root, historicalCommit, `data/${markdown.path}`)
+          ? loaded.historicalFiles
+            ? loaded.historicalFiles.get(`data/${markdown.path}`) ?? null
+            : getFileAtRevision(loaded.root, historicalCommit, `data/${markdown.path}`)
           : readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8");
         if (source !== null) parts.push(source);
       } catch (error) {
@@ -241,8 +243,24 @@ export function resourceReviewRevisionMatches(loaded, revisions, id, stored) {
 // records and Markdown, before the old approval is treated as current.
 function historicallyEquivalentReviewSource(loaded, id, stored, current) {
   if (!loaded.root) return false;
-  for (const commit of getDataCommitHistory(loaded.root).reverse()) {
-    const snapshot = historicalWorkspace(loaded.root, commit);
+  const context = reviewHistoryContext(loaded.root, loaded);
+  const { index } = context;
+  const relevantPaths = index?.available ? new Set(["data/workspace.json"]) : null;
+  const graphIds = new Set();
+  const visit = (resourceId) => {
+    if (graphIds.has(resourceId)) return;
+    graphIds.add(resourceId);
+    const entry = loaded.entries.find(({ record }) => record.id === resourceId);
+    if (!entry) return;
+    for (const path of (index.historiesById.get(resourceId) || []).map(({ path }) => path)) relevantPaths.add(path);
+    for (const markdown of markdownEntries(loaded.model, entry.record)) relevantPaths.add(`data/${markdown.path}`);
+    for (const sourceId of entry.record.sourceResourceIds || []) visit(sourceId);
+  };
+  if (relevantPaths) visit(id);
+  for (const commit of [...reviewHistoryCommits(context)].reverse()) {
+    const changed = index?.available ? index.fileChangesByCommit.get(commit) : null;
+    if (relevantPaths && ![...changed.keys()].some((path) => relevantPaths.has(path) || path.endsWith(".md"))) continue;
+    const snapshot = reviewHistoricalWorkspace(context, commit);
     if (!snapshot?.entries.some(({ record }) => record.id === id)) continue;
     const semantic = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit).get(id);
     if (!revisionsMatch("content", semantic, current)) continue;
