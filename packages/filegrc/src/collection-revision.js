@@ -7,6 +7,8 @@ import {
   collectionScopeRevisionFacts
 } from "./collection-scope.js";
 import { resolveDataPath } from "./paths.js";
+import { getDataCommitHistory, getFileAtRevision } from "./git.js";
+import { historicalWorkspace } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
@@ -39,6 +41,35 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
       }
     }
   }
+  return historicallyEquivalentCollection(loaded, resourceType, storedRevision, options, currentRevision);
+}
+
+function historicallyEquivalentCollection(loaded, resourceType, stored, options, current) {
+  if (!loaded.root) return false;
+  for (const commit of getDataCommitHistory(loaded.root).reverse()) {
+    const snapshot = historicalWorkspace(loaded.root, commit);
+    if (!snapshot) continue;
+    const historicalOptions = {
+      ...options,
+      programId: options.programId || options.program?.id,
+      historicalCommit: commit
+    };
+    delete historicalOptions.program;
+    delete historicalOptions.currentRevision;
+    // Require the complete reviewed basis to be unchanged under the current
+    // semantic calculation before accepting an older byte-sensitive digest.
+    if (!revisionsMatch("collection", current, collectionRevision(snapshot, resourceType, historicalOptions))) continue;
+    for (const legacy of [false, true]) {
+      for (const scopeHashInput of ["legacy", "digest"]) {
+        for (const scopeFactsInput of ["legacy", "source"]) {
+          if (revisionsMatch("collection", stored, calculateCollectionRevision(
+            snapshot, resourceType, { ...historicalOptions, historicalReviewMetadata: true },
+            legacy, scopeHashInput, scopeFactsInput
+          ))) return true;
+        }
+      }
+    }
+  }
   return false;
 }
 
@@ -51,7 +82,7 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
     : Object.hasOwn(options, "program")
     ? options.program
     : resolveProgram(loaded, options.programId);
-  const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program, { legacy })
+  const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program, { legacy, historicalReviewMetadata: options.historicalReviewMetadata })
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);
   if (authoritativeSource) {
@@ -71,7 +102,10 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
         .digest("hex"),
       contentRevisions: (legacy || includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
         try {
-          const content = readFileSync(resolveDataPath(loaded.root, path), "utf8");
+          const content = options.historicalCommit
+            ? getFileAtRevision(loaded.root, options.historicalCommit, `data/${path}`)
+            : readFileSync(resolveDataPath(loaded.root, path), "utf8");
+          if (content === null) return [];
           return [{ path, revision: createHash("sha256").update(content).digest("hex") }];
         } catch (error) {
           if (error.code === "ENOENT") return [];
@@ -80,7 +114,9 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
       })
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
-  const scopeFacts = collectionScopeRevisionFacts(loaded, resourceType, program);
+  const scopeFacts = collectionScopeRevisionFacts(loaded, resourceType, program, {
+    historicalReviewMetadata: options.historicalReviewMetadata
+  });
   const workspaceScope = scopeFactsInput === "source" ? scopeFacts : canonicalScopeFacts(scopeFacts);
   const source = JSON.stringify({ resourceType, records, workspaceScope });
   return legacy

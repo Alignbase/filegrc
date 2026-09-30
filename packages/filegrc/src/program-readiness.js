@@ -155,7 +155,7 @@ export async function assessProgramReadiness(input, options = {}) {
   };
 
   const policyStage = await policiesStage(scope, records, byId, readMarkdown, loaded.model);
-  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model);
+  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model, loaded.root);
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
     .map(collectionReviewReadinessItem));
@@ -218,7 +218,8 @@ export async function assessProgramReadiness(input, options = {}) {
       byId,
       loaded.model,
       collectionReviews.filter(({ resourceType }) => ["person", "framework", "system", "component", "vendor", "classification", "information-type"].includes(resourceType)),
-      workspace?.timezone || "UTC"
+      workspace?.timezone || "UTC",
+      loaded.root
     );
   if (modelSupports(loaded.model, "reporting-route-sets")) {
     const routeSets = await assessReportingRouteSets(loaded, {
@@ -373,7 +374,7 @@ function programScope(program, records, byId, model, loaded) {
   };
 }
 
-function scopeStage(workspace, scope, records, byId, model, collectionReviews = [], timezone = "UTC") {
+function scopeStage(workspace, scope, records, byId, model, collectionReviews = [], timezone = "UTC", root = null) {
   const items = [];
   const goal = workspace?.assuranceGoal || "none";
   items.push(item(
@@ -459,7 +460,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
       && record.effectiveOn
       && (!model.resources.commitment?.fields?.applicabilityReview || (
         record.applicabilityReview?.decision === "applicable"
-        && applicabilityReviewIsCurrent(record.applicabilityReview, record, workspace, records, model)
+        && applicabilityReviewIsCurrent(record.applicabilityReview, record, workspace, records, model, root)
       ))
       && currentPartyPeople(record.ownerIds, byId).size > 0
       && (record.requirementIds || []).length > 0
@@ -496,7 +497,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const reviewedRequirements = (workspace?.requirementApplicability || [])
     .filter((decision) => (
       requirementById.has(decision.requirementId)
-      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), workspace, records, model)
+      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), workspace, records, model, root)
     ));
   const v4Decisions = new Map(reviewedRequirements.map((decision) => [decision.requirementId, decision.decision]));
   const staleRequirementIds = new Set((workspace?.requirementApplicability || [])
@@ -1617,7 +1618,7 @@ function legacyPolicyLibraryProposals(records) {
   }];
 }
 
-async function controlsStage(scope, byId, readMarkdown, asOf, model) {
+async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null) {
   const items = [];
   const families = selectedControlFamilies(scope.controls, model);
   if (!scope.controls.length) {
@@ -1651,7 +1652,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model) {
     const checks = {
       ...(model.resources.control?.fields?.applicabilityReview ? {
         applicability: control.applicabilityReview?.decision === "applicable"
-          && applicabilityReviewIsCurrent(control.applicabilityReview, control, scope.program, [...byId.values()], model)
+          && applicabilityReviewIsCurrent(control.applicabilityReview, control, scope.program, [...byId.values()], model, root)
       } : {}),
       implemented: control.status === "implemented",
       owner: (control.ownerIds || []).length > 0,

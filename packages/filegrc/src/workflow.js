@@ -397,7 +397,7 @@ function recordFinalizationFindings(loaded, program) {
     if (incomplete) {
       findings.push(finalizationFinding(record, incomplete, loaded.model));
     }
-    for (const missing of finalizationFields(record, loaded.model, loaded.resources, program)) {
+    for (const missing of finalizationFields(record, loaded.model, loaded.resources, program, loaded.root)) {
       findings.push(fieldFinding(record, missing, loaded.model));
     }
   }
@@ -532,11 +532,11 @@ function recordFinalizationRequiredness(record, loaded, program) {
   return "conditional";
 }
 
-function finalizationFields(record, model, resources, program) {
+function finalizationFields(record, model, resources, program, root) {
   const fields = [];
   const needsReview = ["requirement", "commitment", "complementary-control", "control"].includes(record.type)
     && model.resources[record.type]?.fields?.applicabilityReview
-    && !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, resources, model);
+    && !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, resources, model, root);
   if (needsReview) {
     const currentRevision = applicabilityScopeRevision(record, program, resources, model);
     fields.push({

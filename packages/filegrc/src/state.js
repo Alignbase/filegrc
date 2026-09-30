@@ -351,7 +351,7 @@ function assessApplicabilityReviewStatuses(loaded, program) {
         : record.applicabilityReview;
       return [record.id, !review || !["applicable", "not-applicable", "externally-managed", "zero-population"].includes(review.decision)
         ? "missing" : applicabilityReviewIsCurrent(
-        review, record, program, loaded.resources, loaded.model
+        review, record, program, loaded.resources, loaded.model, loaded.root
       ) ? "current" : "stale"];
     }));
 }

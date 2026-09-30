@@ -360,23 +360,26 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
     record,
     value: reviewedIds.has(record.id)
       ? resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
-        ? retentionScheduleRowProposalValue(record)
-        : record
+        ? retentionScheduleRowProposalValue(record, options.historicalReviewMetadata)
+        : options.historicalReviewMetadata ? record : substantiveRevisionValue(record)
       : resourceType === "retention-schedule-item"
         && modelSupports(loaded.model, "retention-schedule-approval")
         && record.type === "document"
           ? retentionScheduleDocumentProposalValue(record)
-          : dependencyRevisionValue(resourceType, record, legacy),
+          : options.historicalReviewMetadata
+            ? dependencyRevisionValue(resourceType, record, legacy)
+            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy)),
     includeContent: legacy
       || reviewedIds.has(record.id)
       || dependencyContentAffectsRevision(resourceType, record.type)
   }));
 }
 
-function retentionScheduleRowProposalValue(record) {
+function retentionScheduleRowProposalValue(record, historicalReviewMetadata = false) {
   return Object.fromEntries(Object.entries(record).filter(([field]) => ![
     "approvedByIds",
-    "approvedOn"
+    "approvedOn",
+    ...(historicalReviewMetadata ? [] : ["reviewedSourceRevisions"])
   ].includes(field)));
 }
 
@@ -396,7 +399,7 @@ function retentionScheduleDocumentProposalValue(record) {
   ].includes(field)));
 }
 
-export function collectionScopeRevisionFacts(loaded, resourceType, program) {
+export function collectionScopeRevisionFacts(loaded, resourceType, program, options = {}) {
   if (!modelSupports(loaded.model, "program-scope")) {
     const common = { programId: program?.id ?? null };
     if (resourceType === "framework") {
@@ -426,7 +429,7 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program) {
       programs: programs.map((record) => ({
         id: record.id,
         systemIds: sorted(record.systemIds),
-        controlIds: sorted(record.controlIds)
+        ...(options.historicalReviewMetadata ? { controlIds: sorted(record.controlIds) } : {})
       }))
     };
   }
@@ -454,7 +457,11 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program) {
       assuranceGoal: program?.assuranceGoal ?? null,
       frameworkIds: sorted(program?.frameworkIds),
       requirementIds: sorted(selectedRequirementIds(program || {}, loaded.model)),
-      requirementApplicability: program?.requirementApplicability || [],
+      requirementApplicability: options.historicalReviewMetadata
+        ? program?.requirementApplicability || []
+        : (program?.requirementApplicability || [])
+            .map(({ requirementId, decision }) => ({ requirementId, decision }))
+            .sort((left, right) => left.requirementId.localeCompare(right.requirementId)),
       riskMethodology: program?.riskMethodology || null
     } : scope;
   }
@@ -462,9 +469,33 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program) {
 }
 
 export function authoritativeSourceRevisionValue(record) {
-  return Object.fromEntries(Object.entries(record).filter(([field]) => (
+  return substantiveRevisionValue(Object.fromEntries(Object.entries(record).filter(([field]) => (
     !authoritativeSourceBookkeepingFields.has(field)
-  )));
+  ))));
+}
+
+function substantiveRevisionValue(record) {
+  if (!record) return record;
+  const value = { ...record };
+  if (value.type === "retention-schedule-item") {
+    delete value.approvedByIds;
+    delete value.approvedOn;
+    delete value.reviewedSourceRevisions;
+  }
+  if (value.type === "program" && value.requirementApplicability) {
+    value.requirementApplicability = value.requirementApplicability
+      .map(({ requirementId, decision }) => ({ requirementId, decision }))
+      .sort((left, right) => left.requirementId.localeCompare(right.requirementId));
+  }
+  if (value.applicabilityReview) value.applicabilityReview = { decision: value.applicabilityReview.decision };
+  if (["policy", "document", "training"].includes(value.type)) {
+    for (const field of [
+      "approverIds", "approvedOn", "activationBasis", "activatedByIds",
+      "activatedOn", "activatedContentRevisions", "statusTransition"
+    ]) delete value[field];
+    if (["approved", "active"].includes(value.status)) value.status = "approved";
+  }
+  return value;
 }
 
 const authoritativeSourceBookkeepingFields = new Set([

@@ -12,7 +12,7 @@ import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { contentRevisionBindingsMatch } from "../src/program-lifecycle.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
-import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
+import { resourceReviewRevisionMatches, resourceReviewRevisions, resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
 import { canonicalCalculatedRevisionJson, revisionsMatch } from "../src/revisions.js";
 import { currentCalendarDate } from "../src/time.js";
 import { validateWorkspace } from "../src/validate.js";
@@ -257,8 +257,8 @@ test("embedded applicability labels preserve legacy source and collection revisi
   const legacyCollectionRevision = collectionRevision(loaded, "control", { program });
   const version016SourceRevision = version016Revisions.get(entry.record.id);
   const version016CollectionRevision = collectionRevision(loaded, "control", { program, scopeHashInput: "digest" });
-  assert.notEqual(version016SourceRevision, legacySourceRevision);
-  assert.notEqual(version016CollectionRevision, legacyCollectionRevision);
+  assert.equal(version016SourceRevision, legacySourceRevision);
+  assert.equal(version016CollectionRevision, legacyCollectionRevision);
   assert.equal(canonicalCalculatedRevisionJson(entry.source), entry.source);
   assert.equal(canonicalCalculatedRevisionJson(entry.source, "digest"), entry.source.replace(`scope:${digestValue}`, digestValue));
   assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${mapping.id}`).status, "complete");
@@ -280,19 +280,340 @@ test("embedded applicability labels preserve legacy source and collection revisi
 
   entry.record.applicabilityReview.scopeRevision = `filegrc:applicability-scope:v1:sha256:${"b".repeat(64)}`;
   entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.equal((await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id), legacySourceRevision);
+  assert.equal(collectionRevision(loaded, "control", { program }), legacyCollectionRevision);
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${mapping.id}`).status, "complete");
+  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${version016Mapping.id}`).status, "complete");
+  assert.equal(await ruleCurrent(rule), true);
+  assert.equal(await ruleCurrent(version016Rule), true);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016CollectionRevision, { program }), true);
+
+  entry.record.applicabilityReview.decision = "not-applicable";
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
   assert.notEqual((await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id), legacySourceRevision);
-  assert.notEqual(collectionRevision(loaded, "control", { program }), legacyCollectionRevision);
-  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${mapping.id}`).status, "action");
-  assert.equal((await assessRequirementMappingReadiness(loaded)).find(({ id }) => id === `requirement-mapping-${version016Mapping.id}`).status, "action");
   assert.equal(await ruleCurrent(rule), false);
-  assert.equal(await ruleCurrent(version016Rule), false);
-  assert.equal(collectionRevisionMatches(loaded, "control", version016CollectionRevision, { program }), false);
 
   entry.record.applicabilityReview.scopeRevision = `filegrc:applicability-scope:v1:sha256:${digestValue}`;
   const selectedSystem = loaded.resources.find(({ type, id }) => type === "system" && (program.systemIds || []).includes(id));
   assert.ok(selectedSystem);
   selectedSystem.boundary = `${selectedSystem.boundary || "Service boundary"} updated`;
   assert.equal(applicabilityReviewIsCurrent(entry.record.applicabilityReview, entry.record, program, loaded.resources, loaded.model), false);
+});
+
+test("committed legacy source bindings survive metadata-only applicability reviews", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-review-metadata-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const entry = before.entries.find(({ record }) => record.type === "commitment");
+  const program = before.resources.find(({ type }) => type === "program");
+  const scopeRevision = applicabilityScopeRevision(entry.record, program, before.resources, before.model);
+  entry.record.applicabilityReview = {
+    decision: "applicable", rationale: "Reviewed service scope.", reviewedByIds: ["person-example"],
+    reviewedOn: "2026-09-20", scopeRevision
+  };
+  await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  const reviewed = await loadWorkspace(root);
+  const oldBinding = resourceReviewRevisionsSync(reviewed, [entry.record.id], "legacy", true).get(entry.record.id);
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Record reviewed commitment"], { cwd: root });
+
+  entry.record.applicabilityReview = {
+    ...entry.record.applicabilityReview,
+    rationale: "Confirmed after retiring a draft.",
+    reviewedOn: "2026-09-29"
+  };
+  await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  const current = await loadWorkspace(root);
+  const revisions = resourceReviewRevisionsSync(current, [entry.record.id]);
+  assert.equal(resourceReviewRevisionMatches(current, revisions, entry.record.id, oldBinding), true);
+
+  entry.record.statement = `${entry.record.statement} Changed.`;
+  await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  const changed = await loadWorkspace(root);
+  assert.equal(resourceReviewRevisionMatches(
+    changed, resourceReviewRevisionsSync(changed, [entry.record.id]), entry.record.id, oldBinding
+  ), false);
+});
+
+test("legacy bindings of linked sources survive only equivalent reviewed facts", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-linked-review-metadata-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const parentEntry = before.entries.find(({ record }) => record.type === "requirement-mapping");
+  const commitmentEntry = before.entries.find(({ record }) => record.type === "commitment");
+  parentEntry.record.sourceResourceIds = [commitmentEntry.record.id];
+  commitmentEntry.record.applicabilityReview = {
+    decision: "applicable", rationale: "Original review.", reviewedOn: "2026-09-20",
+    reviewedByIds: ["person-example"], scopeRevision: "scope:" + "a".repeat(64)
+  };
+  await writeFile(parentEntry.path, `${JSON.stringify(parentEntry.record, null, 2)}\n`);
+  await writeFile(commitmentEntry.path, `${JSON.stringify(commitmentEntry.record, null, 2)}\n`);
+  const reviewed = await loadWorkspace(root);
+  const oldBinding = resourceReviewRevisionsSync(
+    reviewed, [parentEntry.record.id], "legacy", true
+  ).get(parentEntry.record.id);
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Record linked review"], { cwd: root });
+  commitmentEntry.record.applicabilityReview.reviewedOn = "2026-09-29";
+  await writeFile(commitmentEntry.path, `${JSON.stringify(commitmentEntry.record, null, 2)}\n`);
+  const current = await loadWorkspace(root);
+  assert.equal(resourceReviewRevisionMatches(
+    current, resourceReviewRevisionsSync(current, [parentEntry.record.id]), parentEntry.record.id, oldBinding
+  ), true);
+  commitmentEntry.record.statement = `${commitmentEntry.record.statement} Changed.`;
+  await writeFile(commitmentEntry.path, `${JSON.stringify(commitmentEntry.record, null, 2)}\n`);
+  const changed = await loadWorkspace(root);
+  assert.equal(resourceReviewRevisionMatches(
+    changed, resourceReviewRevisionsSync(changed, [parentEntry.record.id]), parentEntry.record.id, oldBinding
+  ), false);
+});
+
+test("governed approval metadata does not change source facts but Markdown does", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-governed-source-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "document");
+  const original = resourceReviewRevisionsSync(loaded, [entry.record.id]).get(entry.record.id);
+  entry.record.approvedOn = "2026-09-29";
+  entry.record.activatedOn = "2026-09-29";
+  entry.record.approverIds = ["person-example"];
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.equal(resourceReviewRevisionsSync(loaded, [entry.record.id]).get(entry.record.id), original);
+  const markdownPath = join(root, "data", "documents", "document-example.md");
+  await writeFile(markdownPath, "# Changed governed content\n");
+  assert.notEqual(resourceReviewRevisionsSync(loaded, [entry.record.id]).get(entry.record.id), original);
+});
+
+test("retention collection follows Policy content instead of reapproval metadata", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-policy-source-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const row = loaded.resources.find(({ type }) => type === "retention-schedule-item");
+  const policy = loaded.resources.find(({ type }) => type === "policy");
+  row.sourceResourceIds = [policy.id];
+  const original = collectionRevision(loaded, "retention-schedule-item");
+  policy.approvedOn = "2026-09-29";
+  policy.approverIds = ["person-example"];
+  assert.equal(collectionRevision(loaded, "retention-schedule-item"), original);
+  await writeFile(join(root, "data", "policies", "policy-example.md"), "# Changed policy rule\n");
+  assert.notEqual(collectionRevision(loaded, "retention-schedule-item"), original);
+});
+
+test("Program requirement review metadata does not cascade into source or collection revisions", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-program-review-metadata-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "program");
+  const review = entry.record.requirementApplicability[0];
+  assert.ok(review);
+  const sourceRevision = resourceReviewRevisionsSync(loaded, [entry.record.id]).get(entry.record.id);
+  const collection = collectionRevision(loaded, "control", { program: entry.record });
+  const retentionCollection = collectionRevision(loaded, "retention-schedule-item");
+  review.reviewedOn = "2026-09-29";
+  review.rationale = "Confirmed after an unrelated draft was retired.";
+  entry.record.controlIds.push("control-unrelated");
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.equal(resourceReviewRevisionsSync(loaded, [entry.record.id]).get(entry.record.id), sourceRevision);
+  assert.notEqual(collectionRevision(loaded, "control", { program: entry.record }), collection);
+  assert.equal(collectionRevision(loaded, "retention-schedule-item"), retentionCollection);
+  review.decision = review.decision === "applicable" ? "not-applicable" : "applicable";
+  entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+  assert.notEqual(resourceReviewRevisionsSync(loaded, [entry.record.id]).get(entry.record.id), sourceRevision);
+  assert.notEqual(collectionRevision(loaded, "control", { program: entry.record }), collection);
+});
+
+test("old collection approvals remain current after review bookkeeping changes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-metadata-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const entry = before.entries.find(({ record }) => record.type === "control");
+  const program = before.resources.find(({ type }) => type === "program");
+  entry.record.applicabilityReview = {
+    decision: "applicable", rationale: "Original review.", reviewedByIds: ["person-example"],
+    reviewedOn: "2026-09-20", scopeRevision: applicabilityScopeRevision(entry.record, program, before.resources, before.model)
+  };
+  await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  const reviewed = await loadWorkspace(root);
+  const oldRevision = collectionRevision(reviewed, "control", {
+    programId: program.id, historicalReviewMetadata: true
+  });
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Record collection review"], { cwd: root });
+  entry.record.applicabilityReview.reviewedOn = "2026-09-29";
+  entry.record.applicabilityReview.rationale = "Confirmed after draft retirement.";
+  await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  const programEntry = before.entries.find(({ record }) => record.type === "program");
+  programEntry.record.requirementApplicability[0].reviewedOn = "2026-09-29";
+  programEntry.record.requirementApplicability[0].rationale = "Confirmed unchanged requirement.";
+  await writeFile(programEntry.path, `${JSON.stringify(programEntry.record, null, 2)}\n`);
+  const current = await loadWorkspace(root);
+  assert.equal(collectionRevisionMatches(current, "control", oldRevision, { programId: program.id }), true);
+  assert.equal(collectionRevisionMatches(current, "control", oldRevision, { program: current.resources.find(({ id }) => id === program.id) }), true);
+  entry.record.statement = `${entry.record.statement} Changed.`;
+  await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  const changed = await loadWorkspace(root);
+  assert.equal(collectionRevisionMatches(changed, "control", oldRevision, { programId: program.id }), false);
+});
+
+test("retention metadata does not cascade into Control collection oversight", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-control-cascade-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const coverage = loaded.resources.find(({ type }) => type === "source-coverage");
+  const rule = loaded.resources.find(({ type }) => type === "retention-schedule-item");
+  control.code = "HR-01";
+  coverage.retentionScheduleItemIds = [rule.id];
+  const reviewed = collectionRevision(loaded, "control", { program });
+  rule.reviewedSourceRevisions = { "policy-example": "a".repeat(64) };
+  rule.approvedByIds = ["person-example"];
+  rule.approvedOn = "2026-09-29";
+  assert.equal(collectionRevision(loaded, "control", { program }), reviewed);
+  rule.retentionPeriod = { basis: "fixed", amount: 2, unit: "year" };
+  assert.notEqual(collectionRevision(loaded, "control", { program }), reviewed);
+});
+
+test("old collection recovery selects the reviewed Program in a multi-Program workspace", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-multi-program-revision-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const initial = await loadWorkspace(root);
+  const programEntry = initial.entries.find(({ record }) => record.type === "program");
+  const second = { ...structuredClone(programEntry.record), id: "program-second", title: "Second Program" };
+  await writeFile(programEntry.path.replace(/\.json$/, "-second.json"), `${JSON.stringify(second, null, 2)}\n`);
+  const before = await loadWorkspace(root);
+  const program = before.resources.find(({ id }) => id === programEntry.record.id);
+  const oldRevision = collectionRevision(before, "control", { program, historicalReviewMetadata: true });
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Record two Program reviews"], { cwd: root });
+  programEntry.record.requirementApplicability[0].reviewedOn = "2026-09-29";
+  await writeFile(programEntry.path, `${JSON.stringify(programEntry.record, null, 2)}\n`);
+  const current = await loadWorkspace(root);
+  const selected = current.resources.find(({ id }) => id === program.id);
+  assert.equal(collectionRevisionMatches(current, "control", oldRevision, { program: selected }), true);
+});
+
+test("a commitment applicability review follows its own scope", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-commitment-scope-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const commitment = loaded.resources.find(({ type }) => type === "commitment");
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const original = applicabilityScopeRevision(commitment, program, loaded.resources, loaded.model);
+  const review = { decision: "applicable", scopeRevision: original };
+  program.systemIds.push("system-unrelated");
+  program.controlIds.push("control-unrelated");
+  assert.equal(applicabilityReviewIsCurrent(review, commitment, program, loaded.resources, loaded.model), true);
+  commitment.statement = `${commitment.statement} Changed.`;
+  assert.equal(applicabilityReviewIsCurrent(review, commitment, program, loaded.resources, loaded.model), false);
+});
+
+test("Control applicability ignores other selected Controls but tracks its own facts", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-scope-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const review = {
+    decision: "applicable",
+    scopeRevision: applicabilityScopeRevision(control, program, loaded.resources, loaded.model)
+  };
+  program.controlIds.push("control-unrelated");
+  assert.equal(applicabilityReviewIsCurrent(review, control, program, loaded.resources, loaded.model), true);
+  control.statement = `${control.statement} Changed.`;
+  assert.equal(applicabilityReviewIsCurrent(review, control, program, loaded.resources, loaded.model), false);
+});
+
+test("Git proves an older broad commitment review survives unrelated scope additions", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-legacy-commitment-scope-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const commitmentEntry = before.entries.find(({ record }) => record.type === "commitment");
+  const programEntry = before.entries.find(({ record }) => record.type === "program");
+  const review = {
+    decision: "applicable",
+    scopeRevision: applicabilityScopeRevision(
+      commitmentEntry.record, programEntry.record, before.resources, before.model,
+      { legacyBroadCommitment: true }
+    )
+  };
+  commitmentEntry.record.applicabilityReview = review;
+  await writeFile(commitmentEntry.path, `${JSON.stringify(commitmentEntry.record, null, 2)}\n`);
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Record commitment review"], { cwd: root });
+  programEntry.record.systemIds.push("system-unrelated");
+  await writeFile(programEntry.path, `${JSON.stringify(programEntry.record, null, 2)}\n`);
+  const current = await loadWorkspace(root);
+  const commitment = current.resources.find(({ type }) => type === "commitment");
+  const program = current.resources.find(({ type }) => type === "program");
+  assert.equal(applicabilityReviewIsCurrent(review, commitment, program, current.resources, current.model, root), true);
+  commitment.statement = `${commitment.statement} Changed.`;
+  assert.equal(applicabilityReviewIsCurrent(review, commitment, program, current.resources, current.model, root), false);
+});
+
+test("a source rebind alone does not require another whole-schedule approval", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-schedule-rebind-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const rowEntry = before.entries.find(({ record }) => record.type === "retention-schedule-item");
+  const commitment = before.resources.find(({ type }) => type === "commitment");
+  rowEntry.record.sourceResourceIds = [commitment.id];
+  rowEntry.record.reviewedSourceRevisions = {
+    [commitment.id]: resourceReviewRevisionsSync(before, [commitment.id], "legacy", true).get(commitment.id)
+  };
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  const old = await loadWorkspace(root);
+  const oldRevision = collectionRevision(old, "retention-schedule-item", { historicalReviewMetadata: true });
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Approve schedule row"], { cwd: root });
+  rowEntry.record.reviewedSourceRevisions[commitment.id] = resourceReviewRevisionsSync(old, [commitment.id]).get(commitment.id);
+  const programEntry = before.entries.find(({ record }) => record.type === "program");
+  programEntry.record.controlIds.push("control-unrelated");
+  await writeFile(programEntry.path, `${JSON.stringify(programEntry.record, null, 2)}\n`);
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  const rebound = await loadWorkspace(root);
+  assert.equal(collectionRevisionMatches(rebound, "retention-schedule-item", oldRevision), true);
+  rowEntry.record.description = `${rowEntry.record.description} Changed.`;
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  const changed = await loadWorkspace(root);
+  assert.equal(collectionRevisionMatches(changed, "retention-schedule-item", oldRevision), false);
+  rowEntry.record.description = old.resources.find(({ type }) => type === "retention-schedule-item").description;
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  const commitmentEntry = before.entries.find(({ record }) => record.id === commitment.id);
+  commitmentEntry.record.statement = `${commitmentEntry.record.statement} Changed.`;
+  await writeFile(commitmentEntry.path, `${JSON.stringify(commitmentEntry.record, null, 2)}\n`);
+  const changedSource = await loadWorkspace(root);
+  assert.equal(collectionRevisionMatches(changedSource, "retention-schedule-item", oldRevision), false);
 });
 
 test("Program applicability labels preserve Control collection scope hashes", async (context) => {
@@ -312,12 +633,14 @@ test("Program applicability labels preserve Control collection scope hashes", as
   assert.equal(collectionRevision(loaded, "control", { program }), legacyCollection);
   assert.equal(collectionRevisionMatches(loaded, "control", legacyCollection, { program }), true);
   const version016Collection = collectionRevision(loaded, "control", { program, scopeHashInput: "digest", scopeFactsInput: "source" });
-  assert.notEqual(version016Collection, legacyCollection);
+  assert.equal(version016Collection, legacyCollection);
   assert.equal(collectionRevisionMatches(loaded, "control", version016Collection, { program }), true);
 
   review.scopeRevision = `filegrc:applicability-scope:v1:sha256:${"b".repeat(64)}`;
+  assert.equal(collectionRevisionMatches(loaded, "control", legacyCollection, { program }), true);
+  assert.equal(collectionRevisionMatches(loaded, "control", version016Collection, { program }), true);
+  review.decision = review.decision === "applicable" ? "not-applicable" : "applicable";
   assert.equal(collectionRevisionMatches(loaded, "control", legacyCollection, { program }), false);
-  assert.equal(collectionRevisionMatches(loaded, "control", version016Collection, { program }), false);
 });
 
 test("committed legacy collection, occurrence, and retention bindings stay readable without another review", async (context) => {

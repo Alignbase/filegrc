@@ -1259,13 +1259,13 @@ test("keeps Control oversight bound to independent reviewers and implementation 
 
   const changedPolicyApproval = structuredClone(loaded);
   changedPolicyApproval.resources.find(({ id }) => id === "policy-example").approvedOn = "2026-09-13";
-  assert.notEqual(
+  assert.equal(
     collectionRevision(changedPolicyApproval, "control", { programId: "program-example" }),
     initialRevision
   );
   const changedDocumentApprover = structuredClone(loaded);
   changedDocumentApprover.resources.find(({ id }) => id === "document-example").approverIds = ["person-example"];
-  assert.notEqual(
+  assert.equal(
     collectionRevision(changedDocumentApprover, "control", { programId: "program-example" }),
     initialRevision
   );
@@ -1287,6 +1287,12 @@ test("keeps Control oversight bound to independent reviewers and implementation 
   const changedApplicability = structuredClone(loaded);
   changedApplicability.resources.find(({ id }) => id === "program-example")
     .requirementApplicability[0].rationale = "Changed scope rationale";
+  assert.equal(
+    collectionRevision(changedApplicability, "control", { programId: "program-example" }),
+    initialRevision
+  );
+  changedApplicability.resources.find(({ id }) => id === "program-example")
+    .requirementApplicability[0].decision = "not-applicable";
   assert.notEqual(
     collectionRevision(changedApplicability, "control", { programId: "program-example" }),
     initialRevision
@@ -1328,7 +1334,7 @@ test("keeps Control oversight bound to independent reviewers and implementation 
     coverageRevision
   );
   schedule.approvedOn = "2026-09-13";
-  assert.notEqual(
+  assert.equal(
     collectionRevision(activatedSchedule, "control", { programId: "program-example" }),
     coverageRevision
   );

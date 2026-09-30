@@ -373,7 +373,7 @@ function scopeStage(loaded, audit, records, byId, programReadiness) {
   const v4Decisions = new Map((program?.requirementApplicability || [])
     .filter((decision) => (
       requirementById.has(decision.requirementId)
-      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), program, records, loaded.model)
+      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), program, records, loaded.model, loaded.root)
     ))
     .map((decision) => [decision.requirementId, decision]));
   const unresolvedRequirements = frameworkRequirementIds
