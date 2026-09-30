@@ -1,4 +1,6 @@
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
+import { getDataCommitHistory } from "./git.js";
+import { historicalWorkspace } from "./historical-workspace.js";
 
 const excludedResourceFields = new Set([
   "applicabilityReview",
@@ -22,13 +24,30 @@ const unorderedStringArrayFields = new Set([
 ]);
 
 export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
-  const selectedSystemIds = new Set(program?.systemIds || []);
-  const selectedFrameworkIds = new Set(program?.frameworkIds || []);
-  const selectedControlIds = new Set(program?.controlIds || []);
-  const selectedComponents = resources.filter(({ type, status, systemUses }) => (
+  const scopedResource = ["commitment", "control", "complementary-control"].includes(record?.type)
+    && !options.legacyBroadScope && !options.legacyBroadCommitment;
+  const linkedRequirementIds = new Set(record?.requirementIds || []);
+  const linkedControlIds = record?.type === "control"
+    ? [record.id]
+    : record?.type === "complementary-control"
+      ? record.relatedControlIds || []
+      : record?.controlIds || [];
+  const selectedSystemIds = new Set((program?.systemIds || []).filter((id) => (
+    !scopedResource || !(record.systemIds || []).length || record.systemIds.includes(id)
+  )));
+  const selectedFrameworkIds = new Set((program?.frameworkIds || []).filter((id) => (
+    !scopedResource || !linkedRequirementIds.size || resources.some((candidate) => (
+      candidate.type === "requirement" && candidate.frameworkId === id && linkedRequirementIds.has(candidate.id)
+    ))
+  )));
+  const selectedControlIds = new Set((program?.controlIds || []).filter((id) => (
+    !scopedResource || !linkedControlIds.length || linkedControlIds.includes(id)
+  )));
+  const selectedComponents = resources.filter(({ type, status, systemUses, id }) => (
     type === "component"
     && status !== "retired"
     && (systemUses || []).some(({ systemId }) => selectedSystemIds.has(systemId))
+    && (!scopedResource || !(record.componentIds || []).length || record.componentIds.includes(id))
   ));
   const selectedVendorIds = new Set(selectedComponents.map(({ vendorId }) => vendorId).filter(Boolean));
   const selectedPolicyIds = new Set(resources
@@ -38,17 +57,24 @@ export function applicabilityScopeRevision(record, program, resources, model, op
   const facts = {
     modelVersion: model.modelVersion,
     program: {
-      ...pick(program || {}, [
+      ...pick(scopedResource ? {
+        ...program,
+        systemIds: [...selectedSystemIds],
+        frameworkIds: [...selectedFrameworkIds],
+        requirementIds: (program?.requirementIds || []).filter((id) => !linkedRequirementIds.size || linkedRequirementIds.has(id)),
+        controlIds: [...selectedControlIds]
+      } : program || {}, [
         "id",
         "assuranceGoal",
         "systemIds",
         "frameworkIds",
         "requirementIds",
         "controlIds",
-        "riskMethodology"
+        ...(record?.type === "commitment" && scopedResource ? [] : ["riskMethodology"])
       ], model),
       ...(record.type === "requirement" ? {} : {
         requirementApplicability: (program?.requirementApplicability || [])
+          .filter((review) => !scopedResource || !linkedRequirementIds.size || linkedRequirementIds.has(review.requirementId))
           .map((review) => pick(review, ["requirementId", "decision"], model, "program-applicability"))
           .sort((left, right) => left.requirementId.localeCompare(right.requirementId))
       })
@@ -134,14 +160,19 @@ export function applicabilityScopeRevision(record, program, resources, model, op
           ], model)
         : pick(policy, ["id", "requirementIds"], model)),
     requirements: resources
-      .filter(({ type, frameworkId }) => type === "requirement" && selectedFrameworkIds.has(frameworkId))
+      .filter(({ type, frameworkId, id }) => type === "requirement" && selectedFrameworkIds.has(frameworkId)
+        && (!scopedResource || !linkedRequirementIds.size || linkedRequirementIds.has(id)))
       .sort(compareRecordIds)
       .map((requirement) => pick(requirement, ["id", "frameworkId", "reference", "description", "parentRequirementId"], model)),
     commitments: resources
-      .filter(({ type, status, systemIds }) => (
+      .filter(({ type, status, systemIds, controlIds, id }) => (
         type === "commitment"
         && !["retired", "superseded"].includes(status)
         && (systemIds || []).some((id) => selectedSystemIds.has(id))
+        && (!scopedResource
+          || record.type === "commitment" && id === record.id
+          || record.type === "control" && (controlIds || []).includes(record.id)
+          || record.type === "complementary-control" && (controlIds || []).some((controlId) => selectedControlIds.has(controlId)))
       ))
       .sort(compareRecordIds)
       .map((commitment) => pick(commitment, [
@@ -161,7 +192,7 @@ function compareRecordIds(left, right) {
   return left.id.localeCompare(right.id);
 }
 
-export function applicabilityReviewIsCurrent(review, record, program, resources, model) {
+export function applicabilityReviewIsCurrent(review, record, program, resources, model, root = null) {
   if (
     review?.scopeRevision
     && !review.scopeRevision.startsWith("scope:")
@@ -171,6 +202,12 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
   if (!review?.scopeRevision) return false;
   const matches = (revision) => revisionsMatch("applicability-scope", review.scopeRevision, revision);
   if (matches(applicabilityScopeRevision(record, program, resources, model))) return true;
+  if (["commitment", "control", "complementary-control"].includes(record?.type) && matches(applicabilityScopeRevision(
+    record, program, resources, model, { legacyBroadScope: true }
+  ))) return true;
+  if (["commitment", "control", "complementary-control"].includes(record?.type) && root && historicalScopedReviewMatches(
+    review.scopeRevision, record, program, resources, model, root
+  )) return true;
   // Older reviews hashed Policy approval metadata alongside scope facts.
   // Reconstruct each Policy independently because other Policies may already
   // have been approved when one Policy changes. Material fields stay current.
@@ -200,6 +237,26 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
         legacyPolicyOverrides: { [policy.id]: value }
       }))) return true;
     }
+  }
+  return false;
+}
+
+function historicalScopedReviewMatches(stored, record, program, resources, model, root) {
+  const current = applicabilityScopeRevision(record, program, resources, model);
+  for (const commit of getDataCommitHistory(root).reverse()) {
+    const snapshot = historicalWorkspace(root, commit);
+    if (!snapshot) continue;
+    const historicalResources = snapshot.resources;
+    const historicalRecord = historicalResources.find(({ id }) => id === record.id);
+    const historicalProgram = historicalResources.find(({ id }) => id === program?.id);
+    if (!historicalRecord || !historicalProgram) continue;
+    const historicalModel = snapshot.model;
+    if (!revisionsMatch("applicability-scope", current, applicabilityScopeRevision(
+      historicalRecord, historicalProgram, historicalResources, historicalModel
+    ))) continue;
+    if (revisionsMatch("applicability-scope", stored, applicabilityScopeRevision(
+      historicalRecord, historicalProgram, historicalResources, historicalModel, { legacyBroadScope: true }
+    ))) return true;
   }
   return false;
 }

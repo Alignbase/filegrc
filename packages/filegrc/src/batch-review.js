@@ -37,7 +37,7 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     .filter((review) => (
       ["applicable", "not-applicable"].includes(review.decision)
       && requirementById.has(review.requirementId)
-      && applicabilityReviewIsCurrent(review, requirementById.get(review.requirementId), program, loaded.resources, loaded.model)
+      && applicabilityReviewIsCurrent(review, requirementById.get(review.requirementId), program, loaded.resources, loaded.model, loaded.root)
     ))
     .map(({ requirementId }) => requirementId));
   const requirementReviews = new Map((program.requirementApplicability || [])
@@ -47,7 +47,7 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     && (!requestedType || record.type === requestedType)
     && (record.type === "requirement" && modelSupports(loaded.model, "program-scope")
       ? !reviewedRequirementIds.has(record.id)
-      : !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, loaded.resources, loaded.model))
+      : !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, loaded.resources, loaded.model, loaded.root))
     && !["retired", "superseded"].includes(record.status)
   ));
   return {
