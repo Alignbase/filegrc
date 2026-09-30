@@ -1,6 +1,10 @@
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
-import { getDataCommitHistory } from "./git.js";
-import { historicalWorkspace } from "./historical-workspace.js";
+import { reviewCommitsChangingTypes, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
+
+const scopeSourceTypes = new Set([
+  "workspace", "program", "commitment", "control", "complementary-control",
+  "system", "framework", "component", "vendor", "policy", "requirement"
+]);
 
 const excludedResourceFields = new Set([
   "applicabilityReview",
@@ -243,8 +247,13 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
 
 function historicalScopedReviewMatches(stored, record, program, resources, model, root) {
   const current = applicabilityScopeRevision(record, program, resources, model);
-  for (const commit of getDataCommitHistory(root).reverse()) {
-    const snapshot = historicalWorkspace(root, commit);
+  const context = reviewHistoryContext(root, resources);
+  const { index } = context;
+  const commits = index?.available
+    ? reviewCommitsChangingTypes(index, scopeSourceTypes)
+    : reviewHistoryCommits(context);
+  for (const commit of [...commits].reverse()) {
+    const snapshot = reviewHistoricalWorkspace(context, commit);
     if (!snapshot) continue;
     const historicalResources = snapshot.resources;
     const historicalRecord = historicalResources.find(({ id }) => id === record.id);

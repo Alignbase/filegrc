@@ -7,8 +7,8 @@ import {
   collectionScopeRevisionFacts
 } from "./collection-scope.js";
 import { resolveDataPath } from "./paths.js";
-import { getDataCommitHistory, getFileAtRevision } from "./git.js";
-import { historicalWorkspace } from "./historical-workspace.js";
+import { getFileAtRevision } from "./git.js";
+import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
@@ -46,8 +46,9 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
 
 function historicallyEquivalentCollection(loaded, resourceType, stored, options, current) {
   if (!loaded.root) return false;
-  for (const commit of getDataCommitHistory(loaded.root).reverse()) {
-    const snapshot = historicalWorkspace(loaded.root, commit);
+  const context = reviewHistoryContext(loaded.root, loaded);
+  for (const commit of [...reviewHistoryCommits(context)].reverse()) {
+    const snapshot = reviewHistoricalWorkspace(context, commit);
     if (!snapshot) continue;
     const historicalOptions = {
       ...options,
@@ -103,7 +104,9 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
       contentRevisions: (legacy || includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
         try {
           const content = options.historicalCommit
-            ? getFileAtRevision(loaded.root, options.historicalCommit, `data/${path}`)
+            ? loaded.historicalFiles
+              ? loaded.historicalFiles.get(`data/${path}`) ?? null
+              : getFileAtRevision(loaded.root, options.historicalCommit, `data/${path}`)
             : readFileSync(resolveDataPath(loaded.root, path), "utf8");
           if (content === null) return [];
           return [{ path, revision: createHash("sha256").update(content).digest("hex") }];

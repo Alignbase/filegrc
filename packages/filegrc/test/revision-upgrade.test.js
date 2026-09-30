@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "../src/applicability-scope.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "../src/collection-review-integrity.js";
 import { collectionRevision, collectionRevisionMatches, legacyCollectionRevision } from "../src/collection-revision.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { contentRevisionBindingsMatch } from "../src/program-lifecycle.js";
+import { reviewHistoryContext } from "../src/historical-workspace.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
 import { resourceReviewRevisionMatches, resourceReviewRevisions, resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
@@ -17,6 +20,7 @@ import { canonicalCalculatedRevisionJson, revisionsMatch } from "../src/revision
 import { currentCalendarDate } from "../src/time.js";
 import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
+import { serveWorkspace } from "../src/index.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
 test("reads legacy approval, activation, attestation, and applicability bindings without rewriting records", async (context) => {
@@ -374,6 +378,160 @@ test("legacy bindings of linked sources survive only equivalent reviewed facts",
   assert.equal(resourceReviewRevisionMatches(
     changed, resourceReviewRevisionsSync(changed, [parentEntry.record.id]), parentEntry.record.id, oldBinding
   ), false);
+});
+
+test("legacy source recovery stays within a request deadline on a 365-record, 119-commit workspace", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-review-history-scale-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const initial = await loadWorkspace(root);
+  const template = initial.entries.find(({ record }) => record.type === "commitment");
+  const unrelated = initial.entries.find(({ record }) => record.type === "person");
+  const count = 365 - initial.resources.length;
+  assert.ok(count > 0);
+  const clones = [];
+  const reviewCount = Math.min(32, count);
+  for (let index = 0; index < reviewCount; index += 1) {
+    const record = {
+      ...structuredClone(template.record),
+      id: `commitment-history-scale-${index}`,
+      title: `History scale commitment ${index}`,
+      applicabilityReview: {
+        decision: "applicable", rationale: "Original review.",
+        reviewedByIds: ["person-example"], reviewedOn: "2026-09-20"
+      }
+    };
+    const path = join(dirname(template.path), `${record.id}.json`);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(record, null, 2)}\n`);
+    clones.push({ record, path });
+  }
+  for (let index = reviewCount; index < count; index += 1) {
+    const record = {
+      ...structuredClone(unrelated.record),
+      id: `person-history-scale-${index}`,
+      title: `History scale person ${index}`
+    };
+    await writeFile(join(dirname(unrelated.path), `${record.id}.json`), `${JSON.stringify(record, null, 2)}\n`);
+  }
+  const reviewed = await loadWorkspace(root);
+  assert.equal(reviewed.resources.length, 365);
+  const ids = clones.map(({ record }) => record.id);
+  const oldBindings = resourceReviewRevisionsSync(reviewed, ids, "legacy", true);
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Create review history"], { cwd: root });
+  for (let index = 1; index < 119; index += 1) {
+    unrelated.record.jobTitle = `Engineer ${index}`;
+    await writeFile(unrelated.path, `${JSON.stringify(unrelated.record, null, 2)}\n`);
+    execFileSync("git", ["add", "data"], { cwd: root });
+    execFileSync("git", ["commit", "-m", `Update unrelated person ${index}`], { cwd: root });
+  }
+  for (const clone of clones) {
+    clone.record.applicabilityReview.reviewedOn = "2026-09-29";
+    await writeFile(clone.path, `${JSON.stringify(clone.record, null, 2)}\n`);
+  }
+  const current = await loadWorkspace(root);
+  const revisions = resourceReviewRevisionsSync(current, ids);
+  const started = performance.now();
+  for (const id of ids) {
+    assert.equal(resourceReviewRevisionMatches(current, revisions, id, oldBindings.get(id)), true, id);
+  }
+  assert.ok(performance.now() - started < 10_000, "legacy review recovery exceeded the request deadline");
+  const changed = current.entries.find(({ record }) => record.id === ids[0]);
+  changed.record.statement = `${changed.record.statement} A substantive change.`;
+  changed.source = JSON.stringify(changed.record);
+  const changedRevisions = resourceReviewRevisionsSync(current, [ids[0]]);
+  assert.equal(resourceReviewRevisionMatches(current, changedRevisions, ids[0], oldBindings.get(ids[0])), false);
+
+  const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+  for (const args of [["guide", "retention-schedule-item", "--json"], ["program-path", "--summary", "--json"]]) {
+    const output = execFileSync(process.execPath, [cli, ...args], {
+      cwd: root, encoding: "utf8", timeout: 10_000, maxBuffer: 10_000_000
+    });
+    assert.ok(JSON.parse(output), `${args[0]} returned JSON`);
+  }
+  const served = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const bootstrapResponse = await fetch(`${served.url}/api/state/bootstrap`, { signal: AbortSignal.timeout(10_000) });
+  assert.equal(bootstrapResponse.status, 200);
+  const { stateToken } = await bootstrapResponse.json();
+  for (const section of ["program", "workflow"]) {
+    const response = await fetch(`${served.url}/api/state/${section}?token=${encodeURIComponent(stateToken)}`, {
+      signal: AbortSignal.timeout(10_000)
+    });
+    assert.equal(response.status, 200, `${section}: ${await response.text()}`);
+  }
+});
+
+test("collection and applicability recovery reuse snapshots beyond 128 commits", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-long-review-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const controlEntry = before.entries.find(({ record }) => record.type === "control");
+  const commitment = before.resources.find(({ type }) => type === "commitment");
+  const program = before.resources.find(({ type }) => type === "program");
+  const personEntry = before.entries.find(({ record }) => record.type === "person");
+  const broadReview = {
+    decision: "applicable",
+    scopeRevision: applicabilityScopeRevision(commitment, program, before.resources, before.model, {
+      legacyBroadCommitment: true
+    })
+  };
+  controlEntry.record.applicabilityReview = {
+    decision: "applicable", rationale: "Original review.", reviewedByIds: ["person-example"],
+    reviewedOn: "2026-09-20", scopeRevision: applicabilityScopeRevision(
+      controlEntry.record, program, before.resources, before.model
+    )
+  };
+  await writeFile(controlEntry.path, `${JSON.stringify(controlEntry.record, null, 2)}\n`);
+  let unrelatedPerson;
+  for (let index = before.resources.length; index < 365; index += 1) {
+    const record = {
+      ...structuredClone(personEntry.record), id: `person-long-history-${index}`,
+      title: `Long history person ${index}`
+    };
+    const path = join(dirname(personEntry.path), `${record.id}.json`);
+    await writeFile(path, `${JSON.stringify(record, null, 2)}\n`);
+    unrelatedPerson ||= { record, path };
+  }
+  const reviewed = await loadWorkspace(root);
+  const oldCollection = collectionRevision(reviewed, "control", {
+    programId: program.id, historicalReviewMetadata: true
+  });
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Create reviewed program"], { cwd: root });
+  controlEntry.record.applicabilityReview.reviewedOn = "2026-09-29";
+  await writeFile(controlEntry.path, `${JSON.stringify(controlEntry.record, null, 2)}\n`);
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Update review metadata"], { cwd: root });
+  for (let index = 2; index < 150; index += 1) {
+    unrelatedPerson.record.jobTitle = `Engineer ${index}`;
+    await writeFile(unrelatedPerson.path, `${JSON.stringify(unrelatedPerson.record, null, 2)}\n`);
+    execFileSync("git", ["add", "data"], { cwd: root });
+    execFileSync("git", ["commit", "-m", `Update person ${index}`], { cwd: root });
+  }
+  const current = await loadWorkspace(root);
+  const started = performance.now();
+  for (let index = 0; index < 3; index += 1) {
+    assert.equal(collectionRevisionMatches(current, "control", oldCollection, { programId: program.id }), true);
+  }
+  const currentProgram = current.resources.find(({ id }) => id === program.id);
+  currentProgram.systemIds.push("system-unrelated");
+  const currentCommitment = current.resources.find(({ id }) => id === commitment.id);
+  for (let index = 0; index < 3; index += 1) {
+    assert.equal(applicabilityReviewIsCurrent(
+      broadReview, currentCommitment, currentProgram, current.resources, current.model, root
+    ), true);
+  }
+  assert.ok(performance.now() - started < 10_000, "repeated legacy recovery exceeded the request deadline");
+  assert.ok(reviewHistoryContext(root, current).workspacesByCommit.size > 128);
 });
 
 test("governed approval metadata does not change source facts but Markdown does", async (context) => {
