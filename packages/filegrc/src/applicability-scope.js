@@ -27,6 +27,13 @@ const unorderedStringArrayFields = new Set([
   "tags"
 ]);
 
+const applicabilityDecisionFields = {
+  requirement: ["frameworkId", "reference", "description", "parentRequirementId"],
+  control: ["statement", "requirementIds", "code", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"],
+  commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "requirementIds", "controlIds", "customerFacing", "reportingRouteRequirements"],
+  "complementary-control": ["responsibleParty", "statement", "systemIds", "vendorId", "requirementIds", "commitmentIds", "relatedControlIds", "sourceDocumentIds", "componentIds"]
+};
+
 export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
   const scopedResource = ["commitment", "control", "complementary-control"].includes(record?.type)
     && !options.legacyBroadScope && !options.legacyBroadCommitment;
@@ -83,8 +90,7 @@ export function applicabilityScopeRevision(record, program, resources, model, op
           .sort((left, right) => left.requirementId.localeCompare(right.requirementId))
       })
     },
-    resource: canonicalObject(model, record.type, Object.fromEntries(Object.entries(record)
-      .filter(([field]) => !excludedResourceFields.has(field)))),
+    resource: applicabilityResourceFacts(record, model, options),
     systems: resources
       .filter(({ type, id }) => type === "system" && selectedSystemIds.has(id))
       .sort(compareRecordIds)
@@ -196,6 +202,17 @@ function compareRecordIds(left, right) {
   return left.id.localeCompare(right.id);
 }
 
+function applicabilityResourceFacts(record, model, options) {
+  const fields = Number(model.modelVersion) >= 11 && !options.legacyResourceProjection
+    ? applicabilityDecisionFields[record.type] : null;
+  if (!fields) return canonicalObject(model, record.type, Object.fromEntries(Object.entries(record)
+    .filter(([field]) => !excludedResourceFields.has(field))));
+  const value = Object.fromEntries(["id", "type", "title", "externalIds", "extensions", ...fields]
+    .filter((field) => record[field] !== undefined).map((field) => [field, record[field]]));
+  value.unavailable = ["not-applicable", "retired", "superseded"].includes(record.status);
+  return canonicalObject(model, record.type, value);
+}
+
 export function applicabilityReviewIsCurrent(review, record, program, resources, model, root = null) {
   if (
     review?.scopeRevision
@@ -204,12 +221,17 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
     && Number(model?.modelVersion || 0) < 7
   ) return true;
   if (!review?.scopeRevision) return false;
+  if (Number(model.modelVersion) >= 11 && record?.type === "control"
+    && (review.decision === "not-applicable") !== (record.status === "not-applicable")) return false;
+  if (Number(model.modelVersion) >= 11 && ["retired", "superseded"].includes(record?.status)) return false;
   const matches = (revision) => revisionsMatch("applicability-scope", review.scopeRevision, revision);
   if (matches(applicabilityScopeRevision(record, program, resources, model))) return true;
+  if (Number(model.modelVersion) >= 11 && applicabilityDecisionFields[record?.type]
+    && matches(applicabilityScopeRevision(record, program, resources, model, { legacyResourceProjection: true }))) return true;
   if (["commitment", "control", "complementary-control"].includes(record?.type) && matches(applicabilityScopeRevision(
     record, program, resources, model, { legacyBroadScope: true }
   ))) return true;
-  if (["commitment", "control", "complementary-control"].includes(record?.type) && root && historicalScopedReviewMatches(
+  if (Number(model.modelVersion) >= 11 && applicabilityDecisionFields[record?.type] && root && historicalScopedReviewMatches(
     review.scopeRevision, record, program, resources, model, root
   )) return true;
   // Older reviews hashed Policy approval metadata alongside scope facts.
@@ -263,9 +285,14 @@ function historicalScopedReviewMatches(stored, record, program, resources, model
     if (!revisionsMatch("applicability-scope", current, applicabilityScopeRevision(
       historicalRecord, historicalProgram, historicalResources, historicalModel
     ))) continue;
-    if (revisionsMatch("applicability-scope", stored, applicabilityScopeRevision(
-      historicalRecord, historicalProgram, historicalResources, historicalModel, { legacyBroadScope: true }
-    ))) return true;
+    for (const legacyBroadScope of [false, true]) {
+      for (const legacyResourceProjection of [false, true]) {
+        if (revisionsMatch("applicability-scope", stored, applicabilityScopeRevision(
+          historicalRecord, historicalProgram, historicalResources, historicalModel,
+          { legacyBroadScope, legacyResourceProjection }
+        ))) return true;
+      }
+    }
   }
   return false;
 }

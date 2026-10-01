@@ -200,6 +200,7 @@ function scopedProgramPeople(loaded, program = {}) {
 
 export function collectionRevisionInputs(loaded, resourceType, program, options = {}) {
   const legacy = options.legacy === true;
+  const currentModel = modelSupports(loaded.model, "retention-schedule-approval");
   const reviewed = scopedCollectionRecords(loaded, resourceType, program);
   if (!modelSupports(loaded.model, "program-scope")) {
     return reviewed.map((record) => ({ record, value: record, includeContent: true }));
@@ -367,11 +368,11 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
         && record.type === "document"
           ? retentionScheduleDocumentProposalValue(record)
           : options.historicalReviewMetadata
-            ? dependencyRevisionValue(resourceType, record, legacy)
-            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy)),
+            ? dependencyRevisionValue(resourceType, record, legacy, true, currentModel)
+            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy, false, currentModel)),
     includeContent: legacy
       || reviewedIds.has(record.id)
-      || dependencyContentAffectsRevision(resourceType, record.type)
+      || dependencyContentAffectsRevision(resourceType, record.type, options.historicalReviewMetadata, currentModel)
   }));
 }
 
@@ -379,7 +380,7 @@ function retentionScheduleRowProposalValue(record, historicalReviewMetadata = fa
   return Object.fromEntries(Object.entries(record).filter(([field]) => ![
     "approvedByIds",
     "approvedOn",
-    ...(historicalReviewMetadata ? [] : ["reviewedSourceRevisions"])
+    ...(historicalReviewMetadata ? [] : ["reviewedSourceRevisions", "tags", "statusTransition"])
   ].includes(field)));
 }
 
@@ -591,22 +592,31 @@ const dependencyContentTypes = {
   component: new Set(["system"]),
   control: new Set(["system", "component", "obligation", "source-coverage", "evidence", "retention-schedule-item", "document", "policy", "training"]),
   "retention-schedule-item": new Set(["document", "policy"]),
-  "complementary-control": new Set(["system", "control", "document", "component"])
+  "complementary-control": new Set(["system", "document", "component"])
 };
 
-function dependencyRevisionValue(resourceType, record, legacy) {
-  const fields = legacy
+function dependencyRevisionValue(resourceType, record, legacy, historicalReviewMetadata = false, currentModel = false) {
+  const controlDecision = currentModel && !historicalReviewMetadata && record.type === "control"
+    && ["retention-schedule-item", "complementary-control"].includes(resourceType);
+  const fields = controlDecision
+    ? resourceType === "retention-schedule-item"
+      ? ["id", "type", "statement", "activity", "controlType", "operationMode", "operationPattern", "requirementIds", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"]
+      : ["id", "type", "statement", "activity", "controlType", "operationMode", "operationPattern", "requirementIds", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"]
+    : legacy
     ? legacyDependencyFieldOverrides[resourceType]?.[record.type]
       || dependencyFields[resourceType]?.[record.type]
     : dependencyFields[resourceType]?.[record.type];
   if (!fields) return { id: record.id, type: record.type };
-  return Object.fromEntries(fields
+  const value = Object.fromEntries(fields
     .filter((field) => record[field] !== undefined)
     .map((field) => [field, record[field]]));
+  if (controlDecision) value.unavailable = ["not-applicable", "retired", "superseded"].includes(record.status);
+  return value;
 }
 
-function dependencyContentAffectsRevision(resourceType, dependencyType) {
-  return dependencyContentTypes[resourceType]?.has(dependencyType) || false;
+function dependencyContentAffectsRevision(resourceType, dependencyType, historicalReviewMetadata = false, currentModel = false) {
+  return ((!currentModel || historicalReviewMetadata) && resourceType === "complementary-control" && dependencyType === "control")
+    || dependencyContentTypes[resourceType]?.has(dependencyType) || false;
 }
 
 function sorted(values) {

@@ -167,7 +167,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
     if (!entry || reviewing.has(id)) return null;
     reviewing.add(id);
     const parts = [reviewSource(loaded, entry, scopeHashInput)];
-    for (const markdown of markdownEntries(loaded.model, entry.record)) {
+    for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
       try {
         parts.push(await readFile(resolveDataPath(loaded.root, markdown.path), "utf8"));
       } catch (error) {
@@ -200,7 +200,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     if (!entry || reviewing.has(id)) return null;
     reviewing.add(id);
     const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource)];
-    for (const markdown of markdownEntries(loaded.model, entry.record)) {
+    for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource)) {
       try {
         const source = historicalCommit
           ? loaded.historicalFiles
@@ -317,10 +317,52 @@ function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = f
   }
   return legacySource
     ? canonicalCalculatedRevisionJson(entry.source, scopeHashInput)
-    : canonicalCalculatedRevisionJson(JSON.stringify(substantiveReviewSource(JSON.parse(entry.source))), scopeHashInput);
+    : canonicalCalculatedRevisionJson(JSON.stringify(substantiveReviewSource(
+      JSON.parse(entry.source), modelSupports(loaded.model, "retention-schedule-approval")
+    )), scopeHashInput);
 }
 
-function substantiveReviewSource(record) {
+function reviewMarkdownEntries(loaded, entry, legacySource) {
+  // Control Markdown records the implementation procedure. Retention and
+  // mapping decisions depend on the structured Control design instead.
+  if (!legacySource && modelSupports(loaded.model, "retention-schedule-approval")
+    && entry.record.type === "control") return [];
+  return markdownEntries(loaded.model, entry.record);
+}
+
+const reviewDecisionFields = {
+  control: ["statement", "requirementIds", "code", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"],
+  commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "requirementIds", "controlIds", "customerFacing", "effectiveOn", "reportingRouteRequirements"],
+  "complementary-control": ["responsibleParty", "statement", "systemIds", "vendorId", "requirementIds", "commitmentIds", "relatedControlIds", "sourceDocumentIds", "componentIds"],
+  "source-coverage": ["sourceFamilyId", "coverageKind", "scopeResourceIds", "excludedPopulation", "collectionCadence", "reconciliationMethod", "validFrom", "validThrough", "componentId", "retentionScheduleItemIds"],
+  system: ["purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
+  component: ["componentKind", "description", "criticality", "environment", "vendorId", "systemUses", "informationUses", "evidenceSourceKinds", "internetExposed", "classificationId", "continuityObjectives"],
+  vendor: ["category", "criticality", "description", "standardAgreement", "agreementDocumentId", "startDate", "endDate", "informationTypeIds", "classificationId"],
+  "information-type": ["classificationId", "description"],
+  framework: ["version", "publisher", "description", "sourceReference", "effectiveOn"],
+  requirement: ["frameworkId", "reference", "description", "parentRequirementId"],
+  policy: ["policyNumber", "policyKind", "version", "effectiveOn", "supersedesId", "parentPolicyId", "relatedPolicyIds", "relatedDocumentIds", "requirementIds", "audience", "acknowledgementRequired", "programRole", "reportingRouteRequirements"],
+  document: ["documentKind", "workflowScope", "template", "version", "effectiveOn", "supersedesId", "systemIds", "controlIds", "relatedDocumentIds", "audience", "acknowledgementRequired", "trainingIds", "classificationId", "programRole", "componentIds", "reportingRouteRequirements"]
+};
+
+function substantiveReviewSource(record, currentModel) {
+  if (currentModel && reviewDecisionFields[record.type]) {
+    const fields = ["id", "type", "title", "extensions", "externalIds", ...reviewDecisionFields[record.type]];
+    const decision = Object.fromEntries(fields.filter((field) => record[field] !== undefined)
+      .map((field) => [field, record[field]]));
+    if (record.type === "control") {
+      decision.unavailable = ["not-applicable", "retired", "superseded"].includes(record.status);
+    } else if (["policy", "document"].includes(record.type)) {
+      decision.governingStatus = ["approved", "active"].includes(record.status) ? "approved" : record.status || null;
+    } else {
+      decision.status = record.status || null;
+    }
+    if (["control", "commitment", "complementary-control"].includes(record.type)) {
+      decision.nonApplicableDecision = ["not-applicable", "externally-managed", "zero-population"]
+        .includes(record.applicabilityReview?.decision) ? record.applicabilityReview.decision : null;
+    }
+    return decision;
+  }
   const source = record.type === "program" ? {
     id: record.id,
     type: record.type,

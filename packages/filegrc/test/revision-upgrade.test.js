@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "../src/applicability-scope.js";
+import { applyApplicabilityReview, planApplicabilityReview, scaffoldApplicabilityReview } from "../src/batch-review.js";
+import { applyCollectionReview, assessCollectionReview } from "../src/collection-review.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "../src/collection-review-integrity.js";
 import { collectionRevision, collectionRevisionMatches, legacyCollectionRevision } from "../src/collection-revision.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
@@ -22,6 +24,398 @@ import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { serveWorkspace } from "../src/index.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { commitWorkspaceFiles, initializeGitWorkspace } from "./helpers.js";
+
+test("applicability apply carries forward a prior Complementary Control collection review", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-upgrade-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await initializeGitWorkspace(root);
+  await applyCollectionReview(root, {
+    resourceType: "complementary-control",
+    decision: "complete",
+    rationale: "Reviewed the current complementary responsibilities.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: "2026-09-30",
+    confirmed: true
+  });
+  let loaded = await loadWorkspace(root);
+  const reviewEntry = loaded.entries.find(({ record }) => record.type === "collection-review"
+    && record.resourceType === "complementary-control");
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const previous = collectionRevision(loaded, "complementary-control", {
+    programId: program.id,
+    historicalReviewMetadata: true
+  });
+  assert.notEqual(previous, collectionRevision(loaded, "complementary-control", { programId: program.id }));
+  reviewEntry.record.collectionRevision = previous;
+  await writeFile(reviewEntry.path, `${JSON.stringify(reviewEntry.record, null, 2)}\n`);
+  await commitWorkspaceFiles(root, "Record prior collection binding");
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "complementary-control", { programId: program.id }).status, "current");
+  const decisions = [{ id: control.id, decision: "applicable", rationale: "The Control applies.", reviewedByIds: ["person-independent-approver-example"], reviewedOn: "2026-09-30" }];
+  const preview = await planApplicabilityReview(root, { decisions });
+  assert.equal(preview.changes.update.some(({ id }) => id === reviewEntry.record.id), false);
+  const applied = await applyApplicabilityReview(root, { decisions, basis: preview.basis, confirmed: true });
+  assert.deepEqual(applied.changes, preview.changes);
+  let final = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "current");
+  const changedControl = final.entries.find(({ record }) => record.id === control.id);
+  changedControl.record.status = "planned";
+  await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
+  final = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "current");
+  const procedurePath = join(root, "data", "controls", `${control.id}.md`);
+  await writeFile(procedurePath, `${await readFile(procedurePath, "utf8")}\nUpdated operating steps.\n`);
+  final = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "current");
+  const priorRequirementIds = changedControl.record.requirementIds;
+  changedControl.record.requirementIds = [];
+  await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
+  final = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "stale");
+  changedControl.record.requirementIds = priorRequirementIds;
+  await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
+  final = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "current");
+  changedControl.record.statement = `${changedControl.record.statement} with new scope`;
+  await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
+  final = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "stale");
+});
+
+test("legacy applicability decisions survive routine record changes across steps", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-applicability-scope-upgrade-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const entries = loaded.entries.filter(({ record }) => ["control", "commitment", "complementary-control"].includes(record.type));
+  for (const entry of entries) {
+    entry.record.applicabilityReview = {
+      decision: "applicable", rationale: "The current program includes this work.",
+      reviewedByIds: ["person-independent-approver-example"], reviewedOn: "2026-09-30",
+      scopeRevision: applicabilityScopeRevision(entry.record, program, loaded.resources, loaded.model, { legacyResourceProjection: true })
+    };
+    await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  }
+  await initializeGitWorkspace(root);
+  loaded = await loadWorkspace(root);
+  for (const entry of loaded.entries.filter(({ record }) => entries.some((prior) => prior.record.id === record.id))) {
+    const current = applicabilityScopeRevision(entry.record, program, loaded.resources, loaded.model);
+    assert.notEqual(current, entry.record.applicabilityReview.scopeRevision);
+    entry.record.tags = ["reviewed"];
+    if (entry.record.type !== "complementary-control") entry.record.ownerIds = ["person-independent-approver-example"];
+    await writeFile(entry.path, `${JSON.stringify(entry.record, null, 2)}\n`);
+  }
+  loaded = await loadWorkspace(root);
+  for (const record of loaded.resources.filter(({ record, id }) => entries.some((entry) => entry.record.id === id))) {
+    assert.equal(applicabilityReviewIsCurrent(record.applicabilityReview, record, program, loaded.resources, loaded.model, root), true, record.type);
+  }
+  const scaffold = await scaffoldApplicabilityReview(root, { type: "control" });
+  assert.equal(scaffold.decisions.some(({ id }) => entries[0].record.id === id), false);
+  const controlEntry = loaded.entries.find(({ record }) => record.id === entries[0].record.id);
+  controlEntry.record.status = "not-applicable";
+  await writeFile(controlEntry.path, `${JSON.stringify(controlEntry.record, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(applicabilityReviewIsCurrent(controlEntry.record.applicabilityReview, controlEntry.record, program, loaded.resources, loaded.model, root), false);
+  controlEntry.record.status = "planned";
+  controlEntry.record.statement = `${controlEntry.record.statement} with changed design`;
+  await writeFile(controlEntry.path, `${JSON.stringify(controlEntry.record, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(applicabilityReviewIsCurrent(controlEntry.record.applicabilityReview, controlEntry.record, program, loaded.resources, loaded.model, root), false);
+});
+
+test("a not-applicable Control decision binds its resulting status", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-not-applicable-status-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await initializeGitWorkspace(root);
+  let loaded = await loadWorkspace(root);
+  const controlEntry = loaded.entries.find(({ record }) => record.type === "control");
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const before = (await resourceReviewRevisions(loaded, [controlEntry.record.id])).get(controlEntry.record.id);
+  const decisions = [{ id: controlEntry.record.id, decision: "not-applicable", rationale: "This Control is outside the selected service.", reviewedByIds: ["person-independent-approver-example"], reviewedOn: "2026-09-30" }];
+  const preview = await planApplicabilityReview(root, { decisions });
+  const applied = await applyApplicabilityReview(root, { decisions, basis: preview.basis, confirmed: true });
+  assert.deepEqual(applied.changes, preview.changes);
+  loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ id }) => id === controlEntry.record.id);
+  assert.equal(control.status, "not-applicable");
+  assert.equal(applicabilityReviewIsCurrent(control.applicabilityReview, control, program, loaded.resources, loaded.model, root), true);
+  assert.notEqual((await resourceReviewRevisions(loaded, [control.id])).get(control.id), before);
+  control.status = "planned";
+  await writeFile(controlEntry.path, `${JSON.stringify(control, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(applicabilityReviewIsCurrent(control.applicabilityReview, control, program, loaded.resources, loaded.model, root), false);
+});
+
+test("a Control review can leave not-applicable for every other decision", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-applicability-status-transition-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await initializeGitWorkspace(root);
+  let loaded = await loadWorkspace(root);
+  const controlId = loaded.resources.find(({ type }) => type === "control").id;
+  const program = loaded.resources.find(({ type }) => type === "program");
+  for (const decision of ["externally-managed", "zero-population", "applicable"]) {
+    const excluded = [{ id: controlId, decision: "not-applicable", rationale: "Outside the current service boundary.", reviewedByIds: ["person-independent-approver-example"], reviewedOn: "2026-09-30" }];
+    const excludedPreview = await planApplicabilityReview(root, { decisions: excluded });
+    await applyApplicabilityReview(root, { decisions: excluded, basis: excludedPreview.basis, confirmed: true });
+    const decisions = [{ id: controlId, decision, rationale: "The current scope requires this decision.", reviewedByIds: ["person-independent-approver-example"], reviewedOn: "2026-09-30" }];
+    const preview = await planApplicabilityReview(root, { decisions });
+    assert.equal(preview.changes.update.find(({ id }) => id === controlId).status, "planned");
+    const applied = await applyApplicabilityReview(root, { decisions, basis: preview.basis, confirmed: true });
+    assert.deepEqual(applied.changes, preview.changes);
+    loaded = await loadWorkspace(root);
+    const control = loaded.resources.find(({ id }) => id === controlId);
+    assert.equal(control.status, "planned");
+    assert.equal(control.statusTransition, undefined);
+    assert.equal(applicabilityReviewIsCurrent(control.applicabilityReview, control, program, loaded.resources, loaded.model, root), true);
+  }
+});
+
+test("applicability preview and apply preserve prior source reviews", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-cross-step-applicability-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  let loaded = await loadWorkspace(root);
+  const controlEntry = loaded.entries.find(({ record }) => record.type === "control");
+  const programEntry = loaded.entries.find(({ record }) => record.type === "program");
+  const documentEntry = loaded.entries.find(({ record }) => record.type === "document");
+  const rowEntry = loaded.entries.find(({ record }) => record.type === "retention-schedule-item");
+  const mappingEntry = loaded.entries.find(({ record }) => record.type === "requirement-mapping");
+  const commitment = loaded.resources.find(({ type }) => type === "commitment");
+  const sourceCoverageEntry = loaded.entries.find(({ record }) => record.type === "source-coverage");
+  const informationType = loaded.resources.find(({ type }) => type === "information-type");
+  const controls = [controlEntry.record];
+  const procedure = await readFile(join(root, "data", "controls", `${controlEntry.record.id}.md`), "utf8");
+  for (let index = 2; index <= 10; index += 1) {
+    const record = { ...controlEntry.record, id: `control-review-${index}`, title: `Access review ${index}`, code: `SEC-${index}` };
+    controls.push(record);
+    await writeFile(join(root, "data", "controls", `${record.id}.json`), `${JSON.stringify(record, null, 2)}\n`);
+    await writeFile(join(root, "data", "controls", `${record.id}.md`), procedure);
+  }
+  programEntry.record.controlIds = controls.map(({ id }) => id);
+  await writeFile(programEntry.path, `${JSON.stringify(programEntry.record, null, 2)}\n`);
+  documentEntry.record.documentKind = "schedule";
+  await writeFile(documentEntry.path, `${JSON.stringify(documentEntry.record, null, 2)}\n`);
+  mappingEntry.record = {
+    ...mappingEntry.record,
+    status: "active",
+    relationship: "intersects-with",
+    method: "semantic",
+    rationale: "The Control addresses part of the Requirement.",
+    reviewedByIds: ["person-independent-approver-example"],
+    sourceResourceIds: [...mappingEntry.record.sourceResourceIds, commitment.id]
+  };
+  rowEntry.record = {
+    ...rowEntry.record,
+    status: "active",
+    informationTypeIds: [informationType.id],
+    scopeResourceIds: [programEntry.record.id, sourceCoverageEntry.record.id],
+    sourceResourceIds: [controlEntry.record.id, commitment.id],
+    cutoff: { basis: "creation" },
+    retentionPeriod: { basis: "fixed", amount: 1, unit: "year" },
+    dispositionAction: "delete",
+    dispositionInstructions: "Delete after the approved period."
+  };
+  loaded = await loadWorkspace(root);
+  const oldMappingIds = [...mappingEntry.record.sourceResourceIds, ...mappingEntry.record.targetResourceIds];
+  mappingEntry.record.reviewedSourceRevisions = Object.fromEntries(resourceReviewRevisionsSync(loaded, oldMappingIds, "legacy", true));
+  rowEntry.record.reviewedSourceRevisions = Object.fromEntries(resourceReviewRevisionsSync(
+    loaded, retentionReviewResourceIds(rowEntry.record, loaded), "legacy", true
+  ));
+  const reviewedControlRevision = rowEntry.record.reviewedSourceRevisions[controlEntry.record.id];
+  await writeFile(mappingEntry.path, `${JSON.stringify(mappingEntry.record, null, 2)}\n`);
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  await initializeGitWorkspace(root);
+  const before = await validateWorkspace(root);
+  assert.equal(before.ok, true, before.diagnostics.filter(({ severity }) => severity === "error").map(({ message }) => message).join("\n"));
+  controlEntry.record.status = "planned";
+  await writeFile(controlEntry.path, `${JSON.stringify(controlEntry.record, null, 2)}\n`);
+  const implementationChange = await validateWorkspace(root);
+  assert.equal(implementationChange.diagnostics.some(({ code }) => ["stale-retention-review", "stale-requirement-mapping"].includes(code)), false);
+  const procedurePath = join(root, "data", "controls", `${controlEntry.record.id}.md`);
+  await writeFile(procedurePath, `${await readFile(procedurePath, "utf8")}\nUpdated operating steps.\n`);
+  const procedureChange = await validateWorkspace(root);
+  assert.equal(procedureChange.diagnostics.some(({ code }) => ["stale-retention-review", "stale-requirement-mapping"].includes(code)), false);
+  controlEntry.record.status = "implemented";
+  await writeFile(controlEntry.path, `${JSON.stringify(controlEntry.record, null, 2)}\n`);
+  sourceCoverageEntry.record.readinessTestEvidenceIds = ["evidence-example"];
+  await writeFile(sourceCoverageEntry.path, `${JSON.stringify(sourceCoverageEntry.record, null, 2)}\n`);
+  const evidenceChange = await validateWorkspace(root);
+  assert.equal(evidenceChange.diagnostics.some(({ code }) => code === "stale-retention-review"), false);
+  delete sourceCoverageEntry.record.readinessTestEvidenceIds;
+  await writeFile(sourceCoverageEntry.path, `${JSON.stringify(sourceCoverageEntry.record, null, 2)}\n`);
+  const decisions = [...controls, commitment].map(({ id }) => ({ id, decision: "applicable", rationale: "This record applies to the current service.", reviewedByIds: ["person-independent-approver-example"], reviewedOn: "2026-09-30" }));
+  const preview = await planApplicabilityReview(root, { decisions });
+  assert.equal(preview.changes.update.length, 11);
+  const applied = await applyApplicabilityReview(root, { decisions, basis: preview.basis, confirmed: true });
+  assert.deepEqual(applied.changes, preview.changes);
+  const after = await validateWorkspace(root);
+  assert.equal(after.ok, true, after.diagnostics.filter(({ severity }) => severity === "error").map(({ message }) => message).join("\n"));
+  const final = await loadWorkspace(root);
+  assert.deepEqual(final.resources.find(({ id }) => id === documentEntry.record.id), documentEntry.record);
+  const mapping = final.resources.find(({ id }) => id === mappingEntry.record.id);
+  const row = final.resources.find(({ id }) => id === rowEntry.record.id);
+  assert.equal(mapping.reviewedSourceRevisions[controlEntry.record.id], reviewedControlRevision);
+  assert.equal(row.reviewedSourceRevisions[controlEntry.record.id], reviewedControlRevision);
+  const changedControl = final.resources.find(({ id }) => id === controlEntry.record.id);
+  changedControl.statement = `${changedControl.statement} with a new decision step`;
+  await writeFile(controlEntry.path, `${JSON.stringify(changedControl, null, 2)}\n`);
+  const changed = await validateWorkspace(root);
+  assert.ok(changed.diagnostics.some(({ code }) => code === "stale-retention-review"));
+  assert.ok(changed.diagnostics.some(({ code }) => code === "stale-requirement-mapping"));
+});
+
+test("source reviews follow Control design and scope without following implementation", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-review-dependency-facts-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ type }) => type === "control");
+  const controlEntry = loaded.entries.find(({ record }) => record.id === control.id);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const row = loaded.resources.find(({ type }) => type === "retention-schedule-item");
+  row.sourceResourceIds = [control.id];
+  const source = async () => (await resourceReviewRevisions(loaded, [control.id])).get(control.id);
+  const original = await source();
+  const scheduleReview = collectionRevision(loaded, "retention-schedule-item");
+  const priorScheduleReview = collectionRevision(loaded, "retention-schedule-item", { legacyControlDependency: true });
+  assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", priorScheduleReview), true);
+  control.status = "planned";
+  control.effectiveOn = "2026-10-01";
+  control.procedureRevision = "updated-procedure";
+  control.applicabilityReview = { decision: "applicable", rationale: "Reviewed", reviewedOn: "2026-10-01", reviewedByIds: ["person-example"], scopeRevision: "review-revision" };
+  controlEntry.source = `${JSON.stringify(control, null, 2)}\n`;
+  assert.equal(await source(), original);
+  assert.equal(collectionRevision(loaded, "retention-schedule-item"), scheduleReview);
+  control.statement = `${control.statement} with a changed approval step`;
+  controlEntry.source = `${JSON.stringify(control, null, 2)}\n`;
+  assert.notEqual(await source(), original);
+  assert.notEqual(collectionRevision(loaded, "retention-schedule-item"), scheduleReview);
+  control.statement = "Example statement for Control";
+  control.status = "retired";
+  controlEntry.source = `${JSON.stringify(control, null, 2)}\n`;
+  assert.notEqual(await source(), original);
+  assert.notEqual(collectionRevision(loaded, "retention-schedule-item"), scheduleReview);
+  control.status = "planned";
+  const programEntry = loaded.entries.find(({ record }) => record.id === program.id);
+  const programSource = (await resourceReviewRevisions(loaded, [program.id])).get(program.id);
+  program.systemIds = [];
+  programEntry.source = `${JSON.stringify(program, null, 2)}\n`;
+  assert.notEqual((await resourceReviewRevisions(loaded, [program.id])).get(program.id), programSource);
+});
+
+test("retention schedule reviews ignore binding format and row bookkeeping", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-schedule-binding-upgrade-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  let loaded = await loadWorkspace(root);
+  const rowEntry = loaded.entries.find(({ record }) => record.type === "retention-schedule-item");
+  const control = loaded.resources.find(({ type }) => type === "control");
+  rowEntry.record.sourceResourceIds = [control.id];
+  rowEntry.record.reviewedSourceRevisions = Object.fromEntries(resourceReviewRevisionsSync(loaded, [control.id], "legacy", true));
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  await initializeGitWorkspace(root);
+  loaded = await loadWorkspace(root);
+  const oldRevision = collectionRevision(loaded, "retention-schedule-item", { historicalReviewMetadata: true });
+  const currentRevision = collectionRevision(loaded, "retention-schedule-item");
+  assert.notEqual(oldRevision, currentRevision);
+  assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", oldRevision), true);
+  const review = { scopeRevision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim() };
+  rowEntry.record.reviewedSourceRevisions = Object.fromEntries(await resourceReviewRevisions(loaded, [control.id]));
+  rowEntry.record.tags = ["reviewed"];
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(collectionRevision(loaded, "retention-schedule-item"), currentRevision);
+  assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", oldRevision, { review }), true);
+  rowEntry.record.dispositionAction = "archive";
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", oldRevision, { review }), false);
+});
+
+test("cross-step source reviews ignore routine metadata for other record types", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-other-review-sources-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const cases = [
+    ["commitment", "applicabilityReview", { decision: "applicable", rationale: "Reviewed." }, "statement"],
+    ["complementary-control", "applicabilityReview", { decision: "applicable", rationale: "Reviewed." }, "statement"],
+    ["source-coverage", "readinessTestEvidenceIds", ["evidence-review-example"], "coverageKind"],
+    ["policy", "approvedOn", "2026-10-01", "policyKind"],
+    ["document", "activatedOn", "2026-10-01", "documentKind"],
+    ["system", "ownerIds", ["person-independent-approver-example"], "boundary"],
+    ["component", "evidenceOwnerIds", ["person-independent-approver-example"], "description"],
+    ["vendor", "ownerIds", ["person-independent-approver-example"], "description"],
+    ["information-type", "tags", ["reviewed"], "description"],
+    ["framework", "statusTransition", { changedOn: "2026-10-01" }, "description"],
+    ["requirement", "tags", ["reviewed"], "description"]
+  ];
+  for (const [type, metadataField, metadataValue, materialField] of cases) {
+    const record = loaded.resources.find((candidate) => candidate.type === type);
+    const entry = loaded.entries.find((candidate) => candidate.record.id === record.id);
+    const revision = async () => (await resourceReviewRevisions(loaded, [record.id])).get(record.id);
+    const original = await revision();
+    const priorMetadata = record[metadataField];
+    const priorMaterial = record[materialField];
+    record[metadataField] = metadataValue;
+    entry.source = `${JSON.stringify(record, null, 2)}\n`;
+    assert.equal(await revision(), original, `${type} ${metadataField}`);
+    record[materialField] = `${record[materialField] || "scope"} changed`;
+    entry.source = `${JSON.stringify(record, null, 2)}\n`;
+    assert.notEqual(await revision(), original, `${type} ${materialField}`);
+    record[materialField] = priorMaterial;
+    if (priorMetadata === undefined) delete record[metadataField];
+    else record[metadataField] = priorMetadata;
+    entry.source = `${JSON.stringify(record, null, 2)}\n`;
+  }
+  for (const [type, field, value] of [
+    ["component", "evidenceSourceKinds", ["system-configuration"]],
+    ["source-coverage", "retentionScheduleItemIds", ["retention-schedule-item-example"]]
+  ]) {
+    const entry = loaded.entries.find(({ record }) => record.type === type);
+    const before = (await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id);
+    entry.record[field] = value;
+    entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+    assert.notEqual((await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id), before, `${type} ${field}`);
+  }
+});
+
+test("source reviews retain governing lifecycle and effective-date changes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-source-lifecycle-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  for (const type of ["policy", "document"]) {
+    const entry = loaded.entries.find(({ record }) => record.type === type);
+    const revision = async () => (await resourceReviewRevisions(loaded, [entry.record.id])).get(entry.record.id);
+    entry.record.status = "approved";
+    entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+    const approved = await revision();
+    entry.record.status = "active";
+    entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+    assert.equal(await revision(), approved, `${type} activation`);
+    entry.record.status = "draft";
+    entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+    assert.notEqual(await revision(), approved, `${type} governing status`);
+    entry.record.status = "approved";
+    entry.record.effectiveOn = "2030-01-01";
+    entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
+    assert.notEqual(await revision(), approved, `${type} effective date`);
+  }
+  const coverage = loaded.entries.find(({ record }) => record.type === "source-coverage");
+  coverage.record.status = "planned";
+  coverage.source = `${JSON.stringify(coverage.record, null, 2)}\n`;
+  const planned = (await resourceReviewRevisions(loaded, [coverage.record.id])).get(coverage.record.id);
+  coverage.record.status = "active";
+  coverage.source = `${JSON.stringify(coverage.record, null, 2)}\n`;
+  assert.notEqual((await resourceReviewRevisions(loaded, [coverage.record.id])).get(coverage.record.id), planned);
+});
 
 test("reads legacy approval, activation, attestation, and applicability bindings without rewriting records", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-revision-upgrade-"));
