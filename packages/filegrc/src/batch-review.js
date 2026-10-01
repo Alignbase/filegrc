@@ -142,16 +142,23 @@ function planApplicabilityReviewWithContext(context, options) {
       }
     : program;
   const update = reviewedDecisions.flatMap(({ record, result, rationale, reviewedByIds, reviewedOn }) => {
-    const scopeRevision = applicabilityScopeRevision(record, reviewedProgram, loaded.resources, loaded.model);
-    const next = {
-      ...record,
-      applicabilityReview: {
-        decision: result,
-        rationale,
-        reviewedByIds,
-        reviewedOn,
-        scopeRevision
+    const next = { ...record };
+    if (record.type === "control" && result === "not-applicable" && record.status !== "not-applicable") {
+      next.status = "not-applicable";
+      if (loaded.model.resources.control.fields.statusTransition) {
+        next.statusTransition = { changedByIds: reviewedByIds, changedOn: reviewedOn, reason: rationale };
       }
+    }
+    if (record.type === "control" && result !== "not-applicable" && record.status === "not-applicable") {
+      next.status = "planned";
+      delete next.statusTransition;
+    }
+    next.applicabilityReview = {
+      decision: result,
+      rationale,
+      reviewedByIds,
+      reviewedOn,
+      scopeRevision: applicabilityScopeRevision(next, reviewedProgram, loaded.resources, loaded.model)
     };
     if (record.type === "requirement") {
       if (modelSupports(loaded.model, "program-scope")) {
@@ -160,8 +167,6 @@ function planApplicabilityReviewWithContext(context, options) {
       next.applicability = result;
       next.applicabilityRationale = rationale;
     }
-    if (record.type === "control" && result === "not-applicable") next.status = "not-applicable";
-    if (record.type === "control" && result === "applicable" && record.status === "not-applicable") next.status = "planned";
     return [next];
   });
   if (v4RequirementDecisions.length) {
