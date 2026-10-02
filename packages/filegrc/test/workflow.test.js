@@ -18,6 +18,7 @@ import {
 } from "../src/index.js";
 import { packetDeliveryIssue, workflowStageForRecord } from "../src/workflow.js";
 import { buildActionContext } from "../src/action-context.js";
+import { scaffoldApplicabilityReview } from "../src/batch-review.js";
 import { programPathForModel } from "../src/program-path.js";
 import {
   getDataRecordHistoryIndex,
@@ -27,6 +28,83 @@ import {
 import { validateWorkflowHistoryIntegrity } from "../src/workflow-history-integrity.js";
 import { makeWorkspace, writeJson } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+
+test("retired and superseded records stay out of setup findings after routine changes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retired-setup-findings-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const retired = loaded.entries.find(({ record }) => record.type === "commitment");
+  const superseded = loaded.entries.find(({ record }) => record.type === "complementary-control");
+  retired.record.status = "retired";
+  superseded.record.status = "superseded";
+  for (const entry of [retired, superseded]) {
+    entry.record.statusTransition = {
+      changedByIds: ["person-example"],
+      changedOn: "2026-10-01",
+      reason: "This historical record no longer defines current program work."
+    };
+  }
+  await writeJson(retired.path, retired.record);
+  await writeJson(superseded.path, superseded.record);
+
+  const check = async () => {
+    const state = await createAppState(root);
+    for (const entry of [retired, superseded]) {
+      assert.equal(state.applicabilityReviewStatuses[entry.record.id], undefined);
+      assert.equal(state.workflow.findings.some(({ subject, code }) => (
+        subject?.id === entry.record.id && code.startsWith(`record.${entry.record.type}.`)
+      )), false, entry.record.id);
+    }
+    const scaffold = await scaffoldApplicabilityReview(root);
+    assert.equal(scaffold.decisions.some(({ id }) => [retired.record.id, superseded.record.id].includes(id)), false);
+    const { stdout } = await promisify(execFile)(process.execPath, [
+      new URL("../bin/filegrc.js", import.meta.url).pathname,
+      "program-path", "--next", "--root", root, "--json"
+    ]);
+    const next = JSON.parse(stdout);
+    assert.equal([retired.record.id, superseded.record.id].includes(next.step.nextAction?.resourceId), false);
+    return state;
+  };
+  const before = await check();
+  const system = loaded.entries.find(({ record }) => record.type === "system");
+  system.record.description = `${system.record.description || "Service boundary"} Updated during routine operation.`;
+  await writeJson(system.path, system.record);
+  retired.record.statement = `${retired.record.statement || "Prior commitment"} Historical note.`;
+  await writeJson(retired.path, retired.record);
+  const after = await check();
+  assert.equal(
+    after.programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "commitments").status,
+    before.programReadiness.stages.find(({ id }) => id === "scope").items.find(({ id }) => id === "commitments").status
+  );
+});
+
+test("period health ignores prior retirement but does not assume a later superseded policy was active", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-historical-policy-period-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const retired = loaded.resources.find(({ type }) => type === "policy");
+  retired.status = "retired";
+  retired.programRole = "required";
+  retired.statusTransition = { changedOn: "2026-07-01", changedByIds: ["person-example"], reason: "Replaced before this period." };
+  const superseded = {
+    ...retired,
+    id: "policy-superseded-after-period",
+    title: "Later superseded policy",
+    status: "superseded",
+    effectiveOn: "2026-01-01",
+    statusTransition: { changedOn: "2026-10-01", changedByIds: ["person-example"], reason: "Replaced after this period." }
+  };
+  loaded.resources.push(superseded);
+  const workflow = await assessWorkflow(loaded, {
+    asOf: "2026-09-01",
+    evaluatedAt: "2026-09-01T12:00:00Z",
+    coverage: { kind: "range", start: "2026-08-01", end: "2026-08-31" }
+  });
+  assert.equal(workflow.findings.some(({ key }) => key === `period.coverage.policy.${retired.id}`), false);
+  assert.equal(workflow.findings.some(({ key }) => key === `period.coverage.policy.${superseded.id}`), true);
+});
 
 test("requires a reviewable, approved, and receipted packet delivery record", () => {
   assert.match(packetDeliveryIssue(null), /least-disclosure review/);

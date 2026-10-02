@@ -15,6 +15,34 @@ const DEV_SCRIPT = await readFile(new URL("../../../scripts/dev.mjs", import.met
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const CLI = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 
+test("historical records do not make optional setup or audit pages complete", () => {
+  const source = APP_SCRIPT.slice(
+    APP_SCRIPT.indexOf("function derivedStagePageState"),
+    APP_SCRIPT.indexOf("function stagePageItems")
+  );
+  const records = [
+    { type: "document", status: "active", workflowScope: "program" },
+    { type: "document", status: "retired", workflowScope: "engagement" },
+    { type: "requirement-mapping", status: "retired" }
+  ];
+  const context = {
+    state: { workflow: { assessments: { auditReadiness: { status: "in-progress" } } } },
+    stagePageItems: () => [],
+    stagePageActionItems: () => [],
+    collectionReviewVisible: () => false,
+    resourcesOfType: (type) => records.filter((record) => record.type === type).map((record) => ({ record })),
+    auditSpecificDocument: (record) => record.workflowScope === "engagement"
+  };
+  const derive = vm.runInNewContext(`${source}\nderivedStagePageState`, context);
+  const mapping = derive({ id: "scope" }, { type: "requirement-mapping", href: "#/resources/requirement-mapping" });
+  const auditDocuments = () => derive({ id: "audit" }, { type: "document", href: "#/resources/document?documentScope=audit" });
+  assert.equal(mapping.complete, false);
+  assert.equal(mapping.countsTowardProgress, false);
+  assert.equal(auditDocuments().countsTowardProgress, false);
+  records[1].status = "active";
+  assert.equal(auditDocuments().complete, true);
+});
+
 test("direct Commitment and Program pages load review status before rendering", () => {
   const source = APP_SCRIPT.slice(
     APP_SCRIPT.indexOf("function blockingStateSections"),

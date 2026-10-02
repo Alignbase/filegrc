@@ -34,6 +34,33 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { baselineRecordFiles } from "../../create-filegrc/src/defaults.js";
 import { resolveWorkflowDestination } from "../src/web.js";
 
+test("retired Obligations do not require their former program Documents", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retired-obligation-document-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const document = {
+    id: "document-retired-obligation-only",
+    type: "document",
+    title: "Former work instructions",
+    status: "draft",
+    documentKind: "procedure",
+    workflowScope: "program",
+    ownerIds: ["person-example"]
+  };
+  const obligation = {
+    id: "obligation-retired-document-only",
+    type: "obligation",
+    title: "Former scheduled work",
+    status: "retired",
+    templateResourceId: document.id,
+    scopeResourceIds: [document.id]
+  };
+  loaded.resources.push(document, obligation);
+  const readiness = await assessProgramReadiness(loaded, { asOf: "2026-10-02" });
+  assert.equal(readiness.stages.flatMap(({ items }) => items).some(({ id }) => id === `document-approval-${document.id}`), false);
+});
+
 test("every starter Control starts with a short real-world check", () => {
   const starterControls = baselineRecordFiles("2026-01-01")
     .map(({ record }) => record).filter(({ type }) => type === "control");

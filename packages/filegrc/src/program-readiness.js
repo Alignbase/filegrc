@@ -1239,7 +1239,7 @@ function requiredGovernedDocuments(scope, records, byId, model) {
   const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
   const linkedDocumentIds = new Set(requiredPolicies(scope, byId).flatMap((policy) => policy.relatedDocumentIds || []));
   const obligationDocumentIds = new Set(records
-    .filter((record) => record.type === "obligation")
+    .filter((record) => record.type === "obligation" && record.status !== "retired")
     .flatMap((record) => [
       ...(record.scopeResourceIds || []),
       ...(record.templateResourceId ? [record.templateResourceId] : [])
