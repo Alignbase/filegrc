@@ -1139,6 +1139,11 @@ function normalizeFinding(code, item, context) {
     title: item.title,
     message: item.message,
     ...(item.nextSteps?.length ? { nextSteps: item.nextSteps } : {}),
+    ...(item.implementationState ? {
+      implementationState: item.implementationState,
+      launchChecks: item.launchChecks,
+      implementationAssertion: item.implementationAssertion
+    } : {}),
     ...(item.checks ? { unmetChecks: Object.entries(item.checks)
       .filter(([, passed]) => passed === false)
       .map(([name]) => name) } : {}),

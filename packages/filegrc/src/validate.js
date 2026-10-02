@@ -21,7 +21,7 @@ import {
 } from "./recurrence.js";
 import { resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
-import { obligationIsEnabled } from "./program-lifecycle.js";
+import { obligationIsEnabled, obligationRuleIsEnabled } from "./program-lifecycle.js";
 import { currentPartyPeople, partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
@@ -222,7 +222,7 @@ async function validateWorkspaceUnmeasured(input) {
     validateIndependentApproval(record, byId, displayPath, diagnostics);
     validateCompletedObligationEvent(record, byId, loaded.model, displayPath, diagnostics);
     validateActionObligationRule(record, byId, displayPath, diagnostics);
-    validateImplementedControlSchedules(record, obligationsByControl, displayPath, diagnostics);
+    validateImplementedControlSchedules(record, obligationsByControl, byId, new Date().toISOString(), displayPath, diagnostics);
     serialContentDiagnosticTasks.push(async () => {
       const markdownDiagnostics = [];
       const approvalDiagnostics = [];
@@ -1538,7 +1538,7 @@ function assertFingerprintBudget(options, uncachedBytes) {
   }
 }
 
-function validateImplementedControlSchedules(record, obligationsByControl, path, diagnostics) {
+function validateImplementedControlSchedules(record, obligationsByControl, byId, now, path, diagnostics) {
   if (record.type !== "control" || record.status !== "implemented") return;
   const schedules = obligationsByControl.get(record.id) || [];
   if (!schedules.length) {
@@ -1550,16 +1550,20 @@ function validateImplementedControlSchedules(record, obligationsByControl, path,
     ));
     return;
   }
-  if (schedules.some(obligationIsEnabled)) return;
-  const stopped = schedules.filter((obligation) => !obligationIsEnabled(obligation));
+  if (schedules.some((obligation) => obligationRuleIsEnabled(obligation, byId, now))) return;
+  const stopped = schedules.filter((obligation) => !obligationRuleIsEnabled(obligation, byId, now));
   const paused = stopped.filter((obligation) => obligation.status === "paused");
   const proposed = stopped.filter((obligation) => obligation.status === "proposed");
+  const pendingRules = stopped.filter((obligation) => obligationIsEnabled(obligation) && obligation.scheduleMode === "rule");
   const reasons = [
     proposed.length
       ? `${proposed.length} linked ${proposed.length === 1 ? "schedule is" : "schedules are"} still proposed. Enable ${proposed.length === 1 ? "it" : "them"} before implementing the control; the schedule will remain dormant until its governing Policy is active and effective.`
       : "",
     paused.length
       ? `${paused.length} linked ${paused.length === 1 ? "schedule is" : "schedules are"} paused. Enable ${paused.length === 1 ? "it" : "them"} before implementing the control.`
+      : "",
+    pendingRules.length
+      ? `${pendingRules.length} linked ${pendingRules.length === 1 ? "rule is" : "rules are"} not active. Activate the selected rule before implementing the control.`
       : ""
   ].filter(Boolean).join(" ");
   diagnostics.push(error(

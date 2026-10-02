@@ -10,6 +10,7 @@ import { runCli } from "../src/cli.js";
 import {
   completeObligationOccurrence,
   completeObligationAction,
+  assessProgramReadiness,
   createAppState,
   createObligationEvent,
   createResource,
@@ -20,9 +21,12 @@ import {
   updateResource,
   validateWorkspace
 } from "../src/index.js";
-import { executeCli, makeWorkspace } from "./helpers.js";
+import { executeCli, initializeGitWorkspace, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { createFilegrc } from "../../create-filegrc/src/index.js";
 import { occurrenceMemberIsResolved } from "../src/obligation-members.js";
+import { obligationRuleIsEnabled } from "../src/program-lifecycle.js";
+import { currentCalendarDate, timestampFromLocalDateTime } from "../src/time.js";
 
 const execute = (executable, args) => executeCli(runCli, executable, args);
 const executeProcess = promisify(execFile);
@@ -587,6 +591,196 @@ test("includes proposed obligation records as visible but unavailable starter wo
   assert.equal(plan.triggers[0].programStatus, "proposed");
 });
 
+test("names the governed Document that keeps an event dormant before cutover", () => {
+  const policy = { id: "policy-security", type: "policy", status: "active", effectiveOn: "2026-04-01" };
+  const document = {
+    id: "document-incident-plan", type: "document", status: "approved",
+    programRole: "required", workflowScope: "program", controlIds: ["control-incident"]
+  };
+  const control = { id: "control-incident", type: "control", status: "implemented" };
+  const obligation = {
+    id: "obligation-incident", type: "obligation", title: "Respond to incident",
+    status: "active", activityType: "access-provisioning",
+    recurrence: { mode: "event", eventType: "person-started" },
+    ownerIds: ["person-owner"], policyIds: [policy.id], controlIds: [control.id]
+  };
+  const plan = planObligations([ACTIVE_OWNER, policy, document, control, obligation], {
+    model: MODEL_V5, asOf: "2026-04-02", through: "2026-04-03"
+  });
+  assert.deepEqual(plan.triggers[0].steps[0].programBlocker, {
+    type: "document", id: document.id, label: "Activate document"
+  });
+});
+
+test("explains how a new workspace enables its first event workflow", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-first-event-proposal-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  const filegrcVersion = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
+  await createFilegrc({
+    target: root, yes: true, install: false,
+    filegrcVersion,
+    policyOwnerEmail: "security@example.com", timezone: "UTC"
+  });
+  const lockPath = join(root, "package-lock.json");
+  const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  lock.packages["node_modules/filegrc"] = { version: filegrcVersion };
+  await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  await assert.rejects(createObligationEvent(root, {
+    eventType: "person-started", occurredOn: "2026-10-02"
+  }), /still a proposed workflow.*enable its rule in Step 3.*real event after cutover/);
+});
+
+test("refuses a partial event checklist when a matching task remains proposed", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-partial-event-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const active = loaded.resources.find(({ id }) => id === "obligation-example");
+  const activeRule = loaded.resources.find(({ id }) => id === active.activeRuleId);
+  const proposed = {
+    ...active,
+    id: "obligation-pending-event-step",
+    title: "Pending event step",
+    status: "proposed",
+    ruleIds: ["obligation-rule-pending-event-step"],
+    activeRuleId: "obligation-rule-pending-event-step"
+  };
+  const proposedRule = {
+    ...activeRule,
+    id: "obligation-rule-pending-event-step",
+    title: "Pending event rule",
+    status: "proposed",
+    obligationId: proposed.id
+  };
+  await writeFile(join(root, "data/obligations/obligation-pending-event-step.json"), `${JSON.stringify(proposed, null, 2)}\n`);
+  await writeFile(join(root, "data/obligation-rules/obligation-rule-pending-event-step.json"), `${JSON.stringify(proposedRule, null, 2)}\n`);
+  await initializeGitWorkspace(root);
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics));
+  const plan = planObligationsWithModel((await loadWorkspace(root)).resources, {
+    model: loaded.model, asOf: "2026-10-02", through: "2026-10-02"
+  });
+  const trigger = plan.triggers.find(({ eventType }) => eventType === activeRule.recurrence.eventType);
+  assert.equal(trigger.programStatus, "proposed");
+  assert.equal(trigger.steps.length, 2);
+  await assert.rejects(createObligationEvent(root, {
+    eventType: activeRule.recurrence.eventType, occurredOn: "2026-10-02"
+  }), /still a proposed workflow \(obligation-pending-event-step\)/);
+  assert.equal(
+    (await loadWorkspace(root)).resources.filter(({ type }) => type === "obligation-event").length,
+    loaded.resources.filter(({ type }) => type === "obligation-event").length
+  );
+});
+
+test("keeps a proposed selected rule out of Control launch and event triggering", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-proposed-selected-rule-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const obligation = loaded.resources.find(({ id }) => id === "obligation-example");
+  const ruleEntry = loaded.entries.find(({ record }) => record.id === obligation.activeRuleId);
+  await writeFile(ruleEntry.path, `${JSON.stringify({ ...ruleEntry.record, status: "proposed" }, null, 2)}\n`);
+  const controlEntry = loaded.entries.find(({ record }) => record.id === "control-example");
+  await writeFile(controlEntry.path, `${JSON.stringify({ ...controlEntry.record, operationPattern: "event-driven" }, null, 2)}\n`);
+  await initializeGitWorkspace(root);
+
+  const plan = planObligationsWithModel((await loadWorkspace(root)).resources, {
+    model: loaded.model, asOf: "2026-10-02", through: "2026-10-02"
+  });
+  const trigger = plan.triggers.find(({ eventType }) => eventType === ruleEntry.record.recurrence.eventType);
+  assert.equal(trigger.programStatus, "proposed");
+  assert.deepEqual(trigger.steps[0].programBlocker, {
+    type: "obligation-rule", id: ruleEntry.record.id, label: "Activate rule"
+  });
+  const readiness = await assessProgramReadiness(root, { asOf: "2026-10-02" });
+  const control = readiness.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "control-control-example");
+  assert.equal(control.checks.workQueue, false);
+  assert.equal(control.implementationState, "implemented-with-gaps");
+  assert.deepEqual(readiness.policyActivations[0].missingScheduleControlIds, ["control-example"]);
+  await assert.rejects(createObligationEvent(root, {
+    eventType: trigger.eventType, occurredOn: "2026-10-02"
+  }), /still a proposed workflow.*enable its rule in Step 3/);
+  const validation = await validateWorkspace(root);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "control-work-queue-not-running"));
+});
+
+test("keeps a future effective rule dormant until its cutover time", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-future-event-rule-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const obligation = loaded.resources.find(({ id }) => id === "obligation-example");
+  const ruleEntry = loaded.entries.find(({ record }) => record.id === obligation.activeRuleId);
+  const effectiveAt = "2026-10-03T12:00:00Z";
+  await writeFile(ruleEntry.path, `${JSON.stringify({ ...ruleEntry.record, effectiveAt }, null, 2)}\n`);
+  const controlEntry = loaded.entries.find(({ record }) => record.id === "control-example");
+  await writeFile(controlEntry.path, `${JSON.stringify({ ...controlEntry.record, operationPattern: "event-driven" }, null, 2)}\n`);
+  await initializeGitWorkspace(root);
+
+  const plan = planObligationsWithModel((await loadWorkspace(root)).resources, {
+    model: loaded.model, asOf: "2026-10-02", now: "2026-10-02T18:00:00Z", through: "2026-10-02"
+  });
+  const trigger = plan.triggers.find(({ eventType }) => eventType === ruleEntry.record.recurrence.eventType);
+  assert.equal(trigger.programStatus, "proposed");
+  assert.match(trigger.steps[0].programBlocker.label, /Wait for rule effective time/);
+  const readiness = await assessProgramReadiness(root, { asOf: "2026-10-02" });
+  const control = readiness.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "control-control-example");
+  assert.equal(control.checks.workQueue, false);
+  assert.deepEqual(readiness.policyActivations[0].missingScheduleControlIds, ["control-example"]);
+  await assert.rejects(createObligationEvent(root, {
+    eventType: trigger.eventType, occurredAt: "2026-10-02T18:00:00Z"
+  }), /dormant until rule .* takes effect at 2026-10-03T12:00:00Z/);
+  await assert.rejects(createObligationEvent(root, {
+    eventType: trigger.eventType, occurredOn: "2026-10-03"
+  }), /requires occurredAt on 2026-10-03/);
+  await assert.rejects(createObligationEvent(root, {
+    eventType: trigger.eventType, occurredAt: "2026-10-03T11:00:00Z"
+  }), /dormant until rule .* takes effect at 2026-10-03T12:00:00Z/);
+
+  const prior = { ...ruleEntry.record, id: "obligation-rule-prior", status: "retired" };
+  const future = { ...ruleEntry.record, effectiveAt, supersedesId: prior.id };
+  assert.equal(obligationRuleIsEnabled(obligation, new Map([
+    [prior.id, prior], [future.id, future]
+  ]), "2026-10-02T18:00:00Z"), true);
+});
+
+test("uses the current time for today's Control launch assessment", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-same-day-rule-readiness-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const today = currentCalendarDate(loaded.workspace.timezone);
+  const morning = timestampFromLocalDateTime(`${today}T09:00:00`, loaded.workspace.timezone);
+  const evening = timestampFromLocalDateTime(`${today}T18:00:00`, loaded.workspace.timezone);
+  const obligation = loaded.resources.find(({ id }) => id === "obligation-example");
+  const rule = loaded.resources.find(({ id }) => id === obligation.activeRuleId);
+  const training = loaded.resources.find(({ id }) => id === "training-example");
+  const assignmentRule = {
+    ...rule, id: "obligation-rule-training-same-day", obligationId: "obligation-training-same-day", effectiveAt: evening
+  };
+  const assignment = {
+    ...obligation, id: assignmentRule.obligationId, activityType: "training",
+    scopeResourceIds: [training.id], ruleIds: [assignmentRule.id], activeRuleId: assignmentRule.id
+  };
+  const input = {
+    ...loaded,
+    resources: [...loaded.resources.map((record) => record.id === obligation.activeRuleId
+      ? { ...record, effectiveAt: evening }
+      : record.id === "control-example"
+        ? { ...record, operationPattern: "event-driven" }
+        : record), assignmentRule, assignment]
+  };
+  const before = await assessProgramReadiness(input, { asOf: today, generatedAt: morning });
+  const after = await assessProgramReadiness(input, { asOf: today, generatedAt: evening });
+  const control = (result) => result.stages.find(({ id }) => id === "controls")
+    .items.find(({ id }) => id === "control-control-example");
+  assert.equal(control(before).checks.workQueue, false);
+  assert.deepEqual(control(before).workQueue, { enabled: 0, running: 0, total: 2 });
+  assert.equal(control(after).checks.workQueue, true);
+  assert.equal(before.trainingActivations.find(({ trainingId }) => trainingId === training.id).assignmentScheduled, false);
+  assert.equal(after.trainingActivations.find(({ trainingId }) => trainingId === training.id).assignmentScheduled, true);
+});
+
 test("starts an enabled schedule when a linked control becomes implemented", () => {
   const policy = {
     id: "policy-security",
@@ -722,7 +916,7 @@ test("does not start a partial event workflow while any step is still proposed",
       eventType: "person-started",
       occurredOn: "2026-07-01"
     }),
-    /still has starter proposals/
+    /is dormant until .*\(.+\).*Complete the cutover/
   );
   assert.equal(
     (await loadWorkspace(root)).resources.some(({ type }) => type === "obligation-event"),

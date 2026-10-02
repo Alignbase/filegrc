@@ -1,6 +1,7 @@
 import { currentPartyPeople } from "./parties.js";
 import { modelSupports } from "../model/index.js";
 import { revisionsMatch } from "./revisions.js";
+import { obligationRule } from "./obligation-rule.js";
 
 const requiredDocumentsByControlCache = new WeakMap();
 
@@ -131,8 +132,9 @@ function indexRequiredDocumentsByControl(byId, model) {
   return index;
 }
 
-export function obligationProgramStatus(obligation, byId, asOf, model) {
+export function obligationProgramStatus(obligation, byId, asOf, model, now = `${asOf}T23:59:59Z`) {
   if (obligation.status !== "active") return "proposed";
+  if (!obligationRuleIsEnabled(obligation, byId, now)) return "proposed";
   if (currentPartyPeople(obligation.ownerIds || [], byId).size === 0) return "proposed";
   const policyIds = obligation.policyIds || [];
   const policiesReady = policyIds.every((id) => {
@@ -153,12 +155,18 @@ export function obligationProgramStatus(obligation, byId, asOf, model) {
     : "proposed";
 }
 
-export function obligationIsRunning(obligation, byId, asOf, model) {
+export function obligationIsRunning(obligation, byId, asOf, model, now) {
   return obligation?.type === "obligation"
     && obligation.status === "active"
-    && obligationProgramStatus(obligation, byId, asOf, model) === "accepted";
+    && obligationProgramStatus(obligation, byId, asOf, model, now) === "accepted";
 }
 
 export function obligationIsEnabled(obligation) {
   return obligation?.type === "obligation" && obligation.status === "active";
+}
+
+export function obligationRuleIsEnabled(obligation, byId, now) {
+  return obligationIsEnabled(obligation)
+    && (obligation.scheduleMode !== "rule"
+      || obligationRule(obligation, byId, { now }) !== null);
 }

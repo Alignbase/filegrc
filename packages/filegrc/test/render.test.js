@@ -1441,7 +1441,7 @@ test("keeps long metadata labels separate from their values", () => {
 test("renders nested relationship values without exposing raw JSON", () => {
   assert.match(APP_SCRIPT, /function formatObjectArray\(items, objectType, compact = false\)/);
   assert.match(APP_SCRIPT, /definition\?\.items === "object"\) return formatObjectArray/);
-  assert.match(APP_SCRIPT, /formatValue\(name === "status" \? displayStatus\(entry\.record\) : entry\.record\[name\], name, type, true\)/);
+  assert.match(APP_SCRIPT, /controlLaunchState\(entry\.record\.id\) \|\| displayStatus\(entry\.record\)/);
   assert.match(APP_STYLES, /\.object-value-list\{display:grid;gap:7px\}/);
 });
 
@@ -1942,7 +1942,7 @@ test("keeps operation status explicit and stage instructions available on demand
   assert.match(APP_SCRIPT, /type === "obligation" \? \["\$workQueueStatus"\]/);
   assert.match(APP_SCRIPT, /type === "obligation" && name === "status"\) return "Configuration"/);
   assert.doesNotMatch(APP_SCRIPT, /Work Queue · ' \+ esc\(label\)/);
-  assert.match(APP_SCRIPT, /governing policies are effective, at least one linked control is implemented/);
+  assert.match(APP_SCRIPT, /Use this workflow for the first real event after cutover/);
   assert.match(APP_SCRIPT, /Create an Evidence Artifact only when a real file or approved external reference exists/);
   assert.match(APP_SCRIPT, /Complete scheduled work and assigned follow-up here/);
   assert.doesNotMatch(APP_STYLES, /\.stage-instruction-grid/);
