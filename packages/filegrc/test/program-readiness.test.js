@@ -18,21 +18,28 @@ import {
   selectedProgressWindow
 } from "../src/program-readiness.js";
 import {
+  activatePolicies,
+  applyCollectionReview,
   assessAuditPreparation,
+  assessCollectionReview,
   assessEvidenceMap,
   assessProgramReadiness,
   assessWorkflow,
   createAppState,
+  createObligationEvent,
   createResource,
   createResources,
   loadWorkspace,
+  scaffoldPolicyActivation,
   serveWorkspace,
-  updateResource
+  updateResource,
+  validateWorkspace
 } from "../src/index.js";
-import { executeCli, makeWorkspace } from "./helpers.js";
+import { commitWorkspaceFiles, executeCli, initializeGitWorkspace, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { baselineRecordFiles } from "../../create-filegrc/src/defaults.js";
 import { resolveWorkflowDestination } from "../src/web.js";
+import { currentCalendarDate } from "../src/time.js";
 
 test("retired Obligations do not require their former program Documents", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-retired-obligation-document-"));
@@ -80,17 +87,20 @@ test("every starter Control starts with a short real-world check", () => {
     assert.ok(steps[0].length < 190, control.id);
     assert.doesNotMatch(steps.join(" "), /applicability|Obligation|Step 4|audit packet/i, control.id);
     assert.doesNotMatch(steps[0], /choose where staff.*report|decide where risks.*recorded|choose data classes|request and approval path/i, control.id);
-    assert.doesNotMatch(steps[0], /^(?:Set up|Configure|Enable|Define|Document)\b/, control.id);
+    assert.doesNotMatch(steps[0], /(?:latest|recently|current review|completed exercise|past year)/i, control.id);
   }
   const authorization = starterControls.find(({ id }) => id === "control-access-authorization");
   const authentication = starterControls.find(({ id }) => id === "control-strong-authentication");
   const firstStep = (id) => controlImplementationSteps(starterControls.find((control) => control.id === id), { implemented: false })[0];
   assert.match(controlImplementationSteps(authorization, { implemented: false })[0], /access lists.*Systems and Vendor tools.*unique identities.*approval/);
   assert.match(controlImplementationSteps(authentication, { implemented: false })[0], /System and Vendor lists.*production.*MFA/);
-  assert.match(firstStep("control-security-training"), /worker roster.*approved schedule/);
-  assert.match(firstStep("control-access-review-offboarding"), /access lists.*approved schedules.*required window/);
-  assert.match(firstStep("control-incident-exercise"), /test alert.*acknowledgement.*fallback/);
-  assert.match(firstStep("control-vendor-monitoring"), /Vendors.*current review.*timely reassessment/);
+  assert.match(controlImplementationSteps(authentication, { implemented: false }, {
+    targets: ["Production identity", "Source repository"]
+  })[0], /Ensure MFA.*Production identity, Source repository/);
+  assert.match(firstStep("control-security-training"), /worker roster.*approved content/);
+  assert.match(firstStep("control-access-review-offboarding"), /access lists.*first access review.*departure/);
+  assert.match(firstStep("control-incident-exercise"), /incident exercise owner.*first exercise/);
+  assert.match(firstStep("control-vendor-monitoring"), /Vendors.*review owners.*reassessment trigger/);
   for (const control of starterControls) {
     assert.doesNotMatch(firstStep(control.id), /\b(?:30 days|24 hours|quarterly|annually|annual review|past year)\b/i, control.id);
   }
@@ -157,7 +167,7 @@ test("planned Control actions reveal the next prerequisite before implementation
   assert.doesNotMatch(applicability.join(" "), /mark this Control Implemented/);
 
   const final = controlImplementationSteps(control, { ...checks, evidenceSourceReady: true, workQueue: true, applicability: true });
-  assert.match(final.at(-1), /mark this Control Implemented.*start date.*Procedure revision/);
+  assert.match(final.at(-1), /mark the Control Implemented.*future cycles and events/);
 });
 
 test("focused Control guidance requires the evidence kind for its source family", async (context) => {
@@ -840,10 +850,47 @@ test("counts owner-recorded Control implementation before revealing final collec
   const item = stage.items.find(({ id }) => id === `control-${control.id}`);
   const oversight = stage.items.find(({ id }) => id === "collection-review-control");
   assert.equal(item.checks.implemented, true);
+  assert.equal(item.implementationState, "implemented-with-gaps");
+  assert.equal(item.launchChecks.applicability, false);
+  assert.equal(item.launchChecks.procedureRevision, false);
+  assert.match(item.nextSteps.join(" "), /Procedure revision and effective date/);
   assert.equal(item.checks.implementationReview, undefined);
   assert.doesNotMatch(item.message, /independent implementation review/i);
   assert.equal(oversight, undefined);
   assert.ok(stage.counts.complete > 0);
+  const policyActivation = readiness.policyActivations.find(({ linkedControlIds }) => linkedControlIds.includes(control.id));
+  assert.deepEqual(policyActivation.missingLaunchControlIds, [control.id]);
+  assert.equal(policyActivation.state, "active-with-implementation-gaps");
+  const policy = loaded.resources.find(({ id }) => id === policyActivation.policyId);
+  const approved = await assessProgramReadiness({
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === policy.id
+      ? { ...policy, status: "approved", effectiveOn: undefined }
+      : record)
+  }, { asOf: "2026-09-12" });
+  assert.equal(approved.policyActivations[0].state, "approved-implementation-pending");
+  assert.deepEqual(approved.policyActivations[0].missingLaunchControlIds, [control.id]);
+});
+
+test("keeps an incomplete linked evidence Component visible for repair", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-linked-source-role-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const component = loaded.resources.find(({ id }) => id === "component-example");
+  const input = {
+    ...loaded,
+    resources: loaded.resources.map((record) => record.id === component.id
+      ? { ...record, evidenceSourceKinds: [] }
+      : record)
+  };
+  const evidenceMap = await assessEvidenceMap(input, { asOf: "2026-09-12" });
+  const family = evidenceMap.items.find(({ id }) => id === "source-family-control-sec");
+  assert.deepEqual(family.sourceComponentIds, [component.id]);
+  assert.equal(family.sourceComponentChecks[0].checks.sourceRole, false);
+  assert.equal(family.controlMappings[0].mapped, true);
+  assert.equal(family.controlMappings[0].complete, false);
+  assert.ok(family.commands.some((command) => command.includes(`update component ${component.id}`)));
 });
 
 test("gives a planned Control plain Step 3 actions in readiness and workflow", async (context) => {
@@ -872,6 +919,10 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
   const item = readiness.stages.find(({ id }) => id === "controls")
     .items.find(({ id }) => id === `control-${control.id}`);
   assert.equal(item.message, item.nextSteps[0]);
+  assert.equal(item.implementationState, "planned");
+  assert.equal(item.launchChecks.scope, false);
+  assert.equal(item.launchChecks.implemented, undefined);
+  assert.match(item.implementationAssertion, /does not assert that a scheduled cycle or event has already occurred/);
   assert.equal(item.nextSteps.length, 3);
   assert.equal(item.nextSteps[0], "Inspect the systems, people, vendors, or work this Control covers. Compare current practice with its statement and fix any gaps.");
   assert.match(item.nextSteps[1], /choose an owner; select the Systems this covers; link the tool or system that can show it happened/);
@@ -880,6 +931,8 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
   const workflow = await assessWorkflow(input, { asOf: "2026-09-12", programReadiness: readiness });
   const finding = workflow.findings.find(({ code }) => code === `program.controls.control-${control.id}`);
   assert.deepEqual(finding.nextSteps, item.nextSteps);
+  assert.equal(finding.implementationState, item.implementationState);
+  assert.deepEqual(finding.launchChecks, item.launchChecks);
   assert.ok(finding.unmetChecks.includes("implemented"));
   assert.ok(finding.unmetChecks.includes("scope"));
   const contextForControl = buildActionContext(input, finding);
@@ -898,6 +951,7 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
   const cliItem = JSON.parse(jsonResult.stdout).stages.find(({ id }) => id === "controls")
     .items.find(({ id }) => id === `control-${control.id}`);
   assert.deepEqual(cliItem.nextSteps, persistedItem.nextSteps);
+  assert.equal(cliItem.implementationState, persistedItem.implementationState);
   assert.deepEqual(JSON.parse(focusedJson.stdout).nextSteps, persistedItem.nextSteps);
   assert.match(focusedText.stdout, new RegExp(control.code));
   assert.doesNotMatch(focusedText.stdout, /\nPolicy activation assessments\n/);
@@ -910,6 +964,94 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
   const getResult = await execute(process.execPath, [cli, "get", "control", control.id, "--root", root, "--workflow"]);
   const getFinding = JSON.parse(getResult.stdout).workflow.findings.find(({ code }) => code === `program.controls.control-${control.id}`);
   assert.deepEqual(getFinding.nextSteps, persistedItem.nextSteps);
+});
+
+test("moves a fresh model v11 workspace from Control launch through cutover to its first event", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-first-operating-event-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  let loaded = await loadWorkspace(root);
+  const today = currentCalendarDate(loaded.workspace.timezone);
+  const controlEntry = loaded.entries.find(({ record }) => record.id === "control-example");
+  const policyEntry = loaded.entries.find(({ record }) => record.id === "policy-example");
+  const initialControl = { ...controlEntry.record, status: "planned" };
+  const approvedPolicy = { ...policyEntry.record, status: "approved" };
+  delete initialControl.effectiveOn;
+  delete approvedPolicy.effectiveOn;
+  await writeFile(controlEntry.path, `${JSON.stringify(initialControl, null, 2)}\n`);
+  await writeFile(policyEntry.path, `${JSON.stringify(approvedPolicy, null, 2)}\n`);
+
+  loaded = await loadWorkspace(root);
+  const control = loaded.resources.find(({ id }) => id === initialControl.id);
+  const program = loaded.resources.find(({ id }) => id === "program-example");
+  control.applicabilityReview = {
+    decision: "applicable",
+    rationale: "This Control covers the selected service.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: today,
+    scopeRevision: applicabilityScopeRevision(control, program, loaded.resources, loaded.model)
+  };
+  control.procedureRevision = "control-procedure-v1";
+  control.procedureEffectiveOn = today;
+  await writeFile(controlEntry.path, `${JSON.stringify(control, null, 2)}\n`);
+  await writeFile(join(root, "data/components/component-example.md"),
+    "# Evidence retrieval\n\nExport access decisions from the production platform for the event date and subject. Reconcile the export with the worker roster.\n");
+
+  const eventObligation = loaded.resources.find(({ id }) => id === "obligation-example");
+  const eventRule = loaded.resources.find(({ id }) => id === "obligation-rule-example");
+  await writeFile(join(root, "data/obligations/obligation-training-launch.json"), `${JSON.stringify({
+    ...eventObligation,
+    id: "obligation-training-launch",
+    title: "Assign approved training",
+    activityType: "training",
+    scopeResourceIds: ["training-example"],
+    ruleIds: ["obligation-rule-training-launch"],
+    activeRuleId: "obligation-rule-training-launch"
+  }, null, 2)}\n`);
+  await writeFile(join(root, "data/obligation-rules/obligation-rule-training-launch.json"), `${JSON.stringify({
+    ...eventRule,
+    id: "obligation-rule-training-launch",
+    title: "Training assignment rule",
+    obligationId: "obligation-training-launch",
+    recurrence: { mode: "event", eventType: "person-started" }
+  }, null, 2)}\n`);
+  await initializeGitWorkspace(root);
+
+  const before = await assessProgramReadiness(root, { asOf: today });
+  const beforeControls = before.stages.find(({ id }) => id === "controls").items;
+  assert.equal(beforeControls.find(({ id }) => id === "control-control-example").implementationState, "ready-to-implement");
+  assert.equal(beforeControls.find(({ id }) => id === "source-family-control-sec").status, "complete");
+  await assert.rejects(createObligationEvent(root, {
+    eventType: "person-role-changed", occurredOn: today, subjectResourceIds: ["person-example"]
+  }), /dormant until activate policy \(policy-example\)/);
+  assert.equal((await validateWorkspace(root)).ok, true);
+
+  await updateResource(root, "control", control.id, {
+    ...control, status: "implemented", effectiveOn: today
+  });
+  await commitWorkspaceFiles(root, "Implement the Control");
+  await applyCollectionReview(root, {
+    resourceType: "complementary-control", programId: program.id, decision: "complete",
+    rationale: "Reviewed customer responsibilities.",
+    reviewedByIds: ["person-independent-approver-example"], reviewedOn: today, confirmed: true
+  });
+  await commitWorkspaceFiles(root, "Review customer responsibilities");
+  await applyCollectionReview(root, {
+    resourceType: "control", programId: program.id, decision: "complete",
+    rationale: "Reviewed the implemented Control and its launch conditions.",
+    reviewedByIds: ["person-independent-approver-example"], reviewedOn: today, confirmed: true
+  });
+  const cutover = await scaffoldPolicyActivation(root, { programId: program.id });
+  assert.deepEqual(cutover.policyIds, [approvedPolicy.id]);
+  await activatePolicies(root, { ...cutover, confirmed: true });
+
+  const event = await createObligationEvent(root, {
+    eventType: "person-role-changed", occurredOn: today, subjectResourceIds: ["person-example"]
+  });
+  assert.equal(event.actions.length, 1);
+  assert.equal(event.actions[0].sourceResourceId, event.event.id);
+  assert.equal(assessCollectionReview(await loadWorkspace(root), "control", { programId: program.id }).complete, true);
+  assert.equal((await validateWorkspace(root)).ok, true);
 });
 
 test("requires the starter oversight team to be activated with a separate current chair", async (context) => {
@@ -1133,10 +1275,19 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       accessOwners: true,
       retrievalInstructions: false
     }
+  }, {
+    sourceSystemId: "system-governance",
+    complete: false,
+    checks: {
+      active: true,
+      sourceRole: false,
+      accessOwners: true,
+      retrievalInstructions: false
+    }
   }]);
   assert.deepEqual(retrievalPending.items[0].controlMappings, [{
     controlId: "control-access",
-    sourceSystemIds: ["system-identity"],
+    sourceSystemIds: ["system-identity", "system-governance"],
     completeSourceSystemIds: [],
     mapped: true,
     complete: false
@@ -1144,6 +1295,8 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.deepEqual(retrievalPending.items[0].commands, [
     "npx filegrc get system-identity --mutation > /tmp/system-identity.json",
     "npx filegrc update system system-identity /tmp/system-identity.json --json",
+    "npx filegrc get system-governance --mutation > /tmp/system-governance.json",
+    "npx filegrc update system system-governance /tmp/system-governance.json --json",
     "npx filegrc program-readiness --json"
   ]);
   const retrievalPendingCli = await execute(process.execPath, [
@@ -1271,7 +1424,7 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
   assert.equal(evidenceMap.items[0].evidenceForm, "export");
   assert.match(evidenceMap.items[0].evidencePrompt, /users, roles, privileged access/);
   assert.deepEqual(evidenceMap.items[0].sourceKinds, ["identity-access"]);
-  assert.deepEqual(evidenceMap.items[0].sourceSystemIds, ["system-identity"]);
+  assert.deepEqual(evidenceMap.items[0].sourceSystemIds, ["system-identity", "system-governance"]);
   assert.deepEqual(evidenceMap.items[0].completeSourceSystemIds, ["system-identity"]);
   assert.deepEqual(evidenceMap.items[0].sourceSystemChecks, [{
     sourceSystemId: "system-identity",
@@ -1282,10 +1435,19 @@ test("reaches Evidence Ready without an audit record and keeps candidate dates s
       accessOwners: true,
       retrievalInstructions: true
     }
+  }, {
+    sourceSystemId: "system-governance",
+    complete: false,
+    checks: {
+      active: true,
+      sourceRole: false,
+      accessOwners: true,
+      retrievalInstructions: false
+    }
   }]);
   assert.deepEqual(evidenceMap.items[0].controlMappings, [{
     controlId: "control-access",
-    sourceSystemIds: ["system-identity"],
+    sourceSystemIds: ["system-identity", "system-governance"],
     completeSourceSystemIds: ["system-identity"],
     mapped: true,
     complete: true

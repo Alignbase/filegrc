@@ -13,6 +13,7 @@ import {
   documentIsAuditSpecific,
   governedDocumentIsOperating,
   obligationIsEnabled,
+  obligationRuleIsEnabled,
   obligationIsRunning
 } from "./program-lifecycle.js";
 import { currentPartyPeople, partiesIndependent, partyPeople } from "./parties.js";
@@ -136,6 +137,10 @@ export async function assessProgramReadiness(input, options = {}) {
   const workspace = loaded.workspace || records.find((record) => record.type === "workspace");
   const program = resolveProgram(loaded, options.programId);
   const asOf = options.asOf || currentCalendarDate(workspace?.timezone || "UTC");
+  const currentDate = currentCalendarDate(workspace?.timezone || "UTC");
+  const asOfTime = asOf === currentDate
+    ? options.generatedAt || new Date().toISOString()
+    : timestampFromLocalDateTime(`${asOf}T23:59:59`, workspace?.timezone || "UTC");
   const requestedAudit = options.auditId
     ? records.find((record) => record.type === "audit" && record.id === options.auditId)
     : null;
@@ -155,7 +160,7 @@ export async function assessProgramReadiness(input, options = {}) {
   };
 
   const policyStage = await policiesStage(scope, records, byId, readMarkdown, loaded.model);
-  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model, loaded.root);
+  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model, loaded.root, asOfTime);
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
     .map(collectionReviewReadinessItem));
@@ -185,7 +190,7 @@ export async function assessProgramReadiness(input, options = {}) {
   } else {
     controlStage.items.push(...retentionItems, ...retentionReviewItems);
   }
-  const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model);
+  const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model, asOfTime);
   const policyActivations = await assessPolicyActivations(
     requiredPolicies(scope, byId),
     scope.controls,
@@ -193,7 +198,9 @@ export async function assessProgramReadiness(input, options = {}) {
     byId,
     readMarkdown,
     asOf,
-    loaded.model
+    loaded.model,
+    controlStage.items,
+    asOfTime
   );
   const controlOversight = collectionReviews.find(({ resourceType }) => resourceType === "control");
   const oversightEligible = Boolean(controlOversight && controlOversightEligible(controlStage.items));
@@ -268,7 +275,7 @@ export async function assessProgramReadiness(input, options = {}) {
     program?.assuranceGoal === "soc-2-type-2"
     && progressWindow?.start <= asOf
   );
-  const obligations = planObligations(records, { programId: program.id, asOf, through: asOf, model: loaded.model });
+  const obligations = planObligations(records, { programId: program.id, asOf, through: asOf, now: asOfTime, model: loaded.model });
   const policyLibrary = await assessPolicyLibraryUpgrades(loaded);
   const operating = Boolean(
     evidenceReady
@@ -1266,10 +1273,11 @@ function requiredGovernedDocuments(scope, records, byId, model) {
   ));
 }
 
-async function governedContentItems(scope, records, byId, readMarkdown, asOf, model) {
+async function governedContentItems(scope, records, byId, readMarkdown, asOf, model, asOfTime) {
   const enabledObligations = records.filter((record) => (
     record.type === "obligation" && obligationIsEnabled(record)
   ));
+  const operatingSchedules = enabledObligations.filter((record) => obligationRuleIsEnabled(record, byId, asOfTime));
   const requiredGovernedIds = new Set(enabledObligations.flatMap((record) => [
     ...(record.scopeResourceIds || []),
     ...(record.templateResourceId ? [record.templateResourceId] : [])
@@ -1332,7 +1340,7 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
           owner: currentPartyPeople(record.ownerIds, byId).size > 0,
           active: record.status === "active",
           requirementsImplemented: linkedControlIds.length > 0 && missingImplementationControlIds.length === 0,
-          assignmentScheduled: enabledObligations.some((obligation) => (
+          assignmentScheduled: operatingSchedules.some((obligation) => (
             obligation.templateResourceId === record.id
             || (obligation.scopeResourceIds || []).includes(record.id)
           )),
@@ -1459,7 +1467,7 @@ function documentActivationLabel(state) {
   })[state] || state;
 }
 
-async function assessPolicyActivations(policies, controls, records, byId, readMarkdown, asOf, model) {
+async function assessPolicyActivations(policies, controls, records, byId, readMarkdown, asOf, model, controlItems, asOfTime) {
   const sourceType = modelSupports(model, "component-sources") ? "component" : "system";
   const sourceField = modelSupports(model, "component-sources") ? "evidenceSourceComponentIds" : "evidenceSourceIds";
   const assessments = [];
@@ -1468,6 +1476,11 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
     const linkedControlIds = linkedControls.map(({ id }) => id);
     const plannedOrPartialControlIds = linkedControls
       .filter((control) => ["planned", "partially-implemented"].includes(control.status))
+      .map(({ id }) => id);
+    const missingLaunchControlIds = linkedControls
+      .filter((control) => controlItems.some((item) => (
+        item.id === `control-${control.id}` && item.implementationState === "implemented-with-gaps"
+      )))
       .map(({ id }) => id);
     const missingComponentControlIds = modelSupports(model, "component-sources")
       ? linkedControls.filter((control) => ![
@@ -1497,7 +1510,7 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
       ["scheduled", "event-driven", "mixed"].includes(control.operationPattern)
       && !records.some((record) => (
         record.type === "obligation"
-        && obligationIsEnabled(record)
+        && obligationRuleIsEnabled(record, byId, asOfTime)
         && (record.controlIds || []).includes(control.id)
         && (record.policyIds || []).includes(policy.id)
       ))
@@ -1540,6 +1553,7 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
         : null
     ].filter(Boolean);
     const gapCount = plannedOrPartialControlIds.length
+      + missingLaunchControlIds.length
       + missingComponentControlIds.length
       + missingEvidenceSourceControlIds.length
       + missingScheduleControlIds.length
@@ -1564,6 +1578,7 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
       proposedEffectiveOn: policy.proposedEffectiveOn || null,
       linkedControlIds,
       plannedOrPartialControlIds,
+      missingLaunchControlIds,
       missingComponentControlIds,
       missingEvidenceSourceControlIds,
       missingScheduleControlIds,
@@ -1596,6 +1611,7 @@ function policyActivationLabel(state) {
 function policyActivationItem(assessment) {
   const counts = [
     [assessment.plannedOrPartialControlIds.length, "planned or partial Controls"],
+    [assessment.missingLaunchControlIds.length, "implemented Controls with launch gaps"],
     [assessment.missingComponentControlIds.length, "Controls missing active Components"],
     [assessment.missingEvidenceSourceControlIds.length, "Controls missing ready evidence sources"],
     [assessment.missingScheduleControlIds.length, "Controls missing enabled Obligations"],
@@ -1644,7 +1660,7 @@ function legacyPolicyLibraryProposals(records) {
   }];
 }
 
-async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null) {
+async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null, asOfTime) {
   const items = [];
   const families = selectedControlFamilies(scope.controls, model);
   if (!scope.controls.length) {
@@ -1698,12 +1714,24 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null
       criteriaMapping: (control.requirementIds || []).length > 0,
       ...(["scheduled", "event-driven", "mixed"].includes(control.operationPattern) ? {
         workQueue: queueSchedules.length > 0
-          && queueSchedules.some(obligationIsEnabled)
+          && queueSchedules.some((obligation) => obligationRuleIsEnabled(obligation, byId, asOfTime))
       } : {})
     };
+    const launchChecks = Object.fromEntries(Object.entries(checks).filter(([name]) => ![
+      "implemented", "implementationDate"
+    ].includes(name)));
+    const launchReady = Object.values(launchChecks).every(Boolean);
+    const implementationState = control.status === "implemented"
+      ? Object.values(checks).every(Boolean) ? "implemented" : "implemented-with-gaps"
+      : control.status === "partially-implemented" ? "partial"
+        : launchReady ? "ready-to-implement" : "planned";
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
     const nextSteps = controlImplementationSteps(control, checks, {
-      missingSourceFamilies
+      missingSourceFamilies,
+      targets: [...new Set([
+        ...(control.systemIds || []),
+        ...(control.componentIds || [])
+      ].map((id) => byId.get(id)?.title).filter(Boolean))]
     });
     items.push(item(
       `control-${control.id}`,
@@ -1715,17 +1743,20 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null
       control,
       {
         checks,
+        launchChecks,
+        implementationState,
+        implementationAssertion: "Implemented means the stated control works for the named Systems, its owner and procedure match current practice, and its evidence sources can produce proof. Scheduled or event-driven Controls have at least one enabled linked Obligation. It does not assert that a scheduled cycle or event has already occurred. Record dated operating proof when it does.",
         nextSteps,
         commands: [`npx filegrc get ${shellArgument(control.id)} --mutation`],
         workQueue: queueSchedules.length ? {
-          enabled: queueSchedules.filter(obligationIsEnabled).length,
-          running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf, model)).length,
+          enabled: queueSchedules.filter((obligation) => obligationRuleIsEnabled(obligation, byId, asOfTime)).length,
+          running: queueSchedules.filter((obligation) => obligationIsRunning(obligation, byId, asOf, model, asOfTime)).length,
           total: queueSchedules.length
         } : null
       }
     ));
   }
-  return stage("controls", "Implement Controls", "Put each selected Control in place, record how it works, and mark it Implemented when it is working.", items);
+  return stage("controls", "Implement Controls", "Put each selected Control in place. Check its launch conditions, then mark it Implemented when it is working. Dated proof follows during operation.", items);
 }
 
 async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
@@ -1739,10 +1770,6 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       .map((id) => byId.get(id))
       .filter((record) => (
         record?.type === sourceType
-        && (
-          !(record.evidenceSourceKinds || []).length
-          || family.sourceKinds.some((kind) => (record.evidenceSourceKinds || []).includes(kind))
-        )
       ));
     const completeSources = [];
     const sourceChecks = [];
@@ -1780,7 +1807,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
     const coveredControls = controlMappings.filter(({ complete }) => complete);
     const complete = completeSources.length > 0 && coveredControls.length === family.controls.length;
     const commands = [
-      ...(selectedSources.length
+      ...(complete ? [] : selectedSources.length
         ? sourceChecks.filter(({ complete: sourceComplete }) => !sourceComplete).flatMap((sourceCheck) => {
             const sourceId = sourceCheck.sourceComponentId || sourceCheck.sourceSystemId;
             return [
@@ -2087,21 +2114,21 @@ function controlCheckLabel(name) {
     procedureEffective: "procedure effective date",
     policyMapping: "policy mapping",
     criteriaMapping: "criteria mapping",
-    workQueue: "running Obligation schedules"
+    workQueue: "enabled Obligation rules (work starts after cutover)"
   })[name] || name;
 }
 
 const starterControlChecks = {
-  "control-security-governance": "Open the security review calendar and attendee roles. Check a reviewer separate from owners and operators examines risks, incidents, findings, and overdue work on the approved schedule.",
-  "control-policy-management": "Open the Control inventory and a recently revised Policy. Check owners are named, the approver is separate, and the change went through review before approval.",
-  "control-security-communication": "Trace how a security notice or Policy change reaches staff and affected outside parties. Check that the approved reporting routes can be used.",
+  "control-security-governance": "Set a security review calendar and name a reviewer separate from the owners. Make sure the agenda covers risks, incidents, findings, and overdue work when those records exist.",
+  "control-policy-management": "Name Control owners and a separate Policy approver. Set the path for reviewing and approving future Policy changes before they take effect.",
+  "control-security-communication": "Set working normal and fallback routes for security notices and Policy changes to staff and affected outside parties.",
   "control-workforce-expectations": "Review onboarding for roles with sensitive access. Check that required screening, agreements, and Policy acknowledgements happen before access.",
-  "control-security-training": "Compare the worker roster with training assignments. Check starters and role changes get training on time, with repeats tied to current content and the approved schedule.",
-  "control-risk-assessment": "Open the risk assessment against in-scope Systems and Vendors. Check threats, fraud, dependencies, and changes have owners and high risks get the required review.",
-  "control-monitoring-remediation": "Open the latest Control review, or schedule the first. Check incidents, test results, Exceptions, and overdue work, with owners and verified closure for gaps.",
+  "control-security-training": "Set up the worker roster, training audience, assignment rule, and owner. Check that starters and role changes will receive the approved content on time.",
+  "control-risk-assessment": "Set the risk assessment scope for the in-scope Systems and Vendors. Name who reviews threats, fraud, dependencies, changes, and high risks.",
+  "control-monitoring-remediation": "Schedule the first Control review. Name who will inspect incidents, tests, Exceptions, overdue work, and follow-up closure when those records exist.",
   "control-access-authorization": "Open access lists for in-scope Systems and Vendor tools. Check that accounts use unique identities and only needed permissions, and new grants require a business reason and approval.",
   "control-strong-authentication": "Open the System and Vendor lists. For each tool used for production, source code, email, identity, or sensitive data, check MFA, unique accounts, default credentials, and admin roles.",
-  "control-access-review-offboarding": "Export access lists from key Systems and Vendor tools. Check privileged and other access reviews meet their approved schedules, and departures lose access within the required window.",
+  "control-access-review-offboarding": "Confirm access lists can be exported from key Systems and Vendor tools. Assign the first access review and the owner who will remove access when a departure occurs.",
   "control-physical-workspace-security": "Walk through actual work areas and visitor access. Check who can enter nonpublic spaces and how devices, papers, screens, and conversations are protected.",
   "control-data-classification-inventory": "List important data stores in Systems and Vendor tools. Check each has an owner, classification, approved purpose, and recorded location.",
   "control-encryption-transmission": "For Systems, Vendor tools, and devices holding Confidential or Restricted data, check encryption at rest and in transit and who can manage the keys.",
@@ -2109,22 +2136,24 @@ const starterControlChecks = {
   "control-inventory-configuration": "Compare actual services, devices, software, service accounts, Vendors, and data stores with the inventory. Check owners, secure settings, and unsupported assets.",
   "control-endpoint-protection": "Review devices allowed into company Systems. Check encryption, screen lock, updates, and malware protection against the approved settings.",
   "control-network-security": "Open production network and remote-access rules. Check each path has a business reason, approved authentication, and separation; identify rules due for review.",
-  "control-change-management": "Follow a software or infrastructure change from request to deployment. Check the path includes risk review, testing, approval, and a way to recover.",
+  "control-change-management": "Set the path for software and infrastructure changes: risk review, testing, approval, deployment, and recovery. Check teams use it for the next real change.",
   "control-vulnerability-management": "List internet-facing and important Systems. Check each has vulnerability scan coverage or another approved check, and findings have owners and target dates.",
   "control-penetration-testing": "Review the service's exposure, major changes, and customer commitments. Decide whether independent testing is needed and, if so, set its scope and cadence.",
   "control-logging-monitoring": "For each important System, open security logs, alert rules, and service-health checks where needed. Check retention and whether test alerts reach an owner.",
   "control-incident-response": "Walk through how a worker reports an incident. Check who triages, escalates, contains, communicates, and closes it using the approved plan.",
-  "control-incident-exercise": "Send a test alert through a representative incident path. Check acknowledgement, escalation, and fallback, then record participants, failures, and follow-up.",
-  "control-backup-restoration": "For each important System, inspect backup or alternate recovery settings and failure alerts. Run or review a restore test against its recovery needs.",
+  "control-incident-exercise": "Set the incident exercise owner, scenario, and schedule. Check the reporting, escalation, and fallback paths are ready for the first exercise.",
+  "control-backup-restoration": "For each important System, inspect backup or alternate recovery settings and failure alerts. Schedule the first restore test against its recovery needs.",
   "control-continuity-exercise": "Review recovery priorities, contacts, and owners. Check the plan covers loss of an important System or provider and has an exercise date.",
-  "control-vendor-due-diligence": "Open the Vendor list. For each with sensitive data or a material service role, check its security review and contract terms; review older Vendors already in use.",
-  "control-vendor-monitoring": "Open critical and high-risk Vendors. Check each has a current review, an owner for open issues, and timely reassessment after a material change or incident.",
+  "control-vendor-due-diligence": "Identify Vendors with sensitive data or a material service role. Set the review and contract checks before approving a new Vendor; triage existing Vendors for the first review.",
+  "control-vendor-monitoring": "Identify critical and high-risk Vendors, assign review owners and cadence, and set a reassessment trigger for material changes or incidents.",
   "control-security-exceptions": "Review departures from security rules. Check each has a reason, owner, risk assessment, compensating measure, approval, and expiry or review date."
 };
 
 export function controlImplementationSteps(control, checks, options = {}) {
   const steps = [];
-  if (!checks.implemented) steps.push(starterControlChecks[control.id]
+  if (!checks.implemented) steps.push(control.id === "control-strong-authentication" && options.targets?.length
+    ? `Ensure MFA and unique accounts are enabled for ${options.targets.join(", ")}; check default credentials and admin roles.`
+    : starterControlChecks[control.id]
     || "Inspect the systems, people, vendors, or work this Control covers. Compare current practice with its statement and fix any gaps.");
   const record = [];
   if (!checks.owner) record.push("choose an owner");
@@ -2134,8 +2163,8 @@ export function controlImplementationSteps(control, checks, options = {}) {
   if (!checks.evidenceSource) record.push("link the tool or system that can show it happened");
   if (!checks.policyMapping && checks.policyMapping !== undefined) record.push("link the Policy it implements");
   if (!checks.criteriaMapping && checks.criteriaMapping !== undefined) record.push("link the criteria it covers");
-  if (checks.implemented && !checks.implementationDate) record.push("enter the date it started working");
-  if (checks.implemented && (checks.procedureRevision === false || checks.procedureEffective === false)) {
+  if (!checks.implementationDate) record.push("record the actual date it starts working when marking Implemented");
+  if (checks.procedureRevision === false || checks.procedureEffective === false) {
     record.push("record the Procedure revision and effective date");
   }
   if (record.length) steps.push(`In this Control, ${record.join("; ")}.`);
@@ -2150,9 +2179,7 @@ export function controlImplementationSteps(control, checks, options = {}) {
   if (!checks.implemented) {
     if (sourceStep || queueStep) steps.push([sourceStep, queueStep].filter(Boolean).join(" "));
     else if (checks.applicability === false) steps.push("Confirm this Control applies to the current Program scope with `review-applicability --scaffold --type control`.");
-    else steps.push(checks.procedureRevision === undefined
-      ? "When it works, mark this Control Implemented and enter its start date."
-      : "When it works, mark this Control Implemented. Enter its start date and the Procedure revision and effective date.");
+    else steps.push("When these launch conditions hold, mark the Control Implemented. This asserts the practice works now; record proof from future cycles and events as they occur.");
   } else {
     if (sourceStep) steps.push(sourceStep);
     if (queueStep) steps.push(queueStep);

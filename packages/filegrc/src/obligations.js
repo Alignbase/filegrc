@@ -21,7 +21,8 @@ import {
 } from "./recurrence.js";
 import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
-import { obligationGovernedContent, obligationProgramStatus } from "./program-lifecycle.js";
+import { obligationRule } from "./obligation-rule.js";
+import { governedContentIsOperating, obligationGovernedContent, obligationProgramStatus } from "./program-lifecycle.js";
 import { resolveProgram } from "./program.js";
 import { currentPartyPeople } from "./parties.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -84,9 +85,9 @@ export function planObligations(resources, options = {}) {
     throw new Error("Obligation planning requires programId when more than one Program is active.");
   }
   const asOf = requireDate(options.asOf ?? currentCalendarDate(workspace?.timezone || "UTC"), "as-of date");
-  const defaultNow = options.asOf
-    ? timestampFromLocalDateTime(`${asOf}T23:59:59`, workspace?.timezone || "UTC")
-    : new Date().toISOString();
+  const defaultNow = asOf === currentCalendarDate(workspace?.timezone || "UTC")
+    ? new Date().toISOString()
+    : timestampFromLocalDateTime(`${asOf}T23:59:59`, workspace?.timezone || "UTC");
   const now = requireTimestamp(options.now ?? defaultNow, "current timestamp");
   const through = requireDate(options.through ?? addCalendarDays(asOf, 90), "through date");
   const requestedFrom = options.from ? requireDate(options.from, "from date") : null;
@@ -102,7 +103,7 @@ export function planObligations(resources, options = {}) {
     && obligationBelongsToProgram(record, obligationProgram, model)
   ));
   const programStatusByObligationId = new Map(obligations.map((obligation) => [
-    obligation.id, obligationProgramStatus(obligation, byId, asOf, model)
+    obligation.id, obligationProgramStatus(obligation, byId, asOf, model, now)
   ]));
   const obligationIds = new Set(obligations.map(({ id }) => id));
   if (obligations.length > MAX_PLANNED_ITEMS) {
@@ -120,14 +121,17 @@ export function planObligations(resources, options = {}) {
   };
 
   for (const obligation of obligations) {
+    const selectedRule = byId.get(obligation.activeRuleId);
     const rule = obligation.scheduleMode === "rule"
       ? obligationRule(obligation, byId, { now, includeProposed: true })
+        || (selectedRule?.status === "active" && selectedRule.effectiveAt
+          && new Date(selectedRule.effectiveAt) > new Date(now) ? selectedRule : null)
       : null;
     const schedule = rule || obligation;
     const activity = obligationActivity(model, obligation);
     const expectedCompletionTypes = activity.completionResourceTypes;
     const programStatus = programStatusByObligationId.get(obligation.id);
-    const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf) : null;
+    const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf, model, now) : null;
     if (schedule.recurrence?.mode === "event" && schedule.recurrence.eventType) {
       const eventType = schedule.recurrence.eventType;
       const group = triggerGroups.get(eventType) ?? {
@@ -298,7 +302,7 @@ export function planObligations(resources, options = {}) {
     const overdueOn = addCalendarDays(dueWindowEnd, 1);
     const window = { dueWindowStart, dueWindowEnd, overdueOn };
     const programStatus = programStatusByObligationId.get(obligation.id);
-    const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf) : null;
+    const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf, model, now) : null;
     const activity = obligationActivity(model, obligation);
     const completedMemberIds = (occurrence.members || [])
       .filter(({ disposition, result }) => disposition === "expected" && result === "passed")
@@ -420,9 +424,16 @@ export function planObligations(resources, options = {}) {
   };
 }
 
-function obligationProgramBlocker(obligation, byId, asOf) {
+function obligationProgramBlocker(obligation, byId, asOf, model, now = `${asOf}T23:59:59Z`) {
   if (obligation.status !== "active") {
     return { type: "obligation", id: obligation.id, label: "Activate obligation" };
+  }
+  if (obligation.scheduleMode === "rule" && !obligationRule(obligation, byId, { now })) {
+    const selectedRule = byId.get(obligation.activeRuleId);
+    return {
+      type: "obligation-rule", id: obligation.activeRuleId,
+      label: selectedRule?.status === "active" ? "Wait for rule effective time" : "Activate rule"
+    };
   }
   if (currentPartyPeople(obligation.ownerIds || [], byId).size === 0) {
     return { type: "obligation", id: obligation.id, label: "Assign current owner" };
@@ -432,6 +443,11 @@ function obligationProgramBlocker(obligation, byId, asOf) {
     if (policy?.type !== "policy" || policy.status !== "active" || !policy.effectiveOn || policy.effectiveOn > asOf) {
       return { type: "policy", id, label: "Activate policy" };
     }
+  }
+  const inactiveContent = obligationGovernedContent(obligation, byId, model)
+    .find((record) => !governedContentIsOperating(record, asOf, model));
+  if (inactiveContent) {
+    return { type: inactiveContent.type, id: inactiveContent.id, label: `Activate ${inactiveContent.type}` };
   }
   const controls = (obligation.controlIds || []).map((id) => byId.get(id)).filter(Boolean);
   if (controls.length && !controls.some(({ status }) => status === "implemented")) {
@@ -466,6 +482,27 @@ async function createObligationEventUnlocked(input, options) {
   if (riskLevel && !["normal", "high"].includes(riskLevel)) {
     throw new Error("A departure risk level must be normal or high.");
   }
+  if (!occurredAt) {
+    const intradayCutover = records.find((record) => {
+      if (
+        record.type !== "obligation"
+        || !["active", "proposed"].includes(record.status)
+        || (program && !obligationBelongsToProgram(record, program, loaded.model))
+        || (Array.isArray(record.eventRiskLevels) && !record.eventRiskLevels.includes(riskLevel))
+      ) return false;
+      const rule = byId.get(record.activeRuleId);
+      return rule?.type === "obligation-rule"
+        && rule.status === "active"
+        && rule.recurrence?.mode === "event"
+        && rule.recurrence.eventType === eventType
+        && rule.effectiveAt
+        && timestampCalendarDate(rule.effectiveAt, loaded.workspace.timezone) === occurredOn;
+    });
+    if (intradayCutover) {
+      throw new Error(`Event type "${eventType}" requires occurredAt on ${occurredOn} because a linked rule takes effect during that date. Record the real event time with its timezone.`);
+    }
+  }
+  const eventTime = occurredAt || `${occurredOn}T23:59:59Z`;
   const eventSchedules = new Map();
   const templates = records.filter((record) => {
     if (
@@ -473,16 +510,43 @@ async function createObligationEventUnlocked(input, options) {
       || record.status !== "active"
       || (program && !obligationBelongsToProgram(record, program, loaded.model))
     ) return false;
-    const schedule = obligationRule(record, byId, { now: occurredAt || `${occurredOn}T23:59:59Z` }) || record;
+    const schedule = obligationRule(record, byId, { now: eventTime }) || record;
     const matches = schedule.recurrence?.mode === "event"
       && schedule.recurrence.eventType === eventType
       && (!Array.isArray(record.eventRiskLevels) || record.eventRiskLevels.includes(riskLevel));
     if (matches) eventSchedules.set(record.id, schedule);
     return matches;
   });
-  if (!eventType || templates.length === 0) throw new Error(`No active obligations use event type "${eventType}".`);
-  if (templates.some((record) => obligationProgramStatus(record, byId, occurredOn, loaded.model) === "proposed")) {
-    throw new Error(`Event type "${eventType}" still has starter proposals. Make every governing Policy and required governed-content record active and effective, then implement at least one linked Control before starting this workflow.`);
+  const proposed = records.find((record) => {
+    if (
+      record.type !== "obligation"
+      || !["active", "proposed"].includes(record.status)
+      || (program && !obligationBelongsToProgram(record, program, loaded.model))
+      || (Array.isArray(record.eventRiskLevels) && !record.eventRiskLevels.includes(riskLevel))
+    ) return false;
+    const rule = obligationRule(record, byId, { now: eventTime, includeProposed: true });
+    const selectedRule = byId.get(record.activeRuleId);
+    const futureRule = selectedRule?.status === "active" && selectedRule.effectiveAt
+      && new Date(selectedRule.effectiveAt) > new Date(eventTime);
+    const schedule = rule || (futureRule ? selectedRule : record);
+    return schedule.recurrence?.mode === "event"
+      && schedule.recurrence.eventType === eventType
+      && (record.status === "proposed" || (rule && rule.status !== "active") || (futureRule && !rule));
+  });
+  if (!eventType || templates.length === 0 || proposed) {
+    const selectedRule = byId.get(proposed?.activeRuleId);
+    const futureRule = selectedRule?.status === "active" && selectedRule.effectiveAt
+      && new Date(selectedRule.effectiveAt) > new Date(eventTime);
+    throw new Error(futureRule
+      ? `Event type "${eventType}" is dormant until rule ${selectedRule.id} takes effect at ${selectedRule.effectiveAt}. Trigger only a real event after that time.`
+      : proposed
+        ? `Event type "${eventType}" is still a proposed workflow (${proposed.id}). Confirm its owner, deadline, and required proof, then enable its rule in Step 3. It stays dormant until governing content is effective; trigger only a real event after cutover.`
+        : `No active obligations use event type "${eventType}".`);
+  }
+  const dormant = templates.find((record) => obligationProgramStatus(record, byId, occurredOn, loaded.model, eventTime) === "proposed");
+  if (dormant) {
+    const blocker = obligationProgramBlocker(dormant, byId, occurredOn, loaded.model, eventTime);
+    throw new Error(`Event type "${eventType}" is dormant until ${blocker?.label?.toLowerCase() || "its prerequisites are ready"}${blocker?.id ? ` (${blocker.id})` : ""}. Complete the cutover before starting event work; do not create a past event to prove a prospective Control.`);
   }
   if (templates.some((record) => normalizedEventWindow(eventSchedules.get(record.id)?.window).precision === "timestamp") && !occurredAt) {
     throw new Error(`Event type "${eventType}" has hour-based deadlines and requires an RFC 3339 occurredAt timestamp.`);
@@ -1893,26 +1957,7 @@ function obligationActivity(model, obligation) {
   };
 }
 
-export function obligationRule(obligation, byId, options = {}) {
-  const proposedId = options.includeProposed
-    ? [...(obligation.ruleIds || [])].reverse().find((id) => ["proposed", "approved"].includes(byId.get(id)?.status))
-    : null;
-  if (obligation?.scheduleMode !== "rule" && !proposedId) return null;
-  let rule = byId.get(obligation.activeRuleId || proposedId);
-  if (rule?.status === "active" && rule.effectiveAt && options.now && new Date(rule.effectiveAt) > new Date(options.now)) {
-    const prior = byId.get(rule.supersedesId);
-    return prior?.type === "obligation-rule"
-      && prior.obligationId === obligation.id
-      && ["active", "retired"].includes(prior.status)
-      ? prior
-      : null;
-  }
-  return rule?.type === "obligation-rule"
-    && rule.obligationId === obligation.id
-    && (rule.status === "active" || (options.includeProposed && ["proposed", "approved"].includes(rule.status)))
-    ? rule
-    : null;
-}
+export { obligationRule } from "./obligation-rule.js";
 
 function currentOccurrence(records, occurrenceKey, obligationId, ruleId, window) {
   return records.find((record) => (

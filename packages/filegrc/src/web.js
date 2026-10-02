@@ -1098,6 +1098,7 @@ function renderPolicyActivationAssessments() {
     return '<article class="policy-activation-card ' + esc(assessment.state) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (operating ? "good" : "warn") + '">' + esc(assessment.label) + '</span><h3><a href="#/resource/policy/' + encodeURIComponent(assessment.policyId) + '">' + esc(assessment.title) + '</a></h3></div><small>' + assessment.gapCount + ' ' + pluralize("gap", assessment.gapCount) + '</small></div>' + warnings +
       '<div class="policy-activation-gaps">' +
       gapGroup("Planned or partial Controls", assessment.plannedOrPartialControlIds, "control") +
+      gapGroup("Implemented Controls with launch gaps", assessment.missingLaunchControlIds || [], "control") +
       gapGroup("Missing active Components", assessment.missingComponentControlIds, "control") +
       gapGroup("Missing ready evidence sources", assessment.missingEvidenceSourceControlIds, "control") +
       gapGroup("Missing enabled Obligations", assessment.missingScheduleControlIds, "control") +
@@ -1212,9 +1213,9 @@ function workflowGuidance(options = {}) {
   const renderRow = (item) => {
     const href = workflowItemHref(item);
     const guidance = options.type === "control" && item.nextSteps?.length
-      ? '<ol class="control-next-steps">' + item.nextSteps.map((step) => '<li>' + esc(step) + '</li>').join("") + '</ol>'
+      ? '<p class="workflow-status">' + esc(controlLaunchLabel(item.implementationState)) + '</p><ol class="control-next-steps">' + item.nextSteps.map((step) => '<li>' + esc(step) + '</li>').join("") + '</ol><small>' + esc(item.implementationAssertion || "") + '</small>'
       : '<small>' + esc(item.message || workflowItemDetail(item)) + '</small>';
-    const body = '<span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong>' + guidance + '</span>';
+    const body = '<span class="workflow-finding-status ' + esc(item.state) + '">' + esc(options.type === "control" && item.implementationState ? controlLaunchLabel(item.implementationState).split(":")[0] : properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong>' + guidance + '</span>';
     return href ? '<a href="' + href + '">' + body + '</a>' : '<div>' + body + '</div>';
   };
   const rows = visible.map(renderRow).join("");
@@ -1226,7 +1227,27 @@ function workflowGuidance(options = {}) {
   return '<section class="workflow-guidance panel detail-support-panel detail-workflow-panel"><div class="panel-head"><div><p class="kicker">To-do</p><h3>' + esc(options.title || "Checklist") + '</h3></div><span class="badge ' + (blocking.length ? "warn" : "good") + '">' + (blocking.length ? "Needs work" : "Current") + '</span></div><p class="workflow-status">' + esc(status) + (completionRequirements ? '. ' + completionRequirements : "") + '</p><div class="workflow-findings">' + rows + '</div>' + more + '</section>';
 }
 
+function controlLaunchLabel(state) {
+  return ({
+    planned: "Planned: launch conditions remain",
+    partial: "Partially implemented: launch conditions remain",
+    "ready-to-implement": "Launch checks ready: confirm it works, then record the start date",
+    "implemented-with-gaps": "Implemented with gaps: fix the launch checks",
+    implemented: "Implemented"
+  })[state] || "Control launch";
+}
+
+function controlLaunchState(id) {
+  return state.programReadiness?.stages?.find(({ id: stageId }) => stageId === "controls")?.items
+    .find(({ id: itemId }) => itemId === "control-" + id)?.implementationState;
+}
+
 function recordCompletionState(record) {
+  if (record.type === "control") {
+    const item = state.programReadiness?.stages?.find(({ id }) => id === "controls")?.items
+      .find(({ id }) => id === "control-" + record.id);
+    if (item?.implementationState === "implemented") return '<section class="record-completion-state panel detail-support-panel"><p class="kicker">Control launch</p><h3>Implemented</h3><p>' + esc(item.implementationAssertion) + '</p><p>Dated evidence belongs to the operating work that produces it.</p></section>';
+  }
   const completeStatuses = new Set(["approved", "active", "complete", "completed", "closed", "done", "reconciled"]);
   if (!completeStatuses.has(record.status)) return "";
   return '<section class="record-completion-state panel detail-support-panel"><p class="kicker">Record status</p><h3>' + esc(properCase(record.status)) + '</h3><p>This record has no direct next step.</p></section>';
@@ -1408,8 +1429,13 @@ function recordWorkflowCell(type, entry, detailContext = "") {
   const item = items[0];
   let href = workflowItemHref(item) || "#/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id);
   if (detailContext && href.startsWith("#/resource/" + encodeURIComponent(type) + "/") && !href.includes("?")) href += detailContext;
-  const title = type === "control" ? "Finish implementation" : item.title;
-  return '<a class="record-workflow-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(title) + '</strong><small>' + esc(stagePageItemDetail(item)) + (items.length > 1 ? " +" + (items.length - 1) + " more" : "") + '</small></span></a>';
+  const title = type === "control"
+    ? item.implementationState === "implemented-with-gaps" ? "Fix Control launch gaps" : "Finish implementation"
+    : item.title;
+  const statusLabel = type === "control" && item.implementationState
+    ? controlLaunchLabel(item.implementationState).split(":")[0]
+    : properCase(item.state);
+  return '<a class="record-workflow-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(statusLabel) + '</span><span><strong>' + esc(title) + '</strong><small>' + esc(stagePageItemDetail(item)) + (items.length > 1 ? " +" + (items.length - 1) + " more" : "") + '</small></span></a>';
 }
 
 function openCollectionReviewDialog(type) {
@@ -1839,7 +1865,7 @@ function stagePageCard(stage, destination, index) {
   const taskPreview = items.length
     ? '<div class="stage-page-tasks">' + items.slice(0, 3).map((item) => {
         const href = destination.utility === "evidence-sources" ? destination.href : item.href || workflowItemHref(item) || destination.href;
-        return '<a href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(stagePageItemDetail(item)) + '</small></span></a>';
+        return '<a href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(item.implementationState ? controlLaunchLabel(item.implementationState).split(":")[0] : properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong><small>' + esc(stagePageItemDetail(item)) + '</small></span></a>';
       }).join("") + (items.length > 3 ? '<small class="stage-page-tasks-more">+' + (items.length - 3) + ' more on this page</small>' : "") + '</div>'
     : "";
   return '<article class="stage-page-card ' + (complete ? "complete" : "") + '"><div class="stage-page-card-head"><div><small>' + esc(stepLabel) + '</small><h3>' + esc(destination.label) + '</h3></div><div class="stage-page-card-actions">' + completionState + '<a class="stage-page-open" href="' + destination.href + '" aria-label="Open ' + esc(destination.label) + '"><span>Open ›</span></a></div></div><p>' + esc(summary) + '</p>' + taskPreview + '</article>';
@@ -2277,8 +2303,9 @@ function policyEventTrigger(trigger, index, collapsed = false, scope = "events")
   const tooltipId = "policy-event-tooltip-" + scope + "-" + index;
   const proposed = trigger.programStatus === "proposed";
   const unavailable = state.readOnly || proposed;
+  const blocker = trigger.steps.find(({ programBlocker }) => programBlocker)?.programBlocker;
   const availability = proposed
-    ? "Available after its governing policies are effective, at least one linked control is implemented, and every task has a current owner."
+    ? "Dormant until " + (blocker ? blocker.label.toLowerCase() + " (" + blocker.id + ")" : "its governing content is active and effective") + ". Use this workflow for the first real event after cutover."
     : state.readOnly
       ? "Open this workspace in writable mode to trigger the workflow."
       : trigger.steps.length + " " + pluralize("task", trigger.steps.length) + " will be added to the Work Queue.";
@@ -3219,7 +3246,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     const start = (pageNumber - 1) * LIST_PAGE_SIZE;
     const visible = filtered.slice(start, start + LIST_PAGE_SIZE);
     main.querySelector("#result-count").textContent = filtered.length + (filtered.length === 1 ? " record" : " records");
-    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + detailContext + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
+    main.querySelector("#record-rows").innerHTML = filtered.length ? visible.map((entry) => '<tr><td data-label="' + esc(fieldLabel(type, "title")) + '" data-primary-field><a class="record-title" href="#/resource/' + encodeURIComponent(type) + '/' + encodeURIComponent(entry.record.id) + detailContext + '">' + esc(entry.record.title) + '</a></td>' + fields.map((name) => '<td data-label="' + esc(fieldLabel(type, name)) + '">' + (name === "$workQueueStatus" ? obligationWorkQueueStatus(entry.record) : formatValue(name === "status" ? type === "control" ? controlLaunchState(entry.record.id) || displayStatus(entry.record) : displayStatus(entry.record) : entry.record[name], name, type, true)) + '</td>').join("") + '<td data-label="Next action">' + recordWorkflowCell(type, entry) + '</td><td data-label="Git file"><code>' + esc(entry.relativePath.replace(/^data\//, "")) + '</code></td></tr>').join("") : '<tr><td colspan="' + (fields.length + 3) + '">' + empty(entries.length ? "No records match this filter." : collectionEmptyState(type, definition)) + '</td></tr>';
     pagination.hidden = totalPages === 1;
     previous.disabled = pageNumber === 1;
     next.disabled = pageNumber === totalPages;
