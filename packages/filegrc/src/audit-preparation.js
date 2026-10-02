@@ -690,18 +690,24 @@ function scopeRecordsChangedSinceRevision(loaded, audit, historicalAudit) {
       historical = null;
     }
     if (
-      !scopeRecordIsRelevant(current, audit)
-      && !scopeRecordIsRelevant(historical, historicalAudit)
+      !scopeRecordIsRelevant(current, audit, loaded)
+      && !scopeRecordIsRelevant(historical, historicalAudit, loaded)
     ) continue;
-    if (JSON.stringify(canonicalScopeValue(current)) !== JSON.stringify(canonicalScopeValue(historical))) changed.push(path);
+    if (JSON.stringify(canonicalScopeValue(auditScopeRecordValue(current)))
+      !== JSON.stringify(canonicalScopeValue(auditScopeRecordValue(historical)))) changed.push(path);
   }
   return changed;
 }
 
-function scopeRecordIsRelevant(record, audit) {
+function scopeRecordIsRelevant(record, audit, loaded) {
   if (!record || !audit) return false;
   const selectedSystemIds = new Set(audit.systemIds || []);
-  const selectedFrameworkIds = new Set(audit.frameworkIds || []);
+  if (["commitment", "complementary-control"].includes(record.type)
+    && (record.systemIds || []).some((id) => selectedSystemIds.has(id))) return true;
+  if (record.type === "requirement" && (audit.frameworkIds || []).includes(record.frameworkId)) return true;
+  if (record.type === "component" && (record.systemUses || []).some(({ systemId, roles }) => (
+    selectedSystemIds.has(systemId) && (roles || []).includes("service-delivery")
+  ))) return true;
   const selectedIds = new Set([
     audit.programId,
     ...(audit.frameworkIds || []),
@@ -714,15 +720,36 @@ function scopeRecordIsRelevant(record, audit) {
     ...auditSubserviceVendorIds(audit),
     ...auditSubserviceComponentIds(audit)
   ].filter(Boolean));
-  if (selectedIds.has(record.id)) return true;
-  if (record.type === "requirement") return selectedFrameworkIds.has(record.frameworkId);
-  if (["commitment", "complementary-control"].includes(record.type)) {
-    return (record.systemIds || []).some((id) => selectedSystemIds.has(id));
+  const selectedControls = new Set(audit.controlIds || []);
+  for (const control of loaded.resources.filter(({ type, id }) => type === "control" && selectedControls.has(id))) {
+    for (const id of control.evidenceSourceComponentIds || []) selectedIds.add(id);
   }
-  if (record.type === "component") {
-    return (record.systemUses || []).some(({ systemId }) => selectedSystemIds.has(systemId));
-  }
-  return false;
+  return selectedIds.has(record.id);
+}
+
+const AUDIT_SCOPE_RECORD_FIELDS = {
+  program: ["id", "status", "assuranceGoal"],
+  framework: ["id", "version", "status", "publisher", "sourceReference", "effectiveOn", "retiredOn"],
+  requirement: ["id", "frameworkId", "reference", "description", "parentRequirementId"],
+  system: ["id", "status", "purpose", "servicesProvided", "boundary", "exclusions", "criticality", "ownerIds", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
+  control: ["id", "status", "statement", "requirementIds", "code", "activity", "controlType", "systemIds", "ownerIds", "effectiveOn", "retiredOn", "operationMode", "operationPattern", "componentIds", "evidenceSourceComponentIds", "policyIds", "procedureRevision", "procedureEffectiveOn"],
+  commitment: ["id", "status", "commitmentKind", "statement", "systemIds", "requirementIds", "controlIds", "customerFacing", "sourceResourceIds", "effectiveOn", "ownerIds", "reportingRouteRequirements"],
+  "complementary-control": ["id", "status", "statement", "systemIds", "relatedControlIds", "responsibleParty", "vendorId", "componentIds", "commitmentIds", "sourceDocumentIds", "requirementIds", "effectiveOn"],
+  component: ["id", "status", "componentKind", "description", "environment", "vendorId", "systemUses", "informationUses", "evidenceSourceKinds", "ownerIds", "evidenceOwnerIds", "criticality", "classificationId", "internetExposed", "continuityObjectives"],
+  vendor: ["id", "category", "status", "criticality", "classificationId", "informationTypeIds", "standardAgreement", "agreementDocumentId", "startDate", "endDate"],
+  appointment: ["id", "status", "appointmentKind", "holderId", "scopeResourceIds", "startsOn", "endsOn"]
+};
+
+function auditScopeRecordValue(record) {
+  if (!record) return null;
+  const fields = AUDIT_SCOPE_RECORD_FIELDS[record.type] || ["id", "type", "status"];
+  return {
+    ...Object.fromEntries(fields.filter((field) => record[field] !== undefined)
+      .map((field) => [field, record[field]])),
+    ...(["control", "commitment", "complementary-control"].includes(record.type)
+      ? { unavailable: ["not-applicable", "retired", "superseded"].includes(record.status) }
+      : {})
+  };
 }
 
 function auditSubserviceVendorIds(audit) {

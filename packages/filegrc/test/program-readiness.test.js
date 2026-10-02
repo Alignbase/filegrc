@@ -446,7 +446,8 @@ test("rolls collection proposals into one preparation unit and one review unit",
 
   assessment.complete = true;
   const reviewed = collectionReviewReadinessItem(assessment);
-  assert.deepEqual(reviewed.progressUnits.map(({ status }) => status), ["complete", "complete"]);
+  assert.equal(reviewed.progressUnits, undefined);
+  assert.equal(reviewed.status, "complete");
 
   const schedule = collectionReviewReadinessItem({
     ...assessment,

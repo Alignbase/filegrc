@@ -1239,7 +1239,7 @@ function collectionReviewPanel(type, force = false) {
   const current = assessment.status === "current";
   const scheduleReview = type === "retention-schedule-item" && modelSupports("retention-schedule-approval");
   const scheduleBlocker = scheduleReview ? retentionScheduleApprovalBlocker() : null;
-  const proposalBlocker = assessment.incompleteRecordProposals?.length
+  const proposalBlocker = !current && assessment.incompleteRecordProposals?.length
     ? "Complete " + assessment.incompleteRecordProposals.length + " record " + (assessment.incompleteRecordProposals.length === 1 ? "proposal" : "proposals") + " before the collection review."
     : null;
   const reviewBlocker = scheduleBlocker || proposalBlocker;
@@ -1263,7 +1263,7 @@ function collectionReviewPanel(type, force = false) {
       ? '<a class="button primary" href="#/resources/' + encodeURIComponent(type) + '?new=1">Add first ' + esc(state.model.resources[type].title.toLowerCase()) + '</a>'
       : '<button class="button ' + (current ? "" : "primary") + '" type="button" data-review-collection="' + esc(type) + '">' + (current ? scheduleReview ? "Approve a new revision" : "Review again" : scheduleReview ? "Review and approve schedule" : "Review and confirm") + '</button>';
   const status = reviewBlocker ? "Not ready" : current ? "Reviewed" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Stale" : "Review required";
-  const proposalSummary = assessment.recordProposals?.length
+  const proposalSummary = !current && assessment.recordProposals?.length
     ? '<p class="collection-review-proposal-summary"><strong>' + assessment.recordProposals.filter(({ complete }) => complete).length + ' of ' + assessment.recordProposals.length + ' record proposals complete.</strong> The collection review follows every proposal.</p>'
     : "";
   const details = '<details ' + (current ? 'class="collection-review-details"' : "open") + '><summary>' + (current ? scheduleReview ? "Show approved revision" : "Show scope confirmation" : "What to review") + '</summary><div class="collection-review-detail-content"><div class="collection-review-head"><div><p class="kicker">' + (scheduleReview ? "Schedule approval" : "Scope confirmation") + '</p><h3>' + esc(configuration.title) + '</h3><p>' + esc(configuration.description) + '</p></div><span class="badge ' + (current ? "good" : "warn") + '">' + status + '</span></div>' + proposalSummary + '<ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul>' + (current ? reviewSummary : "") + '</div></details>';

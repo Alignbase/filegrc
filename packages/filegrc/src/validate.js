@@ -6,7 +6,8 @@ import { getResourceDefinition, modelSupports } from "../model/index.js";
 import { collectionRecordProposals, retentionScheduleReviewScope, scopedCollectionRecords, selectScopedCollectionRecords } from "./collection-scope.js";
 import {
   collectionRevision,
-  collectionRevisionMatches
+  collectionReviewDecisionMatches,
+  reviewedControlConflictIds
 } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
 import { getFileBufferAtRevision, getFileObjectIdAtRevision, getFilePathAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision, isDataHistoryAncestor } from "./git.js";
@@ -1276,10 +1277,11 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       ? record.authoritativeComponentId || record.authoritativeSystemId
       : null
   });
-  const current = collectionRevisionMatches(
+  const current = collectionReviewDecisionMatches(
     loaded,
     record.resourceType,
-    record.collectionRevision,
+    record,
+    scopedCollectionRecords(loaded, record.resourceType, program),
     {
       program,
       authoritativeSourceId: record.decision === "externally-managed"
@@ -1288,6 +1290,7 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       currentRevision
     }
   );
+  const originalPopulationCurrent = current && revisionsMatch("collection", record.collectionRevision, currentRevision);
   if (current && workspaceWideRetentionReview && !sameStringIds(record.scopeResourceIds, retentionScope.programIds)) {
     diagnostics.push(error(
       "invalid-retention-schedule-review-scope",
@@ -1295,7 +1298,7 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       "The current Data Retention Schedule review must cover every active Program as one workspace-wide approval."
     ));
   }
-  if (current && incompleteProposals.length) {
+  if (originalPopulationCurrent && incompleteProposals.length) {
     diagnostics.push(error(
       "incomplete-collection-review-proposals",
       path,
@@ -1303,19 +1306,7 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
     ));
   }
   if (current && record.resourceType === "control") {
-    const controls = scopedCollectionRecords(loaded, "control", program);
-    const controlIds = new Set(controls.map(({ id }) => id));
-    const conflictIds = new Set();
-    for (const control of controls) {
-      for (const id of currentPartyPeople(control.ownerIds || [], byId)) conflictIds.add(id);
-    }
-    for (const obligation of loaded.resources.filter((candidate) => (
-      candidate.type === "obligation"
-      && candidate.status === "active"
-      && (candidate.controlIds || []).some((id) => controlIds.has(id))
-    ))) {
-      for (const id of currentPartyPeople(obligation.ownerIds || [], byId)) conflictIds.add(id);
-    }
+    const conflictIds = new Set(reviewedControlConflictIds(loaded, record));
     const conflictedReviewers = (record.reviewedByIds || []).filter((id) => conflictIds.has(id));
     if (conflictedReviewers.length) {
       diagnostics.push(error(
@@ -1369,7 +1360,8 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       || record.coverage.on !== record.reviewedOn
       || !isRfc3339Timestamp(record.knowledgeCutoffAt)
       || currentCalendarDate(loaded.workspace.timezone, new Date(record.knowledgeCutoffAt)) !== record.reviewedOn
-      || (current && JSON.stringify([...record.populationResourceIds].sort()) !== JSON.stringify(currentPopulationIds))
+      || (current && (record.resourceType === "retention-schedule-item" || Number(model.modelVersion) < 11)
+        && JSON.stringify([...record.populationResourceIds].sort()) !== JSON.stringify(currentPopulationIds))
     )) {
       diagnostics.push(error(
         "invalid-current-collection-review",
@@ -1431,14 +1423,15 @@ function collectionReviewIsCurrent(loaded, resourceType, program) {
   ));
   if (!review || !(loaded.model.collectionReviews?.[resourceType]?.decisions || ["complete"]).includes(review.decision)) return false;
   const records = scopedCollectionRecords(loaded, resourceType, program);
-  const revisionMatches = collectionRevisionMatches(loaded, resourceType, review.collectionRevision, { program });
+  const revisionMatches = collectionReviewDecisionMatches(loaded, resourceType, review, records, { program });
   if (!modelSupports(loaded.model, "temporal-collection-reviews")) return revisionMatches;
   return revisionMatches
     && review.coverage?.kind === "as-of"
     && review.coverage.on === review.reviewedOn
     && Boolean(review.knowledgeCutoffAt)
     && Array.isArray(review.populationResourceIds)
-    && JSON.stringify([...review.populationResourceIds].sort()) === JSON.stringify(records.map(({ id }) => id).sort());
+    && (resourceType !== "retention-schedule-item" && Number(loaded.model.modelVersion) >= 11
+      || JSON.stringify([...review.populationResourceIds].sort()) === JSON.stringify(records.map(({ id }) => id).sort()));
 }
 
 function validateCollectionReviewSet(resources, pathById, diagnostics) {

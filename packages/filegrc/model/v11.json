@@ -657,9 +657,9 @@
     },
     "control": {
       "title": "Control implementation oversight",
-      "description": "After Step 3 implementation work is complete and before program content activation, confirm that the implemented Controls selected for the Program are ready to operate. Repeat the review after a material Control or Program scope change.",
+      "description": "After Step 3 implementation work is complete and before program content activation, confirm that the implemented Controls selected for the Program are ready to operate. Handle later changes through affected Controls, event work, and scheduled program reviews.",
       "reviewPoints": [
-        "Perform this one collection review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content.",
+        "Perform this one setup review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content.",
         "Confirm owners, procedures, scope, operation patterns, mappings, Obligations, and authoritative evidence sources remain current.",
         "Record follow-up work separately when the review finds a gap."
       ],
@@ -2875,7 +2875,7 @@
       "description": "Management's actual Control implementation, mapped to Requirements, bounded Systems, operating Components, and authoritative evidence-source Components.",
       "guidance": {
         "policyBasis": "Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, Obligations, and Evidence.",
-        "cadence": "A Control owner may mark the Control implemented after recording its actual procedure, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event Obligations. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled Obligations remain dormant until all governing content is active and effective. Review the implemented Control collection periodically and after material changes.",
+        "cadence": "A Control owner may mark the Control implemented after recording its actual procedure, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event Obligations. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled Obligations remain dormant until all governing content is active and effective. Review affected Controls after material changes and use scheduled program reviews for periodic oversight.",
         "reviewPoints": [
           "Confirm the Control is needed for the applicable Requirements, Commitments, and service boundary.",
           "Describe what people actually do to operate the Control.",
@@ -8669,7 +8669,7 @@
       "description": "A logical operational or technical building block that materially delivers a System, supports a Control, produces authoritative Evidence, or supports relevant operations.",
       "guidance": {
         "policyBasis": "System boundaries and Control implementations need explicit operational building blocks and evidence sources.",
-        "cadence": "Create only when the capability materially participates in an in-scope System. Review after architecture, provider, Control, evidence, access, or continuity changes.",
+        "cadence": "Create only when the capability materially participates in an in-scope System. After a change, inspect its System uses and affected Controls. If the change is material to risk, data use, evidence, access, or continuity, assess it through the relevant System change Policy Event and its linked work. Follow the scheduled policy and program reviews; do not repeat setup collection reviews.",
         "reviewPoints": [
           "Choose at least one role for each related System and explain why the Component matters there.",
           "Link a Vendor only when that external organization primarily supplies this Component.",

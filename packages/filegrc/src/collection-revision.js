@@ -4,14 +4,16 @@ import { modelSupports } from "../model/index.js";
 import {
   authoritativeSourceRevisionValue,
   collectionRevisionInputs,
-  collectionScopeRevisionFacts
+  collectionScopeRevisionFacts,
+  scopedCollectionRecords
 } from "./collection-scope.js";
 import { resolveDataPath } from "./paths.js";
 import { getFileAtRevision } from "./git.js";
 import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
+import { currentPartyPeople } from "./parties.js";
 import { markdownEntries } from "./resource-markdown.js";
-import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
+import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionDigest, revisionsMatch } from "./revisions.js";
 
 export function collectionRevision(loaded, resourceType, options = {}) {
   return calculateCollectionRevision(loaded, resourceType, options, false, options.scopeHashInput || "legacy", options.scopeFactsInput || "legacy");
@@ -42,6 +44,96 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
     }
   }
   return historicallyEquivalentCollection(loaded, resourceType, storedRevision, options, currentRevision);
+}
+
+// Ordinary Collection Reviews record that setup was completed. Their original
+// population remains evidence of what management reviewed at that time;
+// subsequent operating records are assessed by their own workflows. The Data
+// Retention Schedule is an approval of exact content and keeps its binding.
+export function collectionReviewDecisionMatches(loaded, resourceType, review, records, options = {}) {
+  if (!review) return false;
+  if (resourceType === "retention-schedule-item" || Number(loaded.model.modelVersion) < 11) {
+    return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
+  }
+  if (!revisionDigest("collection", review.collectionRevision) || review.status !== "active") return false;
+  if (!originalCollectionReviewMatches(loaded, resourceType, review, options)) return false;
+  if (review.decision === "zero-population") return records.length === 0;
+  if (review.decision === "complete") return records.length > 0;
+  if (review.decision === "externally-managed") {
+    const id = review.authoritativeComponentId || review.authoritativeSystemId;
+    return loaded.resources.some((record) => record.id === id && record.status === "active");
+  }
+  return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
+}
+
+function originalCollectionReviewMatches(loaded, resourceType, review, options) {
+  const currentRevision = options.currentRevision || collectionRevision(loaded, resourceType, options);
+  if (revisionsMatch("collection", review.collectionRevision, currentRevision)) {
+    if (!review.populationResourceIds) return true;
+    const program = options.program || resolveProgram(loaded, options.programId || review.scopeResourceIds?.[0]);
+    const currentPopulation = scopedCollectionRecords(loaded, resourceType, program).map(({ id }) => id).sort();
+    const reviewedPopulation = [...review.populationResourceIds].sort();
+    return currentPopulation.length === reviewedPopulation.length
+      && currentPopulation.every((id, index) => id === reviewedPopulation[index]);
+  }
+  if (!loaded.root || !review.scopeRevision) {
+    return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, { ...options, currentRevision });
+  }
+  const snapshot = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
+  if (!snapshot) return false;
+  const programId = options.programId || options.program?.id || review.scopeResourceIds?.[0];
+  let program;
+  try {
+    program = resolveProgram(snapshot, programId);
+  } catch {
+    return false;
+  }
+  const currentProgram = resolveProgram(loaded, programId);
+  const selectionField = {
+    framework: "frameworkIds",
+    system: "systemIds",
+    component: "systemIds",
+    control: "controlIds"
+  }[resourceType];
+  if (selectionField && JSON.stringify([...(program[selectionField] || [])].sort())
+    !== JSON.stringify([...(currentProgram[selectionField] || [])].sort())) return false;
+  const population = scopedCollectionRecords(snapshot, resourceType, program).map(({ id }) => id).sort();
+  const reviewedPopulation = [...(review.populationResourceIds || [])].sort();
+  if (review.populationResourceIds && (
+    population.length !== reviewedPopulation.length
+    || population.some((id, index) => id !== reviewedPopulation[index])
+  )) return false;
+  return collectionRevisionMatches(snapshot, resourceType, review.collectionRevision, {
+    programId,
+    authoritativeSourceId: options.authoritativeSourceId,
+    historicalCommit: review.scopeRevision
+  });
+}
+
+export function reviewedControlConflictIds(loaded, review) {
+  const snapshot = loaded.root && /^[a-f0-9]{40,64}$/i.test(review?.scopeRevision || "")
+    ? reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision)
+    : null;
+  const source = snapshot || loaded;
+  let program;
+  try {
+    program = resolveProgram(source, review.scopeResourceIds?.[0]);
+  } catch {
+    return [];
+  }
+  const controls = scopedCollectionRecords(source, "control", program);
+  const controlIds = new Set(controls.map(({ id }) => id));
+  const byId = new Map(source.resources.map((record) => [record.id, record]));
+  const conflicts = new Set();
+  for (const record of [
+    ...controls,
+    ...source.resources.filter((record) => record.type === "obligation"
+      && record.status === "active"
+      && (record.controlIds || []).some((id) => controlIds.has(id)))
+  ]) {
+    for (const id of currentPartyPeople(record.ownerIds || [], byId)) conflicts.add(id);
+  }
+  return [...conflicts].sort();
 }
 
 function historicallyEquivalentCollection(loaded, resourceType, stored, options, current) {

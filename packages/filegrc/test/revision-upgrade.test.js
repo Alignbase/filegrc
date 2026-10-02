@@ -14,6 +14,7 @@ import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "..
 import { collectionRevision, collectionRevisionMatches, legacyCollectionRevision } from "../src/collection-revision.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { contentRevisionBindingsMatch } from "../src/program-lifecycle.js";
+import { assessProgramReadiness } from "../src/program-readiness.js";
 import { reviewHistoryContext } from "../src/historical-workspace.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
@@ -31,12 +32,13 @@ test("applicability apply carries forward a prior Complementary Control collecti
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
   await initializeGitWorkspace(root);
+  const today = currentCalendarDate((await loadWorkspace(root)).workspace.timezone);
   await applyCollectionReview(root, {
     resourceType: "complementary-control",
     decision: "complete",
     rationale: "Reviewed the current complementary responsibilities.",
     reviewedByIds: ["person-independent-approver-example"],
-    reviewedOn: "2026-09-30",
+    reviewedOn: today,
     confirmed: true
   });
   let loaded = await loadWorkspace(root);
@@ -74,7 +76,7 @@ test("applicability apply carries forward a prior Complementary Control collecti
   changedControl.record.requirementIds = [];
   await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
   final = await loadWorkspace(root);
-  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "stale");
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "current");
   changedControl.record.requirementIds = priorRequirementIds;
   await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
   final = await loadWorkspace(root);
@@ -82,7 +84,108 @@ test("applicability apply carries forward a prior Complementary Control collecti
   changedControl.record.statement = `${changedControl.record.statement} with new scope`;
   await writeFile(changedControl.path, `${JSON.stringify(changedControl.record, null, 2)}\n`);
   final = await loadWorkspace(root);
-  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "stale");
+  assert.equal(assessCollectionReview(final, "complementary-control", { programId: program.id }).status, "current");
+});
+
+test("a setup Component confirmation survives later inventory and procedure changes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-setup-operation-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await initializeGitWorkspace(root);
+  const initial = await loadWorkspace(root);
+  const program = initial.resources.find(({ type }) => type === "program");
+  await applyCollectionReview(root, {
+    resourceType: "component", decision: "complete", rationale: "Setup inventory reviewed.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: currentCalendarDate(initial.workspace.timezone), confirmed: true
+  });
+  let loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  const componentEntry = loaded.entries.find(({ record }) => record.type === "component"
+    && (record.systemUses || []).some(({ systemId }) => program.systemIds.includes(systemId)));
+  componentEntry.record.description = `${componentEntry.record.description} Updated operating description.`;
+  await writeFile(componentEntry.path, `${JSON.stringify(componentEntry.record, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  const review = loaded.resources.find(({ type, resourceType }) => type === "collection-review" && resourceType === "component");
+  const reviewedPopulation = review.populationResourceIds;
+  review.populationResourceIds = [];
+  assert.notEqual(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  review.populationResourceIds = reviewedPopulation;
+  const reviewedRevision = review.collectionRevision;
+  review.collectionRevision = `filegrc:collection:v1:sha256:${"0".repeat(64)}`;
+  assert.notEqual(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  review.collectionRevision = reviewedRevision;
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  const selectedProgram = loaded.resources.find(({ id }) => id === program.id);
+  selectedProgram.systemIds.push("system-newly-selected");
+  assert.notEqual(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  selectedProgram.systemIds.pop();
+  const added = { ...componentEntry.record, id: "component-new-workforce-source", title: "Workforce source", status: "planned" };
+  loaded.resources.push(added);
+  assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  const readiness = await assessProgramReadiness(loaded, { programId: program.id });
+  const componentStep = readiness.stages.flatMap(({ items }) => items)
+    .find(({ id }) => id === "collection-review-component");
+  assert.equal(componentStep?.status, "complete");
+  assert.doesNotMatch(componentStep.title, /proposal/i);
+  const operatingChange = readiness.stages.find(({ id }) => id === "operation").items
+    .find(({ id }) => id === "operating-component-component-new-workforce-source");
+  assert.equal(operatingChange?.status, "action");
+  assert.equal(operatingChange?.resourceId, added.id);
+});
+
+test("a Framework selection change reopens its specific setup review", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-framework-selection-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await initializeGitWorkspace(root);
+  const initial = await loadWorkspace(root);
+  const program = initial.resources.find(({ type }) => type === "program");
+  await applyCollectionReview(root, {
+    resourceType: "framework", decision: "complete", rationale: "Selected framework reviewed.",
+    reviewedByIds: ["person-independent-approver-example"],
+    reviewedOn: currentCalendarDate(initial.workspace.timezone), confirmed: true
+  });
+  const loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "framework", { programId: program.id }).status, "current");
+  loaded.resources.find(({ id }) => id === program.id).frameworkIds.push("framework-newly-selected");
+  assert.notEqual(assessCollectionReview(loaded, "framework", { programId: program.id }).status, "current");
+});
+
+test("later Control changes preserve the original independent reviewer requirement", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-review-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await initializeGitWorkspace(root);
+  let loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const scopeRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const reviewedOn = currentCalendarDate(loaded.workspace.timezone);
+  const review = {
+    id: "collection-review-control-history-example", type: "collection-review",
+    title: "Implemented Controls review", status: "active", resourceType: "control",
+    scopeResourceIds: [program.id], decision: "complete", rationale: "Reviewed initial Control oversight.",
+    reviewedByIds: ["person-independent-approver-example"], reviewedOn,
+    coverage: { kind: "as-of", on: reviewedOn }, knowledgeCutoffAt: new Date().toISOString(),
+    populationResourceIds: scopedCollectionRecords(loaded, "control", program).map(({ id }) => id).sort(),
+    collectionRevision: collectionRevision(loaded, "control", { program }), scopeRevision
+  };
+  const reviewPath = join(root, "data", "collection-reviews", `${review.id}.json`);
+  await writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "control", { programId: program.id }).complete, true);
+  const component = loaded.entries.find(({ record }) => record.type === "component");
+  component.record.description += " Operating details changed later.";
+  await writeFile(component.path, `${JSON.stringify(component.record, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "control", { programId: program.id }).complete, true);
+  review.reviewedByIds = ["person-example"];
+  await writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  loaded = await loadWorkspace(root);
+  assert.equal(assessCollectionReview(loaded, "control", { programId: program.id }).complete, false);
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "conflicted-control-collection-reviewer"), true);
 });
 
 test("legacy applicability decisions survive routine record changes across steps", async (context) => {
@@ -1079,6 +1182,20 @@ test("a commitment applicability review follows its own scope", async (context) 
   assert.equal(applicabilityReviewIsCurrent(review, commitment, program, loaded.resources, loaded.model), true);
   commitment.statement = `${commitment.statement} Changed.`;
   assert.equal(applicabilityReviewIsCurrent(review, commitment, program, loaded.resources, loaded.model), false);
+});
+
+test("a Complementary Control applicability review follows its responsible provider", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-provider-scope-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const responsibility = loaded.resources.find(({ type }) => type === "complementary-control");
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const review = { decision: "applicable", scopeRevision: applicabilityScopeRevision(
+    responsibility, program, loaded.resources, loaded.model
+  ) };
+  responsibility.vendorId = "vendor-new-provider";
+  assert.equal(applicabilityReviewIsCurrent(review, responsibility, program, loaded.resources, loaded.model), false);
 });
 
 test("Control applicability ignores other selected Controls but tracks its own facts", async (context) => {

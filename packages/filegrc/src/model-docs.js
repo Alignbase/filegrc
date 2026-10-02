@@ -47,7 +47,7 @@ export function generateModelDocumentation(model) {
     "",
     "## Collection review confirmations",
     "",
-    "FileGRC derives record issues, but it cannot infer that management reviewed an apparently complete or empty collection. Each configured collection review records the conclusion, reviewer, date, current scope revision, and exact collection revision. A record or material scope change makes the confirmation stale.",
+    "FileGRC derives record issues, but it cannot infer that management finished an apparently complete or empty setup collection. Each configured collection review records the conclusion, reviewer, date, scope revision, and reviewed collection revision. Routine operating changes do not reopen a completed setup confirmation. The Data Retention Schedule keeps exact approval bindings.",
     "",
     "| Resource type | Review | Allowed conclusions | What to review |",
     "| --- | --- | --- | --- |",

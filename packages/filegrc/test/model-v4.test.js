@@ -8,7 +8,7 @@ import { planApplicabilityReview, scaffoldApplicabilityReview } from "../src/bat
 import { buildAgentGuide } from "../src/agent.js";
 import { applyCollectionReview, assessCollectionReview } from "../src/collection-review.js";
 import { collectionRevision, legacyCollectionRevision } from "../src/collection-revision.js";
-import { createResource, updateContent, updateResource } from "../src/files.js";
+import { createResource, deleteResource, updateContent, updateResource } from "../src/files.js";
 import { assessAuditPreparation, signedRepresentationDateIssue } from "../src/audit-preparation.js";
 import { prepareEvidencePacket } from "../src/evidence-packet.js";
 import { assessProgramReadiness } from "../src/program-readiness.js";
@@ -598,6 +598,22 @@ test("uses v4 System fields, Program applicability, and explicit subservice conc
     subserviceConclusion: "not-applicable",
     subserviceConclusionRationale: "No Vendor supplies a Component within the selected report boundary."
   });
+  const reviewedSource = (await loadWorkspace(root)).resources.find(({ type }) => type === "component");
+  await createResource(root, {
+    ...reviewedSource,
+    id: "component-linked-supporting-operations",
+    title: "Linked supporting operations",
+    systemUses: reviewedSource.systemUses.map((use) => ({
+      ...use,
+      roles: ["supporting-operations"],
+      rationale: "Supports routine work without delivering the audited service or supplying evidence."
+    }))
+  });
+  const scopedControl = (await loadWorkspace(root)).resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...scopedControl,
+    componentIds: [reviewedSource.id, "component-linked-supporting-operations"]
+  });
   execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
   execFileSync("git", ["config", "user.name", "Test User"], { cwd: root });
   execFileSync("git", ["config", "user.email", "test@example.test"], { cwd: root });
@@ -628,6 +644,23 @@ test("uses v4 System fields, Program applicability, and explicit subservice conc
     .items.find(({ id }) => id === "subservices");
   assert.equal(subservices.status, "complete");
 
+  const reviewedRequirements = (await loadWorkspace(root)).resources;
+  const sourceRequirement = reviewedRequirements.find(({ type, frameworkId }) => (
+    type === "requirement" && committedScope.frameworkIds.includes(frameworkId)
+  ));
+  assert.ok(sourceRequirement);
+  const newRequirement = {
+    ...sourceRequirement,
+    id: "requirement-added-after-audit-scope-review",
+    title: "Additional framework requirement",
+    reference: "ADDED.1"
+  };
+  await createResource(root, newRequirement);
+  const expandedCriteriaScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(expandedCriteriaScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await deleteResource(root, "requirement", newRequirement.id);
+
   const reviewedAudit = (await loadWorkspace(root)).resources.find(({ id }) => id === audit.id);
   await updateResource(root, "audit", audit.id, {
     ...reviewedAudit,
@@ -649,7 +682,7 @@ test("uses v4 System fields, Program applicability, and explicit subservice conc
   const reviewedControl = beforeLinkedScopeChange.resources.find(({ id }) => id === control.id);
   await updateResource(root, "control", control.id, {
     ...reviewedControl,
-    title: "Changed after the recorded management scope review"
+    statement: "Changed after the recorded management scope review"
   });
   const staleLinkedScope = await assessAuditPreparation(root, { auditId: audit.id });
   const staleLinkedScopeRevision = staleLinkedScope.stages
@@ -660,8 +693,141 @@ test("uses v4 System fields, Program applicability, and explicit subservice conc
   const changedControl = (await loadWorkspace(root)).resources.find(({ id }) => id === control.id);
   await updateResource(root, "control", control.id, {
     ...changedControl,
-    title: reviewedControl.title
+    statement: reviewedControl.statement
   });
+
+  const changedOperation = (await loadWorkspace(root)).resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...changedOperation,
+    operationPattern: changedOperation.operationPattern === "continuous" ? "scheduled" : "continuous"
+  });
+  const staleOperationScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(staleOperationScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await updateResource(root, "control", control.id, changedOperation);
+
+  const changedEffective = (await loadWorkspace(root)).resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...changedEffective,
+    effectiveOn: changedEffective.effectiveOn === "2026-01-01" ? "2026-01-02" : "2026-01-01"
+  });
+  const staleEffectiveScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(staleEffectiveScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await updateResource(root, "control", control.id, changedEffective);
+
+  const changedActivity = (await loadWorkspace(root)).resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...changedActivity,
+    activity: `${changedActivity.activity || "Review access"} with a different test approach`
+  });
+  const staleActivityScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(staleActivityScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await updateResource(root, "control", control.id, changedActivity);
+
+  const renamedControl = (await loadWorkspace(root)).resources.find(({ id }) => id === control.id);
+  await updateResource(root, "control", control.id, {
+    ...renamedControl,
+    title: "Operating label changed after setup"
+  });
+  const renamedScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(renamedScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "complete");
+
+  const operatingComponent = (await loadWorkspace(root)).resources.find(({ type }) => type === "component");
+  await createResource(root, {
+    ...operatingComponent,
+    id: "component-later-operating-source",
+    title: "Later operating source",
+    systemUses: operatingComponent.systemUses.map((use) => ({
+      ...use,
+      roles: ["supporting-operations"],
+      rationale: "Supports routine workforce operations without delivering the audited service."
+    }))
+  });
+  const addedSourceScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(addedSourceScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "complete");
+
+  const linkedSupport = (await loadWorkspace(root)).resources.find(({ id }) => id === "component-linked-supporting-operations");
+  await updateResource(root, "component", linkedSupport.id, {
+    ...linkedSupport,
+    description: `${linkedSupport.description} Routine operating detail changed.`
+  });
+  const changedSupportScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(changedSupportScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "complete");
+  await updateResource(root, "component", linkedSupport.id, linkedSupport);
+
+  await createResource(root, {
+    ...operatingComponent,
+    id: "component-new-service-delivery",
+    title: "New service delivery component"
+  });
+  const newDeliveryScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(newDeliveryScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await deleteResource(root, "component", "component-new-service-delivery");
+
+  const selectedSource = (await loadWorkspace(root)).resources.find(({ id }) => id === reviewedSource.id);
+  await updateResource(root, "component", selectedSource.id, {
+    ...selectedSource,
+    systemUses: selectedSource.systemUses.map((use) => ({
+      ...use,
+      rationale: `${use.rationale} Updated audit source role.`
+    }))
+  });
+  const changedSourceScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(changedSourceScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await updateResource(root, "component", selectedSource.id, selectedSource);
+
+  await updateResource(root, "component", selectedSource.id, {
+    ...selectedSource,
+    evidenceSourceKinds: ["changed-audit-source-role"]
+  });
+  const changedSourceRoleScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(changedSourceRoleScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await updateResource(root, "component", selectedSource.id, selectedSource);
+
+  for (const change of [
+    { description: `${selectedSource.description} Changed service role.` },
+    { environment: "new-audit-environment" }
+  ]) {
+    await updateResource(root, "component", selectedSource.id, { ...selectedSource, ...change });
+    const changedComponentScope = await assessAuditPreparation(root, { auditId: audit.id });
+    assert.equal(changedComponentScope.stages.find(({ id }) => id === "period")
+      .items.find(({ id }) => id === "scope-revision").status, "action");
+    await updateResource(root, "component", selectedSource.id, selectedSource);
+  }
+
+  const selectedSystem = (await loadWorkspace(root)).resources.find(({ id }) => id === program.systemIds[0]);
+  await updateResource(root, "system", selectedSystem.id, {
+    ...selectedSystem,
+    informationTypeIds: []
+  });
+  const changedInformationScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(changedInformationScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await updateResource(root, "system", selectedSystem.id, selectedSystem);
+
+  const selectedProgramEntry = (await loadWorkspace(root)).entries.find(({ record }) => record.id === program.id);
+  await writeJson(selectedProgramEntry.path, { ...selectedProgramEntry.record, status: "retired" });
+  await assert.rejects(assessAuditPreparation(root, { auditId: audit.id }), /not found or is retired/);
+  await writeJson(selectedProgramEntry.path, selectedProgramEntry.record);
+
+  const existingCommitment = (await loadWorkspace(root)).resources.find(({ type }) => type === "commitment");
+  await createResource(root, {
+    ...existingCommitment,
+    id: "commitment-added-to-audited-system",
+    title: "Additional commitment for the audited service"
+  });
+  const addedCommitmentScope = await assessAuditPreparation(root, { auditId: audit.id });
+  assert.equal(addedCommitmentScope.stages.find(({ id }) => id === "period")
+    .items.find(({ id }) => id === "scope-revision").status, "action");
+  await deleteResource(root, "commitment", "commitment-added-to-audited-system");
 
   const beforeUnrelatedChange = await loadWorkspace(root);
   const unrelatedRisk = beforeUnrelatedChange.resources.find(({ type }) => type === "risk");
