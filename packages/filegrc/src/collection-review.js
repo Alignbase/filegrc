@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import {
   collectionRevision,
-  collectionRevisionMatches
+  collectionReviewDecisionMatches,
+  reviewedControlConflictIds
 } from "./collection-revision.js";
 import { collectionRecordProposals, retentionScheduleReviewScope, scopedCollectionRecords } from "./collection-scope.js";
 import { applyResourceBatch, applyRetentionScheduleReviewBatch, contentRevision, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
@@ -62,15 +63,17 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     && review.coverage.on === review.reviewedOn
     && review.knowledgeCutoffAt
     && Array.isArray(review.populationResourceIds)
-    && sameIds(review.populationResourceIds, records.map(({ id }) => id))
+    && (resourceType !== "retention-schedule-item" && Number(loaded.model.modelVersion) >= 11
+      || sameIds(review.populationResourceIds, records.map(({ id }) => id)))
   );
   const allowsEmptyCollection = allowedDecisions.some((decision) => (
     decision === "zero-population" || decision === "externally-managed"
   ));
-  const revisionMatches = collectionRevisionMatches(
+  const revisionMatches = collectionReviewDecisionMatches(
     loaded,
     resourceType,
-    review?.collectionRevision,
+    review,
+    records,
     {
       programId: program.id,
       authoritativeSourceId,
@@ -92,11 +95,14 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     : [];
   const recordProposals = collectionRecordProposals(loaded, resourceType, records, program);
   const incompleteRecordProposals = recordProposals.filter(({ complete: ready }) => !ready);
+  const reviewerConflicts = resourceType === "control" && Number(loaded.model.modelVersion) >= 11 && review
+    ? reviewedControlConflictIds(loaded, review)
+    : reviewerEligibility?.reviewerConflictIds || [];
   const reviewersEligible = !reviewerEligibility || Boolean(
     review?.reviewedByIds?.length
     && review.reviewedByIds.every((id) => (
       personWasActiveOn(loaded.resources.find((record) => record.id === id), review.reviewedOn)
-      && !reviewerEligibility.reviewerConflictIds.includes(id)
+      && !reviewerConflicts.includes(id)
     ))
   );
   const reviewScopeMatches = !workspaceWideRetentionReview
@@ -108,7 +114,8 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     && temporalReview
     && reviewScopeMatches
     && reviewersEligible
-    && !incompleteRecordProposals.length
+    && (resourceType !== "retention-schedule-item" && Number(loaded.model.modelVersion) >= 11
+      || !incompleteRecordProposals.length)
     && !approvalIssues.length
   );
   const stale = Boolean(

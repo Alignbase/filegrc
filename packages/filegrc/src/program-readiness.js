@@ -242,6 +242,27 @@ export async function assessProgramReadiness(input, options = {}) {
     ...evidenceGateStages,
     await operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model, progressWindow)
   ];
+  for (const assessment of collectionReviews.filter(({ resourceType, complete }) => (
+    complete && resourceType !== "retention-schedule-item"
+  ))) {
+    for (const proposal of assessment.incompleteRecordProposals || []) {
+      stages.at(-1).items.push(item(
+        `operating-${assessment.resourceType}-${proposal.resourceId}`,
+        "action",
+        `Finish ${proposal.title}`,
+        "Finish or retire this new record, check its affected Systems and Controls, and start a change event only if the change is material under an approved Policy.",
+        { type: assessment.resourceType, id: proposal.resourceId, title: proposal.title },
+        {
+          resourceType: assessment.resourceType,
+          destination: { kind: "record", resourceType: assessment.resourceType, resourceId: proposal.resourceId },
+          commands: [
+            `npx filegrc guide ${assessment.resourceType} --json`,
+            `npx filegrc get ${shellArgument(proposal.resourceId)} --mutation`
+          ]
+        }
+      ));
+    }
+  }
   finalizeStage(stages.at(-1));
   const periodStarted = Boolean(
     program?.assuranceGoal === "soc-2-type-2"
@@ -408,14 +429,17 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
         && String(rationale || "").trim()
       ))
     ));
+    const componentSetupComplete = collectionReviews.find(({ resourceType }) => resourceType === "component")?.complete === true;
     items.push(item(
       "system-components",
-      scope.components.length === completeComponents.length ? "complete" : "action",
-      "Confirm scoped Components",
-      scope.components.length
+      componentSetupComplete || scope.components.length === completeComponents.length ? "complete" : "action",
+      "Define scoped Component roles",
+      componentSetupComplete
+        ? "The initial Component scope was confirmed. Complete later Component changes through their own record and event work."
+        : scope.components.length
         ? `${completeComponents.length} of ${scope.components.length} Components have an active, owned, rationalized role in the selected Systems.`
         : "No Components are selected. This is valid only when the bounded Systems do not rely on a separately managed service-delivery, Control-support, evidence-source, or supporting-operations building block.",
-      scope.components[0] || { type: "component" },
+      scope.components.find((component) => !completeComponents.includes(component)) || scope.components[0] || { type: "component" },
       {
         componentIds: scope.components.map(({ id }) => id),
         progressUnit: false
@@ -723,7 +747,7 @@ function reportingRouteItem(records, byId, asOf, timezone = "UTC") {
 }
 
 export function collectionReviewReadinessItem(assessment) {
-  const firstIncomplete = assessment.incompleteRecordProposals?.[0]
+  const firstIncomplete = !assessment.complete && assessment.incompleteRecordProposals?.[0]
     || assessment.recordProposals?.find(({ complete }) => !complete);
   const needsFirstRecord = assessment.recordCount === 0
     && !(assessment.configuration.decisions || []).some((decision) => ["zero-population", "externally-managed"].includes(decision));
@@ -734,7 +758,7 @@ export function collectionReviewReadinessItem(assessment) {
   const approvalAction = !proposalAction && !pendingRetentionRow
     ? collectionApprovalIssueAction(assessment)
     : null;
-  const proposalUnits = (assessment.recordProposals || []).map((proposal) => ({
+  const proposalUnits = (assessment.complete ? [] : assessment.recordProposals || []).map((proposal) => ({
     id: `${assessment.resourceType}-proposal-${proposal.resourceId}`,
     status: proposal.complete ? "complete" : "action",
     title: `${proposal.title} proposal`

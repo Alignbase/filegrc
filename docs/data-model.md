@@ -174,7 +174,7 @@ Relationship fields use the named groups below. The registry expands each group 
 
 ## Collection review confirmations
 
-FileGRC derives record issues, but it cannot infer that management reviewed an apparently complete or empty collection. Each configured collection review records the conclusion, reviewer, date, current scope revision, and exact collection revision. A record or material scope change makes the confirmation stale.
+FileGRC derives record issues, but it cannot infer that management finished an apparently complete or empty setup collection. Each configured collection review records the conclusion, reviewer, date, scope revision, and reviewed collection revision. Routine operating changes do not reopen a completed setup confirmation. The Data Retention Schedule keeps exact approval bindings.
 
 | Resource type | Review | Allowed conclusions | What to review |
 | --- | --- | --- | --- |
@@ -187,7 +187,7 @@ FileGRC derives record issues, but it cannot infer that management reviewed an a
 | `classification` | Information handling classifications | `complete` | Confirm each Classification represents a distinct handling level the organization actually uses. Confirm the ordering and handling expectations match approved information protection decisions. Retire unused or duplicate Classifications only after reviewing every record that references them. |
 | `information-type` | Information Type inventory | `complete`, `zero-population` | Review near-duplicate names and choose one canonical Information Type only after confirming they mean the same thing. Retire superseded records through a reviewed migration that rewrites every relationship. Confirm every active Information Type has an approved classification and a retention schedule item or an explicit management-review prompt. |
 | `retention-schedule-item` | Data Retention Schedule | `complete`, `zero-population` | Confirm the owner completed every row proposal, then review the Data Retention Schedule document, its Markdown, and every proposed row as one revision. Confirm schedule coverage across the Systems, Components, Vendors, source families, logs, backups, audit records, and FileGRC records the organization actually uses. Confirm every proposed item has a reviewed cutoff, retention period, disposition action, owner, and exact source revisions; keep undecided behavior planned. |
-| `control` | Control implementation oversight | `complete` | Perform this one collection review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content. Confirm owners, procedures, scope, operation patterns, mappings, Obligations, and authoritative evidence sources remain current. Record follow-up work separately when the review finds a gap. |
+| `control` | Control implementation oversight | `complete` | Perform this one setup review after Controls, evidence sources, and Obligations are ready, before management activates the approved program content. Confirm owners, procedures, scope, operation patterns, mappings, Obligations, and authoritative evidence sources remain current. Record follow-up work separately when the review finds a gap. |
 
 ## Relationship constraints
 
@@ -863,7 +863,7 @@ Instructions: Open this Control’s next steps and inspect linked Policy, Obliga
 
 Policy basis: Controls translate approved Policies and applicable Requirements into owned procedures that management can operate and prove. FileGRC does not infer technical implementation from policy prose. Configuration facts belong in Controls, Components, Systems, Obligations, and Evidence.
 
-Timing: A Control owner may mark the Control implemented after recording its actual procedure, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event Obligations. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled Obligations remain dormant until all governing content is active and effective. Review the implemented Control collection periodically and after material changes.
+Timing: A Control owner may mark the Control implemented after recording its actual procedure, bounded System scope, operation pattern, authoritative evidence-source Components, implementation date, and enabled calendar or event Obligations. Confirm each source Component is active, has the evidence role required by the Control family and current access owners, and includes repeatable retrieval instructions in Record Markdown. Enabled Obligations remain dormant until all governing content is active and effective. Review affected Controls after material changes and use scheduled program reviews for periodic oversight.
 
 When reviewing:
 
@@ -1969,7 +1969,7 @@ Instructions: Record a material service or evidence source and its role in each 
 
 Policy basis: System boundaries and Control implementations need explicit operational building blocks and evidence sources.
 
-Timing: Create only when the capability materially participates in an in-scope System. Review after architecture, provider, Control, evidence, access, or continuity changes.
+Timing: Create only when the capability materially participates in an in-scope System. After a change, inspect its System uses and affected Controls. If the change is material to risk, data use, evidence, access, or continuity, assess it through the relevant System change Policy Event and its linked work. Follow the scheduled policy and program reviews; do not repeat setup collection reviews.
 
 When reviewing:
 

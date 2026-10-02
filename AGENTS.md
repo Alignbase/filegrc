@@ -59,7 +59,7 @@ Treat headless use as a first-class interface. An agent with no filegrc context 
 - Keep derived workflow output disposable and reproducible. It may be rendered, indexed, or cached for use, but it must never become a second source of truth.
 - A user or agent who edits source files directly must receive the same validation, guidance, and readiness result as a user who performs the equivalent work through the browser or CLI.
 - Persist a TODO only when the TODO is itself an authoritative program record, such as an assigned Action Item with an owner, deadline, and completion proof. Derive informational next steps and blockers instead of storing them.
-- When FileGRC cannot infer that management reviewed a complete or empty collection, persist a model-defined Collection Review with the conclusion, reviewer, date, current scope revision, and calculated collection revision. Keep the review criteria in the model, show them in every interface, and mark the confirmation stale when a reviewed record or material scope fact changes.
+- When FileGRC cannot infer that management reviewed a complete or empty collection during setup, persist a model-defined Collection Review with the conclusion, reviewer, date, scope revision, and calculated collection revision. Routine operating changes do not reopen a completed setup confirmation. Keep exact revision checks for decisions that approve specific content, including the Data Retention Schedule.
 
 ## Package constraints
 

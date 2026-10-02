@@ -133,6 +133,47 @@ test("model v7 rejects legacy applicability revisions and binds dependent review
   );
 });
 
+test("42 completed criteria decisions survive routine workforce source additions", () => {
+  const model = loadModel("11");
+  const framework = { id: "framework-security", type: "framework", version: "1", status: "active" };
+  const system = { id: "system-service", type: "system", boundary: "Customer service" };
+  const program = {
+    id: "program-security", type: "program", assuranceGoal: "soc-2-type-2",
+    frameworkIds: [framework.id], systemIds: [system.id], requirementIds: []
+  };
+  const requirements = Array.from({ length: 42 }, (_, index) => ({
+    id: `requirement-${index + 1}`, type: "requirement", frameworkId: framework.id,
+    reference: index < 33 ? `CC${index + 1}` : `DC${index - 32}`,
+    description: `Criterion ${index + 1}`
+  }));
+  const before = [framework, system, ...requirements];
+  program.requirementApplicability = requirements.map((record) => ({
+    requirementId: record.id,
+    decision: "applicable",
+    scopeRevision: applicabilityScopeRevision(record, program, before, model)
+  }));
+  const after = [...before,
+    { id: "component-payroll", type: "component", status: "active", systemUses: [{ systemId: system.id }], vendorId: "vendor-payroll" },
+    { id: "component-drive", type: "component", status: "active", systemUses: [{ systemId: system.id }], vendorId: "vendor-drive" },
+    { id: "vendor-payroll", type: "vendor", status: "active" },
+    { id: "vendor-drive", type: "vendor", status: "active" }
+  ];
+  assert.equal(program.requirementApplicability.filter((review, index) => applicabilityReviewIsCurrent(
+    review, requirements[index], program, after, model
+  )).length, 42);
+  const expandedProgram = {
+    ...program,
+    systemIds: [...program.systemIds, "system-later"],
+    requirementIds: ["requirement-later"]
+  };
+  assert.equal(program.requirementApplicability.filter((review, index) => applicabilityReviewIsCurrent(
+    review, requirements[index], expandedProgram, after, model
+  )).length, 42);
+  const changedRequirement = { ...requirements[0], description: "Changed criterion" };
+  assert.equal(applicabilityReviewIsCurrent(program.requirementApplicability[0], changedRequirement, program, after, model), false);
+  assert.equal(applicabilityReviewIsCurrent(program.requirementApplicability[1], requirements[1], program, after, model), true);
+});
+
 test("a Policy lifecycle change preserves 42 Requirement and two Commitment scope reviews", () => {
   const model = loadModel("11");
   const policy = { id: "policy-one", type: "policy", status: "in-review", version: "1" };
@@ -172,12 +213,12 @@ test("a Policy lifecycle change preserves 42 Requirement and two Commitment scop
   )).length, 44);
   const revisedPolicy = activated.map((record) => record.id === policy.id
     ? { ...record, version: "2" } : record);
-  assert.equal(reviews.every(({ record, review }) => !applicabilityReviewIsCurrent(
+  assert.equal(reviews.every(({ record, review }) => applicabilityReviewIsCurrent(
     review, record, program, revisedPolicy, model
-  )), true, "legacy reviews stay stale when their former Policy revision cannot be verified");
+  )), true, "a Policy revision does not change the criteria decisions");
   const changedScope = approved.map((record) => record.id === system.id
     ? { ...record, boundary: "Expanded service boundary" } : record);
-  assert.equal(reviews.every(({ record, review }) => !applicabilityReviewIsCurrent(
+  assert.equal(reviews.every(({ record, review }) => applicabilityReviewIsCurrent(
     review, record, program, changedScope, model
   )), true);
 });
@@ -208,7 +249,7 @@ test("legacy reviews preserve mixed Policy approval states without hiding scope 
   assert.equal(applicabilityReviewIsCurrent(review, requirement, program, approved, model), true);
   const changed = approved.map((record) => record.id === secondPolicy.id
     ? { ...record, requirementIds: ["requirement-two"] } : record);
-  assert.equal(applicabilityReviewIsCurrent(review, requirement, program, changed, model), false);
+  assert.equal(applicabilityReviewIsCurrent(review, requirement, program, changed, model), true);
 });
 
 test("one Policy approval preserves a legacy review among sixteen mixed Policies", () => {

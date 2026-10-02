@@ -29,12 +29,48 @@ const unorderedStringArrayFields = new Set([
 
 const applicabilityDecisionFields = {
   requirement: ["frameworkId", "reference", "description", "parentRequirementId"],
+  control: ["statement", "requirementIds", "code", "systemIds"],
+  commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "requirementIds", "controlIds", "customerFacing", "reportingRouteRequirements"],
+  "complementary-control": ["responsibleParty", "statement", "systemIds", "vendorId", "requirementIds", "commitmentIds", "relatedControlIds", "sourceDocumentIds"]
+};
+const legacyApplicabilityDecisionFields = {
+  requirement: applicabilityDecisionFields.requirement,
   control: ["statement", "requirementIds", "code", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"],
   commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "requirementIds", "controlIds", "customerFacing", "reportingRouteRequirements"],
   "complementary-control": ["responsibleParty", "statement", "systemIds", "vendorId", "requirementIds", "commitmentIds", "relatedControlIds", "sourceDocumentIds", "componentIds"]
 };
 
 export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
+  if (Number(model.modelVersion) >= 11 && !options.legacyDecisionScope) {
+    const linkedRequirements = resources.filter((candidate) => candidate.type === "requirement"
+      && (record.type === "requirement" ? candidate.id === record.id : (record.requirementIds || []).includes(candidate.id)));
+    const frameworkIds = new Set(linkedRequirements.map(({ frameworkId }) => frameworkId));
+    const scopedProgram = record.type === "requirement" ? {
+      ...program,
+      systemIds: [],
+      frameworkIds: (program?.frameworkIds || []).filter((id) => id === record.frameworkId),
+      requirementIds: (program?.requirementIds || []).filter((id) => id === record.id)
+    } : {
+      ...program,
+      systemIds: (program?.systemIds || []).filter((id) => (record.systemIds || []).includes(id)),
+      frameworkIds: (program?.frameworkIds || []).filter((id) => !frameworkIds.size || frameworkIds.has(id)),
+      requirementIds: (program?.requirementIds || []).filter((id) => linkedRequirements.some((candidate) => candidate.id === id))
+    };
+    const facts = {
+      modelVersion: model.modelVersion,
+      resource: applicabilityResourceFacts(record, model, options),
+      program: pick(scopedProgram || {}, ["id", "assuranceGoal", "systemIds", "frameworkIds", "requirementIds"], model, "program"),
+      requirements: linkedRequirements.sort(compareRecordIds).map((candidate) => pick(candidate,
+        ["id", "frameworkId", "reference", "description", "parentRequirementId"], model)),
+      frameworks: resources.filter(({ type, id }) => type === "framework" && frameworkIds.has(id))
+        .sort(compareRecordIds).map((candidate) => pick(candidate, ["id", "version", "status"], model)),
+      requirementDecisions: (record.type === "requirement" ? [] : program?.requirementApplicability || [])
+        .filter(({ requirementId }) => linkedRequirements.some(({ id }) => id === requirementId))
+        .map(({ requirementId, decision }) => ({ requirementId, decision }))
+        .sort((left, right) => left.requirementId.localeCompare(right.requirementId))
+    };
+    return calculateRevision("applicability-scope", stableJson(facts));
+  }
   const scopedResource = ["commitment", "control", "complementary-control"].includes(record?.type)
     && !options.legacyBroadScope && !options.legacyBroadCommitment;
   const linkedRequirementIds = new Set(record?.requirementIds || []);
@@ -204,10 +240,10 @@ function compareRecordIds(left, right) {
 
 function applicabilityResourceFacts(record, model, options) {
   const fields = Number(model.modelVersion) >= 11 && !options.legacyResourceProjection
-    ? applicabilityDecisionFields[record.type] : null;
+    ? (options.legacyDecisionScope ? legacyApplicabilityDecisionFields : applicabilityDecisionFields)[record.type] : null;
   if (!fields) return canonicalObject(model, record.type, Object.fromEntries(Object.entries(record)
     .filter(([field]) => !excludedResourceFields.has(field))));
-  const value = Object.fromEntries(["id", "type", "title", "externalIds", "extensions", ...fields]
+  const value = Object.fromEntries(["id", "type", ...(options.legacyDecisionScope ? ["title"] : []), "externalIds", "extensions", ...fields]
     .filter((field) => record[field] !== undefined).map((field) => [field, record[field]]));
   value.unavailable = ["not-applicable", "retired", "superseded"].includes(record.status);
   return canonicalObject(model, record.type, value);
@@ -226,10 +262,15 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
   if (Number(model.modelVersion) >= 11 && ["retired", "superseded"].includes(record?.status)) return false;
   const matches = (revision) => revisionsMatch("applicability-scope", review.scopeRevision, revision);
   if (matches(applicabilityScopeRevision(record, program, resources, model))) return true;
+  if (Number(model.modelVersion) >= 11 && matches(applicabilityScopeRevision(record, program, resources, model, {
+    legacyDecisionScope: true
+  }))) return true;
+  if (Number(model.modelVersion) >= 11 && applicabilityDecisionFields[record?.type]
+    && matches(applicabilityScopeRevision(record, program, resources, model, { legacyDecisionScope: true, legacyResourceProjection: true }))) return true;
   if (Number(model.modelVersion) >= 11 && applicabilityDecisionFields[record?.type]
     && matches(applicabilityScopeRevision(record, program, resources, model, { legacyResourceProjection: true }))) return true;
   if (["commitment", "control", "complementary-control"].includes(record?.type) && matches(applicabilityScopeRevision(
-    record, program, resources, model, { legacyBroadScope: true }
+    record, program, resources, model, { legacyDecisionScope: true, legacyBroadScope: true }
   ))) return true;
   if (Number(model.modelVersion) >= 11 && applicabilityDecisionFields[record?.type] && root && historicalScopedReviewMatches(
     review.scopeRevision, record, program, resources, model, root
@@ -242,6 +283,7 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
       for (const legacyPolicyWithoutEffectiveOn of [false, true]) {
         if (matches(applicabilityScopeRevision(record, program, resources, model, {
           legacyPolicyStatus,
+          legacyDecisionScope: true,
           legacyPolicyWithoutApprovalBinding,
           legacyPolicyWithoutEffectiveOn
         }))) return true;
@@ -260,7 +302,8 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
   for (const policy of policies) {
     for (const value of legacyPolicyAlternatives(policy)) {
       if (matches(applicabilityScopeRevision(record, program, resources, model, {
-        legacyPolicyOverrides: { [policy.id]: value }
+        legacyPolicyOverrides: { [policy.id]: value },
+        legacyDecisionScope: true
       }))) return true;
     }
   }
@@ -285,12 +328,14 @@ function historicalScopedReviewMatches(stored, record, program, resources, model
     if (!revisionsMatch("applicability-scope", current, applicabilityScopeRevision(
       historicalRecord, historicalProgram, historicalResources, historicalModel
     ))) continue;
-    for (const legacyBroadScope of [false, true]) {
-      for (const legacyResourceProjection of [false, true]) {
-        if (revisionsMatch("applicability-scope", stored, applicabilityScopeRevision(
-          historicalRecord, historicalProgram, historicalResources, historicalModel,
-          { legacyBroadScope, legacyResourceProjection }
-        ))) return true;
+    for (const legacyDecisionScope of [false, true]) {
+      for (const legacyBroadScope of [false, true]) {
+        for (const legacyResourceProjection of [false, true]) {
+          if (revisionsMatch("applicability-scope", stored, applicabilityScopeRevision(
+            historicalRecord, historicalProgram, historicalResources, historicalModel,
+            { legacyDecisionScope, legacyBroadScope, legacyResourceProjection }
+          ))) return true;
+        }
       }
     }
   }
