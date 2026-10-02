@@ -19,13 +19,21 @@ import { reviewHistoryContext } from "../src/historical-workspace.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
 import { resourceReviewRevisionMatches, resourceReviewRevisions, resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
-import { canonicalCalculatedRevisionJson, revisionsMatch } from "../src/revisions.js";
+import { canonicalCalculatedRevisionJson, displayRevision, revisionsMatch } from "../src/revisions.js";
 import { currentCalendarDate } from "../src/time.js";
 import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { serveWorkspace } from "../src/index.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { commitWorkspaceFiles, initializeGitWorkspace } from "./helpers.js";
+
+test("revision labels shorten known hashes without changing stored values", () => {
+  const digest = "abcdef0123456789".repeat(4);
+  assert.equal(displayRevision(`filegrc:collection:v1:sha256:${digest}`), "abcdef012345");
+  assert.equal(displayRevision(`scope:${digest}`), "abcdef012345");
+  assert.equal(displayRevision(digest), "abcdef012345");
+  assert.equal(displayRevision("unexpected-revision"), "unexpected-revision");
+});
 
 test("applicability apply carries forward a prior Complementary Control collection review", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-collection-review-upgrade-"));
@@ -114,12 +122,18 @@ test("a setup Component confirmation survives later inventory and procedure chan
   review.populationResourceIds = reviewedPopulation;
   const reviewedRevision = review.collectionRevision;
   review.collectionRevision = `filegrc:collection:v1:sha256:${"0".repeat(64)}`;
-  assert.notEqual(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  const staleAssessment = assessCollectionReview(loaded, "component", { programId: program.id });
+  assert.notEqual(staleAssessment.status, "current");
+  assert.match(staleAssessment.message, /Stored revision: 000000000000\. Current revision: [a-f0-9]{12}\./);
+  assert.equal(staleAssessment.revisionDiagnostic.storedRevision, review.collectionRevision);
+  assert.equal(staleAssessment.changesSinceReview.status, "unavailable");
   review.collectionRevision = reviewedRevision;
   assert.equal(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
   const selectedProgram = loaded.resources.find(({ id }) => id === program.id);
   selectedProgram.systemIds.push("system-newly-selected");
-  assert.notEqual(assessCollectionReview(loaded, "component", { programId: program.id }).status, "current");
+  const changedScope = assessCollectionReview(loaded, "component", { programId: program.id });
+  assert.notEqual(changedScope.status, "current");
+  assert.deepEqual(changedScope.changesSinceReview.scopeFields, ["Systems"]);
   selectedProgram.systemIds.pop();
   const added = { ...componentEntry.record, id: "component-new-workforce-source", title: "Workforce source", status: "planned" };
   loaded.resources.push(added);

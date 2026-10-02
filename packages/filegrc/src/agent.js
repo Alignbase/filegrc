@@ -102,6 +102,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
             allowedDecisions: collectionReview.configuration.decisions,
             status: collectionReview.status,
             recordCount: collectionReview.recordCount,
+            ...(collectionReview.changesSinceReview ? { changesSinceReview: collectionReview.changesSinceReview } : {}),
             command: `npx filegrc review-collection ${type} --scaffold`
           }
         : null

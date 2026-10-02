@@ -12,7 +12,7 @@ import { measureTiming } from "./timing.js";
 import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
-import { calculateRevision, revisionsMatch } from "./revisions.js";
+import { calculateRevision, displayRevision, revisionsMatch } from "./revisions.js";
 
 export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   auditManagementReconciliation: Symbol("audit-management-reconciliation"),
@@ -1165,7 +1165,7 @@ async function prepareContentWrites(loaded, record, content, options = {}) {
 function assertRevision(source, expected, label) {
   const current = contentRevision(source);
   if (expected && !revisionsMatch("content", expected, current)) {
-    throw new Error(`${label} changed after you opened it. Stored revision: ${expected}. Current revision: ${current}. Reload the workspace and apply your change again.`);
+    throw new Error(`${label} changed after you opened it. Stored revision: ${displayRevision(expected)}. Current revision: ${displayRevision(current)}. Reload the workspace and apply your change again.`);
   }
 }
 

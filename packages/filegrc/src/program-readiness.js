@@ -794,7 +794,9 @@ export function collectionReviewReadinessItem(assessment) {
           : `Review ${assessment.configuration.title.toLowerCase()}`,
     proposalAction
       ? `Complete ${firstIncomplete.title} before reviewing ${assessment.configuration.title.toLowerCase()}.`
-      : assessment.message,
+      : assessment.approvalIssues?.length || pendingRetentionRow || needsFirstRecord
+        ? assessment.message
+        : assessment.changesSinceReview?.headline || assessment.message,
     proposalAction
       ? { id: firstIncomplete.resourceId, type: assessment.resourceType }
       : needsFirstRecord ? { type: assessment.resourceType }

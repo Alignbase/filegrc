@@ -370,6 +370,7 @@ function serializeCollectionReviewAssessment(assessment) {
     status: assessment.status,
     complete: assessment.complete,
     message: assessment.message,
+    ...(assessment.changesSinceReview ? { changesSinceReview: assessment.changesSinceReview } : {}),
     ...(assessment.recordProposals ? { recordProposals: assessment.recordProposals } : {}),
     ...(assessment.incompleteRecordProposals ? { incompleteRecordProposals: assessment.incompleteRecordProposals } : {}),
     ...(assessment.eligibleReviewerIds ? { eligibleReviewerIds: assessment.eligibleReviewerIds } : {}),

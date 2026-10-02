@@ -42,6 +42,12 @@ export function revisionDigest(kind, value) {
   return null;
 }
 
+export function displayRevision(value) {
+  const text = String(value || "");
+  const match = /^(?:filegrc:[a-z-]+:v\d+:sha256:|scope:)?([a-f0-9]{64})$/.exec(text);
+  return match ? match[1].slice(0, 12) : text;
+}
+
 export function revisionsMatch(kind, stored, current) {
   const storedDigest = revisionDigest(kind, stored);
   const currentDigest = revisionDigest(kind, current);
