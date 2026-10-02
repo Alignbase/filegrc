@@ -344,7 +344,10 @@ async function createAppStateUnlocked(input, options) {
 function assessApplicabilityReviewStatuses(loaded, program) {
   const decisions = new Map((program.requirementApplicability || []).map((review) => [review.requirementId, review]));
   return Object.fromEntries(loaded.resources
-    .filter(({ type }) => ["requirement", "control", "commitment", "complementary-control"].includes(type))
+    .filter(({ type, status }) => (
+      ["requirement", "control", "commitment", "complementary-control"].includes(type)
+      && !["retired", "superseded"].includes(status)
+    ))
     .map((record) => {
       const review = record.type === "requirement" && modelSupports(loaded.model, "program-scope")
         ? decisions.get(record.id)

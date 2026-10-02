@@ -39,6 +39,34 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace } from "./helpers.js";
 import { currentCalendarDate } from "../src/time.js";
 
+test("historical Policies, Documents, and Obligations do not add people to the current setup roster", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-historical-person-scope-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const person = { id: "person-history-only", type: "person", title: "Former reviewer", status: "active" };
+  const document = {
+    id: "document-history-only", type: "document", title: "Former procedure",
+    status: "active", workflowScope: "program", ownerIds: [person.id]
+  };
+  const obligation = {
+    id: "obligation-history-only", type: "obligation", title: "Former schedule",
+    status: "active", ownerIds: [person.id], controlIds: [program.controlIds[0]]
+  };
+  const policy = {
+    id: "policy-history-only", type: "policy", title: "Former policy",
+    status: "active", programRole: "required", ownerIds: [person.id]
+  };
+  loaded.resources.push(person, document, obligation, policy);
+  const includesPerson = () => scopedCollectionRecords(loaded, "person", program).some(({ id }) => id === person.id);
+  assert.equal(includesPerson(), true);
+  document.status = "retired";
+  obligation.status = "retired";
+  policy.status = "superseded";
+  assert.equal(includesPerson(), false);
+});
+
 const execute = promisify(execFile);
 const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
 

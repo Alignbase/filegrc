@@ -1897,11 +1897,13 @@ function derivedStagePageState(stage, destination) {
       : { complete: false, label: "Review scope" };
   }
   if (stage.id === "audit" && destination.type === "document" && destination.href.includes("documentScope=audit")) {
-    if (!resourcesOfType("document").some(({ record }) => auditSpecificDocument(record))) {
+    if (!resourcesOfType("document").some(({ record }) => (
+      auditSpecificDocument(record) && !["retired", "superseded"].includes(record.status)
+    ))) {
       return { complete: false, countsTowardProgress: false, label: "Only if needed" };
     }
   }
-  if (destination.type && resourcesOfType(destination.type).length === 0) {
+  if (destination.type && !resourcesOfType(destination.type).some(({ record }) => !["retired", "superseded"].includes(record.status))) {
     return { complete: false, countsTowardProgress: false, label: "Only if needed" };
   }
   return { complete: true, label: "Ready" };
@@ -2792,6 +2794,7 @@ function openNextAuditCycleDialog(prior) {
 }
 
 function controlApplicabilityPending(record) {
+  if (["retired", "superseded"].includes(record.status)) return false;
   if (state.applicabilityReviewStatuses?.[record.id]) {
     return state.applicabilityReviewStatuses[record.id] !== "current";
   }
@@ -2802,6 +2805,7 @@ function controlApplicabilityPending(record) {
 }
 
 function applicabilityPending(record) {
+  if (["retired", "superseded"].includes(record.status)) return false;
   if (state.applicabilityReviewStatuses?.[record.id]) {
     return state.applicabilityReviewStatuses[record.id] !== "current";
   }

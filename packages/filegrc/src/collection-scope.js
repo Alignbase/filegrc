@@ -167,7 +167,9 @@ function scopedProgramPeople(loaded, program = {}) {
   const systemIds = new Set(program.systemIds || []);
   const controlIds = new Set(program.controlIds || []);
   const policyIds = new Set(loaded.resources
-    .filter(({ type, status, programRole }) => type === "policy" && status !== "retired" && programRole !== "reference")
+    .filter(({ type, status, programRole }) => (
+      type === "policy" && !["superseded", "retired"].includes(status) && programRole !== "reference"
+    ))
     .map(({ id }) => id));
   const components = programComponents(loaded, program);
   const componentIds = new Set(components.map(({ id }) => id));
@@ -177,13 +179,13 @@ function scopedProgramPeople(loaded, program = {}) {
   ]);
   const sources = loaded.resources.filter((record) => (
     ["workspace", "program", "appointment", "team"].includes(record.type)
-    || record.type === "system" && systemIds.has(record.id)
+    || record.type === "system" && systemIds.has(record.id) && record.status !== "retired"
     || record.type === "component" && componentIds.has(record.id)
-    || record.type === "vendor" && vendorIds.has(record.id)
-    || record.type === "control" && controlIds.has(record.id)
+    || record.type === "vendor" && vendorIds.has(record.id) && !["deprecated", "terminated"].includes(record.status)
+    || record.type === "control" && controlIds.has(record.id) && record.status !== "retired"
     || record.type === "policy" && policyIds.has(record.id)
-    || record.type === "document" && record.workflowScope !== "engagement"
-    || record.type === "obligation" && (
+    || record.type === "document" && record.workflowScope !== "engagement" && !["superseded", "retired"].includes(record.status)
+    || record.type === "obligation" && record.status !== "retired" && (
       (record.controlIds || []).some((id) => controlIds.has(id))
       || (record.policyIds || []).some((id) => policyIds.has(id))
     )

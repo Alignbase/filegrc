@@ -393,6 +393,7 @@ function recordFinalizationFindings(loaded, program) {
   const findings = [];
   for (const record of loaded.resources) {
     if (["workspace", "renderer-settings"].includes(record.type)) continue;
+    if (["retired", "superseded"].includes(record.status)) continue;
     const incomplete = recordIncompleteReason(record, loaded, program);
     if (incomplete) {
       findings.push(finalizationFinding(record, incomplete, loaded.model));
@@ -815,6 +816,9 @@ async function assessPeriodHealth(loaded, options) {
     .map(({ id }) => id));
   for (const record of loaded.resources) {
     if (record.type === "policy" && ["required", "alternative"].includes(record.programRole)) {
+      const historical = ["retired", "superseded"].includes(record.status);
+      const changedOn = record.statusTransition?.changedOn;
+      if (historical && changedOn && changedOn <= coverage.start) continue;
       if (record.status !== "active" || !record.effectiveOn || record.effectiveOn > coverage.start) {
         findings.push(periodGap(record, "policy", record.effectiveOn, coverage));
       }
