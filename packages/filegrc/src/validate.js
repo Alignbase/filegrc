@@ -46,7 +46,7 @@ import {
 } from "./reporting-route-integrity.js";
 import { validateWorkflowHistoryIntegrity } from "./workflow-history-integrity.js";
 import { occurrenceMemberExceptionIsValid } from "./obligation-members.js";
-import { calculateRevision, revisionDigest, revisionsMatch } from "./revisions.js";
+import { calculateRevision, displayRevision, revisionDigest, revisionsMatch } from "./revisions.js";
 
 let fingerprintFileReadObserver = null;
 
@@ -2028,7 +2028,7 @@ function validateRequirementMapping(record, loaded, currentReviewRevisions, path
 
 function revisionMismatchDetails(ids, stored, current) {
   return ids.map((id) => (
-    `${id} (stored: ${stored[id] || "missing"}; current: ${current.get(id) || "missing"})`
+    `${id} (stored: ${displayRevision(stored[id]) || "missing"}; current: ${displayRevision(current.get(id)) || "missing"})`
   )).join(", ");
 }
 

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { loadModel } from "../model/index.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
+import { collectionChangesSinceReview } from "../src/collection-changes.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { resourceProgramContext } from "../src/program-path.js";
 import {
@@ -493,6 +494,36 @@ test("keeps an approved Retention Schedule current through Step 3 activation", a
     expectedCollectionRevision: collectionRevision(loaded, "retention-schedule-item", { programId: "program-example" }),
     confirmed: true
   });
+  const scheduleMarkdownPath = join(root, "data", "documents", "document-example.md");
+  const approvedMarkdown = await readFile(scheduleMarkdownPath, "utf8");
+  await writeFile(scheduleMarkdownPath, `${approvedMarkdown}\nUpdated retention instructions.\n`, "utf8");
+  const changedSchedule = assessCollectionReview(await loadWorkspace(root), "retention-schedule-item", { programId: "program-example" });
+  assert.equal(changedSchedule.status, "stale");
+  assert.equal(changedSchedule.changesSinceReview.status, "available");
+  assert.deepEqual(changedSchedule.changesSinceReview.changes.map(({ id, contentChanged }) => [id, contentChanged]), [
+    ["document-example", true]
+  ]);
+  assert.match(changedSchedule.message, /Business Continuity Plan \(document\): Markdown/);
+  const changedLoaded = await loadWorkspace(root);
+  const programState = await createAppStateSection(changedLoaded, "program");
+  assert.deepEqual(programState.collectionReviews["retention-schedule-item"].changesSinceReview, changedSchedule.changesSinceReview);
+  const approvalTodo = programState.programReadiness.stages.flatMap(({ items }) => items)
+    .find(({ id }) => id === "collection-review-retention-schedule-item");
+  assert.match(approvalTodo.message, /Markdown/);
+  assert.doesNotMatch(approvalTodo.message, /Stored revision/);
+  const changedDocumentEntry = changedLoaded.entries.find(({ record }) => record.id === schedule.id);
+  await writeFile(changedDocumentEntry.path, `${JSON.stringify({ ...changedDocumentEntry.record, status: "draft" }, null, 2)}\n`, "utf8");
+  const blockedState = await createAppStateSection(await loadWorkspace(root), "program");
+  const blockedTodo = blockedState.programReadiness.stages.flatMap(({ items }) => items)
+    .find(({ id }) => id === "collection-review-retention-schedule-item");
+  assert.match(blockedTodo.message, /whole-schedule approval/i);
+  assert.match(blockedTodo.message, /Changed since the last review/);
+  await writeFile(changedDocumentEntry.path, `${JSON.stringify(changedDocumentEntry.record, null, 2)}\n`, "utf8");
+  const guide = JSON.parse((await execute(process.execPath, [
+    cli, "guide", "retention-schedule-item", "--root", root, "--json"
+  ])).stdout);
+  assert.deepEqual(guide.reviewRequirements.collectionReview.changesSinceReview, changedSchedule.changesSinceReview);
+  await writeFile(scheduleMarkdownPath, approvedMarkdown, "utf8");
   loaded = await loadWorkspace(root);
   const complementaryRecords = scopedCollectionRecords(
     loaded,
@@ -936,6 +967,9 @@ test("approves the governing document in the single Data Retention Schedule revi
     assessCollectionReview(twoPrograms, "retention-schedule-item", { programId: "program-example" }).complete,
     false
   );
+  const expandedScope = assessCollectionReview(twoPrograms, "retention-schedule-item", { programId: "program-second" });
+  assert.equal(expandedScope.changesSinceReview.status, "available");
+  assert.ok(expandedScope.changesSinceReview.scopeFields.includes("Programs"));
   await applyCollectionReview(root, {
     resourceType: "retention-schedule-item",
     programId: "program-second",
@@ -1471,6 +1505,30 @@ test("records a temporal Classification collection population", async (context) 
   assert.equal(result.assessment.status, "current");
   const validation = await validateWorkspace(root);
   assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics, null, 2));
+});
+
+test("explains changes to an externally managed collection source", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-external-source-change-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", ["-c", "user.name=FileGRC Test", "-c", "user.email=filegrc@example.test", "commit", "-m", "Initial workspace"], { cwd: root });
+  const loaded = await loadWorkspace(root);
+  const scopeRevision = (await execute("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
+  const review = {
+    scopeRevision,
+    collectionRevision: collectionRevision(loaded, "vendor", {
+      programId: "program-example",
+      authoritativeSourceId: "component-example"
+    }),
+    authoritativeComponentId: "component-example"
+  };
+  const sourceEntry = loaded.entries.find(({ record }) => record.id === "component-example");
+  await writeFile(sourceEntry.path, `${JSON.stringify({ ...sourceEntry.record, title: "Updated evidence source" }, null, 2)}\n`, "utf8");
+  const changes = collectionChangesSinceReview(await loadWorkspace(root), "vendor", review, "program-example");
+  assert.equal(changes.status, "available");
+  assert.ok(changes.changes.some(({ id, fields }) => id === "component-example" && fields.includes("Title")));
 });
 
 test("scaffolds every collection re-review with today's workspace date and prior review context", async (context) => {

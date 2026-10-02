@@ -16,8 +16,9 @@ import { currentPartyPeople } from "./parties.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { resolveDataPath } from "./paths.js";
-import { calculateRevision, calculatedRevisionDiagnostic, revisionsMatch } from "./revisions.js";
+import { calculateRevision, calculatedRevisionDiagnostic, displayRevision, revisionsMatch } from "./revisions.js";
 import { personWasActiveOn } from "./soc2.js";
+import { collectionChangesSinceReview } from "./collection-changes.js";
 
 export { collectionRevision };
 
@@ -123,6 +124,9 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     && review.collectionRevision
     && (!revisionMatches || !reviewScopeMatches)
   );
+  const changesSinceReview = stale
+    ? collectionChangesSinceReview(loaded, resourceType, review, program.id)
+    : null;
   return {
     resourceType,
     configuration,
@@ -134,6 +138,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
       : null,
     reviewEntries,
     collectionRevision: currentRevision,
+    changesSinceReview,
     revisionDiagnostic: calculatedRevisionDiagnostic("collection", review?.collectionRevision, currentRevision),
     status: complete ? "current" : stale ? "stale" : "review-required",
     complete,
@@ -143,7 +148,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
     message: complete
       ? `${configuration.title} were reviewed on ${review.reviewedOn}.`
       : approvalIssues.length
-        ? approvalIssues[0].message
+        ? `${approvalIssues[0].message}${changesSinceReview ? ` ${changesSinceReview.summary}` : ""}`
       : incompleteRecordProposals.length
         ? `Complete ${incompleteRecordProposals.length} ${configuration.title.toLowerCase()} ${incompleteRecordProposals.length === 1 ? "record proposal" : "record proposals"} before the collection review.`
       : revisionMatches && review?.status === "active" && !reviewersEligible
@@ -151,7 +156,7 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
           ? "Review the Data Retention Schedule again with a reviewer who does not own its governing document or an included schedule row."
           : "Review the Control collection again with a reviewer who does not own an included Control or its enabled Obligation."
       : stale
-        ? `${configuration.title} changed after the last confirmation. Stored revision: ${review.collectionRevision}. Current revision: ${currentRevision}. Review the current records again.`
+        ? `${configuration.title} changed after the last confirmation. ${changesSinceReview.summary} Stored revision: ${displayRevision(review.collectionRevision)}. Current revision: ${displayRevision(currentRevision)}. Review the current records again.`
         : !records.length && !allowsEmptyCollection
           ? `Add at least one ${loaded.model.resources[resourceType].title.toLowerCase()} before confirming this collection.`
         : `Review ${configuration.title.toLowerCase()} before this page can be ready.`
@@ -190,6 +195,7 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
     : null;
   return {
     resourceType,
+    ...(assessment.changesSinceReview ? { changesSinceReview: assessment.changesSinceReview } : {}),
     decision: priorDecisionStillValid ? priorReview.decision : (assessment.records.length
       ? "complete"
       : allowedDecisions.includes("zero-population") ? "zero-population" : null),

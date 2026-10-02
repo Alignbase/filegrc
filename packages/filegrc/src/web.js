@@ -1251,7 +1251,7 @@ function collectionReviewPanel(type, force = false) {
     : "";
   const reviewSummary = current && !reviewBlocker
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + "." + reviewNote + '</span></p>'
-    : '<p class="collection-review-result"><strong>' + (scheduleBlocker ? "Complete schedule first" : proposalBlocker ? "Complete proposals first" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(reviewBlocker || assessment.message) + '</span></p>';
+    : '<p class="collection-review-result"><strong>' + (scheduleBlocker ? "Complete schedule first" : proposalBlocker ? "Complete proposals first" : needsFirstRecord ? "Records required" : assessment.status === "stale" ? "Review again" : "Review required") + '</strong><span>' + esc(reviewBlocker || (assessment.status === "stale" && assessment.changesSinceReview ? "Check what changed since the last review, then confirm the current records." : assessment.message)) + '</span></p>';
   const compactReviewSummary = current && !reviewBlocker
     ? '<p class="collection-review-result"><strong>' + esc(properCase(assessment.review.decision)) + '</strong><span>Reviewed ' + esc(formatCalendarDate(assessment.review.reviewedOn)) + (reviewerNames.length ? " by " + esc(reviewerNames.join(", ")) : "") + ".</span></p>"
     : reviewSummary;
@@ -1270,8 +1270,11 @@ function collectionReviewPanel(type, force = false) {
   const summary = current
     ? '<div class="collection-review-current-row"><div class="collection-review-complete-summary"><span class="kicker">' + (scheduleReview ? "Approved schedule" : "Scope confirmation") + '</span>' + compactReviewSummary + '</div>' + details + action + '</div>'
     : details;
+  const changes = !current && assessment.status === "stale" && !reviewBlocker
+    ? collectionReviewChangesHtml(assessment.changesSinceReview)
+    : "";
   return '<section class="collection-review-panel panel ' + (current ? "current" : "required") + '">' + summary +
-    (current ? "" : '<div class="collection-review-foot">' + reviewSummary + action + '</div>') + '</section>';
+    changes + (current ? "" : '<div class="collection-review-foot">' + reviewSummary + action + '</div>') + '</section>';
 }
 
 function retentionScheduleApprovalBlocker() {
@@ -1452,9 +1455,10 @@ function openCollectionReviewDialog(type) {
   const saveDescription = scheduleReview
     ? 'Approve the governing document and ' + assessment.recordCount + ' current ' + pluralize("schedule row", assessment.recordCount) + ' as one revision. A later document, row, or material scope change requires another approval.'
     : 'Confirm ' + assessment.recordCount + ' current ' + pluralize("record", assessment.recordCount) + '. If the collection or material scope changes, FileGRC will ask for another review.';
+  const changes = collectionReviewChangesHtml(assessment.changesSinceReview);
   const confirmSubmit = '<button type="submit" class="button primary">Confirm and save</button>';
   const submit = scheduleReview ? '<button type="submit" class="button primary">Approve schedule</button>' : confirmSubmit;
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + dialogKicker + '</p><h2 id="collection-review-dialog-title">' + esc(dialogTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p><section class="event-dialog-steps collection-review-checks"><strong>' + checklistLabel + '</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>' + reviewerHelp + '<div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (preservedAuthoritativeSourceId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>' + esc(saveDescription) + '</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button>' + submit + '</div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + dialogKicker + '</p><h2 id="collection-review-dialog-title">' + esc(dialogTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p>' + changes + '<section class="event-dialog-steps collection-review-checks"><strong>' + checklistLabel + '</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>' + reviewerHelp + '<div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (preservedAuthoritativeSourceId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>' + esc(saveDescription) + '</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button>' + submit + '</div></form>';
   document.body.append(dialog);
   dialog.showModal();
   const form = dialog.querySelector("form");
@@ -1514,6 +1518,23 @@ function openCollectionReviewDialog(type) {
       form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = false; });
     }
   });
+}
+
+function collectionReviewChangesHtml(changes) {
+  if (!changes) return "";
+  if (changes.status !== "available") {
+    return '<section class="collection-review-change-list"><strong>What changed since the last review</strong><p>' + esc(changes.summary) + '</p></section>';
+  }
+  const rows = changes.changes.map((change) => {
+    const details = change.kind !== "changed" ? change.kind === "added" ? "entered review scope" : "left review scope" : [
+      ...change.fields,
+      ...(change.contentChanged ? ["Markdown"] : []),
+      ...(change.membershipChanged ? ["collection membership"] : [])
+    ].join(", ");
+    return '<li><strong>' + esc(change.title) + '</strong> <span>(' + esc(change.type) + ')</span>: ' + esc(details) + '</li>';
+  });
+  if (changes.scopeFields?.length) rows.push('<li><strong>Program scope</strong>: ' + esc(changes.scopeFields.join(", ")) + '</li>');
+  return '<section class="collection-review-change-list"><strong>What changed since the last review</strong><p>Check these changes before recording a new conclusion.</p><ul>' + rows.join("") + '</ul></section>';
 }
 
 function workflowItemHref(item) {
@@ -6584,6 +6605,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .stage-page-card-actions{display:flex;align-items:center;gap:10px}.stage-page-card-actions .stage-page-open{white-space:nowrap}.stage-page-open::after{content:"";position:absolute;inset:0;z-index:1;border-radius:10px}.stage-page-open:focus-visible::after{outline:2px solid var(--focus);outline-offset:2px}.stage-page-open>span{position:relative;z-index:2}
 .workflow-findings>a:hover{border-color:var(--accent-light);box-shadow:0 3px 9px rgba(21,40,33,.05)}.workflow-findings>a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.stage-page-card-head{align-items:flex-start}.stage-page-completion-state{flex:0 0 auto;max-width:150px;padding:5px 8px;border-radius:99px;background:#f7e9cf;color:#855717;font-size:9.6px;font-weight:750;line-height:1.25;text-align:right}.stage-page-completion-state.complete{background:#ddefe5;color:#176143}.obligation-card.workflow-target{outline:2px solid var(--focus);outline-offset:3px}.obligation-card-foot{flex-wrap:wrap}.obligation-card-foot .obligation-links{flex:1 1 120px}
 .collection-review-panel.current details{margin-top:8px}.collection-review-detail-content{margin-top:10px}.collection-review-complete-summary{display:flex;align-items:baseline;gap:10px}.collection-review-complete-summary>.kicker{margin:0;white-space:nowrap}.collection-review-panel.current .collection-review-foot{justify-content:flex-end;margin-top:8px}
+.collection-review-change-list{margin:14px 0;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-change-list>strong{font-size:11px}.collection-review-change-list p{margin:7px 0 0;color:var(--muted);font-size:11px;line-height:1.5}.collection-review-change-list ul{max-height:180px;overflow:auto;margin:9px 0 0;padding-left:20px;font-size:11px;line-height:1.55}.collection-review-change-list li+li{margin-top:5px}.collection-review-change-list li span{color:var(--muted)}
 .collection-review-current-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.collection-review-panel.current .collection-review-details{flex:0 0 auto;margin:0;padding:0;border:0;background:transparent}.collection-review-panel.current .collection-review-details>summary{color:var(--accent);white-space:nowrap}.collection-review-panel.current .collection-review-details[open]{flex-basis:100%;order:3;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-panel.current .collection-review-details[open]>summary{margin-bottom:10px}.collection-review-panel.current .collection-review-details[open] .collection-review-detail-content{margin-top:0}.collection-review-panel.current .button{margin-left:auto}
 @media(max-width:520px){.collection-review-complete-summary{flex:1 1 180px;min-width:0;flex-wrap:wrap}.collection-review-complete-summary .collection-review-result{min-width:0;flex-wrap:wrap}.collection-review-complete-summary .collection-review-result span{overflow-wrap:anywhere}.collection-review-panel.current .button{margin-left:0}}
 @media(max-width:520px){.stage-page-card-head{align-items:stretch;flex-direction:column;gap:10px}.stage-page-card-actions{justify-content:space-between}}

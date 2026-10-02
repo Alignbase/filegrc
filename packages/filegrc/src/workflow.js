@@ -26,6 +26,7 @@ import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
 import { resolveProgram } from "./program.js";
 import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
+import { displayRevision } from "./revisions.js";
 import { signatoryAppointmentIssue, soc2ReportEvidenceIssue, subsequentEventsReviewIssue } from "./soc2.js";
 import { planReconciliation } from "./reconciliation.js";
 import { documentIsAuditSpecific } from "./program-lifecycle.js";
@@ -544,8 +545,8 @@ function finalizationFields(record, model, resources, program, root) {
       field: "applicabilityReview",
       requiredness: "required",
       message: record.applicabilityReview?.scopeRevision
-        ? `Review applicability against the current service scope. Stored revision: ${record.applicabilityReview.scopeRevision}. Current revision: ${currentRevision}. Then record the decision, rationale, reviewer, and date.`
-        : `Review applicability against the current service scope. Current revision: ${currentRevision}. Then record the decision, rationale, reviewer, and date.`
+        ? `Review applicability against the current service scope. Stored revision: ${displayRevision(record.applicabilityReview.scopeRevision)}. Current revision: ${displayRevision(currentRevision)}. Then record the decision, rationale, reviewer, and date.`
+        : `Review applicability against the current service scope. Current revision: ${displayRevision(currentRevision)}. Then record the decision, rationale, reviewer, and date.`
     });
   }
   if (record.type === "policy" && model.resources.policy?.fields?.programRole && !record.programRole) {
