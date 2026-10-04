@@ -87,7 +87,12 @@ test("creates a complete generic repository with one dependency", async (context
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Completing onboarding opens the Step 1 overview/);
   assert.match(agents, /npx filegrc program-path --next --json/);
-  assert.match(agents, /Before proposing a new process or record for a Control, inspect the current Control/);
+  assert.match(agents, /## How to work with the user[\s\S]*Own the FileGRC work/);
+  assert.match(agents, /Work through Control implementations one at a time/);
+  assert.match(agents, /ask exactly what you need, name what you checked/);
+  assert.match(agents, /After the answer, finish that Control and continue the requested workflow without another handoff/);
+  assert.match(agents, /For a Control, inspect its linked Policy and Markdown/);
+  assert.match(agents, /enabled Obligation when its operation pattern needs one/);
   assert.match(agents, /If the design exists but operation is unproven/);
   assert.match(agents, /Use `npx filegrc guide obligation --json` and `data\/AGENTS\.md`/);
   assert.match(agents, /Program’s `candidateCoverage`/);

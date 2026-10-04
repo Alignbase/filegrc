@@ -8,7 +8,7 @@ An obligation is a reusable policy schedule or event template. It is not the rec
 - Split the work only when a member needs its own queue owner, deadline, conclusion, or follow-up lifecycle.
 - Keep completed occurrences in `completionResourceIds`. Do not replace prior links when a new period starts.
 - Configure and enable Obligations during Step 3. An enabled Obligation remains dormant until every governing Policy and required program Document is active and effective and, when it names Controls, at least one linked Control is implemented. FileGRC starts calendar work from the latest Policy or governed Document effective date, so pre-cutover periods do not become overdue work.
-- Calendar Obligations generated with `status: proposed` contain suggested starting cadences. Review the scope and risk, edit the cadence when needed, and change the Obligation to `active` only when management accepts that schedule. A proposed Obligation never counts as a configured schedule.
+- Calendar Obligations generated with `status: proposed` contain suggested starting cadences. Compare the linked Policy, Control, scope, and risk records; prepare any supported edits and ask management for a specific cadence choice only when those sources do not settle it. Change the Obligation to `active` only when management accepts that schedule. A proposed Obligation never counts as a configured schedule.
 - When an approved cadence changes, update its authoritative Obligation schedule. Keep the durable required outcome in the Policy and the implementation fact in the Control instead of copying the cadence across all three records.
 - Pause or retire a template only when the underlying policy work no longer applies. Do not delete historical templates that explain prior periods.
 

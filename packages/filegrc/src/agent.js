@@ -122,13 +122,15 @@ export function buildAgentGuide(loaded, type, options = {}) {
     oneOf: definition.oneOf ?? [],
     markdown,
     workflow: [
-      "Inspect existing records and relation candidates before writing.",
+      "Inspect the recommended action, existing records, relationships, source Markdown, and available evidence. Do the research, drafting, record edits, and validation you can do yourself.",
       definition.singleton
         ? "Open the existing singleton record and update only gaps supported by facts from an authoritative source."
         : "Reuse and update a suitable existing record. Create a scaffold only when no record covers the work, then replace every null value and empty required array with facts from an authoritative source.",
       recommendedMarkdown.length
         ? "Keep model fields in JSON and use the recommended Markdown companion for the detailed work, decisions, results, exceptions, and follow-up that apply to this record."
         : "Keep the current facts and lifecycle state in JSON. Add optional Record Markdown only when the model fields cannot explain the record clearly.",
+      "If a material fact, external action, approval, or management decision is still missing, ask the user one specific question. State what you inspected, the exact missing input, and what it unlocks. Do not hand off FileGRC commands, routine record entry, or a vague request to confirm. Continue the workflow after the answer without asking for another handoff.",
+      ...(type === "control" ? ["Separate implementation from operation: document the working configuration, scope, owner, procedure, source, and enabled rules when its operation pattern needs them before marking Implemented. Record dated operating work and evidence only after a real cycle or event occurs; a ready schedule is not proof of operation."] : []),
       ...(type === "program" && modelSupports(loaded.model, "program-scope")
         ? ["Review Requirement applicability with npx filegrc review-applicability --type requirement --scaffold, then preview and apply the reviewed decisions as one validated batch."]
         : []),

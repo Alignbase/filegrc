@@ -59,8 +59,12 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
   const controlGuide = JSON.parse((await execute(process.execPath, [cli, "guide", "control", "--root", root, "--json"])).stdout);
   assert.match(controlGuide.instructions, /inspect linked Policy, Obligations, Components, and operating records/);
   assert.match(controlGuide.instructions, /Record actual operation separately/);
-  assert.match(controlGuide.workflow[0], /Inspect existing records/);
+  assert.match(controlGuide.workflow[0], /Inspect the recommended action, existing records/);
   assert.match(controlGuide.workflow[1], /Reuse and update a suitable existing record/);
+  assert.ok(controlGuide.workflow.some((step) => /ask the user one specific question.*Continue the workflow after the answer/.test(step)));
+  assert.ok(controlGuide.workflow.some((step) => /Separate implementation from operation/.test(step)));
+  assert.ok(controlGuide.workflow.some((step) => /enabled rules when its operation pattern needs them/.test(step)));
+  assert.match(parsedOverview.rule, /Ask the user only for a specific material fact/);
   assert.equal(parsedOverview.programPath.length, 5);
   assert.deepEqual(parsedOverview.programPath.map(({ title }) => title), [
     "Define Scope",

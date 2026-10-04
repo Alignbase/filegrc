@@ -4,7 +4,7 @@ Use one `audit-population` for one complete Type 2 population produced by one au
 
 Reconcile after the period closes:
 
-1. Confirm the exact audit period and related controls.
+1. Read the exact formal period and selected Controls from the Audit; ask the engagement owner only if the agreed scope is missing.
 2. Select the cataloged source Component whose `evidenceSourceKinds` covers the population.
 3. Export the complete population with fixed parameters and timezone.
 4. Create a verified `population-export` Evidence Artifact with the same source Component, period, query, generation time, count, completeness check, and accuracy check.

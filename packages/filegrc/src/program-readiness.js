@@ -217,7 +217,7 @@ export async function assessProgramReadiness(input, options = {}) {
       ? item
       : { ...item, status: "blocked", message: `Complete the Control collection review before activation. ${item.message}` };
   }));
-  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. When implementation is ready, perform one review of the implemented Control collection. Management then activates the unchanged approved program content as the Step 3 cutover.`;
+  controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations for scheduled or event work, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. When implementation is ready, perform one review of the implemented Control collection. Management then activates the unchanged approved program content as the Step 3 cutover.`;
   const scopeReadinessStage = scopeStage(
       program,
       scope,
@@ -596,7 +596,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   items.push(item(
     "criteria",
     criteriaComplete ? "complete" : "action",
-    "Confirm Trust Services criteria, Description Criteria, and Controls",
+    "Resolve criteria decisions and Control coverage",
     criteriaComplete
       ? `${selectedTrustServicesRequirements.length} applicable Trust Services criteria, ${selectedDescriptionRequirements.length} SOC 2 Description Criteria, and ${scope.controls.length} Controls are in scope. Every applicable Trust Services criterion has at least one selected Control; Description Criteria govern the system description and do not map to Controls.`
       : missingRequiredSecurityReferences.length || missingRequiredDescriptionReferences.length
@@ -992,7 +992,7 @@ function programOwnershipItem(records, byId) {
   return item(
     "program-ownership",
     complete ? "complete" : "action",
-    "Confirm program owners and oversight",
+    "Assign program owners and oversight",
     complete
       ? `${currentOwners.size} current ${currentOwners.size === 1 ? "person owns" : "people own"} the program records.${oversight ? " Security and Risk Oversight has a separate current chair." : ""}`
       : detail.join(" "),
@@ -1619,7 +1619,7 @@ function policyActivationItem(assessment) {
     [assessment.unresolvedExceptionIds.length, "unresolved Exceptions"]
   ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
   const message = assessment.state === "active-and-operating"
-    ? `Active and effective ${assessment.effectiveOn}; all ${assessment.linkedControlIds.length} linked Controls are implemented with Components, evidence sources, and enabled Obligations.`
+    ? `Active and effective ${assessment.effectiveOn}; all ${assessment.linkedControlIds.length} linked Controls are implemented with Components, evidence sources, and enabled Obligations where scheduled or event work requires them.`
     : assessment.state === "ready-to-activate"
       ? "Implementation checks are complete. Include this approved Policy in the Step 3 cutover when you are ready for it to take effect."
       : `${assessment.label}: ${counts.join(", ") || assessment.timingWarnings.join(" ")}. ${assessment.activationWarning || ""}`.trim();
@@ -2128,7 +2128,7 @@ const starterControlChecks = {
   "control-monitoring-remediation": "Schedule the first Control review. Name who will inspect incidents, tests, Exceptions, overdue work, and follow-up closure when those records exist.",
   "control-access-authorization": "Open access lists for in-scope Systems and Vendor tools. Check that accounts use unique identities and only needed permissions, and new grants require a business reason and approval.",
   "control-strong-authentication": "Open the System and Vendor lists. For each tool used for production, source code, email, identity, or sensitive data, check MFA, unique accounts, default credentials, and admin roles.",
-  "control-access-review-offboarding": "Confirm access lists can be exported from key Systems and Vendor tools. Assign the first access review and the owner who will remove access when a departure occurs.",
+  "control-access-review-offboarding": "Check whether key Systems and Vendor tools can export access lists. Set the first access review and name who removes access after a departure.",
   "control-physical-workspace-security": "Walk through actual work areas and visitor access. Check who can enter nonpublic spaces and how devices, papers, screens, and conversations are protected.",
   "control-data-classification-inventory": "List important data stores in Systems and Vendor tools. Check each has an owner, classification, approved purpose, and recorded location.",
   "control-encryption-transmission": "For Systems, Vendor tools, and devices holding Confidential or Restricted data, check encryption at rest and in transit and who can manage the keys.",
@@ -2154,16 +2154,16 @@ export function controlImplementationSteps(control, checks, options = {}) {
   if (!checks.implemented) steps.push(control.id === "control-strong-authentication" && options.targets?.length
     ? `Ensure MFA and unique accounts are enabled for ${options.targets.join(", ")}; check default credentials and admin roles.`
     : starterControlChecks[control.id]
-    || "Inspect the systems, people, vendors, or work this Control covers. Compare current practice with its statement and fix any gaps.");
+    || `Inspect the Systems, people, Vendors, and work linked to ${control.title || control.id}. Compare the actual configuration with this Control's statement and fix the specific gaps.`);
   const record = [];
-  if (!checks.owner) record.push("choose an owner");
-  if (!checks.scope) record.push("select the Systems this covers");
-  if (!checks.operationPattern) record.push("set when it runs");
-  if (!checks.procedure) record.push("write who does what and when in Procedure");
-  if (!checks.evidenceSource) record.push("link the tool or system that can show it happened");
+  if (!checks.owner) record.push("assign the actual owner from existing People or Appointments");
+  if (!checks.scope) record.push("link the in-scope Systems already in the Program");
+  if (!checks.operationPattern) record.push("record whether it runs continuously, per transaction, on a schedule, or after an event");
+  if (!checks.procedure) record.push("write the current actors, configuration, and procedure in Record Markdown");
+  if (!checks.evidenceSource) record.push("link the authoritative Component that can produce proof");
   if (!checks.policyMapping && checks.policyMapping !== undefined) record.push("link the Policy it implements");
   if (!checks.criteriaMapping && checks.criteriaMapping !== undefined) record.push("link the criteria it covers");
-  if (!checks.implementationDate) record.push("record the actual date it starts working when marking Implemented");
+  if (!checks.implementationDate) record.push("record the date the working implementation took effect when marking Implemented");
   if (checks.procedureRevision === false || checks.procedureEffective === false) {
     record.push("record the Procedure revision and effective date");
   }
@@ -2174,16 +2174,16 @@ export function controlImplementationSteps(control, checks, options = {}) {
     ? `Cover the missing evidence families: ${sourceTargets.length ? sourceTargets.join(" and ") : "this Control"}. For each, link an active Component with the matching kind, evidence owners, and report retrieval instructions.`
     : null;
   const queueStep = checks.workQueue === false
-    ? "Check the linked Obligations. Enable one with the owner and schedule for this Control's recurring or event work, or add one if none covers it."
+    ? "Inspect linked Obligations and their Policy basis. Enable a suitable existing rule with its owner and deadline, or add a rule only if no existing one covers this work. A scheduled rule does not prove a cycle occurred."
     : null;
   if (!checks.implemented) {
     if (sourceStep || queueStep) steps.push([sourceStep, queueStep].filter(Boolean).join(" "));
-    else if (checks.applicability === false) steps.push("Confirm this Control applies to the current Program scope with `review-applicability --scaffold --type control`.");
-    else steps.push("When these launch conditions hold, mark the Control Implemented. This asserts the practice works now; record proof from future cycles and events as they occur.");
+    else if (checks.applicability === false) steps.push("Compare this Control with the current Program scope and record its applicability decision with `review-applicability --scaffold --type control`; ask management only if the decision cannot be established from the scope and commitments.");
+    else steps.push("When these launch conditions hold, mark the Control Implemented with its real effective date. Record dated proof later, when a cycle or event actually occurs.");
   } else {
     if (sourceStep) steps.push(sourceStep);
     if (queueStep) steps.push(queueStep);
-    if (checks.applicability === false) steps.push("Confirm this Control applies to the current Program scope with `review-applicability --scaffold --type control`.");
+    if (checks.applicability === false) steps.push("Compare this Control with the current Program scope and record its applicability decision with `review-applicability --scaffold --type control`; ask management only if the decision cannot be established from the scope and commitments.");
   }
   return steps;
 }

@@ -1231,7 +1231,7 @@ function controlLaunchLabel(state) {
   return ({
     planned: "Planned: launch conditions remain",
     partial: "Partially implemented: launch conditions remain",
-    "ready-to-implement": "Launch checks ready: confirm it works, then record the start date",
+    "ready-to-implement": "Launch checks ready: check the live configuration, then record its start date",
     "implemented-with-gaps": "Implemented with gaps: fix the launch checks",
     implemented: "Implemented"
   })[state] || "Control launch";

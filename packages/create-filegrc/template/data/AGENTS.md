@@ -20,6 +20,8 @@ Use `program-path --next --json` for the current lifecycle step. Use `workflow -
 
 Before creating a record or asking for a new procedure, inspect matching records and their links with `list`, `search`, `get RESOURCE_ID --workflow --json`, and `references RESOURCE_ID --json`. Read the linked Policy and companion Markdown, Control, Obligations, operating records, Components, and Evidence as applicable. Reuse the authoritative record and update it when needed. Separate a documented design or enabled schedule from proof that work actually occurred. Ask for only the missing business facts, decisions, or external evidence that you cannot verify; do not invent an event or ask for facts already recorded here.
 
+Do the discoverable work yourself: inspect current sources, draft the mutation, fill fields supported by those sources, preview it, validate it, and check the next action. When an answer from management or an external operator is necessary, ask for the exact material fact or decision and say what it will let you finish. Do not ask the user to run FileGRC commands, copy IDs, fill routine fields, or vaguely confirm a record. Continue the mutation and remaining workflow after the answer without another handoff. Keep approval and other acts reserved for the named person separate from agent-prepared drafts.
+
 In `get RESOURCE_ID --workflow --json`, inspect `workflow.recommended.context.existing` before using `scaffold`. The listed records are relationship candidates, not proof that work occurred.
 
 After changing a lifecycle fact directly, review `reconcile --preview --json`. A candidate asks whether the change represents a real policy event. Supply the actual event date or timestamp, departure risk when relevant, and explicit confirmation before applying it. If it is a false positive, use `reconcile --dismiss` with the exact candidate fingerprint, a Person reviewer, the review date, a rationale, and `--yes`. The immutable dismissal suppresses only that fingerprint.
@@ -117,9 +119,11 @@ Status is an assertion. Before moving a record to a completed, approved, impleme
 2. Write the actual work and conclusion in Markdown when recommended.
 3. Link source Components, Evidence Artifacts, risks, findings, exceptions, and actions that support the result.
 4. Use the real completion or approval date.
-5. Confirm the named people performed and reviewed the work.
+5. Check the source for who performed and reviewed the work. Ask the named people only when their actual participation or approval cannot be established.
 
 Do not mark a control implemented because a policy says it should exist. Do not mark evidence verified because it was merely collected. Do not mark a task done without the completion record type requested by its obligation.
+
+For a Control, complete setup from the actual configuration, scope, owner, procedure, evidence source, and enabled work rules when its operation pattern needs them. Use the real implementation date when those conditions hold. Record a later operating cycle or event with its actor, date, result, and proof only after it occurs. Do not ask for operating proof to finish setup, and do not treat setup as proof of later operation.
 
 Policy, program Document, and Training approval in Step 2 accepts the reviewed requirements, intended values, and exact content revisions. It does not prove implementation or start governed work. A required program Document has `workflowScope: program`, and Training stays `approved`, until linked Controls and Obligations are ready. In Step 3, run `activate-content --scaffold` and record the active Person who performs the cutover, actual activation date, and effective date; FileGRC binds activation to each unchanged approved revision. Then run `activate-policies --scaffold`, review the approved Policies together, select the cutover set, and record the real effective date. Operate the program and collect Evidence in Step 4. Create Audit Documents with `workflowScope: engagement` only in the Step 5 workflow. After each Audit Document is complete, record approval first, then activate the unchanged approved revision in a separate update with its actor, actual activation date, and effective date.
 

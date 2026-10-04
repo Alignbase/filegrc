@@ -1,6 +1,6 @@
 # Audit Instructions
 
-Create one `audit` record for one real CPA engagement. Define the audit kind, framework, exact firm-agreed Type 1 date or Type 2 period, scope, owners, auditor, and report status from facts supplied by management or the engagement team.
+Create one `audit` record for one real CPA engagement. Read the accepted engagement terms and current Program first, then fill the audit kind, framework, exact firm-agreed Type 1 date or Type 2 period, scope, owners, auditor, and report status from those sources. Ask management or the engagement team only for the exact agreed fact that remains unavailable.
 
 Keep management’s candidate Type 2 dates on `workspace`. Do not copy them into the audit record until the CPA firm agrees to those dates. Preserve both sets when the formal period differs.
 
@@ -22,7 +22,7 @@ Select a framework containing every CC1.1 through CC9.2 Security Common Criterio
 Review both evidence paths for the exact formal date or period:
 
 1. filegrc Evidence consists of dated Step 4 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
-2. Evidence Artifacts are verified `evidence` records from source Components. Confirm the source Component, date or period, Control links, collector, verifier, and fixed attachment or approved external reference.
+2. Evidence Artifacts are verified `evidence` records from source Components. Read each artifact and its linked records to check the source Component, date or period, Control links, collector, verifier, and fixed attachment or approved external reference. Ask only for a missing source fact or independent verification.
 
 The packet compiles both paths. It includes FileGRC records and Markdown with Git history, plus Evidence Artifacts, retained attachments, delivery indexes, and checksums.
 

@@ -466,13 +466,17 @@ function recordIncompleteReason(record, loaded, program) {
     return {
       state: "ready",
       requiredness: appointmentRequiredness(record, loaded.model),
-      message: "Assign a holder, confirm the authority and independence needed, then activate this Appointment on its actual start date."
+      message: "Check current People and scoped Appointments, assign a qualified holder, and record the actual authority and start date. Ask management only if the holder or independence decision is unresolved."
     };
   }
   const messages = {
     draft: "Add the required details, relationships, and Markdown before review.",
     planned: "Check this planned record against how your program works, then add the missing details.",
-    proposed: "Confirm the work, owner, schedule, and completion requirements before activation.",
+    proposed: ["obligation", "obligation-rule"].includes(record.type)
+      ? "Read the linked Policy and Control, fill the actual owner, schedule, deadline, and proof requirement, then activate the rule. Ask management only for a choice those sources do not settle."
+      : record.type === "reporting-route-set"
+        ? "Fill the normal and fallback reporting routes from approved contact details, commit the proposal, and obtain the required separate approval before it takes effect. Ask only for missing route or authority decisions."
+        : "Inspect the source facts and type guide, complete the proposal, and obtain the required review or approval before activation.",
     "in-review": "Have an independent reviewer approve the exact content revision.",
     open: "Complete this work with the required proof, or formally close it without completion.",
     "in-progress": "Finish the work, record the result, and link the completion proof.",
@@ -724,7 +728,7 @@ function reconciliationFindings(reconciliation) {
     state: "ready",
     severity: "warning",
     requiredness: "conditional",
-    title: `Confirm ${fieldLabel(candidate.eventType)}`,
+    title: `Resolve ${fieldLabel(candidate.eventType)} transition`,
     message: candidate.message,
     subject: candidate.subject,
     fieldPath: candidate.sourcePath,
@@ -1630,12 +1634,12 @@ function periodFinding(key, title, message, state, subject, actions, dependencie
 function auditClosureNextStep(status) {
   const steps = {
     planned: {
-      title: "Confirm the engagement and start audit preparation",
-      message: "Link the agreed engagement terms, confirm scope and management acknowledgement, then move the audit to in progress."
+      title: "Record the agreed engagement and start audit preparation",
+      message: "Read the signed engagement terms, link them, record the agreed scope and management acknowledgement, then move the audit to in progress. Ask for missing terms or acknowledgement only if unavailable."
     },
     "in-progress": {
       title: "Begin fieldwork",
-      message: "Finish management preparation, confirm the fieldwork dates, and move the audit to fieldwork when the CPA firm begins testing."
+      message: "Finish management preparation, record the fieldwork dates agreed with the CPA firm, and move the audit to fieldwork when testing begins. Ask for the dates only if they are not in the engagement correspondence."
     },
     fieldwork: {
       title: "Finish fieldwork and prepare the report",
@@ -1647,7 +1651,7 @@ function auditClosureNextStep(status) {
     },
     issued: {
       title: "Record final report delivery",
-      message: "Confirm the issued report evidence, opinion, report date, authorized recipient, and delivery receipt, then move the audit to delivered."
+      message: "Read the issued report and delivery record, enter the opinion, report date, authorized recipient, and receipt, then move the audit to delivered. Ask only for missing delivery facts."
     },
     delivered: {
       title: "Close the audit",

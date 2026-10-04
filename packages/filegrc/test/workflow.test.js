@@ -732,5 +732,5 @@ test("keeps preliminary audit planning separate from an accepted engagement", as
   const findingKeys = new Set(workflow.findings.map(({ key }) => key));
   assert.equal(findingKeys.has("audit.audit-planned.lifecycle.engagement-terms"), false);
   assert.equal(findingKeys.has("audit.audit-planned.lifecycle.management-acknowledgement"), false);
-  assert.equal(workflow.findings.find(({ key }) => key === "audit.audit-planned.lifecycle.advance")?.title, "Confirm the engagement and start audit preparation");
+  assert.equal(workflow.findings.find(({ key }) => key === "audit.audit-planned.lifecycle.advance")?.title, "Record the agreed engagement and start audit preparation");
 });

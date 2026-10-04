@@ -1743,7 +1743,7 @@ function agentOverview(model) {
     commit: "git diff --check && git diff && git add <reviewed-paths> && git commit -m <reason>"
   };
   return {
-    rule: "Treat data/ as the source of truth. Run guide before creating an unfamiliar type, validate after every write, review the Git diff, then commit a focused change.",
+    rule: "Treat data/ as the source of truth. Inspect existing records and sources, then do the research, edits, and validation you can do. Ask the user only for a specific material fact, external action, approval, or decision you cannot establish; explain what it unlocks and continue after the answer. Run guide before creating an unfamiliar type, validate every write, review the Git diff, and commit a focused change.",
     programPath: buildAgentProgramPath(model),
     actions: Object.fromEntries(Object.entries(commands).map(([name, command]) => [
       name,
