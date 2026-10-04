@@ -18,7 +18,7 @@ A reviewed Program scope with owners, criteria, Systems, and material providers.
 
 - **People** (`person`): Record the person’s actual job title and current status.
 - **Appointments** (`appointment`): Assign a named authority to one Person with its start date and scope.
-- **Teams** (`team`): Confirm the Team’s members and chair.
+- **Teams** (`team`): Use the current Person and Appointment records to set the Team’s members and chair; ask who holds a role only when those sources cannot establish it.
 - **Reporting channel sets** (`reporting-route-set`): Replace the reporting-route placeholders with real normal and fallback channels, name the responsible role, and commit the proposal.
 - **Programs** (`program`): Set the Program goal, owners, Systems, Frameworks, criteria decisions, and risk method.
 - **Frameworks** (`framework`): Select the criteria Framework and version used by the Program.
@@ -28,7 +28,7 @@ A reviewed Program scope with owners, criteria, Systems, and material providers.
 - **Systems** (`system`): Define the service boundary, exclusions, owners, and information it handles.
 - **Components** (`component`): Record a material service or evidence source and its role in each linked System.
 - **Vendors** (`vendor`): Record each material external provider and the Components it supplies.
-- **Classifications** (`classification`): Confirm the handling categories and apply them to information and evidence.
+- **Classifications** (`classification`): Use current Policy content and recorded information needs to propose handling categories, then apply the management decision to information and evidence. Ask about any category those sources do not settle.
 - **Information Types** (`information-type`): Name a stable category of information, set its default Classification, and link its uses.
 
 Headless commands:
@@ -72,7 +72,7 @@ Implemented Controls with ready evidence sources and enabled work schedules.
 
 - **Controls** (`control`): Open this Control’s next steps and inspect linked Policy, Obligations, Components, and operating records. Reuse existing workflows; fill only the implementation gap, and mark it Implemented when it works. Record actual operation separately.
 - **Complementary controls** (`complementary-control`): Record each real customer or carved-out provider dependency, or confirm that the current scope has none.
-- **Obligations** (`obligation`): Confirm the owner, cadence or trigger, deadline, and proof, then enable the rule when its Control is ready.
+- **Obligations** (`obligation`): Read the linked Policy and Control, fill the owner, cadence or trigger, deadline, and proof from those sources, then enable the rule when its Control is ready. Ask only for an unresolved management choice.
 
 Headless commands:
 
@@ -1086,7 +1086,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 Groups that share program responsibility, such as security oversight or incident response. Team records are not required for SOC 2 when named People hold the responsibilities directly.
 
-Instructions: Confirm the Team’s members and chair.
+Instructions: Use the current Person and Appointment records to set the Team’s members and chair; ask who holds a role only when those sources cannot establish it.
 
 Policy basis: The information security policy establishes security and risk oversight with independent review, while the continuity plan assigns response and recovery roles. Reviewers may be internal or external.
 
@@ -1921,7 +1921,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 A controlled information-handling category used consistently across inventory and Evidence Artifacts.
 
-Instructions: Confirm the handling categories and apply them to information and evidence.
+Instructions: Use current Policy content and recorded information needs to propose handling categories, then apply the management decision to information and evidence. Ask about any category those sources do not settle.
 
 Policy basis: Management defines handling categories so information and retained evidence receive consistent protection.
 
@@ -2403,7 +2403,7 @@ Record Markdown: shown by default as an implicit companion file.
 
 Reusable schedules for recurring or event-driven work. Obligations feed the Work Queue; completion records and linked Evidence prove that the work occurred. Obligations are not required for SOC 2.
 
-Instructions: Confirm the owner, cadence or trigger, deadline, and proof, then enable the rule when its Control is ready.
+Instructions: Read the linked Policy and Control, fill the owner, cadence or trigger, deadline, and proof from those sources, then enable the rule when its Control is ready. Ask only for an unresolved management choice.
 
 Policy basis: FileGRC uses Obligations to turn approved schedules into owned, dated work linked to scope and required proof. An enabled Obligation remains dormant until every governing Policy and required program Document is active and effective.
 

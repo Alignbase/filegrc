@@ -136,7 +136,8 @@ test("implemented Controls still give actions for remaining readiness checks", (
   assert.equal(steps.length, 4);
   assert.match(steps[0], /link the Policy.*link the criteria/);
   assert.match(steps[1], /active Component/);
-  assert.match(steps[2], /Check the linked Obligations.*Enable one/);
+  assert.match(steps[2], /Inspect linked Obligations.*Enable a suitable existing rule/);
+  assert.match(steps[2], /does not prove a cycle occurred/);
   assert.match(steps[3], /review-applicability --scaffold --type control/);
 });
 
@@ -159,7 +160,7 @@ test("planned Control actions reveal the next prerequisite before implementation
   const setup = controlImplementationSteps(control, checks, {
     missingSourceFamilies: [{ title: "Identity and Access", sourceKinds: ["identity-access"] }]
   });
-  assert.match(setup.at(-1), /identity-access.*Check the linked Obligations.*Enable one/);
+  assert.match(setup.at(-1), /identity-access.*Inspect linked Obligations.*Enable a suitable existing rule/);
   assert.doesNotMatch(setup.join(" "), /review-applicability|mark this Control Implemented/);
 
   const applicability = controlImplementationSteps(control, { ...checks, evidenceSourceReady: true, workQueue: true });
@@ -167,7 +168,7 @@ test("planned Control actions reveal the next prerequisite before implementation
   assert.doesNotMatch(applicability.join(" "), /mark this Control Implemented/);
 
   const final = controlImplementationSteps(control, { ...checks, evidenceSourceReady: true, workQueue: true, applicability: true });
-  assert.match(final.at(-1), /mark the Control Implemented.*future cycles and events/);
+  assert.match(final.at(-1), /mark the Control Implemented.*Record dated proof later/);
 });
 
 test("focused Control guidance requires the evidence kind for its source family", async (context) => {
@@ -924,8 +925,8 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
   assert.equal(item.launchChecks.implemented, undefined);
   assert.match(item.implementationAssertion, /does not assert that a scheduled cycle or event has already occurred/);
   assert.equal(item.nextSteps.length, 3);
-  assert.equal(item.nextSteps[0], "Inspect the systems, people, vendors, or work this Control covers. Compare current practice with its statement and fix any gaps.");
-  assert.match(item.nextSteps[1], /choose an owner; select the Systems this covers; link the tool or system that can show it happened/);
+  assert.match(item.nextSteps[0], /Inspect the Systems, people, Vendors, and work linked to .*Compare the actual configuration/);
+  assert.match(item.nextSteps[1], /assign the actual owner.*link the in-scope Systems.*link the authoritative Component/);
   assert.match(item.nextSteps[2], /active Component/);
   assert.doesNotMatch(item.nextSteps.join(" "), /applicab|Step 4|mark this Control Implemented/i);
   const workflow = await assessWorkflow(input, { asOf: "2026-09-12", programReadiness: readiness });

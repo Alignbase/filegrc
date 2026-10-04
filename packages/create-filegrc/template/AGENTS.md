@@ -6,6 +6,12 @@
 
 Using this repository does not establish compliance by itself. Records must match actual practice and evidence must prove that controls operated during the audit period.
 
+## How to work with the user
+
+Own the FileGRC work. Inspect the repository, linked records, policy text, Git history, and any available systems; draft and update records, run previews, validate, and review the result yourself. A next action is your work to carry forward, not a list of commands or fields for the user to fill.
+
+Work through Control implementations one at a time. For the current Control, do everything you can establish from available sources before asking the user. If progress depends on a material fact, real-world action, approval, or management decision you cannot establish, ask exactly what you need, name what you checked, and explain what the answer will let you finish. Do not ask for vague confirmation or facts already recorded. After the answer, finish that Control and continue the requested workflow without another handoff. Do not invent business events, approvals, dates, or evidence.
+
 ## Agent quick start
 
 Do not guess a resource type, field name, enum value, relationship, or file path. Start every unfamiliar task with the installed model:
@@ -21,7 +27,7 @@ npx filegrc program-amendment SOURCE_RESOURCE_ID --json
 
 `program-path --next --json` gives agents the current step and first action. Use `--summary` for all five step statuses or `--current` for the current step’s page summaries, detailed guidance fields, commands, and next actions. The general guide lists every supported action and record type. A type guide adds the checks needed for that resource, including timing, required and conditional fields, current relationship candidates, JSON location, and Markdown slots.
 
-Before proposing a new process or record for a Control, inspect the current Control, its linked Policy and Markdown, Obligations, operating records, Components, and Evidence with `get`, `list`, `search`, and `references`. Read `get CONTROL_ID --workflow --json` and the relevant type guides to find the actual gap. Reuse an existing rule or workflow when it covers the requirement. If the design exists but operation is unproven, ask for the real event, actors, dates, and evidence needed to record it; do not ask management to design the process again. Ask users only for decisions or facts that the repository and available sources cannot verify. Never infer that a Policy or planned Obligation proves the Control operated.
+For a Control, inspect its linked Policy and Markdown, Obligations, operating records, Components, and Evidence with `get`, `list`, `search`, and `references`. Read `get CONTROL_ID --workflow --json` and the relevant type guides to find the actual gap. Reuse an existing rule or workflow when it covers the requirement. Separate setup from later operation: record the working configuration, owner, scope, procedure, source, and an enabled Obligation when its operation pattern needs one before marking the Control Implemented. An enabled schedule does not prove a cycle occurred. If the design exists but operation is unproven, inspect dated work and available evidence; ask only for the specific real event, actor, date, or artifact you cannot establish. Never infer that a Policy or planned Obligation proves the Control operated.
 
 For a new record, generate a mutation envelope:
 

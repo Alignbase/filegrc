@@ -4,11 +4,11 @@ export const RESOURCE_INSTRUCTIONS = {
   program: "Set the Program goal, owners, Systems, Frameworks, criteria decisions, and risk method.",
   person: "Record the person’s actual job title and current status.",
   appointment: "Assign a named authority to one Person with its start date and scope.",
-  team: "Confirm the Team’s members and chair.",
+  team: "Use the current Person and Appointment records to set the Team’s members and chair; ask who holds a role only when those sources cannot establish it.",
   system: "Define the service boundary, exclusions, owners, and information it handles.",
   component: "Record a material service or evidence source and its role in each linked System.",
   vendor: "Record each material external provider and the Components it supplies.",
-  classification: "Confirm the handling categories and apply them to information and evidence.",
+  classification: "Use current Policy content and recorded information needs to propose handling categories, then apply the management decision to information and evidence. Ask about any category those sources do not settle.",
   "information-type": "Name a stable category of information, set its default Classification, and link its uses.",
   framework: "Select the criteria Framework and version used by the Program.",
   requirement: "Review whether this criterion applies to the Program and record the decision and rationale.",
@@ -22,7 +22,7 @@ export const RESOURCE_INSTRUCTIONS = {
   evidence: "Record a real artifact or approved reference, link its source and supported work, then have another person verify it.",
   "risk-assessment": "Assess the in-scope service, record conclusions, and obtain an independent review.",
   risk: "Name the threat and impact, assign an owner, rate the risk, and record its response.",
-  obligation: "Confirm the owner, cadence or trigger, deadline, and proof, then enable the rule when its Control is ready.",
+  obligation: "Read the linked Policy and Control, fill the owner, cadence or trigger, deadline, and proof from those sources, then enable the rule when its Control is ready. Ask only for an unresolved management choice.",
   "retention-schedule-item": "Set the Information Types, scope, cutoff, period, disposition, and sources for one retention rule.",
   "obligation-event": "Record the actual event date and subject, then complete its linked Work Queue actions.",
   "policy-review": "Record the review date, reviewer, decision, and any required follow-up.",
@@ -101,11 +101,11 @@ export const RESOURCE_OUTPUTS = {
 };
 
 export const RESOURCE_PAGE_SUMMARIES = {
-  person: "Confirm who works on the program.",
+  person: "Use current people already recorded; ask for a missing person's identity or role only when needed.",
   appointment: "Assign named authority.",
-  team: "Confirm shared owners and members.",
+  team: "Set shared owners and members from current People and Appointments.",
   program: "Choose the goal, scope, criteria, controls, owners, and risk method.",
-  framework: "Confirm the SOC 2 framework.",
+  framework: "Select the applicable SOC 2 framework and version from the installed catalog.",
   requirement: "Decide which SOC 2 criteria apply.",
   commitment: "Record customer promises that affect scope.",
   "requirement-mapping": "Review how supplemental promises relate to Requirements and Controls.",
@@ -134,8 +134,8 @@ export const PROGRAM_PATH = [
     description: "Ownership, criteria, and service boundary",
     summary: "A reviewed Program scope with owners, criteria, Systems, and material providers.",
     sections: [
-      { id: "ownership", title: "Program Ownership", description: "Confirm who owns the program, plus the normal security reporting channel and its fallback.", steps: ["Confirm the program lead, policy owner, independent reviewer, and oversight team.", "Replace the reporting-channel placeholders with real normal and fallback routes, then commit the proposal."], types: ["person", "appointment", "team", "reporting-route-set"], defaultOpen: true },
-      { id: "criteria", title: "Program and Criteria", description: "Define the Program, confirm its Frameworks, record Program-scoped Requirement applicability, and connect customer commitments that shape the System or Control design.", steps: ["Set the Program goal, owners, risk method, and tentative timing.", "Review each selected criterion for this service and record its applicability decision.", "Replace the starter Commitment prompt with the real promise; add only needed supplemental mappings."], types: ["program", "framework", "requirement", "commitment", "requirement-mapping"], defaultOpen: true },
+      { id: "ownership", title: "Program Ownership", description: "Assign program owners and set the normal security reporting channel and its fallback.", steps: ["Inspect current People and Appointments, then assign the program lead, policy owner, independent reviewer, and oversight team. Ask only for missing assignments.", "Use the actual normal and fallback routes to replace reporting-channel placeholders, then commit the proposal."], types: ["person", "appointment", "team", "reporting-route-set"], defaultOpen: true },
+      { id: "criteria", title: "Program and Criteria", description: "Define the Program, select its Frameworks, record Program-scoped Requirement applicability, and connect customer commitments that shape the System or Control design.", steps: ["Set the Program goal, owners, risk method, and tentative timing from current records; ask for unresolved management choices.", "Compare each selected criterion with the service scope and record its applicability decision.", "Replace the starter Commitment prompt with the actual promise; add only needed supplemental mappings."], types: ["program", "framework", "requirement", "commitment", "requirement-mapping"], defaultOpen: true },
       { id: "boundary", title: "System Boundary", description: "Start with the bounded System. Add Components that materially deliver the service, support Controls, produce authoritative Evidence, or support relevant operations. Keep Vendor relationships and specific Assets separate.", steps: ["Define the service and exclusions in a bounded System selected by the Program.", "Add material Components and Vendors with their actual System relationships.", "Record the Information Types and Classifications the service uses."], types: ["system", "component", "vendor", "classification", "information-type"], defaultOpen: false }
     ],
     resourceTypes: ["person", "appointment", "team", "reporting-route-set", "program", "framework", "requirement", "commitment", "requirement-mapping", "system", "component", "vendor", "classification", "information-type"],
@@ -160,7 +160,7 @@ export const PROGRAM_PATH = [
     description: "Approve governed content and retention decisions",
     summary: "Approved Policies, program Documents, Training content, and retention decisions.",
     sections: [
-      { id: "policy-content", title: "Policies", description: "Approve the program's governing content.", instructions: "Open each Policy, program Document, and Training record. Replace placeholders, confirm the owner and intended values, then have a separate person approve the exact Markdown revision.", output: "Approved content bound to the reviewed revisions.", steps: ["Replace placeholders with the company's real rules, plans, and training material.", "Confirm the owner, separate approver, linked Controls, audience, and intended values.", "Record the independent approval and date against each exact Markdown revision."], types: [], relatedLinks: [{ type: "policy", label: "Policies", href: "#/policies" }], defaultOpen: true },
+      { id: "policy-content", title: "Policies", description: "Approve the program's governing content.", instructions: "Open each Policy, program Document, and Training record. Draft from current approved decisions, replace placeholders, and resolve only material choices with management. A separate person then approves the exact Markdown revision.", output: "Approved content bound to the reviewed revisions.", steps: ["Draft the company's real rules, plans, and training material from current scope and approved decisions.", "Resolve missing owner, separate approver, Control links, audience, or intended values from authoritative records; ask only when a material decision remains.", "Have the independent approver review the exact Markdown revision and record their actual decision and date."], types: [], relatedLinks: [{ type: "policy", label: "Policies", href: "#/policies" }], defaultOpen: true },
       { id: "retention", title: "Data Retention Schedule", description: "Approve the schedule document and its completed rows together.", steps: ["Review the governing schedule and any legal hold or exception rules.", "Complete a row for each distinct information use, cutoff, retention period, and disposition.", "Have a separate reviewer approve the complete document and row set."], types: [], utility: "retention-schedule", defaultOpen: true }
     ],
     resourceTypes: [],
@@ -184,7 +184,7 @@ export const PROGRAM_PATH = [
     description: "Implement and prepare to operate",
     summary: "Implemented Controls with ready evidence sources and enabled work schedules.",
     sections: [
-      { id: "controls", title: "Controls", description: "Put each selected Control into use and record what is actually in place.", steps: ["Open each Control for its specific setup action and current missing checks.", "Configure the activity and record its procedure, Systems, owner, and evidence sources.", "Mark it Implemented with its real start date after its sources and schedules are ready."], types: ["control"], defaultOpen: true },
+      { id: "controls", title: "Controls", description: "Put each selected Control into use and record its working design. Dated operating proof follows when work occurs.", steps: ["Open each Control, linked records, and current missing checks; do the setup that can be established from those sources.", "Configure the activity and record its procedure, Systems, owner, evidence sources, and any work rules its operation pattern requires.", "Mark it Implemented with its real start date when it works. Record later cycles and events separately with dated proof."], types: ["control"], defaultOpen: true },
       { id: "complementary-controls", title: "Complementary Controls", description: "Record customer or provider responsibilities that form part of the implementation boundary, or confirm there are none.", steps: ["Identify any customer or carved-out provider action an in-scope Control depends on.", "Record each dependency, or confirm that the current scope has none."], types: ["complementary-control"], defaultOpen: true },
       { id: "evidence-sources", title: "Evidence Sources", description: "Check that every Control points to an authoritative source that can produce its expected evidence.", steps: ["For each Control family, link an active Component with the required source kind, access owners, and retrieval instructions."], types: [], utility: "evidence-sources", defaultOpen: true },
       { id: "obligations", title: "Obligations", description: "Configure the calendar and event schedules that operate the Controls.", steps: ["Check the owner, trigger or cadence, due window, and required proof for each Obligation.", "Enable the rules that will run the implemented Controls."], types: ["obligation"], defaultOpen: true }
