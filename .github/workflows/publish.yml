@@ -25,6 +25,15 @@ jobs:
       id-token: write
 
     steps:
+      - name: Require the matching tag ref
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          if [ "${GITHUB_REF}" != "refs/tags/${RELEASE_TAG}" ]; then
+            echo "Publish must run from refs/tags/${RELEASE_TAG}."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,7 +43,10 @@ jobs:
       - name: Verify protected release source
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: node scripts/verify-release.mjs
+        run: |
+          git fetch --no-tags origin main
+          git show FETCH_HEAD:scripts/verify-release.mjs > "${RUNNER_TEMP}/verify-release.mjs"
+          node "${RUNNER_TEMP}/verify-release.mjs"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
