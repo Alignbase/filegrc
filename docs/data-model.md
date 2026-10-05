@@ -791,7 +791,7 @@ Timing: Create before relying on a promise, review during audit scoping, and sup
 When reviewing:
 
 - Confirm the statement reflects a real customer promise, service requirement, or approved business objective that applies to the current scope.
-- Confirm which parts of the service the promise or objective affects.
+- Confirm which parts of the service the promise or objective affects. When a linked Policy or Document has independent sections, name the exact governing Markdown heading in sourceSectionHeadings before reviewing downstream mappings.
 - Use "External", "Zero Population", or "Not Applicable" only when it is true for the current scope.
 
 Default sources: `policy-information-security`
@@ -807,6 +807,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `statement` | string | Yes |  |
 | `systemIds` | array of id | No | References: `system` |
 | `sourceResourceIds` | array of id | No | References: `policy`, `document`, `framework`, `requirement` |
+| `sourceSectionHeadings` | object (`string-map`) | No | Reviewed source sections |
 | `requirementIds` | array of id | No | References: `requirement` |
 | `controlIds` | array of id | No | References: `control` |
 | `customerFacing` | boolean | No |  |
@@ -1418,6 +1419,7 @@ When reviewing:
 
 - Confirm the Information Types and operational scope covered by this item.
 - Confirm the cutoff, retention period, and disposition action from management sources.
+- When a linked Policy or Document has independent sections, set sourceSectionHeadings to the exact governing Markdown heading. Keep a whole-source binding when the entire source governs the row.
 - Keep the item planned until the owner completes every organization-specific value and binds the current source revisions.
 
 Default sources: `policy-information-security`, `document-data-retention-schedule`
@@ -1434,6 +1436,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `scopeResourceIds` | array of id | Yes | Operational scope References: `program`, `system`, `component`, `vendor`, `audit`, `source-coverage` |
 | `scheduleDocumentId` | id | Yes | Retention schedule References: `document` |
 | `sourceResourceIds` | array of id | No | Authority and source records References: `policy`, `document`, `framework`, `requirement`, `commitment`, `control` |
+| `sourceSectionHeadings` | object (`string-map`) | No | Reviewed source sections |
 | `cutoff` | object (`retention-cutoff`) | Conditional | Required when `status` is `active`. |
 | `retentionPeriod` | object (`retention-period`) | Conditional | Required when `status` is `active`. |
 | `dispositionAction` | enum | Conditional | Values: `delete`, `destroy`, `erase`, `anonymize`, `transfer`, `retain-permanently` Required when `status` is `active`. |

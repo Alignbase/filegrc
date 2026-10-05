@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { loadModel } from "../model/index.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
+import { contentRevision } from "../src/files.js";
 import { collectionChangesSinceReview } from "../src/collection-changes.js";
 import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { resourceProgramContext } from "../src/program-path.js";
@@ -398,6 +399,21 @@ test("binds a Retention Schedule review to the governed document and row collect
     collectionRevision(loaded, "retention-schedule-item", { programId: "program-example" }),
     initialRevision
   );
+});
+
+test("accepts an unchanged schedule approval written by the v0.16.18 revision calculation", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-prior-schedule-revision-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  // Calculated with v0.16.18 against this fixture, before source decision revisions entered the collection basis.
+  const releasedRevision = "filegrc:collection:v1:sha256:c082d198a85a17d764f58005c9049a98d4f4f0b088404f59b4e71ca1f4b31491";
+  assert.notEqual(collectionRevision(loaded, "retention-schedule-item"), releasedRevision);
+  assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", releasedRevision), true);
+
+  const row = loaded.resources.find(({ id }) => id === "retention-schedule-item-example");
+  row.dispositionInstructions = "Use a revised disposal procedure.";
+  assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", releasedRevision), false);
 });
 
 test("keeps an approved Retention Schedule current through Step 3 activation", async (context) => {
@@ -1033,6 +1049,15 @@ test("keeps completed retention rows non-authoritative until whole-schedule appr
   const rowEntry = loaded.entries.find(({ record }) => record.id === "retention-schedule-item-example");
   const coverageEntry = loaded.entries.find(({ record }) => record.id === "source-coverage-example");
   const documentEntry = loaded.entries.find(({ record }) => record.id === "document-example");
+  const policyEntry = loaded.entries.find(({ record }) => record.id === "policy-example");
+  const policyMarkdown = (retention, changes) => `# Information Security Policy\n\n## Retention rules\n\n${retention}\n\n## Change management\n\n${changes}\n`;
+  const policyContentPath = join(root, "data", "policies", "policy-example.md");
+  const initialPolicyContent = policyMarkdown("Keep covered records for seven years.", "Review production changes before deployment.");
+  await writeFile(policyContentPath, initialPolicyContent, "utf8");
+  await writeFile(policyEntry.path, `${JSON.stringify({
+    ...policyEntry.record,
+    approvedContentRevisions: { "policies/policy-example.md": contentRevision(initialPolicyContent) }
+  }, null, 2)}\n`, "utf8");
   const row = {
     ...rowEntry.record,
     status: "active",
@@ -1043,6 +1068,8 @@ test("keeps completed retention rows non-authoritative until whole-schedule appr
       coverageEntry.record.id
     ])],
     scheduleDocumentId: documentEntry.record.id,
+    sourceResourceIds: [policyEntry.record.id],
+    sourceSectionHeadings: { [policyEntry.record.id]: "Retention rules" },
     cutoff: { basis: "creation" },
     retentionPeriod: { basis: "fixed", amount: 7, unit: "year" },
     dispositionAction: "delete",
@@ -1075,7 +1102,9 @@ test("keeps completed retention rows non-authoritative until whole-schedule appr
   loaded = await loadWorkspace(root);
   row.reviewedSourceRevisions = Object.fromEntries(await resourceReviewRevisions(
     loaded,
-    retentionReviewResourceIds(row, loaded)
+    retentionReviewResourceIds(row, loaded),
+    "legacy",
+    row
   ));
   await writeFile(rowEntry.path, `${JSON.stringify(row, null, 2)}\n`, "utf8");
   await execute("git", ["init", "--initial-branch=main"], { cwd: root });
@@ -1086,7 +1115,7 @@ test("keeps completed retention rows non-authoritative until whole-schedule appr
   const loadedRow = loaded.resources.find(({ id }) => id === rowEntry.record.id);
   assert.deepEqual(
     loadedRow.reviewedSourceRevisions,
-    Object.fromEntries(await resourceReviewRevisions(loaded, retentionReviewResourceIds(loadedRow, loaded)))
+    Object.fromEntries(await resourceReviewRevisions(loaded, retentionReviewResourceIds(loadedRow, loaded), "legacy", loadedRow))
   );
   assert.equal(
     retentionRuleIsCurrent(
@@ -1120,6 +1149,25 @@ test("keeps completed retention rows non-authoritative until whole-schedule appr
     true,
     JSON.stringify(approved.resources.find(({ id }) => id === coverageEntry.record.id))
   );
+  const savePolicy = async (status, retention, changes, message) => {
+    const source = policyMarkdown(retention, changes);
+    await writeFile(policyContentPath, source, "utf8");
+    await writeFile(policyEntry.path, `${JSON.stringify({
+      ...policyEntry.record,
+      status,
+      approvedContentRevisions: status === "in-review"
+        ? undefined : { "policies/policy-example.md": contentRevision(source) }
+    }, null, 2)}\n`, "utf8");
+    await execute("git", ["add", "."], { cwd: root });
+    await execute("git", ["-c", "user.name=FileGRC Test", "-c", "user.email=filegrc@example.test", "commit", "-m", message], { cwd: root });
+    const current = await loadWorkspace(root);
+    return sourceCoverageComplete(current.resources.find(({ id }) => id === coverageEntry.record.id), current);
+  };
+  assert.equal(await savePolicy("in-review", "Keep covered records for seven years.", "Require a rollback plan.", "Propose change review"), true);
+  assert.equal(await savePolicy("approved", "Keep covered records for seven years.", "Require a rollback plan.", "Approve change review"), true);
+  assert.equal(await savePolicy("active", "Keep covered records for seven years.", "Require a rollback plan.", "Activate change review"), true);
+  assert.equal(await savePolicy("in-review", "Keep covered records for eight years.", "Require a rollback plan.", "Propose retention change"), true);
+  assert.equal(await savePolicy("approved", "Keep covered records for eight years.", "Require a rollback plan.", "Approve retention change"), false);
 });
 
 test("assessment rejects schedule documents with missing Control links or unfinished Markdown", async (context) => {

@@ -586,12 +586,14 @@ export async function runCli(argv = process.argv.slice(2)) {
         ? [...new Set([...(record.sourceResourceIds || []), ...(record.targetResourceIds || [])])]
         : null;
     if (!dependencyIds) throw new Error("Review bindings are available for Retention Schedule records and Requirement Mappings.");
-    const revisions = await resourceReviewRevisions(loaded, dependencyIds);
+    const revisions = await resourceReviewRevisions(loaded, dependencyIds, "legacy", record);
+    const missingSectionIds = dependencyIds.filter((id) => Object.hasOwn(record.sourceSectionHeadings || {}, id) && !revisions.has(id));
     const result = {
       resource: { type: record.type, id: record.id, title: record.title },
       dependencyIds,
       reviewedSourceRevisions: Object.fromEntries(revisions),
-      missingResourceIds: dependencyIds.filter((id) => !revisions.has(id))
+      missingResourceIds: dependencyIds.filter((id) => !revisions.has(id) && !missingSectionIds.includes(id)),
+      ...(missingSectionIds.length ? { missingSectionIds } : {})
     };
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {

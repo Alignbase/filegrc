@@ -128,7 +128,7 @@ export async function planProgramAmendment(input, options = {}) {
   const retention = related.filter((record) => (
     record.type === "retention-schedule-item"
     && record.status === "active"
-    && reviewBindingsDiffer(retentionReviewResourceIds(record, loaded), record.reviewedSourceRevisions, currentReviewRevisions, loaded)
+    && reviewBindingsDiffer(retentionReviewResourceIds(record, loaded), record.reviewedSourceRevisions, currentReviewRevisions, loaded, record)
   ));
   if (retention.length) {
     missing.push({
@@ -161,10 +161,10 @@ export async function planProgramAmendment(input, options = {}) {
   };
 }
 
-function reviewBindingsDiffer(expectedIds, reviewed = {}, current, loaded) {
+function reviewBindingsDiffer(expectedIds, reviewed = {}, current, loaded, reviewer = null) {
   const expected = new Set(expectedIds);
   if (Object.keys(reviewed).length !== expected.size) return true;
-  return [...expected].some((id) => !resourceReviewRevisionMatches(loaded, current, id, reviewed[id]));
+  return [...expected].some((id) => !resourceReviewRevisionMatches(loaded, current, id, reviewed[id], reviewer));
 }
 
 export async function assessProgramAmendmentReadiness(loaded) {

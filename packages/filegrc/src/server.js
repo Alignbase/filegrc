@@ -627,9 +627,23 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           return json(response, 400, { error: "Pass one or more safe resource IDs." });
         }
         const loaded = await loadWorkspace(input);
-        const revisions = await resourceReviewRevisions(loaded, ids);
+        const sourceSectionHeadings = Object.create(null);
+        for (const value of url.searchParams.getAll("section")) {
+          const separator = value.indexOf(":");
+          const id = value.slice(0, separator);
+          const heading = value.slice(separator + 1).trim();
+          if (separator < 1 || !ids.includes(id) || !heading || heading.length > 200) {
+            return json(response, 400, { error: "Each reviewed section must name a selected source and a Markdown heading." });
+          }
+          sourceSectionHeadings[id] = heading;
+        }
+        const revisions = await resourceReviewRevisions(loaded, ids, "legacy", { sourceSectionHeadings });
         const missing = ids.filter((id) => !revisions.has(id));
-        if (missing.length) return json(response, 404, { error: `Resources not found: ${missing.join(", ")}.` });
+        if (missing.length) return json(response, 404, {
+          error: missing.some((id) => sourceSectionHeadings[id])
+            ? `A selected source heading is missing or ambiguous: ${missing.filter((id) => sourceSectionHeadings[id]).join(", ")}.`
+            : `Resources not found: ${missing.join(", ")}.`
+        });
         return json(response, 200, { revisions: Object.fromEntries(revisions) });
       }
       if (request.method === "PUT" && url.pathname === "/api/content") {
