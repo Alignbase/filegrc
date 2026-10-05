@@ -170,7 +170,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
     const decisionHeading = heading || retentionPolicyHeading(loaded, entry, reviewer);
     const parts = [reviewSource(loaded, entry, scopeHashInput, false, decisionHeading, reviewer)];
     let matchedSection = !decisionHeading;
-    for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
+    for (const markdown of reviewMarkdownEntries(loaded, entry, false, reviewer)) {
       try {
         const source = entry.reviewCommit
           ? entry.reviewFiles?.get(`data/${markdown.path}`)
@@ -218,7 +218,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     const decisionHeading = legacySource ? heading : heading || retentionPolicyHeading(loaded, entry, reviewer);
     const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, decisionHeading, reviewer)];
     let matchedSection = !decisionHeading;
-    for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource)) {
+    for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource, reviewer)) {
       try {
         const source = (historicalCommit || entry.reviewCommit)
           ? loaded.historicalFiles?.get(`data/${markdown.path}`)
@@ -370,11 +370,16 @@ function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = f
     )), scopeHashInput);
 }
 
-function reviewMarkdownEntries(loaded, entry, legacySource) {
+function reviewMarkdownEntries(loaded, entry, legacySource, reviewer = null) {
   // Control Markdown records the implementation procedure. Retention and
   // mapping decisions depend on the structured Control design instead.
   if (!legacySource && modelSupports(loaded.model, "retention-schedule-approval")
     && entry.record.type === "control") return [];
+  // A Component's Markdown explains how to retrieve evidence. Retention
+  // decisions depend on its information uses and scope, not those steps.
+  // Keep the Markdown in legacy hashes so committed approvals can be found.
+  if (!legacySource && reviewer?.type === "retention-schedule-item"
+    && entry.record.type === "component") return [];
   return markdownEntries(loaded.model, entry.record);
 }
 

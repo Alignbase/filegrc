@@ -1,6 +1,6 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { modelSupports } from "../model/index.js";
 import { buildActionContext } from "./action-context.js";
 import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
@@ -14,7 +14,7 @@ import {
   deleteResource,
   updateResource
 } from "./files.js";
-import { getGitSummary, getWorkspaceHistories } from "./git.js";
+import { getGitSummary, getWorkspaceHistories, runGitCommandSync } from "./git.js";
 import {
   completeObligationAction,
   completeObligationEvent,
@@ -260,8 +260,20 @@ function contextualAction(item, loaded) {
 
 export async function previewWorkflowMutation(input, mutation) {
   const loaded = await loadWorkspace(input);
-  const previewRoot = await mkdtemp(join(tmpdir(), "filegrc-workflow-preview-"));
+  const previewCheckout = await mkdtemp(join(tmpdir(), "filegrc-workflow-preview-"));
   try {
+    const repository = getGitSummary(loaded.root);
+    if (repository.available) {
+      // Legacy review bindings need committed source versions. A local clone
+      // gives preview the same history as update without touching the source.
+      runGitCommandSync(loaded.root, ["clone", "--shared", "--no-checkout", "--quiet", repository.root, previewCheckout], {
+        timeoutMs: 30_000
+      });
+    }
+    const previewRoot = repository.available
+      ? join(previewCheckout, relative(repository.root, loaded.root))
+      : previewCheckout;
+    await mkdir(previewRoot, { recursive: true });
     await cp(join(loaded.root, "data"), join(previewRoot, "data"), {
       recursive: true,
       errorOnExist: true,
@@ -307,7 +319,7 @@ export async function previewWorkflowMutation(input, mutation) {
       workflow: after
     };
   } finally {
-    await rm(previewRoot, { recursive: true, force: true });
+    await rm(previewCheckout, { recursive: true, force: true });
   }
 }
 
