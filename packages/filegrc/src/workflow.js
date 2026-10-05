@@ -1,6 +1,6 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { modelSupports } from "../model/index.js";
 import { buildActionContext } from "./action-context.js";
 import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
@@ -14,7 +14,7 @@ import {
   deleteResource,
   updateResource
 } from "./files.js";
-import { getGitSummary, getWorkspaceHistories } from "./git.js";
+import { getGitSummary, getWorkspaceHistories, runGitCommandSync } from "./git.js";
 import {
   completeObligationAction,
   completeObligationEvent,
@@ -260,13 +260,39 @@ function contextualAction(item, loaded) {
 
 export async function previewWorkflowMutation(input, mutation) {
   const loaded = await loadWorkspace(input);
-  const previewRoot = await mkdtemp(join(tmpdir(), "filegrc-workflow-preview-"));
+  const previewCheckout = await mkdtemp(join(tmpdir(), "filegrc-workflow-preview-"));
   try {
+    const repository = getGitSummary(loaded.root);
+    if (repository.available) {
+      // Legacy review bindings need committed source versions. A local clone
+      // gives preview the same history as update without touching the source.
+      runGitCommandSync(loaded.root, ["clone", "--shared", "--no-checkout", "--quiet", repository.root, previewCheckout], {
+        timeoutMs: 30_000
+      });
+    }
+    const previewRoot = repository.available
+      ? join(previewCheckout, relative(repository.root, loaded.root))
+      : previewCheckout;
+    await mkdir(previewRoot, { recursive: true });
+    if (repository.commit) {
+      // Restore the index and tracked workspace files. A no-checkout clone
+      // otherwise reports every source file as deleted and copied data as new.
+      runGitCommandSync(loaded.root, ["-C", previewCheckout, "reset", "--mixed", "HEAD"]);
+      if (runGitCommandSync(loaded.root, ["-C", previewRoot, "ls-files", "--", "."])) {
+        runGitCommandSync(loaded.root, ["-C", previewRoot, "restore", "--worktree", "--", "."]);
+      }
+    }
+    await rm(join(previewRoot, "data"), { recursive: true, force: true });
     await cp(join(loaded.root, "data"), join(previewRoot, "data"), {
       recursive: true,
       errorOnExist: true,
       force: false
     });
+    if (repository.available && !repository.clean && getGitSummary(previewRoot).clean) {
+      const marker = join(previewRoot, "preview-source-dirty.marker");
+      await writeFile(marker, "The source workspace has uncommitted files.\n");
+      runGitCommandSync(loaded.root, ["-C", previewRoot, "add", "-N", "-f", "--", "preview-source-dirty.marker"]);
+    }
     const before = await assessWorkflow(loaded.root, mutation?.assessment || {});
     const record = mutation?.record;
     const existing = record?.id
@@ -307,7 +333,7 @@ export async function previewWorkflowMutation(input, mutation) {
       workflow: after
     };
   } finally {
-    await rm(previewRoot, { recursive: true, force: true });
+    await rm(previewCheckout, { recursive: true, force: true });
   }
 }
 

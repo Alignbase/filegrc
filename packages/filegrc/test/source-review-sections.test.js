@@ -6,17 +6,95 @@ import test from "node:test";
 import { contentRevision } from "../src/files.js";
 import { collectionRevision, collectionRevisionMatches } from "../src/collection-revision.js";
 import { runCli } from "../src/cli.js";
-import { assessRetentionReadiness, resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent, reviewedMarkdownSection } from "../src/retention.js";
+import { assessRetentionReadiness, resourceReviewRevisions, resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent, reviewedMarkdownSection } from "../src/retention.js";
 import { retentionScheduleApprovalIssues } from "../src/retention-schedule-approval.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
 import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
+import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { captureCli, commitWorkspaceFiles, initializeGitWorkspace, writeJson } from "./helpers.js";
 
 test("source section selection ignores fenced examples", () => {
   const source = "# Policy\n\n```md\n## Retention\nExample only.\n```\n\n## Retention\nKeep records for one year.\n";
   assert.equal(reviewedMarkdownSection(source, "Retention"), "# Policy\n\n## Retention\nKeep records for one year.");
   assert.equal(reviewedMarkdownSection("# Policy\n\n~~~md\n## Retention\nExample only.\n~~~\n", "Retention"), null);
+});
+
+test("legacy retention approvals survive Component evidence instructions in preview and update", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-component-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const data = join(root, "data");
+  let loaded = await loadWorkspace(root);
+  const component = structuredClone(loaded.resources.find(({ type }) => type === "component"));
+  const componentPath = join(data, "components", `${component.id}.json`);
+  const componentMarkdown = join(data, "components", `${component.id}.md`);
+  component.informationUses = [{ informationTypeId: "information-type-example", processingOperations: ["process"] }];
+  await writeJson(componentPath, component);
+  const document = structuredClone(loaded.resources.find(({ type }) => type === "document"));
+  document.documentKind = "schedule";
+  await writeJson(join(data, "documents", `${document.id}.json`), document);
+  const row = (id, period) => ({
+    id, type: "retention-schedule-item", title: id, status: "active", description: "Retain delivery records.",
+    informationTypeIds: ["information-type-example"], scopeResourceIds: [component.id],
+    scheduleDocumentId: document.id, sourceResourceIds: [],
+    cutoff: { basis: "event", event: "Record closes" },
+    retentionPeriod: { basis: "fixed", amount: period, unit: "year" },
+    dispositionAction: "delete", dispositionInstructions: "Delete approved copies.",
+    ownerIds: ["person-example"], reviewedSourceRevisions: {}
+  });
+  const rows = [row("retention-software-history", 3), row("retention-deployment-history", 1)];
+  loaded = await loadWorkspace(root);
+  for (const [index, item] of rows.entries()) {
+    const revisions = await resourceReviewRevisions(loaded, retentionReviewResourceIds(item, loaded), "legacy", item);
+    const oldComponentRevision = resourceReviewRevisionsSync(loaded, [component.id], "legacy", true).get(component.id);
+    item.reviewedSourceRevisions = Object.fromEntries(revisions);
+    item.reviewedSourceRevisions[component.id] = index === 0
+      ? oldComponentRevision.slice(-64) : oldComponentRevision;
+    await writeJson(join(data, "retention-schedule-items", `${item.id}.json`), item);
+  }
+  await initializeGitWorkspace(root);
+  component.evidenceSourceKinds = ["workforce", "production-change"];
+  await writeJson(componentPath, component);
+  await commitWorkspaceFiles(root, "Catalog evidence source");
+
+  const currentRows = async () => {
+    const current = await loadWorkspace(root);
+    const revisions = await resourceReviewRevisions(current, rows.flatMap((item) => retentionReviewResourceIds(item, current)));
+    const byId = new Map(current.resources.map((record) => [record.id, record]));
+    return rows.map((item) => retentionRuleIsCurrent(byId.get(item.id), revisions, byId, current));
+  };
+  assert.deepEqual(await currentRows(), [true, true]);
+  const revisedMarkdown = `${await readFile(componentMarkdown, "utf8")}\n## Production change evidence retrieval\n\nExport the deployment run list for the review period.\n`;
+  const exported = await captureCli(runCli, ["get", component.id, "--mutation", "--root", root, "--json"]);
+  const mutation = { ...exported.result, operation: "update", content: { record: revisedMarkdown } };
+  const mutationPath = join(root, "component-mutation.json");
+  await writeJson(mutationPath, mutation);
+  const { result: preview } = await captureCli(runCli, ["preview-mutation", mutationPath, "--root", root, "--json"]);
+  assert.equal(preview.operation, "update");
+  assert.match(preview.workflow.input.gitRevision, /^[a-f0-9]{40}$/);
+  for (const item of rows) {
+    assert.equal(preview.workflow.findings.find(({ code }) => (
+      code === `program.policies.retention-rule-${item.id}`
+    ))?.state, "complete");
+  }
+  assert.deepEqual(await currentRows(), [true, true]);
+  await captureCli(runCli, ["update", "component", component.id, mutationPath, "--root", root, "--json"]);
+  assert.deepEqual(await currentRows(), [true, true]);
+
+  loaded = await loadWorkspace(root);
+  const approvedScheduleRevision = collectionRevision(loaded, "retention-schedule-item");
+  component.informationUses = [];
+  await writeJson(componentPath, component);
+  assert.deepEqual(await currentRows(), [false, false]);
+  const changedScope = await validateWorkspace(root);
+  assert.equal(changedScope.diagnostics.filter(({ code, path }) => (
+    code === "stale-retention-review" && rows.some(({ id }) => path.endsWith(`${id}.json`))
+  )).length, 2);
+  await writeJson(componentPath, { ...component, informationUses: [{ informationTypeId: "information-type-example", processingOperations: ["process"] }] });
+  rows[0].retentionPeriod.amount = 4;
+  await writeJson(join(data, "retention-schedule-items", `${rows[0].id}.json`), rows[0]);
+  assert.equal(collectionRevisionMatches(await loadWorkspace(root), "retention-schedule-item", approvedScheduleRevision), false);
 });
 
 test("twenty retention rows follow their approved Policy section through proposal, approval, and activation", async (context) => {

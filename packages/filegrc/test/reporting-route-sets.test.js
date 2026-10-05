@@ -15,6 +15,7 @@ import {
   effectiveReportingRouteRequirements,
   loadWorkspace,
   prepareEvidencePacket,
+  previewWorkflowMutation,
   proposeReportingRouteSet,
   reportingRouteLanesIndependent,
   reportingRouteBindingExpectation,
@@ -1223,7 +1224,7 @@ test("binds delivery acknowledgements and packets to the governing route revisio
   await git(root, "commit", "--allow-empty", "-m", "Create unrelated side-branch proof");
   const sideBranchCommit = (await git(root, "rev-parse", "HEAD")).trim();
   await git(root, "switch", "main");
-  const completedAttestation = await createResource(root, {
+  const attestation = {
     id: "attestation-route-delivery",
     type: "attestation",
     title: "Reporting route delivery acknowledgement",
@@ -1236,7 +1237,11 @@ test("binds delivery acknowledgements and packets to the governing route revisio
     completedOn: "2021-09-01",
     attestationMethod: "external-record",
     evidenceIds: ["evidence-example"]
-  });
+  };
+  const preview = await previewWorkflowMutation(root, { operation: "create", record: attestation });
+  assert.equal(preview.result.record.reportingRouteSetId, route.id);
+  assert.match(preview.result.record.reportingRouteSetCommit, /^[a-f0-9]{40}$/);
+  const completedAttestation = await createResource(root, attestation);
   assert.equal(completedAttestation.record.reportingRouteSetId, route.id);
   assert.match(completedAttestation.record.reportingRouteSetCommit, /^[a-f0-9]{40}$/);
   await git(root, "add", ".");
