@@ -5,8 +5,8 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      version:
-        description: Release version, with or without the v prefix
+      tag:
+        description: Existing release tag (vX.Y.Z)
         required: true
         type: string
 
@@ -27,6 +27,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify protected release source
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: node scripts/verify-release.mjs
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -40,7 +48,7 @@ jobs:
 
       - name: Verify release versions
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           set -euo pipefail
 
