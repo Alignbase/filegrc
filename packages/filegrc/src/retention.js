@@ -167,8 +167,9 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
     const entry = effectiveReviewEntry(loaded, entries.get(id));
     if (!entry || reviewing.has(key)) return null;
     reviewing.add(key);
-    const parts = [reviewSource(loaded, entry, scopeHashInput, false, heading, reviewer)];
-    let matchedSection = !heading;
+    const decisionHeading = heading || retentionPolicyHeading(loaded, entry, reviewer);
+    const parts = [reviewSource(loaded, entry, scopeHashInput, false, decisionHeading, reviewer)];
+    let matchedSection = !decisionHeading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
       try {
         const source = entry.reviewCommit
@@ -176,7 +177,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
             ?? getFileAtRevision(loaded.root, entry.reviewCommit, `data/${markdown.path}`)
           : await readFile(resolveDataPath(loaded.root, markdown.path), "utf8");
         if (source !== null) {
-          const section = reviewedMarkdownSection(source, heading);
+          const section = reviewedMarkdownSection(source, decisionHeading);
           if (section !== null) { parts.push(section); matchedSection = true; }
         }
       } catch (error) {
@@ -214,8 +215,9 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     const entry = historicalCommit ? entries.get(id) : effectiveReviewEntry(loaded, entries.get(id));
     if (!entry || reviewing.has(key)) return null;
     reviewing.add(key);
-    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, heading, reviewer)];
-    let matchedSection = !heading;
+    const decisionHeading = legacySource ? heading : heading || retentionPolicyHeading(loaded, entry, reviewer);
+    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, decisionHeading, reviewer)];
+    let matchedSection = !decisionHeading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource)) {
       try {
         const source = (historicalCommit || entry.reviewCommit)
@@ -224,7 +226,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
             ?? getFileAtRevision(loaded.root, historicalCommit || entry.reviewCommit, `data/${markdown.path}`)
           : readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8");
         if (source !== null) {
-          const section = legacySource ? source : reviewedMarkdownSection(source, heading);
+          const section = legacySource ? source : reviewedMarkdownSection(source, decisionHeading);
           if (section !== null) { parts.push(section); matchedSection = true; }
         }
       } catch (error) {
@@ -460,6 +462,32 @@ function sourceHeading(record, sourceId) {
     ? headings[sourceId] : null;
 }
 
+function retentionPolicyHeading(loaded, entry, reviewer) {
+  if (reviewer?.type !== "retention-schedule-item" || entry.record.type !== "policy") return null;
+  // Older rows often bind a whole Policy. A single retention section gives
+  // that decision a narrower basis while an explicit heading still wins.
+  const headings = new Set();
+  for (const markdown of markdownEntries(loaded.model, entry.record)) {
+    let source;
+    try {
+      source = loaded.historicalFiles?.get(`data/${markdown.path}`)
+        ?? (entry.reviewCommit
+          ? entry.reviewFiles?.get(`data/${markdown.path}`)
+            ?? getFileAtRevision(loaded.root, entry.reviewCommit, `data/${markdown.path}`)
+          : readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8"));
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    for (const line of (source || "").split("\n")) {
+      const heading = /^#{2,6}\s+(.+?)\s*#*\s*$/.exec(line)?.[1];
+      if (heading && /\b(retention|disposal|deletion|destruction|archiving)\b/i.test(heading)
+        && reviewedMarkdownSection(source, heading) !== null) headings.add(heading);
+    }
+  }
+  return headings.size === 1 ? [...headings][0] : null;
+}
+
 const reviewDecisionFields = {
   control: ["statement", "requirementIds", "code", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"],
   commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "sourceSectionHeadings", "requirementIds", "controlIds", "customerFacing", "effectiveOn", "reportingRouteRequirements"],
@@ -489,6 +517,7 @@ function substantiveReviewSource(record, currentModel, reviewer = null) {
     }
     if (record.type === "component" && reviewer?.type === "retention-schedule-item") {
       decision.systemUses = retentionSystemUses(decision.systemUses);
+      delete decision.evidenceSourceKinds;
     }
     if (["control", "commitment", "complementary-control"].includes(record.type)) {
       decision.nonApplicableDecision = ["not-applicable", "externally-managed", "zero-population"]
