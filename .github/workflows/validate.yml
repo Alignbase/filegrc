@@ -39,3 +39,49 @@ jobs:
 
       - name: Require generated files to be current
         run: git diff --exit-code
+
+      - name: Check package contents
+        run: |
+          npm pack --dry-run --workspace filegrc
+          npm pack --dry-run --workspace create-filegrc
+
+  compatibility:
+    name: compatibility-${{ matrix.os }}-node-${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: '20'
+          - os: ubuntu-latest
+            node: '22'
+          - os: macos-latest
+            node: '24'
+          - os: windows-latest
+            node: '24'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Run compatibility tests
+        if: runner.os != 'Windows'
+        run: npm run validate:fast
+        env:
+          CI: true
+
+      - name: Run Windows smoke tests
+        if: runner.os == 'Windows'
+        run: |
+          node --test packages/filegrc/test/id.test.js packages/filegrc/test/time.test.js scripts/verify-release.test.mjs scripts/alert-failed-jobs.test.mjs
+          node packages/filegrc/bin/filegrc.js --help
+          node packages/create-filegrc/bin/create-filegrc.js --help

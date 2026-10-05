@@ -1,0 +1,32 @@
+name: Alert failed jobs
+
+on:
+  workflow_run:
+    workflows: [Validate, Publish to npm]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed Validate or Publish run ID to replay
+        required: true
+        type: number
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Send failed jobs to Slack
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: node scripts/alert-failed-jobs.mjs

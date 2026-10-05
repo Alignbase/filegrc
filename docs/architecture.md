@@ -707,6 +707,8 @@ Models v1 through v10 are published and frozen. Model v11 is current. It removes
 
 Package versions stay unchanged during normal development and move together when both published packages change. Before 1.0, a release with any breaking published change increments the minor version. A release containing only backward-compatible published changes increments the patch version. A migration path helps users adopt a breaking data-model release, but the release still receives a minor version increment. Publish `filegrc` before `create-filegrc` so the generator can resolve its matching engine release.
 
+Repository protection requires a pull request and the GitHub Actions `clean-install` check on current `main`. It requires no human approval because the sole maintainer cannot approve their own PR. Agent review stays in the PR conversation. PR validation also checks package contents and runs a short compatibility matrix on Node 20, 22, and 24 across Linux and macOS, plus Windows CLI and domain smoke tests. Release tags matching `v*` cannot be updated or deleted. Both release publication and manual Publish dispatch require an existing `vX.Y.Z` tag whose commit is on `main` and whose version matches all package manifests. Manual dispatch must target that tag as its Git ref, for example `gh workflow run publish.yml --ref vX.Y.Z -f tag=vX.Y.Z`. Publish keeps npm OIDC trusted publishing. A separate workflow reports failed Validate and Publish job names and run links to Slack through the `SLACK_WEBHOOK_URL` repository secret; its manual run-ID input can replay a failed run to test alerts without publishing.
+
 ## Delivery state
 
 Implemented:
