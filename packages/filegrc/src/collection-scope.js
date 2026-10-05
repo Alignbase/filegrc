@@ -1,6 +1,6 @@
 import { modelSupports } from "../model/index.js";
 import { programComponents, selectedRequirementIds } from "./program.js";
-import { resourceReviewRevisionsSync, retentionReviewResourceIds, retentionUses } from "./retention.js";
+import { resourceReviewRevisionsSync, retentionReviewResourceIds, retentionSystemUses, retentionUses } from "./retention.js";
 import { documentIsAuditSpecific } from "./program-lifecycle.js";
 
 export function scopedCollectionRecords(loaded, resourceType, program) {
@@ -625,6 +625,10 @@ function dependencyRevisionValue(resourceType, record, legacy, historicalReviewM
   const value = Object.fromEntries(fields
     .filter((field) => record[field] !== undefined)
     .map((field) => [field, record[field]]));
+  if (resourceType === "retention-schedule-item" && currentModel && !historicalReviewMetadata
+    && !legacyRetentionSourceBasis && record.type === "component") {
+    value.systemUses = retentionSystemUses(value.systemUses);
+  }
   if (controlDecision) value.unavailable = ["not-applicable", "retired", "superseded"].includes(record.status);
   return value;
 }
