@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { modelSupports } from "../model/index.js";
@@ -274,11 +274,25 @@ export async function previewWorkflowMutation(input, mutation) {
       ? join(previewCheckout, relative(repository.root, loaded.root))
       : previewCheckout;
     await mkdir(previewRoot, { recursive: true });
+    if (repository.commit) {
+      // Restore the index and tracked workspace files. A no-checkout clone
+      // otherwise reports every source file as deleted and copied data as new.
+      runGitCommandSync(loaded.root, ["-C", previewCheckout, "reset", "--mixed", "HEAD"]);
+      if (runGitCommandSync(loaded.root, ["-C", previewRoot, "ls-files", "--", "."])) {
+        runGitCommandSync(loaded.root, ["-C", previewRoot, "restore", "--worktree", "--", "."]);
+      }
+    }
+    await rm(join(previewRoot, "data"), { recursive: true, force: true });
     await cp(join(loaded.root, "data"), join(previewRoot, "data"), {
       recursive: true,
       errorOnExist: true,
       force: false
     });
+    if (repository.available && !repository.clean && getGitSummary(previewRoot).clean) {
+      const marker = join(previewRoot, "preview-source-dirty.marker");
+      await writeFile(marker, "The source workspace has uncommitted files.\n");
+      runGitCommandSync(loaded.root, ["-C", previewRoot, "add", "-N", "-f", "--", "preview-source-dirty.marker"]);
+    }
     const before = await assessWorkflow(loaded.root, mutation?.assessment || {});
     const record = mutation?.record;
     const existing = record?.id
