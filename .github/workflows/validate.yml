@@ -74,6 +74,14 @@ jobs:
         run: npm ci
 
       - name: Run compatibility tests
+        if: runner.os != 'Windows'
         run: npm run validate:fast
         env:
           CI: true
+
+      - name: Run Windows smoke tests
+        if: runner.os == 'Windows'
+        run: |
+          node --test packages/filegrc/test/id.test.js packages/filegrc/test/time.test.js scripts/verify-release.test.mjs scripts/alert-failed-jobs.test.mjs
+          node packages/filegrc/bin/filegrc.js --help
+          node packages/create-filegrc/bin/create-filegrc.js --help
