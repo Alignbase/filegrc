@@ -1144,7 +1144,38 @@ test("a retention row bound to a policy section survives unrelated wording edits
   assert.notEqual(collectionRevision(changed, "retention-schedule-item"), schedule);
 });
 
-test("an approved component source binding survives an added evidence role", async (context) => {
+test("a legacy whole-policy retention binding follows the retention section", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-policy-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const rowEntry = before.entries.find(({ record }) => record.type === "retention-schedule-item");
+  const policy = before.resources.find(({ type }) => type === "policy");
+  const policyPath = join(root, "data", "policies", "policy-example.md");
+  await writeFile(policyPath, "# Security Policy\n\n## Retention\nKeep records for one year.\n\n## Network\nReview network rules.\n");
+  rowEntry.record.sourceResourceIds = [policy.id];
+  await writeFile(rowEntry.path, `${JSON.stringify(rowEntry.record, null, 2)}\n`);
+  const reviewed = await loadWorkspace(root);
+  const oldBinding = resourceReviewRevisionsSync(reviewed, [policy.id]).get(policy.id);
+  const oldSchedule = collectionRevision(reviewed, "retention-schedule-item", { legacyRetentionSourceBasis: true });
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  execFileSync("git", ["add", "data"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "Review retention authority"], { cwd: root });
+
+  await writeFile(policyPath, "# Security Policy\n\n## Retention\nKeep records for one year.\n\n## Network\nReview network access rules.\n");
+  let current = await loadWorkspace(root);
+  assert.equal(resourceReviewRevisionMatches(current, resourceReviewRevisionsSync(current, [policy.id]), policy.id, oldBinding, rowEntry.record), true);
+  assert.equal(collectionRevisionMatches(current, "retention-schedule-item", oldSchedule), true);
+
+  await writeFile(policyPath, "# Security Policy\n\n## Retention\nKeep records for two years.\n\n## Network\nReview network access rules.\n");
+  current = await loadWorkspace(root);
+  assert.equal(resourceReviewRevisionMatches(current, resourceReviewRevisionsSync(current, [policy.id]), policy.id, oldBinding, rowEntry.record), false);
+  assert.equal(collectionRevisionMatches(current, "retention-schedule-item", oldSchedule), false);
+});
+
+test("an approved component source binding follows retention use, not evidence access", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-retention-role-history-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
@@ -1163,12 +1194,24 @@ test("an approved component source binding survives an added evidence role", asy
   execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
   execFileSync("git", ["add", "data"], { cwd: root });
   execFileSync("git", ["commit", "-m", "Approve component source"], { cwd: root });
-  componentEntry.record.systemUses[0].roles.push("evidence-source");
+  componentEntry.record.evidenceOwnerIds = ["person-example"];
   await writeFile(componentEntry.path, `${JSON.stringify(componentEntry.record, null, 2)}\n`);
-  const current = await loadWorkspace(root);
-  const revisions = resourceReviewRevisionsSync(current, [componentEntry.record.id]);
+  let current = await loadWorkspace(root);
+  let revisions = resourceReviewRevisionsSync(current, [componentEntry.record.id]);
+  assert.equal(resourceReviewRevisionMatches(current, revisions, componentEntry.record.id, original, rowEntry.record), true);
+  componentEntry.record.systemUses[0].roles.push("evidence-source");
+  componentEntry.record.evidenceSourceKinds = ["source-code-management"];
+  await writeFile(componentEntry.path, `${JSON.stringify(componentEntry.record, null, 2)}\n`);
+  current = await loadWorkspace(root);
+  revisions = resourceReviewRevisionsSync(current, [componentEntry.record.id]);
   assert.equal(resourceReviewRevisionMatches(current, revisions, componentEntry.record.id, original, rowEntry.record), true);
   assert.equal(collectionRevisionMatches(current, "retention-schedule-item", schedule), true);
+  componentEntry.record.informationUses = [{ informationTypeId: before.resources.find(({ type }) => type === "information-type").id, processingOperations: ["store"] }];
+  await writeFile(componentEntry.path, `${JSON.stringify(componentEntry.record, null, 2)}\n`);
+  current = await loadWorkspace(root);
+  revisions = resourceReviewRevisionsSync(current, [componentEntry.record.id]);
+  assert.equal(resourceReviewRevisionMatches(current, revisions, componentEntry.record.id, original, rowEntry.record), false);
+  assert.equal(collectionRevisionMatches(current, "retention-schedule-item", schedule), false);
 });
 
 test("Program requirement review metadata does not cascade into source or collection revisions", async (context) => {
