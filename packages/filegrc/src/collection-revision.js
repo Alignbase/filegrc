@@ -30,6 +30,10 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
   // Accept both the pre-0.16 scope: input and the digest-only input used by
   // 0.16.0, as well as the older collection basis from 0.9.1.
   if (revisionsMatch("collection", storedRevision, currentRevision)) return true;
+  if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
+    && revisionsMatch("collection", storedRevision, calculateCollectionRevision(
+      loaded, resourceType, { ...options, legacyRetentionSourceBasis: true }, false
+    ))) return true;
   const allowOlderBasis = resourceType !== "retention-schedule-item"
     || !modelSupports(loaded.model, "retention-schedule-approval");
   for (const olderBasis of [false, true]) {
@@ -152,13 +156,17 @@ function historicallyEquivalentCollection(loaded, resourceType, stored, options,
     // Require the complete reviewed basis to be unchanged under the current
     // semantic calculation before accepting an older byte-sensitive digest.
     if (!revisionsMatch("collection", current, collectionRevision(snapshot, resourceType, historicalOptions))) continue;
-    for (const legacy of [false, true]) {
-      for (const scopeHashInput of ["legacy", "digest"]) {
-        for (const scopeFactsInput of ["legacy", "source"]) {
-          if (revisionsMatch("collection", stored, calculateCollectionRevision(
-            snapshot, resourceType, { ...historicalOptions, historicalReviewMetadata: true },
-            legacy, scopeHashInput, scopeFactsInput
-          ))) return true;
+    for (const legacyRetentionSourceBasis of resourceType === "retention-schedule-item" ? [false, true] : [false]) {
+      for (const historicalReviewMetadata of legacyRetentionSourceBasis ? [false] : [true]) {
+        for (const legacy of [false, true]) {
+          for (const scopeHashInput of ["legacy", "digest"]) {
+            for (const scopeFactsInput of ["legacy", "source"]) {
+              if (revisionsMatch("collection", stored, calculateCollectionRevision(
+                snapshot, resourceType, { ...historicalOptions, historicalReviewMetadata, legacyRetentionSourceBasis },
+                legacy, scopeHashInput, scopeFactsInput
+              ))) return true;
+            }
+          }
         }
       }
     }
@@ -175,7 +183,12 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
     : Object.hasOwn(options, "program")
     ? options.program
     : resolveProgram(loaded, options.programId);
-  const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program, { legacy, historicalReviewMetadata: options.historicalReviewMetadata })
+  const inputs = new Map(collectionRevisionInputs(loaded, resourceType, program, {
+    legacy,
+    historicalReviewMetadata: options.historicalReviewMetadata,
+    historicalCommit: options.historicalCommit,
+    legacyRetentionSourceBasis: options.legacyRetentionSourceBasis
+  })
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);
   if (authoritativeSource) {

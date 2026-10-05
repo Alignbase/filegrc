@@ -1,6 +1,6 @@
 import { modelSupports } from "../model/index.js";
 import { programComponents, selectedRequirementIds } from "./program.js";
-import { retentionReviewResourceIds, retentionUses } from "./retention.js";
+import { resourceReviewRevisionsSync, retentionReviewResourceIds, retentionUses } from "./retention.js";
 import { documentIsAuditSpecific } from "./program-lifecycle.js";
 
 export function scopedCollectionRecords(loaded, resourceType, program) {
@@ -210,6 +210,8 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const records = new Map(reviewed.map((record) => [record.id, record]));
   const reviewedIds = new Set(records.keys());
+  const scheduleDocumentIds = new Set(resourceType === "retention-schedule-item"
+    ? reviewed.map((record) => record.scheduleDocumentId).filter(Boolean) : []);
   const addIds = (ids) => {
     for (const id of ids || []) {
       const record = byId.get(id);
@@ -363,7 +365,7 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
     record,
     value: reviewedIds.has(record.id)
       ? resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
-        ? retentionScheduleRowProposalValue(record, options.historicalReviewMetadata)
+        ? retentionScheduleRowProposalValue(record, loaded, options)
         : options.historicalReviewMetadata ? record : substantiveRevisionValue(record)
       : resourceType === "retention-schedule-item"
         && modelSupports(loaded.model, "retention-schedule-approval")
@@ -371,19 +373,25 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
           ? retentionScheduleDocumentProposalValue(record)
           : options.historicalReviewMetadata
             ? dependencyRevisionValue(resourceType, record, legacy, true, currentModel)
-            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy, false, currentModel)),
+            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy, false, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis)),
     includeContent: legacy
       || reviewedIds.has(record.id)
-      || dependencyContentAffectsRevision(resourceType, record.type, options.historicalReviewMetadata, currentModel)
+      || dependencyContentAffectsRevision(resourceType, record, options.historicalReviewMetadata, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis)
   }));
 }
 
-function retentionScheduleRowProposalValue(record, historicalReviewMetadata = false) {
-  return Object.fromEntries(Object.entries(record).filter(([field]) => ![
+function retentionScheduleRowProposalValue(record, loaded, options = {}) {
+  const value = Object.fromEntries(Object.entries(record).filter(([field]) => ![
     "approvedByIds",
     "approvedOn",
-    ...(historicalReviewMetadata ? [] : ["reviewedSourceRevisions", "tags", "statusTransition"])
+    ...(options.historicalReviewMetadata ? [] : ["reviewedSourceRevisions", "tags", "statusTransition"])
   ].includes(field)));
+  if (!options.historicalReviewMetadata && !options.legacyRetentionSourceBasis) {
+    value.sourceDecisionRevisions = Object.fromEntries(resourceReviewRevisionsSync(
+      loaded, record.sourceResourceIds || [], "legacy", false, options.historicalCommit || null, record
+    ));
+  }
+  return value;
 }
 
 function retentionScheduleDocumentProposalValue(record) {
@@ -533,7 +541,7 @@ const dependencyFields = {
     obligation: ["id", "type", "status", "activityType", "scheduleMode", "ownerIds", "activeRuleId", "policyIds", "controlIds", "ruleIds"],
     "source-coverage": ["id", "type", "status", "sourceFamilyId", "coverageKind", "scopeResourceIds", "excludedPopulation", "retrieverIds", "collectionCadence", "retentionScheduleItemIds", "reconciliationMethod", "validFrom", "validThrough", "applicabilityReview", "readinessTestEvidenceIds", "ownerIds", "componentId"],
     evidence: ["id", "type", "status", "artifactKind", "readinessTest", "retrievalResult", "accessConfirmed", "coveredSourceFamilyIds", "sourceComponentId", "componentIds", "systemIds", "collectedOn", "collectorIds", "verifierIds", "verifiedOn"],
-    "retention-schedule-item": ["id", "type", "status", "description", "informationTypeIds", "scopeResourceIds", "scheduleDocumentId", "sourceResourceIds", "ownerIds", "approvedByIds", "approvedOn", "reviewedSourceRevisions", "cutoff", "retentionPeriod", "dispositionAction", "dispositionInstructions"],
+    "retention-schedule-item": ["id", "type", "status", "description", "informationTypeIds", "scopeResourceIds", "scheduleDocumentId", "sourceResourceIds", "sourceSectionHeadings", "ownerIds", "approvedByIds", "approvedOn", "reviewedSourceRevisions", "cutoff", "retentionPeriod", "dispositionAction", "dispositionInstructions"],
     document: ["id", "type", "documentKind", "workflowScope", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "controlIds"],
     policy: ["id", "type", "programRole", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "relatedDocumentIds", "controlIds"],
     training: ["id", "type", "ownerIds", "approverIds", "approvedOn", "approvedContentRevisions", "controlIds"],
@@ -597,7 +605,12 @@ const dependencyContentTypes = {
   "complementary-control": new Set(["system", "document", "component"])
 };
 
-function dependencyRevisionValue(resourceType, record, legacy, historicalReviewMetadata = false, currentModel = false) {
+function dependencyRevisionValue(resourceType, record, legacy, historicalReviewMetadata = false, currentModel = false, scheduleDocumentIds = new Set(), legacyRetentionSourceBasis = false) {
+  if (resourceType === "retention-schedule-item" && currentModel && !historicalReviewMetadata && !legacyRetentionSourceBasis
+    && (["policy", "requirement", "commitment", "control"].includes(record.type)
+      || record.type === "document" && record.documentKind !== "schedule" && !scheduleDocumentIds.has(record.id))) {
+    return { id: record.id, type: record.type };
+  }
   const controlDecision = currentModel && !historicalReviewMetadata && record.type === "control"
     && ["retention-schedule-item", "complementary-control"].includes(resourceType);
   const fields = controlDecision
@@ -616,9 +629,12 @@ function dependencyRevisionValue(resourceType, record, legacy, historicalReviewM
   return value;
 }
 
-function dependencyContentAffectsRevision(resourceType, dependencyType, historicalReviewMetadata = false, currentModel = false) {
-  return ((!currentModel || historicalReviewMetadata) && resourceType === "complementary-control" && dependencyType === "control")
-    || dependencyContentTypes[resourceType]?.has(dependencyType) || false;
+function dependencyContentAffectsRevision(resourceType, dependency, historicalReviewMetadata = false, currentModel = false, scheduleDocumentIds = new Set(), legacyRetentionSourceBasis = false) {
+  if (resourceType === "retention-schedule-item" && currentModel && !historicalReviewMetadata && !legacyRetentionSourceBasis
+    && (dependency.type === "policy" || dependency.type === "document"
+      && dependency.documentKind !== "schedule" && !scheduleDocumentIds.has(dependency.id))) return false;
+  return ((!currentModel || historicalReviewMetadata) && resourceType === "complementary-control" && dependency.type === "control")
+    || dependencyContentTypes[resourceType]?.has(dependency.type) || false;
 }
 
 function sorted(values) {

@@ -5358,6 +5358,8 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
       control = stringMapEditor(value || {}, name, name === "reviewedSourceRevisions");
       const mapHelp = name === "reviewedSourceRevisions"
         ? "Bind the exact current JSON and Markdown revisions after reviewing every selected record."
+        : name === "sourceSectionHeadings"
+          ? "Use a linked Policy or Document ID and its exact Markdown heading. The selected section governs this decision."
         : "Add one named value per row.";
       return fieldWrap(name, "string-map", label, requiredMark, control, mapHelp, required);
     }
@@ -5558,7 +5560,11 @@ async function bindCurrentReviewRevisions(dialog, button) {
   setButtonBusy(button, true, "Binding…");
   let bound = false;
   try {
-    const query = ids.map((id) => "id=" + encodeURIComponent(id)).join("&");
+    const sections = [...dialog.querySelectorAll('[data-field-group="sourceSectionHeadings"] .string-map-row')]
+      .map((row) => [row.querySelector('[data-map-key]')?.value?.trim(), row.querySelector('[data-map-value]')?.value?.trim()])
+      .filter(([id, heading]) => id && heading);
+    const query = ids.map((id) => "id=" + encodeURIComponent(id))
+      .concat(sections.map(([id, heading]) => "section=" + encodeURIComponent(id + ":" + heading))).join("&");
     const response = await localFetch("/api/review-revisions?" + query);
     if (!response.ok) throw new Error(await responseMessage(response));
     const { revisions } = await response.json();
@@ -6775,6 +6781,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 @media(max-width:760px){.workflow-findings{grid-template-columns:1fr}}
 .choice-tag{overflow-wrap:normal;font-size:10px}.form-field[data-kind="structured-object"],.string-map-property{grid-column:1/-1}.string-map-row .text-button{text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px}
 .form-field[data-kind="string-map"]{grid-column:1/-1}.string-map-actions{display:flex;flex-wrap:wrap;gap:7px}
+.form-field[data-field-group="sourceSectionHeadings"] .string-map-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}
 @media(max-width:760px){.setup-banner>.button{justify-self:start}.setup-draft-state{justify-content:flex-start;flex-wrap:wrap;gap:12px 22px}.setup-draft-state .button{width:100%}}
 @media(max-width:760px){.string-map-row{grid-template-columns:1fr 1fr}.string-map-row .text-button{grid-column:1/-1;justify-self:start}}
 

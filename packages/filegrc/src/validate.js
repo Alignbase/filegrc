@@ -219,6 +219,19 @@ async function validateWorkspaceUnmeasured(input) {
       }
       validateNestedRelations(fieldName, value, field, loaded.model, byId, displayPath, diagnostics);
     }
+    if (record.sourceSectionHeadings) {
+      for (const [sourceId, heading] of Object.entries(record.sourceSectionHeadings)) {
+        if (!(record.sourceResourceIds || []).includes(sourceId)
+          || !["policy", "document"].includes(byId.get(sourceId)?.type)
+          || !String(heading || "").trim()) {
+          diagnostics.push(error(
+            "invalid-source-section",
+            displayPath,
+            `sourceSectionHeadings.${sourceId} must name a linked Policy or Document and a Markdown heading.`
+          ));
+        }
+      }
+    }
     validateIndependentApproval(record, byId, displayPath, diagnostics);
     validateCompletedObligationEvent(record, byId, loaded.model, displayPath, diagnostics);
     validateActionObligationRule(record, byId, displayPath, diagnostics);
@@ -1995,7 +2008,7 @@ function validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisi
   const sources = retentionReviewResourceIds(record, loaded);
   const revisions = record.reviewedSourceRevisions || {};
   const missing = sources.filter((id) => (
-    !resourceReviewRevisionMatches(loaded, currentReviewRevisions, id, revisions[id])
+    !resourceReviewRevisionMatches(loaded, currentReviewRevisions, id, revisions[id], record)
   )).concat(Object.keys(revisions).filter((id) => !sources.includes(id)));
   if (missing.length) {
     diagnostics.push(error(

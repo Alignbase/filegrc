@@ -156,79 +156,106 @@ export async function resourceReviewRevision(loaded, resourceId) {
   return (await resourceReviewRevisions(loaded, [resourceId])).get(resourceId) || null;
 }
 
-export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "legacy") {
+export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "legacy", reviewer = null) {
   const wanted = new Set(ids);
   const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const revisions = new Map();
   const reviewing = new Set();
-  const review = async (id) => {
-    if (revisions.has(id)) return revisions.get(id);
-    const entry = entries.get(id);
-    if (!entry || reviewing.has(id)) return null;
-    reviewing.add(id);
-    const parts = [reviewSource(loaded, entry, scopeHashInput)];
+  const review = async (id, heading = null) => {
+    const key = `${id}\0${heading || ""}`;
+    if (revisions.has(key)) return revisions.get(key);
+    const entry = effectiveReviewEntry(loaded, entries.get(id));
+    if (!entry || reviewing.has(key)) return null;
+    reviewing.add(key);
+    const parts = [reviewSource(loaded, entry, scopeHashInput, false, heading)];
+    let matchedSection = !heading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
       try {
-        parts.push(await readFile(resolveDataPath(loaded.root, markdown.path), "utf8"));
+        const source = entry.reviewCommit
+          ? entry.reviewFiles?.get(`data/${markdown.path}`)
+            ?? getFileAtRevision(loaded.root, entry.reviewCommit, `data/${markdown.path}`)
+          : await readFile(resolveDataPath(loaded.root, markdown.path), "utf8");
+        if (source !== null) {
+          const section = reviewedMarkdownSection(source, heading);
+          if (section !== null) { parts.push(section); matchedSection = true; }
+        }
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
     }
+    if (!matchedSection) { reviewing.delete(key); return null; }
+    let missingDependency = false;
     for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
-      const revision = await review(sourceId);
+      const revision = await review(sourceId, sourceHeading(entry.record, sourceId));
       if (revision) parts.push(`${sourceId}:${revisionDigest("content", revision) || revision}`);
+      else missingDependency = true;
     }
-    reviewing.delete(id);
+    reviewing.delete(key);
+    if (missingDependency) return null;
     const revision = contentRevision(parts.join("\n"));
-    revisions.set(id, revision);
+    revisions.set(key, revision);
     return revision;
   };
+  const selected = new Map();
   for (const id of wanted) {
-    await review(id);
+    selected.set(id, await review(id, sourceHeading(reviewer, id)));
   }
-  return new Map([...revisions].filter(([id]) => wanted.has(id)));
+  return new Map([...selected].filter(([, revision]) => revision));
 }
 
-export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy", legacySource = false, historicalCommit = null) {
+export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy", legacySource = false, historicalCommit = null, reviewer = null) {
   const wanted = new Set(ids);
   const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const revisions = new Map();
   const reviewing = new Set();
-  const review = (id) => {
-    if (revisions.has(id)) return revisions.get(id);
-    const entry = entries.get(id);
-    if (!entry || reviewing.has(id)) return null;
-    reviewing.add(id);
-    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource)];
+  const review = (id, heading = null) => {
+    const key = `${id}\0${heading || ""}`;
+    if (revisions.has(key)) return revisions.get(key);
+    const entry = historicalCommit ? entries.get(id) : effectiveReviewEntry(loaded, entries.get(id));
+    if (!entry || reviewing.has(key)) return null;
+    reviewing.add(key);
+    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, heading)];
+    let matchedSection = !heading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource)) {
       try {
-        const source = historicalCommit
-          ? loaded.historicalFiles
-            ? loaded.historicalFiles.get(`data/${markdown.path}`) ?? null
-            : getFileAtRevision(loaded.root, historicalCommit, `data/${markdown.path}`)
+        const source = (historicalCommit || entry.reviewCommit)
+          ? loaded.historicalFiles?.get(`data/${markdown.path}`)
+            ?? entry.reviewFiles?.get(`data/${markdown.path}`)
+            ?? getFileAtRevision(loaded.root, historicalCommit || entry.reviewCommit, `data/${markdown.path}`)
           : readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8");
-        if (source !== null) parts.push(source);
+        if (source !== null) {
+          const section = legacySource ? source : reviewedMarkdownSection(source, heading);
+          if (section !== null) { parts.push(section); matchedSection = true; }
+        }
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
     }
+    if (!matchedSection) { reviewing.delete(key); return null; }
+    let missingDependency = false;
     for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
-      const revision = review(sourceId);
+      const revision = review(sourceId, sourceHeading(entry.record, sourceId));
       if (revision) parts.push(`${sourceId}:${revisionDigest("content", revision) || revision}`);
+      else missingDependency = true;
     }
-    reviewing.delete(id);
+    reviewing.delete(key);
+    if (missingDependency) return null;
     const revision = contentRevision(parts.join("\n"));
-    revisions.set(id, revision);
+    revisions.set(key, revision);
     return revision;
   };
-  for (const id of wanted) review(id);
-  return new Map([...revisions].filter(([id]) => wanted.has(id)));
+  const selected = new Map();
+  for (const id of wanted) selected.set(id, review(id, sourceHeading(reviewer, id)));
+  return new Map([...selected].filter(([, revision]) => revision));
 }
 
-export function resourceReviewRevisionMatches(loaded, revisions, id, stored) {
-  const current = revisions.get(id);
+export function resourceReviewRevisionMatches(loaded, revisions, id, stored, reviewer = null) {
+  const current = sourceHeading(reviewer, id)
+    ? resourceReviewRevisionsSync(loaded, [id], "legacy", false, null, reviewer).get(id)
+    : revisions.get(id);
   if (!current || !revisionDigest("content", stored)) return false;
   if (revisionsMatch("content", stored, current)) return true;
+  if (sourceHeading(reviewer, id)) return false;
   const legacy = resourceReviewRevisionsSync(loaded, [id], "legacy", true).get(id);
   if (revisionsMatch("content", stored, legacy)) return true;
   // Version 0.16.0 used a bare digest as the hash input for scopeRevision.
@@ -293,7 +320,20 @@ export function retentionUses(loaded, program) {
   return [...new Map(uses.map((use) => [`${use.resource.id}:${use.informationTypeId}`, use])).values()];
 }
 
-function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = false) {
+function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = false, heading = null) {
+  if (heading && !legacySource) {
+    const governingFields = entry.record.type === "policy"
+      ? ["policyKind", "effectiveOn", "supersedesId", "parentPolicyId", "relatedPolicyIds", "relatedDocumentIds", "requirementIds", "audience", "acknowledgementRequired", "programRole", "reportingRouteRequirements"]
+      : ["documentKind", "workflowScope", "effectiveOn", "supersedesId", "systemIds", "controlIds", "relatedDocumentIds", "audience", "acknowledgementRequired", "trainingIds", "classificationId", "programRole", "componentIds", "reportingRouteRequirements"];
+    return JSON.stringify({
+      id: entry.record.id,
+      type: entry.record.type,
+      governingStatus: ["approved", "active"].includes(entry.record.status)
+        ? "approved" : entry.record.status || null,
+      ...Object.fromEntries(["extensions", "externalIds", ...governingFields].filter((field) => entry.record[field] !== undefined)
+        .map((field) => [field, entry.record[field]]))
+    });
+  }
   if (
     modelSupports(loaded.model, "retention-schedule-approval")
     && entry.record.type === "document"
@@ -330,9 +370,93 @@ function reviewMarkdownEntries(loaded, entry, legacySource) {
   return markdownEntries(loaded.model, entry.record);
 }
 
+const approvedReviewEntries = new WeakMap();
+
+function effectiveReviewEntry(loaded, entry) {
+  if (!entry || !loaded.root || !["policy", "document", "training"].includes(entry.record.type)) return entry;
+  if (!["draft", "in-review", "approved", "active"].includes(entry.record.status)) return entry;
+  if (approvedReviewContentMatches(loaded, entry)) return entry;
+  if (["approved", "active"].includes(entry.record.status)) return entry;
+  let cache = approvedReviewEntries.get(loaded.resources);
+  if (!cache) {
+    cache = new Map();
+    approvedReviewEntries.set(loaded.resources, cache);
+  }
+  if (cache.has(entry.record.id)) return cache.get(entry.record.id) || entry;
+  const context = reviewHistoryContext(loaded.root, loaded);
+  for (const commit of [...reviewHistoryCommits(context)].reverse()) {
+    const snapshot = reviewHistoricalWorkspace(context, commit);
+    const historical = snapshot?.entries.find(({ record }) => record.id === entry.record.id);
+    if (!historical || !approvedReviewContentMatches(snapshot, historical, commit)) continue;
+    const approved = { ...historical, reviewCommit: commit, reviewFiles: snapshot.historicalFiles };
+    cache.set(entry.record.id, approved);
+    return approved;
+  }
+  cache.set(entry.record.id, null);
+  return entry;
+}
+
+function approvedReviewContentMatches(loaded, entry, commit = null) {
+  if (!["approved", "active"].includes(entry.record.status)) return false;
+  const bindings = entry.record.approvedContentRevisions || entry.record.effectiveContentRevisions;
+  if (!bindings) return true;
+  for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
+    const source = commit
+      ? loaded.historicalFiles?.get(`data/${markdown.path}`)
+        ?? getFileAtRevision(loaded.root, commit, `data/${markdown.path}`)
+      : (() => {
+        try { return readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8"); }
+        catch (error) { if (error.code === "ENOENT") return null; throw error; }
+      })();
+    if (!source || !revisionsMatch("content", bindings[markdown.path], contentRevision(source))) return false;
+  }
+  return true;
+}
+
+export function reviewedMarkdownSection(source, heading) {
+  if (!heading) return source;
+  const lines = source.split("\n");
+  const wanted = heading.trim().replace(/^#{1,6}\s+/, "").toLowerCase();
+  const headings = [];
+  const fencedLines = new Set();
+  let fence = null;
+  for (const [index, line] of lines.entries()) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence) {
+      fencedLines.add(index);
+      if (marker?.[0] === fence[0] && marker.length >= fence.length
+        && /^\s*$/.test(line.slice(line.indexOf(marker) + marker.length))) fence = null;
+      continue;
+    }
+    if (marker) { fence = marker; fencedLines.add(index); continue; }
+    const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (match) headings.push({ index, level: match[1].length, title: match[2].trim().toLowerCase() });
+  }
+  const matches = headings.filter(({ title }) => title === wanted);
+  if (matches.length !== 1) return null;
+  const selected = matches[0];
+  const ancestors = [];
+  for (const candidate of headings.filter(({ index }) => index < selected.index)) {
+    while (ancestors.length && ancestors.at(-1).level >= candidate.level) ancestors.pop();
+    ancestors.push(candidate);
+  }
+  const next = headings.find(({ index, level }) => index > selected.index && level <= selected.level);
+  const context = ancestors.map(({ index }) => {
+    const following = headings.find((candidate) => candidate.index > index);
+    return lines.slice(index, following?.index).filter((_, offset) => !fencedLines.has(index + offset)).join("\n").trim();
+  });
+  return [...context, lines.slice(selected.index, next?.index).join("\n").trim()].join("\n\n");
+}
+
+function sourceHeading(record, sourceId) {
+  const headings = record?.sourceSectionHeadings;
+  return headings && Object.hasOwn(headings, sourceId) && typeof headings[sourceId] === "string"
+    ? headings[sourceId] : null;
+}
+
 const reviewDecisionFields = {
   control: ["statement", "requirementIds", "code", "activity", "controlType", "operationMode", "operationPattern", "systemIds", "policyIds", "componentIds", "evidenceSourceComponentIds"],
-  commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "requirementIds", "controlIds", "customerFacing", "effectiveOn", "reportingRouteRequirements"],
+  commitment: ["commitmentKind", "statement", "systemIds", "sourceResourceIds", "sourceSectionHeadings", "requirementIds", "controlIds", "customerFacing", "effectiveOn", "reportingRouteRequirements"],
   "complementary-control": ["responsibleParty", "statement", "systemIds", "vendorId", "requirementIds", "commitmentIds", "relatedControlIds", "sourceDocumentIds", "componentIds"],
   "source-coverage": ["sourceFamilyId", "coverageKind", "scopeResourceIds", "excludedPopulation", "collectionCadence", "reconciliationMethod", "validFrom", "validThrough", "componentId", "retentionScheduleItemIds"],
   system: ["purpose", "servicesProvided", "boundary", "exclusions", "criticality", "informationTypeIds", "classificationId", "internetExposed", "continuityObjectives"],
@@ -450,7 +574,7 @@ export function retentionRuleIsCurrent(rule, revisions, byId = new Map(), loaded
   const dependencyIds = retentionReviewResourceIds(rule, loaded);
   if (Object.keys(rule.reviewedSourceRevisions).length !== dependencyIds.length) return false;
   return dependencyIds.every((id) => (
-    resourceReviewRevisionMatches(loaded, revisions, id, rule.reviewedSourceRevisions?.[id])
+    resourceReviewRevisionMatches(loaded, revisions, id, rule.reviewedSourceRevisions?.[id], rule)
   ));
 }
 

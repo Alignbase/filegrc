@@ -2603,7 +2603,7 @@
         "cadence": "Create before relying on a promise, review during audit scoping, and supersede it when the service or agreement changes.",
         "reviewPoints": [
           "Confirm the statement reflects a real customer promise, service requirement, or approved business objective that applies to the current scope.",
-          "Confirm which parts of the service the promise or objective affects.",
+          "Confirm which parts of the service the promise or objective affects. When a linked Policy or Document has independent sections, name the exact governing Markdown heading in sourceSectionHeadings before reviewing downstream mappings.",
           "Use \"External\", \"Zero Population\", or \"Not Applicable\" only when it is true for the current scope."
         ],
         "sourceResourceIds": [
@@ -2656,6 +2656,12 @@
             "framework",
             "requirement"
           ]
+        },
+        "sourceSectionHeadings": {
+          "type": "object",
+          "objectType": "string-map",
+          "label": "Reviewed source sections",
+          "description": "Map a source Policy or Document ID to one exact Markdown heading when the Commitment comes from that section."
         },
         "requirementIds": {
           "type": "array",
@@ -2731,6 +2737,7 @@
       "formFields": [
         "systemIds",
         "sourceResourceIds",
+        "sourceSectionHeadings",
         "requirementIds",
         "controlIds",
         "applicabilityReview",
@@ -7706,6 +7713,7 @@
         "reviewPoints": [
           "Confirm the Information Types and operational scope covered by this item.",
           "Confirm the cutoff, retention period, and disposition action from management sources.",
+          "When a linked Policy or Document has independent sections, set sourceSectionHeadings to the exact governing Markdown heading. Keep a whole-source binding when the entire source governs the row.",
           "Keep the item planned until the owner completes every organization-specific value and binds the current source revisions."
         ],
         "sourceResourceIds": [
@@ -7778,6 +7786,12 @@
             "control"
           ],
           "label": "Authority and source records"
+        },
+        "sourceSectionHeadings": {
+          "type": "object",
+          "objectType": "string-map",
+          "label": "Reviewed source sections",
+          "description": "Map a source Policy or Document ID to one exact Markdown heading when only that section governs this decision. Omit the ID when the complete source governs it."
         },
         "cutoff": {
           "type": "object",
@@ -7882,6 +7896,7 @@
         "scopeResourceIds",
         "scheduleDocumentId",
         "sourceResourceIds",
+        "sourceSectionHeadings",
         "cutoff",
         "retentionPeriod",
         "dispositionAction",
