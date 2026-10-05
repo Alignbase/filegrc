@@ -167,7 +167,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
     const entry = effectiveReviewEntry(loaded, entries.get(id));
     if (!entry || reviewing.has(key)) return null;
     reviewing.add(key);
-    const parts = [reviewSource(loaded, entry, scopeHashInput, false, heading)];
+    const parts = [reviewSource(loaded, entry, scopeHashInput, false, heading, reviewer)];
     let matchedSection = !heading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
       try {
@@ -214,7 +214,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     const entry = historicalCommit ? entries.get(id) : effectiveReviewEntry(loaded, entries.get(id));
     if (!entry || reviewing.has(key)) return null;
     reviewing.add(key);
-    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, heading)];
+    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, heading, reviewer)];
     let matchedSection = !heading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource)) {
       try {
@@ -250,25 +250,26 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
 }
 
 export function resourceReviewRevisionMatches(loaded, revisions, id, stored, reviewer = null) {
-  const current = sourceHeading(reviewer, id)
+  const current = (sourceHeading(reviewer, id) || reviewer?.type === "retention-schedule-item")
     ? resourceReviewRevisionsSync(loaded, [id], "legacy", false, null, reviewer).get(id)
     : revisions.get(id);
   if (!current || !revisionDigest("content", stored)) return false;
   if (revisionsMatch("content", stored, current)) return true;
-  if (sourceHeading(reviewer, id)) return false;
-  const legacy = resourceReviewRevisionsSync(loaded, [id], "legacy", true).get(id);
-  if (revisionsMatch("content", stored, legacy)) return true;
-  // Version 0.16.0 used a bare digest as the hash input for scopeRevision.
-  // Read that binding without changing the legacy scope: basis restored here.
-  const compatible = resourceReviewRevisionsSync(loaded, [id], "digest", true).get(id);
-  if (revisionsMatch("content", stored, compatible)) return true;
-  return historicallyEquivalentReviewSource(loaded, id, stored, current);
+  if (!sourceHeading(reviewer, id)) {
+    const legacy = resourceReviewRevisionsSync(loaded, [id], "legacy", true).get(id);
+    if (revisionsMatch("content", stored, legacy)) return true;
+    // Version 0.16.0 used a bare digest as the hash input for scopeRevision.
+    // Read that binding without changing the legacy scope: basis restored here.
+    const compatible = resourceReviewRevisionsSync(loaded, [id], "digest", true).get(id);
+    if (revisionsMatch("content", stored, compatible)) return true;
+  }
+  return historicallyEquivalentReviewSource(loaded, id, stored, current, reviewer);
 }
 
 // Recompute the old byte-sensitive binding at each committed state. The
 // semantic source graph must still equal today's graph, including linked
 // records and Markdown, before the old approval is treated as current.
-function historicallyEquivalentReviewSource(loaded, id, stored, current) {
+function historicallyEquivalentReviewSource(loaded, id, stored, current, reviewer = null) {
   if (!loaded.root) return false;
   const context = reviewHistoryContext(loaded.root, loaded);
   const { index } = context;
@@ -289,8 +290,13 @@ function historicallyEquivalentReviewSource(loaded, id, stored, current) {
     if (relevantPaths && ![...changed.keys()].some((path) => relevantPaths.has(path) || path.endsWith(".md"))) continue;
     const snapshot = reviewHistoricalWorkspace(context, commit);
     if (!snapshot?.entries.some(({ record }) => record.id === id)) continue;
-    const semantic = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit).get(id);
+    const semantic = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit, reviewer).get(id);
     if (!revisionsMatch("content", semantic, current)) continue;
+    // A row may narrow a source to its retention facts or a named Markdown
+    // section. Accept its old binding only when those facts still match the
+    // committed source that supplied the binding.
+    const original = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit).get(id);
+    if (revisionsMatch("content", stored, original)) return true;
     for (const scopeHashInput of ["legacy", "digest"]) {
       const legacy = resourceReviewRevisionsSync(snapshot, [id], scopeHashInput, true, commit).get(id);
       if (revisionsMatch("content", stored, legacy)) return true;
@@ -320,7 +326,7 @@ export function retentionUses(loaded, program) {
   return [...new Map(uses.map((use) => [`${use.resource.id}:${use.informationTypeId}`, use])).values()];
 }
 
-function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = false, heading = null) {
+function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = false, heading = null, reviewer = null) {
   if (heading && !legacySource) {
     const governingFields = entry.record.type === "policy"
       ? ["policyKind", "effectiveOn", "supersedesId", "parentPolicyId", "relatedPolicyIds", "relatedDocumentIds", "requirementIds", "audience", "acknowledgementRequired", "programRole", "reportingRouteRequirements"]
@@ -358,7 +364,7 @@ function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = f
   return legacySource
     ? canonicalCalculatedRevisionJson(entry.source, scopeHashInput)
     : canonicalCalculatedRevisionJson(JSON.stringify(substantiveReviewSource(
-      JSON.parse(entry.source), modelSupports(loaded.model, "retention-schedule-approval")
+      JSON.parse(entry.source), modelSupports(loaded.model, "retention-schedule-approval"), reviewer
     )), scopeHashInput);
 }
 
@@ -469,7 +475,7 @@ const reviewDecisionFields = {
   document: ["documentKind", "workflowScope", "template", "version", "effectiveOn", "supersedesId", "systemIds", "controlIds", "relatedDocumentIds", "audience", "acknowledgementRequired", "trainingIds", "classificationId", "programRole", "componentIds", "reportingRouteRequirements"]
 };
 
-function substantiveReviewSource(record, currentModel) {
+function substantiveReviewSource(record, currentModel, reviewer = null) {
   if (currentModel && reviewDecisionFields[record.type]) {
     const fields = ["id", "type", "title", "extensions", "externalIds", ...reviewDecisionFields[record.type]];
     const decision = Object.fromEntries(fields.filter((field) => record[field] !== undefined)
@@ -480,6 +486,9 @@ function substantiveReviewSource(record, currentModel) {
       decision.governingStatus = ["approved", "active"].includes(record.status) ? "approved" : record.status || null;
     } else {
       decision.status = record.status || null;
+    }
+    if (record.type === "component" && reviewer?.type === "retention-schedule-item") {
+      decision.systemUses = retentionSystemUses(decision.systemUses);
     }
     if (["control", "commitment", "complementary-control"].includes(record.type)) {
       decision.nonApplicableDecision = ["not-applicable", "externally-managed", "zero-population"]
@@ -509,6 +518,13 @@ function substantiveReviewSource(record, currentModel) {
     if (["approved", "active"].includes(source.status)) source.status = "approved";
   }
   return source;
+}
+
+export function retentionSystemUses(uses) {
+  return uses?.map((use) => ({
+    ...use,
+    roles: use.roles?.filter((role) => role !== "evidence-source")
+  }));
 }
 
 export function nearDuplicateInformationTypes(records) {
