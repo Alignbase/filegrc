@@ -433,15 +433,7 @@ async function requireControlReviewReady(loaded, resourceType, programId) {
   if (resourceType !== "control") return;
   const { assessProgramReadiness } = await import("./program-readiness.js");
   const readiness = await assessProgramReadiness(loaded, { programId });
-  const earlierItems = readiness.stages
-    .find(({ id }) => id === "controls")
-    ?.items.filter(({ id }) => (
-      id !== "collection-review-control"
-      && !id.startsWith("document-activation-")
-      && !id.startsWith("training-activation-")
-      && !id.startsWith("policy-activation-")
-    )) || [];
-  if (!earlierItems.length || earlierItems.some(({ status }) => status !== "complete")) {
+  if (!readiness.controlReviewReady) {
     throw new Error("Complete the Step 3 implementation work before recording the Control collection review. Program content activation follows this review.");
   }
 }

@@ -203,6 +203,7 @@ export async function assessProgramReadiness(input, options = {}) {
     asOfTime
   );
   const controlOversight = collectionReviews.find(({ resourceType }) => resourceType === "control");
+  const controlReviewPrerequisiteIds = controlStage.items.map(({ id }) => id);
   const oversightEligible = Boolean(controlOversight && controlOversightEligible(controlStage.items));
   if (oversightEligible) {
     controlStage.items.push(collectionReviewReadinessItem(controlOversight));
@@ -331,6 +332,8 @@ export async function assessProgramReadiness(input, options = {}) {
     canStartCandidatePeriod,
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
     policyActivations,
+    controlReviewReady: oversightEligible,
+    controlReviewPrerequisiteIds,
     documentActivations: governedContent.documentActivations,
     trainingActivations: governedContent.trainingActivations,
     policyLibraryProposals: [
