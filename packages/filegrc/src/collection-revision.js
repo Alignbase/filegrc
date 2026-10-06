@@ -128,14 +128,21 @@ export function reviewedControlConflictIds(loaded, review) {
   const controls = scopedCollectionRecords(source, "control", program);
   const controlIds = new Set(controls.map(({ id }) => id));
   const byId = new Map(source.resources.map((record) => [record.id, record]));
+  return controlReviewerConflictIds(source, controls, byId, controlIds);
+}
+
+export function controlReviewerConflictIds(loaded, controls, byId = new Map(loaded.resources.map((record) => [record.id, record])), controlIds = new Set(controls.map(({ id }) => id))) {
   const conflicts = new Set();
-  for (const record of [
-    ...controls,
-    ...source.resources.filter((record) => record.type === "obligation"
-      && record.status === "active"
-      && (record.controlIds || []).some((id) => controlIds.has(id)))
-  ]) {
-    for (const id of currentPartyPeople(record.ownerIds || [], byId)) conflicts.add(id);
+  for (const control of controls) {
+    for (const id of currentPartyPeople(control.ownerIds || [], byId)) conflicts.add(id);
+  }
+  for (const obligation of loaded.resources.filter((record) => record.type === "obligation"
+    && record.status === "active"
+    && (record.controlIds || []).some((id) => controlIds.has(id)))) {
+    // A team owns the work queue, but membership alone does not mean each member
+    // performed its work. Named people and appointment holders remain conflicts.
+    const namedOwners = (obligation.ownerIds || []).filter((id) => byId.get(id)?.type !== "team");
+    for (const id of currentPartyPeople(namedOwners, byId)) conflicts.add(id);
   }
   return [...conflicts].sort();
 }

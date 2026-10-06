@@ -650,6 +650,9 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   });
   main.querySelector("[data-review-policy-activation]")?.addEventListener("click", openPolicyActivationDialog);
   main.querySelector("[data-review-document-activation]")?.addEventListener("click", () => openDocumentActivationDialog());
+  if (stage.id === "controls") {
+    main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog("control"));
+  }
   main.querySelector("[data-review-audit-document-activation]")?.addEventListener("click", (event) => {
     openDocumentActivationDialog(event.currentTarget.dataset.reviewAuditDocumentActivation);
   });

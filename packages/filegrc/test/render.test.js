@@ -1902,6 +1902,7 @@ test("keeps Control collection oversight on the Step 3 finish gate", () => {
   assert.match(APP_SCRIPT, /function collectionReviewVisible\(type\)/);
   assert.match(APP_SCRIPT, /id === "collection-review-control"/);
   assert.match(APP_SCRIPT, /collectionReviewPanel\("control", true\)/);
+  assert.match(APP_SCRIPT, /stage\.id === "controls"\) \{\s*main\.querySelector\("\[data-review-collection\]"\)\?\.addEventListener\("click", \(\) => openCollectionReviewDialog\("control"\)\)/);
   assert.match(APP_SCRIPT, /return type !== "control"/);
 });
 
