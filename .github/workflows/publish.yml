@@ -166,7 +166,12 @@ jobs:
             npm publish --workspace "${package}" --access public --provenance
           done
 
+      - name: Wait for npm registry
+        run: node scripts/wait-for-npm-release.mjs
+
       - name: Verify README setup
+        env:
+          NPM_CONFIG_PREFER_ONLINE: "true"
         run: |
           set -euo pipefail
 
@@ -182,31 +187,15 @@ jobs:
           trap cleanup EXIT
 
           create_version="$(node -p "require('./packages/create-filegrc/package.json').version")"
-          for package in filegrc create-filegrc; do
-            version="$(node -p "require('./packages/${package}/package.json').version")"
-            available=false
-            for _ in {1..12}; do
-              if [ "$(npm view "${package}@${version}" version 2>/dev/null || true)" = "${version}" ]; then
-                available=true
-                break
-              fi
-              sleep 5
-            done
-            if [ "${available}" != "true" ]; then
-              echo "${package}@${version} did not become available from npm."
-              exit 1
-            fi
-          done
-
           cd "${smoke_dir}"
           generated=false
-          for _ in {1..12}; do
+          for _ in {1..30}; do
             rm -rf "${smoke_dir}/company-grc"
             if npx --yes "create-filegrc@${create_version}" company-grc --yes; then
               generated=true
               break
             fi
-            sleep 5
+            sleep 10
           done
           if [ "${generated}" != "true" ]; then
             echo "create-filegrc@${create_version} did not become installable from npm."
