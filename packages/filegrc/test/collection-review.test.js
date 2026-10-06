@@ -76,6 +76,12 @@ test("blocks Control collection oversight before the rest of Step 3 is complete"
   const root = await mkdtemp(join(tmpdir(), "filegrc-control-review-gate-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
+  const initialReadiness = await assessProgramReadiness(root);
+  assert.equal(initialReadiness.controlReviewReady, false);
+  assert.ok(initialReadiness.controlReviewPrerequisiteIds.includes("control-control-example"));
+  assert.ok(!initialReadiness.controlReviewPrerequisiteIds.some((id) => (
+    id.startsWith("training-") || id.startsWith("document-") || id.startsWith("policy-activation-")
+  )));
   await assert.rejects(
     planCollectionReview(root, {
       resourceType: "control",
@@ -416,7 +422,7 @@ test("accepts an unchanged schedule approval written by the v0.16.18 revision ca
   assert.equal(collectionRevisionMatches(loaded, "retention-schedule-item", releasedRevision), false);
 });
 
-test("keeps an approved Retention Schedule current through Step 3 activation", async (context) => {
+test("allows Control review before approved Document and Training activation and keeps the Retention Schedule current", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-retention-review-activation-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
@@ -440,6 +446,12 @@ test("keeps an approved Retention Schedule current through Step 3 activation", a
     "reportingRouteRequirements"
   ]) delete schedule[field];
   await writeFile(documentEntry.path, `${JSON.stringify(schedule, null, 2)}\n`, "utf8");
+  const trainingEntry = loaded.entries.find(({ record }) => record.id === "training-example");
+  const training = { ...trainingEntry.record, status: "approved" };
+  for (const field of ["activationBasis", "activatedByIds", "activatedOn", "activatedContentRevisions", "effectiveOn"]) {
+    delete training[field];
+  }
+  await writeFile(trainingEntry.path, `${JSON.stringify(training, null, 2)}\n`, "utf8");
 
   loaded = await loadWorkspace(root);
   const rowEntry = loaded.entries.find(({ record }) => record.id === "retention-schedule-item-example");
@@ -568,29 +580,37 @@ test("keeps an approved Retention Schedule current through Step 3 activation", a
     `${JSON.stringify(complementaryReview, null, 2)}\n`,
     "utf8"
   );
+  await execute("git", ["add", "."], { cwd: root });
+  await execute("git", [
+    "-c", "user.name=FileGRC Test",
+    "-c", "user.email=filegrc@example.test",
+    "commit", "-m", "Record complementary Control review"
+  ], { cwd: root });
   loaded = await loadWorkspace(root);
-  const controlReview = {
-    id: "collection-review-controls-for-activation",
-    type: "collection-review",
-    title: "Controls review for activation",
-    status: "active",
+  const beforeControlReview = await assessProgramReadiness(loaded, { programId: "program-example" });
+  const beforeItems = beforeControlReview.stages.find(({ id }) => id === "controls").items;
+  assert.equal(beforeControlReview.controlReviewReady, true);
+  assert.ok(beforeControlReview.controlReviewPrerequisiteIds.every((id) => (
+    beforeItems.find((item) => item.id === id)?.status === "complete"
+  )));
+  assert.equal(beforeItems.find(({ id }) => id === "collection-review-control")?.status, "action");
+  for (const id of [`document-${schedule.id}`, `training-${training.id}`]) {
+    assert.equal(beforeItems.find((item) => item.id === id)?.status, "blocked", id);
+  }
+  assert.equal((await scaffoldCollectionReview(root, { resourceType: "control" })).decision, "complete");
+  const cliControlScaffold = JSON.parse((await execute(process.execPath, [
+    cli, "review-collection", "control", "--scaffold", "--root", root
+  ])).stdout);
+  assert.equal(cliControlScaffold.decision, "complete");
+  const controlReviewOptions = {
     resourceType: "control",
-    scopeResourceIds: ["program-example"],
     decision: "complete",
-    rationale: "Reviewed the implemented Controls and their operating dependencies.",
+    rationale: "Reviewed the implemented Controls before activating approved content.",
     reviewedByIds: ["person-independent-approver-example"],
-    reviewedOn: reviewDate,
-    coverage: { kind: "as-of", on: reviewDate },
-    knowledgeCutoffAt: `${reviewDate}T12:00:00.000Z`,
-    populationResourceIds: ["control-example"],
-    collectionRevision: collectionRevision(loaded, "control", { programId: "program-example" }),
-    scopeRevision: (await execute("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim()
+    reviewedOn: reviewDate
   };
-  await writeFile(
-    join(root, "data", "collection-reviews", `${controlReview.id}.json`),
-    `${JSON.stringify(controlReview, null, 2)}\n`,
-    "utf8"
-  );
+  await planCollectionReview(root, controlReviewOptions);
+  await applyCollectionReview(root, { ...controlReviewOptions, confirmed: true });
 
   loaded = await loadWorkspace(root);
   assert.deepEqual(

@@ -43,6 +43,109 @@ test("historical records do not make optional setup or audit pages complete", ()
   assert.equal(auditDocuments().complete, true);
 });
 
+test("Step 3 review action follows the CLI prerequisites and lists each implementation blocker", () => {
+  const panelSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function collectionReviewPanel"), APP_SCRIPT.indexOf("function retentionScheduleApprovalBlocker"));
+  const context = {
+    state: {
+      readOnly: false,
+      programReadiness: { controlReviewReady: false },
+      collectionReviews: { control: {
+        status: "review-required", recordCount: 1, message: "Review Controls.",
+        configuration: { title: "Controls", description: "Review the implemented Controls.", reviewPoints: [] }
+      } },
+      resources: [], model: { resources: { control: { title: "Control" } } }
+    },
+    modelSupports: () => false,
+    collectionReviewVisible: () => true,
+    collectionNeedsFirstRecord: () => false,
+    esc: String,
+    properCase: String,
+    formatCalendarDate: String
+  };
+  const panel = vm.runInNewContext(panelSource + '\ncollectionReviewPanel("control", true)', context);
+  assert.match(panel, /Complete the Control implementation checks listed in Step 3/);
+  assert.match(panel, /button[^>]*disabled/);
+  assert.doesNotMatch(panel, /data-review-collection="control"/);
+
+  const finishSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function renderFinishStepThree"), APP_SCRIPT.indexOf("function collectionNeedsFirstRecord"));
+  const prerequisites = [
+    { id: "control-one", status: "action", title: "Access Control", message: "Fix access.", nextSteps: ["Set the owner.", "Check live access."], resourceType: "control", resourceId: "one" },
+    { id: "source-family-one", status: "action", title: "Access evidence", message: "Add an authoritative source." }
+  ];
+  context.state.programReadiness = {
+    controlReviewReady: false,
+    controlReviewPrerequisiteIds: prerequisites.map(({ id }) => id),
+    stages: [{ id: "controls", items: [...prerequisites, { id: "collection-review-control", status: "action" }] }]
+  };
+  Object.assign(context, {
+    workflowItemHref: (item) => item.resourceId ? "#/resource/control/" + item.resourceId : null,
+    pluralize: (word, count) => count === 1 ? word : word + "s",
+    collectionReviewPanel: () => panel,
+    renderDocumentActivationAssessments: () => "Document activation",
+    renderPolicyActivationAssessments: () => "Policy activation"
+  });
+  const finish = vm.runInNewContext(finishSource + "\nrenderFinishStepThree", context);
+  const blocked = finish();
+  assert.match(blocked, /Access Control/);
+  assert.match(blocked, /Set the owner\. Check live access\./);
+  assert.match(blocked, /Access evidence/);
+  assert.match(blocked, /Add an authoritative source/);
+  assert.doesNotMatch(blocked, /Review and confirm/);
+  context.state.programReadiness.controlReviewReady = true;
+  prerequisites.forEach((item) => { item.status = "complete"; });
+  assert.match(finish(), /Review and confirm/);
+  context.state.collectionReviews.control.complete = true;
+  context.state.programReadiness.stages[0].items.push({ id: "training-training-one", status: "blocked" });
+  assert.match(finish(), /Program Content Activation/);
+  assert.doesNotMatch(finish(), /Step 3 complete/);
+});
+
+test("Step 3 pages count missing work schedules and evidence sources, while labeling proposed Obligations separately", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function stagePageItems"), APP_SCRIPT.indexOf("function workflowUiStage"));
+  const control = { id: "control-one", status: "action", title: "Access Control", resourceId: "one", checks: { workQueue: false } };
+  const state = {
+    programReadiness: { scope: { controlIds: ["one"] }, stages: [{ id: "controls", items: [control, { id: "source-family-one", status: "action" }] }] },
+    resources: [
+      { record: { id: "obligation-one", type: "obligation", status: "proposed", controlIds: ["one"] } },
+      { record: { id: "obligation-other-program", type: "obligation", status: "proposed", controlIds: ["other-program-control"] } }
+    ],
+    workflow: { findings: [
+      { key: "record.obligation.obligation-one.finalize", stage: "controls", subject: { type: "obligation", id: "obligation-one" } },
+      { key: "record.obligation.obligation-other-program.finalize", stage: "controls", subject: { type: "obligation", id: "obligation-other-program" } }
+    ] }
+  };
+  const { stagePageItems, stepThreeObligationProposals } = vm.runInNewContext(source + "\n({ stagePageItems, stepThreeObligationProposals })", { state });
+  const blockers = stagePageItems({ id: "controls" }, { type: "obligation" });
+  assert.equal(blockers.length, 1);
+  assert.match(blockers[0].title, /Access Control/);
+  assert.match(blockers[0].message, /enable a rule/);
+  assert.equal(stepThreeObligationProposals().length, 1);
+  control.checks.workQueue = true;
+  assert.equal(stagePageItems({ id: "controls" }, { type: "obligation" }).length, 0);
+
+  const deriveSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function derivedStagePageState"), APP_SCRIPT.indexOf("function stagePageItems"));
+  const derive = vm.runInNewContext(deriveSource + "\nderivedStagePageState", {
+    state,
+    stagePageItems: () => [], stagePageActionItems: () => [],
+    collectionReviewVisible: () => true,
+    resourcesOfType: () => [{ record: { status: "proposed" } }],
+    pluralize: (word, count) => count === 1 ? word : word + "s"
+  });
+  assert.equal(derive({ id: "controls" }, { type: "obligation" }).label, "Ready");
+  assert.equal(derive({ id: "controls" }, { utility: "evidence-sources" }).label, "1 source needs work");
+  state.collectionReviews = { "complementary-control": { status: "current" } };
+  assert.equal(derive({ id: "controls" }, { type: "complementary-control" }).label, "Reviewed");
+
+  const cardSource = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function stagePageCard"), APP_SCRIPT.indexOf("function stageProgress"));
+  const card = vm.runInNewContext(cardSource + '\nstagePageCard({ id: "controls", number: 3 }, { type: "obligation", label: "Obligations", href: "#/resources/obligation" }, 3)', {
+    stagePageSummary: () => "Review schedules.", derivedStagePageState: () => ({ complete: true, label: "Ready" }),
+    stagePageActionItems: () => [], stepThreeObligationProposals: () => Array(8).fill({}),
+    pluralize: (word, count) => count === 1 ? word : word + "s", esc: String
+  });
+  assert.match(card, /8 proposed schedules to review/);
+  assert.doesNotMatch(card, /items need work/);
+});
+
 test("direct Commitment and Program pages load review status before rendering", () => {
   const source = APP_SCRIPT.slice(
     APP_SCRIPT.indexOf("function blockingStateSections"),
