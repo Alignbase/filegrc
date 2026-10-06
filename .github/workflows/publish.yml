@@ -235,3 +235,25 @@ jobs:
             cat server.log
             exit 1
           fi
+
+  notify:
+    name: Notify Slack of release run
+    needs: [publish]
+    if: ${{ always() && (needs.publish.result == 'success' || needs.publish.result == 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Send publication result to Slack
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          NOTIFICATION_RESULT: ${{ needs.publish.result }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: node scripts/alert-failed-jobs.mjs

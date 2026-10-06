@@ -85,3 +85,30 @@ jobs:
           node --test packages/filegrc/test/id.test.js packages/filegrc/test/time.test.js scripts/verify-release.test.mjs scripts/alert-failed-jobs.test.mjs
           node packages/filegrc/bin/filegrc.js --help
           node packages/create-filegrc/bin/create-filegrc.js --help
+
+  notify-failure:
+    name: Notify Slack of failure
+    needs: [clean-install, compatibility]
+    if: ${{ always() && contains(needs.*.result, 'failure') && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - name: Send failed jobs to Slack
+        run: |
+          test -n "$SLACK_WEBHOOK_URL"
+          failed_jobs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "• \(.name): \(.html_url)"' | \
+            jq -R -r -s 'split("\n") | map(select(length > 0)) | join("\n")')
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          message="<!channel> FileGRC validation failed: $run_url"
+          if [ -n "$failed_jobs" ]; then
+            message="$message"$'\n'"$failed_jobs"
+          fi
+          jq -n --arg text "$message" '{text: $text}' | \
+            curl --fail --silent --show-error --retry 3 \
+              --header 'Content-Type: application/json' \
+              --data-binary @- "$SLACK_WEBHOOK_URL" >/dev/null
