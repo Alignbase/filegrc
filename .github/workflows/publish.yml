@@ -239,7 +239,7 @@ jobs:
   notify:
     name: Notify Slack of release run
     needs: [publish]
-    if: ${{ always() && (needs.publish.result == 'success' || needs.publish.result == 'failure') }}
+    if: ${{ !cancelled() && (needs.publish.result == 'success' || needs.publish.result == 'failure') }}
     runs-on: ubuntu-latest
     permissions:
       actions: read

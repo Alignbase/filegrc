@@ -89,7 +89,7 @@ jobs:
   notify-failure:
     name: Notify Slack of failure
     needs: [clean-install, compatibility]
-    if: ${{ always() && contains(needs.*.result, 'failure') && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ !cancelled() && contains(needs.*.result, 'failure') && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
