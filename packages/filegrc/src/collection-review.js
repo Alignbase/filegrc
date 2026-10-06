@@ -3,6 +3,7 @@ import { modelSupports } from "../model/index.js";
 import {
   collectionRevision,
   collectionReviewDecisionMatches,
+  controlReviewerConflictIds,
   reviewedControlConflictIds
 } from "./collection-revision.js";
 import { collectionRecordProposals, retentionScheduleReviewScope, scopedCollectionRecords } from "./collection-scope.js";
@@ -450,19 +451,7 @@ async function requireRetentionScheduleReady(loaded, resourceType, program, rete
 }
 
 function assessControlReviewers(loaded, controls) {
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const controlIds = new Set(controls.map(({ id }) => id));
-  const conflictIds = new Set();
-  for (const control of controls) {
-    for (const id of currentPartyPeople(control.ownerIds || [], byId)) conflictIds.add(id);
-  }
-  for (const obligation of loaded.resources.filter((record) => (
-    record.type === "obligation"
-    && record.status === "active"
-    && (record.controlIds || []).some((id) => controlIds.has(id))
-  ))) {
-    for (const id of currentPartyPeople(obligation.ownerIds || [], byId)) conflictIds.add(id);
-  }
+  const conflictIds = new Set(controlReviewerConflictIds(loaded, controls));
   const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
   return {
     eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),

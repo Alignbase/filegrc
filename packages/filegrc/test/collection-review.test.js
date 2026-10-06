@@ -162,6 +162,135 @@ test("offers Control collection oversight only to people outside Control and Obl
   assert.deepEqual(assessment.reviewerConflictIds, ["person-example"]);
 });
 
+test("team membership alone does not make Andrew a Control operator", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-oversight-team-reviewer-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const reviewer = loaded.resources.find(({ id }) => id === "person-independent-approver-example");
+  reviewer.title = "Andrew, independent overseer";
+  const team = loaded.resources.find(({ id }) => id === "team-example");
+  team.title = "Security and Risk Oversight";
+  team.memberIds.push(reviewer.id);
+  team.chairIds = [reviewer.id];
+  const obligation = loaded.resources.find(({ id }) => id === "obligation-example");
+  obligation.ownerIds = [team.id];
+  obligation.activityType = "policy-review";
+  // The team's queue also includes operating work. Membership does not name
+  // Andrew as its performer; direct ownership below does.
+  loaded.resources.push(...["change-review", "incident-retrospective", "oversight-meeting", "access-provisioning"].map((activityType) => ({
+    ...obligation,
+    id: `obligation-${activityType}-example`,
+    activityType
+  })));
+
+  const assessment = assessCollectionReview(loaded, "control", { programId: "program-example" });
+  assert.ok(assessment.eligibleReviewerIds.includes(reviewer.id));
+  assert.equal(assessment.reviewerConflictIds.includes(reviewer.id), false);
+  assert.ok(assessment.reviewerConflictIds.includes("person-example"));
+  const uiState = await createAppStateSection(loaded, "program", { programId: "program-example" });
+  assert.ok(uiState.collectionReviews.control.eligibleReviewerIds.includes(reviewer.id));
+
+  // A team that owns an actual Control still cannot review that Control.
+  const control = loaded.resources.find(({ id }) => id === "control-example");
+  control.ownerIds = [team.id];
+  assert.ok(assessCollectionReview(loaded, "control", { programId: "program-example" })
+    .reviewerConflictIds.includes(reviewer.id));
+  control.ownerIds = ["person-example"];
+  obligation.ownerIds = [reviewer.id];
+  assert.ok(assessCollectionReview(loaded, "control", { programId: "program-example" })
+    .reviewerConflictIds.includes(reviewer.id));
+  obligation.ownerIds = ["appointment-example"];
+  assert.ok(assessCollectionReview(loaded, "control", { programId: "program-example" })
+    .reviewerConflictIds.includes("person-example"));
+});
+
+test("CLI and validation accept a Control review by a team-owned Obligation overseer", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-control-team-review-cli-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  let loaded = await loadWorkspace(root);
+  const reviewerId = "person-independent-approver-example";
+  const teamEntry = loaded.entries.find(({ record }) => record.id === "team-example");
+  const obligationEntry = loaded.entries.find(({ record }) => record.id === "obligation-example");
+  const controlEntry = loaded.entries.find(({ record }) => record.id === "control-example");
+  const team = { ...teamEntry.record, memberIds: ["person-example", reviewerId], chairIds: [reviewerId] };
+  const obligation = { ...obligationEntry.record, ownerIds: [team.id] };
+  const today = currentCalendarDate(loaded.workspace.timezone);
+  const control = {
+    ...controlEntry.record,
+    procedureRevision: "control-procedure-v1",
+    procedureEffectiveOn: today
+  };
+  control.applicabilityReview = {
+    decision: "applicable",
+    rationale: "This Control covers the selected service.",
+    reviewedByIds: [reviewerId],
+    reviewedOn: today,
+    scopeRevision: applicabilityScopeRevision(
+      control,
+      loaded.resources.find(({ id }) => id === "program-example"),
+      loaded.resources.map((record) => record.id === control.id ? control : record),
+      loaded.model
+    )
+  };
+  for (const [entry, record] of [[teamEntry, team], [obligationEntry, obligation], [controlEntry, control]]) {
+    await writeFile(entry.path, `${JSON.stringify(record, null, 2)}\n`);
+  }
+  await execute("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execute("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
+  await execute("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
+  await execute("git", ["add", "data"], { cwd: root });
+  await execute("git", ["commit", "-m", "Record Control implementation"], { cwd: root });
+
+  loaded = await loadWorkspace(root);
+  const complementaryRecords = scopedCollectionRecords(
+    loaded, "complementary-control", loaded.resources.find(({ id }) => id === "program-example")
+  );
+  const complementaryReview = {
+    id: "collection-review-complementary-controls-team-review",
+    type: "collection-review",
+    title: "Customer and provider responsibilities review",
+    status: "active",
+    resourceType: "complementary-control",
+    scopeResourceIds: ["program-example"],
+    decision: "complete",
+    rationale: "Reviewed the current responsibilities.",
+    reviewedByIds: [reviewerId],
+    reviewedOn: today,
+    coverage: { kind: "as-of", on: today },
+    knowledgeCutoffAt: new Date().toISOString(),
+    populationResourceIds: complementaryRecords.map(({ id }) => id),
+    collectionRevision: collectionRevision(loaded, "complementary-control", { programId: "program-example" }),
+    scopeRevision: (await execute("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim()
+  };
+  await mkdir(join(root, "data", "collection-reviews"), { recursive: true });
+  await writeFile(
+    join(root, "data", "collection-reviews", `${complementaryReview.id}.json`),
+    `${JSON.stringify(complementaryReview, null, 2)}\n`
+  );
+  await execute("git", ["add", "data"], { cwd: root });
+  await execute("git", ["commit", "-m", "Review complementary responsibilities"], { cwd: root });
+
+  const payloadDir = await mkdtemp(join(tmpdir(), "filegrc-control-review-payload-"));
+  context.after(() => rm(payloadDir, { recursive: true, force: true }));
+  const payloadPath = join(payloadDir, "control-review.json");
+  await writeFile(payloadPath, `${JSON.stringify({
+    decision: "complete",
+    rationale: "Reviewed the implemented Control and its evidence source.",
+    reviewedByIds: [reviewerId],
+    reviewedOn: today
+  })}\n`);
+  const args = [cli, "review-collection", "control", payloadPath, "--root", root, "--json"];
+  const preview = JSON.parse((await execute(process.execPath, [...args, "--preview"])).stdout);
+  assert.ok(preview.assessment.eligibleReviewerIds.includes(reviewerId));
+  assert.equal(preview.assessment.reviewerConflictIds.includes(reviewerId), false);
+  await execute(process.execPath, [...args, "--yes"]);
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics, null, 2));
+  assert.equal(assessCollectionReview(validation.loaded, "control", { programId: "program-example" }).complete, true);
+});
+
 test("a later reviewer departure does not undo an unchanged Control collection review", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-control-reviewer-departure-"));
   context.after(() => rm(root, { recursive: true, force: true }));
