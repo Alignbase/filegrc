@@ -144,7 +144,7 @@
         "title": "Vulnerabilities and Security Scans",
         "sourcePrompt": "Vulnerability, dependency, and scanning tools",
         "sourceKind": "vulnerability-management",
-        "timing": "Export after the period closes and preserve scan coverage, findings, remediation, and exceptions.",
+        "timing": "Preserve complete source reports before retention or CI artifact expiry, then export the reconciled population after the period closes, including coverage, findings, failures, remediation, and exceptions.",
         "controlCodes": [
           "VUL-01",
           "PEN-01"
@@ -769,7 +769,7 @@
       "description": "People who own, approve, review, or perform program work, or receive access and training. Record each person’s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.",
       "guidance": {
         "policyBasis": "The information security policy assigns work to named people and requires onboarding, training, role-change, and offboarding records.",
-        "cadence": "Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training is due within 30 days of starting and annually.",
+        "cadence": "Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training follows the approved onboarding and recurring schedules.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -988,7 +988,7 @@
       "description": "Non-human identities that need separate tracking. Record the account’s purpose, owner, Systems, authentication, privilege, review, and expiry here. A separate register is not required for SOC 2.",
       "guidance": {
         "policyBasis": "The information security policy requires important human and non-human identities to have an owner, protection, periodic review, and prompt removal when no longer needed.",
-        "cadence": "Create before use. Review privileged and production access quarterly and other important access annually; retire or expire unused accounts.",
+        "cadence": "Create before use. Review privileged, production, and other important access on the approved risk-based schedules; retire or expire unused accounts.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -1100,7 +1100,7 @@
       "description": "Groups that share program responsibility, such as security oversight or incident response. Team records are not required for SOC 2 when named People hold the responsibilities directly.",
       "guidance": {
         "policyBasis": "The information security policy establishes security and risk oversight with independent review, while the continuity plan assigns response and recovery roles. Reviewers may be internal or external.",
-        "cadence": "The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.",
+        "cadence": "The security and risk oversight group meets on its approved risk-based schedule. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.",
         "sourceResourceIds": [
           "policy-information-security",
           "document-security-incident-recovery-plan"
@@ -1308,7 +1308,7 @@
       "description": "Important devices, media, software, records, and other items tracked through acquisition, custody, use, return, and disposal. Assets support controls but do not define the service boundary.",
       "guidance": {
         "policyBasis": "The information security policy requires important assets to have owners and custodians, protection based on classification, and secure return or disposal.",
-        "cadence": "Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.",
+        "cadence": "Record acquisition and assignment, review the inventory on the approved risk-based schedule, update custody on change, and retire assets when use ends.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -3691,7 +3691,7 @@
       "description": "Management-approved requirements for the program. Approval accepts the requirements; activation makes them effective. Store the Policy text in Markdown and its owner, separate approver, scope, status, dates, and linked Controls in the record.",
       "guidance": {
         "policyBasis": "A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.",
-        "cadence": "Move a draft through independent review and approval without requiring every linked Control to be implemented. During Step 3, finish Controls, Components, evidence sources, governed plans, and schedules, review the per-Policy activation assessment, then activate the approved revision on its real effective date. Do not backdate adoption. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.",
+        "cadence": "Move a draft through independent review and approval without requiring every linked Control to be implemented. During Step 3, finish Controls, Components, evidence sources, governed plans, and schedules, review the per-Policy activation assessment, then activate the approved revision on its real effective date. Do not backdate adoption. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review on the approved risk-based schedule and after material changes.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -3919,7 +3919,7 @@
       "description": "The result of a scheduled or change-driven review of Policies or governed Documents, including reviewers, decision, evidence, and follow-up. Edit the source record separately when changes are approved.",
       "guidance": {
         "policyBasis": "The Information Security Policy and Security Incident and Recovery Plan require periodic review and another review after specified material changes.",
-        "cadence": "Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.",
+        "cadence": "Complete on the approved risk-based schedule and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.",
         "reviewPoints": [
           "Read the current Policy or governed Document.",
           "Confirm it still matches the service, current requirements, and actual practice.",
@@ -4056,7 +4056,7 @@
       "description": "One person’s acknowledgement, training completion, certification, or assigned-work confirmation. Bind it to the exact content revision and signed Evidence when required.",
       "guidance": {
         "policyBasis": "The information security policy requires people to complete assigned training and acknowledge applicable responsibilities.",
-        "cadence": "Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.",
+        "cadence": "Assign on the approved onboarding and recurring schedules and after material content changes that require acknowledgement.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -4248,7 +4248,7 @@
       "description": "One governance meeting, including its chair, attendees, agenda, minutes, decisions, raised issues, Evidence, and assigned follow-up.",
       "guidance": {
         "policyBasis": "The information security policy requires recorded security and risk oversight. The Security Incident and Recovery Plan requires management review of exercises and unresolved risks.",
-        "cadence": "Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.",
+        "cadence": "Hold security and risk oversight meetings on the approved risk-based schedule. Create one immutable meeting record and Markdown minutes for each occurrence.",
         "sourceResourceIds": [
           "policy-information-security",
           "document-security-incident-recovery-plan"
@@ -4394,7 +4394,7 @@
       "description": "Reusable, governed training content, including its audience, passing criteria, and linked Policies and Controls. Approve the exact content in Step 2, activate it during Step 3 implementation, define assignment schedules in Obligations, and record individual completions in Attestations.",
       "guidance": {
         "policyBasis": "The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.",
-        "cadence": "Approve the exact training content in Step 2. During Step 3, finish the linked Controls and Obligations, then activate the unchanged approved revision. Assign training through Obligations at onboarding, annually, and after relevant material changes or incidents.",
+        "cadence": "Approve the exact training content in Step 2. During Step 3, finish the linked Controls and Obligations, then activate the unchanged approved revision. Assign training through Obligations on approved onboarding and recurring schedules and after relevant material changes or incidents.",
         "reviewPoints": [
           "Write the training for the people who must follow it and state the behavior you expect.",
           "Include product-license or customer MFA requirements only when an approved requirement calls for them.",
@@ -4647,7 +4647,7 @@
       "description": "One identified threat or business impact that needs treatment or ongoing tracking. Record its owner, ratings, response, affected scope, Controls, acceptance, and follow-up.",
       "guidance": {
         "policyBasis": "The information security policy requires identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.",
-        "cadence": "Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.",
+        "cadence": "Assess the register on the approved risk-based schedule and after material changes. Review High and Critical risks on their approved schedule and accepted risks by their review date.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -4826,7 +4826,7 @@
       "description": "One approved evaluation of a defined scope using the program’s risk method. It records participants, Systems, Vendors, conclusions, Evidence, and the Risks created or reassessed.",
       "guidance": {
         "policyBasis": "The information security policy requires periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.",
-        "cadence": "Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.",
+        "cadence": "Complete on the approved risk-based schedule and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.",
         "reviewPoints": [
           "Confirm the assessment covered the real service, material dependencies, data, commitments, and recent changes.",
           "Confirm the ratings and responses match management's current view of each risk.",
@@ -5037,7 +5037,7 @@
       "description": "External organizations and commercial relationships, including contracts, due diligence, risk reviews, monitoring, assurance reports, dates, and general information-access facts.",
       "guidance": {
         "policyBasis": "The information security policy requires an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.",
-        "cadence": "Create for a material external provider relationship. Review critical and high-risk Vendors at least annually and after material relationship, service, access, or incident changes. Do not create a Component unless a supplied capability also meets the Component inclusion rules.",
+        "cadence": "Create for a material external provider relationship. Review critical and high-risk Vendors on the approved risk-based schedule and after material relationship, service, access, or incident changes. Do not create a Component unless a supplied capability also meets the Component inclusion rules.",
         "sourceResourceIds": [
           "policy-information-security"
         ],
@@ -5157,7 +5157,7 @@
       "description": "One due-diligence or periodic review of a Vendor, covering the service, data, access, assurance, recovery, incidents, contracts, Risks, Evidence, and follow-up.",
       "guidance": {
         "policyBasis": "The information security policy requires review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.",
-        "cadence": "Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.",
+        "cadence": "Complete before access, on the approved risk-based schedule for Critical and High-risk vendors, and after material service changes or incidents.",
         "reviewPoints": [
           "Confirm the review covers the Vendor’s current services, connected Systems, data access, criticality, subservice role, and contract terms.",
           "Evaluate current assurance reports, security and privacy terms, incident history, resilience, access model, and material changes.",
@@ -5470,7 +5470,7 @@
       "description": "One review of a defined access population for a date or period, including Systems, reviewers, Access Grant decisions, exceptions, approval, Evidence, and source revision.",
       "guidance": {
         "policyBasis": "The information security policy requires System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.",
-        "cadence": "Review privileged and production access at least quarterly and other important-system access at least annually.",
+        "cadence": "Review privileged, production, and other important-system access on the approved risk-based schedules.",
         "reviewPoints": [
           "Confirm the review population is complete for every System and exact date or period in scope.",
           "Decide whether each person and service account still needs its exact access and privilege level.",
@@ -5631,7 +5631,7 @@
       "description": "One confirmed weakness that needs remediation, an approved Exception, or verified closure. A separate Vulnerability register is not required for SOC 2 when the scanner or ticket system retains complete, usable records.",
       "guidance": {
         "policyBasis": "The information security policy requires confirmed Vulnerabilities to receive owned, risk-based remediation or an approved Exception with compensating Controls.",
-        "cadence": "Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.",
+        "cadence": "Assign an owner and approved risk-based remediation or patch deadline from severity, exposure, exploitability, and commitments. Track overdue work through approved time-bound Exceptions and verify closure.",
         "sourceResourceIds": [
           "policy-information-security"
         ]
@@ -5837,7 +5837,7 @@
       "description": "One vulnerability scan activity, including tool, scope, Systems, operator, time, result, resulting Vulnerabilities, Evidence, failure reason, and review.",
       "guidance": {
         "policyBasis": "The information security policy requires management to monitor for weaknesses and scan internet-facing and production Systems.",
-        "cadence": "Scan at least quarterly and after material changes when practical. Review failures and create vulnerability or finding records for confirmed results.",
+        "cadence": "Use the approved risk-based scan and reconciliation schedules and reassess coverage after significant changes. Reconcile applicable host, network, dependency, web, and advisory sources in one periodic review. Investigate failed or incomplete scans separately from confirmed findings and retrieve complete evidence before source or CI artifact expiry.",
         "reviewPoints": [
           "Confirm the scan covered the intended current Systems and attack surface.",
           "Confirm any exclusion, authentication failure, unreachable target, or other coverage gap is understood.",
@@ -6176,7 +6176,7 @@
       "description": "One continuity, recovery, incident, or privacy simulation, including scenario, objective, participants, scope, result, Evidence, Findings, and follow-up.",
       "guidance": {
         "policyBasis": "The information security policy requires incident-response testing. The Security Incident and Recovery Plan requires exercises and another review after material change or disruption.",
-        "cadence": "Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.",
+        "cadence": "Test incident response and continuity on the approved risk-based schedule. Repeat after a material change when the prior exercise no longer represents the environment.",
         "sourceResourceIds": [
           "policy-information-security",
           "document-security-incident-recovery-plan"
@@ -6314,7 +6314,7 @@
       "description": "One restore or recovery test, including the Systems and operators involved, timing, recovery result, reviewer, Evidence, Findings, and follow-up.",
       "guidance": {
         "policyBasis": "The information security policy and Security Incident and Recovery Plan require protected backups, monitored failures, and tested proof that important data can be restored and used.",
-        "cadence": "Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.",
+        "cadence": "Test restoration on the approved risk-based schedule for important systems and after recovery changes that could invalidate prior evidence.",
         "reviewPoints": [
           "Confirm the test restored the intended Systems and data.",
           "Confirm the restored data was usable and the recovery targets were met.",
@@ -6453,7 +6453,7 @@
       "description": "One internal or external penetration test, including provider, scope, period, method, result, affected Systems, Evidence, Vulnerabilities, Findings, and review.",
       "guidance": {
         "policyBasis": "The information security policy requires management to decide whether penetration testing is needed from exposure, material changes, customer commitments, technical capability, and risk, then track confirmed findings when testing is performed.",
-        "cadence": "Use the cadence approved in the applicable Control, customer commitment, or risk decision. Review applicability at least annually and after material attack-surface or architecture changes; the review may conclude that no penetration test is required.",
+        "cadence": "Use the cadence approved in the applicable Control, customer commitment, or risk decision. Review applicability on the approved risk-based schedule and after material attack-surface or architecture changes; the review may conclude that no penetration test is required.",
         "reviewPoints": [
           "Confirm the testing decision, tester independence when required, scope, method, and cadence match the approved reason for testing.",
           "Confirm the report supports the recorded result.",

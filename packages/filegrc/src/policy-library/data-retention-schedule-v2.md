@@ -20,6 +20,6 @@ Any retention exception needs a reason, owner, approval, compensating safeguards
 
 ## Review and disposal evidence
 
-Review this schedule at least annually and within 30 days after a material change to systems, data use, vendors, contracts, or applicable duties. The approver must be separate from the owner.
+Review this schedule on the approved risk-based schedule and after a material change to systems, data use, vendors, contracts, or applicable duties within the approved reassessment window. The approver must be separate from the owner.
 
 For material disposal work, retain a record of the record class, source, date range, method, completion date, responsible person, exceptions, and verification.

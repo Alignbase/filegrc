@@ -62,7 +62,7 @@ Risk assessment considers objectives, information, threats, vulnerabilities, fra
 
 ### Control design and review
 
-Management selects and develops manual and technology Controls that respond to approved objectives, commitments, risks, system dependencies, and changes. Each Control has a documented owner, scope, procedure, operating pattern, Evidence source, implementation status, and review path. Management reviews Control design at least annually and after material change, then corrects gaps or records a time-bound Exception.
+Management selects and develops manual and technology Controls that respond to approved objectives, commitments, risks, system dependencies, and changes. Each Control has a documented owner, scope, procedure, operating pattern, Evidence source, implementation status, and review path. Management reviews Control design on the approved risk-based schedule and after material change, then corrects gaps or records a time-bound Exception.
 
 ## Personnel and Human Resources Security Policy
 
@@ -76,7 +76,7 @@ Workers must accept applicable confidentiality, acceptable-use, intellectual-pro
 
 ### Competence review
 
-Management reviews at least annually and after a material role change whether workers remain capable of their assigned security and Control duties and assigns training, supervision, reassignment, or corrective action when needed. The review may be limited to security and Control responsibilities and does not mandate a broader performance-management process.
+Management reviews on the approved risk-based schedule and after a material role change whether workers remain capable of their assigned security and Control duties and assigns training, supervision, reassignment, or corrective action when needed. The review may be limited to security and Control responsibilities and does not mandate a broader performance-management process.
 
 ## Security Awareness and Training Policy
 
@@ -210,17 +210,17 @@ Configuration and maintenance work must use authorized access, protect credentia
 
 ### Change control
 
-Software and infrastructure changes must be recorded, tested, approved, deployed through an authorized process, and recoverable in proportion to risk. Use independent pre-deployment review when practical. When team size or urgency makes that separation impossible, record a risk-appropriate compensating or post-deployment review. Use a time-bound Exception when the remaining departure is material.
+Changes to infrastructure, data, software, and procedures must be documented, authorized, tested, approved before implementation, deployed through an authorized process, and recoverable in proportion to risk. Supporting procedures define how authorization, code and security review, testing, deployment, and recovery work and retain traceable results for the exact change and deployed revision. Emergency changes preserve authorization, recovery, and evidence and receive documented follow-up for any deferred checks or approved departure.
 
 ### Security design and development safeguards
 
-Material or high-risk designs and changes receive a documented security analysis suited to the change. This may include threat analysis, abuse cases, architecture review, data-flow review, or another approved method. Based on applicability and risk, Development and deployment Controls address protected branches, controlled credentials, dependency and secret detection, input and authorization checks, production-data restrictions, security testing, emergency change review, deployment approval, communication, and rollback.
+Code and security review evaluate the change against its objectives, affected data, access boundaries, dependencies, and risk. Procedures define suitable review methods and security checks, retain their results and disposition of findings, and prevent unauthorized changes or malicious software from reaching production. Review and test evidence must be traceable to the deployed revision. Owners verify deployment outcomes and maintain a usable rollback or other recovery method.
 
 ## Vulnerability, Patch, and Penetration Testing Policy
 
 ### Vulnerability and patch management
 
-{{company_name}} monitors trusted sources for vulnerabilities affecting in-scope Systems and Components. Management selects scanning coverage, penetration-testing applicability, remediation targets, and review cadence from exposure, material change, customer commitments, technical capability, and risk. Management documents the selected coverage, targets, cadence, and review decisions.
+{{company_name}} monitors trusted sources for vulnerabilities affecting in-scope Systems and Components. Management selects scanning coverage, penetration-testing applicability, remediation targets, and review cadence from exposure, material change, customer commitments, technical capability, and risk. Management documents the selected coverage, targets, cadence, and review decisions. Coverage considers hosts, network exposure, dependencies, web surfaces, and newly disclosed advisories, with documented exclusions and limits. One periodic review reconciles the applicable sources against current scope, identifies gaps and failed or incomplete scans, and records finding dispositions and follow-up. Scan execution failures require investigation and restored coverage; they do not establish a clean result. Supporting procedures retrieve complete reports and retain needed evidence before source records or CI artifacts expire.
 
 Findings receive validated scope, severity, an owner, treatment, and target date. A missed target requires documented exposure, compensating Controls, a revised date, and risk approval or Exception. Security updates are obtained from trusted sources, tested when appropriate, and applied according to the approved risk-based targets.
 

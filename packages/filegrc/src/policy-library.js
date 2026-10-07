@@ -6,7 +6,7 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { resolveDataPath } from "./paths.js";
 import { loadWorkspace } from "./workspace.js";
 
-export const INFORMATION_SECURITY_LIBRARY_PROPOSAL_ID = "consolidated-information-security-policy-v4";
+export const INFORMATION_SECURITY_LIBRARY_PROPOSAL_ID = "consolidated-information-security-policy-v5";
 export const STRONG_AUTHENTICATION_LIBRARY_PROPOSAL_ID = INFORMATION_SECURITY_LIBRARY_PROPOSAL_ID;
 
 const POLICY_ID = "policy-information-security";
@@ -23,7 +23,13 @@ const PRIOR_TRAINING_REVISIONS = new Set([
   "bf8ac1a9e22a215ed375b590f3cba767801e2e062069e147290bad2c98fd29aa",
   "7e55e8df6991d32085ca836c24e3b0015806d04523eca7ed4ee9e51043f05614"
 ]);
-const CURRENT_TRAINING_REVISION = "7e55e8df6991d32085ca836c24e3b0015806d04523eca7ed4ee9e51043f05614";
+const PRIOR_ADJACENT_TRAINING_0 = "Complete it within 30 days after starting, at least annually, and again when assigned after a material change or incident.";
+const CURRENT_ADJACENT_TRAINING_0 = "Complete it on the approved onboarding and recurring schedules, and again when assigned after a material change or incident.";
+const PRIOR_ADJACENT_TRAINING_1 = "Separate development and production duties when practical. Record a compensating or post-deployment review when team size or urgency prevents independent pre-deployment review.";
+const CURRENT_ADJACENT_TRAINING_1 = "Retain traceable code and security review, testing, authorization, and deployment results for the exact change and deployed revision under the approved procedure.";
+const PRIOR_ADJACENT_TRAINING_2 = "Material incidents receive a root-cause and lessons review within one week.";
+const CURRENT_ADJACENT_TRAINING_2 = "Material incidents receive a root-cause and lessons review within the approved follow-up window.";
+const CURRENT_TRAINING_REVISION = "f62fbcc8152e0895bee44a49879bb1c6b888afa1887144152ac1f1d6d7221d83";
 const PRIOR_PASSWORD_MANAGER_TRAINING = "Use an approved password manager to generate and store a unique password for each account.";
 const CURRENT_CREDENTIAL_STORAGE_TRAINING = "Use a unique password for each account and store it only through the credential-protection method approved for that System.";
 const PRIOR_REMOTE_MFA_TRAINING = "Use approved remote-access methods and multi-factor authentication.";
@@ -54,11 +60,12 @@ const DOCUMENT_CONTENT_UPDATES = [
     path: "documents/document-data-retention-schedule.md",
     priorRevision: "45a408e8139bd57f42dda5ca5ae5c8cd4480b4e7bf08834f60058148a3a63475",
     additionalPriorRevisions: new Set([
+      "1738d29786cd6a027c9a2bb339ce36ce3e15c858a55ec503f4e690e65273598b",
       "d80b99ce53d1012cc169bbbc2afab8d0597bfbe9f30ac0812a8d5bbeb2ed9f90",
       "dd11857ae7d881f176bd93947ef3031c33c75ee41e3c0435198fd60c67a94cf7",
       "4a48c15a4e20e4f29028cf2ff8597315eb51878814120125b5268356b923c9db"
     ]),
-    currentRevision: "1738d29786cd6a027c9a2bb339ce36ce3e15c858a55ec503f4e690e65273598b",
+    currentRevision: "bdc348cb2a3ef0e688e3c9c641116da2ae5d5dc2b2e164524b6a9b0c76f75acb",
     currentSourcePath: "./policy-library/data-retention-schedule-v2.md",
     replacements: [
       ["FileGRC detects the bracketed prompts as approval blockers. Remove each prompt only after replacing it with a reviewed fact.", "Remove each bracketed prompt only after replacing it with a reviewed fact."],
@@ -146,6 +153,7 @@ const DOCUMENT_CONTENT_UPDATES = [
   }
 ];
 const PRIOR_STARTER_POLICY_REVISIONS = new Set([
+  "f115934fe46750010dc61502b4407eaa4cdd6beacefaeda7a7e7b654401d0b29",
   "b440eb17797624c1b456f778b12a955c871de308349e565b5d69ab6a25703673",
   "b0f9b988a8bd231fe70ce71b6a732970e709b7af7826c1b55f1532f511b6e511",
   "e87961c6a665d73e9d3cce96ab978df87579668e72ea236248680db1f69a5fa1",
@@ -442,7 +450,199 @@ const CONTROL_UPDATES = [
   }
 ];
 
+
+// Retain recognized historical defaults while composing the current proposal.
+for (const update of [
+  {
+    "id": "control-security-governance",
+    "prior": [
+      {
+        "statement": "Management assigns security responsibilities, and a reviewer who is separate from the policy owner and control operators independently reviews the program, risks, incidents, findings, policy approvals, and overdue work at least quarterly.",
+        "activity": "Assign an independent reviewer who is separate from program ownership and record quarterly oversight decisions, approvals, and actions."
+      }
+    ],
+    "next": {
+      "statement": "Management assigns security responsibilities, and a reviewer who is separate from the policy owner and control operators independently reviews the program, risks, incidents, findings, policy approvals, and overdue work on the approved risk-based schedule.",
+      "activity": "Assign an independent reviewer who is separate from program ownership and record scheduled oversight decisions, approvals, and actions."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-policy-management",
+    "prior": [
+      {
+        "statement": "Management selects and develops manual and technology Controls from approved objectives, commitments, risks, dependencies, and changes, and records each Control's owner, scope, procedure, operation pattern, evidence source, and implementation status. The policy owner reviews Controls, governed policies, and plans at least annually and after material changes, obtains separate approval for governed content, and retains approved revisions in Git."
+      }
+    ],
+    "next": {
+      "statement": "Management selects and develops manual and technology Controls from approved objectives, commitments, risks, dependencies, and changes, and records each Control's owner, scope, procedure, operation pattern, evidence source, and implementation status. The policy owner reviews Controls, governed policies, and plans on the approved risk-based schedule and after material changes, obtains separate approval for governed content, and retains approved revisions in Git."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-security-training",
+    "prior": [
+      {
+        "statement": "Employees and contractors complete general security training within 30 days of starting and at least annually. Workers complete applicable role-based training within 30 days of starting a covered role or changing roles, with completion tied to the content revision reviewed."
+      }
+    ],
+    "next": {
+      "statement": "Employees and contractors complete general security training on the approved onboarding and recurring schedules. Workers complete applicable role-based training on the approved role-based schedule when starting a covered role or changing roles, with completion tied to the content revision reviewed."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-risk-assessment",
+    "prior": [
+      {
+        "statement": "The organization defines security objectives and risk tolerance, assesses information security, fraud, misconduct, dependency, and change risk at least annually and after material changes, assigns owners and responses, and reviews high and critical risks at least quarterly."
+      }
+    ],
+    "next": {
+      "statement": "The organization defines security objectives and risk tolerance, assesses information security, fraud, misconduct, dependency, and change risk on the approved risk-based schedule and after material changes, assigns owners and responses, and reviews high and critical risks on the approved risk-based schedule."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-monitoring-remediation",
+    "prior": [
+      {
+        "statement": "Management reviews Control operation, source information, incidents, test results, Exceptions, and findings at least quarterly and after significant failures, then communicates deficiencies and assigns, tracks, and verifies corrective work through completion."
+      }
+    ],
+    "next": {
+      "statement": "Management reviews Control operation, source information, incidents, test results, Exceptions, and findings on the approved risk-based schedule and after significant failures, then communicates deficiencies and assigns, tracks, and verifies corrective work through completion."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-access-review-offboarding",
+    "prior": [
+      {
+        "statement": "Owners review privileged and production access at least quarterly and other important access at least annually. Access ends at or before notice for involuntary or high-risk departures and within 24 hours for other departures."
+      }
+    ],
+    "next": {
+      "statement": "Owners review privileged, production, and other important access on the approved risk-based schedules. Access ends when employment, services, or business need ends under the approved departure timing and escalation procedure."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-data-classification-inventory",
+    "prior": [
+      {
+        "statement": "Data owners classify important data, record its approved purpose and location, and review data inventories at least annually and after material changes."
+      }
+    ],
+    "next": {
+      "statement": "Data owners classify important data, record its approved purpose and location, and review data inventories on the approved risk-based schedule and after material changes."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-data-retention-disposal",
+    "prior": [
+      {
+        "statement": "Owners maintain an approved retention schedule for important record classes, review it at least annually and after material data-use changes, and delete, anonymize, or securely destroy data and media when retention ends."
+      },
+      {
+        "statement": "Data owners apply the approved Data Retention Schedule and disposal methods to active, local, backup, and Vendor-held copies, subject to legal holds and approved Exceptions."
+      }
+    ],
+    "next": {
+      "statement": "Owners maintain an approved retention schedule for important record classes, review it on the approved risk-based schedule and after material data-use changes, and delete, anonymize, or securely destroy data and media when retention ends."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-network-security",
+    "prior": [
+      {
+        "statement": "The organization restricts network paths, separates production and nonproduction environments according to data and risk, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually."
+      }
+    ],
+    "next": {
+      "statement": "The organization restricts network paths, separates production and nonproduction environments according to data and risk, protects remote access with approved encryption and authentication, and reviews material network access rules on the approved risk-based schedule."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-change-management",
+    "prior": [
+      {
+        "statement": "Source and deployment paths protect against unauthorized changes and malicious software. Material software and infrastructure changes are recorded, receive a security design or threat analysis suited to their risk, are tested, approved, deployed through an authorized process, and are recoverable. Review is independent when practical; a small team records a risk-appropriate compensating or post-deployment review, or an approved Exception, when independent pre-deployment review is not possible.",
+        "activity": "Record the reason, author, risk, security analysis when applicable, reviewer or compensating review, test result, deployment, communication, and rollback method."
+      }
+    ],
+    "next": {
+      "statement": "Source and deployment paths protect against unauthorized changes and malicious software. Changes to infrastructure, data, software, and procedures are documented, authorized, tested, approved before implementation, deployed through an authorized process, and recoverable in proportion to risk. Code and security review, test results, authorization, and deployment evidence are traceable to the exact change and deployed revision.",
+      "activity": "Record the reason, author, authorization, code and security review results, finding dispositions, test results, deployed revision and outcome, communication, and recovery method. Define emergency handling and follow-up for deferred checks."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-vulnerability-management",
+    "prior": [
+      {
+        "activity": "Define scan scope and cadence, severity criteria, risk-based remediation and patch targets, and time-bound Exceptions when a target cannot be met."
+      }
+    ],
+    "next": {
+      "activity": "Map host, network, dependency, web, and advisory coverage to actual sources and current scope. Reconcile results, exclusions, coverage gaps, scan failures, and findings in one periodic review. Define severity, remediation and patch targets, Exceptions, and evidence retrieval before source or CI artifact expiry."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-incident-exercise",
+    "prior": [
+      {
+        "statement": "The organization tests its incident process and a representative alert path from generation through acknowledgement, escalation, and fallback at least annually, then records participants, scenario, results, findings, and follow-up work."
+      }
+    ],
+    "next": {
+      "statement": "The organization tests its incident process and a representative alert path from generation through acknowledgement, escalation, and fallback on the approved risk-based schedule, then records participants, scenario, results, findings, and follow-up work."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-continuity-exercise",
+    "prior": [
+      {
+        "statement": "The organization maintains recovery priorities and responsibilities, reviews emergency contacts annually, and tests its continuity and disaster recovery plan at least annually."
+      }
+    ],
+    "next": {
+      "statement": "The organization maintains recovery priorities and responsibilities, reviews emergency contacts on the approved schedule, and tests its continuity and disaster recovery plan on the approved risk-based schedule."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  },
+  {
+    "id": "control-vendor-monitoring",
+    "prior": [
+      {
+        "statement": "Owners review critical and high-risk vendors at least annually and reassess affected vendors within 30 days after a material service change or incident, then track risks, findings, and follow-up work."
+      }
+    ],
+    "next": {
+      "statement": "Owners review critical and high-risk vendors on the approved risk-based schedule and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work."
+    },
+    "summary": "Use outcome-based requirements and approved risk-based operating schedules."
+  }
+]) {
+  const existing = CONTROL_UPDATES.find((candidate) => candidate.id === update.id);
+  if (existing) {
+    // Every newly written field must match a recognized prior default as well.
+    existing.prior = existing.prior.flatMap((prior) => update.prior.map((additional) => ({ ...additional, ...prior })));
+    existing.prior.push(...update.prior.map((additional) => ({ ...additional, ...existing.next })));
+    existing.next = { ...existing.next, ...update.next };
+    existing.summary = update.summary;
+  } else {
+    CONTROL_UPDATES.push(update);
+  }
+}
+
 const OBLIGATION_UPDATES = [
+  { id: "obligation-quarterly-vulnerability-scan", prior: [{ title: "Quarterly vulnerability scan" }], next: { title: "Periodic vulnerability coverage and findings review" }, summary: "Reconcile source coverage and findings in one periodic review on the approved cadence." },
   {
     id: "obligation-quarterly-security-risk-meeting",
     prior: [{ controlIds: ["control-security-governance"] }],
@@ -481,7 +681,7 @@ const OBLIGATION_RULE_RATIONALE_UPDATES = [
   ["obligation-rule-annual-access-review-v1", "Cover other important access, including customer-data paths not assigned to a shorter approved review schedule. Avoid counting the same access twice."],
   ["obligation-rule-monthly-endpoint-protection-verification-v1", "Confirm device and platform classes, protection coverage, exceptions, evidence, and whether the monthly cadence fits the approved risk decision."],
   ["obligation-rule-annual-network-access-review-v1", "Confirm the in-scope network and host rule sources, customer and environment boundaries, deviations, and review cadence."],
-  ["obligation-rule-quarterly-vulnerability-scan-v1", "Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly."],
+  ["obligation-rule-quarterly-vulnerability-scan-v1", "Map host, network, dependency, web, and advisory sources to current scope. Reconcile complete results, gaps, failures, and finding dispositions in one review, and retrieve evidence before expiry. Choose the cadence from exposure, change, commitments, and risk; the proposed interval is a starting point."],
   ["obligation-rule-annual-critical-vendor-review-v1", "Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed."]
 ].map(([id, guidance]) => ({ id, rationale: `${PRIOR_STARTER_RULE_RATIONALE} ${guidance}` }));
 
@@ -639,6 +839,9 @@ async function buildPolicyLibraryPlan(loaded) {
       skipped.push(skippedItem(TRAINING_ID, "customized", "The Security Awareness Training differs from the recognized prior starter, so FileGRC will not rewrite it."));
     } else {
       const nextSource = source
+        .replace(PRIOR_ADJACENT_TRAINING_0, CURRENT_ADJACENT_TRAINING_0)
+        .replace(PRIOR_ADJACENT_TRAINING_1, CURRENT_ADJACENT_TRAINING_1)
+        .replace(PRIOR_ADJACENT_TRAINING_2, CURRENT_ADJACENT_TRAINING_2)
         .replace(PRIOR_PASSWORD_MANAGER_TRAINING, CURRENT_CREDENTIAL_STORAGE_TRAINING)
         .replace(PRIOR_REMOTE_MFA_TRAINING, CURRENT_REMOTE_MFA_TRAINING)
         .replace(PRIOR_SECRET_HANDLING_TRAINING, CURRENT_SECRET_HANDLING_TRAINING)
@@ -814,7 +1017,11 @@ async function buildPolicyLibraryPlan(loaded) {
       skipped.push(skippedItem(id, "missing", `The starter ${id} Obligation Rule is not present.`));
       continue;
     }
-    if (entry.record.rationale === rationale) {
+    const vulnerabilityRule = id === "obligation-rule-quarterly-vulnerability-scan-v1";
+    const priorSelector = { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"], membershipMode: "as-of", cutoff: "window-end" };
+    const nextSelector = { resourceType: "system", statuses: ["active"], membershipMode: "as-of", cutoff: "window-end" };
+    const selectorCurrent = !vulnerabilityRule || sameValue(entry.record.selector, nextSelector);
+    if (entry.record.rationale === rationale && selectorCurrent) {
       skipped.push(skippedItem(id, "current", "The Obligation Rule already contains the current starter guidance."));
       continue;
     }
@@ -822,18 +1029,25 @@ async function buildPolicyLibraryPlan(loaded) {
       skipped.push(skippedItem(id, "operating", "Only proposed Obligations and Rules are eligible for starter-library guidance updates."));
       continue;
     }
-    if (entry.record.rationale !== PRIOR_STARTER_RULE_RATIONALE || !obligation.ruleIds?.includes(id)) {
+    if ((entry.record.rationale !== rationale && entry.record.rationale !== PRIOR_STARTER_RULE_RATIONALE && entry.record.rationale !== "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly.") || !obligation.ruleIds?.includes(id)) {
       skipped.push(skippedItem(id, "customized", "The Obligation Rule differs from a recognized prior starter, so FileGRC will not rewrite it."));
       continue;
     }
-    updates.push({ ...entry.record, rationale });
+    if (vulnerabilityRule && !selectorCurrent && !sameValue(entry.record.selector, priorSelector)) {
+      skipped.push(skippedItem(id, "customized", "The vulnerability coverage population differs from the recognized starter, so FileGRC will not rewrite it."));
+      continue;
+    }
+    updates.push({ ...entry.record, rationale, ...(vulnerabilityRule ? { selector: nextSelector } : {}) });
     expectedRevisions[id] = entry.revision;
     proposalChanges.push({
       resourceType: "obligation-rule",
       resourceId: id,
       path: displayPath,
       summary: "Add scope and cadence checks to the unchanged proposed starter rule.",
-      diff: replacementDiff(displayPath, [["rationale", entry.record.rationale, rationale]])
+      diff: replacementDiff(displayPath, [
+        ["rationale", entry.record.rationale, rationale],
+        ...(vulnerabilityRule && !selectorCurrent ? [["selector", entry.record.selector, nextSelector]] : [])
+      ])
     });
   }
 
