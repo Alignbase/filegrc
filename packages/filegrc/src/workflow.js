@@ -34,6 +34,7 @@ import { resourceProgramContext } from "./program-path.js";
 import { currentCalendarDate } from "./time.js";
 import { measureTiming } from "./timing.js";
 import { validateWorkspace } from "./validate.js";
+import { notificationContacts } from "./notifications.js";
 import { loadWorkspace } from "./workspace.js";
 
 export const WORKFLOW_CONTRACT_VERSION = 1;
@@ -168,7 +169,10 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     asOf,
     includeComplete: Boolean(options.includeComplete),
     programId: programRecord.id
-  });
+  }).map((item) => ({
+    ...item,
+    notificationContacts: notificationContacts(item.ownerIds, loaded.resources, loaded.notifications)
+  }));
   const git = options.git || safeGitSummary(loaded.root);
   const assessments = buildAssessments({
     program,
@@ -288,6 +292,13 @@ export async function previewWorkflowMutation(input, mutation) {
       errorOnExist: true,
       force: false
     });
+    await rm(join(previewRoot, ".filegrc", "notifications.json"), { force: true });
+    await mkdir(join(previewRoot, ".filegrc"), { recursive: true });
+    try {
+      await cp(join(loaded.root, ".filegrc", "notifications.json"), join(previewRoot, ".filegrc", "notifications.json"));
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     if (repository.available && !repository.clean && getGitSummary(previewRoot).clean) {
       const marker = join(previewRoot, "preview-source-dirty.marker");
       await writeFile(marker, "The source workspace has uncommitted files.\n");
@@ -1849,4 +1860,9 @@ function rankingReason(item) {
   if (item.state === "blocked") return "Ranked after ready work because its named prerequisite must be resolved first.";
   if (item.severity === "error") return "Ranked before warning-level work because it blocks a named assessment.";
   return "Ranked by due date, workflow state, and stable item key.";
+}
+
+// The same deterministic work items exposed by the browser, HTTP API, and CLI.
+export async function getWorkItems(input = process.cwd(), options = {}) {
+  return (await assessWorkflow(input, options)).workItems;
 }

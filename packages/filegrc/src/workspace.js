@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { loadModel } from "../model/index.js";
 import { resolveWorkspaceRoot } from "./paths.js";
+import { loadNotificationConfig } from "./notifications.js";
 import { measureTiming } from "./timing.js";
 
 export async function loadWorkspace(input = process.cwd()) {
@@ -64,7 +65,11 @@ async function loadWorkspaceUnmeasured(input) {
     }
   }
 
+  const notifications = await loadNotificationConfig(root, resources.map(({ record }) => record));
+  diagnostics.push(...notifications.diagnostics);
+
   return {
+    notifications: notifications.config,
     root,
     dataRoot,
     model,

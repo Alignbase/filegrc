@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
-.filegrc/
+.filegrc/*
+!.filegrc/notifications.json
 coverage/
 *.log
 *.tgz

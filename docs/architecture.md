@@ -743,3 +743,11 @@ Next:
 ## Decisions still open
 
 - Evidence size limits and confidential-evidence policy
+
+### Repository notification contacts
+
+The optional `.filegrc/notifications.json` stores a `slack` object keyed by canonical Person ID, with `workspaceId` and `userId` per identity. Email remains authoritative on Person records. Workspace loading and validation report malformed configuration and missing, ambiguous, or incorrectly typed Person references. Validation rechecks references against proposed resource sets, so a mutation cannot silently orphan routing.
+
+Core exposes `getWorkItems()` over the shared workflow assessment. Work items preserve their owner IDs and include notification contacts resolved through active People, Teams, and Appointments. These additive fields also reach workflow HTTP and CLI output. Mutation previews copy the current routing file, including uncommitted edits, so preview contacts match the source workspace. The optional configuration has no data model version dependency; existing workspaces and migrations retain their behavior and preserve the file.
+
+Core does not send notifications or store OAuth credentials or delivery state. A caller uses the resolved addresses and owns authentication, delivery, retries, and deduplication outside Git.
