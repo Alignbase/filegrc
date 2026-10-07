@@ -123,6 +123,9 @@ Add rows for each important data class in the System and Vendor inventories. A r
 
 function previousProductSpecificTraining(source) {
   return source
+    .replace("Complete it on the approved onboarding and recurring schedules, and again when assigned after a material change or incident.", "Complete it within 30 days after starting, at least annually, and again when assigned after a material change or incident.")
+    .replace("Retain traceable code and security review, testing, authorization, and deployment results for the exact change and deployed revision under the approved procedure.", "Separate development and production duties when practical. Record a compensating or post-deployment review when team size or urgency prevents independent pre-deployment review.")
+    .replace("Material incidents receive a root-cause and lessons review within the approved follow-up window.", "Material incidents receive a root-cause and lessons review within one week.")
     .replace(CURRENT_REPOSITORY_SECRET_TRAINING, PRIOR_REPOSITORY_SECRET_TRAINING)
     .replace(CURRENT_ENDPOINT_SETTING_TRAINING, PRIOR_ENDPOINT_SETTING_TRAINING)
     .replace(CURRENT_CONFIGURATION_DOCUMENTATION_TRAINING, PRIOR_CONFIGURATION_RECORD_TRAINING);
@@ -417,7 +420,7 @@ test("offers the questionnaire-driven Policy clarification only for unchanged st
   });
   const path = policyPath(root);
   const current = await readFile(path, "utf8");
-  const prior = previousQuestionnairePolicy(current);
+  const prior = previousQuestionnairePolicy((await readFile(new URL("./fixtures/policy-information-security-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization"));
   await writeFile(path, prior, "utf8");
 
   const review = await assessPolicyLibraryUpgrades(root);
@@ -449,7 +452,7 @@ test("offers scan-friendly requirement lists as a reviewable upgrade", async (co
   });
   const path = policyPath(root);
   const current = await readFile(path, "utf8");
-  const prior = previousPolicyDetailLists(current);
+  const prior = previousPolicyDetailLists((await readFile(new URL("./fixtures/policy-information-security-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization"));
   assert.notEqual(prior, current);
   await writeFile(path, prior, "utf8");
 
@@ -484,7 +487,7 @@ test("offers the readable policy structure as a reviewable upgrade", async (cont
   });
   const path = policyPath(root);
   const current = await readFile(path, "utf8");
-  const prior = previousPolicyFormatting(current);
+  const prior = previousPolicyFormatting((await readFile(new URL("./fixtures/policy-information-security-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization"));
   assert.notEqual(prior, current);
   await writeFile(path, prior, "utf8");
 
@@ -519,7 +522,7 @@ test("offers the glossary-formatted Definitions section as a reviewable upgrade"
   });
   const path = policyPath(root);
   const current = await readFile(path, "utf8");
-  const prior = previousPolicyFormatting(current).replace(CURRENT_POLICY_DEFINITIONS, PRIOR_POLICY_DEFINITIONS);
+  const prior = previousPolicyFormatting((await readFile(new URL("./fixtures/policy-information-security-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization")).replace(CURRENT_POLICY_DEFINITIONS, PRIOR_POLICY_DEFINITIONS);
   assert.notEqual(prior, current);
   await writeFile(path, prior, "utf8");
 
@@ -554,7 +557,7 @@ test("offers the standalone Policy as an explicit upgrade to the immediately pri
   });
   const path = policyPath(root);
   const current = await readFile(path, "utf8");
-  const prior = previousProductSpecificPolicy(current);
+  const prior = previousProductSpecificPolicy((await readFile(new URL("./fixtures/policy-information-security-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization"));
   await writeFile(path, prior, "utf8");
 
   const review = await assessPolicyLibraryUpgrades(root);
@@ -599,7 +602,7 @@ test("offers standalone governed Documents as a reviewable upgrade and changes n
   for (const [id, update] of Object.entries(PRIOR_DOCUMENT_BOUNDARY_REPLACEMENTS)) {
     const path = join(root, "data", "documents", update.path);
     const current = await readFile(path, "utf8");
-    const prior = update.replacements.reduce((source, [next, previous]) => source.replace(next, previous), current);
+    const prior = update.replacements.reduce((source, [next, previous]) => source.replace(next, previous), current.replace("Review this schedule on the approved risk-based schedule and after a material change to systems, data use, vendors, contracts, or applicable duties within the approved reassessment window.", "Review this schedule at least annually and within 30 days after a material change to systems, data use, vendors, contracts, or applicable duties."));
     currentSources.set(id, current);
     priorSources.set(id, prior);
     await writeFile(path, prior, "utf8");
@@ -1063,7 +1066,9 @@ test("reviews generic Control activities without changing planned Controls autom
     const path = join(root, "data", "controls", `${id}.json`);
     const record = JSON.parse(await readFile(path, "utf8"));
     current.set(id, record);
-    await writeJson(path, { ...record, activity });
+    const priorStatement = JSON.parse(await readFile(new URL("./fixtures/security-starter-v4-records.json", import.meta.url), "utf8"))
+      .find(({ record }) => record.id === id)?.record.statement;
+    await writeJson(path, { ...record, activity, ...(priorStatement ? { statement: priorStatement } : {}) });
   }
   const backupPath = join(root, "data", "controls", "control-backup-restoration.json");
   const currentBackup = JSON.parse(await readFile(backupPath, "utf8"));
@@ -1214,7 +1219,7 @@ test("acceptance updates recognized defaults and leaves a customized Control unt
     proposalRevision: proposal.revision
   });
   assert.equal((await readControl(root, "control-network-security")).statement, custom.statement);
-  assert.match((await readControl(root, "control-change-management")).statement, /security design or threat analysis/);
+  assert.match((await readControl(root, "control-change-management")).statement, /Code and security review/);
 });
 
 test("rejects acceptance when the reviewed proposal changes", async (context) => {
@@ -1348,3 +1353,92 @@ async function makePriorStarterWorkspace(context, suffix = "", options = {}) {
 async function readControl(root, id) {
   return JSON.parse(await readFile(join(root, "data", "controls", `${id}.json`), "utf8"));
 }
+
+test("Security starter upgrades are read-only until accepted and preserve adopted and customized content", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-security-outcomes-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const root = join(parent, "program");
+  await createFilegrc({ target: root, companyName: "Test Organization", policyOwnerName: "Program Owner",
+    policyOwnerJobTitle: "Chief Executive Officer", policyOwnerEmail: "owner@example.test",
+    securityContactEmail: "security@example.test", timezone: "UTC", filegrcPackage: fileURLToPath(new URL("../", import.meta.url)), install: true, effectiveDate: "2026-01-01" });
+  const fresh = await assessPolicyLibraryUpgrades(root);
+  assert.equal(fresh.proposals.length, 0);
+  const currentPolicy = await readFile(policyPath(root), "utf8");
+  assert.match(currentPolicy, /approved before implementation/);
+  assert.doesNotMatch(currentPolicy, /independent pre-deployment|Material or high-risk designs/);
+  for (const id of ["control-change-management", "control-vulnerability-management"]) {
+    const guidance = await readFile(join(root, "data", "controls", `${id}.md`), "utf8");
+    assert.match(guidance, /proposal/);
+    assert.match(guidance, /before.*expire|before.*expiry/);
+  }
+  const currentTraining = await readFile(trainingPath(root), "utf8");
+  const priorTraining = (await readFile(new URL("./fixtures/security-awareness-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization");
+  await writeFile(trainingPath(root), priorTraining);
+  const priorRecords = JSON.parse(await readFile(new URL("./fixtures/security-starter-v4-records.json", import.meta.url), "utf8"));
+  const currentControls = new Map();
+  for (const { path, record } of priorRecords) {
+    if (record.type === "control") currentControls.set(record.id, await readControl(root, record.id));
+    await writeJson(join(root, path), record);
+  }
+  const priorPolicy = (await readFile(new URL("./fixtures/policy-information-security-v4.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Test Organization");
+  await writeFile(policyPath(root), priorPolicy);
+  const review = await assessPolicyLibraryUpgrades(root);
+  assert.equal(await readFile(policyPath(root), "utf8"), priorPolicy);
+  assert.ok(review.proposals[0].changes.some(({ resourceId }) => resourceId === "control-change-management"));
+  assert.ok(review.proposals[0].changes.some(({ resourceId }) => resourceId === "control-vulnerability-management"));
+  await applyPolicyLibraryUpgrade(root, review.proposals[0].id, { confirmed: true, proposalRevision: review.proposals[0].revision });
+  assert.equal(await readFile(policyPath(root), "utf8"), currentPolicy);
+  assert.equal(await readFile(trainingPath(root), "utf8"), currentTraining);
+  for (const [id, current] of currentControls) assert.deepEqual(await readControl(root, id), current);
+  assert.equal((await assessPolicyLibraryUpgrades(root)).proposals.length, 0);
+
+  for (const status of ["approved", "active"]) {
+    const policyJson = join(root, "data", "policies", "policy-information-security.json");
+    const policy = JSON.parse(await readFile(policyJson, "utf8"));
+    await writeJson(policyJson, { ...policy, status });
+    await writeFile(policyPath(root), priorPolicy);
+    const protectedReview = await assessPolicyLibraryUpgrades(root);
+    assert.equal(protectedReview.proposals.length, 0);
+    assert.equal(await readFile(policyPath(root), "utf8"), priorPolicy);
+  }
+  const priorChange = priorRecords.find(({ record }) => record.id === "control-change-management").record;
+  await writeJson(join(root, "data", "controls", `${priorChange.id}.json`), { ...priorChange, status: "implemented" });
+  const priorVulnerability = priorRecords.find(({ record }) => record.id === "control-vulnerability-management").record;
+  await writeJson(join(root, "data", "controls", `${priorVulnerability.id}.json`), { ...priorVulnerability, activity: "Organization-specific approved process." });
+  const protectedReview = await assessPolicyLibraryUpgrades(root);
+  assert.equal(protectedReview.proposals.length, 0);
+  assert.equal(protectedReview.skipped.find(({ resourceId }) => resourceId === priorChange.id).reason, "operating");
+  assert.equal(protectedReview.skipped.find(({ resourceId }) => resourceId === priorVulnerability.id).reason, "customized");
+});
+
+test("composed Control upgrades preserve customized statements beside recognized legacy fields", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-composed-control-upgrade-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  for (const operationPattern of ["mixed", "event-driven"]) {
+    const root = join(parent, operationPattern);
+    await createFilegrc({ target: root, companyName: "Test Organization", policyOwnerName: "Program Owner",
+      policyOwnerJobTitle: "Chief Executive Officer", policyOwnerEmail: "owner@example.test",
+      securityContactEmail: "security@example.test", timezone: "UTC",
+      filegrcPackage: fileURLToPath(new URL("../", import.meta.url)), install: true, effectiveDate: "2026-01-01" });
+    const accessId = "control-access-review-offboarding";
+    const retentionId = "control-data-retention-disposal";
+    const access = { ...await readControl(root, accessId),
+      activity: "Review access populations, record decisions, and remove dormant, expired, or unneeded access.",
+      statement: "Organization-specific access review and removal requirements." };
+    const retention = { ...await readControl(root, retentionId), operationPattern,
+      statement: "Organization-specific retention requirements." };
+    const vulnerability = { ...await readControl(root, "control-vulnerability-management"),
+      activity: "Define scan scope and cadence, severity criteria, risk-based remediation and patch targets, and time-bound Exceptions when a target cannot be met." };
+    for (const record of [access, retention, vulnerability]) {
+      await writeJson(join(root, "data", "controls", `${record.id}.json`), record);
+    }
+    const review = await assessPolicyLibraryUpgrades(root);
+    assert.deepEqual(review.proposals[0].changes.map(({ resourceId }) => resourceId), [vulnerability.id]);
+    for (const id of [accessId, retentionId]) {
+      assert.equal(review.skipped.find(({ resourceId }) => resourceId === id).reason, "customized");
+    }
+    await applyPolicyLibraryUpgrade(root, review.proposals[0].id, { confirmed: true, proposalRevision: review.proposals[0].revision });
+    assert.deepEqual(await readControl(root, accessId), access);
+    assert.deepEqual(await readControl(root, retentionId), retention);
+  }
+});

@@ -696,7 +696,7 @@ Standard populations, including zero-event populations:
 - **Access Grants, Changes, Reviews, and Removals** (`access-changes`): source role `identity-access`; start with Identity provider and application access sources. Export after the period closes and before access samples are selected. Split this population when different Components require different queries.
 - **Production and Infrastructure Changes** (`production-changes`): source role `production-change`; start with Source control, deployment, and infrastructure change sources. Export after the period closes and before change samples are selected. Split software and infrastructure populations when their source reports differ.
 - **Security Events and Incidents** (`security-incidents`): source role `security-monitoring`; start with Incident and security monitoring sources. Export after the period closes, including a source report that proves a zero count when management identified no incidents.
-- **Vulnerabilities and Security Scans** (`vulnerability-activity`): source role `vulnerability-management`; start with Vulnerability, dependency, and scanning tools. Export after the period closes and preserve scan coverage, findings, remediation, and exceptions.
+- **Vulnerabilities and Security Scans** (`vulnerability-activity`): source role `vulnerability-management`; start with Vulnerability, dependency, and scanning tools. Preserve complete source reports before retention or CI artifact expiry, then export the reconciled population after the period closes, including coverage, findings, failures, remediation, and exceptions.
 - **Vendors and Vendor Changes** (`vendor-changes`): source role `vendor-management`; start with Vendor inventory, contract, and purchasing sources. Export after the period closes and reconcile additions, removals, material changes, and required reviews.
 - **Devices and Other Important Assets** (`managed-assets`): source role `endpoint-asset`; start with Device management and asset inventory sources. Export after the period closes and reconcile assigned, active, lost, returned, and retired assets.
 - **Training and Policy Acknowledgements** (`training-acknowledgements`): source role `training-acknowledgement`; start with Training, signature, and workforce sources. Export after the period closes and reconcile assignments, completions, acknowledgements, exceptions, and overdue work to the workforce population.
@@ -1091,7 +1091,7 @@ Instructions: Use the current Person and Appointment records to set the Team’s
 
 Policy basis: The information security policy establishes security and risk oversight with independent review, while the continuity plan assigns response and recovery roles. Reviewers may be internal or external.
 
-Timing: The security and risk oversight group meets at least quarterly. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.
+Timing: The security and risk oversight group meets on its approved risk-based schedule. Update membership after responsibility or personnel changes, and preserve a chair who is separate from the policy owner.
 
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
@@ -1173,7 +1173,7 @@ Instructions: Replace Policy placeholders with actual commitments, then have a s
 
 Policy basis: A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
 
-Timing: Move a draft through independent review and approval without requiring every linked Control to be implemented. During Step 3, finish Controls, Components, evidence sources, governed plans, and schedules, review the per-Policy activation assessment, then activate the approved revision on its real effective date. Do not backdate adoption. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review at least annually and after material changes.
+Timing: Move a draft through independent review and approval without requiring every linked Control to be implemented. During Step 3, finish Controls, Components, evidence sources, governed plans, and schedules, review the per-Policy activation assessment, then activate the approved revision on its real effective date. Do not backdate adoption. The approver is usually internal and may be external, but must be separate from the owner and from the CPA auditor role. Review on the approved risk-based schedule and after material changes.
 
 Default sources: `policy-information-security`
 
@@ -1214,7 +1214,7 @@ Instructions: Record the review date, reviewer, decision, and any required follo
 
 Policy basis: The Information Security Policy and Security Incident and Recovery Plan require periodic review and another review after specified material changes.
 
-Timing: Complete annually and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.
+Timing: Complete on the approved risk-based schedule and after a triggering change, incident, disruption, or policy condition. Link the exact scope, reviewers, result, and evidence.
 
 When reviewing:
 
@@ -1251,7 +1251,7 @@ Instructions: Record the person’s dated acknowledgement of the exact active co
 
 Policy basis: The information security policy requires people to complete assigned training and acknowledge applicable responsibilities.
 
-Timing: Assign during onboarding, within 30 days for security training, annually for recurring training, and after material content changes that require acknowledgement.
+Timing: Assign on the approved onboarding and recurring schedules and after material content changes that require acknowledgement.
 
 Default sources: `policy-information-security`
 
@@ -1293,7 +1293,7 @@ Instructions: Record attendees, decisions, minutes, and assigned follow-up for t
 
 Policy basis: The information security policy requires recorded security and risk oversight. The Security Incident and Recovery Plan requires management review of exercises and unresolved risks.
 
-Timing: Hold security and risk oversight meetings at least quarterly. Create one immutable meeting record and Markdown minutes for each occurrence.
+Timing: Hold security and risk oversight meetings on the approved risk-based schedule. Create one immutable meeting record and Markdown minutes for each occurrence.
 
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
@@ -1329,7 +1329,7 @@ Instructions: Complete the content and audience, then have a separate approver a
 
 Policy basis: The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.
 
-Timing: Approve the exact training content in Step 2. During Step 3, finish the linked Controls and Obligations, then activate the unchanged approved revision. Assign training through Obligations at onboarding, annually, and after relevant material changes or incidents.
+Timing: Approve the exact training content in Step 2. During Step 3, finish the linked Controls and Obligations, then activate the unchanged approved revision. Assign training through Obligations on approved onboarding and recurring schedules and after relevant material changes or incidents.
 
 When reviewing:
 
@@ -1554,7 +1554,7 @@ Instructions: Name the threat and impact, assign an owner, rate the risk, and re
 
 Policy basis: The information security policy requires identified Risks to have an owner, rating, treatment decision, target date, and time-bound approval when accepted.
 
-Timing: Assess the register at least annually and after material changes. Review High and Critical risks at least quarterly and accepted risks by their review date.
+Timing: Assess the register on the approved risk-based schedule and after material changes. Review High and Critical risks on their approved schedule and accepted risks by their review date.
 
 Default sources: `policy-information-security`
 
@@ -1592,7 +1592,7 @@ Instructions: Assess the in-scope service, record conclusions, and obtain an ind
 
 Policy basis: The information security policy requires periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.
 
-Timing: Complete at least annually and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.
+Timing: Complete on the approved risk-based schedule and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.
 
 When reviewing:
 
@@ -1641,7 +1641,7 @@ Instructions: Record the person’s actual job title and current status.
 
 Policy basis: The information security policy assigns work to named people and requires onboarding, training, role-change, and offboarding records.
 
-Timing: Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training is due within 30 days of starting and annually.
+Timing: Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training follows the approved onboarding and recurring schedules.
 
 Default sources: `policy-information-security`
 
@@ -1673,7 +1673,7 @@ Instructions: Record a non-human account’s owner, purpose, System, privilege, 
 
 Policy basis: The information security policy requires important human and non-human identities to have an owner, protection, periodic review, and prompt removal when no longer needed.
 
-Timing: Create before use. Review privileged and production access quarterly and other important access annually; retire or expire unused accounts.
+Timing: Create before use. Review privileged, production, and other important access on the approved risk-based schedules; retire or expire unused accounts.
 
 Default sources: `policy-information-security`
 
@@ -1744,7 +1744,7 @@ Instructions: Review the current access list, record each decision, and assign t
 
 Policy basis: The information security policy requires System owners to periodically confirm least privilege and remove dormant, expired, excessive, or unneeded access.
 
-Timing: Review privileged and production access at least quarterly and other important-system access at least annually.
+Timing: Review privileged, production, and other important-system access on the approved risk-based schedules.
 
 When reviewing:
 
@@ -1824,7 +1824,7 @@ Instructions: Record an important Asset’s owner, custody, location, and status
 
 Policy basis: The information security policy requires important assets to have owners and custodians, protection based on classification, and secure return or disposal.
 
-Timing: Record acquisition and assignment, review the inventory annually, update custody on change, and retire assets when use ends.
+Timing: Record acquisition and assignment, review the inventory on the approved risk-based schedule, update custody on change, and retire assets when use ends.
 
 Default sources: `policy-information-security`
 
@@ -1859,7 +1859,7 @@ Instructions: Record each material external provider and the Components it suppl
 
 Policy basis: The information security policy requires an inventory of important providers, risk-based review before access or reliance, suitable contract terms, and ongoing monitoring.
 
-Timing: Create for a material external provider relationship. Review critical and high-risk Vendors at least annually and after material relationship, service, access, or incident changes. Do not create a Component unless a supplied capability also meets the Component inclusion rules.
+Timing: Create for a material external provider relationship. Review critical and high-risk Vendors on the approved risk-based schedule and after material relationship, service, access, or incident changes. Do not create a Component unless a supplied capability also meets the Component inclusion rules.
 
 Default sources: `policy-information-security`
 
@@ -1892,7 +1892,7 @@ Instructions: Review one Vendor’s current risk and evidence, then record the d
 
 Policy basis: The information security policy requires review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.
 
-Timing: Complete before access, at least annually for Critical and High-risk vendors, and after material service changes or incidents.
+Timing: Complete before access, on the approved risk-based schedule for Critical and High-risk vendors, and after material service changes or incidents.
 
 When reviewing:
 
@@ -2016,7 +2016,7 @@ Instructions: Track a confirmed weakness through its owner, response, and closur
 
 Policy basis: The information security policy requires confirmed Vulnerabilities to receive owned, risk-based remediation or an approved Exception with compensating Controls.
 
-Timing: Remediate Critical, High, Medium, and Low vulnerabilities within 7, 14, 30, and 30 days unless an approved exception applies.
+Timing: Assign an owner and approved risk-based remediation or patch deadline from severity, exposure, exploitability, and commitments. Track overdue work through approved time-bound Exceptions and verify closure.
 
 Default sources: `policy-information-security`
 
@@ -2060,7 +2060,7 @@ Instructions: Record the scan scope, date, result, and supporting evidence.
 
 Policy basis: The information security policy requires management to monitor for weaknesses and scan internet-facing and production Systems.
 
-Timing: Scan at least quarterly and after material changes when practical. Review failures and create vulnerability or finding records for confirmed results.
+Timing: Use the approved risk-based scan and reconciliation schedules and reassess coverage after significant changes. Reconcile applicable host, network, dependency, web, and advisory sources in one periodic review. Investigate failed or incomplete scans separately from confirmed findings and retrieve complete evidence before source or CI artifact expiry.
 
 When reviewing:
 
@@ -2142,7 +2142,7 @@ Instructions: Record the test provider, scope, period, results, evidence, and fo
 
 Policy basis: The information security policy requires management to decide whether penetration testing is needed from exposure, material changes, customer commitments, technical capability, and risk, then track confirmed findings when testing is performed.
 
-Timing: Use the cadence approved in the applicable Control, customer commitment, or risk decision. Review applicability at least annually and after material attack-surface or architecture changes; the review may conclude that no penetration test is required.
+Timing: Use the cadence approved in the applicable Control, customer commitment, or risk decision. Review applicability on the approved risk-based schedule and after material attack-surface or architecture changes; the review may conclude that no penetration test is required.
 
 When reviewing:
 
@@ -2188,7 +2188,7 @@ Instructions: Record the scenario, participants, date, result, and follow-up.
 
 Policy basis: The information security policy requires incident-response testing. The Security Incident and Recovery Plan requires exercises and another review after material change or disruption.
 
-Timing: Test incident response and continuity at least annually. Repeat after a material change when the prior exercise no longer represents the environment.
+Timing: Test incident response and continuity on the approved risk-based schedule. Repeat after a material change when the prior exercise no longer represents the environment.
 
 Default sources: `policy-information-security`, `document-security-incident-recovery-plan`
 
@@ -2222,7 +2222,7 @@ Instructions: Record the restore target, date, result, evidence, and follow-up.
 
 Policy basis: The information security policy and Security Incident and Recovery Plan require protected backups, monitored failures, and tested proof that important data can be restored and used.
 
-Timing: Test restoration at least annually for important systems and after recovery changes that could invalidate prior evidence.
+Timing: Test restoration on the approved risk-based schedule for important systems and after recovery changes that could invalidate prior evidence.
 
 When reviewing:
 

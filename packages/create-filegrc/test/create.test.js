@@ -244,7 +244,8 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(informationSecurityContent, /^\- \*\*Service accounts:\*\*/m);
   assert.match(informationSecurityContent, /^\- Assurance or audit rights\.$/m);
   assert.match(informationSecurityContent, /^### Multi-factor authentication$/m);
-  assert.match(informationSecurityContent, /risk-appropriate compensating or post-deployment review/);
+  assert.match(informationSecurityContent, /traceable results for the exact change and deployed revision/);
+  assert.doesNotMatch(informationSecurityContent, /independent pre-deployment|Material or high-risk designs/);
   assert.match(informationSecurityContent, /selects scanning coverage, penetration-testing applicability, remediation targets, and review cadence/);
   assert.match(informationSecurityContent, /Vendors already in use|Vendor already in use/);
   assert.match(informationSecurityContent, /continuous native malware and application protection/);
@@ -289,7 +290,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(informationSecurityContent, /Screening or reference checks are performed before sensitive access when lawful, proportionate to the role and risk/);
   assert.match(informationSecurityContent, /Unsupported or unneeded important assets must be upgraded, isolated, replaced, or retired according to risk/);
   assert.match(informationSecurityContent, /Default credentials must be changed or disabled before use/);
-  assert.match(informationSecurityContent, /Material or high-risk designs and changes receive a documented security analysis suited to the change/);
+  assert.match(informationSecurityContent, /Code and security review evaluate the change against its objectives/);
   assert.match(informationSecurityContent, /Systems with availability commitments, recovery objectives, or material operational dependencies monitor the health, capacity, failure, and service indicators/);
   assert.match(informationSecurityContent, /When applicable to the service and risk, contracts address:/);
   assert.match(informationSecurityContent, /^\- Security responsibilities and incident notice\.$/m);
@@ -340,7 +341,8 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(awarenessTrainingContent, /Approved supporting standards, procedures, and schedules document/);
   assert.doesNotMatch(awarenessTrainingContent, /FileGRC|this repository|recorded in the applicable Endpoint Control|governed schedules record the actual/);
   assert.match(awarenessTrainingContent, /## Building and changing systems/);
-  assert.match(awarenessTrainingContent, /compensating or post-deployment review/);
+  assert.match(awarenessTrainingContent, /Retain traceable code and security review/);
+  assert.doesNotMatch(awarenessTrainingContent, /independent pre-deployment|compensating or post-deployment review/);
   assert.doesNotMatch(awarenessTrainingContent, /no more than 15 minutes/);
   for (const removedDocument of [
     "document-business-continuity-disaster-recovery",
@@ -444,16 +446,16 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(controls.find(({ id }) => id === "control-policy-management").statement, /selects and develops manual and technology Controls/);
   assert.match(controls.find(({ id }) => id === "control-security-communication").statement, /relevant and reliable information from internal and external sources/);
   assert.match(controls.find(({ id }) => id === "control-risk-assessment").statement, /fraud, misconduct, dependency, and change risk/);
-  assert.match(controls.find(({ id }) => id === "control-monitoring-remediation").statement, /at least quarterly and after significant failures/);
+  assert.match(controls.find(({ id }) => id === "control-monitoring-remediation").statement, /approved risk-based schedule and after significant failures/);
   assert.match(controls.find(({ id }) => id === "control-encryption-transmission").statement, /risk-based key lifecycle controls/);
   assert.match(controls.find(({ id }) => id === "control-inventory-configuration").statement, /Unsupported or unneeded important assets are upgraded, isolated, replaced, or retired according to risk/);
   assert.match(controls.find(({ id }) => id === "control-network-security").statement, /separates production and nonproduction environments according to data and risk/);
   assert.match(controls.find(({ id }) => id === "control-network-security").activity, /customer and environment boundaries/);
   assert.match(controls.find(({ id }) => id === "control-access-review-offboarding").activity, /customer-data access/);
   assert.match(controls.find(({ id }) => id === "control-endpoint-protection").activity, /protection coverage and approved deviations/);
-  assert.match(controls.find(({ id }) => id === "control-vulnerability-management").activity, /severity criteria, risk-based remediation and patch targets/);
+  assert.match(controls.find(({ id }) => id === "control-vulnerability-management").activity, /Define severity, remediation and patch targets/);
   assert.match(controls.find(({ id }) => id === "control-vendor-monitoring").activity, /review intervals by Vendor risk and customer-data access/);
-  assert.match(controls.find(({ id }) => id === "control-change-management").statement, /security design or threat analysis suited to their risk/);
+  assert.match(controls.find(({ id }) => id === "control-change-management").statement, /Code and security review/);
   assert.match(controls.find(({ id }) => id === "control-change-management").statement, /protect against unauthorized changes and malicious software/);
   assert.match(controls.find(({ id }) => id === "control-penetration-testing").activity, /Review and record applicability and cadence\. When testing is required/);
   assert.equal(controls.find(({ id }) => id === "control-endpoint-protection").requirementIds.includes("requirement-soc2-cc6-8"), true);
@@ -512,7 +514,8 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(obligationsById.get("obligation-monthly-endpoint-protection-verification").activityType, "endpoint-verification");
   assert.equal(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);
-  assert.match(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").rationale, /shorter cadence, such as monthly/);
+  assert.equal("criticalities" in rulesByObligationId.get("obligation-quarterly-vulnerability-scan").selector, false);
+  assert.match(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").rationale, /the proposed interval is a starting point/);
   assert.match(rulesByObligationId.get("obligation-quarterly-privileged-access-review").rationale, /Add other customer-data access only when an approved commitment or risk decision requires quarterly review/);
   assert.match(rulesByObligationId.get("obligation-annual-access-review").rationale, /other important access, including customer-data paths not assigned to a shorter approved review schedule/);
   assert.match(rulesByObligationId.get("obligation-annual-critical-vendor-review").rationale, /separate review interval for other Vendors/);

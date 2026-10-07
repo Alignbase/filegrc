@@ -4,7 +4,7 @@
 
 Security depends on the choices people make while using accounts, devices, data, and company systems. This training explains the common warning signs, the safeguards everyone must use, and how to report a suspected incident.
 
-This training applies to employees and contractors who use {{company_name}} systems or information. Complete it on the approved onboarding and recurring schedules, and again when assigned after a material change or incident.
+This training applies to employees and contractors who use {{company_name}} systems or information. Complete it within 30 days after starting, at least annually, and again when assigned after a material change or incident.
 
 Questions and incident reports use the current approved security reporting channel delivered with this assignment.
 
@@ -145,7 +145,7 @@ People who design, build, review, deploy, or administer company Systems must:
 - Keep plaintext secrets out of source code, build output, tickets, chat, and logs. Repository access alone must never decrypt approved source-controlled ciphertext.
 - Validate input, authorization, error handling, and sensitive-data use at trust boundaries.
 - Review new and changed dependencies, resolve security findings within the approved risk targets, and record Exceptions when a target cannot be met.
-- Retain traceable code and security review, testing, authorization, and deployment results for the exact change and deployed revision under the approved procedure.
+- Separate development and production duties when practical. Record a compensating or post-deployment review when team size or urgency prevents independent pre-deployment review.
 - Record emergency changes, limit their scope, validate the result, and complete the required follow-up review.
 
 Approved supporting standards, procedures, and schedules document the tools, settings, approval paths, and evidence.
@@ -191,7 +191,7 @@ Do not:
 
 ## What happens after a report
 
-The response team determines the event's scope and severity. It coordinates containment, evidence preservation, recovery, required communications, and follow-up work. Material incidents receive a root-cause and lessons review within the approved follow-up window.
+The response team determines the event's scope and severity. It coordinates containment, evidence preservation, recovery, required communications, and follow-up work. Material incidents receive a root-cause and lessons review within one week.
 
 The person who reports an event should cooperate with the response but should not classify, investigate, contain, or communicate the incident unless assigned that role.
 

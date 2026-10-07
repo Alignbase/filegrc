@@ -1,0 +1,432 @@
+[
+  {
+    "path": "data/controls/control-security-governance.json",
+    "record": {
+      "id": "control-security-governance",
+      "type": "control",
+      "title": "Security governance",
+      "status": "planned",
+      "statement": "Management assigns security responsibilities, and a reviewer who is separate from the policy owner and control operators independently reviews the program, risks, incidents, findings, policy approvals, and overdue work at least quarterly.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc1-1",
+        "requirement-soc2-cc1-2",
+        "requirement-soc2-cc1-3",
+        "requirement-soc2-cc1-5"
+      ],
+      "code": "GOV-01",
+      "activity": "Assign an independent reviewer who is separate from program ownership and record quarterly oversight decisions, approvals, and actions.",
+      "controlType": "preventive",
+      "operationMode": "manual",
+      "operationPattern": "scheduled",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-policy-management.json",
+    "record": {
+      "id": "control-policy-management",
+      "type": "control",
+      "title": "Control and policy management",
+      "status": "planned",
+      "statement": "Management selects and develops manual and technology Controls from approved objectives, commitments, risks, dependencies, and changes, and records each Control's owner, scope, procedure, operation pattern, evidence source, and implementation status. The policy owner reviews Controls, governed policies, and plans at least annually and after material changes, obtains separate approval for governed content, and retains approved revisions in Git.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc5-1",
+        "requirement-soc2-cc5-2",
+        "requirement-soc2-cc5-3"
+      ],
+      "code": "GOV-02",
+      "activity": "Review Control design and evidence paths, correct gaps or approve time-bound Exceptions, and review, approve, communicate, and version governed policies and plans.",
+      "controlType": "preventive",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-security-training.json",
+    "record": {
+      "id": "control-security-training",
+      "type": "control",
+      "title": "Security training and acknowledgement",
+      "status": "planned",
+      "statement": "Employees and contractors complete general security training within 30 days of starting and at least annually. Workers complete applicable role-based training within 30 days of starting a covered role or changing roles, with completion tied to the content revision reviewed.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc1-4",
+        "requirement-soc2-cc2-2"
+      ],
+      "code": "HR-02",
+      "activity": "Assign general and role-based training, document non-applicability where needed, collect completion attestations, and follow up on overdue assignments.",
+      "controlType": "preventive",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-risk-assessment.json",
+    "record": {
+      "id": "control-risk-assessment",
+      "type": "control",
+      "title": "Risk assessment and treatment",
+      "status": "planned",
+      "statement": "The organization defines security objectives and risk tolerance, assesses information security, fraud, misconduct, dependency, and change risk at least annually and after material changes, assigns owners and responses, and reviews high and critical risks at least quarterly.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc3-1",
+        "requirement-soc2-cc3-2",
+        "requirement-soc2-cc3-3",
+        "requirement-soc2-cc3-4",
+        "requirement-soc2-cc9-1"
+      ],
+      "code": "RSK-01",
+      "activity": "Confirm objectives and risk tolerance, identify internal and external threats, fraud and misconduct scenarios, dependencies, and changes, score risk, select treatment, and track review dates.",
+      "controlType": "detective",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-monitoring-remediation.json",
+    "record": {
+      "id": "control-monitoring-remediation",
+      "type": "control",
+      "title": "Control monitoring and remediation",
+      "status": "planned",
+      "statement": "Management reviews Control operation, source information, incidents, test results, Exceptions, and findings at least quarterly and after significant failures, then communicates deficiencies and assigns, tracks, and verifies corrective work through completion.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc4-1",
+        "requirement-soc2-cc4-2"
+      ],
+      "code": "MON-01",
+      "activity": "Review control evidence and track deficiencies, owners, due dates, and verification.",
+      "controlType": "detective",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-access-review-offboarding.json",
+    "record": {
+      "id": "control-access-review-offboarding",
+      "type": "control",
+      "title": "Access review and offboarding",
+      "status": "planned",
+      "statement": "Owners review privileged and production access at least quarterly and other important access at least annually. Access ends at or before notice for involuntary or high-risk departures and within 24 hours for other departures.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc6-2",
+        "requirement-soc2-cc6-3"
+      ],
+      "code": "IAM-03",
+      "activity": "Review complete access populations, including workers and third parties with customer-data access, record decisions, and remove dormant, expired, or unneeded access.",
+      "controlType": "detective",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-data-classification-inventory.json",
+    "record": {
+      "id": "control-data-classification-inventory",
+      "type": "control",
+      "title": "Data classification and inventory",
+      "status": "planned",
+      "statement": "Data owners classify important data, record its approved purpose and location, and review data inventories at least annually and after material changes.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc2-1",
+        "requirement-soc2-cc6-1"
+      ],
+      "code": "DATA-01",
+      "activity": "Maintain classification, ownership, system, vendor, and processing records.",
+      "controlType": "preventive",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-data-retention-disposal.json",
+    "record": {
+      "id": "control-data-retention-disposal",
+      "type": "control",
+      "title": "Data retention and disposal",
+      "status": "planned",
+      "statement": "Owners maintain an approved retention schedule for important record classes, review it at least annually and after material data-use changes, and delete, anonymize, or securely destroy data and media when retention ends.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc6-5"
+      ],
+      "code": "DATA-03",
+      "activity": "Apply approved retention and disposal methods to active, local, backup, and vendor-held copies.",
+      "controlType": "preventive",
+      "operationMode": "hybrid",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-network-security.json",
+    "record": {
+      "id": "control-network-security",
+      "type": "control",
+      "title": "Network and remote-access security",
+      "status": "planned",
+      "statement": "The organization restricts network paths, separates production and nonproduction environments according to data and risk, protects remote access with approved encryption and authentication, and reviews material network access rules at least annually.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc6-6",
+        "requirement-soc2-cc6-7"
+      ],
+      "code": "NET-01",
+      "activity": "Document and verify customer and environment boundaries, approved network rules and deviations by source, wireless safeguards, and remote production access.",
+      "controlType": "preventive",
+      "operationMode": "hybrid",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-change-management.json",
+    "record": {
+      "id": "control-change-management",
+      "type": "control",
+      "title": "Change management",
+      "status": "planned",
+      "statement": "Source and deployment paths protect against unauthorized changes and malicious software. Material software and infrastructure changes are recorded, receive a security design or threat analysis suited to their risk, are tested, approved, deployed through an authorized process, and are recoverable. Review is independent when practical; a small team records a risk-appropriate compensating or post-deployment review, or an approved Exception, when independent pre-deployment review is not possible.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc6-8",
+        "requirement-soc2-cc8-1"
+      ],
+      "code": "CHG-01",
+      "activity": "Record the reason, author, risk, security analysis when applicable, reviewer or compensating review, test result, deployment, communication, and rollback method.",
+      "controlType": "preventive",
+      "operationMode": "hybrid",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-vulnerability-management.json",
+    "record": {
+      "id": "control-vulnerability-management",
+      "type": "control",
+      "title": "Vulnerability management",
+      "status": "planned",
+      "statement": "The organization monitors for vulnerabilities, chooses scan coverage and cadence based on exposure and risk, and assigns each confirmed vulnerability an approved risk-based remediation target or time-bound Exception.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc7-1",
+        "requirement-soc2-cc7-2",
+        "requirement-soc2-cc7-3"
+      ],
+      "code": "VUL-01",
+      "activity": "Define scan scope and cadence, severity criteria, risk-based remediation and patch targets, and time-bound Exceptions when a target cannot be met.",
+      "controlType": "detective",
+      "operationMode": "hybrid",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-incident-exercise.json",
+    "record": {
+      "id": "control-incident-exercise",
+      "type": "control",
+      "title": "Incident response exercise",
+      "status": "planned",
+      "statement": "The organization tests its incident process and a representative alert path from generation through acknowledgement, escalation, and fallback at least annually, then records participants, scenario, results, findings, and follow-up work.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc7-4",
+        "requirement-soc2-cc7-5"
+      ],
+      "code": "IR-02",
+      "activity": "Plan, conduct, review, and document an incident response and alert-path exercise.",
+      "controlType": "detective",
+      "operationMode": "manual",
+      "operationPattern": "scheduled",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-continuity-exercise.json",
+    "record": {
+      "id": "control-continuity-exercise",
+      "type": "control",
+      "title": "Continuity planning and exercise",
+      "status": "planned",
+      "statement": "The organization maintains recovery priorities and responsibilities, reviews emergency contacts annually, and tests its continuity and disaster recovery plan at least annually.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc7-5",
+        "requirement-soc2-cc9-1"
+      ],
+      "code": "BCP-02",
+      "activity": "Maintain the plan, contacts, recovery priorities, exercises, results, and follow-up work.",
+      "controlType": "corrective",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/controls/control-vendor-monitoring.json",
+    "record": {
+      "id": "control-vendor-monitoring",
+      "type": "control",
+      "title": "Vendor monitoring",
+      "status": "planned",
+      "statement": "Owners review critical and high-risk vendors at least annually and reassess affected vendors within 30 days after a material service change or incident, then track risks, findings, and follow-up work.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc4-1",
+        "requirement-soc2-cc9-2"
+      ],
+      "code": "VEN-02",
+      "activity": "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change.",
+      "controlType": "detective",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/obligations/obligation-quarterly-vulnerability-scan.json",
+    "record": {
+      "id": "obligation-quarterly-vulnerability-scan",
+      "type": "obligation",
+      "title": "Quarterly vulnerability scan",
+      "status": "proposed",
+      "activityType": "vulnerability-scan",
+      "scheduleMode": "rule",
+      "ruleIds": [
+        "obligation-rule-quarterly-vulnerability-scan-v1"
+      ],
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "controlIds": [
+        "control-vulnerability-management"
+      ],
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/obligation-rules/obligation-rule-quarterly-vulnerability-scan-v1.json",
+    "record": {
+      "id": "obligation-rule-quarterly-vulnerability-scan-v1",
+      "type": "obligation-rule",
+      "title": "Quarterly vulnerability scan rule v1",
+      "status": "proposed",
+      "obligationId": "obligation-quarterly-vulnerability-scan",
+      "activityDefinitionVersion": "1",
+      "recurrence": {
+        "mode": "calendar",
+        "unit": "month",
+        "interval": 3,
+        "anchorDate": "2026-01-01"
+      },
+      "selector": {
+        "resourceType": "system",
+        "statuses": [
+          "active"
+        ],
+        "criticalities": [
+          "high",
+          "critical"
+        ],
+        "membershipMode": "as-of",
+        "cutoff": "window-end"
+      },
+      "rationale": "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly.",
+      "sourceResourceIds": [
+        "policy-information-security"
+      ]
+    }
+  }
+]
