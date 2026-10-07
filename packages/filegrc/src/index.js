@@ -129,9 +129,12 @@ export { calculatedRevisionDiagnostic, REVISION_SCHEME_VERSION } from "./revisio
 export { validateWorkspace } from "./validate.js";
 export {
   assessWorkflow,
+  getWorkItems,
   buildWorkflowDelta,
   previewWorkflowMutation,
   workflowForResource,
   WORKFLOW_CONTRACT_VERSION
 } from "./workflow.js";
 export { indexResources, loadWorkspace } from "./workspace.js";
+
+export { loadNotificationConfig, notificationContacts, validateNotificationConfig } from "./notifications.js";

@@ -1,4 +1,5 @@
 node_modules/
-.filegrc/
+.filegrc/*
+!.filegrc/notifications.json
 .DS_Store
 *.log
