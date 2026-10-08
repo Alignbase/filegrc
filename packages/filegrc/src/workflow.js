@@ -404,7 +404,7 @@ function validationFindings(validation, loaded) {
     `data/${entry.relativePath}`,
     entry.record
   ]));
-  return (validation?.diagnostics || []).map((diagnostic) => {
+  return (validation?.diagnostics || []).filter(diagnostic => diagnostic.path !== ".filegrc/hosted-automation.json").map((diagnostic) => {
     const record = entriesByPath.get(diagnostic.path);
     const state = "ready";
     const code = `structural.${diagnostic.code}.${record?.id || pathKey(diagnostic.path)}.${stableSuffix(diagnostic.message)}`;

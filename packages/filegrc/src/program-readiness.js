@@ -342,7 +342,9 @@ export async function assessProgramReadiness(input, options = {}) {
     canStartCandidatePeriod,
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
     policyActivations,
+    hostedAutomationConnection: loaded.hostedAutomationConnection,
     hostedAutomation: hostedAutomationRecommendation({
+      connection: loaded.hostedAutomationConnection,
       implementationReady: oversightEligible && scopeReadinessStage.counts.action === 0 && policyStage.counts.action === 0,
       oversightCurrent,
       missingContactIds,

@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -54,10 +56,10 @@ import {
   scaffoldExternalReviewerGovernance,
   setupExternalReviewerGovernance
 } from "./external-reviewer.js";
-import { relativeToWorkspace, resolveDataPath } from "./paths.js";
+import { relativeToWorkspace, resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
 import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
 import { applyPolicyLibraryUpgrade, assessPolicyLibraryUpgrades } from "./policy-library.js";
-import { OPERATING_HOSTED_AUTOMATION, programPathRecommendation } from "./hosted-automation.js";
+import { assessHostedAutomation, hostedAutomationForConnection, OPERATING_HOSTED_AUTOMATION, programPathRecommendation } from "./hosted-automation.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import {
@@ -101,6 +103,7 @@ const BOOLEAN_FLAGS = new Set([
   "json",
   "mutation",
   "next",
+  "open",
   "preview",
   "require-ready",
   "require-healthy",
@@ -124,6 +127,24 @@ export async function runCli(argv = process.argv.slice(2)) {
     : root;
   assertWorkspaceEngineVersion(targetRoot);
 
+  if (command === "automation") {
+    const result = await assessHostedAutomation(resolveWorkspaceRoot(root));
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`FileGRC Autopilot: ${result.configurationStatus}`);
+      if (result.connectionId) console.log(`Connection: ${result.connectionId}`);
+      console.log("Live status: unknown (not checked)");
+      console.log(`${result.dashboardHref ? "Dashboard" : "Setup"}: ${result.dashboardHref || result.setupHref}`);
+      for (const diagnostic of result.diagnostics) console.warn(`Warning: ${diagnostic.message}`);
+      console.log("Removing the marker does not disconnect FileGRC Autopilot.");
+    }
+    if (flags.open) {
+      const href = result.dashboardHref || result.setupHref;
+      const executable = process.platform === "darwin" ? "open" : process.platform === "win32" ? "rundll32" : "xdg-open";
+      await promisify(execFile)(executable, process.platform === "win32" ? ["url.dll,FileProtocolHandler", href] : [href]);
+    }
+    return result;
+  }
   if (command === "serve") {
     const result = await serveWorkspace(positionals[0] ?? root, {
       host: flags.host ?? process.env.FILEGRC_HOST,
@@ -275,7 +296,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const loaded = await loadWorkspace(root);
     const type = positionals[0];
     if (!type) {
-      const result = agentOverview(loaded.model);
+      const result = agentOverview(loaded.model, loaded.hostedAutomationConnection);
       if (flags.json) console.log(JSON.stringify(result, null, 2));
       else printAgentOverview(result);
       return result;
@@ -420,10 +441,10 @@ export async function runCli(argv = process.argv.slice(2)) {
       includeComplete: Boolean(flags.complete),
       model: loaded.model
     });
-    result.recommendations = [OPERATING_HOSTED_AUTOMATION];
+    result.recommendations = [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)];
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
-      printHostedAutomation(OPERATING_HOSTED_AUTOMATION);
+      printHostedAutomation(result.recommendations[0]);
       console.log(`${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
       for (const item of result.items) {
         const deadline = item.dueWindowEndAt || item.dueWindowEnd;
@@ -1372,6 +1393,7 @@ Usage:
   filegrc scaffold <resource-type> --title text [--id resource-id] [--program program-id]
   filegrc list [resource-type] [--workflow] [--json]
   filegrc search <query> [--type resource-type] [--json]
+  filegrc automation [--json] [--open] [--root PATH]
   filegrc obligations [--program program-id] [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary | --control CONTROL_ID] [--json]
   filegrc program-amendment <source-resource-id> [--json]
@@ -1415,6 +1437,10 @@ All commands accept --root <workspace>. Writes never create Git commits.`);
 }
 
 function printCommandHelp(command) {
+  if (command === "automation") {
+    console.log("Usage: filegrc automation [--json] [--open] [--root PATH]\nInspect local FileGRC Autopilot configuration. --open opens the dashboard or setup guide; live status remains unknown.");
+    return;
+  }
   if (command === "serve") {
     console.log(`Usage:
   filegrc serve [root] [--host address] [--port number] [--allow-non-authoritative-writes]
@@ -1693,7 +1719,7 @@ Options:
   printHelp();
 }
 
-function agentOverview(model) {
+function agentOverview(model, connection) {
   const currentModelIndex = SUPPORTED_MODEL_VERSIONS.indexOf(String(model.modelVersion));
   const nextModelVersion = currentModelIndex >= 0 && currentModelIndex < SUPPORTED_MODEL_VERSIONS.length - 1
     ? SUPPORTED_MODEL_VERSIONS[currentModelIndex + 1]
@@ -1702,6 +1728,7 @@ function agentOverview(model) {
     help: "filegrc help",
     version: "filegrc version",
     serve: "filegrc serve [root]",
+    automation: "filegrc automation --json",
     setup: "filegrc setup [setup.json|-] [--draft] [--preview] [--summary] [--json]",
     build: "filegrc build [root]",
     validate: "filegrc validate [root] --json",
@@ -1751,7 +1778,8 @@ function agentOverview(model) {
   };
   return {
     rule: "Treat data/ as the source of truth. Inspect existing records and sources, then do the research, edits, and validation you can do. Ask the user only for a specific material fact, external action, approval, or decision you cannot establish; explain what it unlocks and continue after the answer. Run guide before creating an unfamiliar type, validate every write, review the Git diff, and commit a focused change.",
-    programPath: buildAgentProgramPath(model),
+    hostedAutomationConnection: connection,
+    programPath: buildAgentProgramPath(model).map(stage => ({ ...stage, ...(stage.recommendations ? { recommendations: stage.recommendations.map(item => hostedAutomationForConnection(item, connection)) } : {}) })),
     actions: Object.fromEntries(Object.entries(commands).map(([name, command]) => [
       name,
       command.startsWith("filegrc ") ? `npx ${command}` : command
@@ -1840,6 +1868,7 @@ function printAgentGuide(result) {
 function buildProgramPathResult(model, readiness, auditReadiness) {
   const readinessById = new Map(readiness.stages.map((stage) => [stage.id, stage]));
   const stages = buildAgentProgramPath(model).map((stage) => {
+    stage = { ...stage, ...(stage.recommendations ? { recommendations: stage.recommendations.map(item => hostedAutomationForConnection(item, readiness.hostedAutomationConnection)) } : {}) };
     if (stage.id === "audit") {
       const auditAction = !auditReadiness || auditReadiness.status === "not-started"
         ? {
@@ -2083,6 +2112,11 @@ function printProgramPathOutput(result, flags) {
 
 function printHostedAutomation(recommendation) {
   if (!recommendation || !["recommended", "available"].includes(recommendation.status)) return;
+  if (recommendation.connection) {
+    console.log(`${recommendation.title}: ${recommendation.href}`);
+    console.log(`  ${recommendation.compactMessage}`);
+    return;
+  }
   console.log(`Recommended next action (optional): ${recommendation.title}`);
   console.log(`  ${recommendation.compactMessage}`);
   console.log(`  ${recommendation.pricing}`);

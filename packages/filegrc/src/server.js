@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { getResourceDefinition } from "../model/index.js";
+import { hostedAutomationForConnection, OPERATING_HOSTED_AUTOMATION } from "./hosted-automation.js";
 import { prepareAuditWorkspace } from "./audit-preparation.js";
 import { saveAuditPopulation, scaffoldAuditPopulationCorrection } from "./audit-populations.js";
 import { activateDocuments, activateGovernedContent } from "./document-activation.js";
@@ -228,7 +229,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "GET" && url.pathname === "/api/obligations") {
         const loaded = await loadWorkspace(input);
-        return json(response, 200, planObligations(loaded.resources, {
+        return json(response, 200, { ...planObligations(loaded.resources, {
           programId: url.searchParams.get("programId") || undefined,
           asOf: url.searchParams.get("asOf") || undefined,
           from: url.searchParams.get("from") || undefined,
@@ -236,7 +237,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           now: url.searchParams.get("now") || undefined,
           includeComplete: url.searchParams.get("includeComplete") === "true",
           model: loaded.model
-        }));
+        }), recommendations: [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)] });
       }
       if (request.method === "GET" && url.pathname === "/api/workflow") {
         const start = url.searchParams.get("start");

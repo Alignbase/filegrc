@@ -77,6 +77,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "help",
     "version",
     "serve",
+    "automation",
     "setup",
     "build",
     "validate",

@@ -13,12 +13,15 @@ import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { runCli } from "../src/cli.js";
 import { executeCli } from "./helpers.js";
 
-test("hosted follow-up appears after implementation and review, before cutover, without a completion claim", () => {
+test("FileGRC Autopilot appears after implementation and review, before cutover, without a completion claim", () => {
   const assess = (implementationReady, oversightCurrent, cutoverComplete) => hostedAutomationRecommendation({ implementationReady, oversightCurrent, cutoverComplete });
   assert.equal(assess(false, false, false).status, "later");
   assert.equal(assess(true, false, false).status, "later");
   const ready = assess(true, true, false);
   assert.equal(ready.status, "recommended");
+  assert.equal(ready.title, "FileGRC Autopilot");
+  assert.equal(ready.shortTitle, "Autopilot");
+  assert.equal(ready.compactMessage, "Run your SOC 2 program automatically.");
   assert.equal(ready.optional, true);
   assert.equal(ready.priority, "primary");
   assert.equal(ready.continueWithout.priority, "secondary");
@@ -37,19 +40,19 @@ test("renderer consumes shared placement and offers setup and direct cutover wit
   state.programReadiness.hostedAutomation = hostedAutomationRecommendation({ implementationReady: true, oversightCurrent: true });
   const html = render();
   assert.match(html, /https:\/\/app.filegrc.com\/guide/);
-  assert.match(html, /Continue to content activation without automation/);
+  assert.match(html, /Continue to content activation without Autopilot/);
   assert.match(html, /href="#program-content-cutover"/);
   assert.match(html, /\$19.99/);
   assert.match(html, /USD \/ repo \/ month/);
-  assert.match(html, /optional Slack escalation/);
+  assert.match(html, /Run your SOC 2 program automatically\./);
   assert.doesNotMatch(html, /Operated by|Opening setup|production approval/);
   assert.ok(APP_SCRIPT.indexOf('return renderHostedAutomation()') < APP_SCRIPT.indexOf('id="program-content-cutover"'));
   assert.match(APP_SCRIPT, /event.preventDefault\(\);\n    main.querySelector\("#program-content-cutover"\)/);
   state.programReadiness.hostedAutomation.status = "available";
   assert.equal(render(), "");
   const operating = render("run");
-  assert.match(operating, /Automate your repo/);
-  assert.match(operating, /local app is closed/);
+  assert.match(operating, /FileGRC Autopilot/);
+  assert.match(operating, /Run your SOC 2 program automatically\./);
   assert.doesNotMatch(operating, /program-content-cutover|activate approved/);
   assert.match(operating, /hosted-automation-hero/);
 });
@@ -78,7 +81,7 @@ test("hosted policy files do not change local readiness; CLI exposes the same op
   }
   for (const command of ["obligations", "workflow"]) {
     const text = await executeCli(runCli, process.execPath, [cli, command, "--root", root, "--as-of", "2026-10-07"]);
-    assert.match(text.stdout, /Recommended next action \(optional\): Automate your repo/);
+    assert.match(text.stdout, /Recommended next action \(optional\): FileGRC Autopilot/);
     assert.match(text.stdout, /Start with email/);
     assert.match(text.stdout, /https:\/\/app.filegrc.com\/guide/);
     assert.match(text.stdout, /Keep managing follow-up locally/);
@@ -90,9 +93,11 @@ test("hosted policy files do not change local readiness; CLI exposes the same op
 test("template introduction and agent instructions preserve email-first optional setup and Git boundaries", async () => {
   for (const name of ["README.md", "AGENTS.md"]) {
     const text = await readFile(new URL("../../create-filegrc/template/" + name, import.meta.url), "utf8");
+    assert.match(text, /FileGRC Autopilot/);
+    assert.match(text, /Run your SOC 2 program automatically\./);
     assert.match(text, /\$19.99 USD/);
     assert.match(text, /app.filegrc.com\/guide/);
-    assert.match(text, /without automation/);
+    assert.match(text, /without Autopilot/);
     assert.match(text, /hosted-notifications.json/);
     assert.match(text, /notifications.json/);
     assert.match(text, /credentials/);
@@ -105,9 +110,10 @@ test("fresh consumer includes optional setup docs without seeded hosted settings
   const root = join(parent, "workspace");
   await createFilegrc({ target: root, yes: true, install: false, filegrcVersion: "0.16.26", policyOwnerEmail: "security@example.com" });
   for (const name of ["README.md", "AGENTS.md"]) {
-    assert.match(await readFile(join(root, name), "utf8"), /Continue to content activation without automation/);
+    assert.match(await readFile(join(root, name), "utf8"), /Continue to content activation without Autopilot/);
   }
-  for (const name of ["notifications.json", "hosted-notifications.json"]) {
+  assert.match(await readFile(join(root, ".gitignore"), "utf8"), /!\.filegrc\/hosted-automation\.json/);
+  for (const name of ["notifications.json", "hosted-notifications.json", "hosted-automation.json"]) {
     await assert.rejects(readFile(join(root, ".filegrc", name)), { code: "ENOENT" });
   }
 });
@@ -127,10 +133,10 @@ test("program-path next promotes optional cutover guidance and preserves activat
     stages: [{ id: "controls", number: 3, nextActions: [activation], commands: activation.commands }]
   };
   const output = next(result, {});
-  assert.equal(output.primaryRecommendation.title, "Automate your repo");
+  assert.equal(output.primaryRecommendation.title, "FileGRC Autopilot");
   assert.equal(output.step.nextAction.id, "hosted-automation");
   assert.equal(output.primaryRecommendation.requiredForReadiness, false);
-  assert.equal(output.secondaryAction.title, "Continue to content activation without automation");
+  assert.equal(output.secondaryAction.title, "Continue to content activation without Autopilot");
   assert.equal(output.secondaryAction.nextAction.id, activation.id);
   assert.equal(output.secondaryAction.nextAction.context.workPhase, "setup");
   assert.deepEqual(Array.from(output.secondaryAction.commands), ["npx filegrc activate-content --scaffold", "npx filegrc activate-policies --scaffold"]);
