@@ -42,6 +42,16 @@ git commit -m "Initialize FileGRC program"
 
 {{starter_setup}}
 
+## Automate your repo
+
+Let FileGRC handle owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git. At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, consider hosted automation before activating approved Documents, Training, and Policies. Choose **Continue without hosted automation** to manage follow-up through the local Work Queue. Payment, installation, and hosted availability never affect readiness.
+
+Follow the [setup guide](https://app.filegrc.com/guide) to connect this existing private repository through the FileGRC GitHub App, activate billing, and start with email. The price is $19.99 USD per connected repository per month, operated by Alignbase Inc. Slack is optional, and reminders run while the local app is closed. Check current service availability before subscribing; email production approval and broad Slack distribution remain launch gates. The local product remains free and MIT licensed.
+
+The Step 4 Work Queue keeps the **Automate your repo** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
+
+The [hosted dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. Program records and contacts remain in Git. Confirmed Slack identities live in `.filegrc/notifications.json`; delivery policy lives in `.filegrc/hosted-notifications.json`. Review and confirm changes before committing either file. Keep provider credentials out of Git. Read the guide for quiet hours, escalation, fallback, and the optional weekly Policy Event prompt, which is off by default. Users still perform control work, record events, and retain real evidence locally; the service does not host the editor or judge evidence sufficiency.
+
 Do not put plaintext credentials, private keys, authentication tokens, recovery codes, session material, or personal data that may need erasure into Git. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation rules.
 
 filegrc manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.

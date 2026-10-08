@@ -10,6 +10,7 @@ import {
   utcCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
+import { HOSTED_AUTOMATION, OPERATING_HOSTED_AUTOMATION } from "./hosted-automation.js";
 import { PROGRAM_PATH, programPathForModel, RESOURCE_INSTRUCTIONS, RESOURCE_OUTPUTS, RESOURCE_PAGE_SUMMARIES } from "./program-path.js";
 import { formatCalendarDate, formatLocalDateTime } from "./time.js";
 
@@ -115,6 +116,8 @@ const MODEL_CAPABILITY_VERSIONS = ${JSON.stringify(MODEL_CAPABILITY_VERSIONS)};
 const modelSupports = (capability) => Number(state?.model?.modelVersion || 0) >= MODEL_CAPABILITY_VERSIONS[capability];
 const LIST_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 25;
+const HOSTED_AUTOMATION = ${JSON.stringify(HOSTED_AUTOMATION)};
+const OPERATING_HOSTED_AUTOMATION = ${JSON.stringify(OPERATING_HOSTED_AUTOMATION)};
 const NAV_GROUP_STORAGE_KEY = "filegrc.sidebar.groups.v3";
 const NAV_SCROLL_STORAGE_KEY = "filegrc.sidebar.scroll.v1";
 let navigationScrollTop = readNavigationScrollTop();
@@ -414,7 +417,7 @@ function buildNavigation(route) {
   const organizationCurrent = route.name === "organization" || route.name === "repository" || ["workspace", "renderer-settings"].includes(route.type);
   const organizationName = state.workspace.organizationName || "Organization";
   const initial = organizationName.trim().charAt(0).toUpperCase() || "O";
-  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"' + (route.name === "home" ? ' aria-current="page"' : "") + '><img class="mark" src="./logo-mark-white.png" alt="" width="39" height="39"><span><strong>filegrc</strong><small>SOC 2 workspace</small></span></a><label class="search mobile-sidebar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"></label><nav class="sidebar-nav">' + stages + '</nav><div class="sidebar-footer"><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
+  return '<aside class="sidebar" id="sidebar-navigation"><button class="nav-close" type="button" aria-label="Close navigation">×</button><a href="#/" class="brand"' + (route.name === "home" ? ' aria-current="page"' : "") + '><img class="mark" src="./logo-mark-white.png" alt="" width="39" height="39"><span><strong>filegrc</strong><small>SOC 2 workspace</small></span></a><label class="search mobile-sidebar-search"><span aria-hidden="true">⌕</span><input data-global-search type="search" placeholder="Search records" aria-label="Search records"></label><nav class="sidebar-nav">' + stages + '</nav><div class="sidebar-footer"><a class="hosted-automation-nav" href="' + esc(HOSTED_AUTOMATION.href) + '" target="_blank" rel="noopener noreferrer">Automate your repo <span aria-hidden="true">↗</span><small>Optional hosted reminders</small></a><a class="organization-nav ' + (organizationCurrent ? "current" : "") + '" href="#/organization"><span class="organization-mark">' + esc(initial) + '</span><span><strong>' + esc(organizationName) + '</strong><small>Organization</small></span><span class="organization-arrow">›</span></a></div></aside><button class="nav-scrim" type="button" aria-label="Close navigation"></button>';
 }
 
 function readinessStageForRoute(route) {
@@ -647,6 +650,10 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
   main.querySelector("[data-show-evidence-families]")?.addEventListener("click", (event) => {
     main.querySelectorAll("[data-evidence-family-extra]").forEach((card) => { card.hidden = false; });
     event.currentTarget.remove();
+  });
+  main.querySelector('.hosted-automation a[href="#program-content-cutover"]')?.addEventListener("click", (event) => {
+    event.preventDefault();
+    main.querySelector("#program-content-cutover")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   main.querySelector("[data-review-policy-activation]")?.addEventListener("click", openPolicyActivationDialog);
   main.querySelector("[data-review-document-activation]")?.addEventListener("click", () => openDocumentActivationDialog());
@@ -1327,6 +1334,16 @@ function collectionReviewVisible(type) {
   return type !== "control";
 }
 
+function renderHostedAutomation(stageId = "controls") {
+  const operating = stageId === "run";
+  const recommendation = operating
+    ? state.programReadiness?.hostedAutomation?.operating || OPERATING_HOSTED_AUTOMATION
+    : state.programReadiness?.hostedAutomation;
+  if (!operating && recommendation?.status !== "recommended") return "";
+  const skip = operating ? "" : '<a class="button hosted-automation-secondary" href="#program-content-cutover">' + esc(recommendation.continueWithout.title) + '</a>';
+  return '<section class="hosted-automation hosted-automation-hero"><div class="hosted-automation-copy"><p class="kicker">' + (operating ? 'Optional hosted follow-up' : 'Recommended · Optional') + '</p><h2>' + esc(recommendation.title) + '</h2><p class="hosted-automation-lead">' + esc(recommendation.compactMessage) + '</p><div class="hosted-automation-actions"><a class="button hosted-automation-primary" href="' + esc(recommendation.href) + '" target="_blank" rel="noopener noreferrer">Automate your repo ↗</a>' + skip + '</div></div><div class="hosted-automation-details"><p class="hosted-automation-price">' + esc(recommendation.priceAmount) + ' <span>' + esc(recommendation.priceUnit) + '</span></p></div></section>';
+}
+
 function renderFinishStepThree() {
   const readiness = state.programReadiness;
   const stage = readiness?.stages?.find(({ id }) => id === "controls");
@@ -1356,7 +1373,7 @@ function renderFinishStepThree() {
     return '<section class="finish-step-heading"><p class="kicker">Finish Step 3</p><h2>Review the implemented Control collection</h2><p>One eligible reviewer confirms the implemented Controls as a batch. Management activates the approved program content after this review.</p></section>' + collectionReviewPanel("control", true);
   }
   if (activationItems.some(({ status }) => status !== "complete")) {
-    return '<section class="finish-step-heading"><p class="kicker">Finish Step 3</p><h2>Program Content Activation</h2><p>The Control collection review is current. Activate the unchanged approved program content to complete the implementation cutover.</p></section>' + renderDocumentActivationAssessments() + renderPolicyActivationAssessments();
+    return renderHostedAutomation() + '<section id="program-content-cutover" class="finish-step-heading"><p class="kicker">Finish Step 3</p><h2>Program Content Activation</h2><p>The Control collection review is current. Activate the unchanged approved program content to complete the implementation cutover.</p></section>' + renderDocumentActivationAssessments() + renderPolicyActivationAssessments();
   }
   return '<section class="finish-step panel complete"><div><p class="kicker">Step 3 complete</p><h2>Implementation cutover complete</h2><p>The Control collection review is current and required program content is active.</p></div><a class="button primary" href="#/stage/run">Continue to Step 4</a></section>';
 }
@@ -2221,6 +2238,7 @@ function renderObligations(main, params = new URLSearchParams()) {
   main.innerHTML = '<div class="page obligation-board-page stage-overview-page"><nav class="breadcrumbs"><a href="#/">Overview</a><span>/</span><span>' + esc(stage.title) + '</span></nav>' +
     '<section class="stage-overview-hero"><div><p class="kicker">Step ' + esc(stage.number) + ' of 5</p><h2>' + esc(stage.title) + '</h2><p>' + esc(stage.summary) + '</p></div>' + stageProgressCard(stageProgress(stage)) + '</section>' +
     renderStageInstructions(stage) +
+    renderHostedAutomation("run") +
     feedback +
     operationGate +
     activeOperation +
@@ -6659,6 +6677,8 @@ function esc(value) { return String(value ?? "").replace(/[&<>"']/g, (character)
 `;
 
 export const APP_STYLES = String.raw`
+.hosted-automation-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:32px;overflow:hidden;margin:24px 0;padding:32px;border:1px solid #3838be;border-radius:16px;color:#fff;background:radial-gradient(ellipse at 95% 0%,rgba(96,113,255,.4),transparent 60%),linear-gradient(135deg,#0000a5 0%,#000070 48%,#000035 100%);box-shadow:0 12px 32px rgba(0,0,112,.2)}.hosted-automation-hero .kicker{color:#bfc9ff}.hosted-automation-hero h2{margin:10px 0 14px;color:#fff;font:500 clamp(30px,3vw,42px)/1.1 Georgia,serif;letter-spacing:-.025em}.hosted-automation-hero p{color:#dce2ff;font-size:13px;line-height:1.65}.hosted-automation-hero .hosted-automation-lead{max-width:650px;font-size:16px;color:#fff}.hosted-automation-details{align-self:center;padding-left:24px;border-left:1px solid rgba(255,255,255,.24)}.hosted-automation-hero .hosted-automation-price{margin:0;color:#fff;font:500 34px/1.2 Georgia,serif}.hosted-automation-price span{display:block;margin-top:8px;font:600 11px/1.5 Inter,system-ui,sans-serif}.hosted-automation-details small{display:block;color:#c2caff;font-size:11px;line-height:1.6}.hosted-automation-actions{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0}.hosted-automation-hero .hosted-automation-primary{border-color:#fff;background:#fff;color:#000070;box-shadow:0 3px 12px rgba(0,0,0,.15)}.hosted-automation-hero .hosted-automation-secondary{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.08);color:#fff}.hosted-automation-hero .hosted-automation-primary:hover{background:#e7ebff}.hosted-automation-hero .hosted-automation-secondary:hover{background:rgba(255,255,255,.18)}.hosted-automation-hero .hosted-automation-note{margin-bottom:0;font-size:11px;color:#c2caff}.hosted-automation-nav{display:block;padding:10px 8px;color:#eef1ff;font-size:13px;text-decoration:none}.hosted-automation-nav small{display:block;margin-top:4px;color:#aeb6d8;font-size:10px}.hosted-automation-nav:hover{background:rgba(255,255,255,.11);border-radius:8px}@media(max-width:900px){.hosted-automation-hero{grid-template-columns:1fr;gap:22px;padding:24px}.hosted-automation-details{padding:20px 0 0;border-left:0;border-top:1px solid rgba(255,255,255,.24)}.hosted-automation-hero .hosted-automation-price{font-size:28px}.hosted-automation-price span{display:inline;margin-left:8px}.hosted-automation-actions .button{max-width:100%;white-space:normal;text-align:center}}
+
 .finish-step{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:24px;padding:20px 22px}.finish-step h2,.finish-step-heading h2{margin:5px 0 7px;font:500 24px Georgia,serif}.finish-step p:not(.kicker),.finish-step-heading p:not(.kicker){margin:0;color:var(--muted);font-size:12px;line-height:1.55}.finish-step.blocked{border-color:#d8bd78}.finish-step.complete{border-color:#b9dac6}.finish-step-heading{margin-top:28px;padding:20px 22px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:11px}
 .finish-step.blocked>div{min-width:0;flex:1}.control-review-blockers{margin-top:13px}.control-review-blockers summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:700}.control-review-blockers ol{max-height:360px;overflow:auto;margin:10px 0 0;padding:0 14px 0 28px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.control-review-blockers li{padding:11px 0;font-size:11px}.control-review-blockers li+li{border-top:1px solid var(--line)}.control-review-blockers li a{color:var(--accent)}.control-review-blockers li p{margin-top:4px!important}.stage-page-proposals{margin-top:auto!important;padding-top:12px;border-top:1px solid var(--line)}
 :root{--ink:#151827;--muted:#5d6475;--line:#dfe3ef;--paper:#f6f7fb;--panel:#fff;--accent:#0000a5;--accent-soft:#eef1ff;--accent-light:#8aa1ff;--focus:#0000e0;--amber:#8a5200;--red:#a13a31;--sidebar:linear-gradient(135deg,#000070 0%,#000035 60%);--primary-gradient:linear-gradient(135deg,#000070 0%,#000035 60%);--surface-soft:#f2f4fa;--surface-muted:#eceff7;--field:#fff;--field-readonly:#eef0f6;--code-bg:#10162b;--code-ink:#e8ebff;--shadow:0 8px 28px rgba(0,0,53,.08);color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none}

@@ -81,6 +81,7 @@ test("Step 3 review action follows the CLI prerequisites and lists each implemen
     workflowItemHref: (item) => item.resourceId ? "#/resource/control/" + item.resourceId : null,
     pluralize: (word, count) => count === 1 ? word : word + "s",
     collectionReviewPanel: () => panel,
+    renderHostedAutomation: () => "",
     renderDocumentActivationAssessments: () => "Document activation",
     renderPolicyActivationAssessments: () => "Policy activation"
   });

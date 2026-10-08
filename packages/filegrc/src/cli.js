@@ -57,6 +57,7 @@ import {
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
 import { applyPolicyLibraryUpgrade, assessPolicyLibraryUpgrades } from "./policy-library.js";
+import { OPERATING_HOSTED_AUTOMATION } from "./hosted-automation.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import {
@@ -419,8 +420,10 @@ export async function runCli(argv = process.argv.slice(2)) {
       includeComplete: Boolean(flags.complete),
       model: loaded.model
     });
+    result.recommendations = [OPERATING_HOSTED_AUTOMATION];
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
+      printHostedAutomation(OPERATING_HOSTED_AUTOMATION);
       console.log(`${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
       for (const item of result.items) {
         const deadline = item.dueWindowEndAt || item.dueWindowEnd;
@@ -511,6 +514,8 @@ export async function runCli(argv = process.argv.slice(2)) {
         console.log(`\nEvidence Ready: management can start the candidate Type 2 period on or after ${result.suggestedCandidatePeriodStart || result.asOf}.`);
       }
     }
+    if (!flags.json && !controlItem) printHostedAutomation(result.hostedAutomation?.status === "recommended"
+      ? result.hostedAutomation : result.hostedAutomation?.status === "available" ? result.hostedAutomation.operating : null);
     if (flags["require-ready"] && (controlItem ? controlItem.status !== "complete" : !result.evidenceReady)) process.exitCode = 2;
     return output;
   }
@@ -1886,6 +1891,7 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
     documentActivations: readiness.documentActivations,
     trainingActivations: readiness.trainingActivations,
     policyLibraryProposals: readiness.policyLibraryProposals,
+    hostedAutomation: readiness.hostedAutomation,
     stages
   };
 }
@@ -1952,6 +1958,7 @@ function summarizeProgramPath(result) {
     operating: result.operating,
     policyActivations: result.policyActivations,
     policyLibraryProposals: result.policyLibraryProposals,
+    hostedAutomation: result.hostedAutomation,
     stages: result.stages.map((stage) => ({
       id: stage.id,
       number: stage.number,
@@ -1975,6 +1982,7 @@ function nextProgramPath(result, loaded) {
     operating: result.operating,
     policyActivations: result.policyActivations,
     policyLibraryProposals: result.policyLibraryProposals,
+    hostedAutomation: result.hostedAutomation,
     step: stage ? {
       id: stage.id,
       number: stage.number,
@@ -2036,6 +2044,9 @@ function evidenceSourceCheckName(name) {
 }
 
 function printProgramPathOutput(result, flags) {
+  printHostedAutomation(result.hostedAutomation?.status === "recommended"
+    ? result.hostedAutomation : result.hostedAutomation?.status === "available"
+      ? result.hostedAutomation.operating : null);
   if (flags.summary) {
     console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
     for (const stage of result.stages) {
@@ -2056,7 +2067,17 @@ function printProgramPathOutput(result, flags) {
   printProgramPath(result);
 }
 
+function printHostedAutomation(recommendation) {
+  if (!recommendation || !["recommended", "available"].includes(recommendation.status)) return;
+  console.log(`Optional: ${recommendation.title}. ${recommendation.pricing}`);
+  console.log(`  ${recommendation.emailFirst}`);
+  console.log(`  Setup: ${recommendation.href}`);
+  console.log(`  ${recommendation.continueWithout.title}: ${recommendation.continueWithout.message}`);
+}
+
 function printWorkflow(result) {
+  const setup = result.recommendations?.find(({ stage, status }) => stage === "controls" && status === "recommended");
+  printHostedAutomation(setup || result.recommendations?.find(({ stage }) => stage === "run"));
   console.log(`Workflow contract v${result.contractVersion}, model v${result.dataModelVersion}`);
   for (const [name, assessment] of Object.entries(result.assessments)) {
     console.log(`${String(assessment.status).toUpperCase()}\t${name}\t${assessment.message}`);
@@ -2097,6 +2118,7 @@ function summarizeProgramReadiness(result) {
     operating: result.operating,
     canStartCandidatePeriod: result.canStartCandidatePeriod,
     suggestedCandidatePeriodStart: result.suggestedCandidatePeriodStart,
+    hostedAutomation: result.hostedAutomation,
     target: result.target,
     progress: result.progress,
     setupProgress: result.setupProgress,

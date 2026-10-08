@@ -1,3 +1,4 @@
+import { HOSTED_AUTOMATION, OPERATING_HOSTED_AUTOMATION } from "./hosted-automation.js";
 import { ACTIVE_MODEL_VERSION, modelSupports } from "../model/index.js";
 
 export const RESOURCE_INSTRUCTIONS = {
@@ -181,6 +182,7 @@ export const PROGRAM_PATH = [
     id: "controls",
     number: 3,
     title: "Implement Controls",
+    recommendations: [HOSTED_AUTOMATION],
     description: "Implement and prepare to operate",
     summary: "Implemented Controls with ready evidence sources and enabled work schedules.",
     sections: [
@@ -209,6 +211,7 @@ export const PROGRAM_PATH = [
     id: "run",
     number: 4,
     title: "Operate the Program",
+    recommendations: [OPERATING_HOSTED_AUTOMATION],
     description: "Run the work and retain dated proof",
     summary: "Dated operating records and linked proof for work actually performed.",
     sections: [

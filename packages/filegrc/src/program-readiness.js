@@ -32,6 +32,8 @@ import {
 } from "./soc2.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
 import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
+import { hostedAutomationRecommendation } from "./hosted-automation.js";
+import { notificationContacts } from "./notifications.js";
 import { loadWorkspace } from "./workspace.js";
 
 export function calculateProgramProgress({
@@ -319,6 +321,14 @@ export async function assessProgramReadiness(input, options = {}) {
     Boolean(progressWindow)
   );
 
+  const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
+  const notificationOwnerIds = [...new Set([
+    ...scope.controls,
+    ...records.filter((record) => record.type === "obligation" && obligationIsEnabled(record)
+      && (record.controlIds || []).some((id) => selectedControlIds.has(id)))
+  ].flatMap(({ ownerIds = [] }) => ownerIds))];
+  const missingContactIds = notificationContacts(notificationOwnerIds, records, loaded.notifications)
+    .filter(({ email, slack }) => !email && !slack).map(({ personId }) => personId);
   return {
     program,
     schemaVersion: 1,
@@ -332,6 +342,12 @@ export async function assessProgramReadiness(input, options = {}) {
     canStartCandidatePeriod,
     suggestedCandidatePeriodStart: canStartCandidatePeriod ? asOf : null,
     policyActivations,
+    hostedAutomation: hostedAutomationRecommendation({
+      implementationReady: oversightEligible && scopeReadinessStage.counts.action === 0 && policyStage.counts.action === 0,
+      oversightCurrent,
+      missingContactIds,
+      cutoverComplete: controlStage.counts.action === 0
+    }),
     controlReviewReady: oversightEligible,
     controlReviewPrerequisiteIds,
     documentActivations: governedContent.documentActivations,
