@@ -197,6 +197,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
       gitRevision: git.commit || null
     },
     assessments,
+    recommendations: [program.hostedAutomation, program.hostedAutomation?.operating].filter(Boolean),
     findings: findings.sort(compareFindings),
     workItems: workItems.sort(compareWorkItems),
     recommended: recommended

@@ -753,3 +753,11 @@ The optional `.filegrc/notifications.json` stores a `slack` object keyed by cano
 Core exposes `getWorkItems()` over the shared workflow assessment. Work items preserve their owner IDs and include notification contacts resolved through active People, Teams, and Appointments. These additive fields also reach workflow HTTP and CLI output. Mutation previews copy the current routing file, including uncommitted edits, so preview contacts match the source workspace. The optional configuration has no data model version dependency; existing workspaces and migrations retain their behavior and preserve the file.
 
 Core does not send notifications or store OAuth credentials or delivery state. A caller uses the resolved addresses and owns authentication, delivery, retries, and deduplication outside Git.
+
+## Optional hosted follow-up
+
+Core derives an optional hosted automation recommendation after Step 3 implementation and the Control collection review, before approved program content activation. `program-readiness`, `program-path`, the shared workflow, and the renderer expose the same recommendation. It stays outside readiness items and counts, so activation, CI, CLI use, and audit checks work offline and without payment. No tracked setup preference is needed: users may continue directly to the existing cutover, and a setup link never asserts verified delivery.
+
+The persistent renderer entry links to the hosted setup guide. The hosted service reads Git content and sends follow-up while the local app is closed. Its dashboard manages connections, billing, confirmed person links, and delivery health. Core has no hosted credentials, dependencies, or automatic policy writes. Program contacts and confirmed Slack mappings remain in Git; the service database holds credentials and operational delivery state. Source systems and local users still perform and record the work.
+
+Step 4 retains the hosted offer beside the Work Queue for later opt-in. The shared operating recommendation is discoverable through text and JSON `obligations` and `workflow` output, with the local Work Queue as the continuation path. Both Step 3 and Step 4 use the same blue gradient hero treatment; neither tracks a clicked link as setup completion.

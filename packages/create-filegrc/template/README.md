@@ -55,6 +55,22 @@ Control implementation includes evidence-source and Obligation readiness. Use `n
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 
+## Automate your repo
+
+Let FileGRC handle owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git. Hosted automation is optional, costs $19.99 USD per connected repository per month, and is operated by Alignbase Inc. The local product remains free and MIT licensed.
+
+At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, consider automation before activating approved Documents, Training, and Policies. Choose **Continue without hosted automation** to use the local Work Queue instead. Neither choice changes activation or readiness checks.
+
+1. Follow the [hosted setup guide](https://app.filegrc.com/guide) to connect your existing private repository through the FileGRC GitHub App and activate billing.
+2. Start with email. Keep Person contacts current in Git so reminders reach owners even when the local app is closed.
+3. Add Slack if useful. Confirm suggested Person links and review delivery policy before committing changes.
+
+The Step 4 Work Queue keeps the **Automate your repo** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
+
+The [hosted dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. It does not host the editor, perform control work, create real evidence, or judge evidence sufficiency. Check current service availability before subscribing; email production approval and broad Slack distribution remain launch gates.
+
+Owners, contacts, deadlines, and program records stay in Git. Confirmed Slack identities live in `.filegrc/notifications.json`, and hosted delivery policy lives in `.filegrc/hosted-notifications.json`. Keep credentials out of Git. See the setup guide for quiet hours, fallback, escalation, and the optional weekly Policy Event prompt, which is off by default. Users record actual events and completed work locally.
+
 ## The routine work stays connected
 
 - **Work Queue** turns policy schedules and follow-up into upcoming, blocked, due, and overdue work, with named blockers when a task cannot proceed.
