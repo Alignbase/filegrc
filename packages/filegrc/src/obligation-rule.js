@@ -1,3 +1,5 @@
+import { currentCalendarDate } from "./time.js";
+
 export function obligationRule(obligation, byId, options = {}) {
   const proposedId = options.includeProposed
     ? [...(obligation.ruleIds || [])].reverse().find((id) => ["proposed", "approved"].includes(byId.get(id)?.status))
@@ -17,4 +19,11 @@ export function obligationRule(obligation, byId, options = {}) {
     && (rule.status === "active" || (options.includeProposed && ["proposed", "approved"].includes(rule.status)))
     ? rule
     : null;
+}
+
+export function obligationRuleRecurrence(rule, timezone = "UTC") {
+  const recurrence = rule.recurrence || {};
+  return recurrence.anchorMode === "activation" && rule.effectiveAt
+    ? { ...recurrence, anchorDate: currentCalendarDate(rule.timezone || timezone, new Date(rule.effectiveAt)) }
+    : recurrence;
 }

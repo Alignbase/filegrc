@@ -153,6 +153,7 @@ const DOCUMENT_CONTENT_UPDATES = [
   }
 ];
 const PRIOR_STARTER_POLICY_REVISIONS = new Set([
+  "0bcdfd51d6582c57fcb63f8c9a8d729a530d9dab67ea8160a65491f08c3bc56d",
   "f115934fe46750010dc61502b4407eaa4cdd6beacefaeda7a7e7b654401d0b29",
   "b440eb17797624c1b456f778b12a955c871de308349e565b5d69ab6a25703673",
   "b0f9b988a8bd231fe70ce71b6a732970e709b7af7826c1b55f1532f511b6e511",
@@ -442,9 +443,11 @@ const CONTROL_UPDATES = [
     id: "control-vendor-monitoring",
     prior: [{
       activity: "Review vendor performance, assurance, recovery, access, incidents, and contract obligations."
+    }, {
+      activity: "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change."
     }],
     next: {
-      activity: "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change."
+      activity: "Review all active Vendors annually, using Vendor risk and customer-data access to set review depth. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change."
     },
     summary: "Prompt review intervals for every customer-data Vendor while keeping the interval risk-based."
   }
@@ -621,10 +624,12 @@ for (const update of [
     "prior": [
       {
         "statement": "Owners review critical and high-risk vendors at least annually and reassess affected vendors within 30 days after a material service change or incident, then track risks, findings, and follow-up work."
+      }, {
+        "statement": "Owners review critical and high-risk vendors on the approved risk-based schedule and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work."
       }
     ],
     "next": {
-      "statement": "Owners review critical and high-risk vendors on the approved risk-based schedule and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work."
+      "statement": "Owners review all active Vendors annually, using risk to set review depth, and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work."
     },
     "summary": "Use outcome-based requirements and approved risk-based operating schedules."
   }
@@ -642,6 +647,7 @@ for (const update of [
 }
 
 const OBLIGATION_UPDATES = [
+  { id: "obligation-annual-critical-vendor-review", prior: [{ title: "Annual critical and high-risk vendor review" }], next: { title: "Annual Vendor Review" }, summary: "Use one annual Vendor Review for the full active Vendor population." },
   { id: "obligation-quarterly-vulnerability-scan", prior: [{ title: "Quarterly vulnerability scan" }], next: { title: "Periodic vulnerability coverage and findings review" }, summary: "Reconcile source coverage and findings in one periodic review on the approved cadence." },
   {
     id: "obligation-quarterly-security-risk-meeting",
@@ -676,13 +682,14 @@ const OBLIGATION_UPDATES = [
 ];
 
 const PRIOR_STARTER_RULE_RATIONALE = "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation.";
+const PRIOR_VENDOR_RULE_RATIONALE = `${PRIOR_STARTER_RULE_RATIONALE} Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed.`;
 const OBLIGATION_RULE_RATIONALE_UPDATES = [
   ["obligation-rule-quarterly-privileged-access-review-v1", "Cover privileged and production access. Add other customer-data access only when an approved commitment or risk decision requires quarterly review."],
   ["obligation-rule-annual-access-review-v1", "Cover other important access, including customer-data paths not assigned to a shorter approved review schedule. Avoid counting the same access twice."],
   ["obligation-rule-monthly-endpoint-protection-verification-v1", "Confirm device and platform classes, protection coverage, exceptions, evidence, and whether the monthly cadence fits the approved risk decision."],
   ["obligation-rule-annual-network-access-review-v1", "Confirm the in-scope network and host rule sources, customer and environment boundaries, deviations, and review cadence."],
   ["obligation-rule-quarterly-vulnerability-scan-v1", "Map host, network, dependency, web, and advisory sources to current scope. Reconcile complete results, gaps, failures, and finding dispositions in one review, and retrieve evidence before expiry. Choose the cadence from exposure, change, commitments, and risk; the proposed interval is a starting point."],
-  ["obligation-rule-annual-critical-vendor-review-v1", "Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed."]
+  ["obligation-rule-annual-critical-vendor-review-v1", "Review all active Vendors in one annual occurrence. Use risk, data access, and service reliance to set review depth. Retain a separate Vendor Review, decision, and evidence for each Vendor. Complete the first review within 30 days of Policy cutover and subsequent reviews within 30 days of each annual window opening."]
 ].map(([id, guidance]) => ({ id, rationale: `${PRIOR_STARTER_RULE_RATIONALE} ${guidance}` }));
 
 const OBLIGATION_ADDITIONS = [
@@ -1018,10 +1025,17 @@ async function buildPolicyLibraryPlan(loaded) {
       continue;
     }
     const vulnerabilityRule = id === "obligation-rule-quarterly-vulnerability-scan-v1";
-    const priorSelector = { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"], membershipMode: "as-of", cutoff: "window-end" };
-    const nextSelector = { resourceType: "system", statuses: ["active"], membershipMode: "as-of", cutoff: "window-end" };
-    const selectorCurrent = !vulnerabilityRule || sameValue(entry.record.selector, nextSelector);
-    if (entry.record.rationale === rationale && selectorCurrent) {
+    const vendorRule = id === "obligation-rule-annual-critical-vendor-review-v1";
+    const vendorWindow = { precision: "date", startsAfter: 0, dueAfter: 30 };
+    if (vendorRule && !loaded.model.objectTypes.recurrence.properties.anchorMode) {
+      skipped.push(skippedItem(id, "model-upgrade", "This Vendor schedule requires a model with activation-relative calendar anchors."));
+      continue;
+    }
+    const priorSelector = { resourceType: vendorRule ? "vendor" : "system", statuses: ["active"], criticalities: ["high", "critical"], membershipMode: "as-of", cutoff: "window-end" };
+    const nextSelector = { resourceType: vendorRule ? "vendor" : "system", statuses: ["active"], membershipMode: "as-of", cutoff: "window-end" };
+    const vendorTitle = vendorRule && entry.record.title === "Annual critical and high-risk vendor review rule v1" ? "Annual Vendor Review rule v1" : entry.record.title;
+    const selectorCurrent = !(vulnerabilityRule || vendorRule) || sameValue(entry.record.selector, nextSelector);
+    if (entry.record.rationale === rationale && selectorCurrent && (!vendorRule || (sameValue(entry.record.window, vendorWindow) && entry.record.recurrence.anchorMode === "activation"))) {
       skipped.push(skippedItem(id, "current", "The Obligation Rule already contains the current starter guidance."));
       continue;
     }
@@ -1029,15 +1043,19 @@ async function buildPolicyLibraryPlan(loaded) {
       skipped.push(skippedItem(id, "operating", "Only proposed Obligations and Rules are eligible for starter-library guidance updates."));
       continue;
     }
-    if ((entry.record.rationale !== rationale && entry.record.rationale !== PRIOR_STARTER_RULE_RATIONALE && entry.record.rationale !== "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly.") || !obligation.ruleIds?.includes(id)) {
+    if ((entry.record.rationale !== rationale && entry.record.rationale !== PRIOR_STARTER_RULE_RATIONALE && !(vendorRule && entry.record.rationale === PRIOR_VENDOR_RULE_RATIONALE) && entry.record.rationale !== "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. Confirm scan scope, severity method, remediation and patch targets, and whether exposure or a customer commitment requires a shorter cadence, such as monthly.") || !obligation.ruleIds?.includes(id)) {
       skipped.push(skippedItem(id, "customized", "The Obligation Rule differs from a recognized prior starter, so FileGRC will not rewrite it."));
       continue;
     }
-    if (vulnerabilityRule && !selectorCurrent && !sameValue(entry.record.selector, priorSelector)) {
+    if ((vulnerabilityRule || vendorRule) && !selectorCurrent && !sameValue(entry.record.selector, priorSelector)) {
       skipped.push(skippedItem(id, "customized", "The vulnerability coverage population differs from the recognized starter, so FileGRC will not rewrite it."));
       continue;
     }
-    updates.push({ ...entry.record, rationale, ...(vulnerabilityRule ? { selector: nextSelector } : {}) });
+    if (vendorRule && ((entry.record.recurrence.anchorMode && entry.record.recurrence.anchorMode !== "activation") || (entry.record.window && !sameValue(entry.record.window, vendorWindow)) || !sameValue({ mode: entry.record.recurrence?.mode, unit: entry.record.recurrence?.unit, interval: entry.record.recurrence?.interval }, { mode: "calendar", unit: "year", interval: 1 }))) {
+      skipped.push(skippedItem(id, "customized", "The Vendor review window or cadence differs from the recognized starter."));
+      continue;
+    }
+    updates.push({ ...entry.record, title: vendorTitle, rationale, ...((vulnerabilityRule || vendorRule) ? { selector: nextSelector } : {}), ...(vendorRule ? { window: vendorWindow, recurrence: { ...entry.record.recurrence, anchorMode: "activation" } } : {}) });
     expectedRevisions[id] = entry.revision;
     proposalChanges.push({
       resourceType: "obligation-rule",
@@ -1046,7 +1064,10 @@ async function buildPolicyLibraryPlan(loaded) {
       summary: "Add scope and cadence checks to the unchanged proposed starter rule.",
       diff: replacementDiff(displayPath, [
         ["rationale", entry.record.rationale, rationale],
-        ...(vulnerabilityRule && !selectorCurrent ? [["selector", entry.record.selector, nextSelector]] : [])
+        ...(vendorTitle !== entry.record.title ? [["title", entry.record.title, vendorTitle]] : []),
+        ...((vulnerabilityRule || vendorRule) && !selectorCurrent ? [["selector", entry.record.selector, nextSelector]] : []),
+        ...(vendorRule && !sameValue(entry.record.window, vendorWindow) ? [["window", entry.record.window, vendorWindow]] : []),
+        ...(vendorRule && entry.record.recurrence.anchorMode !== "activation" ? [["recurrence", entry.record.recurrence, { ...entry.record.recurrence, anchorMode: "activation" }]] : [])
       ])
     });
   }

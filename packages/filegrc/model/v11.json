@@ -9888,6 +9888,17 @@
           "allowedWhen": {
             "mode": "event"
           }
+        },
+        "anchorMode": {
+          "type": "enum",
+          "values": [
+            "fixed",
+            "activation"
+          ],
+          "description": "Fixed uses the configured anchorDate. Activation anchors the calendar to the rule effective date; anchorDate remains the proposal preview fallback. Omission preserves fixed scheduling.",
+          "allowedWhen": {
+            "mode": "calendar"
+          }
         }
       }
     },

@@ -281,7 +281,7 @@ Management does not require every term for every Vendor, but records omissions t
 
 ### Existing Vendors and ongoing monitoring
 
-For a Vendor already in use when this Policy becomes effective, the owner records a transition review and deadline or an approved risk acceptance. Policy adoption does not imply that a historical pre-access review occurred. Management documents Vendor monitoring cadence and change-driven reassessment windows in approved Vendor-management procedures and schedules.
+For a Vendor already in use when this Policy becomes effective, the owner completes a transition review within 30 days or records an approved risk acceptance. Policy adoption does not imply that a historical pre-access review occurred. Owners review all active Vendors annually, using risk, data access, and service reliance to set review depth. Keep one annual review cycle with a separate decision and supporting evidence for each Vendor. Complete each annual cycle within 30 days of its opening, and reassess within 30 days after onboarding, a material change, or an incident. Include contract, data-use, inventory, risk, and follow-up updates in the review; assign separate follow-up only when it needs its own owner, deadline, or conclusion.
 
 ## Exceptions, Compliance, Enforcement, and Policy Review
 

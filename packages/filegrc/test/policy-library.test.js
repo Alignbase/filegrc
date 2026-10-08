@@ -1125,7 +1125,13 @@ test("offers new guidance for unchanged proposed Obligation Rules", async (conte
     const path = join(root, "data", "obligation-rules", `${id}.json`);
     const record = JSON.parse(await readFile(path, "utf8"));
     current.set(id, record);
-    await writeJson(path, { ...record, rationale: priorRationale });
+    const prior = { ...record, recurrence: { ...record.recurrence }, rationale: priorRationale };
+    if (id === "obligation-rule-annual-critical-vendor-review-v1") {
+      prior.selector = { resourceType: "vendor", statuses: ["active"], criticalities: ["high", "critical"], membershipMode: "as-of", cutoff: "window-end" };
+      delete prior.window;
+      delete prior.recurrence.anchorMode;
+    }
+    await writeJson(path, prior);
   }
 
   const review = await assessPolicyLibraryUpgrades(root);
@@ -1441,4 +1447,27 @@ test("composed Control upgrades preserve customized statements beside recognized
     assert.deepEqual(await readControl(root, accessId), access);
     assert.deepEqual(await readControl(root, retentionId), retention);
   }
+});
+
+test("upgrades the preceding untouched Vendor starter and Policy", async (context) => {
+  const parent = await mkdtemp(join(tmpdir(), "filegrc-prior-vendor-starter-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
+  const root = join(parent, "program");
+  await createFilegrc({ target: root, yes: true, filegrcPackage: fileURLToPath(new URL("../", import.meta.url)), install: true, effectiveDate: "2026-01-01", policyOwnerEmail: "owner@example.test", companyName: "Example Company" });
+  const priorRecords = JSON.parse(await readFile(new URL("./fixtures/security-starter-v5-vendor-records.json", import.meta.url), "utf8"));
+  const current = new Map();
+  for (const { path, record } of priorRecords) {
+    current.set(record.id, JSON.parse(await readFile(join(root, path), "utf8")));
+    await writeJson(join(root, path), record);
+  }
+  const currentPolicy = await readFile(policyPath(root), "utf8");
+  const priorPolicy = (await readFile(new URL("./fixtures/policy-information-security-v5.md", import.meta.url), "utf8")).replaceAll("{{company_name}}", "Example Company");
+  await writeFile(policyPath(root), priorPolicy);
+  const review = await assessPolicyLibraryUpgrades(root);
+  assert.equal(await readFile(policyPath(root), "utf8"), priorPolicy);
+  assert.ok(review.proposals[0].changes.some(({ resourceId }) => resourceId === "policy-information-security"));
+  for (const id of current.keys()) assert.ok(review.proposals[0].changes.some(({ resourceId }) => resourceId === id), id);
+  await applyPolicyLibraryUpgrade(root, review.proposals[0].id, { confirmed: true, proposalRevision: review.proposals[0].revision });
+  assert.equal(await readFile(policyPath(root), "utf8"), currentPolicy);
+  for (const { path, record } of priorRecords) assert.deepEqual(JSON.parse(await readFile(join(root, path), "utf8")), current.get(record.id));
 });

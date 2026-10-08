@@ -36,7 +36,7 @@ test("creates a complete generic repository with one dependency", async (context
   });
   assert.equal(result.engineVersion, "1.2.3");
   assert.deepEqual(result.resourceCounts, {
-    total: 228,
+    total: 224,
     byType: {
       workspace: 1,
       "renderer-settings": 1,
@@ -56,8 +56,8 @@ test("creates a complete generic repository with one dependency", async (context
       "source-coverage": 14,
       "retention-schedule-item": 1,
       control: 28,
-      obligation: 55,
-      "obligation-rule": 55,
+      obligation: 53,
+      "obligation-rule": 53,
       "reporting-route-set": 1
     }
   });
@@ -379,7 +379,7 @@ test("creates a complete generic repository with one dependency", async (context
   const changeDescriptionCriterion = JSON.parse(await readFile(join(target, "data", "requirements", "requirement-soc2-dc9.json"), "utf8"));
   assert.equal(changeDescriptionCriterion.title, "DC9: Significant changes");
   assert.equal(controlFiles.length, 28);
-  assert.equal(obligationFiles.length, 55);
+  assert.equal(obligationFiles.length, 53);
   assert.equal(obligationFiles.includes("obligation-monthly-malware-scan.json"), false);
   assert.equal(obligationFiles.includes("obligation-monthly-endpoint-protection-verification.json"), true);
   assert.equal(obligationFiles.includes("obligation-quarterly-vulnerability-scan.json"), true);
@@ -454,7 +454,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(controls.find(({ id }) => id === "control-access-review-offboarding").activity, /customer-data access/);
   assert.match(controls.find(({ id }) => id === "control-endpoint-protection").activity, /protection coverage and approved deviations/);
   assert.match(controls.find(({ id }) => id === "control-vulnerability-management").activity, /Define severity, remediation and patch targets/);
-  assert.match(controls.find(({ id }) => id === "control-vendor-monitoring").activity, /review intervals by Vendor risk and customer-data access/);
+  assert.match(controls.find(({ id }) => id === "control-vendor-monitoring").activity, /Vendor risk and customer-data access to set review depth/);
   assert.match(controls.find(({ id }) => id === "control-change-management").statement, /Code and security review/);
   assert.match(controls.find(({ id }) => id === "control-change-management").statement, /protect against unauthorized changes and malicious software/);
   assert.match(controls.find(({ id }) => id === "control-penetration-testing").activity, /Review and record applicability and cadence\. When testing is required/);
@@ -482,13 +482,33 @@ test("creates a complete generic repository with one dependency", async (context
   const obligationRules = generatedRecords.filter(({ type }) => type === "obligation-rule");
   const rulesByObligationId = new Map(obligationRules.map((rule) => [rule.obligationId, rule]));
   assert.equal(obligationRules.every(({ status }) => status === "proposed"), true);
+  const vendorPlan = planObligations([
+    ...loaded.resources,
+    ...["low", "medium", "high", "critical"].map((criticality) => ({
+      id: `vendor-example-${criticality}`, type: "vendor", title: `Example ${criticality} supplier`,
+      status: "active", criticality, category: "software", ownerIds: [owner.id]
+    })),
+    { id: "vendor-example-terminated", type: "vendor", title: "Former supplier", status: "terminated", criticality: "low", category: "software", ownerIds: [owner.id] }
+  ], { model: loaded.model, asOf: "2026-07-25", through: "2026-08-25" });
+  const vendorOccurrence = vendorPlan.items.find(({ obligationId }) => obligationId === "obligation-annual-critical-vendor-review");
+  assert.deepEqual(vendorOccurrence.expectedMemberIds, ["vendor-example-critical", "vendor-example-high", "vendor-example-low", "vendor-example-medium"]);
+  assert.equal(vendorOccurrence.dueWindowEnd, "2026-08-24");
+  const cutoverRecords = loaded.resources.map((record) => {
+    if (record.id === "policy-information-security") return { ...record, status: "active", effectiveOn: "2026-08-08" };
+    if (record.id === "obligation-annual-critical-vendor-review") return { ...record, status: "active", activeRuleId: record.ruleIds[0] };
+    if (record.id === "obligation-rule-annual-critical-vendor-review-v1") return { ...record, status: "active", timezone: "UTC", effectiveAt: "2026-08-01T00:00:00Z" };
+    return record;
+  });
+  const cutoverPlan = planObligations(cutoverRecords, { model: loaded.model, asOf: "2026-08-08", through: "2026-09-08", now: "2026-08-08T12:00:00Z" });
+  const firstCutoverReview = cutoverPlan.items.find(({ obligationId }) => obligationId === "obligation-annual-critical-vendor-review");
+  assert.equal(firstCutoverReview.dueWindowStart, "2026-08-01");
+  assert.equal(firstCutoverReview.dueWindowEnd, "2026-08-31");
   assert.equal(obligations.every(({ id, scheduleMode, ruleIds }) => (
     scheduleMode === "rule" && ruleIds.length === 1 && ruleIds[0] === rulesByObligationId.get(id)?.id
   )), true);
   assert.deepEqual(rulesByObligationId.get("obligation-annual-critical-vendor-review").selector, {
     resourceType: "vendor",
     statuses: ["active"],
-    criticalities: ["high", "critical"],
     membershipMode: "as-of",
     cutoff: "window-end"
   });
@@ -518,7 +538,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.match(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").rationale, /the proposed interval is a starting point/);
   assert.match(rulesByObligationId.get("obligation-quarterly-privileged-access-review").rationale, /Add other customer-data access only when an approved commitment or risk decision requires quarterly review/);
   assert.match(rulesByObligationId.get("obligation-annual-access-review").rationale, /other important access, including customer-data paths not assigned to a shorter approved review schedule/);
-  assert.match(rulesByObligationId.get("obligation-annual-critical-vendor-review").rationale, /separate review interval for other Vendors/);
+  assert.match(rulesByObligationId.get("obligation-annual-critical-vendor-review").rationale, /Review all active Vendors/);
   assert.equal(rulesByObligationId.get("obligation-annual-penetration-test").recurrence.unit, "year");
   assert.equal(obligationsById.get("obligation-annual-penetration-test").activityType, "risk-assessment");
   assert.match(obligationsById.get("obligation-annual-penetration-test").title, /applicability and cadence review/);
@@ -536,7 +556,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(eventObligationCounts["person-started"], 5);
   assert.equal(eventObligationCounts["person-role-changed"], 2);
   assert.equal(eventObligationCounts["personal-device-access-planned"], 2);
-  assert.equal(eventObligationCounts["vendor-reassessment-needed"], 2);
+  assert.equal(eventObligationCounts["vendor-reassessment-needed"], 1);
   assert.equal(eventObligationCounts["system-material-change"], 5);
   assert.equal(obligationsById.has("obligation-worker-start-role-training"), false);
   assert.equal(obligationsById.get("obligation-worker-start-screening").activityType, "workforce-review");
@@ -545,7 +565,9 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(rulesByObligationId.get("obligation-personal-device-approval").window.dueAfter, 0);
   assert.equal(rulesByObligationId.get("obligation-personal-device-registration").window.dueAfter, 0);
   assert.equal(rulesByObligationId.get("obligation-vendor-material-change-review").window.dueAfter, 30);
-  assert.equal(rulesByObligationId.get("obligation-vendor-material-change-records").window.dueAfter, 30);
+  assert.equal(obligationsById.has("obligation-vendor-material-change-records"), false);
+  assert.equal(rulesByObligationId.get("obligation-annual-critical-vendor-review").window.dueAfter, 30);
+  assert.equal(obligationRules.filter(({ recurrence }) => recurrence.mode === "calendar").every(({ recurrence }) => recurrence.unit === "year" ? recurrence.interval <= 1 : recurrence.unit === "month" ? recurrence.interval <= 12 : true), true);
   assert.deepEqual(obligationsById.get("obligation-system-change-retention").scopeResourceIds, ["document-data-retention-schedule"]);
   assert.equal(obligationsById.get("obligation-system-change-alert-path").activityType, "alert-path-test");
   assert.equal(obligationsById.get("obligation-system-change-alert-path").completionResourceTypes, undefined);
@@ -606,7 +628,7 @@ test("creates a complete generic repository with one dependency", async (context
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();
   assert.equal(await realpath(gitRoot), await realpath(target));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 228, errors: 0, warnings: 3 });
+  assert.deepEqual(validation.counts, { resources: 224, errors: 0, warnings: 3 });
   assert.equal(
     validation.diagnostics.filter(({ code }) => code === "past-proposed-effective-date").length,
     3
@@ -1101,7 +1123,7 @@ test("reports the resolved version, install result, and existing Git worktree", 
   assert.match(output, /FileGRC recommends a dedicated private repository/);
   assert.match(output, /Monorepo mode remains supported/);
   assert.match(output, /Timezone: America\/Chicago/);
-  assert.match(output, /Program baseline: 228 records, including 42 requirements, 28 controls, and 55 obligations/);
+  assert.match(output, /Program baseline: 224 records, including 42 requirements, 28 controls, and 53 obligations/);
   assert.match(output, /\n  npx filegrc setup\n/);
   assert.match(output, /Immediate human decisions:/);
   assert.match(output, /Select and confirm the assurance goal/);
@@ -1272,12 +1294,12 @@ test("creates and configures a service from one JSON config", async (context) =>
     configPath
   ]);
   assert.match(output, /Stage foundation: created \(13 records\)/);
-  assert.match(output, /Stage soc2-security: created \(215 records\)/);
+  assert.match(output, /Stage soc2-security: created \(211 records\)/);
   assert.match(output, /Service setup: system-example-service \(active\), target soc-2-type-2/);
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 230, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 226, errors: 0, warnings: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.systemIds, undefined);
   const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));

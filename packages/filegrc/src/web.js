@@ -2209,11 +2209,11 @@ function renderObligations(main, params = new URLSearchParams()) {
     : "";
   const activeOperation = operationLocked
     ? (acceptedTriggers.length ? renderEvents(acceptedTriggers, "active", "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.") : "") +
-      (currentItems.length ? renderQueue(currentItems, ["upcoming", "blocked", "due", "overdue"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
+      (currentItems.length ? renderQueue(currentItems, ["overdue", "due", "blocked", "upcoming"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
     : "";
   const setupTriggers = operationLocked ? proposedTriggers : orderedTriggers;
   const setupItems = operationLocked ? proposedItems : plan.items;
-  const setupStatuses = operationLocked ? ["proposed"] : ["proposed", "upcoming", "blocked", "due", "overdue"];
+  const setupStatuses = operationLocked ? ["proposed"] : ["overdue", "due", "blocked", "upcoming", "proposed"];
   const operationSetupOpen = operationLocked ? "" : " open";
   const operationSetupSummary = operationLocked
     ? '<summary>Preview ' + proposedTriggers.length + ' proposed Policy Events and ' + proposedItems.length + ' proposed Work Queue items</summary>'
@@ -2338,7 +2338,7 @@ function activePolicyEventTriggers(triggers) {
 }
 
 function activeOperationItems(items) {
-  return items.filter(({ status }) => ["upcoming", "blocked", "due", "overdue"].includes(status));
+  return items.filter(({ status }) => ["overdue", "due", "blocked", "upcoming"].includes(status));
 }
 
 function policyEventTrigger(trigger, index, collapsed = false, scope = "events") {
@@ -2544,7 +2544,7 @@ async function openObligationRuleActivation(ruleId) {
     const selector = scaffold.review.selector;
     const scheduleReview = recurrence.mode === "event"
       ? '<div><span>Trigger</span><strong>' + esc(policyEventName(recurrence.eventType)) + '</strong><small>Applies to events after the effective time</small></div>'
-      : '<div><span>Cadence</span><strong>Every ' + esc(String(recurrence.interval)) + ' ' + esc(recurrence.unit) + (recurrence.interval === 1 ? "" : "s") + '</strong><small>Anchored ' + esc(recurrence.anchorDate) + ' · first affected <b data-first-affected>' + esc(scaffold.review.firstAffectedOn || "none") + '</b></small></div>';
+      : '<div><span>Cadence</span><strong>Every ' + esc(String(recurrence.interval)) + ' ' + esc(recurrence.unit) + (recurrence.interval === 1 ? "" : "s") + '</strong><small>Anchored ' + esc(recurrence.anchorMode === "activation" ? "at activation" : recurrence.anchorDate) + ' · first affected <b data-first-affected>' + esc(scaffold.review.firstAffectedOn || "none") + '</b></small></div>';
     const reviewSummary = '<section class="activation-review">' + scheduleReview + '<div><span>Population</span><strong>' + esc(selector ? properCase(selector.resourceType) : "Obligation scope") + '</strong><small>' + esc(selector ? selector.cutoff && "cutoff " + properCase(selector.cutoff) : "No selector") + '</small></div><div class="full"><span>Rationale</span><strong>' + esc(scaffold.review.rationale) + '</strong></div></section>';
     const cutoverOption = (value, label) => '<option value="' + value + '" ' + (scaffold.payload.cutoverDecision === value ? "selected" : "") + '>' + label + '</option>';
     dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Obligation schedule</p><h2>' + esc(scaffold.rule.title) + '</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Activation binds this reviewed schedule to ' + esc(scaffold.obligation.title) + ' in one write. <a href="#/resource/obligation-rule/' + encodeURIComponent(scaffold.rule.id) + '">Open the full rule</a>.</p>' + reviewSummary + (scaffold.openOccurrences.length ? '<p class="cutover-note">' + scaffold.openOccurrences.length + ' open ' + pluralize("occurrence", scaffold.openOccurrences.length) + ' need a cutover decision.</p>' : "") + '<div class="form-grid"><label class="field-group"><span>Approved on <span class="required-mark">Required</span></span><input name="approvedOn" type="date" required value="' + esc(scaffold.payload.approvedOn) + '"></label><label class="field-group"><span>Effective at <span class="required-mark">Required</span></span><input name="effectiveAt" type="datetime-local" required value="' + esc(scaffold.payload.effectiveLocal) + '"></label>' + (scaffold.priorRule ? '<label class="field-group"><span>Cutover</span><select name="cutoverDecision">' + cutoverOption("new-windows-only", "New windows only") + cutoverOption("keep-open-window", "Keep open occurrences") + cutoverOption("supersede-open-window", "Supersede open occurrences") + '</select></label>' : "") + '<fieldset class="field-group full"><legend>Approved by <span class="required-mark">Required</span></legend><div class="checkbox-list">' + scaffold.reviewerCandidates.map((person) => '<label><input type="checkbox" name="approver" value="' + esc(person.id) + '"><span>' + esc(person.title) + '<small>' + esc(person.id) + '</small></span></label>').join("") + '</div></fieldset><label class="field-group full confirmation"><input type="checkbox" name="confirmRevision" required><span>I reviewed revision <code>' + esc(scaffold.review.revision.slice(0, 12)) + '</code> and approve these terms.</span></label></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">Activate schedule</button></div></form>';
@@ -2555,7 +2555,7 @@ async function openObligationRuleActivation(ruleId) {
     const effectiveInput = dialog.querySelector('input[name="effectiveAt"]');
     effectiveInput.addEventListener("input", () => {
       const target = dialog.querySelector("[data-first-affected]");
-      if (target) target.textContent = effectiveInput.value ? nextCalendarOccurrence(recurrence, effectiveInput.value.slice(0, 10)) : "none";
+      if (target) target.textContent = effectiveInput.value ? nextCalendarOccurrence(recurrence.anchorMode === "activation" ? { ...recurrence, anchorDate: effectiveInput.value.slice(0, 10) } : recurrence, effectiveInput.value.slice(0, 10)) : "none";
     });
     dialog.querySelector("form").addEventListener("submit", async (event) => {
       event.preventDefault();

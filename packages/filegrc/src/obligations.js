@@ -21,7 +21,7 @@ import {
 } from "./recurrence.js";
 import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
-import { obligationRule } from "./obligation-rule.js";
+import { obligationRule, obligationRuleRecurrence } from "./obligation-rule.js";
 import { governedContentIsOperating, obligationGovernedContent, obligationProgramStatus } from "./program-lifecycle.js";
 import { resolveProgram } from "./program.js";
 import { currentPartyPeople } from "./parties.js";
@@ -170,10 +170,13 @@ export function planObligations(resources, options = {}) {
     }
 
     const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
-    const activationDate = obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC");
+    const ruleActivationDate = obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC");
+    const activationDate = ruleActivationDate;
     const recurrence = {
-      ...(schedule.recurrence || {}),
-      anchorDate: rule
+      ...(rule ? obligationRuleRecurrence(rule, workspace?.timezone || "UTC") : schedule.recurrence || {}),
+      anchorDate: schedule.recurrence?.anchorMode === "activation" && activationDate
+        ? activationDate
+        : rule
         ? configuredAnchor || activationDate
         : configuredAnchor && activationDate
           ? [configuredAnchor, activationDate].sort().at(-1)
@@ -398,7 +401,9 @@ export function planObligations(resources, options = {}) {
   if (calendarItems.length + eventItems.length + standaloneItems.length > MAX_PLANNED_ITEMS) {
     throw new Error(`The obligation query must be narrowed; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} planned items.`);
   }
-  const items = [...calendarItems, ...eventItems, ...standaloneItems].sort(comparePlannedItems);
+  const dateDeadlines = new Map();
+  const items = [...calendarItems, ...eventItems, ...standaloneItems]
+    .sort((a, b) => comparePlannedItems(a, b, workspace?.timezone || "UTC", dateDeadlines));
   const counts = { overdue: 0, blocked: 0, due: 0, upcoming: 0, proposed: 0, complete: 0 };
   for (const item of items) {
     if (counts[item.status] !== undefined) counts[item.status] += 1;
@@ -1011,6 +1016,9 @@ export async function scaffoldObligationRuleActivation(input, options = {}) {
     ? timestampFromLocalDateTime(effectiveLocal, loaded.workspace.timezone)
     : options.effectiveAt || timestampFromLocalDateTime(effectiveLocal, loaded.workspace.timezone);
   const effectiveOn = currentCalendarDate(loaded.workspace.timezone, new Date(effectiveAt));
+  const reviewRecurrence = ruleEntry.record.recurrence.anchorMode === "activation"
+    ? obligationRuleRecurrence({ ...ruleEntry.record, effectiveAt, timezone: loaded.workspace.timezone })
+    : ruleEntry.record.recurrence;
   const review = {
     revision: contentRevision(ruleEntry.source),
     recurrence: ruleEntry.record.recurrence,
@@ -1019,7 +1027,7 @@ export async function scaffoldObligationRuleActivation(input, options = {}) {
     rationale: ruleEntry.record.rationale,
     sourceResourceIds: ruleEntry.record.sourceResourceIds || [],
     firstAffectedOn: ruleEntry.record.recurrence.mode === "calendar"
-      ? nextCalendarOccurrence(ruleEntry.record.recurrence, effectiveOn)
+      ? nextCalendarOccurrence(reviewRecurrence, effectiveOn)
       : null,
     ...(priorEntry ? {
       prior: {
@@ -1888,7 +1896,7 @@ function occurrenceStatus(window, asOf, complete) {
 function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC") {
   if (ruleOrModel?.type === "obligation-rule") {
     return ruleOrModel.effectiveAt
-      ? currentCalendarDate(timezone, new Date(ruleOrModel.effectiveAt))
+      ? currentCalendarDate(ruleOrModel.timezone || timezone, new Date(ruleOrModel.effectiveAt))
       : null;
   }
   const model = ruleOrModel;
@@ -1927,11 +1935,20 @@ function relativeTimestampTiming(window, now) {
   return result;
 }
 
-function comparePlannedItems(a, b) {
+function comparePlannedItems(a, b, timezone, dateDeadlines) {
   const rank = { overdue: 0, blocked: 1, due: 2, upcoming: 3, proposed: 4, complete: 5 };
-  return (rank[a.status] - rank[b.status])
-    || String(a.overdueAt || a.overdueOn || a.dueWindowEndAt || a.dueWindowEnd || a.dueWindowStartAt || a.dueWindowStart)
-      .localeCompare(String(b.overdueAt || b.overdueOn || b.dueWindowEndAt || b.dueWindowEnd || b.dueWindowStartAt || b.dueWindowStart))
+  const deadline = (item) => {
+    if (item.dueWindowEndAt) return Date.parse(item.dueWindowEndAt);
+    if (!item.dueWindowEnd) return Number.MAX_SAFE_INTEGER;
+    if (!dateDeadlines.has(item.dueWindowEnd)) {
+      dateDeadlines.set(item.dueWindowEnd, Date.parse(timestampFromLocalDateTime(`${item.dueWindowEnd}T23:59:59`, timezone)));
+    }
+    return dateDeadlines.get(item.dueWindowEnd);
+  };
+  const finished = (item) => item.status === "complete" ? 1 : 0;
+  return finished(a) - finished(b)
+    || deadline(a) - deadline(b)
+    || (rank[a.status] - rank[b.status])
     || a.title.localeCompare(b.title);
 }
 
