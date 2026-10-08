@@ -21,7 +21,7 @@ Select a framework containing every CC1.1 through CC9.2 Security Common Criterio
 
 Review both evidence paths for the exact formal date or period:
 
-1. filegrc Evidence consists of dated Step 4 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
+1. FileGRC Evidence consists of dated Step 4 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
 2. Evidence Artifacts are verified `evidence` records from source Components. Read each artifact and its linked records to check the source Component, date or period, Control links, collector, verifier, and fixed attachment or approved external reference. Ask only for a missing source fact or independent verification.
 
 The packet compiles both paths. It includes FileGRC records and Markdown with Git history, plus Evidence Artifacts, retained attachments, delivery indexes, and checksums.
@@ -33,7 +33,7 @@ npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 npx filegrc evidence-packet --audit AUDIT_ID
 ```
 
-Do not state that an auditor accepted evidence, selected a sample, cleared an exception, or issued a report unless that fact came from the engagement team. filegrc tracks management preparation; the CPA firm owns examination judgments and the report.
+Do not state that an auditor accepted evidence, selected a sample, cleared an exception, or issued a report unless that fact came from the engagement team. FileGRC tracks management preparation; the CPA firm owns examination judgments and the report.
 
 The signed representation requires verified `signed-record` Evidence with `artifactSubtype: "signed-management-representation"` and a fixed-format attachment. Record the letter's actual signing timestamp in `businessEventAt`; `collectedOn` only records when FileGRC received it. The signing date must match the CPA report date once `reportDate` is known. Store the issued SOC 2 report as verified `third-party-report` Evidence with `artifactSubtype: "soc2-report"`, record its actual issuance timestamp in `sourceGeneratedAt`, and link it through `reportEvidenceId` before closing the Audit. Reconcile `reportDate` and `opinionDate` to the date on that issued report.
 

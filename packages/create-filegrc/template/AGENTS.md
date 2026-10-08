@@ -2,6 +2,8 @@
 
 ## Purpose
 
+Use FileGRC as the product name in prose, headings, UI labels, emails, and documentation. Keep package names, commands, paths, repository names, and domains lowercase, including `filegrc`, `create-filegrc`, `.filegrc/`, and filegrc.com.
+
 {{agent_purpose}}
 
 Using this repository does not establish compliance by itself. Records must match actual practice and evidence must prove that controls operated during the audit period.
@@ -54,13 +56,13 @@ Read `data/AGENTS.md` before changing records. More specific instructions inside
 - Store each mutable program fact in one authoritative record and refer to it by ID. Policies state durable rules and outcomes instead of copying current people, vendors, systems, reporting channels, schedules, targets, or inventories.
 - A Reporting Channel Set holds the normal and fallback ways people send a report for one purpose, such as a security email address and a hotline. Keep one revision for each Program and purpose. Commit its proposal before recording approval, use separate Appointment kinds for approval and ongoing responsibility, and create a successor instead of editing an approved revision.
 - Keep an Obligation occurrence rolled up when one owner, window, population rule, and reconciliation conclusion govern the work. Split it only when a member needs its own owner, deadline, conclusion, or follow-up lifecycle.
-- Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject.
+- Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence. Do not mention FileGRC versions, migrations, or workflow mechanics unless FileGRC itself is the subject.
 - Use UTF-8 JSON for structured records and Markdown for long-form work.
 - Keep one resource in each JSON file.
 - Let the local app generate IDs from each record’s name or title. When editing JSON directly, keep IDs globally unique, human-readable, and lowercase kebab-case.
 - Use ISO 8601 dates and RFC 3339 timestamps.
 - Store relationships as resource IDs.
-- Put policies, plans, charters, procedures, meeting minutes, training, assertions, narratives, templates, and audit responses in Markdown beside their JSON records. filegrc derives the Markdown name, so records do not contain file paths.
+- Put policies, plans, charters, procedures, meeting minutes, training, assertions, narratives, templates, and audit responses in Markdown beside their JSON records. FileGRC derives the Markdown name, so records do not contain file paths.
 - Put signed forms, screenshots, third-party reports, and immutable exports behind evidence records. These files may be PDF, image, CSV, or another fixed format.
 - Never fetch an external evidence reference automatically.
 - Do not store plaintext credentials, private keys, tokens, recovery codes, session data, or personal data that may need to be erased from Git history. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions.
@@ -191,7 +193,7 @@ npx filegrc content risk-assessment risk-assessment-2026 --json
 npx filegrc content risk-assessment risk-assessment-2026 --write updated-assessment.md
 ```
 
-Run `filegrc guide <type>` to get slot names. Policies use `content`, meetings use `agenda` and `minutes`, and implicit long-form work uses `record`. filegrc derives the path and rejects content that does not belong to the record.
+Run `filegrc guide <type>` to get slot names. Policies use `content`, meetings use `agenda` and `minutes`, and implicit long-form work uses `record`. FileGRC derives the path and rejects content that does not belong to the record.
 
 ## Program readiness and the candidate period
 

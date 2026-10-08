@@ -1,4 +1,4 @@
-# filegrc Data Instructions
+# FileGRC Data Instructions
 
 These instructions apply to every file under `data/`. The root `AGENTS.md` explains the program and Git workflow. A collection-level `AGENTS.md`, when present, adds rules for that resource.
 
@@ -71,7 +71,7 @@ npx filegrc create /tmp/filegrc-mutation.json
 npx filegrc validate --json
 ```
 
-Creation is atomic. If JSON, Markdown, relationships, or validation fail, filegrc rolls back the write. IDs are globally unique and immutable after commit.
+Creation is atomic. If JSON, Markdown, relationships, or validation fail, FileGRC rolls back the write. IDs are globally unique and immutable after commit.
 
 ## Read and update
 
@@ -87,7 +87,7 @@ Edit the exported mutation, then run:
 npx filegrc update RESOURCE_TYPE RESOURCE_ID /tmp/filegrc-mutation.json
 ```
 
-The mutation includes the complete record, current Markdown, and revision hashes. filegrc rejects the update if another person or agent changed either source after export. Reload and reapply the intended change instead of overwriting it.
+The mutation includes the complete record, current Markdown, and revision hashes. FileGRC rejects the update if another person or agent changed either source after export. Reload and reapply the intended change instead of overwriting it.
 
 To update JSON and Markdown together, pass `{ "record": {...}, "content": {...}, "revision": "...", "contentRevisions": {...} }`. To change one Markdown slot:
 
@@ -143,7 +143,7 @@ Delete only an uncommitted draft or a mistake:
 npx filegrc delete RESOURCE_TYPE RESOURCE_ID --yes --expected-revision REVISION
 ```
 
-filegrc rejects deletion that breaks references and removes owned Markdown with the JSON. Retire, close, cancel, supersede, or replace committed records that explain historical operation.
+FileGRC rejects deletion that breaks references and removes owned Markdown with the JSON. Retire, close, cancel, supersede, or replace committed records that explain historical operation.
 
 ## Evidence and attachments
 
@@ -170,7 +170,7 @@ Remove a local attachment explicitly before deleting its evidence record:
 npx filegrc detach EVIDENCE_ID source-export.csv --yes --expected-revision REVISION
 ```
 
-filegrc will not delete an evidence record that still has local attachments.
+FileGRC will not delete an evidence record that still has local attachments.
 
 Never invent Evidence, dates, approvals, results, people, or source-Component details. If a required fact is unavailable, leave the record in a non-final state and report the missing input.
 
@@ -227,7 +227,7 @@ npx filegrc correct-audit-population POPULATION_ID population-correction.json
 npx filegrc evidence-packet --audit AUDIT_ID --preview --json
 ```
 
-Run Program Readiness before creating the normal audit engagement. Step 2 checks independent approval of Policies, required program Documents, and Training without requiring activation. Step 3 separately checks active Documents and Training, their activation dates and bound revisions, active Policies, implemented Controls, enabled Obligations, and evidence mapping without an audit ID. Fix readiness errors in Policy, Document, Training, Control, Component, System, Obligation, and Evidence records. Do not edit packet output under `.filegrc/`. A delivery-ready filegrc packet means the management checks passed; the engagement team still judges evidence and performs the examination.
+Run Program Readiness before creating the normal audit engagement. Step 2 checks independent approval of Policies, required program Documents, and Training without requiring activation. Step 3 separately checks active Documents and Training, their activation dates and bound revisions, active Policies, implemented Controls, enabled Obligations, and evidence mapping without an audit ID. Fix readiness errors in Policy, Document, Training, Control, Component, System, Obligation, and Evidence records. Do not edit packet output under `.filegrc/`. A delivery-ready FileGRC packet means the management checks passed; the engagement team still judges evidence and performs the examination.
 
 For a real engagement, select the Program and its bounded Systems, a framework containing the complete CC1.1 through CC9.2 Security Common Criteria set, all nine SOC 2 Description Criteria, any optional Trust Services Categories in scope, and Controls that cover every applicable selected Trust Services criterion. Treat every Security Common Criterion as applicable. For an included optional category, keep a criterion in the framework when management judges it not relevant and record the limited circumstances in the System Description's DC8 disclosure. Do not omit any of the nine Description Criteria. Use `coverage.kind: "as-of"` with `on` for Type 1 or `coverage.kind: "range"` with `startsOn` and `endsOn` for Type 2. Record the Git commit for management's complete scope review in `scopeRevision`. Record `subserviceConclusion` and its rationale. When subservice organizations are identified, each `subserviceTreatments` item must connect one Vendor to its supplied Components within a selected System and choose the carve-out or inclusive method. Inclusive treatments also need the selected Controls that operate on those Components.
 

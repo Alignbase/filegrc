@@ -9,7 +9,7 @@ Do not create placeholder or collection-test Evidence. Control implementation ma
 1. Run `npx filegrc guide evidence --json`.
 2. Use one evidence record for one coherent proof item or fixed export.
 3. Put local attachments under `data/evidence/EVIDENCE_ID/` and list their data-relative paths in `filePaths`.
-4. Use `externalReference` only when the file must remain in an approved external system. filegrc never fetches it.
+4. Use `externalReference` only when the file must remain in an approved external system. FileGRC never fetches it.
 5. Link `sourceResourceIds`, `controlIds`, and `auditIds` as applicable. Use `sourceCommit` when the evidence represents repository state.
 6. Name the actual collector. A `verified` record also needs the actual verifier and verification date.
 
@@ -21,7 +21,7 @@ npx filegrc attach EVIDENCE_ID /path/to/source-file --name auditor-facing-name.c
 
 The command never overwrites an existing attachment.
 
-Read `REVISION` from `npx filegrc get EVIDENCE_ID --mutation`. Use `npx filegrc detach EVIDENCE_ID FILE_NAME --yes --expected-revision REVISION` when removing a mistaken attachment. filegrc will not delete an evidence record while local attachments remain.
+Read `REVISION` from `npx filegrc get EVIDENCE_ID --mutation`. Use `npx filegrc detach EVIDENCE_ID FILE_NAME --yes --expected-revision REVISION` when removing a mistaken attachment. FileGRC will not delete an evidence record while local attachments remain.
 
 For a rendered page capture, record the route, filters, audit period, exact Git commit, capture time and method, source resource IDs, and screenshot. A current screenshot cannot prove an earlier state unless it is rendered from or bound to that revision.
 

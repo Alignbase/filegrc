@@ -2,7 +2,7 @@
 
 {{program_summary}}
 
-The workspace uses filegrc {{filegrc_version}} through the dependency spec `{{filegrc_version_range}}`.
+The workspace uses FileGRC {{filegrc_version}} through the dependency spec `{{filegrc_version_range}}`.
 
 ## Work locally
 
@@ -54,4 +54,4 @@ The [hosted dashboard](https://app.filegrc.com) manages connections, billing, pe
 
 Do not put plaintext credentials, private keys, authentication tokens, recovery codes, session material, or personal data that may need erasure into Git. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation rules.
 
-filegrc manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.
+FileGRC manages GRC records and audit evidence. It does not replace infrastructure logging, monitoring, identity, backup, endpoint, or incident-detection systems.
