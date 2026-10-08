@@ -2148,7 +2148,7 @@ const starterControlChecks = {
   "control-backup-restoration": "For each important System, inspect backup or alternate recovery settings and failure alerts. Schedule the first restore test against its recovery needs.",
   "control-continuity-exercise": "Review recovery priorities, contacts, and owners. Check the plan covers loss of an important System or provider and has an exercise date.",
   "control-vendor-due-diligence": "Identify Vendors with sensitive data or a material service role. Set the review and contract checks before approving a new Vendor; triage existing Vendors for the first review.",
-  "control-vendor-monitoring": "Identify critical and high-risk Vendors, assign review owners and cadence, and set a reassessment trigger for material changes or incidents.",
+  "control-vendor-monitoring": "Identify all active Vendors and review owners. Set risk-based depth, the first deadline, and reassessment triggers for onboarding, material changes, or incidents.",
   "control-security-exceptions": "Review departures from security rules. Check each has a reason, owner, risk assessment, compensating measure, approval, and expiry or review date."
 };
 

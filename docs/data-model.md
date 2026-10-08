@@ -352,6 +352,7 @@ Key format: `namespace`.
 | `interval` | integer | Conditional | Minimum: `1`. Required when `mode` is `calendar`. Allowed when `mode` is `calendar`. |
 | `anchorDate` | date | No | Allowed when `mode` is `calendar`. |
 | `eventType` | string (id) | Conditional | Required when `mode` is `event`. Allowed when `mode` is `event`. |
+| `anchorMode` | enum | No | Values: `fixed`, `activation` Allowed when `mode` is `calendar`. |
 
 ### `obligation-window`
 

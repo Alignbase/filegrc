@@ -1705,3 +1705,48 @@ test("bounds unusually large obligation queries", () => {
     through: "2026-07-25"
   }), /must be narrowed/);
 });
+
+test("orders unfinished queue work by deadline before status", () => {
+  const actions = [
+    ["later-due", "2026-03-15", "2026-03-25", "2026-03-26"],
+    ["sooner-upcoming", "2026-03-18", "2026-03-20", "2026-03-21"],
+    ["overdue", "2026-03-01", "2026-03-10", "2026-03-11"]
+  ].map(([id, startsOn, dueOn, overdueOn]) => ({
+    id, type: "action-item", title: id, status: "open", assigneeIds: ["person-owner"],
+    completionWindow: { precision: "date", startsOn, dueOn, overdueOn }
+  }));
+  const plan = planObligations(actions, { asOf: "2026-03-15", through: "2026-03-31" });
+  assert.deepEqual(plan.items.map(({ actionItemId }) => actionItemId), ["overdue", "sooner-upcoming", "later-due"]);
+});
+
+test("orders timestamp deadlines against the workspace's calendar-day cutoff", () => {
+  const common = { type: "action-item", status: "open", assigneeIds: ["person-owner"] };
+  const plan = planObligations([
+    { id: "workspace", type: "workspace", timezone: "America/Chicago" },
+    { ...common, id: "calendar", title: "Calendar", completionWindow: { precision: "date", startsOn: "2026-03-15", dueOn: "2026-03-20", overdueOn: "2026-03-21" } },
+    { ...common, id: "timestamp", title: "Timestamp", completionWindow: { precision: "timestamp", startsAt: "2026-03-15T00:00:00-05:00", dueAt: "2026-03-20T20:00:00-05:00", overdueAt: "2026-03-20T20:00:00-05:00", timezone: "America/Chicago" } }
+  ], { asOf: "2026-03-15", through: "2026-03-31" });
+  assert.deepEqual(plan.items.map(({ actionItemId }) => actionItemId), ["timestamp", "calendar"]);
+});
+
+
+test("binds activation-relative occurrences to stable rule cutover dates", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-activation-anchor-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const ruleEntry = loaded.entries.find(({ record }) => record.type === "obligation-rule");
+  const occurrenceEntry = loaded.entries.find(({ record }) => record.type === "obligation-occurrence");
+  const rule = { ...ruleEntry.record, recurrence: { mode: "calendar", unit: "year", interval: 1, anchorDate: "2026-06-01", anchorMode: "activation" }, window: { precision: "date", startsAfter: 0, dueAfter: 30 } };
+  const obligation = loaded.resources.find(({ id }) => id === rule.obligationId);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const occurrence = { ...occurrenceEntry.record, programId: program.id, ownerIds: obligation.ownerIds, coverage: { kind: "range", startsOn: "2026-01-15", endsOn: "2026-02-14" }, membershipCutoffAt: "2026-01-15", occurrenceKey: `${program.id}:${obligation.id}:2026-01-15` };
+  await writeFile(occurrenceEntry.path, `${JSON.stringify(occurrence, null, 2)}\n`);
+  await writeFile(ruleEntry.path, `${JSON.stringify(rule, null, 2)}\n`);
+  const result = await validateWorkspace(root);
+  assert.equal(result.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), false);
+  const invalid = { ...occurrence, coverage: { ...occurrence.coverage, startsOn: "2026-06-01" } };
+  await writeFile(occurrenceEntry.path, `${JSON.stringify(invalid, null, 2)}\n`);
+  const rejected = await validateWorkspace(root);
+  assert.equal(rejected.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), true);
+});

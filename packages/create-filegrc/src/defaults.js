@@ -412,9 +412,9 @@ const controls = [
     id: "control-vendor-monitoring",
     code: "VEN-02",
     title: "Vendor monitoring",
-    statement: "Owners review critical and high-risk vendors on the approved risk-based schedule and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work.",
+    statement: "Owners review all active Vendors annually, using risk to set review depth, and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work.",
     requirements: ["CC4.1", "CC9.2"],
-    activity: "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change.",
+    activity: "Review all active Vendors annually, using Vendor risk and customer-data access to set review depth. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change.",
     controlType: "detective",
     operationMode: "manual",
     operationPattern: "mixed",
@@ -460,7 +460,7 @@ const obligations = [
       SECURITY_PLAN_ID,
       RETENTION_SCHEDULE_ID
     ],
-    controlIds: ["control-policy-management", "control-data-retention-disposal"],
+    controlIds: ["control-policy-management", "control-data-retention-disposal", "control-continuity-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -610,21 +610,12 @@ const obligations = [
   },
   {
     id: "obligation-annual-critical-vendor-review",
-    title: "Annual critical and high-risk vendor review",
+    title: "Annual Vendor Review",
     activityType: "vendor-review",
-    recurrence: calendar("year", 1),
+    recurrence: { ...calendar("year", 1), anchorMode: "activation" },
+    window: eventWindow(30),
     ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
     controlIds: ["control-vendor-due-diligence", "control-vendor-monitoring"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID]
-  },
-  {
-    id: "obligation-annual-emergency-contact-review",
-    title: "Annual emergency contact review",
-    activityType: "continuity-review",
-    recurrence: calendar("year", 1),
-    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    scopeResourceIds: [SECURITY_PLAN_ID],
-    controlIds: ["control-continuity-exercise"],
     policyIds: [INFORMATION_SECURITY_POLICY_ID]
   },
   {
@@ -786,19 +777,8 @@ const obligations = [
   },
   {
     id: "obligation-vendor-material-change-review",
-    title: "Reassess vendor security and privacy after a material change or incident",
+    title: "Reassess Vendor risk, contracts, data use, and follow-up after a material change or incident",
     activityType: "vendor-review",
-    recurrence: event("vendor-reassessment-needed"),
-    triggerPrompt: "Vendor changed materially or had an incident?",
-    window: eventWindow(30),
-    ownerIds: [POLICY_OWNER_APPOINTMENT_ID],
-    controlIds: ["control-vendor-monitoring"],
-    policyIds: [INFORMATION_SECURITY_POLICY_ID]
-  },
-  {
-    id: "obligation-vendor-material-change-records",
-    title: "Update vendor, risk, contract, data-use, and follow-up records",
-    activityType: "vendor-remediation",
     recurrence: event("vendor-reassessment-needed"),
     triggerPrompt: "Vendor changed materially or had an incident?",
     window: eventWindow(30),
@@ -1233,7 +1213,7 @@ function starterObligationSelector(obligationId) {
     "obligation-quarterly-vulnerability-scan": { resourceType: "system", statuses: ["active"] },
     "obligation-quarterly-log-review": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
     "obligation-annual-backup-restoration-test": { resourceType: "system", statuses: ["active"], criticalities: ["high", "critical"] },
-    "obligation-annual-critical-vendor-review": { resourceType: "vendor", statuses: ["active"], criticalities: ["high", "critical"] }
+    "obligation-annual-critical-vendor-review": { resourceType: "vendor", statuses: ["active"] }
   };
   const definition = definitions[obligationId];
   return definition ? {
@@ -1245,12 +1225,14 @@ function starterObligationSelector(obligationId) {
 
 function starterObligationRationale(obligationId) {
   const reviews = {
+    "obligation-annual-policy-review": "Review Policies and governed plans together, including emergency contacts, escalation paths, and recovery responsibilities in the Security Incident and Recovery Plan. Retain each source revision and its review evidence in the shared conclusion.",
+    "obligation-vendor-material-change-review": "Include Vendor, risk, contract, data-use, and inventory updates in the reassessment conclusion. Retain supporting evidence and create separate remediation only when it needs its own owner, deadline, or conclusion.",
     "obligation-quarterly-privileged-access-review": "Cover privileged and production access. Add other customer-data access only when an approved commitment or risk decision requires quarterly review.",
     "obligation-annual-access-review": "Cover other important access, including customer-data paths not assigned to a shorter approved review schedule. Avoid counting the same access twice.",
     "obligation-monthly-endpoint-protection-verification": "Confirm device and platform classes, protection coverage, exceptions, evidence, and whether the monthly cadence fits the approved risk decision.",
     "obligation-annual-network-access-review": "Confirm the in-scope network and host rule sources, customer and environment boundaries, deviations, and review cadence.",
     "obligation-quarterly-vulnerability-scan": "Map host, network, dependency, web, and advisory sources to current scope. Reconcile complete results, gaps, failures, and finding dispositions in one review, and retrieve evidence before expiry. Choose the cadence from exposure, change, commitments, and risk; the proposed interval is a starting point.",
-    "obligation-annual-critical-vendor-review": "Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed."
+    "obligation-annual-critical-vendor-review": "Review all active Vendors in one annual occurrence. Use risk, data access, and service reliance to set review depth. Retain a separate Vendor Review, decision, and evidence for each Vendor. Complete the first review within 30 days of Policy cutover and subsequent reviews within 30 days of each annual window opening."
   };
   return `Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. ${reviews[obligationId] || ""}`.trim();
 }

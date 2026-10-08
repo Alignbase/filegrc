@@ -21,6 +21,7 @@ import {
 } from "./recurrence.js";
 import { resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
+import { obligationRuleRecurrence } from "./obligation-rule.js";
 import { obligationIsEnabled, obligationRuleIsEnabled } from "./program-lifecycle.js";
 import { currentPartyPeople, partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
@@ -745,10 +746,11 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
 function validateOccurrenceScheduleBinding(record, obligation, rule, resources, path, diagnostics) {
   if (obligation?.type !== "obligation" || rule?.type !== "obligation-rule") return;
   const start = record.coverage?.kind === "range" ? record.coverage.startsOn : null;
-  if (!start || !validCalendarRecurrence(rule.recurrence)) return;
-  const index = calendarOccurrenceIndex(rule.recurrence, start);
-  const occurrence = calendarOccurrence(rule.recurrence, index);
-  const next = calendarOccurrence(rule.recurrence, index + 1);
+  const recurrence = obligationRuleRecurrence(rule);
+  if (!start || !validCalendarRecurrence(recurrence)) return;
+  const index = calendarOccurrenceIndex(recurrence, start);
+  const occurrence = calendarOccurrence(recurrence, index);
+  const next = calendarOccurrence(recurrence, index + 1);
   const startOffset = rule.window?.precision === "date" && Number.isInteger(rule.window.startsAfter)
     ? rule.window.startsAfter
     : 0;

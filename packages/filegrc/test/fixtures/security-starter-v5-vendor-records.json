@@ -1,0 +1,87 @@
+[
+  {
+    "path": "data/controls/control-vendor-monitoring.json",
+    "record": {
+      "id": "control-vendor-monitoring",
+      "type": "control",
+      "title": "Vendor monitoring",
+      "status": "planned",
+      "statement": "Owners review critical and high-risk vendors on the approved risk-based schedule and reassess affected vendors within the approved reassessment window after a material service change or incident, then track risks, findings, and follow-up work.",
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "requirementIds": [
+        "requirement-soc2-cc4-1",
+        "requirement-soc2-cc9-2"
+      ],
+      "code": "VEN-02",
+      "activity": "Set review intervals by Vendor risk and customer-data access. Review performance, assurance, recovery, access, incidents, and contract obligations, and reassess after material change.",
+      "controlType": "detective",
+      "operationMode": "manual",
+      "operationPattern": "mixed",
+      "policyIds": [
+        "policy-information-security"
+      ],
+      "evidenceSourceComponentIds": [
+        "component-filegrc-program-repository"
+      ]
+    }
+  },
+  {
+    "path": "data/obligations/obligation-annual-critical-vendor-review.json",
+    "record": {
+      "id": "obligation-annual-critical-vendor-review",
+      "type": "obligation",
+      "title": "Annual critical and high-risk vendor review",
+      "status": "proposed",
+      "activityType": "vendor-review",
+      "scheduleMode": "rule",
+      "ruleIds": [
+        "obligation-rule-annual-critical-vendor-review-v1"
+      ],
+      "ownerIds": [
+        "appointment-policy-owner"
+      ],
+      "controlIds": [
+        "control-vendor-due-diligence",
+        "control-vendor-monitoring"
+      ],
+      "policyIds": [
+        "policy-information-security"
+      ]
+    }
+  },
+  {
+    "path": "data/obligation-rules/obligation-rule-annual-critical-vendor-review-v1.json",
+    "record": {
+      "id": "obligation-rule-annual-critical-vendor-review-v1",
+      "type": "obligation-rule",
+      "title": "Annual critical and high-risk vendor review rule v1",
+      "status": "proposed",
+      "obligationId": "obligation-annual-critical-vendor-review",
+      "activityDefinitionVersion": "1",
+      "recurrence": {
+        "mode": "calendar",
+        "unit": "year",
+        "interval": 1,
+        "anchorDate": "2026-01-01"
+      },
+      "selector": {
+        "resourceType": "vendor",
+        "statuses": [
+          "active"
+        ],
+        "criticalities": [
+          "high",
+          "critical"
+        ],
+        "membershipMode": "as-of",
+        "cutoff": "window-end"
+      },
+      "rationale": "Starter proposal derived from the linked Policy. Management must review the cadence, population, completion criteria, and timing before activation. Confirm the high and critical Vendor population, and set a separate review interval for other Vendors with customer-data access where needed.",
+      "sourceResourceIds": [
+        "policy-information-security"
+      ]
+    }
+  }
+]
