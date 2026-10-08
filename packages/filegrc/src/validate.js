@@ -1473,6 +1473,7 @@ export async function fingerprintWorkspace(input = process.cwd(), options = {}) 
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const hash = createHash("sha256");
   hash.update(`model\0${loaded.model.modelVersion}\0`);
+  hash.update(`hosted-automation\0${JSON.stringify(loaded.hostedAutomationConnection)}\0`);
   const sourceEntries = loaded.sourceEntries || loaded.entries;
   const fingerprintBudget = { uncachedBytes: 0 };
   for (const entry of [...sourceEntries].sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {

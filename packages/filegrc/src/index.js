@@ -138,3 +138,5 @@ export {
 export { indexResources, loadWorkspace } from "./workspace.js";
 
 export { loadNotificationConfig, notificationContacts, validateNotificationConfig } from "./notifications.js";
+
+export { assessHostedAutomation, githubRepository, hostedAutomationForConnection } from "./hosted-automation.js";

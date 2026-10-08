@@ -55,19 +55,24 @@ Control implementation includes evidence-source and Obligation readiness. Use `n
 
 The Program Overview shows what is done, what is blocked, and what to do next.
 
-## Automate your repo
+## FileGRC Autopilot
 
-Let FileGRC handle owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git. Hosted automation is optional, costs $19.99 USD per connected repository per month, and is operated by Alignbase Inc. The local product remains free and MIT licensed.
+Run your SOC 2 program automatically.
 
-At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, choose **Automate your repo** as the recommended next action before activating approved Documents, Training, and Policies. Choose the secondary action, **Continue to content activation without automation**, to use the local Work Queue instead. Neither choice changes activation or readiness checks.
+FileGRC Autopilot handles owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git. It is optional, costs $19.99 USD per connected repository per month, and is operated by Alignbase Inc. The local product remains free and MIT licensed.
 
-1. Follow the [hosted setup guide](https://app.filegrc.com/guide) to connect your existing private repository through the FileGRC GitHub App and activate billing.
+At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, choose **FileGRC Autopilot** as the recommended next action before activating approved Documents, Training, and Policies. Choose the secondary action, **Continue to content activation without Autopilot**, to use the local Work Queue instead. Neither choice changes activation or readiness checks.
+
+
+1. Follow the [Autopilot setup guide](https://app.filegrc.com/guide) to connect your existing private repository through the FileGRC GitHub App and activate billing.
 2. Start with email. Keep Person contacts current in Git so reminders reach owners even when the local app is closed.
 3. Add Slack if useful. Confirm suggested Person links and review delivery policy before committing changes.
 
-The Step 4 Work Queue keeps the **Automate your repo** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
+The Step 4 Work Queue keeps the **FileGRC Autopilot** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
 
-The [hosted dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. It does not host the editor, perform control work, create real evidence, or judge evidence sufficiency. Check current service availability before subscribing; email production approval and broad Slack distribution remain launch gates.
+Run `npx filegrc automation` to inspect local connection setup, or add `--open` to open the dashboard or setup guide. A valid `.filegrc/hosted-automation.json` marker replaces signup offers with dashboard links. Live status remains unknown; removing the marker does not disconnect service.
+
+The [Autopilot dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. It does not host the editor, perform control work, create real evidence, or judge evidence sufficiency. Check current service availability before subscribing; email production approval and broad Slack distribution remain launch gates.
 
 Owners, contacts, deadlines, and program records stay in Git. Confirmed Slack identities live in `.filegrc/notifications.json`, and hosted delivery policy lives in `.filegrc/hosted-notifications.json`. Keep credentials out of Git. See the setup guide for quiet hours, fallback, escalation, and the optional weekly Policy Event prompt, which is off by default. Users record actual events and completed work locally.
 

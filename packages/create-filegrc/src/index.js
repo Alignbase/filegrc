@@ -487,7 +487,7 @@ The starter Policy, Controls, plan, schedule, training, and Obligations are prop
 
 1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding. Then finish Step 1 by adding the real reviewers and operators, finishing the oversight team, committing the prepared Reporting Channel Set proposal, and confirming applicable criteria, commitments, any supplemental Requirement Mappings, material vendors, and in-scope systems.
 2. Tailor the Information Security Policy and have someone other than its owner approve it. Approval accepts the Policy but does not mean the Controls are implemented.
-3. Review the starter Control set, combined Security Incident and Recovery Plan, Data Retention Schedule, Security Awareness Training, and proposed Obligations. Implement each applicable Control with its actual procedure, scope, cadence, Components, and authoritative evidence sources. Enable the applicable schedules and record the Control collection review. Recommend Automate your repo so owner reminders continue when the local app is closed, with email first and optional Slack escalation. Offer Continue to content activation without automation as the secondary action, then activate the unchanged approved Documents and Training followed by the selected Policies at the real implementation cutover.
+3. Review the starter Control set, combined Security Incident and Recovery Plan, Data Retention Schedule, Security Awareness Training, and proposed Obligations. Implement each applicable Control with its actual procedure, scope, cadence, Components, and authoritative evidence sources. Enable the applicable schedules and record the Control collection review. Recommend FileGRC Autopilot so owner reminders continue when the local app is closed, with email first and optional Slack escalation. Offer Continue to content activation without Autopilot as the secondary action, then activate the unchanged approved Documents and Training followed by the selected Policies at the real implementation cutover.
 4. Run \`npx filegrc program-readiness --require-ready\`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions.
 5. Engage a CPA firm, record the separate firm-agreed period in an audit record, review FileGRC Evidence and External Evidence, and prepare fieldwork.`
   };
@@ -524,13 +524,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.16.27",
+    version: "0.16.28",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.16.27",
+        version: "0.16.28",
         dependencies: { filegrc: versionRange }
       }
     }

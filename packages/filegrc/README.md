@@ -114,3 +114,21 @@ Each key must name exactly one existing Person. Workspace IDs start with `T`; us
 The public Core APIs `loadWorkspace()`, `validateNotificationConfig()`, and `notificationContacts()` expose and validate this configuration. `getWorkItems(root, options)` returns the same work items as `assessWorkflow(root, options).workItems`, including stable `ownerIds` and `notificationContacts`. Each contact contains `personId`, optional `email` from the Person record, and optional `slack: { workspaceId, userId }`. Active Team members and chairs and active Appointment holders resolve to active People, deduplicated and sorted by Person ID. Inactive People receive no contact entry. Missing email or Slack routing is allowed. Invalid configuration produces diagnostics and no Slack contacts.
 
 This optional config works across supported data model versions and survives model migrations without rewriting it. Existing workspaces need no migration to add routing. Keep the file tracked in Git if you use routing. Existing repositories that ignore `.filegrc/` must replace that rule with `.filegrc/*` and add `!.filegrc/notifications.json` so routing can be committed while generated output stays ignored. Core reads addresses and calculates work; the calling service handles delivery. Store OAuth credentials, retries, delivery receipts, and deduplication state outside the repository.
+
+## FileGRC Autopilot
+
+Run your SOC 2 program automatically. FileGRC Autopilot is the optional hosted service for owner reminders and policy-driven escalation.
+
+`filegrc automation` reports local FileGRC Autopilot configuration. Add `--json` for the stable contract or `--open` to open the dashboard, or the setup guide when configuration is unavailable. These commands do not check live service status.
+
+After connecting a repository, the Autopilot webapp offers a reviewable PR adding `.filegrc/hosted-automation.json`:
+
+```json
+{ "version": 1, "connectionId": "opaque-non-secret-id" }
+```
+
+Version 1 accepts exactly these fields. The ID contains 1–128 ASCII letters, digits, underscores, or hyphens and grants no access. A valid marker means configured locally. Billing, access, and delivery health remain authoritative in the webapp. Removing the marker does not disconnect service.
+
+Core builds dashboard links as `https://app.filegrc.com/connections/<encoded connectionId>?repository=<encoded owner/repo>`. It derives the optional repository hint from one supported GitHub `origin` URL without contacting GitHub, omitting it when unavailable or ambiguous. The hint grants no authorization. Invalid or unsupported markers produce warnings and leave local workflows available; Core never rewrites the marker.
+
+Track this file in Git. Existing repositories that ignore `.filegrc/` should use `.filegrc/*` and add `!.filegrc/hosted-automation.json`. Person mappings and delivery policy remain separate files.

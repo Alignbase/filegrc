@@ -89,7 +89,7 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
     collectionReviews: {},
     applicabilityConstraints: {},
     applicabilityReviewStatuses: {},
-    programReadiness: null,
+    programReadiness: { hostedAutomationConnection: loaded.hostedAutomationConnection },
     auditPreparations: {},
     workflow: { loading: true, findings: [], workItems: [], assessments: {} },
     git: {
