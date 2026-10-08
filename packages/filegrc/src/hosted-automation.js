@@ -3,12 +3,13 @@ export const HOSTED_AUTOMATION = Object.freeze({
   id: "hosted-automation",
   stage: "controls",
   title: "Automate your repo",
+  priority: "primary",
   optional: true,
   requiredForReadiness: false,
   setupVerified: false,
   href: "https://app.filegrc.com/guide",
   dashboardHref: "https://app.filegrc.com",
-  compactMessage: "Get owner reminders by email and optional Slack escalation, even when your local app is closed.",
+  compactMessage: "Owner reminders continue when your local app is closed. Start with email and add optional Slack escalation.",
   message: "Let FileGRC handle owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git.",
   priceAmount: "$19.99",
   priceUnit: "USD / repo / month",
@@ -16,7 +17,8 @@ export const HOSTED_AUTOMATION = Object.freeze({
   emailFirst: "Start with email using the current Person contacts in your repository. Slack is optional. Reminders run even when your local app is closed.",
   availability: "Check current service availability before subscribing. Email production approval and broad Slack distribution remain launch gates.",
   continueWithout: {
-    title: "Continue without hosted automation",
+    title: "Continue to content activation without automation",
+    priority: "secondary",
     href: "#/stage/controls",
     message: "Continue the existing program content activation cutover and manage follow-up locally with the Work Queue.",
     commands: ["npx filegrc activate-content --scaffold", "npx filegrc activate-policies --scaffold"]
@@ -30,6 +32,7 @@ export const OPERATING_HOSTED_AUTOMATION = Object.freeze({
   placement: "Step 4, alongside the Work Queue and Policy Events, including after continuing without hosted automation.",
   continueWithout: {
     title: "Keep managing follow-up locally",
+    priority: "secondary",
     href: "#/stage/run",
     message: "Use the local Work Queue and record real Policy Events and completed work in Git.",
     commands: ["npx filegrc obligations --json"]
@@ -45,4 +48,11 @@ export function hostedAutomationRecommendation({ implementationReady, oversightC
     placement: "After implementation and the Control collection review, before program content activation.",
     prerequisites: ["Ready owners, contacts, procedures, evidence sources, and enabled Obligations", "Current Control collection review"]
   };
+}
+
+/** Keep optional recommendations distinct from required program work. */
+export function programPathRecommendation(recommendation, stageId) {
+  if (stageId === "controls" && recommendation?.status === "recommended") return recommendation;
+  if (stageId === "run") return recommendation?.operating || OPERATING_HOSTED_AUTOMATION;
+  return null;
 }

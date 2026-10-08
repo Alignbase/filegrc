@@ -20,6 +20,8 @@ test("hosted follow-up appears after implementation and review, before cutover, 
   const ready = assess(true, true, false);
   assert.equal(ready.status, "recommended");
   assert.equal(ready.optional, true);
+  assert.equal(ready.priority, "primary");
+  assert.equal(ready.continueWithout.priority, "secondary");
   assert.equal(ready.requiredForReadiness, false);
   assert.equal(ready.setupVerified, false);
   assert.deepEqual(ready.continueWithout.commands, ["npx filegrc activate-content --scaffold", "npx filegrc activate-policies --scaffold"]);
@@ -35,7 +37,7 @@ test("renderer consumes shared placement and offers setup and direct cutover wit
   state.programReadiness.hostedAutomation = hostedAutomationRecommendation({ implementationReady: true, oversightCurrent: true });
   const html = render();
   assert.match(html, /https:\/\/app.filegrc.com\/guide/);
-  assert.match(html, /Continue without hosted automation/);
+  assert.match(html, /Continue to content activation without automation/);
   assert.match(html, /href="#program-content-cutover"/);
   assert.match(html, /\$19.99/);
   assert.match(html, /USD \/ repo \/ month/);
@@ -76,7 +78,7 @@ test("hosted policy files do not change local readiness; CLI exposes the same op
   }
   for (const command of ["obligations", "workflow"]) {
     const text = await executeCli(runCli, process.execPath, [cli, command, "--root", root, "--as-of", "2026-10-07"]);
-    assert.match(text.stdout, /Optional: Automate your repo/);
+    assert.match(text.stdout, /Recommended next action \(optional\): Automate your repo/);
     assert.match(text.stdout, /Start with email/);
     assert.match(text.stdout, /https:\/\/app.filegrc.com\/guide/);
     assert.match(text.stdout, /Keep managing follow-up locally/);
@@ -90,7 +92,7 @@ test("template introduction and agent instructions preserve email-first optional
     const text = await readFile(new URL("../../create-filegrc/template/" + name, import.meta.url), "utf8");
     assert.match(text, /\$19.99 USD/);
     assert.match(text, /app.filegrc.com\/guide/);
-    assert.match(text, /without hosted automation/);
+    assert.match(text, /without automation/);
     assert.match(text, /hosted-notifications.json/);
     assert.match(text, /notifications.json/);
     assert.match(text, /credentials/);
@@ -103,9 +105,42 @@ test("fresh consumer includes optional setup docs without seeded hosted settings
   const root = join(parent, "workspace");
   await createFilegrc({ target: root, yes: true, install: false, filegrcVersion: "0.16.26", policyOwnerEmail: "security@example.com" });
   for (const name of ["README.md", "AGENTS.md"]) {
-    assert.match(await readFile(join(root, name), "utf8"), /Continue without hosted automation|continue without hosted automation/);
+    assert.match(await readFile(join(root, name), "utf8"), /Continue to content activation without automation/);
   }
   for (const name of ["notifications.json", "hosted-notifications.json"]) {
     await assert.rejects(readFile(join(root, ".filegrc", name)), { code: "ENOENT" });
   }
+});
+
+test("program-path next promotes optional cutover guidance and preserves activation context", async () => {
+  const cliSource = await readFile(new URL("../src/cli.js", import.meta.url), "utf8");
+  const source = cliSource.slice(cliSource.indexOf("function nextProgramPath("), cliSource.indexOf("function shellArgument("));
+  const { programPathRecommendation } = await import("../src/hosted-automation.js");
+  const next = vm.runInNewContext(source + "\nnextProgramPath", {
+    programPathRecommendation,
+    buildActionContext: () => ({ workPhase: "setup" })
+  });
+  const activation = { id: "policy-activation-policy-example", status: "action", title: "Activate approved Policies", message: "Activate the reviewed revision.", commands: ["npx filegrc activate-policies --scaffold"] };
+  const result = {
+    currentStep: { id: "controls", number: 3 },
+    hostedAutomation: hostedAutomationRecommendation({ implementationReady: true, oversightCurrent: true }),
+    stages: [{ id: "controls", number: 3, nextActions: [activation], commands: activation.commands }]
+  };
+  const output = next(result, {});
+  assert.equal(output.primaryRecommendation.title, "Automate your repo");
+  assert.equal(output.step.nextAction.id, "hosted-automation");
+  assert.equal(output.primaryRecommendation.requiredForReadiness, false);
+  assert.equal(output.secondaryAction.title, "Continue to content activation without automation");
+  assert.equal(output.secondaryAction.nextAction.id, activation.id);
+  assert.equal(output.secondaryAction.nextAction.context.workPhase, "setup");
+  assert.deepEqual(Array.from(output.secondaryAction.commands), ["npx filegrc activate-content --scaffold", "npx filegrc activate-policies --scaffold"]);
+  result.hostedAutomation.status = "later";
+  assert.equal(next(result, {}).primaryRecommendation, null);
+  assert.equal(next(result, {}).step.nextAction.id, activation.id);
+  result.currentStep.id = "run";
+  result.stages[0].id = "run";
+  const operating = next(result, {});
+  assert.equal(operating.primaryRecommendation.stage, "run");
+  assert.equal(operating.secondaryAction.title, "Keep managing follow-up locally");
+  assert.equal(operating.step.nextAction.id, activation.id);
 });
