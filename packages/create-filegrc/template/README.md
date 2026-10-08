@@ -59,7 +59,7 @@ The Program Overview shows what is done, what is blocked, and what to do next.
 
 Let FileGRC handle owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git. Hosted automation is optional, costs $19.99 USD per connected repository per month, and is operated by Alignbase Inc. The local product remains free and MIT licensed.
 
-At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, consider automation before activating approved Documents, Training, and Policies. Choose **Continue without hosted automation** to use the local Work Queue instead. Neither choice changes activation or readiness checks.
+At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, choose **Automate your repo** as the recommended next action before activating approved Documents, Training, and Policies. Choose the secondary action, **Continue to content activation without automation**, to use the local Work Queue instead. Neither choice changes activation or readiness checks.
 
 1. Follow the [hosted setup guide](https://app.filegrc.com/guide) to connect your existing private repository through the FileGRC GitHub App and activate billing.
 2. Start with email. Keep Person contacts current in Git so reminders reach owners even when the local app is closed.

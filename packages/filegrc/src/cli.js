@@ -57,7 +57,7 @@ import {
 import { relativeToWorkspace, resolveDataPath } from "./paths.js";
 import { activatePolicies, planPolicyActivation, scaffoldPolicyActivation } from "./policy-activation.js";
 import { applyPolicyLibraryUpgrade, assessPolicyLibraryUpgrades } from "./policy-library.js";
-import { OPERATING_HOSTED_AUTOMATION } from "./hosted-automation.js";
+import { OPERATING_HOSTED_AUTOMATION, programPathRecommendation } from "./hosted-automation.js";
 import { buildAgentProgramPath } from "./program-path.js";
 import { assessEvidenceMap, assessProgramReadiness } from "./program-readiness.js";
 import {
@@ -1973,6 +1973,14 @@ function summarizeProgramPath(result) {
 function nextProgramPath(result, loaded) {
   const stage = result.stages.find(({ id }) => id === result.currentStep.id);
   const nextAction = stage?.nextActions[0];
+  const primaryRecommendation = programPathRecommendation(result.hostedAutomation, stage?.id);
+  const requiredAction = nextAction
+    ? { ...summarizePathAction(nextAction), context: buildActionContext(loaded, { ...nextAction, stage: stage.id }) }
+    : null;
+  const secondaryAction = primaryRecommendation ? {
+    ...primaryRecommendation.continueWithout,
+    ...(requiredAction ? { nextAction: requiredAction } : {})
+  } : null;
   return {
     schemaVersion: result.schemaVersion,
     dataModelVersion: result.dataModelVersion,
@@ -1983,16 +1991,19 @@ function nextProgramPath(result, loaded) {
     policyActivations: result.policyActivations,
     policyLibraryProposals: result.policyLibraryProposals,
     hostedAutomation: result.hostedAutomation,
+    primaryRecommendation,
+    secondaryAction,
     step: stage ? {
       id: stage.id,
       number: stage.number,
       title: stage.title,
       status: stage.status,
       summary: stage.summary,
-      nextAction: nextAction
-        ? { ...summarizePathAction(nextAction), context: buildActionContext(loaded, { ...nextAction, stage: stage.id }) }
-        : null,
-      commands: nextActionCommands(stage, nextAction)
+      nextAction: primaryRecommendation?.status === "recommended"
+        ? { ...primaryRecommendation, message: primaryRecommendation.compactMessage }
+        : requiredAction,
+      commands: primaryRecommendation?.status === "recommended"
+        ? [] : nextActionCommands(stage, nextAction)
     } : null
   };
 }
@@ -2058,8 +2069,11 @@ function printProgramPathOutput(result, flags) {
   }
   if (flags.next) {
     console.log(`Current: Step ${result.currentStep.number}, ${result.currentStep.title}`);
-    if (result.step?.nextAction) {
+    if (result.step?.nextAction && result.step.nextAction.id !== "hosted-automation") {
       printNextAction(result.step.nextAction);
+    }
+    if (result.secondaryAction) {
+      for (const command of result.secondaryAction.commands) console.log(`  ${command}`);
     }
     for (const command of result.step?.commands || []) console.log(`  ${command}`);
     return;
@@ -2069,10 +2083,12 @@ function printProgramPathOutput(result, flags) {
 
 function printHostedAutomation(recommendation) {
   if (!recommendation || !["recommended", "available"].includes(recommendation.status)) return;
-  console.log(`Optional: ${recommendation.title}. ${recommendation.pricing}`);
+  console.log(`Recommended next action (optional): ${recommendation.title}`);
+  console.log(`  ${recommendation.compactMessage}`);
+  console.log(`  ${recommendation.pricing}`);
   console.log(`  ${recommendation.emailFirst}`);
   console.log(`  Setup: ${recommendation.href}`);
-  console.log(`  ${recommendation.continueWithout.title}: ${recommendation.continueWithout.message}`);
+  console.log(`  Secondary action: ${recommendation.continueWithout.title}: ${recommendation.continueWithout.message}`);
 }
 
 function printWorkflow(result) {
