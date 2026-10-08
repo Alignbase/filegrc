@@ -1,10 +1,10 @@
-# filegrc
+# FileGRC
 
-![filegrc, run a SOC 2 program as files in Git](docs/filegrc-social-preview.png)
+![FileGRC, run a SOC 2 program as files in Git](docs/filegrc-social-preview.png)
 
 Run a SOC 2 program as files in Git.
 
-filegrc gives founder-led engineering teams one place to adopt policies, implement controls, run recurring work, collect evidence, and prepare an audit.
+FileGRC gives founder-led engineering teams one place to adopt policies, implement controls, run recurring work, collect evidence, and prepare an audit.
 
 It is open source, MIT licensed, and runs locally.
 
@@ -27,7 +27,7 @@ Existing model v10 workspaces must run `npx filegrc migrate --to-model 11 --prev
 
 The repository is the program. There is no separate application database.
 
-- **JSON** holds records that filegrc validates, filters, and connects.
+- **JSON** holds records that FileGRC validates, filters, and connects.
 - **Markdown** holds policies, procedures, plans, minutes, and narratives.
 - **Git** exclusively supplies authors, commit timestamps, revisions, diffs, renames, prior versions, and commit messages.
 
@@ -39,7 +39,7 @@ Detached and feature-branch checkouts are read-only in the browser by default. D
 
 ## One path from setup to audit
 
-![filegrc SOC 2 program overview](docs/filegrc-home.png)
+![FileGRC SOC 2 program overview](docs/filegrc-home.png)
 
 1. **Define scope.** Set program ownership, choose the criteria, define the service, Systems, and providers in scope, review any supplemental requirement mappings, and commit the reporting-channel proposals needed by the planned program.
 2. **Approve policies.** Review Policies, program Documents, and Training in one table. Have someone other than the owner approve each exact revision. Approval does not mean the linked Controls are implemented.
@@ -80,7 +80,7 @@ Owners, contacts, deadlines, and program records stay in Git. Confirmed Slack id
 - **Audit Readiness** checks the engagement, period, documents, evidence, and Type 2 populations.
 - **Evidence packets** collect the scoped records, attachments, history, indexes, and checksums for delivery.
 
-![filegrc audit readiness](docs/filegrc-audit.png)
+![FileGRC audit readiness](docs/filegrc-audit.png)
 
 The Security starter uses one consolidated Information Security Policy with familiar policy-family headings, one Security Incident and Recovery Plan, one focused Data Retention Schedule, one Security Awareness Training record, and the Controls and Obligations needed for the Security common criteria. The headings make common customer and Vendor questionnaire topics easy to locate, but they do not prove implementation or create separate policy documents. Confirm the applicable Control status and Evidence before answering a questionnaire.
 
@@ -111,7 +111,7 @@ Read `AGENTS.md` and `data/AGENTS.md` inside a generated workspace for the full 
 
 ## Clear boundaries
 
-filegrc manages GRC records and audit evidence. Your workforce, identity, source control, infrastructure, monitoring, endpoint, backup, training, signature, procurement, and vendor systems still operate the controls and produce source evidence.
+FileGRC manages GRC records and audit evidence. Your workforce, identity, source control, infrastructure, monitoring, endpoint, backup, training, signature, procurement, and vendor systems still operate the controls and produce source evidence.
 
 The independent CPA firm still selects samples, tests controls, evaluates exceptions, decides whether evidence is sufficient, and issues the SOC 2 report.
 

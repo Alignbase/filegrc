@@ -77,7 +77,7 @@ test("creates a complete generic repository with one dependency", async (context
   const readme = await readFile(join(target, "README.md"), "utf8");
   assert.equal(readme.includes("{{"), false);
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
-  assert.match(readme, /filegrc 1\.2\.3/);
+  assert.match(readme, /FileGRC 1\.2\.3/);
   assert.match(readme, /npx filegrc setup/);
   assert.match(readme, /npx filegrc program-path --next --json/);
   assert.match(readme, /finish Step 1 by adding the real reviewers and operators, finishing the oversight team/);
@@ -100,7 +100,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.doesNotMatch(agents, /candidatePeriodStart|candidatePeriodEnd/);
   assert.match(agents, /Do not store plaintext credentials, private keys, tokens, recovery codes, session data/);
   assert.match(agents, /Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions/);
-  assert.match(agents, /Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence\. Do not mention filegrc versions, migrations, or workflow mechanics unless filegrc itself is the subject\./);
+  assert.match(agents, /Keep compliance records focused on business facts, decisions, scope, Controls, and Evidence\. Do not mention FileGRC versions, migrations, or workflow mechanics unless FileGRC itself is the subject\./);
   const dataGuide = await readFile(join(target, "data", "AGENTS.md"), "utf8");
   assert.match(dataGuide, /full shared assessments, complete checklist, Work Items, and blockers/);
   assert.match(dataGuide, /Before creating a record or asking for a new procedure, inspect matching records/);
@@ -844,7 +844,7 @@ test("creates a thirteen-record foundation without selecting a framework", async
   assert.equal(workspace.frameworkIds, undefined);
   assert.equal(workspace.controlIds, undefined);
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
-  assert.match(agents, /^# filegrc Workspace Instructions/m);
+  assert.match(agents, /^# FileGRC Workspace Instructions/m);
   assert.match(agents, /No framework or assurance program has been selected yet/);
   assert.match(agents, /does not include framework requirements, policies, governed documents/);
   assert.doesNotMatch(agents, /The generated workspace starts with the SOC 2 Security category/);

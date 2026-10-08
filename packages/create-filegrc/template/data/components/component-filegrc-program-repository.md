@@ -1,4 +1,4 @@
-# filegrc Program Repository
+# FileGRC Program Repository
 
 This Git repository is the authoritative Component for FileGRC governance records and their revision history. It can supply the training and acknowledgement catalog, exception and finding populations, policy and document approvals, risk register and assessments, Vendor inventory and reviews, oversight records, obligation history, Policy Event workflows, and management evidence indexes.
 

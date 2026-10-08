@@ -435,8 +435,8 @@ function starterTemplateText(starter, companyName) {
       program_title: `${companyName} GRC Program`,
       program_description: "Governance, risk, and compliance workspace without a preselected framework.",
       program_summary: `This private workspace holds ${companyName}'s governance, risk, compliance, and audit-evidence records. JSON under \`data/\` stores structured records, Markdown stores long-form work, and Git records reviewed changes.`,
-      agent_title: "filegrc Workspace Instructions",
-      agent_purpose: `This repository is ${companyName}’s foundation filegrc workspace. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files. No framework or assurance program has been selected yet.`,
+      agent_title: "FileGRC Workspace Instructions",
+      agent_purpose: `This repository is ${companyName}’s foundation FileGRC workspace. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files. No framework or assurance program has been selected yet.`,
       starter_baseline: `## Foundation baseline
 
 The generated workspace starts with foundational program records:
@@ -445,13 +445,13 @@ The generated workspace starts with foundational program records:
 - The initial active owner
 - The two core Appointment records: an active Policy Owner plus a planned Independent Policy Reviewer assignment. Create another Appointment only when the company actually delegates a named responsibility.
 - A planned security and risk oversight team that still needs an independent chair
-- The filegrc Git repository as a governance system of record
+- The FileGRC Git repository as a governance system of record
 - A default 5x5 risk method and Public, Internal, Confidential, and Restricted data classifications
 
 This profile does not include framework requirements, policies, governed documents, training, controls, obligations, or audit-management templates. Add and review those records for the selected framework before treating Program Readiness or Audit Readiness as meaningful. Do not infer that an absent control, policy, or schedule is unnecessary.`,
       starter_setup: `## Start the program
 
-This foundation profile contains the workspace, initial owner, core Appointments, oversight team, renderer settings, and filegrc system of record. It does not select a framework or create proposed policies, controls, obligations, or evidence.
+This foundation profile contains the workspace, initial owner, core Appointments, oversight team, renderer settings, and FileGRC system of record. It does not select a framework or create proposed policies, controls, obligations, or evidence.
 
 1. Run \`npx filegrc setup\` for guided service and goal setup, or use browser onboarding.
 2. Use \`npx filegrc guide --json\` before creating framework requirements, policies, controls, obligations, and evidence sources.
@@ -462,8 +462,8 @@ This foundation profile contains the workspace, initial owner, core Appointments
     program_title: `${companyName} SOC 2 Program`,
     program_description: "SOC 2 Security program based on the AICPA Trust Services Criteria.",
     program_summary: `This private workspace holds ${companyName}'s SOC 2 program records and audit evidence. JSON under \`data/\` stores structured records, Markdown stores long-form work, and Git records reviewed changes.`,
-    agent_title: "filegrc SOC 2 Workspace Instructions",
-    agent_purpose: `This repository is ${companyName}’s filegrc workspace for its SOC 2 program. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files.`,
+    agent_title: "FileGRC SOC 2 Workspace Instructions",
+    agent_purpose: `This repository is ${companyName}’s FileGRC workspace for its SOC 2 program. Engineers and agents maintain the source records under \`data/\`. The \`filegrc\` package validates, searches, edits, and renders those files.`,
     starter_baseline: `## Starter baseline
 
 The generated workspace starts with the SOC 2 Security category:
@@ -489,7 +489,7 @@ The starter Policy, Controls, plan, schedule, training, and Obligations are prop
 2. Tailor the Information Security Policy and have someone other than its owner approve it. Approval accepts the Policy but does not mean the Controls are implemented.
 3. Review the starter Control set, combined Security Incident and Recovery Plan, Data Retention Schedule, Security Awareness Training, and proposed Obligations. Implement each applicable Control with its actual procedure, scope, cadence, Components, and authoritative evidence sources. Enable the applicable schedules and record the Control collection review. Recommend Automate your repo so owner reminders continue when the local app is closed, with email first and optional Slack escalation. Offer Continue to content activation without automation as the secondary action, then activate the unchanged approved Documents and Training followed by the selected Policies at the real implementation cutover.
 4. Run \`npx filegrc program-readiness --require-ready\`, record the management candidate period start when reliable evidence collection begins, maintain risk assessments and risks, update controls when needed, use Work Queue for scheduled work, and trigger Policy Events when changes create required actions.
-5. Engage a CPA firm, record the separate firm-agreed period in an audit record, review filegrc Evidence and External Evidence, and prepare fieldwork.`
+5. Engage a CPA firm, record the separate firm-agreed period in an audit record, review FileGRC Evidence and External Evidence, and prepare fieldwork.`
   };
 }
 
