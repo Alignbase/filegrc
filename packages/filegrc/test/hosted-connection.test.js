@@ -104,7 +104,8 @@ test("marker states, offline CLI, shared UI and warnings preserve readiness", as
   assert.equal(navigation(), connection.dashboardHref);
   state.programReadiness.hostedAutomationConnection = { configurationStatus: "absent", dashboardHref: null, setupHref: connection.setupHref };
   assert.equal(navigation(), connection.setupHref);
-  assert.ok(APP_SCRIPT.indexOf('>Autopilot <span') > APP_SCRIPT.indexOf('<div class="sidebar-footer">'));
+  assert.ok(APP_SCRIPT.indexOf('>Autopilot <span') > APP_SCRIPT.indexOf('</nav><div class="automation-nav-panel">'));
+  assert.ok(APP_SCRIPT.indexOf('>Autopilot <span') < APP_SCRIPT.indexOf('<div class="sidebar-footer">'));
   assert.ok(APP_SCRIPT.indexOf('>Autopilot <span') < APP_SCRIPT.indexOf('<a class="organization-nav '));
   git("remote", "set-url", "origin", "https://unsupported.example/a/b");
   assert.equal((await assessHostedAutomation(root)).dashboardHref, "https://app.filegrc.com/connections/id_A-9");
