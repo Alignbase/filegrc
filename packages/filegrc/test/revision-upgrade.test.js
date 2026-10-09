@@ -15,7 +15,7 @@ import { collectionRevision, collectionRevisionMatches, legacyCollectionRevision
 import { scopedCollectionRecords } from "../src/collection-scope.js";
 import { contentRevisionBindingsMatch } from "../src/program-lifecycle.js";
 import { assessProgramReadiness } from "../src/program-readiness.js";
-import { reviewHistoryContext } from "../src/historical-workspace.js";
+import { reviewHistoricalWorkspace, reviewHistoryContext } from "../src/historical-workspace.js";
 import { reportingRouteRevision } from "../src/reporting-route-integrity.js";
 import { assessRequirementMappingReadiness } from "../src/requirement-mapping.js";
 import { resourceReviewRevisionMatches, resourceReviewRevisions, resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent } from "../src/retention.js";
@@ -989,7 +989,7 @@ test("collection and applicability recovery reuse snapshots beyond 128 commits",
   const broadReview = {
     decision: "applicable",
     scopeRevision: applicabilityScopeRevision(commitment, program, before.resources, before.model, {
-      legacyBroadCommitment: true
+      legacyDecisionScope: true, legacyBroadScope: true, legacyResourceProjection: true
     })
   };
   controlEntry.record.applicabilityReview = {
@@ -1042,7 +1042,42 @@ test("collection and applicability recovery reuse snapshots beyond 128 commits",
     ), true);
   }
   assert.ok(performance.now() - started < 10_000, "repeated legacy recovery exceeded the request deadline");
-  assert.ok(reviewHistoryContext(root, current).workspacesByCommit.size > 128);
+  const history = reviewHistoryContext(root, current);
+  for (const commit of history.index.commits) assert.ok(reviewHistoricalWorkspace(history, commit));
+  assert.ok(history.workspacesByCommit.size > 128);
+  const oldest = reviewHistoricalWorkspace(history, history.index.commits.at(-1));
+  const newest = reviewHistoricalWorkspace(history, history.index.commits[0]);
+  assert.equal(oldest.model, newest.model, "load a historical model once per version");
+  assert.equal(oldest.byId.get(commitment.id), newest.byId.get(commitment.id),
+    "unchanged historical JSON reuses its parsed record across commits");
+  assert.notEqual(oldest.byId.get(unrelatedPerson.record.id), newest.byId.get(unrelatedPerson.record.id),
+    "changed source bytes must produce a different historical record");
+
+  // Evict reconstructed workspaces to prove that a repeated match does not
+  // rebuild or rehash history. Current inputs are still read on every call.
+  history.workspacesByCommit.clear();
+  assert.equal(applicabilityReviewIsCurrent(
+    broadReview, currentCommitment, currentProgram, current.resources, current.model, root
+  ), true);
+  assert.equal(history.workspacesByCommit.size, 0);
+  const originalStatement = currentCommitment.statement;
+  currentCommitment.statement += " A material change after the cached match.";
+  assert.equal(applicabilityReviewIsCurrent(
+    broadReview, currentCommitment, currentProgram, current.resources, current.model, root
+  ), false);
+  currentCommitment.statement = originalStatement;
+  const forged = { ...broadReview, scopeRevision: `scope:${"0".repeat(64)}` };
+  assert.equal(applicabilityReviewIsCurrent(
+    forged, currentCommitment, currentProgram, current.resources, current.model, root
+  ), false);
+  assert.equal(applicabilityReviewIsCurrent(
+    broadReview, currentCommitment, { ...currentProgram, assuranceGoal: "soc-2-type-1" },
+    current.resources, current.model, root
+  ), false);
+  assert.equal(applicabilityReviewIsCurrent(
+    broadReview, { ...currentCommitment, status: "retired" }, currentProgram,
+    current.resources, current.model, root
+  ), false);
 });
 
 test("governed approval metadata does not change source facts but Markdown does", async (context) => {

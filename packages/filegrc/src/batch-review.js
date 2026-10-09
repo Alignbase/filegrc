@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
-import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
+import { applicabilityReviewIsCurrent, applicabilityScopeRevision, createApplicabilityScopeIndex } from "./applicability-scope.js";
 import { applyResourceBatch } from "./files.js";
 import { getWorkspaceRevisionSnapshot } from "./git.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -30,6 +30,7 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     throw new Error(`Applicability review type must be one of ${[...REVIEWABLE_TYPES].join(", ")}.`);
   }
   const program = resolveProgram(loaded, options.programId);
+  const scopeIndex = createApplicabilityScopeIndex(loaded.resources, program);
   const requirementById = new Map(loaded.resources
     .filter(({ type }) => type === "requirement")
     .map((record) => [record.id, record]));
@@ -37,7 +38,7 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     .filter((review) => (
       ["applicable", "not-applicable"].includes(review.decision)
       && requirementById.has(review.requirementId)
-      && applicabilityReviewIsCurrent(review, requirementById.get(review.requirementId), program, loaded.resources, loaded.model, loaded.root)
+      && applicabilityReviewIsCurrent(review, requirementById.get(review.requirementId), program, loaded.resources, loaded.model, loaded.root, scopeIndex)
     ))
     .map(({ requirementId }) => requirementId));
   const requirementReviews = new Map((program.requirementApplicability || [])
@@ -47,7 +48,7 @@ export async function scaffoldApplicabilityReview(input = process.cwd(), options
     && (!requestedType || record.type === requestedType)
     && (record.type === "requirement" && modelSupports(loaded.model, "program-scope")
       ? !reviewedRequirementIds.has(record.id)
-      : !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, loaded.resources, loaded.model, loaded.root))
+      : !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, loaded.resources, loaded.model, loaded.root, scopeIndex))
     && !["retired", "superseded"].includes(record.status)
   ));
   return {
@@ -97,6 +98,7 @@ function planApplicabilityReviewWithContext(context, options) {
     throw new Error("Batch expected revisions must be keyed by resource ID.");
   }
   const program = resolveProgram(loaded, options.programId);
+  const scopeIndex = createApplicabilityScopeIndex(loaded.resources, program);
   const reviewedDecisions = options.decisions.map((decision) => {
     const record = byId.get(decision.id);
     if (!record || !REVIEWABLE_TYPES.has(record.type)) {
@@ -129,7 +131,7 @@ function planApplicabilityReviewWithContext(context, options) {
       rationale,
       reviewedByIds,
       reviewedOn,
-      scopeRevision: applicabilityScopeRevision(record, program, loaded.resources, loaded.model)
+      scopeRevision: applicabilityScopeRevision(record, program, loaded.resources, loaded.model, { scopeIndex })
     }));
   const replacedRequirementIds = new Set(v4RequirementDecisions.map(({ requirementId }) => requirementId));
   const reviewedProgram = v4RequirementDecisions.length
@@ -141,6 +143,7 @@ function planApplicabilityReviewWithContext(context, options) {
         ]
       }
     : program;
+  const reviewedScopeIndex = createApplicabilityScopeIndex(loaded.resources, reviewedProgram);
   const update = reviewedDecisions.flatMap(({ record, result, rationale, reviewedByIds, reviewedOn }) => {
     const next = { ...record };
     if (record.type === "control" && result === "not-applicable" && record.status !== "not-applicable") {
@@ -158,7 +161,7 @@ function planApplicabilityReviewWithContext(context, options) {
       rationale,
       reviewedByIds,
       reviewedOn,
-      scopeRevision: applicabilityScopeRevision(next, reviewedProgram, loaded.resources, loaded.model)
+      scopeRevision: applicabilityScopeRevision(next, reviewedProgram, loaded.resources, loaded.model, { scopeIndex: reviewedScopeIndex })
     };
     if (record.type === "requirement") {
       if (modelSupports(loaded.model, "program-scope")) {

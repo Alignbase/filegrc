@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
-import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
+import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./applicability-scope.js";
 import { selectDefaultAudit } from "./audit-selection.js";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import {
@@ -370,10 +370,11 @@ function scopeStage(loaded, audit, records, byId, programReadiness) {
   const requirementById = new Map(records
     .filter(({ type }) => type === "requirement")
     .map((record) => [record.id, record]));
+  const scopeIndex = createApplicabilityScopeIndex(records, program);
   const v4Decisions = new Map((program?.requirementApplicability || [])
     .filter((decision) => (
       requirementById.has(decision.requirementId)
-      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), program, records, loaded.model, loaded.root)
+      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), program, records, loaded.model, loaded.root, scopeIndex)
     ))
     .map((decision) => [decision.requirementId, decision]));
   const unresolvedRequirements = frameworkRequirementIds
