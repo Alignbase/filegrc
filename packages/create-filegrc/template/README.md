@@ -66,7 +66,7 @@ At the end of Step 3, after owners, contacts, procedures, evidence sources, enab
 
 1. Follow the [Autopilot setup guide](https://app.filegrc.com/guide) to connect your existing private repository through the FileGRC GitHub App and activate billing.
 2. Start with email. Keep Person contacts current in Git so reminders reach owners even when the local app is closed.
-3. Add Slack if useful. Confirm suggested Person links and review delivery policy before committing changes.
+3. Add Slack if useful. Confirm suggested Person links and review delivery policy in the Autopilot dashboard.
 
 The Step 4 Work Queue keeps the **FileGRC Autopilot** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
 
@@ -74,7 +74,7 @@ Run `npx filegrc automation` to inspect local connection setup, or add `--open` 
 
 The [Autopilot dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. It does not host the editor, perform control work, create real evidence, or judge evidence sufficiency. Check current service availability before subscribing; email production approval and broad Slack distribution remain launch gates.
 
-Owners, contacts, deadlines, and program records stay in Git. Confirmed Slack identities live in `.filegrc/notifications.json`, and hosted delivery policy lives in `.filegrc/hosted-notifications.json`. Keep credentials out of Git. See the setup guide for quiet hours, fallback, escalation, and the optional weekly Policy Event prompt, which is off by default. Users record actual events and completed work locally.
+Program records, owners, Person email addresses, and dates remain authoritative in Git. Autopilot stores notification settings and Person-to-Slack links in its database. Manage those settings in the [Autopilot dashboard](https://app.filegrc.com). Keep credentials out of Git. Users perform control work, record events, and retain evidence locally.
 
 ## The routine work stays connected
 

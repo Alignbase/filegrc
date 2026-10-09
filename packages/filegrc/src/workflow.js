@@ -171,7 +171,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     programId: programRecord.id
   }).map((item) => ({
     ...item,
-    notificationContacts: notificationContacts(item.ownerIds, loaded.resources, loaded.notifications)
+    notificationContacts: notificationContacts(item.ownerIds, loaded.resources)
   }));
   const git = options.git || safeGitSummary(loaded.root);
   const assessments = buildAssessments({
@@ -293,13 +293,6 @@ export async function previewWorkflowMutation(input, mutation) {
       errorOnExist: true,
       force: false
     });
-    await rm(join(previewRoot, ".filegrc", "notifications.json"), { force: true });
-    await mkdir(join(previewRoot, ".filegrc"), { recursive: true });
-    try {
-      await cp(join(loaded.root, ".filegrc", "notifications.json"), join(previewRoot, ".filegrc", "notifications.json"));
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
     if (repository.available && !repository.clean && getGitSummary(previewRoot).clean) {
       const marker = join(previewRoot, "preview-source-dirty.marker");
       await writeFile(marker, "The source workspace has uncommitted files.\n");

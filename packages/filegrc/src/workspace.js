@@ -2,7 +2,6 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { loadModel } from "../model/index.js";
 import { resolveWorkspaceRoot } from "./paths.js";
-import { loadNotificationConfig } from "./notifications.js";
 import { assessHostedAutomation } from "./hosted-automation.js";
 import { measureTiming } from "./timing.js";
 
@@ -68,12 +67,9 @@ async function loadWorkspaceUnmeasured(input) {
 
   const hostedAutomationConnection = await assessHostedAutomation(root);
   diagnostics.push(...hostedAutomationConnection.diagnostics);
-  const notifications = await loadNotificationConfig(root, resources.map(({ record }) => record));
-  diagnostics.push(...notifications.diagnostics);
 
   return {
     hostedAutomationConnection,
-    notifications: notifications.config,
     root,
     dataRoot,
     model,

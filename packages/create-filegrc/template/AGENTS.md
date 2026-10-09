@@ -182,7 +182,7 @@ The Step 4 Work Queue keeps the offer available after users continue locally. `n
 
 Present “Continue to content activation without Autopilot” as the clear secondary action, using `secondaryAction` from `program-path --next` when available. Do not bury automation after a long activation checklist. Follow the recommendation's `continueWithout.commands` for the existing cutover and use the local Work Queue for follow-up. Payment, installation, and hosted availability never determine readiness. A clicked link does not verify setup, and the recommendation is guidance rather than a program record or completion assertion.
 
-Program records, owners, contacts, and dates remain authoritative in Git. Confirmed Slack links belong in `.filegrc/notifications.json`; hosted delivery policy belongs in `.filegrc/hosted-notifications.json`. Read the setup guide for supported policy fields. Do not seed identities, put credentials in Git, or change either file without explicit user confirmation. The hosted database stores credentials and operational scheduling and delivery state. The Autopilot dashboard handles connections, billing, person linking, and delivery health; source-system work, evidence, Policy Events, and record editing stay local.
+Program records, owners, Person email addresses, and dates remain authoritative in Git. Autopilot stores notification settings and Person-to-Slack links in its database. Manage those settings in the [Autopilot dashboard](https://app.filegrc.com). Keep credentials out of Git. Users perform control work, record events, and retain evidence locally.
 
 ## Work Queue and Policy Events
 

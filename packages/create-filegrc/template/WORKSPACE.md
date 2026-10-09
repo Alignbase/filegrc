@@ -52,7 +52,7 @@ Follow the [setup guide](https://app.filegrc.com/guide) to connect this existing
 
 The Step 4 Work Queue keeps the **FileGRC Autopilot** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
 
-The [Autopilot dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. Program records and contacts remain in Git. Confirmed Slack identities live in `.filegrc/notifications.json`; delivery policy lives in `.filegrc/hosted-notifications.json`. Review and confirm changes before committing either file. Keep provider credentials out of Git. Read the guide for quiet hours, escalation, fallback, and the optional weekly Policy Event prompt, which is off by default. Users still perform control work, record events, and retain real evidence locally; the service does not host the editor or judge evidence sufficiency.
+Program records, owners, Person email addresses, and dates remain authoritative in Git. Autopilot stores notification settings and Person-to-Slack links in its database. Manage those settings in the [Autopilot dashboard](https://app.filegrc.com). Keep credentials out of Git. Users perform control work, record events, and retain evidence locally.
 
 Do not put plaintext credentials, private keys, authentication tokens, recovery codes, session material, or personal data that may need erasure into Git. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation rules.
 
