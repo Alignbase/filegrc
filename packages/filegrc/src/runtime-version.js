@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveWorkspaceRoot } from "./paths.js";
 
-const installedVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+export const installedVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 export function workspaceEngineVersion(input = process.cwd()) {
   let root;
