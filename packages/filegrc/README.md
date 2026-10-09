@@ -94,26 +94,11 @@ The editable server has no authentication and binds to loopback by default. Put 
 
 The authoritative data model ships in this package. Import the public Node.js API from `filegrc` and the model loader from `filegrc/model`.
 
-## Repository notification routing
+## Workflow notification contacts
 
-Create an optional `.filegrc/notifications.json` to map Person IDs to Slack identities:
+`getWorkItems(root, options)` returns the same work items as `assessWorkflow(root, options).workItems`, including stable `ownerIds` and `notificationContacts`. Each contact contains `personId` and optional `email` from the Person record. `notificationContacts(ownerIds, resources)` resolves active Team members and chairs and active Appointment holders to active People, deduplicated and sorted by Person ID. Inactive People receive no contact entry. People without email still have a Person ID contact.
 
-```json
-{
-  "slack": {
-    "person-owner": {
-      "workspaceId": "T012ABC",
-      "userId": "U012ABC"
-    }
-  }
-}
-```
-
-Each key must name exactly one existing Person. Workspace IDs start with `T`; user IDs start with `U` or `W`. Both use uppercase letters and digits. Unknown fields, missing IDs, malformed JSON, and references to missing or non-Person records fail `filegrc validate` with the config path and field. An absent file or `{}` needs no routing setup. Keep email on the Person record; the config accepts no email override.
-
-The public Core APIs `loadWorkspace()`, `validateNotificationConfig()`, and `notificationContacts()` expose and validate this configuration. `getWorkItems(root, options)` returns the same work items as `assessWorkflow(root, options).workItems`, including stable `ownerIds` and `notificationContacts`. Each contact contains `personId`, optional `email` from the Person record, and optional `slack: { workspaceId, userId }`. Active Team members and chairs and active Appointment holders resolve to active People, deduplicated and sorted by Person ID. Inactive People receive no contact entry. Missing email or Slack routing is allowed. Invalid configuration produces diagnostics and no Slack contacts.
-
-This optional config works across supported data model versions and survives model migrations without rewriting it. Existing workspaces need no migration to add routing. Keep the file tracked in Git if you use routing. Existing repositories that ignore `.filegrc/` must replace that rule with `.filegrc/*` and add `!.filegrc/notifications.json` so routing can be committed while generated output stays ignored. Core reads addresses and calculates work; the calling service handles delivery. Store OAuth credentials, retries, delivery receipts, and deduplication state outside the repository.
+Core calculates work and exposes repository contacts. Autopilot manages notification settings and Person-to-Slack links in its database, using Core contact Person IDs to look up destinations.
 
 ## FileGRC Autopilot
 

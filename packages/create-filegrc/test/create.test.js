@@ -621,8 +621,8 @@ test("creates a complete generic repository with one dependency", async (context
   await access(join(target, ".git"));
   await mkdir(join(target, ".filegrc"), { recursive: true });
   await writeFile(join(target, ".filegrc", "notifications.json"), "{}\n");
-  const routingAdd = execFileSync("git", ["add", "--dry-run", "--", ".filegrc/notifications.json"], { cwd: target, encoding: "utf8" });
-  assert.match(routingAdd, /notifications\.json/);
+  const ignoredSettings = execFileSync("git", ["check-ignore", ".filegrc/notifications.json", ".filegrc/hosted-notifications.json"], { cwd: target, encoding: "utf8" });
+  assert.equal(ignoredSettings.trim().split("\n").length, 2);
   const ignoredOutput = execFileSync("git", ["check-ignore", ".filegrc/packet.json"], { cwd: target, encoding: "utf8" });
   assert.match(ignoredOutput, /packet\.json/);
   const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: target, encoding: "utf8" }).trim();

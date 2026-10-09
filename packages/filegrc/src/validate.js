@@ -28,7 +28,6 @@ import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
 import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 import { recordTiming } from "./timing.js";
 import { personWasActiveOn } from "./soc2.js";
-import { validateNotificationConfig } from "./notifications.js";
 import { indexResources, loadWorkspace } from "./workspace.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./collection-review-integrity.js";
 import {
@@ -87,8 +86,7 @@ export async function validateWorkspace(input = process.cwd()) {
 
 async function validateWorkspaceUnmeasured(input) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
-  const diagnostics = loaded.diagnostics.filter((item) => item.code !== "invalid-notification-config" || item.field === undefined);
-  diagnostics.push(...validateNotificationConfig(Object.hasOwn(loaded, "notifications") ? loaded.notifications : {}, loaded.resources));
+  const diagnostics = [...loaded.diagnostics];
   let reconciliation = null;
   const { byId } = indexResources(loaded.resources);
   const seen = new Map();

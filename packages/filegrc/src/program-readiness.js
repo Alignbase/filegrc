@@ -327,8 +327,8 @@ export async function assessProgramReadiness(input, options = {}) {
     ...records.filter((record) => record.type === "obligation" && obligationIsEnabled(record)
       && (record.controlIds || []).some((id) => selectedControlIds.has(id)))
   ].flatMap(({ ownerIds = [] }) => ownerIds))];
-  const missingContactIds = notificationContacts(notificationOwnerIds, records, loaded.notifications)
-    .filter(({ email, slack }) => !email && !slack).map(({ personId }) => personId);
+  const missingContactIds = notificationContacts(notificationOwnerIds, records)
+    .filter(({ email }) => !email).map(({ personId }) => personId);
   return {
     program,
     schemaVersion: 1,

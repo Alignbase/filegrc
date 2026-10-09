@@ -98,8 +98,8 @@ test("template introduction and agent instructions preserve email-first optional
     assert.match(text, /\$19.99 USD/);
     assert.match(text, /app.filegrc.com\/guide/);
     assert.match(text, /without Autopilot/);
-    assert.match(text, /hosted-notifications.json/);
-    assert.match(text, /notifications.json/);
+    assert.doesNotMatch(text, /notifications\.json/);
+    assert.match(text, /Autopilot stores notification settings and Person-to-Slack links in its database/);
     assert.match(text, /credentials/);
   }
 });

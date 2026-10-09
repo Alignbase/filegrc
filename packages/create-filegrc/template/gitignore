@@ -1,6 +1,5 @@
 node_modules/
 .filegrc/*
-!.filegrc/notifications.json
 .DS_Store
 *.log
 !.filegrc/hosted-automation.json
