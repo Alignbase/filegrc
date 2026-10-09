@@ -92,6 +92,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
   const stateSessions = new Map();
   const fileDigestCache = new Map();
   let bootstrapSnapshotPromise = null;
+  let verifiedGitCache = null;
   let stateInvalidationGeneration = 0;
   let activeStateMutations = 0;
   let stateMutationWaiters = [];
@@ -121,11 +122,13 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           stateInvalidationGeneration += 1;
           activeStateMutations += 1;
           invalidateStateSessions(stateSessions);
+          verifiedGitCache = null;
         },
         endStateMutation: () => {
           stateInvalidationGeneration += 1;
           activeStateMutations -= 1;
           invalidateStateSessions(stateSessions);
+          verifiedGitCache = null;
           if (activeStateMutations === 0) {
             const waiters = stateMutationWaiters;
             stateMutationWaiters = [];
@@ -171,7 +174,19 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             });
           }
           const [snapshot, repositorySignature] = await awaitWithinDeadline(bootstrapSnapshotPromise, deadlineAt);
-          const loaded = snapshot.loaded;
+          // Bootstrap checks files and Git independently of the calculation cache.
+          // A new revision gets a new cache; time-sensitive sections are recalculated.
+          if (!verifiedGitCache || verifiedGitCache.revoked
+            || verifiedGitCache.fingerprint !== snapshot.fingerprint
+            || verifiedGitCache.repositorySignature !== repositorySignature) {
+            verifiedGitCache = {
+              fingerprint: snapshot.fingerprint,
+              repositorySignature,
+              loaded: snapshot.loaded,
+              commands: new Map()
+            };
+          }
+          const loaded = verifiedGitCache.loaded;
           const token = randomUUID();
           const session = {
             loaded,
@@ -183,7 +198,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             revoked: false,
             promises: new Map(),
             verificationPromise: null,
-            gitCommandCache: new Map()
+            calculationCache: verifiedGitCache,
+            gitCommandCache: verifiedGitCache.commands
           };
           const state = await createAppBootstrap(loaded, {
             generatedAt: session.generatedAt,
@@ -216,9 +232,12 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           ? Math.max(0, options.stateSectionDeadlineMs)
           : STATE_SECTION_GIT_DEADLINE_MS;
         const deadlineAt = performance.now() + sectionDeadlineMs;
-        const state = await withGitCommandDeadline(deadlineAt, () => (
+        const calculate = () => withGitCommandDeadline(deadlineAt, () => (
           loadStateSessionSection(session, section, options, url.searchParams.get("programId") || undefined, null, deadlineAt)
         ));
+        const measured = timingEnabled() ? await collectTimings(calculate) : null;
+        const state = measured ? measured.result : await calculate();
+        if (measured) console.error(`[filegrc timing] ${JSON.stringify({ operation: "state-section", section, ...measured.timings })}`);
         assertCurrentStateSession(session);
         return json(response, 200, { stateToken: token, section, state });
       }
@@ -951,7 +970,7 @@ async function loadStateSessionSection(session, section, serverOptions, programI
       const program = section === "workflow" ? results[1] : section === "audits" ? results[0] : null;
       const obligations = section === "workflow" ? results[2] : null;
       const audits = section === "workflow" ? results[3] : null;
-      return withGitCommandCache(session.gitCommandCache, () => createAppStateSection(session.loaded, section, {
+      return measureTiming(`state-section-${section}`, () => withGitCommandCache(session.gitCommandCache, () => createAppStateSection(session.loaded, section, {
         allowNonAuthoritativeWrites: serverOptions.allowNonAuthoritativeWrites,
         generatedAt: session.generatedAt,
         programReadiness: program?.programReadiness,
@@ -961,7 +980,7 @@ async function loadStateSessionSection(session, section, serverOptions, programI
         validation: repository?.validation,
         strictHistory: repository?.git?.available === true,
         programId: selectedProgramId || programId
-      }));
+      })));
     }).then((state) => {
       calculationEntry.completedAt = performance.now();
       return state;
@@ -1094,7 +1113,7 @@ function invalidateStateSessions(stateSessions) {
 }
 
 function assertCurrentStateSession(session) {
-  if (session.revoked || session.expiresAt <= Date.now()) throw stateSessionExpiredError();
+  if (session.revoked || session.calculationCache?.revoked || session.expiresAt <= Date.now()) throw stateSessionExpiredError();
 }
 
 function stateSessionExpiredError() {
@@ -1122,6 +1141,7 @@ function makeStateSessionCalculationRoom(session) {
 function assertStateSessionFingerprint(session, fingerprint) {
   if (fingerprint === session.fingerprint) return;
   session.revoked = true;
+  if (session.calculationCache) session.calculationCache.revoked = true;
   throw stateSessionExpiredError();
 }
 
@@ -1165,18 +1185,19 @@ async function verifyStateSessionSnapshot(session, notBefore = 0, deadlineAt) {
     await new Promise((resolve) => setImmediate(resolve));
     verification.startedAt = performance.now();
     return Promise.all([
-      fingerprintWorkspace(session.loaded.root, {
+      measureTiming("state-verification-files", () => fingerprintWorkspace(session.loaded.root, {
         fileDigestCache: session.fileDigestCache,
         deadlineAt
-      }),
-      getRepositoryStateSignature(session.loaded.root, {
+      })),
+      measureTiming("state-verification-git", () => getRepositoryStateSignature(session.loaded.root, {
         timeoutMs: deadlineAt === undefined ? undefined : Math.max(1, Math.ceil(deadlineAt - performance.now()))
-      })
+      }))
     ]);
   })().then(([snapshot, repositorySignature]) => {
     assertStateSessionFingerprint(session, snapshot.fingerprint);
     if (repositorySignature !== session.repositorySignature) {
       session.revoked = true;
+      if (session.calculationCache) session.calculationCache.revoked = true;
       throw stateSessionExpiredError();
     }
     assertCurrentStateSession(session);

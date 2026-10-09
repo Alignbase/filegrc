@@ -153,7 +153,7 @@ export async function assessProgramReadiness(input, options = {}) {
     ? normalizeProgressWindow(auditWindow, "audit")
     : selectedProgressWindow(program?.candidateCoverage, auditWindow, asOf);
   const scope = programScope(program, records, byId, loaded.model, loaded);
-  const collectionReviews = assessCollectionReviews(loaded, { programId: program.id });
+  const collectionReviews = options.collectionReviews ?? assessCollectionReviews(loaded, { programId: program.id });
   const markdown = new Map();
   const readMarkdown = async (record) => {
     if (!record) return "";

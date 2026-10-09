@@ -143,14 +143,17 @@ export async function createAppStateSection(input, section, options = {}) {
     };
   }
   if (section === "program") {
-    const programReadiness = options.programReadiness ?? await assessProgramReadiness(loaded, { programId: options.programId, asOf, generatedAt });
     const activeProgram = resolveProgram(loaded, options.programId);
+    const collectionReviews = assessCollectionReviews(loaded, { programId: activeProgram.id });
+    const programReadiness = options.programReadiness ?? await assessProgramReadiness(loaded, {
+      programId: activeProgram.id, asOf, generatedAt, collectionReviews
+    });
     return {
       generatedAt,
       asOf,
       programReadiness,
       collectionReviews: Object.fromEntries(
-        assessCollectionReviews(loaded, { programId: activeProgram.id }).map((assessment) => [
+        collectionReviews.map((assessment) => [
           assessment.resourceType,
           serializeCollectionReviewAssessment(assessment)
         ])

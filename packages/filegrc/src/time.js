@@ -1,3 +1,26 @@
+// These caches contain timezone rules and exact conversions, never the current time.
+const zonedFormatters = new Map();
+const localTimestampCache = new Map();
+const MAX_ZONED_FORMATTERS = 64;
+const MAX_LOCAL_TIMESTAMPS = 512;
+
+function retainTimeCalculation(cache, key, value, limit) {
+  cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > limit) cache.delete(cache.keys().next().value);
+  return value;
+}
+
+function zonedFormatter(locale, timeZone, options) {
+  // An implicit timezone may change with the host environment during a process.
+  if (typeof timeZone !== "string") return new Intl.DateTimeFormat(locale, { ...options, timeZone });
+  const key = `${locale}:${timeZone}`;
+  const cached = zonedFormatters.get(key);
+  if (cached) return retainTimeCalculation(zonedFormatters, key, cached, MAX_ZONED_FORMATTERS);
+  return retainTimeCalculation(zonedFormatters, key,
+    new Intl.DateTimeFormat(locale, { ...options, timeZone }), MAX_ZONED_FORMATTERS);
+}
+
 export function formatCalendarDate(value, locale) {
   const source = String(value);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(source);
@@ -34,8 +57,7 @@ export function formatLocalDateTime(value, locale, timeZone) {
 
 export function currentCalendarDate(timeZone, now = new Date()) {
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
+    const parts = zonedFormatter("en-US", timeZone, {
       year: "numeric",
       month: "2-digit",
       day: "2-digit"
@@ -57,6 +79,11 @@ export function localDateTimeValue(value, timeZone) {
 export function timestampFromLocalDateTime(value, timeZone) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(value || "");
   if (!match) throw new Error("A local date and time is required.");
+  const cacheKey = typeof value === "string" && typeof timeZone === "string"
+    ? JSON.stringify([value, timeZone]) : null;
+  if (cacheKey && localTimestampCache.has(cacheKey)) {
+    return retainTimeCalculation(localTimestampCache, cacheKey, localTimestampCache.get(cacheKey), MAX_LOCAL_TIMESTAMPS);
+  }
   const desired = match.slice(1).map((part, index) => Number(part ?? (index === 5 ? "0" : part)));
   const desiredUtc = Date.UTC(desired[0], desired[1] - 1, desired[2], desired[3], desired[4], desired[5] || 0);
   let instant = new Date(desiredUtc);
@@ -85,12 +112,12 @@ export function timestampFromLocalDateTime(value, timeZone) {
       `The local time ${normalized} occurs more than once in ${timeZone}. Use an RFC 3339 timestamp with an explicit UTC offset.`
     );
   }
-  return instant.toISOString().replace(".000Z", "Z");
+  const timestamp = instant.toISOString().replace(".000Z", "Z");
+  return cacheKey ? retainTimeCalculation(localTimestampCache, cacheKey, timestamp, MAX_LOCAL_TIMESTAMPS) : timestamp;
 }
 
 function dateTimeParts(instant, timeZone) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
+  const parts = zonedFormatter("en-CA", timeZone, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  currentCalendarDate,
   formatCalendarDate,
   formatLocalDateTime,
   isRfc3339Timestamp,
@@ -52,4 +53,30 @@ test("rejects ambiguous and nonexistent workspace-local times", () => {
     () => timestampFromLocalDateTime("2026-03-08T02:30:00", "America/Chicago"),
     /does not exist/i
   );
+});
+
+
+test("timezone calculations reuse formatters without caching the current date or invalid times", () => {
+  const original = Intl.DateTimeFormat;
+  let constructions = 0;
+  Intl.DateTimeFormat = new Proxy(original, {
+    construct(target, args) { constructions += 1; return new target(...args); }
+  });
+  try {
+    const local = "2026-10-09T12:00:00";
+    assert.equal(timestampFromLocalDateTime(local, "America/Phoenix"), "2026-10-09T19:00:00Z");
+    assert.equal(timestampFromLocalDateTime(local, "America/Phoenix"), "2026-10-09T19:00:00Z");
+    assert.equal(localDateTimeValue("2026-10-09T19:00:00Z", "America/Phoenix"), local);
+    assert.equal(currentCalendarDate("America/Phoenix", new Date("2026-10-09T06:00:00Z")), "2026-10-08");
+    assert.equal(currentCalendarDate("America/Phoenix", new Date("2026-10-09T08:00:00Z")), "2026-10-09");
+    assert.ok(constructions <= 2, `timezone checks constructed ${constructions} formatters`);
+    assert.equal(timestampFromLocalDateTime(local, "UTC"), "2026-10-09T12:00:00Z");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      assert.throws(() => timestampFromLocalDateTime("2026-11-01T01:30:00", "America/Chicago"), /occurs more than once/);
+      assert.throws(() => timestampFromLocalDateTime("2026-03-08T02:30:00", "America/Chicago"), /does not exist/);
+      assert.throws(() => timestampFromLocalDateTime(local, "Invalid/Timezone"), /Invalid time zone/);
+    }
+  } finally {
+    Intl.DateTimeFormat = original;
+  }
 });

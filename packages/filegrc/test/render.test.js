@@ -1681,12 +1681,6 @@ test("uses semantic nesting within the readiness sidebar", () => {
   assert.match(section(scopeStage, "Program Ownership").steps.join(" "), /independent reviewer, and oversight team/);
   assert.match(APP_SCRIPT, /Renderer and Repository/);
   assert.match(APP_SCRIPT, /function readinessOverview\(\)/);
-  assert.match(APP_SCRIPT, /return \[stage\.title, stage\.summary, href/);
-  assert.match(APP_SCRIPT, /programStage\("scope", "#\/stage\/scope"\)/);
-  assert.match(APP_SCRIPT, /programStage\("run", "#\/stage\/run"\)/);
-  assert.match(APP_SCRIPT, /programStage\("policies", "#\/stage\/policies"\)/);
-  assert.match(APP_SCRIPT, /programStage\("controls", "#\/stage\/controls"\)/);
-  assert.doesNotMatch(APP_SCRIPT, /programStage\("evidence"/);
   assert.doesNotMatch(APP_SCRIPT, /#\/program-readiness/);
   assert.doesNotMatch(APP_SCRIPT, /function renderProgramReadiness/);
   assert.match(APP_SCRIPT, /function auditEngagementPrompt\(audit = null\)/);
@@ -2772,7 +2766,7 @@ test("keeps the overview focused on readiness, current work, and the audit", () 
   assert.match(APP_SCRIPT, /eventReminderPreview\(orderedPolicyEventTriggers\(acceptedEventTriggers\)\.slice\(0, 4\)\)/);
   assert.match(APP_SCRIPT, /const eventPanel = acceptedEventTriggers\.length/);
   assert.match(APP_SCRIPT, /function activeOperationItems\(items\)/);
-  assert.match(APP_SCRIPT, /<a class="button primary" href="' \+ nextHref \+ '">Continue<\/a>/);
+  assert.match(APP_SCRIPT, /ready \? '<a class="button primary" href="' \+ nextProgramStageHref\(\)/);
   assert.doesNotMatch(APP_SCRIPT, /Build and test the management program first/);
   assert.doesNotMatch(APP_SCRIPT, /class="panel program-start-panel"/);
   assert.match(APP_SCRIPT, /class="overview-grid"/);
@@ -2793,17 +2787,10 @@ test("uses stage names and routes overview cards through stage pages", () => {
   assert.match(APP_SCRIPT, /const listStage = READINESS_STAGES\.find/);
   assert.match(APP_SCRIPT, /\|\| readinessStageForType\(type\)/);
   assert.match(APP_SCRIPT, /listStage\?\.title \|\| groupTitle/);
-  assert.match(APP_SCRIPT, /programStage\("run", "#\/stage\/run"\)/);
   assert.match(APP_SCRIPT, /function nextProgramStageHref\(\)/);
   assert.match(APP_SCRIPT, /READINESS_STAGES\.find\(\(stage\) => \{/);
   assert.match(APP_SCRIPT, /progress\.complete < progress\.total/);
   assert.doesNotMatch(APP_SCRIPT, /function readinessItemHref\(item\)/);
-  assert.match(APP_SCRIPT, /programStage\("scope", "#\/stage\/scope"\)/);
-  assert.match(APP_SCRIPT, /programStage\("policies", "#\/stage\/policies"\)/);
-  assert.match(APP_SCRIPT, /programStage\("controls", "#\/stage\/controls"\)/);
-  assert.doesNotMatch(APP_SCRIPT, /programStage\("evidence"/);
-  assert.match(APP_SCRIPT, /programStage\("run", "#\/stage\/run"\)/);
-  assert.match(APP_SCRIPT, /programStage\("audit", "#\/stage\/audit"\)/);
   assert.doesNotMatch(APP_SCRIPT, /Open checklist/);
   assert.doesNotMatch(APP_STYLES, /\.program-next-action\{/);
   assert.match(APP_SCRIPT, /#\/resources\/audit\?new=1/);
@@ -2847,3 +2834,88 @@ function requestWithHeaders(url, headers) {
     outgoing.end();
   });
 }
+
+test("overview renders independently of workflow and keeps pending readiness explicit", () => {
+  const routing = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function blockingStateSections"), APP_SCRIPT.indexOf("function renderStateLoading"));
+  const context = vm.createContext({ state: { model: { collectionReviews: {} } } });
+  vm.runInContext(routing, context);
+  assert.deepEqual(Array.from(vm.runInContext('blockingStateSections({ name: "home" })', context)), []);
+  assert.deepEqual(Array.from(vm.runInContext('desiredStateSections({ name: "home" })', context)).sort(), ["obligations", "program", "repository"]);
+  assert.ok(vm.runInContext('desiredStateSections({ name: "stage", stageId: "audit" }).includes("audits")', context));
+  assert.ok(vm.runInContext('desiredStateSections({ name: "stage", stageId: "controls" }).includes("workflow")', context));
+  const rendering = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function overviewSectionStatus"), APP_SCRIPT.indexOf("function initialSetupSystem"));
+  const overview = vm.createContext({
+    state: { sections: { program: "loading", obligations: "loading" }, programReadiness: {} },
+    READINESS_STAGES: PROGRAM_PATH,
+    esc: (value) => String(value),
+    nextProgramStageHref: () => "#/stage/scope",
+    resourcesOfType: () => [],
+    activeProgram: () => ({ id: "program-example" }),
+    pluralize: (noun, count) => noun + (count === 1 ? "" : "s"),
+    operationProgress: () => ({ status: "Not started", tone: "warn" }),
+    stageProgress: () => ({ status: "In progress", complete: 1, total: 3, tone: "warn" })
+  });
+  vm.runInContext(rendering, overview);
+  let html = vm.runInContext('readinessOverview()', overview);
+  for (const stage of PROGRAM_PATH) assert.ok(html.includes(`href="#/stage/${stage.id}"`));
+  assert.match(html, /Checking readiness/);
+  assert.match(html, /Unresolved work will appear/);
+  assert.doesNotMatch(html, />Ready<|>Continue</);
+  overview.state.sections.program = "complete";
+  overview.state.sections.obligations = "complete";
+  overview.state.programReadiness.stages = [{ id: "scope", counts: { action: 2 }, status: "action" }];
+  html = vm.runInContext('readinessOverview()', overview);
+  assert.match(html, /Needs work/);
+  assert.match(html, /Not started/);
+  assert.doesNotMatch(html, /checks need work/);
+  overview.resourcesOfType = () => [{ record: { programId: "program-other" } }];
+  html = vm.runInContext("readinessOverview()", overview);
+  assert.doesNotMatch(html, /engagement, open checks/);
+  overview.resourcesOfType = () => [{ record: { programId: "program-example" } }];
+  html = vm.runInContext("readinessOverview()", overview);
+  assert.match(html, /1 engagement, open checks/);
+  overview.state.sections.workflow = "complete";
+  html = vm.runInContext("readinessOverview()", overview);
+  assert.match(html, /2 pages need work/);
+  overview.state.sections.workflow = "idle";
+  assert.doesNotMatch(html, /Checking readiness|>Ready</);
+  overview.state.sections.program = "error";
+  overview.state.sectionErrors = { program: "Readiness verification failed" };
+  html = vm.runInContext('readinessOverview()', overview);
+  assert.match(html, /role="alert"/);
+  assert.match(html, /Readiness verification failed/);
+  assert.match(html, /Check unavailable/);
+});
+
+test("warm bootstrap caches reject changed governed Markdown and still report approval drift", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-overview-approved-content-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const { calculateRevision } = await import("../src/revisions.js");
+  const source = "# Information Security Policy\n\nOwners review access before granting it.\n";
+  await mkdir(join(root, "data", "policies"));
+  await writeJson(join(root, "data", "policies", "policy-approved.json"), {
+    id: "policy-approved", type: "policy", title: "Information Security Policy",
+    status: "approved", ownerIds: ["person-owner"], approverIds: ["person-approver"],
+    approvedOn: "2026-01-01", approvedContentRevisions: { "policies/policy-approved.md": calculateRevision("content", source) }
+  });
+  const path = join(root, "data", "policies", "policy-approved.md");
+  await writeFile(path, source);
+  const served = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const bootstrap = async () => (await fetch(`${served.url}/api/state/bootstrap`)).json();
+  const repository = (state) => fetch(`${served.url}/api/state/repository?token=${state.stateToken}`);
+  for (let index = 0; index < 2; index += 1) {
+    const state = await bootstrap();
+    const response = await repository(state);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).state.validation.diagnostics.some(({ code }) => code === "approval-content-changed"), false);
+  }
+  const warm = await bootstrap();
+  await writeFile(path, source + "Owners also review access monthly.\n");
+  assert.equal((await repository(warm)).status, 409);
+  const changed = await bootstrap();
+  const response = await repository(changed);
+  assert.equal(response.status, 200);
+  assert.ok((await response.json()).state.validation.diagnostics.some(({ code }) => code === "approval-content-changed"));
+});

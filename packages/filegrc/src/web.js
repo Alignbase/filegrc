@@ -283,7 +283,7 @@ function normalizeAppState(next) {
 }
 
 function blockingStateSections(route) {
-  if (route.name === "home") return ["program", "obligations", "workflow"];
+  if (route.name === "home") return [];
   if (route.name === "repository") return ["repository"];
   if (route.name === "list" && ["requirement", "control", "commitment", "complementary-control"].includes(route.type)) return ["program"];
   if (route.name === "detail" && ["program", "requirement", "control", "commitment", "complementary-control"].includes(route.type)) return ["program"];
@@ -300,6 +300,10 @@ function blockingStateSections(route) {
 
 function desiredStateSections(route) {
   const sections = new Set(["repository", ...blockingStateSections(route)]);
+  if (route.name === "home") {
+    sections.add("program");
+    sections.add("obligations");
+  }
   if (route.name === "list" && (["requirement", "requirement-mapping"].includes(route.type) || state.model.collectionReviews?.[route.type])) sections.add("program");
   if (route.name === "detail" && ["policy", "document", "training", "control", "component", "requirement-mapping", "retention-schedule-item"].includes(route.type)) sections.add("program");
   if (route.name === "detail") sections.add("workflow");
@@ -571,7 +575,7 @@ function renderHome(main) {
     ? '<section class="panel audit-panel"><div class="panel-head"><div><p class="kicker">Optional next phase</p><h3>' + esc(activeFirm ? titleCase(activeAudit.record.title) : "Target: " + program.target.label) + '</h3></div>' + (activeAudit ? '<a href="#/resource/audit/' + encodeURIComponent(activeAudit.record.id) + '">Open audit</a>' : '<a href="#/resources/audit">Engagements</a>') + '</div>' +
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>'
     : "";
-  const obligationPanel = program.evidenceReady || openObligations.length
+  const obligationPanel = state.sections?.obligations === "complete" && (program.evidenceReady || openObligations.length)
     ? '<section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due Windows</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>'
     : "";
   const eventPanel = acceptedEventTriggers.length
@@ -582,6 +586,43 @@ function renderHome(main) {
   main.innerHTML = '<div class="page home-page"><section class="hero overview-hero"><div><p class="kicker">Current program state</p><h2>' + esc(titleCase(state.workspace.title)) + '</h2><p>' + esc(state.workspace.description || "Governance, risk, controls, evidence, and audit work maintained as plain files in Git.") + '</p></div></section>' + setupBanner + readinessOverview() +
     (overviewPanels ? '<div class="overview-grid">' + overviewPanels + '</div>' : '') + '</div>';
   main.querySelector("#resume-setup")?.addEventListener("click", () => requestOnboarding({ setupOnly: true }));
+}
+
+function overviewSectionStatus(section, label) {
+  const failed = state.sections?.[section] === "error";
+  return '<section class="panel" role="' + (failed ? 'alert' : 'status') + '"><p>' + esc(failed
+    ? state.sectionErrors?.[section] || label + " could not load. Reload the workspace to retry."
+    : label + " is being checked. Unresolved work will appear when the checks finish.") + '</p></section>';
+}
+
+function readinessOverview() {
+  const ready = state.sections?.program === "complete";
+  const stages = READINESS_STAGES.map((stage, index) => {
+    const assessment = ready && state.programReadiness?.stages?.find(({ id }) => id === (stage.id === "run" ? "operation" : stage.id));
+    const actions = assessment?.counts?.action || 0;
+    let label = !ready ? state.sections?.program === "error" ? "Check unavailable" : "Checking readiness" : !assessment
+      ? "Open checks" : actions ? "Needs work" : assessment.status === "complete" ? "Ready" : "Later";
+    let tone = actions ? "bad" : assessment?.status === "complete" ? "good" : "neutral";
+    if (stage.id === "run" && ready && state.sections?.obligations === "complete") {
+      const progress = operationProgress();
+      label = progress.status;
+      tone = progress.tone;
+    }
+    if (stage.id === "audit") {
+      const engagements = resourcesOfType("audit").filter(({ record }) => !record.programId || record.programId === activeProgram().id);
+      label = engagements.length ? engagements.length + " " + pluralize("engagement", engagements.length) + ", open checks" : "Not started";
+      tone = "neutral";
+    }
+    if (state.sections?.workflow === "complete") {
+      const progress = stageProgress(stage);
+      label = progress.status === "In progress" ? (progress.total - progress.complete) + " pages need work" : progress.status;
+      tone = progress.tone;
+    }
+    return '<a href="#/stage/' + esc(stage.id) + '"><span>' + (index + 1) + '</span><strong>' + esc(stage.title) + '</strong><small>' + esc(stage.summary) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(label) + '</b></a>';
+  });
+  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Prepare, Operate, Then Audit</h3></div>' + (ready ? '<a class="button primary" href="' + nextProgramStageHref() + '">Continue</a>' : '') + '</div><div class="readiness-flow">' + stages.join('') + '</div></section>'
+    + (ready ? '' : overviewSectionStatus("program", "Program readiness"))
+    + (state.sections?.obligations === "complete" ? '' : overviewSectionStatus("obligations", "Scheduled work"));
 }
 
 function initialSetupSystem() {
@@ -605,25 +646,6 @@ function initialSetupBanner() {
   return '<section class="setup-banner"><div><p class="kicker">Setup draft</p><h3>' + esc(system.title) + '</h3><p>Review and confirm the initial scope.</p></div><div class="setup-draft-state"><span><small>Program goal</small><strong>' + esc(goalLabel) + '</strong></span><span><small>System</small><strong>' + esc(properCase(system.status)) + '</strong></span><button class="button primary" type="button" id="resume-setup">Resume setup</button></div></section>';
 }
 
-function readinessOverview() {
-  const nextHref = nextProgramStageHref();
-  const programStage = (id, href) => {
-    const stage = READINESS_STAGES.find((candidate) => candidate.id === id);
-    const current = stageProgress(stage);
-    const remaining = current.total - current.complete;
-    const status = current.status === "In progress" ? remaining + " pages need work" : current.status;
-    return [stage.title, stage.summary, href, status, current.tone];
-  };
-  const stages = [
-    programStage("scope", "#/stage/scope"),
-    programStage("policies", "#/stage/policies"),
-    programStage("controls", "#/stage/controls"),
-    programStage("run", "#/stage/run"),
-    programStage("audit", "#/stage/audit")
-  ];
-  return '<section class="readiness-map"><div class="readiness-map-head"><div><p class="kicker">SOC 2 program path</p><h3>Prepare, Operate, Then Audit</h3></div><a class="button primary" href="' + nextHref + '">Continue</a></div><div class="readiness-flow">' + stages.map(([title, body, href, status, tone], index) => '<a href="' + href + '"><span>' + (index + 1) + '</span><strong>' + esc(title) + '</strong><small>' + esc(body) + '</small><b class="readiness-state ' + esc(tone) + '">' + esc(status) + '</b></a>').join("") + '</div></section>';
-}
-
 function nextProgramStageHref() {
   const firstAction = state.programReadiness?.firstAction;
   const recommendedStage = state.programReadiness?.stages?.find((stage) => stage.items.some((item) => (
@@ -631,6 +653,10 @@ function nextProgramStageHref() {
   )));
   if (recommendedStage) {
     return "#/stage/" + encodeURIComponent(recommendedStage.id === "operation" ? "run" : recommendedStage.id);
+  }
+  if (state.sections?.workflow !== "complete" && state.sections?.program === "complete") {
+    const pending = state.programReadiness?.stages?.find(({ counts }) => counts?.action > 0);
+    return "#/stage/" + (pending ? pending.id === "operation" ? "run" : pending.id : "audit");
   }
   const nextStage = READINESS_STAGES.find((stage) => {
     const progress = stageProgress(stage);

@@ -156,8 +156,10 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   });
   context.after(restore);
 
+  // Each live repository signature also reads effective configuration and the
+  // attributes-file location; those safety reads remain outside the cache.
   const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const coldDetail = await fetch(`${served.url}/api/resource/person/person-owner?history=false&token=${encodeURIComponent(bootstrap.stateToken)}`);
@@ -165,7 +167,7 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   const coldDetailBody = await coldDetail.json();
   assert.equal(coldDetailBody.historyLoaded, false);
   assert.equal(coldDetailBody.history, undefined);
-  assert.ok(calls.length <= 30, `expected at most 30 Git subprocesses for a cold tokenized detail, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 34, `expected at most 34 Git subprocesses for a cold tokenized detail, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const coldHistory = await fetch(`${served.url}/api/resource/person/person-owner?history=only&token=${encodeURIComponent(bootstrap.stateToken)}`);
@@ -173,45 +175,45 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   const coldHistoryBody = await coldHistory.json();
   assert.equal(coldHistoryBody.historyLoaded, true);
   assert.ok(Array.isArray(coldHistoryBody.history));
-  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for deferred history, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 16, `expected at most 16 Git subprocesses for deferred history, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const workflowDetailBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
   calls = [];
   const workflowDetail = await fetch(`${served.url}/api/resource/person/person-owner?workflow=true&token=${encodeURIComponent(workflowDetailBootstrap.stateToken)}`);
   assert.equal(workflowDetail.status, 200);
-  assert.ok(calls.length <= 40, `expected at most 40 Git subprocesses for a cold tokenized workflow detail, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 44, `expected at most 44 Git subprocesses for a cold tokenized workflow detail, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const sectionBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
   calls = [];
   const firstProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
   assert.equal(firstProgram.status, 200);
-  assert.ok(calls.length <= 8, `expected at most 8 Git calls for an uncached program section, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 12, `expected at most 12 Git calls for an uncached program section, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const cachedProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
   assert.equal(cachedProgram.status, 200);
-  assert.ok(calls.length <= 4, `expected at most 4 Git calls for a cached program section, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 6, `expected at most 6 Git calls for a cached program section, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const homeBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
   const homeSections = ["repository", "program", "obligations", "workflow"];
   calls = [];
   const coldHome = await Promise.all(homeSections.map((section) => (
     fetch(`${served.url}/api/state/${section}?token=${encodeURIComponent(homeBootstrap.stateToken)}`)
   )));
   assert.equal(coldHome.every(({ status }) => status === 200), true);
-  assert.ok(calls.length <= 40, `expected at most 40 Git subprocesses for a cold home launch, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 44, `expected at most 44 Git subprocesses for a cold home launch, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const warmHome = await Promise.all(homeSections.map((section) => (
     fetch(`${served.url}/api/state/${section}?token=${encodeURIComponent(homeBootstrap.stateToken)}`)
   )));
   assert.equal(warmHome.every(({ status }) => status === 200), true);
-  assert.ok(calls.length <= 8, `expected at most 8 Git subprocesses for a warm home navigation, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for a warm home navigation, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   assert.deepEqual(getFilesAtRevisions(root, [{ revision, relativePath: "data/budget-history.txt" }]), ["Historical budget fixture.\n"]);
@@ -3003,3 +3005,73 @@ function pauseGitCommand(context, predicate) {
 function git(cwd, args) {
   return execute("git", args, { cwd });
 }
+
+test("new bootstrap tokens reuse verified Git reads and invalidate on files, HEAD, and browser writes", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-state-cache-invalidation-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  await git(root, ["checkout", "-b", "test-cache"]);
+  const served = await serveWorkspace(root, { port: 0, allowNonAuthoritativeWrites: true });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  let calls = [];
+  const restore = setGitSubprocessObserverForTests(({ args }) => calls.push(args.join(" ")));
+  context.after(restore);
+  const bootstrap = async () => {
+    const response = await fetch(`${served.url}/api/state/bootstrap`);
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const repository = async (state) => fetch(`${served.url}/api/state/repository?token=${state.stateToken}`);
+  const first = await bootstrap();
+  assert.equal((await repository(first)).status, 200);
+  const second = await bootstrap();
+  assert.notEqual(first.stateToken, second.stateToken);
+  calls = [];
+  const warmResponse = await repository(second);
+  assert.equal(warmResponse.status, 200);
+  assert.equal(calls.some((command) => command.startsWith("log ") || command.startsWith("diff ")), false, calls.join("\n"));
+  // Verification must still read live Git, independently of the calculation cache.
+  assert.ok(calls.includes("status --porcelain=v2 --branch -z --untracked-files=all"));
+  const ownerPath = join(root, "data", "people", "person-owner.json");
+  const original = await readFile(ownerPath, "utf8");
+  await writeFile(ownerPath, `${original}\n`);
+  assert.equal((await repository(second)).status, 409);
+  // A rejected verification also retires the shared cache for other tokens,
+  // even if the files are restored before the next bootstrap.
+  await writeFile(ownerPath, original);
+  assert.equal((await repository(first)).status, 409);
+  const restored = await bootstrap();
+  calls = [];
+  assert.equal((await repository(restored)).status, 200);
+  assert.ok(calls.some((command) => command.startsWith("log ")), calls.join("\n"));
+  await git(root, ["commit", "--allow-empty", "-m", "Advance repository revision"]);
+  assert.equal((await repository(restored)).status, 409);
+  const advanced = await bootstrap();
+  const advancedRepository = await (await repository(advanced)).json();
+  assert.equal(advancedRepository.state.git.commit, (await git(root, ["rev-parse", "HEAD"])).stdout.trim());
+  const mutation = await fetch(`${served.url}/api/resources`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "prefer": "return=minimal" },
+    body: JSON.stringify({ record: { id: "person-cache-new", type: "person", title: "New Person", status: "active", affiliation: "internal" } })
+  });
+  assert.equal(mutation.status, 201, await mutation.text());
+  assert.equal((await repository(advanced)).status, 409);
+  const written = await bootstrap();
+  assert.ok(written.resources.some(({ record }) => record.id === "person-cache-new"));
+  assert.equal((await repository(written)).status, 200);
+  await git(root, ["config", "user.name", "Updated Test User"]);
+  assert.equal((await repository(written)).status, 409);
+  const reconfigured = await bootstrap();
+  assert.equal((await repository(reconfigured)).status, 200);
+  await writeFile(join(root, ".git", "info", "attributes"), "data/**/*.json merge=custom\n");
+  assert.equal((await repository(reconfigured)).status, 409);
+  const restricted = await bootstrap();
+  const restrictedResponse = await repository(restricted);
+  assert.equal(restrictedResponse.status, 200);
+  assert.equal((await restrictedResponse.json()).state.git.available, false);
+});
