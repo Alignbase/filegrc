@@ -183,3 +183,33 @@ test("Git adapters cover raw and historical commands without subprocesses", asyn
   );
   assert.equal(subprocesses, 0);
 });
+
+test("snapshot command caches share async reads, retry failures, and leave writes uncached", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-async-cache-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const { withGitCommandCache, runGitCommandSync } = await import("../src/git.js");
+  const cache = new Map();
+  let calls = 0;
+  let fail = true;
+  await withGitCommandAdapterForTests({
+    run: async ({ args }) => {
+      calls += 1;
+      if (args[0] === "log" && fail) { fail = false; throw new Error("temporary failure"); }
+      return "result";
+    },
+    runSync: () => "sync result"
+  }, () => withGitCommandCache(cache, async () => {
+    assert.deepEqual(await Promise.all([runGitCommand(root, ["status"]), runGitCommand(root, ["status"])]), ["result", "result"]);
+    assert.equal(calls, 1);
+    assert.equal(await runGitCommand(root, ["status"]), "result");
+    assert.equal(calls, 1);
+    assert.equal(runGitCommandSync(root, ["status"]), "sync result");
+    await assert.rejects(runGitCommand(root, ["log"]), /temporary failure/);
+    assert.equal(await runGitCommand(root, ["log"]), "result");
+    assert.equal(calls, 3);
+    await runGitCommand(root, ["add", "."]);
+    await runGitCommand(root, ["add", "."]);
+    assert.equal(calls, 5);
+  }));
+});

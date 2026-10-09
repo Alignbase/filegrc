@@ -16,8 +16,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { rm } from "node:fs/promises";
-import { devNull } from "node:os";
+import { readFile, rm } from "node:fs/promises";
+import { devNull, homedir } from "node:os";
 import { relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { isSafeGitName } from "./git-name.js";
@@ -1532,10 +1532,37 @@ export async function getRepositoryStateSignature(
     .update("\0")
     .update(repositoryOperationFromDirectory(gitDirectory.trim()) || "")
     .update("\0")
+    .update(await repositoryCalculationConfiguration(root, gitDirectory.trim()))
+    .update("\0")
     .update(JSON.stringify(backgroundState))
     .update("\0")
     .update(lastSuccessfulSynchronizations.get(root) || "")
     .digest("hex");
+}
+
+async function repositoryCalculationConfiguration(root, gitDirectory) {
+  if (!gitDirectory) return "";
+  const source = async (path) => {
+    try { return await readFile(path, "utf8"); }
+    catch (error) { return `unavailable:${error.code}`; }
+  };
+  let commonDirectory = gitDirectory;
+  try {
+    commonDirectory = resolve(gitDirectory, (await readFile(resolve(gitDirectory, "commondir"), "utf8")).trim());
+  } catch (error) {
+    if (error.code !== "ENOENT") return `commondir:${error.code}`;
+  }
+  // Config and shallow-history changes can affect repository and approval checks
+  // without moving HEAD or changing porcelain status. Never log their contents.
+  const attributesFile = await tryGitAsync(root, ["config", "--path", "--get", "core.attributesfile"], "read Git attributes configuration");
+  return JSON.stringify(await Promise.all([
+    tryGitAsync(root, ["config", "--null", "--list", "--show-origin"], "read effective Git configuration"),
+    source(resolve(commonDirectory, "info", "attributes")),
+    source(attributesFile ? resolve(root, attributesFile) : resolve(process.env.XDG_CONFIG_HOME || resolve(homedir(), ".config"), "git", "attributes")),
+    source(resolve(commonDirectory, "config")),
+    source(resolve(gitDirectory, "config.worktree")),
+    source(resolve(commonDirectory, "shallow"))
+  ]));
 }
 
 export async function getWorkspaceRevisionSnapshot(input = process.cwd()) {
@@ -3906,7 +3933,14 @@ export function runGitCommand(cwd, args, options = {}) {
       }),
     );
   }
-  return runGitCommandNative(cwd, args, options);
+  const cache = gitCommandCaches.getStore();
+  const readOnly = ["rev-parse", "status", "log", "ls-files", "diff", "rev-list"].includes(args[0])
+    || args[0] === "remote" && (args.length === 1 || args[1] === "-v")
+    || args[0] === "symbolic-ref" && args[1] === "--short";
+  if (!cache || !readOnly || options.expectedCheckout || options.expectedNoOperation) {
+    return runGitCommandNative(cwd, args, options);
+  }
+  return cachedGitCommand("async", cwd, args, options, () => runGitCommandNative(cwd, args, options));
 }
 
 export function runGitCommandSync(cwd, args, options = {}) {
@@ -4113,7 +4147,7 @@ function gitRaw(cwd, args, options = {}) {
 
 function cachedGitCommand(outputKind, cwd, args, options, run) {
   const cache = gitCommandCaches.getStore();
-  if (!cache) return run();
+  if (!cache || ["check-attr", "config"].includes(args[0])) return run();
   const key = JSON.stringify([
     outputKind,
     resolve(cwd),
@@ -4127,22 +4161,35 @@ function cachedGitCommand(outputKind, cwd, args, options, run) {
     return cached.value;
   }
   const value = run();
-  const size = Buffer.byteLength(value);
-  if (size <= GIT_COMMAND_CACHE_MAX_ENTRY_BYTES) {
-    let totalBytes = gitCommandCacheBytes.get(cache) || 0;
-    while (
-      cache.size >= GIT_COMMAND_CACHE_MAX_ENTRIES ||
-      totalBytes + size > GIT_COMMAND_CACHE_MAX_BYTES
-    ) {
-      const oldestKey = cache.keys().next().value;
-      if (oldestKey === undefined) break;
-      totalBytes -= cache.get(oldestKey)?.size || 0;
-      cache.delete(oldestKey);
-    }
-    cache.set(key, { value, size });
-    gitCommandCacheBytes.set(cache, totalBytes + size);
+  if (value instanceof Promise) {
+    // Keep in-flight reads shared, but never retain failures or oversized output.
+    if (cache.size >= GIT_COMMAND_CACHE_MAX_ENTRIES) return value;
+    const entry = { value, size: 0 };
+    cache.set(key, entry);
+    value.then((output) => {
+      if (cache.get(key) !== entry) return;
+      cache.delete(key);
+      cacheGitCommandOutput(cache, key, value, Buffer.byteLength(output));
+    }, () => {
+      if (cache.get(key) === entry) cache.delete(key);
+    });
+  } else {
+    cacheGitCommandOutput(cache, key, value, Buffer.byteLength(value));
   }
   return value;
+}
+
+function cacheGitCommandOutput(cache, key, value, size) {
+  if (size > GIT_COMMAND_CACHE_MAX_ENTRY_BYTES) return;
+  let totalBytes = gitCommandCacheBytes.get(cache) || 0;
+  while (cache.size >= GIT_COMMAND_CACHE_MAX_ENTRIES || totalBytes + size > GIT_COMMAND_CACHE_MAX_BYTES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    totalBytes -= cache.get(oldestKey)?.size || 0;
+    cache.delete(oldestKey);
+  }
+  cache.set(key, { value, size });
+  gitCommandCacheBytes.set(cache, totalBytes + size);
 }
 
 function observedExecFileSync(executable, args, options = {}) {
