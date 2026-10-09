@@ -683,8 +683,7 @@ function renderStageOverview(main, stageId, params = new URLSearchParams()) {
     event.preventDefault();
     main.querySelector("#program-content-cutover")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
-  main.querySelector("[data-review-policy-activation]")?.addEventListener("click", openPolicyActivationDialog);
-  main.querySelector("[data-review-document-activation]")?.addEventListener("click", () => openDocumentActivationDialog());
+  main.querySelector("[data-review-program-activation]")?.addEventListener("click", openProgramActivationDialog);
   if (stage.id === "controls") {
     main.querySelector("[data-review-collection]")?.addEventListener("click", () => openCollectionReviewDialog("control"));
   }
@@ -1004,13 +1003,12 @@ function policyContentWorkflowCell(entry) {
   return '<a class="record-workflow-action policy-content-next-action" href="' + href + '"><span class="workflow-finding-status ' + esc(item.state) + '">' + esc(properCase(item.state)) + '</span><span><strong>' + esc(title) + '</strong><small>' + items.length + ' ' + pluralize('check', items.length) + '</small></span></a>';
 }
 
-function renderDocumentActivationAssessments() {
+function documentActivationCards() {
   const assessments = [
     ...(state.programReadiness?.documentActivations || []).map((item) => ({ ...item, resourceType: "document", resourceId: item.documentId })),
     ...(state.programReadiness?.trainingActivations || []).map((item) => ({ ...item, resourceType: "training", resourceId: item.trainingId }))
   ];
   if (!assessments.length) return "";
-  const candidates = assessments.filter(({ state }) => state === "ready-to-activate");
   const cards = assessments.map((assessment) => {
     const operating = assessment.state === "active-and-operating";
     const controls = assessment.missingImplementationControlIds.length
@@ -1022,10 +1020,7 @@ function renderDocumentActivationAssessments() {
     const detail = '#/resource/' + assessment.resourceType + '/' + encodeURIComponent(assessment.resourceId) + '?stage=controls' + (assessment.resourceType === "document" ? '&documentScope=program' : '');
     return '<article class="policy-activation-card ' + esc(assessment.state) + '"><div class="evidence-map-card-head"><div><span class="badge ' + (operating ? "good" : "warn") + '">' + esc(assessment.label) + '</span><h3><a href="' + detail + '">' + esc(assessment.title) + '</a></h3></div><small>' + assessment.gapCount + ' ' + pluralize("gap", assessment.gapCount) + '</small></div>' + controls + schedule + '<div class="policy-activation-actions"><a class="button" href="' + detail + '">View ' + esc(properCase(assessment.resourceType)) + '</a></div></article>';
   }).join("");
-  const action = candidates.length && !state.readOnly
-    ? '<div class="evidence-map-actions"><button class="button primary" type="button" data-review-document-activation>Review content activation</button></div>'
-    : "";
-  return '<section class="policy-activation"><div class="evidence-map-head"><div><p class="kicker">Program content cutover</p><h2>Activate approved program content</h2><p>After linked requirements are implemented and Training assignment Obligations are ready, activate each unchanged approved Document and Training record. FileGRC records a separate activation date and binds the exact activated revision.</p></div>' + action + '</div><div class="policy-activation-grid">' + cards + '</div></section>';
+  return cards;
 }
 
 function renderAuditDocumentActivationAssessments() {
@@ -1121,15 +1116,12 @@ function openDocumentActivationDialog(auditId = null) {
   dialog.showModal();
 }
 
-function renderPolicyActivationAssessments() {
+function policyActivationCards() {
   const assessments = state.programReadiness?.policyActivations || [];
-  if (!assessments.length) return '<section class="policy-activation"><div class="evidence-map-head"><div><p class="kicker">Implementation cutover</p><h2>Approve required Policies first</h2><p>Activation assessments appear here after independent approval binds each Policy to its reviewed content.</p></div></div></section>';
+  if (!assessments.length) return "";
   const gapGroup = (label, ids, type) => ids.length
     ? '<div><small>' + esc(label) + '</small><div class="evidence-map-references">' + ids.map((id) => formatReference(id, type)).join("") + '</div></div>'
     : "";
-  const activationCandidates = assessments.filter(({ state }) => (
-    ["approved-implementation-pending", "ready-to-activate"].includes(state)
-  ));
   const cards = assessments.map((assessment) => {
     const operating = assessment.state === "active-and-operating";
     const warnings = assessment.timingWarnings.map((warning) => '<p class="policy-activation-warning">' + esc(warning) + '</p>').join("");
@@ -1146,76 +1138,87 @@ function renderPolicyActivationAssessments() {
       (assessment.activationWarning ? '<p class="policy-activation-warning">' + esc(assessment.activationWarning) + '</p>' : "") +
       '<div class="policy-activation-actions"><a class="button" href="#/resource/policy/' + encodeURIComponent(assessment.policyId) + '">View Policy</a></div></article>';
   }).join("");
-  const action = activationCandidates.length && !state.readOnly
-    ? '<div class="evidence-map-actions"><button class="button primary" type="button" data-review-policy-activation>Review policy activation</button></div>'
-    : "";
-  return '<section class="policy-activation"><div class="evidence-map-head"><div><p class="kicker">Step 3 review</p><h2>Review the gaps and turn the Policies on</h2><p>At the end of Step 3, review what is still missing, choose the approved Policies you want to put into effect, and set their effective date. You do not need to go back to Step 2.</p></div>' + action + '</div><div class="policy-activation-grid">' + cards + '</div></section>';
+  return cards;
 }
 
-function openPolicyActivationDialog() {
-  const assessments = (state.programReadiness?.policyActivations || []).filter(({ state }) => (
-    ["approved-implementation-pending", "ready-to-activate"].includes(state)
+function programActivationAssessments() {
+  return [
+    ...(state.programReadiness?.policyActivations || []).map((item) => ({ ...item, resourceType: "policy", resourceId: item.policyId })),
+    ...(state.programReadiness?.documentActivations || []).map((item) => ({ ...item, resourceType: "document", resourceId: item.documentId })),
+    ...(state.programReadiness?.trainingActivations || []).map((item) => ({ ...item, resourceType: "training", resourceId: item.trainingId }))
+  ];
+}
+
+function programActivationCandidates() {
+  return programActivationAssessments().filter((item) => (
+    (item.state === "ready-to-activate" || item.resourceType === "policy" && item.state === "approved-implementation-pending")
+    && state.resources.some(({ record }) => record.id === item.resourceId && record.status === "approved")
   ));
-  const entryById = new Map(state.resources
-    .filter(({ record }) => record.type === "policy" && record.status === "approved")
-    .map((entry) => [entry.record.id, entry]));
-  const candidates = assessments.filter(({ policyId }) => entryById.has(policyId));
+}
+
+function renderProgramActivation(complete = false) {
+  const assessments = programActivationAssessments();
+  const candidates = programActivationCandidates();
+  const active = assessments.filter(({ state }) => state.startsWith("active-")).length;
+  const unavailable = assessments.length - candidates.length - active;
+  const gaps = assessments.reduce((total, item) => total + (item.gapCount || 0), 0);
+  const action = complete
+    ? '<a class="button primary" href="#/stage/run">Continue to Step 4</a>'
+    : state.readOnly ? '' : '<button class="button primary" type="button" data-review-program-activation ' + (candidates.length ? '' : 'disabled') + '>Activate approved content</button>';
+  return '<section id="program-content-cutover" class="policy-activation program-activation"><div class="evidence-map-head"><div><p class="kicker">Finish Step 3</p><h2>Activation</h2><p>' + (complete
+    ? 'The Control collection review is current and required program content is active.'
+    : 'Put approved Policies, Documents, and Training into use together. Review the selection, activation Person, and effective date before confirming.') + '</p></div><div class="evidence-map-actions">' + action + '</div></div><p class="activation-summary">' + assessments.length + ' content ' + pluralize('record', assessments.length) + ' · ' + active + ' active' + (unavailable ? ' · ' + unavailable + ' cannot activate yet' : '') + (gaps ? ' · ' + gaps + ' ' + pluralize('gap', gaps) + ' to review' : '') + '</p>' + (assessments.length
+    ? '<details class="activation-details"><summary>Review content and readiness gaps</summary><div class="policy-activation-grid">' + documentActivationCards() + policyActivationCards() + '</div></details>'
+    : '<p>Approve the required program content in Step 2 before activation.</p>') + '</section>';
+}
+
+function openProgramActivationDialog() {
+  const candidates = programActivationCandidates();
   if (!candidates.length) return;
+  const eligible = new Set(candidates.map(({ resourceId }) => resourceId));
+  const pending = programActivationAssessments().filter(({ state }) => !state.startsWith("active-"));
+  const entryById = new Map(state.resources.map((entry) => [entry.record.id, entry]));
+  const activators = resourcesOfType("person").filter(({ record }) => record.status === "active");
   const today = currentDate();
-  const candidateRows = candidates.map((assessment) => {
-    const details = [
-      [assessment.plannedOrPartialControlIds.length, "planned or partial Controls"],
-      [assessment.missingComponentControlIds.length, "missing Components"],
-      [assessment.missingEvidenceSourceControlIds.length, "missing evidence sources"],
-      [assessment.missingScheduleControlIds.length, "missing schedules"],
-      [(assessment.missingGovernedDocumentIds || []).length, "inactive governed Documents"],
-      [assessment.unresolvedExceptionIds.length, "unresolved Exceptions"]
-    ].filter(([count]) => count).map(([count, label]) => count + " " + label).join(" · ");
-    return '<label class="policy-activation-selection"><input type="checkbox" name="policyId" value="' + esc(assessment.policyId) + '" checked><span><strong>' + esc(assessment.title) + '</strong><small>' + esc(assessment.label) + (details ? " · " + details : " · No implementation gaps") + '</small></span></label>';
-  }).join("");
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog event-dialog policy-activation-dialog";
-  dialog.setAttribute("aria-labelledby", "policy-activation-dialog-title");
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Step 3 cutover</p><h2 id="policy-activation-dialog-title">Review policy activation</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div>' +
-    '<p>Choose which approved Policies should take effect. Enabled schedules stay dormant until the effective date, their linked Controls are implemented, and required governed Documents are active and effective.</p>' +
-    '<div class="policy-activation-selections">' + candidateRows + '</div>' +
-    '<section class="policy-activation-review-warning"><strong>Activation with gaps</strong><p>You can activate a Policy with documented gaps or Exceptions. The gaps stay open, Controls keep their current status, and Evidence Readiness stays incomplete.</p></section>' +
+  dialog.setAttribute("aria-labelledby", "program-activation-dialog-title");
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Step 3</p><h2 id="program-activation-dialog-title">Activate approved content</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>All eligible approved content is selected. Policies take effect on the chosen date. Documents and Training also record who activates their exact approved revisions.</p><div class="policy-activation-selections">' + pending.map((item) => '<label class="policy-activation-selection"><input type="checkbox" name="resourceId" value="' + esc(item.resourceId) + '" ' + (eligible.has(item.resourceId) ? 'checked' : 'disabled') + '><span><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.resourceType)) + ' · ' + esc(item.label) + (item.gapCount ? ' · ' + item.gapCount + ' ' + pluralize('gap', item.gapCount) : '') + '</small></span></label>').join('') + '</div>' +
+    '<section class="policy-activation-review-warning"><strong>Policy gaps remain visible</strong><p>You can activate a Policy with documented gaps or Exceptions. The gaps stay open, Controls keep their current status, and Evidence Readiness stays incomplete. Documents and Training must meet their activation prerequisites.</p></section>' +
+    '<label><span>Activated by</span><select name="activatedById" required><option value="">Select the Person who performs this activation</option>' + activators.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join('') + '</select></label>' +
+    '<label><span>Activation date</span><input name="activatedOn" type="date" value="' + esc(today) + '" readonly required></label>' +
     '<label><span>Effective date</span><input name="effectiveOn" type="date" min="' + esc(today) + '" value="' + esc(today) + '" required></label>' +
-    '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button id="activate-policy" type="submit" class="button primary">Activate selected Policies</button></div></form>';
+    '<div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button><button type="submit" class="button primary">Activate selected content</button></div></form>';
   document.body.append(dialog);
   const repositoryPrefetch = prefetchRepositoryForReview(dialog.querySelector(".save-status"));
-  const close = () => dialog.close();
-  dialog.querySelector(".icon-button").addEventListener("click", close);
-  dialog.querySelector('[data-event="cancel"]').addEventListener("click", close);
+  dialog.querySelector(".icon-button").addEventListener("click", () => dialog.close());
+  dialog.querySelector('[data-event="cancel"]').addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   dialog.querySelector("form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!event.currentTarget.reportValidity() || dialog.dataset.mutationBusy === "true") return;
-    const policyIds = [...event.currentTarget.querySelectorAll('[name="policyId"]:checked')].map(({ value }) => value);
-    if (!policyIds.length) {
-      dialog.querySelector(".dialog-error").textContent = "Select at least one approved Policy to activate.";
-      return;
-    }
-    setMutationBusy(dialog, true, "Activating…", "Activate selected Policies");
+    const form = event.currentTarget;
+    if (!form.reportValidity() || dialog.dataset.mutationBusy === "true") return;
+    const selected = [...form.querySelectorAll('[name="resourceId"]:checked:not(:disabled)')].map(({ value }) => value);
+    if (!selected.length) { dialog.querySelector(".dialog-error").textContent = "Select at least one approved content record to activate."; return; }
+    const policyIds = selected.filter((id) => entryById.get(id).record.type === "policy");
+    const resourceIds = selected.filter((id) => entryById.get(id).record.type !== "policy");
+    setMutationBusy(dialog, true, "Activating…", "Activate selected content");
     try {
       const prefetch = await repositoryPrefetch;
       if (prefetch?.error) throw prefetch.error;
-      const response = await localFetch("/api/policy-activations", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          policyIds,
-          effectiveOn: event.currentTarget.elements.effectiveOn.value,
-          prefetchToken: prefetch?.token,
-          expectedRevisions: Object.fromEntries(policyIds.map((policyId) => [policyId, entryById.get(policyId).revision]))
-        })
+      const response = await localFetch("/api/governed-content-activations", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policyIds, resourceIds, programId: state.selectedProgramId || undefined,
+          activatedByIds: [form.elements.activatedById.value], activatedOn: form.elements.activatedOn.value,
+          effectiveOn: form.elements.effectiveOn.value, prefetchToken: prefetch?.token,
+          expectedRevisions: Object.fromEntries(selected.map((id) => [id, entryById.get(id).revision])) })
       });
       if (!response.ok) throw new Error(await responseMessage(response));
       applyMutationState(await response.json());
       dialog.close();
       render();
     } catch (error) {
-      setMutationBusy(dialog, false, "", "Activate selected Policies");
+      setMutationBusy(dialog, false, "", "Activate selected content");
       dialog.querySelector(".dialog-error").textContent = error.message;
     }
   });
@@ -1407,9 +1410,9 @@ function renderFinishStepThree() {
     return '<section class="finish-step-heading"><p class="kicker">Finish Step 3</p><h2>Review the implemented Control collection</h2><p>One eligible reviewer confirms the implemented Controls as a batch. Management activates the approved program content after this review.</p></section>' + collectionReviewPanel("control", true);
   }
   if (activationItems.some(({ status }) => status !== "complete")) {
-    return renderHostedAutomation() + '<section id="program-content-cutover" class="finish-step-heading"><p class="kicker">Finish Step 3</p><h2>Program Content Activation</h2><p>The Control collection review is current. Activate the unchanged approved program content to complete the implementation cutover.</p></section>' + renderDocumentActivationAssessments() + renderPolicyActivationAssessments();
+    return renderHostedAutomation() + renderProgramActivation();
   }
-  return '<section class="finish-step panel complete"><div><p class="kicker">Step 3 complete</p><h2>Implementation cutover complete</h2><p>The Control collection review is current and required program content is active.</p></div><a class="button primary" href="#/stage/run">Continue to Step 4</a></section>';
+  return renderProgramActivation(true);
 }
 
 function collectionNeedsFirstRecord(type) {
@@ -6745,6 +6748,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .policy-stage-pages{margin-top:30px}.retention-schedule-page .page-intro{margin-bottom:18px}.retention-schedule-page .page-intro .actions{flex-wrap:wrap;justify-content:flex-end}.retention-summary{margin-bottom:28px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.retention-summary>div{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:16px;align-items:center;padding:13px 0}.retention-summary>div+div{border-top:1px solid var(--line)}.retention-summary-label{color:var(--muted);font-size:10.8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.retention-summary a{text-decoration:none}.retention-summary strong,.retention-summary small{display:block}.retention-summary strong{font-size:13.2px}.retention-summary small{margin-top:3px;color:var(--muted);font-size:10.8px}.retention-rows h2,.retention-issues h2{font:500 24px Georgia,serif;margin:5px 0 7px}.retention-rows .section-head{align-items:end}.retention-rows .section-head p:not(.kicker){max-width:760px;margin:0;color:var(--muted);font-size:12px;line-height:1.55}.retention-table-tools{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.retention-table-tools input[type="search"]{min-width:210px;border:1px solid var(--line);border-radius:7px;background:var(--field);padding:9px 11px}.retention-rows .record-table-wrap{margin-top:12px}.retention-rows .record-title+small{display:block;max-width:380px;margin-top:4px;color:var(--muted);font-size:9.6px;line-height:1.4}.retention-filter-empty{margin:10px 0 0;padding:16px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:12px;text-align:center}.retention-row-count{margin:9px 2px 0;color:var(--muted);font-size:10.8px;text-align:right}.retention-issues{margin-top:28px}.retention-issue-list{border-top:1px solid var(--line)}.retention-issue-list>a{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 2px;border-bottom:1px solid var(--line);text-decoration:none}.retention-issue-list strong,.retention-issue-list small{display:block}.retention-issue-list strong{font-size:12px}.retention-issue-list small{margin-top:3px;color:var(--muted);font-size:10.4px;line-height:1.45}.retention-issue-list b{color:var(--accent);font-size:11px}.retention-schedule-page>.collection-review-panel{margin-top:28px;margin-bottom:0}
 @media(max-width:760px){.retention-summary>div{grid-template-columns:1fr;gap:7px}.retention-summary>div>.badge{justify-self:start}.retention-schedule-page .page-intro .actions{justify-content:flex-start}}
 .policy-library-proposals{min-width:0}.policy-library-proposals article,.policy-library-proposals details{min-width:0}.policy-library-proposals pre{box-sizing:border-box;max-width:100%;overflow:auto;padding:9px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:9px;line-height:1.45}
+.program-activation{padding:20px 22px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:11px}.program-activation>.evidence-map-head{padding:0;border:0;background:none}.program-activation>.activation-summary{margin:0}.activation-summary{font-size:12px;color:var(--muted);margin:14px 0}.activation-details>summary{cursor:pointer;font-size:12px;font-weight:600}.activation-details>.policy-activation-grid{margin-top:14px}
 .policy-activation-actions{display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .policy-activation-review-warning{margin-top:14px;padding:12px 14px;border:1px solid #d8bd78;border-radius:8px;background:#fff8e8}.policy-activation-review-warning>strong{font-size:12px}.policy-activation-review-warning ul{display:grid;gap:5px;margin:9px 0;padding-left:20px;font-size:10.8px}.policy-activation-review-warning p{margin:9px 0 0;color:#6d4917;font-size:11px;line-height:1.5}
 .policy-activation-selections{display:grid;gap:7px;margin:15px 0}.policy-activation-selection{display:grid!important;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.event-dialog .policy-activation-selection input{width:18px;min-height:18px;height:18px;margin:1px 0 0}.policy-activation-selection strong,.policy-activation-selection small{display:block}.policy-activation-selection strong{font-size:11.5px}.policy-activation-selection small{margin-top:3px;color:var(--muted);font-size:10px;line-height:1.45}

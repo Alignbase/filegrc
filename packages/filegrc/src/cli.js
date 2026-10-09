@@ -1663,8 +1663,9 @@ Options:
   filegrc activate-content --scaffold [--program id]
   filegrc activate-content <activation.json|-> [--resource id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
 
-Activate approved program Documents and Training in Step 3 after their linked
-Controls are implemented and Training has an enabled assignment Obligation.
+Activate approved program Policies, Documents, and Training together in Step 3.
+Documents require implemented linked Controls; Training also needs an enabled
+assignment Obligation. Review disclosed Policy gaps before activation.
 Approval, activation, and effective dates remain separate, and activation binds
 the exact approved Markdown revision.
 
