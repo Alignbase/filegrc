@@ -7,6 +7,7 @@ import { personWasActiveOn } from "./soc2.js";
 import { currentCalendarDate } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { revisionDigest } from "./revisions.js";
+import { planPolicyActivation } from "./policy-activation.js";
 
 export async function scaffoldDocumentActivation(input = process.cwd(), options = {}) {
   const loaded = await loadWorkspace(input);
@@ -174,16 +175,22 @@ export async function scaffoldGovernedContentActivation(input = process.cwd(), o
   const candidates = oversightReady
     ? await activationCandidates(loaded, { ...options, auditId: undefined })
     : [];
+  const policies = (oversightReady ? readiness.policyActivations : []).filter(({ state }) => (
+    ["approved-implementation-pending", "ready-to-activate"].includes(state)
+  ));
+  const count = candidates.length + policies.length;
   const revisionById = new Map(loaded.entries.map((entry) => [entry.record.id, contentRevision(entry.source)]));
   const today = currentCalendarDate(loaded.workspace.timezone);
   return {
-    available: candidates.length > 0,
+    available: count > 0,
     message: !oversightReady
       ? "Complete the current Control collection review before Program Content Activation."
-      : candidates.length
-      ? `${candidates.length} approved governed-content ${candidates.length === 1 ? "record is" : "records are"} ready to activate.`
-      : "No program Document or Training record is ready to activate. Review the current readiness actions first.",
-    nextCommand: candidates.length ? null : "npx filegrc program-path --next --json",
+      : count
+      ? `${count} approved program content ${count === 1 ? "record is" : "records are"} available to activate. Review any Policy gaps before confirming.`
+      : "No approved program content is available to activate. Review the current readiness actions first.",
+    nextCommand: count ? null : "npx filegrc program-path --next --json",
+    programId: readiness.program.id,
+    policyIds: policies.map(({ policyId }) => policyId),
     resourceIds: candidates.map(({ resourceId }) => resourceId),
     documentIds: candidates.filter(({ resourceType }) => resourceType === "document").map(({ resourceId }) => resourceId),
     trainingIds: candidates.filter(({ resourceType }) => resourceType === "training").map(({ resourceId }) => resourceId),
@@ -191,13 +198,58 @@ export async function scaffoldGovernedContentActivation(input = process.cwd(), o
     activatedByIds: [],
     activatedOn: today,
     effectiveOn: today,
-    expectedRevisions: Object.fromEntries(candidates.map(({ resourceId }) => [resourceId, revisionById.get(resourceId)])),
+    expectedRevisions: Object.fromEntries([
+      ...candidates.map(({ resourceId }) => [resourceId, revisionById.get(resourceId)]),
+      ...policies.map(({ policyId }) => [policyId, revisionById.get(policyId)])
+    ]),
     confirmed: false
   };
 }
 
-export const planGovernedContentActivation = planDocumentActivation;
-export const activateGovernedContent = activateDocuments;
+export async function planGovernedContentActivation(input = process.cwd(), options = {}) {
+  if (options.policyIds === undefined) return planDocumentActivation(input, options);
+  if (options.auditId) throw new Error("Program content activation cannot include Audit Documents. Use Step 5 activation.");
+  const policyIds = [...new Set((options.policyIds || []).map(String))];
+  const resourceIds = [...new Set((options.resourceIds || options.documentIds || []).map(String))];
+  if (!policyIds.length && !resourceIds.length) throw new Error("Select at least one approved program content record to activate.");
+  const plans = [];
+  if (policyIds.length) {
+    const loaded = await loadWorkspace(input);
+    const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
+    const eligible = new Set(readiness.policyActivations.filter(({ state }) => (
+      ["approved-implementation-pending", "ready-to-activate"].includes(state)
+    )).map(({ policyId }) => policyId));
+    if (policyIds.some((id) => !eligible.has(id))) throw new Error("Every selected Policy must be approved and available for this Program's activation.");
+    plans.push(await planPolicyActivation(input, { ...options, policyIds }));
+  }
+  if (resourceIds.length) plans.push(await planDocumentActivation(input, { ...options, resourceIds }));
+  return {
+    operation: "governed-content-activation",
+    workflowScope: "program",
+    policyIds,
+    resourceIds: [...policyIds, ...resourceIds],
+    documentIds: plans.flatMap((plan) => plan.documentIds || []),
+    trainingIds: plans.flatMap((plan) => plan.trainingIds || []),
+    activatedByIds: options.activatedByIds || [],
+    activatedOn: options.activatedOn,
+    effectiveOn: options.effectiveOn,
+    changes: {
+      update: plans.flatMap((plan) => plan.changes.update),
+      expectedRevisions: Object.assign({}, ...plans.map((plan) => plan.changes.expectedRevisions)),
+      validateWholeWorkspace: true
+    }
+  };
+}
+
+export async function activateGovernedContent(input = process.cwd(), options = {}) {
+  if (options.policyIds === undefined) return activateDocuments(input, options);
+  if (options.confirmed !== true) throw new Error("Review program content activation and confirm the write.");
+  return serializeWorkspaceMutation(input, async (root) => {
+    const plan = await planGovernedContentActivation(root, options);
+    const result = await applyGovernedContentActivationBatch(root, plan.changes);
+    return { ...plan, result };
+  });
+}
 
 function requireDocumentLifecycle(loaded) {
   if (!modelSupports(loaded.model, "governed-document-activation")) {

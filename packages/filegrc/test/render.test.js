@@ -82,8 +82,7 @@ test("Step 3 review action follows the CLI prerequisites and lists each implemen
     pluralize: (word, count) => count === 1 ? word : word + "s",
     collectionReviewPanel: () => panel,
     renderHostedAutomation: () => "",
-    renderDocumentActivationAssessments: () => "Document activation",
-    renderPolicyActivationAssessments: () => "Policy activation"
+    renderProgramActivation: () => "Activation"
   });
   const finish = vm.runInNewContext(finishSource + "\nrenderFinishStepThree", context);
   const blocked = finish();
@@ -97,7 +96,7 @@ test("Step 3 review action follows the CLI prerequisites and lists each implemen
   assert.match(finish(), /Review and confirm/);
   context.state.collectionReviews.control.complete = true;
   context.state.programReadiness.stages[0].items.push({ id: "training-training-one", status: "blocked" });
-  assert.match(finish(), /Program Content Activation/);
+  assert.match(finish(), /Activation/);
   assert.doesNotMatch(finish(), /Step 3 complete/);
 });
 
@@ -397,8 +396,8 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.match(APP_SCRIPT, /--proposal-revision/);
   assert.match(APP_STYLES, /\.policy-library-proposals\{min-width:0\}/);
   assert.match(APP_STYLES, /\.policy-library-proposals pre\{[^}]*overflow:auto/);
-  assert.match(APP_SCRIPT, /function renderPolicyActivationAssessments\(\)/);
-  assert.match(APP_SCRIPT, /function renderDocumentActivationAssessments\(\)/);
+  assert.match(APP_SCRIPT, /function policyActivationCards\(\)/);
+  assert.match(APP_SCRIPT, /function documentActivationCards\(\)/);
   assert.match(APP_SCRIPT, /function openDocumentActivationDialog\(auditId = null\)/);
   assert.match(APP_SCRIPT, /function renderAuditDocumentActivationAssessments\(\)/);
   assert.match(APP_SCRIPT, /\.filter\(\(record\) => !state\.selectedProgramId \|\| record\.programId === state\.selectedProgramId\)/);
@@ -406,12 +405,10 @@ test("renders the shared Policy lifecycle and activation assessment states", () 
   assert.match(APP_SCRIPT, /esc\(assessment\.label\)/);
   assert.match(APP_SCRIPT, /Missing ready evidence sources/);
   assert.match(APP_SCRIPT, /Unresolved Exceptions/);
-  assert.match(APP_SCRIPT, /You do not need to go back to Step 2/);
-  assert.match(APP_SCRIPT, /Review the gaps and turn the Policies on/);
-  assert.match(APP_SCRIPT, /data-review-policy-activation/);
-  assert.match(APP_SCRIPT, /function openPolicyActivationDialog\(\)/);
-  assert.match(APP_SCRIPT, /Activate selected Policies/);
-  assert.match(APP_SCRIPT, /\/api\/policy-activations/);
+  assert.match(APP_SCRIPT, /data-review-program-activation/);
+  assert.match(APP_SCRIPT, /function openProgramActivationDialog\(\)/);
+  assert.match(APP_SCRIPT, /Activate selected content/);
+  assert.match(APP_SCRIPT, /\/api\/governed-content-activations/);
   assert.match(APP_SCRIPT, /Step 2 ends at Approved/);
   assert.match(APP_SCRIPT, /activationManagedType = \["policy", "document"\]\.includes\(type\)/);
   assert.match(APP_SCRIPT, /Activate program Documents from Step 3 after implementation/);
@@ -2209,7 +2206,7 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.match(APP_SCRIPT, /Review and approve Data Retention Schedule/);
   assert.match(APP_SCRIPT, /Approve schedule/);
   assert.match(APP_SCRIPT, /function renderFinishStepThree\(\)/);
-  assert.match(APP_SCRIPT, /Program Content Activation/);
+  assert.match(APP_SCRIPT, /function renderProgramActivation\(complete = false\)/);
   assert.equal(PROGRAM_PATH.some(({ sections }) => sections.some(({ id }) => id === "service-description")), false);
   assert.doesNotMatch(APP_SCRIPT, /Working areas/);
   assert.doesNotMatch(APP_SCRIPT, /Complete This Step/);
@@ -2918,4 +2915,33 @@ test("warm bootstrap caches reject changed governed Markdown and still report ap
   const response = await repository(changed);
   assert.equal(response.status, 200);
   assert.ok((await response.json()).state.validation.diagnostics.some(({ code }) => code === "approval-content-changed"));
+});
+
+
+test("Step 3 combines activation into one box while preserving unavailable content and gaps", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function programActivationAssessments"), APP_SCRIPT.indexOf("function openProgramActivationDialog"));
+  const state = {
+    resources: ["policy-ready", "document-ready", "training-blocked"].map((id) => ({ record: { id, status: "approved" } })),
+    programReadiness: {
+      policyActivations: [{ policyId: "policy-ready", state: "approved-implementation-pending", gapCount: 2 }],
+      documentActivations: [{ documentId: "document-ready", state: "ready-to-activate" }],
+      trainingActivations: [{ trainingId: "training-blocked", state: "approved-implementation-pending", gapCount: 1 }]
+    }
+  };
+  const context = vm.createContext({ state, pluralize: (word, count) => word + (count === 1 ? "" : "s"), documentActivationCards: () => "Document and Training details", policyActivationCards: () => "Policy gaps" });
+  vm.runInContext(source, context);
+  assert.deepEqual(Array.from(context.programActivationCandidates(), ({ resourceId }) => resourceId), ["policy-ready", "document-ready"]);
+  const html = context.renderProgramActivation();
+  assert.equal((html.match(/<h2>Activation<\/h2>/g) || []).length, 1);
+  assert.equal((html.match(/data-review-program-activation/g) || []).length, 1);
+  assert.match(html, /1 cannot activate yet/);
+  assert.match(html, /3 gaps to review/);
+  assert.match(html, /<details class="activation-details">/);
+  assert.doesNotMatch(html, /activation-details" open/);
+  state.readOnly = true;
+  assert.doesNotMatch(context.renderProgramActivation(), /data-review-program-activation/);
+  assert.match(context.renderProgramActivation(true), /Continue to Step 4/);
+  state.readOnly = false;
+  state.resources = [];
+  assert.match(context.renderProgramActivation(), /data-review-program-activation disabled/);
 });

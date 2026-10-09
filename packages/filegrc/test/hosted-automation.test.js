@@ -46,7 +46,7 @@ test("renderer consumes shared placement and offers setup and direct cutover wit
   assert.match(html, /USD \/ repo \/ month/);
   assert.match(html, /Run your SOC 2 program automatically\./);
   assert.doesNotMatch(html, /Operated by|Opening setup|production approval/);
-  assert.ok(APP_SCRIPT.indexOf('return renderHostedAutomation()') < APP_SCRIPT.indexOf('id="program-content-cutover"'));
+  assert.match(APP_SCRIPT, /return renderHostedAutomation\(\) \+ renderProgramActivation\(\)/);
   assert.match(APP_SCRIPT, /event.preventDefault\(\);\n    main.querySelector\("#program-content-cutover"\)/);
   state.programReadiness.hostedAutomation.status = "available";
   assert.equal(render(), "");

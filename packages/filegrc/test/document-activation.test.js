@@ -430,3 +430,77 @@ test("rejects engagement Documents that govern reusable program work", async (co
   assert.ok(validation.diagnostics.some(({ code }) => code === "engagement-document-in-program-workflow"));
   assert.equal(validation.diagnostics.some(({ code }) => code === "invalid-engagement-document-audit-count"), false);
 });
+
+test("activates Policies, Documents, and Training atomically through CLI and HTTP", async (context) => {
+  const root = await mkdtemp(`${tmpdir()}/filegrc-combined-activation-`);
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "6");
+  let loaded = await loadWorkspace(root);
+  const selected = ["policy", "document", "training"].map((type) => loaded.resources.find((record) => (
+    record.type === type && (type !== "document" || record.workflowScope === "program")
+  )));
+  const [policy, document, training] = selected;
+  for (const record of selected) {
+    const draft = { ...record, status: "draft" };
+    for (const field of ["approverIds", "approvedOn", "approvedContentRevisions", "activationBasis", "activatedByIds", "activatedOn", "activatedContentRevisions", "effectiveOn"]) delete draft[field];
+    if (record.type === "document") draft.programRole = "required";
+    await updateResource(root, record.type, record.id, draft);
+    await updateResource(root, record.type, record.id, {
+      ...draft, status: "approved", approverIds: ["person-independent-approver-example"], approvedOn: "2026-08-20"
+    });
+  }
+  loaded = await loadWorkspace(root);
+  const obligation = loaded.resources.find(({ type }) => type === "obligation");
+  await updateResource(root, "obligation", obligation.id, {
+    ...obligation, activityType: "training", scopeResourceIds: [training.id], templateResourceId: training.id,
+    recurrence: { mode: "calendar", unit: "month", interval: 1, anchorDate: "2026-08-21" }
+  });
+  const scaffold = await scaffoldGovernedContentActivation(root);
+  assert.ok(scaffold.policyIds.includes(policy.id));
+  assert.ok(scaffold.documentIds.includes(document.id));
+  assert.ok(scaffold.trainingIds.includes(training.id));
+  const payload = { ...scaffold, policyIds: [policy.id], resourceIds: [document.id, training.id], activatedByIds: ["person-example"] };
+  const { writeFile } = await import("node:fs/promises");
+  const payloadPath = `${root}/activation.json`;
+  await writeJson(payloadPath, payload);
+  const preview = JSON.parse((await execute(process.execPath, [cli, "activate-content", payloadPath, "--preview", "--json", "--root", root])).stdout);
+  assert.deepEqual(preview.changes.update.map(({ type }) => type), ["policy", "document", "training"]);
+  await assert.rejects(activateGovernedContent(root, { ...payload, confirmed: true, expectedRevisions: { ...payload.expectedRevisions, [training.id]: "0".repeat(64) } }), /changed|revision/i);
+  assert.ok((await loadWorkspace(root)).resources.filter(({ id }) => selected.some((item) => item.id === id)).every(({ status }) => status === "approved"));
+  await assert.rejects(activateGovernedContent(root, { ...payload, confirmed: true, activatedByIds: ["missing-person"] }), /active People/);
+  // A changed companion cannot silently activate either the Policy or the other content.
+  loaded = await loadWorkspace(root);
+  const documentEntry = loaded.entries.find(({ record }) => record.id === document.id);
+  const markdownPath = documentEntry.path.replace(/\.json$/, ".md");
+  const { readFile } = await import("node:fs/promises");
+  const markdown = await readFile(markdownPath, "utf8");
+  await writeFile(markdownPath, `${markdown}\nChanged after approval.\n`);
+  await assert.rejects(activateGovernedContent(root, { ...payload, confirmed: true }), /ready|approv|invalid/i);
+  assert.ok((await loadWorkspace(root)).resources.filter(({ id }) => selected.some((item) => item.id === id)).every(({ status }) => status === "approved"));
+  await writeFile(markdownPath, markdown);
+  const { cp, rm } = await import("node:fs/promises");
+  const cliRoot = await mkdtemp(`${tmpdir()}/filegrc-combined-activation-cli-`);
+  context.after(() => rm(cliRoot, { recursive: true, force: true }));
+  await cp(root, cliRoot, { recursive: true });
+  const cliResult = JSON.parse((await execute(process.execPath, [cli, "activate-content", `${cliRoot}/activation.json`, "--yes", "--json", "--root", cliRoot])).stdout);
+  assert.deepEqual(cliResult.policyIds, [policy.id]);
+  assert.ok((await loadWorkspace(cliRoot)).resources.filter(({ id }) => selected.some((item) => item.id === id)).every(({ status }) => status === "active"));
+  const { serveWorkspace } = await import("../src/server.js");
+  const served = await serveWorkspace(root, { port: 0, allowNonAuthoritativeWrites: true });
+  context.after(() => new Promise((resolve) => served.server.close(resolve)));
+  const response = await fetch(`${served.url}/api/governed-content-activations`, {
+    method: "POST", headers: { "content-type": "application/json", prefer: "return=minimal" }, body: JSON.stringify(payload)
+  });
+  assert.equal(response.status, 200, await response.clone().text());
+  const result = await response.json();
+  assert.deepEqual(result.policyIds, [policy.id]);
+  assert.equal(result.resourceIds.length, 3);
+  loaded = await loadWorkspace(root);
+  const active = selected.map(({ id }) => loaded.resources.find((record) => record.id === id));
+  assert.ok(active.every(({ status, effectiveOn }) => status === "active" && effectiveOn === payload.effectiveOn));
+  for (const record of active.filter(({ type }) => type !== "policy")) {
+    assert.deepEqual(record.activatedContentRevisions, record.approvedContentRevisions);
+    assert.deepEqual(record.activatedByIds, ["person-example"]);
+  }
+  assert.equal((await validateWorkspace(root)).ok, true);
+});
