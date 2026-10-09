@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
-import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
+import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./applicability-scope.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessCollectionReviews } from "./collection-review.js";
 import { collectionMembershipSourceTypes, collectionRevisionInputs, collectionScopeRevisionFacts } from "./collection-scope.js";
@@ -425,6 +425,7 @@ function programScope(program, records, byId, model, loaded) {
 
 function scopeStage(workspace, scope, records, byId, model, collectionReviews = [], timezone = "UTC", root = null) {
   const items = [];
+  const scopeIndex = createApplicabilityScopeIndex(records, workspace);
   const goal = workspace?.assuranceGoal || "none";
   items.push(item(
     "program-goal",
@@ -512,7 +513,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
       && record.effectiveOn
       && (!model.resources.commitment?.fields?.applicabilityReview || (
         record.applicabilityReview?.decision === "applicable"
-        && applicabilityReviewIsCurrent(record.applicabilityReview, record, workspace, records, model, root)
+        && applicabilityReviewIsCurrent(record.applicabilityReview, record, workspace, records, model, root, scopeIndex)
       ))
       && currentPartyPeople(record.ownerIds, byId).size > 0
       && (record.requirementIds || []).length > 0
@@ -549,7 +550,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
   const reviewedRequirements = (workspace?.requirementApplicability || [])
     .filter((decision) => (
       requirementById.has(decision.requirementId)
-      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), workspace, records, model, root)
+      && applicabilityReviewIsCurrent(decision, requirementById.get(decision.requirementId), workspace, records, model, root, scopeIndex)
     ));
   const v4Decisions = new Map(reviewedRequirements.map((decision) => [decision.requirementId, decision.decision]));
   const staleRequirementIds = new Set((workspace?.requirementApplicability || [])

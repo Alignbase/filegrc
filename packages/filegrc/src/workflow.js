@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { modelSupports } from "../model/index.js";
 import { buildActionContext } from "./action-context.js";
-import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "./applicability-scope.js";
+import { applicabilityReviewIsCurrent, applicabilityScopeRevision, createApplicabilityScopeIndex } from "./applicability-scope.js";
 import { retentionScheduleIsAuthoritative } from "./collection-review.js";
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessSourceCoverageReadiness } from "./source-coverage.js";
@@ -422,6 +422,7 @@ function validationFindings(validation, loaded) {
 }
 
 function recordFinalizationFindings(loaded, program) {
+  const scopeIndex = createApplicabilityScopeIndex(loaded.resources, program);
   const findings = [];
   for (const record of loaded.resources) {
     if (["workspace", "renderer-settings"].includes(record.type)) continue;
@@ -430,7 +431,7 @@ function recordFinalizationFindings(loaded, program) {
     if (incomplete) {
       findings.push(finalizationFinding(record, incomplete, loaded.model));
     }
-    for (const missing of finalizationFields(record, loaded.model, loaded.resources, program, loaded.root)) {
+    for (const missing of finalizationFields(record, loaded.model, loaded.resources, program, loaded.root, scopeIndex)) {
       findings.push(fieldFinding(record, missing, loaded.model));
     }
   }
@@ -569,13 +570,13 @@ function recordFinalizationRequiredness(record, loaded, program) {
   return "conditional";
 }
 
-function finalizationFields(record, model, resources, program, root) {
+function finalizationFields(record, model, resources, program, root, scopeIndex) {
   const fields = [];
   const needsReview = ["requirement", "commitment", "complementary-control", "control"].includes(record.type)
     && model.resources[record.type]?.fields?.applicabilityReview
-    && !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, resources, model, root);
+    && !applicabilityReviewIsCurrent(record.applicabilityReview, record, program, resources, model, root, scopeIndex);
   if (needsReview) {
-    const currentRevision = applicabilityScopeRevision(record, program, resources, model);
+    const currentRevision = applicabilityScopeRevision(record, program, resources, model, { scopeIndex });
     fields.push({
       field: "applicabilityReview",
       requiredness: "required",

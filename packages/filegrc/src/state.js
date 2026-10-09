@@ -17,7 +17,7 @@ import { measureTiming } from "./timing.js";
 import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 import { modelSupports } from "../model/index.js";
 import { calculateRevision } from "./revisions.js";
-import { applicabilityReviewIsCurrent } from "./applicability-scope.js";
+import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./applicability-scope.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -342,6 +342,7 @@ async function createAppStateUnlocked(input, options) {
 }
 
 function assessApplicabilityReviewStatuses(loaded, program) {
+  const scopeIndex = createApplicabilityScopeIndex(loaded.resources, program);
   const decisions = new Map((program.requirementApplicability || []).map((review) => [review.requirementId, review]));
   return Object.fromEntries(loaded.resources
     .filter(({ type, status }) => (
@@ -354,7 +355,7 @@ function assessApplicabilityReviewStatuses(loaded, program) {
         : record.applicabilityReview;
       return [record.id, !review || !["applicable", "not-applicable", "externally-managed", "zero-population"].includes(review.decision)
         ? "missing" : applicabilityReviewIsCurrent(
-        review, record, program, loaded.resources, loaded.model, loaded.root
+        review, record, program, loaded.resources, loaded.model, loaded.root, scopeIndex
       ) ? "current" : "stale"];
     }));
 }

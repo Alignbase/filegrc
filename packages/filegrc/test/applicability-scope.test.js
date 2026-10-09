@@ -5,7 +5,8 @@ import test from "node:test";
 import { loadModel } from "../model/index.js";
 import {
   applicabilityReviewIsCurrent,
-  applicabilityScopeRevision
+  applicabilityScopeRevision,
+  createApplicabilityScopeIndex
 } from "../src/applicability-scope.js";
 import { planApplicabilityReview } from "../src/batch-review.js";
 import { createAppStateSection } from "../src/state.js";
@@ -335,4 +336,88 @@ test("browser state distinguishes a stale review from a missing review", async (
     .find(({ id }) => id === "criteria");
   assert.ok(criteria.staleRequirementIds.includes(stale.id));
   assert.ok(criteria.missingDecisionRequirementIds.includes(missing.id));
+});
+
+
+test("indexed applicability scopes preserve all revision inputs and legacy projections", () => {
+  for (const version of ["7", "10", "11"]) {
+    const model = loadModel(version);
+    const requirements = ["two", "one"].map((name) => ({
+      id: `requirement-${name}`, type: "requirement", frameworkId: `framework-${name}`,
+      description: `Criterion ${name}`, reference: name
+    }));
+    const frameworks = ["one", "two"].map((name) => ({
+      id: `framework-${name}`, type: "framework", version: "1", status: "active"
+    }));
+    const control = {
+      id: "control-example", type: "control", statement: "Reviewed implementation.",
+      requirementIds: ["requirement-one", "requirement-two", "requirement-one", "missing"],
+      systemIds: ["system-two", "system-one"]
+    };
+    const program = {
+      id: "program-example", type: "program", assuranceGoal: "soc-2-type-2",
+      requirementIds: ["requirement-two", "requirement-one", "requirement-two"],
+      frameworkIds: ["framework-two", "framework-one", "framework-two"],
+      systemIds: ["system-one", "system-two", "system-one"],
+      requirementApplicability: [
+        { requirementId: "requirement-two", decision: "applicable" },
+        { requirementId: "requirement-one", decision: "not-applicable" },
+        { requirementId: "requirement-two", decision: "not-applicable" }
+      ]
+    };
+    const records = [program, ...requirements, ...frameworks, control,
+      { ...requirements[0], description: "Duplicate ID remains visible to validation." },
+      { ...frameworks[0], version: "2" }];
+    const index = createApplicabilityScopeIndex(records, program);
+    for (const record of [...requirements, control,
+      { ...control, id: "commitment-example", type: "commitment" },
+      { ...control, id: "complementary-example", type: "complementary-control" },
+      { ...control, requirementIds: [], systemIds: [] }]) {
+      for (const options of [{}, { legacyResourceProjection: true },
+        { legacyDecisionScope: true }, { legacyDecisionScope: true, legacyBroadScope: true }]) {
+        assert.equal(applicabilityScopeRevision(record, program, records, model, { ...options, scopeIndex: index }),
+          applicabilityScopeRevision(record, program, records, model, options), `${version}: ${record.type}`);
+      }
+    }
+    // Indexes belong to a calculation, so a fresh one sees replacements and
+    // changes to collection membership on the same mutable resource array.
+    records[1] = { ...records[1], description: "Changed criterion" };
+    records.push({ id: "requirement-new", type: "requirement", frameworkId: "framework-one" });
+    program.requirementIds.push("requirement-new");
+    program.requirementApplicability.push({ requirementId: "requirement-new", decision: "applicable" });
+    const changed = { ...control, requirementIds: ["requirement-two", "requirement-new"] };
+    assert.equal(applicabilityScopeRevision(changed, program, records, model,
+      { scopeIndex: createApplicabilityScopeIndex(records, program) }),
+    applicabilityScopeRevision(changed, program, records, model));
+  }
+});
+
+test("indexed scopes read only linked records after one linear indexing pass", () => {
+  const model = loadModel("11");
+  const count = 2_000;
+  const requirements = Array.from({ length: count }, (_, index) => ({
+    id: `requirement-${index}`, type: "requirement", frameworkId: "framework-example", reference: String(index)
+  }));
+  const framework = { id: "framework-example", type: "framework", version: "1", status: "active" };
+  const program = { id: "program-example", type: "program", assuranceGoal: "soc-2-type-2",
+    requirementIds: requirements.map(({ id }) => id), frameworkIds: [framework.id] };
+  const resources = [...requirements, framework, program];
+  const scopeIndex = createApplicabilityScopeIndex(resources, program);
+  const expected = requirements.map((record) => applicabilityScopeRevision(record, program, resources, model));
+  // Any full traversal after indexing would make the work quadratic again.
+  const noTraversal = new Proxy(resources, { get(target, key) {
+    if (key === Symbol.iterator || key === "filter" || /^\d+$/.test(String(key))) {
+      throw new Error("Scope calculation traversed the full resource collection.");
+    }
+    return Reflect.get(target, key);
+  } });
+  const noProgramTraversal = { ...program, requirementIds: new Proxy(program.requirementIds, {
+    get(target, key) {
+      if (key === Symbol.iterator || key === "filter") throw new Error("Scope calculation traversed every Program criterion.");
+      return Reflect.get(target, key);
+    }
+  }) };
+  for (let index = 0; index < requirements.length; index += 1) {
+    assert.equal(applicabilityScopeRevision(requirements[index], noProgramTraversal, noTraversal, model, { scopeIndex }), expected[index]);
+  }
 });

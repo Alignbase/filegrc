@@ -7,7 +7,7 @@ const reviewContexts = new WeakMap();
 export function reviewHistoryContext(root, owner) {
   const key = owner.resources || owner;
   let context = reviewContexts.get(key);
-  if (context) return context;
+  if (context?.root === root) return context;
   let index = null;
   try {
     // Leave time for the original Git recovery path if this larger index
@@ -16,7 +16,10 @@ export function reviewHistoryContext(root, owner) {
   } catch (error) {
     if (error.code !== "FILEGRC_HISTORY_DEADLINE") throw error;
   }
-  context = { root, index, statesByCommit: new Map(), workspacesByCommit: new Map() };
+  context = {
+    root, index, statesByCommit: new Map(), workspacesByCommit: new Map(),
+    recordsBySource: new Map(), modelsByVersion: new Map()
+  };
   reviewContexts.set(key, context);
   return context;
 }
@@ -41,7 +44,7 @@ export function reviewCommitsChangingTypes(index, types) {
 export function reviewHistoricalWorkspace(context, commit) {
   if (context.index?.available) return indexedHistoricalWorkspace(context, commit);
   if (context.workspacesByCommit.has(commit)) return context.workspacesByCommit.get(commit);
-  const loaded = historicalWorkspace(context.root, commit);
+  const loaded = historicalWorkspace(context, commit);
   context.workspacesByCommit.set(commit, loaded);
   if (context.workspacesByCommit.size > 128) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);
   return loaded;
@@ -49,13 +52,14 @@ export function reviewHistoricalWorkspace(context, commit) {
 
 // Preserve recovery beyond the reconciliation index's size and build limits.
 // It is slower, but still requires the same substantive comparison.
-function historicalWorkspace(root, commit) {
+function historicalWorkspace(context, commit) {
+  const { root } = context;
   const entries = [];
   for (const path of getDataFilesAtRevision(root, commit).filter(authoritativeJsonPath)) {
     const source = getFileAtRevision(root, commit, path);
     if (!source) return null;
     try {
-      entries.push({ record: JSON.parse(source), source, relativePath: path.slice("data/".length) });
+      entries.push({ record: historicalRecord(context, source), source, relativePath: path.slice("data/".length) });
     } catch {
       return null;
     }
@@ -64,7 +68,8 @@ function historicalWorkspace(root, commit) {
   const workspace = resources.find(({ type }) => type === "workspace");
   if (!workspace) return null;
   try {
-    return { root, entries, resources, workspace, model: loadModel(workspace.dataModelVersion) };
+    return { root, entries, resources, workspace, model: historicalModel(context, workspace.dataModelVersion),
+      byId: new Map(resources.map((record) => [record.id, record])) };
   } catch {
     return null;
   }
@@ -105,7 +110,7 @@ export function indexedHistoricalWorkspace(context, commit) {
   for (const [path, source] of state) {
     if (!authoritativeJsonPath(path)) continue;
     try {
-      entries.push({ record: JSON.parse(source), source, relativePath: path.slice("data/".length) });
+      entries.push({ record: historicalRecord(context, source), source, relativePath: path.slice("data/".length) });
     } catch {
       return null;
     }
@@ -114,7 +119,10 @@ export function indexedHistoricalWorkspace(context, commit) {
   const workspace = resources.find(({ type }) => type === "workspace");
   if (!workspace) return null;
   try {
-    const loaded = { root, entries, resources, workspace, model: loadModel(workspace.dataModelVersion), historicalFiles: state };
+    const loaded = {
+      root, entries, resources, workspace, model: historicalModel(context, workspace.dataModelVersion),
+      historicalFiles: state, byId: new Map(resources.map((record) => [record.id, record]))
+    };
     context.workspacesByCommit.set(commit, loaded);
     if (context.workspacesByCommit.size > cacheLimit) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);
     return loaded;
@@ -128,4 +136,18 @@ function authoritativeJsonPath(path) {
   if (parts[0] !== "data" || !path.endsWith(".json")) return false;
   if (parts.slice(1).some((part) => part.startsWith(".") || part === "content")) return false;
   return !(parts[1] === "evidence" && parts.length > 3 && parts.at(-1) !== "evidence.json");
+}
+
+function historicalRecord(context, source) {
+  if (context.recordsBySource.has(source)) return context.recordsBySource.get(source);
+  const record = JSON.parse(source);
+  context.recordsBySource.set(source, record);
+  if (context.recordsBySource.size > 200_000) context.recordsBySource.delete(context.recordsBySource.keys().next().value);
+  return record;
+}
+
+function historicalModel(context, version) {
+  const key = String(version);
+  if (!context.modelsByVersion.has(key)) context.modelsByVersion.set(key, loadModel(version));
+  return context.modelsByVersion.get(key);
 }
