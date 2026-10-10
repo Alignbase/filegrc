@@ -11,6 +11,7 @@ import {
   completeObligationOccurrence,
   completeObligationAction,
   assessProgramReadiness,
+  assessWorkflow,
   createAppState,
   createObligationEvent,
   createResource,
@@ -1749,4 +1750,185 @@ test("binds activation-relative occurrences to stable rule cutover dates", async
   await writeFile(occurrenceEntry.path, `${JSON.stringify(invalid, null, 2)}\n`);
   const rejected = await validateWorkspace(root);
   assert.equal(rejected.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), true);
+});
+
+test("standalone source relationships isolate Programs and preserve overdue counts", () => {
+  const model = loadModel("11");
+  const program = { id: "program-selected", type: "program", controlIds: ["control-selected"], systemIds: ["system-selected"] };
+  const other = { ...program, id: "program-other", controlIds: ["control-other"], systemIds: ["system-other"] };
+  const records = [program, other,
+    { id: "control-selected", type: "control", policyIds: ["policy-shared"] },
+    { id: "control-other", type: "control", policyIds: ["policy-shared"] },
+    { id: "policy-shared", type: "policy" },
+    { id: "system-selected", type: "system" },
+    { id: "system-other", type: "system" },
+    { id: "component-selected", type: "component", systemUses: [{ systemId: "system-selected" }] },
+    { id: "component-other", type: "component", systemUses: [{ systemId: "system-other" }] },
+    { id: "audit-other", type: "audit", programId: other.id, controlIds: program.controlIds }
+  ];
+  const cases = [
+    [records[2], true], [records[3], false], [records[4], true],
+    [records[5], true], [records[6], false],
+    [{ id: "test-selected", type: "control-test", controlId: "control-selected" }, true],
+    [{ id: "test-other", type: "control-test", controlId: "control-other" }, false],
+    [{ id: "finding-chain", type: "finding", sourceResourceId: "test-selected" }, true],
+    [{ id: "finding-other", type: "finding", sourceResourceId: "test-other" }, false],
+    [{ id: "incident-selected", type: "incident", systemIds: program.systemIds }, true],
+    [{ id: "incident-other", type: "incident", systemIds: other.systemIds }, false],
+    [{ id: "occurrence-other", type: "obligation-occurrence", programId: other.id, obligationId: "obligation-linked-selected" }, false],
+    [{ id: "obligation-linked-selected", type: "obligation", scopeResourceIds: [program.id] }, true],
+    [{ id: "request-other", type: "audit-request", auditId: "audit-other", controlIds: program.controlIds }, false],
+    [{ id: "policy-review-selected", type: "policy-review", scopeResourceIds: ["policy-shared"] }, true],
+    [{ id: "component-review-selected", type: "access-review", componentIds: ["component-selected"] }, true],
+    [{ id: "component-review-other", type: "access-review", componentIds: ["component-other"] }, false],
+    [{ id: "coverage-other", type: "source-coverage", componentId: "component-other" }, false],
+    [{ id: "event-other", type: "obligation-event", obligationIds: ["control-linked-obligation"] }, false],
+    [{ id: "event-finding-other", type: "finding", sourceResourceId: "event-other" }, false],
+    [{ id: "mapping-selected", type: "requirement-mapping", sourceResourceIds: ["control-selected"] }, true],
+    [{ id: "unscoped", type: "meeting" }, true],
+    [{ id: "cycle-a", type: "finding", sourceResourceId: "cycle-b", controlIds: other.controlIds }, false],
+    [{ id: "cycle-b", type: "finding", sourceResourceId: "cycle-a" }, false]
+  ];
+  records.push(...cases.map(([source]) => source).filter(({ type }) => type !== "obligation"));
+  records.push({ id: "control-linked-obligation", type: "obligation", controlIds: other.controlIds });
+  records.push({ id: "obligation-linked-selected", type: "obligation", scopeResourceIds: [program.id] });
+  const actions = cases.map(([source], index) => ({
+    id: `action-${index}`, type: "action-item", title: `Follow up ${source.id}`, status: "open",
+    sourceResourceId: source.id,
+    completionWindow: { precision: "date", startsOn: "2026-03-01", dueOn: "2026-03-01", overdueOn: "2026-03-02" }
+  }));
+  records.push(...actions, { ...actions[0], id: "action-missing", sourceResourceId: "missing" });
+  const options = { model, programId: program.id, asOf: "2026-03-15", through: "2026-03-15" };
+  const plan = planObligations(records, options);
+  assert.deepEqual(new Set(plan.items.map(({ actionItemId }) => actionItemId)), new Set(cases.flatMap(([, selected], index) => selected ? [actions[index].id] : [])));
+  assert.equal(plan.counts.overdue, cases.filter(([, selected]) => selected).length);
+  assert.deepEqual(plan.items.find(({ actionItemId }) => actionItemId === "action-0").controlIds, ["control-selected"]);
+  const complete = records.map((record) => record.id === "action-0" ? { ...record, status: "done" } : record);
+  assert.equal(planObligations(complete, options).counts.overdue, plan.counts.overdue - 1);
+  assert.equal(planObligations(complete, { ...options, includeComplete: true }).counts.complete, 1);
+  assert(planObligations(records, { ...options, programId: other.id }).items.some(({ actionItemId }) => actionItemId === "action-1"));
+});
+
+test("CLI and browser section expose the same scoped standalone actions", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-standalone-parity-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  const filegrcVersion = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
+  await createFilegrc({ target: root, yes: true, install: false, filegrcVersion, policyOwnerEmail: "security@example.com", timezone: "UTC" });
+  const lockPath = join(root, "package-lock.json");
+  const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  lock.packages["node_modules/filegrc"] = { version: filegrcVersion };
+  await writeFile(lockPath, JSON.stringify(lock));
+  const loaded = await loadWorkspace(root);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const controls = loaded.resources.filter(({ type }) => type === "control");
+  await writeFile(join(root, "data", "programs", `${program.id}.json`), JSON.stringify({ ...program, controlIds: [controls[0].id] }));
+  for (const [index, control] of controls.slice(0, 2).entries()) {
+    await createResource(root, {
+      id: `action-item-parity-${index}`, type: "action-item", title: `Control follow-up ${index}`, status: "open",
+      assigneeIds: ["person-program-lead"], sourceResourceId: control.id,
+      completionWindow: { precision: "date", startsOn: "2026-01-01", dueOn: "2026-01-02", overdueOn: "2026-01-03" }
+    });
+  }
+  const { createAppStateSection } = await import("../src/state.js");
+  const state = await createAppStateSection(await loadWorkspace(root), "obligations", { asOf: "2026-03-15", now: "2026-03-15T12:00:00Z" });
+  const cli = await execute(process.execPath, [fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)), "obligations", "--root", root, "--as-of", "2026-03-15", "--json"]);
+  const plan = JSON.parse(cli.stdout);
+  assert.deepEqual(plan.standaloneItems, state.obligations.standaloneItems);
+  assert.deepEqual(plan.counts, state.obligations.counts);
+  assert.deepEqual(plan.standaloneItems.map(({ actionItemId }) => actionItemId), ["action-item-parity-0"]);
+  assert.equal(plan.counts.overdue, 1);
+  const workflow = await assessWorkflow(root, { asOf: "2026-03-15", evaluatedAt: "2026-03-15T12:00:00Z" });
+  const actionWork = workflow.workItems.filter(({ source }) => source.type === "action-item");
+  assert.deepEqual(actionWork.map(({ source }) => source.id), ["action-item-parity-0"]);
+  assert.equal(actionWork[0].nextAction.command, "npx filegrc get action-item-parity-0 --mutation");
+  await updateResource(root, "action-item", "action-item-parity-0", {
+    ...(await loadWorkspace(root)).resources.find(({ id }) => id === "action-item-parity-0"),
+    status: "canceled",
+    cancellation: { canceledByIds: ["person-program-lead"], canceledOn: "2026-03-15", reason: "Duplicate follow-up." }
+  });
+  const canceled = await assessWorkflow(root, { asOf: "2026-03-15", evaluatedAt: "2026-03-15T12:00:00Z" });
+  assert.equal(canceled.workItems.filter(({ source }) => source.type === "action-item").length, 0);
+  const history = await assessWorkflow(root, { asOf: "2026-03-15", evaluatedAt: "2026-03-15T12:00:00Z", includeComplete: true });
+  assert.deepEqual(history.workItems.filter(({ source }) => source.type === "action-item").map(({ state }) => state), ["complete"]);
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics));
+});
+
+test("Obligations and standalone actions share derived Policy and explicit scope membership", () => {
+  const model = loadModel("11");
+  const program = { id: "program-selected", type: "program", controlIds: ["control-selected"], systemIds: [] };
+  const control = { id: "control-selected", type: "control", policyIds: ["policy-selected"] };
+  const policy = { id: "policy-selected", type: "policy", status: "draft" };
+  const sources = [
+    { id: "obligation-selected", policyIds: [policy.id] },
+    { id: "obligation-other", policyIds: ["policy-other"] },
+    { id: "obligation-scoped", scopeResourceIds: [program.id] },
+    { id: "obligation-unknown-scope", scopeResourceIds: ["person-other"] }
+  ].map((fields) => ({ ...fields, type: "obligation", title: fields.id, status: "proposed", activityType: "custom", recurrence: { mode: "event", eventType: "custom" } }));
+  const records = [program, control, policy, ...sources];
+  const plan = planObligations(records, { model, programId: program.id, asOf: "2026-03-15" });
+  assert.deepEqual(Object.keys(plan.programStatuses).sort(), ["obligation-scoped", "obligation-selected"]);
+});
+
+test("retired Obligations keep assigned event tasks in their selected Program", () => {
+  const program = { id: "program-selected", type: "program", status: "active", controlIds: ["control-selected"] };
+  const other = { ...program, id: "program-other", status: "planned", controlIds: ["control-other"] };
+  const event = { id: "event-assigned", type: "obligation-event", title: "Assigned work", status: "open", eventType: "custom", occurredOn: "2026-03-01" };
+  const obligations = [program, other].map((scope, index) => ({
+    id: `obligation-retired-${index}`, type: "obligation", status: "retired", title: "Retired work rule", activityType: "custom", controlIds: scope.controlIds
+  }));
+  const actions = obligations.map((obligation, index) => ({
+    id: `action-persisted-${index}`, type: "action-item", status: "open", title: "Finish assigned work", sourceResourceId: event.id, obligationId: obligation.id,
+    completionWindow: { precision: "date", startsOn: "2026-03-01", dueOn: "2026-03-02", overdueOn: "2026-03-03" }
+  }));
+  const records = [program, other, event, ...obligations, ...actions];
+  const options = { model: loadModel("11"), asOf: "2026-03-15" };
+  const plan = planObligations(records, options);
+  assert.deepEqual(plan.eventItems.map(({ actionItemId }) => actionItemId), [actions[0].id]);
+  assert.equal(plan.counts.overdue, 1);
+  assert.equal(plan.triggers.length, 0);
+  assert.equal(plan.calendarItems.length, 0);
+  assert.deepEqual(planObligations(records, { ...options, programId: other.id }).eventItems.map(({ actionItemId }) => actionItemId), [actions[1].id]);
+  assert.throws(() => planObligations(records.map((record) => record.id === other.id ? { ...record, status: "active" } : record), options), /More than one active Program/);
+  const canceled = records.map((record) => record.id === event.id ? { ...record, status: "canceled" } : record);
+  assert.equal(planObligations(canceled, options).counts.overdue, 0);
+});
+
+test("independent follow-ups to Policy Events remain standalone across CLI, browser, and workflow", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-event-follow-up-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const event = loaded.resources.find(({ type }) => type === "obligation-event");
+  const obligation = loaded.resources.find(({ type }) => type === "obligation");
+  await writeFile(join(root, "data", "obligations", "obligation-unrelated.json"), JSON.stringify({ ...obligation, id: "obligation-unrelated", status: "proposed", controlIds: ["control-unrelated"] }));
+  await writeFile(join(root, "data", "obligation-events", "event-unrelated.json"), JSON.stringify({ ...event, id: "event-unrelated", obligationIds: ["obligation-unrelated"] }));
+  const control = loaded.resources.find(({ type }) => type === "control");
+  await writeFile(join(root, "data", "controls", "control-unrelated.json"), JSON.stringify({ ...control, id: "control-unrelated", status: "planned" }));
+  for (const [index, sourceResourceId] of [event.id, "event-unrelated"].entries()) {
+    await createResource(root, {
+      id: `action-event-follow-up-${index}`, type: "action-item", title: "Independent event follow-up", status: "open",
+      assigneeIds: ["person-example"], sourceResourceId,
+      completionWindow: { precision: "date", startsOn: "2026-01-01", dueOn: "2026-01-02", overdueOn: "2026-01-03" }
+    });
+  }
+  await initializeGitWorkspace(root, { message: "Record generic event follow-ups" });
+  const { createAppStateSection } = await import("../src/state.js");
+  const options = { asOf: "2026-10-10", now: "2026-10-10T12:00:00Z" };
+  const state = await createAppStateSection(await loadWorkspace(root), "obligations", options);
+  const cli = JSON.parse((await execute(process.execPath, [fileURLToPath(new URL("../bin/filegrc.js", import.meta.url)), "obligations", "--root", root, "--as-of", options.asOf, "--json"])).stdout);
+  assert.deepEqual(cli.standaloneItems, state.obligations.standaloneItems);
+  assert.deepEqual(cli.counts, state.obligations.counts);
+  assert.equal(cli.standaloneItems.find(({ actionItemId }) => actionItemId === "action-event-follow-up-0")?.status, "overdue");
+  assert.equal(cli.standaloneItems.some(({ actionItemId }) => actionItemId === "action-event-follow-up-1"), false);
+  const workflow = await assessWorkflow(root, { asOf: options.asOf, evaluatedAt: options.now });
+  assert.equal(workflow.workItems.find(({ source }) => source.id === "action-event-follow-up-0")?.nextAction.command, "npx filegrc get action-event-follow-up-0 --mutation");
+  assert.equal(workflow.workItems.some(({ source }) => source.id === "action-event-follow-up-1"), false);
+  // Canceling a trigger cancels its generated checklist, not a separately assigned follow-up.
+  await updateResource(root, "obligation-event", event.id, { ...event, status: "canceled", cancellation: { canceledByIds: ["person-example"], canceledOn: options.asOf, reason: "Duplicate trigger." } });
+  const canceled = planObligations((await loadWorkspace(root)).resources, { model: loaded.model, ...options });
+  assert.equal(canceled.standaloneItems.find(({ actionItemId }) => actionItemId === "action-event-follow-up-0")?.status, "overdue");
+  assert.equal(canceled.eventItems.some(({ sourceResourceId }) => sourceResourceId === event.id), false);
+  const validation = await validateWorkspace(root);
+  assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics));
 });

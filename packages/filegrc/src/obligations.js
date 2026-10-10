@@ -23,7 +23,7 @@ import { currentCalendarDate, isRfc3339Timestamp, localDateTimeValue, timestampF
 import { loadWorkspace } from "./workspace.js";
 import { obligationRule, obligationRuleRecurrence } from "./obligation-rule.js";
 import { governedContentIsOperating, obligationGovernedContent, obligationProgramStatus } from "./program-lifecycle.js";
-import { resolveProgram } from "./program.js";
+import { recordProgramRelationships, recordBelongsToProgram, resolveProgram } from "./program.js";
 import { currentPartyPeople } from "./parties.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { collectionReviewRevision, historicalCollectionReviewSnapshot } from "./collection-review-integrity.js";
@@ -65,7 +65,7 @@ export function planObligations(resources, options = {}) {
   const legacyProgram = programs.length === 0 && workspace && (!options.programId || options.programId === workspace.id)
     ? workspace
     : null;
-  const program = programs.find(({ id }) => id === options.programId) || (programs.length === 1 ? programs[0] : legacyProgram);
+  let program = programs.find(({ id }) => id === options.programId) || (programs.length === 1 ? programs[0] : legacyProgram);
   if (
     options.programId
     && !programs.some(({ id }) => id === options.programId)
@@ -80,6 +80,9 @@ export function planObligations(resources, options = {}) {
     throw new Error(
       "Obligation planning requires options.model or a Workspace record with dataModelVersion."
     );
+  }
+  if (programs.length && modelSupports(model, "program-scope")) {
+    program = resolveProgram({ resources: records, workspace, model }, options.programId);
   }
   if (!program && programs.length > 1) {
     throw new Error("Obligation planning requires programId when more than one Program is active.");
@@ -100,12 +103,11 @@ export function planObligations(resources, options = {}) {
   const obligations = records.filter((record) => (
     record.type === "obligation"
     && ["active", "proposed"].includes(record.status)
-    && obligationBelongsToProgram(record, obligationProgram, model)
+    && obligationBelongsToProgram(record, obligationProgram, byId, model)
   ));
   const programStatusByObligationId = new Map(obligations.map((obligation) => [
     obligation.id, obligationProgramStatus(obligation, byId, asOf, model, now)
   ]));
-  const obligationIds = new Set(obligations.map(({ id }) => id));
   if (obligations.length > MAX_PLANNED_ITEMS) {
     throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} active obligations.`);
   }
@@ -374,7 +376,10 @@ export function planObligations(resources, options = {}) {
   const actionsBySource = new Map();
   let eventActionCount = 0;
   for (const record of records) {
-    if (record.type !== "action-item" || !eventIds.has(record.sourceResourceId) || !obligationIds.has(record.obligationId)) continue;
+    if (record.type !== "action-item" || !eventIds.has(record.sourceResourceId)) continue;
+    const obligation = byId.get(record.obligationId);
+    // Retirement stops new work, not a checklist already assigned to an event.
+    if (obligation?.type !== "obligation" || !obligationBelongsToProgram(obligation, obligationProgram, byId, model)) continue;
     if (++eventActionCount > MAX_PLANNED_ITEMS) {
       throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} event actions.`);
     }
@@ -394,7 +399,7 @@ export function planObligations(resources, options = {}) {
     .flatMap((run) => run.actions)
     .filter((item) => item.status !== "complete" || options.includeComplete);
   const standaloneItems = records
-    .filter((record) => record.type === "action-item" && !eventIds.has(record.sourceResourceId))
+    .filter((record) => record.type === "action-item" && !(eventIds.has(record.sourceResourceId) && record.obligationId))
     .map((record) => planStandaloneAction(record, byId, asOf, now))
     .filter((item) => workItemBelongsToProgram(item, obligationProgram, byId, model))
     .filter((item) => item.status !== "complete" || options.includeComplete);
@@ -492,7 +497,7 @@ async function createObligationEventUnlocked(input, options) {
       if (
         record.type !== "obligation"
         || !["active", "proposed"].includes(record.status)
-        || (program && !obligationBelongsToProgram(record, program, loaded.model))
+        || (program && !obligationBelongsToProgram(record, program, byId, loaded.model))
         || (Array.isArray(record.eventRiskLevels) && !record.eventRiskLevels.includes(riskLevel))
       ) return false;
       const rule = byId.get(record.activeRuleId);
@@ -513,7 +518,7 @@ async function createObligationEventUnlocked(input, options) {
     if (
       record.type !== "obligation"
       || record.status !== "active"
-      || (program && !obligationBelongsToProgram(record, program, loaded.model))
+      || (program && !obligationBelongsToProgram(record, program, byId, loaded.model))
     ) return false;
     const schedule = obligationRule(record, byId, { now: eventTime }) || record;
     const matches = schedule.recurrence?.mode === "event"
@@ -526,7 +531,7 @@ async function createObligationEventUnlocked(input, options) {
     if (
       record.type !== "obligation"
       || !["active", "proposed"].includes(record.status)
-      || (program && !obligationBelongsToProgram(record, program, loaded.model))
+      || (program && !obligationBelongsToProgram(record, program, byId, loaded.model))
       || (Array.isArray(record.eventRiskLevels) && !record.eventRiskLevels.includes(riskLevel))
     ) return false;
     const rule = obligationRule(record, byId, { now: eventTime, includeProposed: true });
@@ -1773,7 +1778,7 @@ function preferredCompletionType(activity, item, byId) {
 }
 
 function planStandaloneAction(record, byId, asOf, now) {
-  const source = byId.get(record.sourceResourceId);
+  const relationships = recordProgramRelationships(byId.get(record.sourceResourceId), byId);
   const window = plannedCompletionWindow(record.completionWindow);
   const complete = ["done", "canceled"].includes(record.status);
   const timingStatus = complete
@@ -1795,9 +1800,9 @@ function planStandaloneAction(record, byId, asOf, now) {
     sourceResourceId: record.sourceResourceId,
     title: record.title,
     ownerIds: record.assigneeIds || [],
-    policyIds: source?.policyIds || [],
-    controlIds: source?.controlIds || [],
-    systemIds: source?.systemIds || [],
+    policyIds: relationships.policyIds,
+    controlIds: relationships.controlIds,
+    systemIds: relationships.systemIds,
     completionResourceIds: record.completionResourceIds || [],
     evidenceIds: record.evidenceIds || [],
     recordedStatus: record.status,
@@ -1996,29 +2001,12 @@ function membershipIsFinal(selector, window, asOf) {
   return asOf > window.dueWindowEnd;
 }
 
-function obligationBelongsToProgram(obligation, program, model) {
-  if (!program || !modelSupports(model, "program-scope") || program.type !== "program") return true;
-  const controlIds = new Set(program.controlIds || []);
-  const policyIds = new Set(program.policyIds || []);
-  const scopedIds = new Set([program.id, ...(program.systemIds || [])]);
-  const linkedControls = obligation.controlIds || [];
-  const linkedPolicies = obligation.policyIds || [];
-  const linkedScope = obligation.scopeResourceIds || [];
-  if (linkedControls.some((id) => controlIds.has(id))) return true;
-  if (linkedPolicies.some((id) => policyIds.has(id))) return true;
-  if (linkedScope.some((id) => scopedIds.has(id))) return true;
-  return linkedControls.length === 0 && linkedPolicies.length === 0 && linkedScope.length === 0;
+function obligationBelongsToProgram(obligation, program, byId, model) {
+  return recordBelongsToProgram(obligation, program, byId, model);
 }
 
 function workItemBelongsToProgram(item, program, byId, model) {
-  if (!program || !modelSupports(model, "program-scope") || program.type !== "program") return true;
-  const source = byId.get(item.sourceResourceId);
-  if (source?.programId) return source.programId === program.id;
-  const controlIds = item.controlIds || [];
-  const policyIds = item.policyIds || [];
-  if (controlIds.length) return controlIds.some((id) => (program.controlIds || []).includes(id));
-  if (policyIds.length) return policyIds.some((id) => (program.policyIds || []).includes(id));
-  return true;
+  return recordBelongsToProgram(byId.get(item.sourceResourceId), program, byId, model);
 }
 
 function requireDate(value, label) {

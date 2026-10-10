@@ -2480,7 +2480,7 @@ function actionCompletionPlan(item) {
       href: "#/resource/action-item/" + encodeURIComponent(action.record.id)
     };
   }
-  if (!action.record.obligationId) {
+  if (item.kind === "action" || !action.record.obligationId) {
     return {
       blocked: "Open task",
       href: "#/resource/action-item/" + encodeURIComponent(action.record.id)

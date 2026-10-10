@@ -24,7 +24,7 @@ import {
 } from "./obligations.js";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
-import { resolveProgram } from "./program.js";
+import { recordBelongsToProgram, resolveProgram } from "./program.js";
 import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
 import { displayRevision } from "./revisions.js";
 import { signatoryAppointmentIssue, soc2ReportEvidenceIssue, subsequentEventsReviewIssue } from "./soc2.js";
@@ -168,7 +168,9 @@ async function assessWorkflowUnmeasured(input, options = {}) {
   const workItems = buildWorkItems(loaded.resources, obligationPlan, {
     asOf,
     includeComplete: Boolean(options.includeComplete),
-    programId: programRecord.id
+    programId: programRecord.id,
+    program: programRecord,
+    model: loaded.model
   }).map((item) => ({
     ...item,
     notificationContacts: notificationContacts(item.ownerIds, loaded.resources)
@@ -1233,7 +1235,10 @@ function buildWorkItems(records, obligationPlan, options) {
     .map((item) => item.source?.id)
     .filter(Boolean));
   for (const record of records) {
-    if (record.type === "obligation" || obligationSources.has(record.id)) continue;
+    // The queue planner owns all Action Items, including filtered and terminal
+    // work. Recreating them from deadlines would undo its scope and lifecycle.
+    if (["obligation", "action-item"].includes(record.type) || obligationSources.has(record.id)) continue;
+    if (!recordBelongsToProgram(record, options.program, byId, options.model)) continue;
     const due = firstDate(record);
     if (!due) continue;
     const state = sourceWorkState(record, due, options.asOf);
@@ -1297,7 +1302,7 @@ function obligationWorkItem(item, byId, asOf, programId) {
 function obligationNextAction(item, programId) {
   const programOption = programId ? ` --program ${shellArgument(programId)}` : "";
   if (item.actionItemId) {
-    if (item.status === "blocked") {
+    if (item.kind === "action" || item.status === "blocked") {
       return {
         kind: "command",
         command: `npx filegrc get ${shellArgument(item.actionItemId)} --mutation`
