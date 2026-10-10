@@ -734,3 +734,57 @@ test("keeps preliminary audit planning separate from an accepted engagement", as
   assert.equal(findingKeys.has("audit.audit-planned.lifecycle.management-acknowledgement"), false);
   assert.equal(workflow.findings.find(({ key }) => key === "audit.audit-planned.lifecycle.advance")?.title, "Record the agreed engagement and start audit preparation");
 });
+
+test("Program workflow excludes unrelated source deadlines and does not recreate canceled event tasks", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-scoped-workflow-deadlines-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "11");
+  const loaded = await loadWorkspace(root);
+  const risk = loaded.resources.find(({ type }) => type === "risk");
+  const control = loaded.resources.find(({ type }) => type === "control");
+  await writeJson(join(root, "data", "controls", "control-unrelated.json"), { ...control, id: "control-unrelated", status: "planned" });
+  await writeJson(join(root, "data", "risks", "risk-unrelated-deadline.json"), {
+    ...risk, id: "risk-unrelated-deadline", controlIds: ["control-unrelated"], reviewDueOn: "2026-01-01"
+  });
+  const action = loaded.resources.find(({ type }) => type === "action-item");
+  const event = loaded.resources.find(({ type }) => type === "obligation-event");
+  const system = loaded.resources.find(({ type }) => type === "system");
+  const component = loaded.resources.find(({ type }) => type === "component");
+  const evidence = loaded.resources.find(({ type }) => type === "evidence");
+  await writeJson(join(root, "data", "systems", "system-unrelated.json"), { ...system, id: "system-unrelated" });
+  await writeJson(join(root, "data", "components", "component-unrelated.json"), {
+    ...component, id: "component-unrelated", systemUses: component.systemUses.map((use) => ({ ...use, systemId: "system-unrelated" }))
+  });
+  for (const [suffix, sourceComponentId] of [["selected", component.id], ["unrelated", "component-unrelated"]]) {
+    const record = { ...evidence, id: `evidence-deadline-${suffix}`, status: "collected", expiresOn: "2026-01-01", sourceComponentId };
+    for (const field of ["controlIds", "systemIds", "componentIds", "sourceResourceIds", "auditIds", "verifierIds", "verifiedOn"]) delete record[field];
+    await mkdir(join(root, "data", "evidence", record.id), { recursive: true });
+    await writeJson(join(root, "data", "evidence", record.id, "evidence.json"), record);
+  }
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const audit = loaded.resources.find(({ type }) => type === "audit");
+  await writeJson(join(root, "data", "programs", "program-unrelated.json"), { ...program, id: "program-unrelated", status: "planned" });
+  for (const [suffix, programId] of [["selected", program.id], ["unrelated", "program-unrelated"]]) {
+    const auditId = `audit-deadline-${suffix}`;
+    await writeJson(join(root, "data", "audits", `${auditId}.json`), { ...audit, id: auditId, programId });
+    const record = { ...evidence, id: `evidence-audit-${suffix}`, status: "collected", expiresOn: "2026-01-01", auditIds: [auditId] };
+    delete record.verifierIds;
+    delete record.verifiedOn;
+    await mkdir(join(root, "data", "evidence", record.id), { recursive: true });
+    await writeJson(join(root, "data", "evidence", record.id, "evidence.json"), record);
+  }
+  await writeJson(join(root, "data", "obligation-events", `${event.id}.json`), {
+    ...event, status: "canceled", cancellation: { canceledByIds: ["person-example"], canceledOn: "2026-07-01", reason: "Duplicate event." }
+  });
+  await writeJson(join(root, "data", "action-items", `${action.id}.json`), {
+    ...action, status: "open", sourceResourceId: event.id, obligationId: loaded.resources.find(({ type }) => type === "obligation").id,
+    completionWindow: { precision: "date", startsOn: "2026-01-01", dueOn: "2026-01-02", overdueOn: "2026-01-03" }
+  });
+  const workflow = await assessWorkflow(root, { asOf: "2026-10-10", evaluatedAt: "2026-10-10T12:00:00Z" });
+  assert.equal(workflow.workItems.some(({ source }) => source.id === "risk-unrelated-deadline"), false);
+  assert.equal(workflow.workItems.some(({ source }) => source.id === action.id), false);
+  assert.equal(workflow.workItems.find(({ source }) => source.id === "evidence-deadline-selected")?.state, "overdue");
+  assert.equal(workflow.workItems.some(({ source }) => source.id === "evidence-deadline-unrelated"), false);
+  assert.equal(workflow.workItems.find(({ source }) => source.id === "evidence-audit-selected")?.state, "overdue");
+  assert.equal(workflow.workItems.some(({ source }) => source.id === "evidence-audit-unrelated"), false);
+});

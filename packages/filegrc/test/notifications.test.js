@@ -45,7 +45,9 @@ test("domain and CLI work items preserve owner IDs and Person email contacts", a
   owner.email = "owner@example.com";
   await writeJson(loaded.entries.find(({ record }) => record.id === owner.id).path, owner);
   await writeJson(join(root, "data/action-items/action-notify.json"), {
-    id: "action-notify", type: "action-item", title: "Review source", status: "open", assigneeIds: [owner.id], dueOn: "2026-10-01"
+    id: "action-notify", type: "action-item", title: "Review source", status: "open", assigneeIds: [owner.id],
+    sourceResourceId: loaded.resources.find(({ type }) => type === "control").id,
+    completionWindow: { precision: "date", startsOn: "2026-09-30", dueOn: "2026-10-01", overdueOn: "2026-10-02" }
   });
   const item = (await core.getWorkItems(root, { asOf: "2026-10-07" })).find(({ source }) => source.id === "action-notify");
   assert.deepEqual(item.ownerIds, [owner.id]);
