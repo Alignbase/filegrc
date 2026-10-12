@@ -1231,14 +1231,15 @@ function workflowGuidance(options = {}) {
   const matches = (item) => {
     if (options.type === "audit" && options.id && item.auditId === options.id) return true;
     if (options.stageId && item.stage !== options.stageId) return false;
-    if (options.type && item.subject?.type !== options.type) return false;
-    if (options.id && item.subject?.id !== options.id) return false;
+    const dependent = item.dependentResources?.some((resource) => resource.type === options.type && (!options.id || resource.id === options.id));
+    if (options.type && item.subject?.type !== options.type && !dependent) return false;
+    if (options.id && item.subject?.id !== options.id && !dependent) return false;
     return true;
   };
   const activeStates = new Set(["blocked", "due", "open", "overdue", "ready", "scheduled", "upcoming", "waiting-external"]);
   const findings = workflow.findings.filter((item) => matches(item) && activeStates.has(item.state));
   const workItems = workflow.workItems.filter((item) => matches(item) && activeStates.has(item.state));
-  const items = [...findings, ...workItems].sort((left, right) => (
+  const items = distinctPageActionItems([...findings, ...workItems]).sort((left, right) => (
     workflowItemStatePriority(left) - workflowItemStatePriority(right)
     || (left.priority ?? workflowItemPriority(left)) - (right.priority ?? workflowItemPriority(right))
     || left.key.localeCompare(right.key)
@@ -1257,7 +1258,11 @@ function workflowGuidance(options = {}) {
       ? '<p class="workflow-status">' + esc(controlLaunchLabel(item.implementationState)) + '</p><ol class="control-next-steps">' + item.nextSteps.map((step) => '<li>' + esc(step) + '</li>').join("") + '</ol><small>' + esc(item.implementationAssertion || "") + '</small>'
       : '<small>' + esc(item.message || workflowItemDetail(item)) + '</small>';
     const body = '<span class="workflow-finding-status ' + esc(item.state) + '">' + esc(options.type === "control" && item.implementationState ? controlLaunchLabel(item.implementationState).split(":")[0] : properCase(item.state)) + '</span><span><strong>' + esc(item.title) + '</strong>' + guidance + '</span>';
-    return href ? '<a href="' + href + '">' + body + '</a>' : '<div>' + body + '</div>';
+    const dependents = item.dependentResources?.length
+      ? '<details class="workflow-guidance-more"><summary>' + item.dependentResources.length + ' dependent ' + pluralize("Control", item.dependentResources.length) + '</summary>'
+        + personParticipationGroup("Dependent Controls", item.dependentResources.map((resource) => ({ record: resource, detail: "Requires this shared prerequisite" })), item.dependentResources.length, "Controls") + '</details>'
+      : "";
+    return (href ? '<a href="' + href + '">' + body + '</a>' : '<div>' + body + '</div>') + dependents;
   };
   const rows = visible.map(renderRow).join("");
   const remaining = items.slice(visible.length);
@@ -1274,13 +1279,15 @@ function controlLaunchLabel(state) {
     partial: "Partially implemented: launch conditions remain",
     "ready-to-implement": "Launch checks ready: check the live configuration, then record its start date",
     "implemented-with-gaps": "Implemented with gaps: fix the launch checks",
+    "implemented-awaiting-prerequisites": "Implementation checks pass: awaiting Program prerequisites",
     implemented: "Implemented"
   })[state] || "Control launch";
 }
 
 function controlLaunchState(id) {
-  return state.programReadiness?.stages?.find(({ id: stageId }) => stageId === "controls")?.items
+  const value = state.programReadiness?.stages?.find(({ id: stageId }) => stageId === "controls")?.items
     .find(({ id: itemId }) => itemId === "control-" + id)?.implementationState;
+  return value === "implemented-awaiting-prerequisites" ? "implemented" : value;
 }
 
 function recordCompletionState(record) {
@@ -1474,6 +1481,7 @@ function recordWorkflowItems(type, id) {
     && (
       item.subject?.type === type && item.subject?.id === id
       || item.source?.type === type && item.source?.id === id
+      || item.dependentResources?.some((resource) => resource.type === type && resource.id === id)
     )
   )).sort((left, right) => (
     workflowItemStatePriority(left) - workflowItemStatePriority(right)
@@ -1490,8 +1498,11 @@ function recordWorkflowCell(type, entry, detailContext = "") {
   if (!items.length) return '<span class="record-workflow-clear">No calculated action</span>';
   const item = items[0];
   let href = workflowItemHref(item) || "#/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(entry.record.id);
+  if (type === "control" && item.dependentResources?.some(({ id }) => id === entry.record.id)) {
+    return '<a class="record-workflow-action" href="' + href + '"><span class="workflow-finding-status blocked">Dependent</span><span><strong>Shared prerequisite</strong><small>' + esc(item.title) + '</small></span></a>';
+  }
   if (detailContext && href.startsWith("#/resource/" + encodeURIComponent(type) + "/") && !href.includes("?")) href += detailContext;
-  const title = type === "control"
+  const title = type === "control" && item.implementationState
     ? item.implementationState === "implemented-with-gaps" ? "Fix Control launch gaps" : "Finish implementation"
     : item.title;
   const statusLabel = type === "control" && item.implementationState
@@ -2088,7 +2099,7 @@ function stagePageItems(stage, destination) {
       && item.key?.startsWith("evidence-source.")
     ) return false;
     const href = workflowItemHref(item);
-    return workflowHrefBelongsToPage(destination, href)
+    return (workflowHrefBelongsToPage(destination, href) || item.dependentResources?.some((resource) => resource.type === destination.type))
       && !(destination.href === "#/policies" && isRetentionScheduleWorkflowItem(item));
   })).sort((left, right) => (
     workflowItemStatePriority(left) - workflowItemStatePriority(right)
@@ -3344,6 +3355,7 @@ function renderList(main, type, params = new URLSearchParams()) {
   const pageSummary = relatedGuidance?.summary || STAGE_PAGE_SUMMARIES[type] || definition.description;
   main.innerHTML = '<div class="page"><div class="page-intro"><div><p class="kicker">' + esc(listStage?.title || groupTitle(definition.group)) + '</p><div class="page-title-line"><h2>' + esc(titleCase(listTitle)) + '</h2>' + guideTrigger + '</div><p>' + esc(pageSummary) + '</p></div>' + listTools + '</div>' + resourceGuide(type, relatedGuidance) +
     collectionReviewPanel(type) +
+    (type === "control" ? workflowGuidance({ type, title: "Next steps" }) : "") +
     '<section class="record-table-wrap"><table class="record-table"><thead><tr><th>' + esc(fieldLabel(type, "title")) + '</th>' + fields.map((name) => '<th>' + esc(fieldLabel(type, name)) + '</th>').join("") + '<th>Next action</th><th>Git file</th></tr></thead><tbody id="record-rows"></tbody></table></section>' +
     '<nav class="pagination list-pagination" aria-label="' + esc(definition.pluralTitle) + ' pages" hidden><button class="button" type="button" data-page="previous">Previous</button><span class="page-status" aria-live="polite"></span><button class="button" type="button" data-page="next">Next</button></nav></div>';
   resourceGuideCleanup = setupResourceGuide(main);

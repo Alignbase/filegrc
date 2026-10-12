@@ -237,8 +237,8 @@ export function workflowForResource(workflow, type, id, loaded = null) {
   };
   const matches = (item) => item.subject?.type === type && item.subject?.id === id;
   const related = (item) => (
-    item.source?.type === type
-    && item.source?.id === id
+    (item.source?.type === type && item.source?.id === id
+      || item.dependentResources?.some((resource) => resource.type === type && resource.id === id))
     && !matches(item)
   );
   const directFindings = workflow.findings.filter(matches);
@@ -362,13 +362,15 @@ function mutationTarget(operation, mutation, record) {
 
 function programFindings(program) {
   return program.stages.flatMap((stage) => stage.items
+    .filter((item) => !item.sharedOnly && !item.rollupOnly)
     .filter(({ id }) => !["required-appointments", "independent-reviewer"].includes(id))
     .map((item) => normalizeFinding(
-      `program.${stage.id}.${item.id}`,
+      item.dependentResources?.length ? `program.${item.programId}.${stage.id}.${item.id}` : `program.${stage.id}.${item.id}`,
       item,
       {
         assessment: stage.id === "operation" ? "period-health" : "program-configuration",
-        stage: stage.id
+        stage: stage.id,
+        programId: program.program?.id
       }
     )));
 }
@@ -441,6 +443,8 @@ function recordFinalizationFindings(loaded, program) {
 }
 
 function removeRedundantRecordFindings(recordFindings, guidedFindings) {
+  const guidedChecks = new Map(guidedFindings.filter(({ subject, unmetChecks }) => subject?.id && unmetChecks?.length)
+    .map((finding) => [subjectKey(finding.subject), new Set(finding.unmetChecks)]));
   const guidedSubjects = new Set(guidedFindings
     .filter(({ subject }) => subject?.type && subject?.id)
     .map(({ subject }) => subjectKey(subject)));
@@ -468,6 +472,9 @@ function removeRedundantRecordFindings(recordFindings, guidedFindings) {
   return recordFindings.filter((finding) => {
     const key = finding.subject ? subjectKey(finding.subject) : null;
     if (!key) return true;
+    // A readiness check already provides the action for this exact field.
+    // Keep fields that have no matching check rather than hiding their work.
+    if (guidedChecks.get(key)?.has(finding.fieldPath)) return false;
     if (finding.code.endsWith(".finalize")) {
       if (finding.subject?.type === "collection-review" && guidedSubjectIds.has(finding.subject.id)) {
         return false;
@@ -1166,6 +1173,7 @@ function normalizeFinding(code, item, context) {
     id: assignment.resourceId,
     reasons: assignment.reasons || []
   }));
+  dependencies.push(...(item.sharedPrerequisiteIds || []).map((id) => ({ key: `program.${item.programId || context.programId}.${context.stage}.${id}`, id })));
   return {
     key: code,
     code,
@@ -1176,6 +1184,7 @@ function normalizeFinding(code, item, context) {
     severity: findingSeverity(state, context.assessment),
     title: item.title,
     message: item.message,
+    ...(item.dependentResources ? { dependentResources: item.dependentResources, programId: item.programId } : {}),
     ...(item.nextSteps?.length ? { nextSteps: item.nextSteps } : {}),
     ...(item.implementationState ? {
       implementationState: item.implementationState,
