@@ -30,6 +30,11 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
   // Accept both the pre-0.16 scope: input and the digest-only input used by
   // 0.16.0, as well as the older collection basis from 0.9.1.
   if (revisionsMatch("collection", storedRevision, currentRevision)) return true;
+  // Before adoption dates became neutral, semantic collection hashes included
+  // them directly or through each retention row's source decision revisions.
+  if (revisionsMatch("collection", storedRevision, collectionRevision(loaded, resourceType, {
+    ...options, legacyGovernedLifecycleMetadata: true
+  }))) return true;
   if (resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
     && revisionsMatch("collection", storedRevision, calculateCollectionRevision(
       loaded, resourceType, { ...options, legacyRetentionSourceBasis: true }, false
@@ -163,6 +168,11 @@ function historicallyEquivalentCollection(loaded, resourceType, stored, options,
     // Require the complete reviewed basis to be unchanged under the current
     // semantic calculation before accepting an older byte-sensitive digest.
     if (!revisionsMatch("collection", current, collectionRevision(snapshot, resourceType, historicalOptions))) continue;
+    for (const legacyGovernedLifecycleMetadata of [false, true]) {
+      if (revisionsMatch("collection", stored, collectionRevision(snapshot, resourceType, {
+        ...historicalOptions, legacyGovernedLifecycleMetadata
+      }))) return true;
+    }
     for (const legacyRetentionSourceBasis of resourceType === "retention-schedule-item" ? [false, true] : [false]) {
       for (const historicalReviewMetadata of legacyRetentionSourceBasis ? [false] : [true]) {
         for (const legacy of [false, true]) {
@@ -194,7 +204,8 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
     legacy,
     historicalReviewMetadata: options.historicalReviewMetadata,
     historicalCommit: options.historicalCommit,
-    legacyRetentionSourceBasis: options.legacyRetentionSourceBasis
+    legacyRetentionSourceBasis: options.legacyRetentionSourceBasis,
+    legacyGovernedLifecycleMetadata: options.legacyGovernedLifecycleMetadata
   })
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);
@@ -203,7 +214,7 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
       record: authoritativeSource,
       value: legacy
         ? authoritativeSource
-        : authoritativeSourceRevisionValue(authoritativeSource),
+        : authoritativeSourceRevisionValue(authoritativeSource, options),
       includeContent: true
     });
   }

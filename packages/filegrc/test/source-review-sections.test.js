@@ -220,7 +220,8 @@ test("twenty retention rows follow their approved Policy section through proposa
 
   policy.effectiveOn = "2027-01-01";
   await writeJson(policyRecordPath, policy);
-  assert.equal((await state()).stale.length, 20);
+  // The adoption date is lifecycle metadata; the retained authority is unchanged.
+  assert.deepEqual(await state(), { currentRule: true, scheduleRevision: approvedScheduleRevision, rowReady: true, rowApprovalIssue: false, stale: [] });
   delete policy.effectiveOn;
   await writeJson(policyRecordPath, policy);
   assert.deepEqual(await state(), { currentRule: true, scheduleRevision: approvedScheduleRevision, rowReady: true, rowApprovalIssue: false, stale: [] });
