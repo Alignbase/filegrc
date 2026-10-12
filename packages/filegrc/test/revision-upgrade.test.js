@@ -25,6 +25,7 @@ import { validateWorkspace } from "../src/validate.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { serveWorkspace } from "../src/index.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { loadModel } from "../model/index.js";
 import { commitWorkspaceFiles, initializeGitWorkspace } from "./helpers.js";
 
 test("revision labels shorten known hashes without changing stored values", () => {
@@ -1429,6 +1430,39 @@ test("Git proves an older broad commitment review survives unrelated scope addit
   assert.equal(applicabilityReviewIsCurrent(review, commitment, program, current.resources, current.model, root), true);
   commitment.statement = `${commitment.statement} Changed.`;
   assert.equal(applicabilityReviewIsCurrent(review, commitment, program, current.resources, current.model, root), false);
+});
+
+test("model 12 recovers model 11 legacy reviews through Git without hiding changed scope", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-applicability-migration-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "11");
+  const before = await loadWorkspace(root);
+  const program = before.resources.find(({ type }) => type === "program");
+  const records = before.resources.filter(({ type }) => ["requirement", "control", "commitment", "complementary-control"].includes(type));
+  const reviews = records.map((record) => ({ decision: "applicable", scopeRevision: applicabilityScopeRevision(record, program, before.resources, before.model, {
+    legacyDecisionScope: true, legacyBroadScope: true, legacyResourceProjection: true
+  }) }));
+  await initializeGitWorkspace(root);
+  program.systemIds.push("system-unrelated");
+  await writeFile(before.entries.find(({ record }) => record.id === program.id).path, `${JSON.stringify(program, null, 2)}\n`);
+  const workspaceEntry = before.entries.find(({ record }) => record.type === "workspace");
+  workspaceEntry.record.dataModelVersion = "12";
+  await writeFile(workspaceEntry.path, `${JSON.stringify(workspaceEntry.record, null, 2)}\n`);
+  await commitWorkspaceFiles(root, "Upgrade unchanged applicability semantics");
+  const current = await loadWorkspace(root);
+  const selected = current.resources.find(({ id }) => id === program.id);
+  for (let index = 0; index < records.length; index += 1) {
+    const record = current.resources.find(({ id }) => id === records[index].id);
+    const review = reviews[index];
+    assert.equal(applicabilityReviewIsCurrent(review, record, selected, current.resources, loadModel("11"), root), true, record.type);
+    assert.equal(applicabilityReviewIsCurrent(review, record, selected, current.resources, current.model, root), true, record.type);
+    const field = record.type === "requirement" ? "description" : "statement";
+    const original = record[field];
+    record[field] = "Materially changed scope";
+    assert.equal(applicabilityReviewIsCurrent(review, record, selected, current.resources, current.model, root), false, record.type);
+    record[field] = original;
+    assert.equal(applicabilityReviewIsCurrent(review, record, selected, current.resources, current.model, root), true, "cached failure must not hide restored facts");
+  }
 });
 
 test("a source rebind alone does not require another whole-schedule approval", async (context) => {

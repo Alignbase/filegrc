@@ -11,6 +11,8 @@ npx filegrc migrate --to-model 12 --yes --json
 
 The migration changes only the Workspace model version. It preserves content, approvals, operating rules, historical occurrences, and prior Collection Reviews. It does not infer adoption or exclusion decisions. Existing operation remains recorded, while readiness exposes missing reviews. Older workspaces migrate one version at a time.
 
+Applicability reviews for Requirements, Controls, Commitments, and Complementary Controls remain current when the reviewed scope facts still match model v11's decision semantics, including existing Git-backed compatibility checks. The version change alone does not require another applicability decision. Changed criteria, linked scope, statements, or requirement decisions still require review. Stored review revisions and reviewer dates remain unchanged. This compatibility does not satisfy the new Obligation schedule-set review.
+
 For each Program, inspect its Controls, governing content, linked Obligations, and all active and proposed rules. Commit the reviewed source records, then scaffold the review:
 
 ```sh
