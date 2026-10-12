@@ -366,14 +366,14 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
     value: reviewedIds.has(record.id)
       ? resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
         ? retentionScheduleRowProposalValue(record, loaded, options)
-        : options.historicalReviewMetadata ? record : substantiveRevisionValue(record)
+        : options.historicalReviewMetadata ? record : substantiveRevisionValue(record, options.legacyGovernedLifecycleMetadata)
       : resourceType === "retention-schedule-item"
         && modelSupports(loaded.model, "retention-schedule-approval")
         && record.type === "document"
           ? retentionScheduleDocumentProposalValue(record)
           : options.historicalReviewMetadata
             ? dependencyRevisionValue(resourceType, record, legacy, true, currentModel)
-            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy, false, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis)),
+            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy, false, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis), options.legacyGovernedLifecycleMetadata),
     includeContent: legacy
       || reviewedIds.has(record.id)
       || dependencyContentAffectsRevision(resourceType, record, options.historicalReviewMetadata, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis)
@@ -388,7 +388,7 @@ function retentionScheduleRowProposalValue(record, loaded, options = {}) {
   ].includes(field)));
   if (!options.historicalReviewMetadata && !options.legacyRetentionSourceBasis) {
     value.sourceDecisionRevisions = Object.fromEntries(resourceReviewRevisionsSync(
-      loaded, record.sourceResourceIds || [], "legacy", false, options.historicalCommit || null, record
+      loaded, record.sourceResourceIds || [], "legacy", false, options.historicalCommit || null, record, !options.legacyGovernedLifecycleMetadata
     ));
   }
   return value;
@@ -479,13 +479,13 @@ export function collectionScopeRevisionFacts(loaded, resourceType, program, opti
   return common;
 }
 
-export function authoritativeSourceRevisionValue(record) {
+export function authoritativeSourceRevisionValue(record, options = {}) {
   return substantiveRevisionValue(Object.fromEntries(Object.entries(record).filter(([field]) => (
     !authoritativeSourceBookkeepingFields.has(field)
-  ))));
+  ))), options.legacyGovernedLifecycleMetadata);
 }
 
-function substantiveRevisionValue(record) {
+function substantiveRevisionValue(record, legacyGovernedLifecycleMetadata = false) {
   if (!record) return record;
   const value = { ...record };
   if (value.type === "retention-schedule-item") {
@@ -500,6 +500,10 @@ function substantiveRevisionValue(record) {
   }
   if (value.applicabilityReview) value.applicabilityReview = { decision: value.applicabilityReview.decision };
   if (["policy", "document", "training"].includes(value.type)) {
+    if (!legacyGovernedLifecycleMetadata) {
+      delete value.effectiveOn;
+      delete value.proposedEffectiveOn;
+    }
     for (const field of [
       "approverIds", "approvedOn", "activationBasis", "activatedByIds",
       "activatedOn", "activatedContentRevisions", "statusTransition"

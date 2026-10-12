@@ -503,7 +503,7 @@ test("cross-step source reviews ignore routine metadata for other record types",
   }
 });
 
-test("source reviews retain governing lifecycle and effective-date changes", async (context) => {
+test("source reviews retain governing status changes and ignore adoption dates", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-source-lifecycle-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
@@ -523,7 +523,7 @@ test("source reviews retain governing lifecycle and effective-date changes", asy
     entry.record.status = "approved";
     entry.record.effectiveOn = "2030-01-01";
     entry.source = `${JSON.stringify(entry.record, null, 2)}\n`;
-    assert.notEqual(await revision(), approved, `${type} effective date`);
+    assert.equal(await revision(), approved, `${type} adoption date`);
   }
   const coverage = loaded.entries.find(({ record }) => record.type === "source-coverage");
   coverage.record.status = "planned";

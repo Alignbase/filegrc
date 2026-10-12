@@ -204,7 +204,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
   return new Map([...selected].filter(([, revision]) => revision));
 }
 
-export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy", legacySource = false, historicalCommit = null, reviewer = null) {
+export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy", legacySource = false, historicalCommit = null, reviewer = null, lifecycleNeutral = true) {
   const wanted = new Set(ids);
   const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const revisions = new Map();
@@ -216,7 +216,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     if (!entry || reviewing.has(key)) return null;
     reviewing.add(key);
     const decisionHeading = legacySource ? heading : heading || retentionPolicyHeading(loaded, entry, reviewer);
-    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, decisionHeading, reviewer)];
+    const parts = [reviewSource(loaded, entry, scopeHashInput, legacySource, decisionHeading, reviewer, lifecycleNeutral)];
     let matchedSection = !decisionHeading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource, reviewer)) {
       try {
@@ -257,6 +257,8 @@ export function resourceReviewRevisionMatches(loaded, revisions, id, stored, rev
     : revisions.get(id);
   if (!current || !revisionDigest("content", stored)) return false;
   if (revisionsMatch("content", stored, current)) return true;
+  const prior = resourceReviewRevisionsSync(loaded, [id], "legacy", false, null, reviewer, false).get(id);
+  if (revisionsMatch("content", stored, prior)) return true;
   if (!sourceHeading(reviewer, id)) {
     const legacy = resourceReviewRevisionsSync(loaded, [id], "legacy", true).get(id);
     if (revisionsMatch("content", stored, legacy)) return true;
@@ -297,8 +299,12 @@ function historicallyEquivalentReviewSource(loaded, id, stored, current, reviewe
     // A row may narrow a source to its retention facts or a named Markdown
     // section. Accept its old binding only when those facts still match the
     // committed source that supplied the binding.
-    const original = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit).get(id);
-    if (revisionsMatch("content", stored, original)) return true;
+    const prior = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit, reviewer, false).get(id);
+    if (revisionsMatch("content", stored, prior)) return true;
+    for (const lifecycleNeutral of [true, false]) {
+      const original = resourceReviewRevisionsSync(snapshot, [id], "legacy", false, commit, null, lifecycleNeutral).get(id);
+      if (revisionsMatch("content", stored, original)) return true;
+    }
     for (const scopeHashInput of ["legacy", "digest"]) {
       const legacy = resourceReviewRevisionsSync(snapshot, [id], scopeHashInput, true, commit).get(id);
       if (revisionsMatch("content", stored, legacy)) return true;
@@ -328,7 +334,7 @@ export function retentionUses(loaded, program) {
   return [...new Map(uses.map((use) => [`${use.resource.id}:${use.informationTypeId}`, use])).values()];
 }
 
-function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = false, heading = null, reviewer = null) {
+function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = false, heading = null, reviewer = null, lifecycleNeutral = true) {
   if (heading && !legacySource) {
     const governingFields = entry.record.type === "policy"
       ? ["policyKind", "effectiveOn", "supersedesId", "parentPolicyId", "relatedPolicyIds", "relatedDocumentIds", "requirementIds", "audience", "acknowledgementRequired", "programRole", "reportingRouteRequirements"]
@@ -338,7 +344,7 @@ function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = f
       type: entry.record.type,
       governingStatus: ["approved", "active"].includes(entry.record.status)
         ? "approved" : entry.record.status || null,
-      ...Object.fromEntries(["extensions", "externalIds", ...governingFields].filter((field) => entry.record[field] !== undefined)
+      ...Object.fromEntries(["extensions", "externalIds", ...governingFields].filter((field) => entry.record[field] !== undefined && (!lifecycleNeutral || field !== "effectiveOn"))
         .map((field) => [field, entry.record[field]]))
     });
   }
@@ -366,7 +372,7 @@ function reviewSource(loaded, entry, scopeHashInput = "legacy", legacySource = f
   return legacySource
     ? canonicalCalculatedRevisionJson(entry.source, scopeHashInput)
     : canonicalCalculatedRevisionJson(JSON.stringify(substantiveReviewSource(
-      JSON.parse(entry.source), modelSupports(loaded.model, "retention-schedule-approval"), reviewer
+      JSON.parse(entry.source), modelSupports(loaded.model, "retention-schedule-approval"), reviewer, lifecycleNeutral
     )), scopeHashInput);
 }
 
@@ -508,7 +514,15 @@ const reviewDecisionFields = {
   document: ["documentKind", "workflowScope", "template", "version", "effectiveOn", "supersedesId", "systemIds", "controlIds", "relatedDocumentIds", "audience", "acknowledgementRequired", "trainingIds", "classificationId", "programRole", "componentIds", "reportingRouteRequirements"]
 };
 
-function substantiveReviewSource(record, currentModel, reviewer = null) {
+function substantiveReviewSource(record, currentModel, reviewer = null, lifecycleNeutral = true) {
+  // Adoption dates describe when unchanged approved content enters operation.
+  // Review decisions bind the governed facts and Markdown, while activation
+  // validates dates and exact approval revisions independently.
+  if (lifecycleNeutral && ["policy", "document", "training"].includes(record.type)) {
+    record = { ...record };
+    delete record.effectiveOn;
+    delete record.proposedEffectiveOn;
+  }
   if (currentModel && reviewDecisionFields[record.type]) {
     const fields = ["id", "type", "title", "extensions", "externalIds", ...reviewDecisionFields[record.type]];
     const decision = Object.fromEntries(fields.filter((field) => record[field] !== undefined)
