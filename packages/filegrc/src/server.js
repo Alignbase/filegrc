@@ -1375,6 +1375,7 @@ function urlHost(host) {
 }
 
 function statusFor(error) {
+  if (error?.code === "FILEGRC_ACTIVATION_NOT_READY") return 400;
   if (error?.code === "FILEGRC_STATE_EXPIRED") return 409;
   if (error?.code === "FILEGRC_STATE_CAPACITY") return 429;
   if (error?.code === "FILEGRC_FINGERPRINT_BUDGET") return 503;

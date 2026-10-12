@@ -420,6 +420,7 @@ export function planObligations(resources, options = {}) {
     through,
     from: requestedFrom,
     programStatuses: Object.fromEntries(programStatusByObligationId),
+    effectiveRuleIds: Object.fromEntries(obligations.filter((record) => record.scheduleMode === "rule").map((record) => [record.id, obligationRule(record, byId, { now })?.id || null])),
     counts,
     items,
     calendarItems,

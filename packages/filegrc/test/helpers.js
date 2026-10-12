@@ -273,3 +273,13 @@ export async function executeCli(runCli, executable, args, options = {}) {
   }
   return captured;
 }
+
+// Preserve a pre-v12 activation history when testing migration and later cutovers.
+export async function initializeExistingModel12Workspace(root) {
+  const path = join(root, "data", "workspace.json");
+  const workspace = JSON.parse(await readFile(path, "utf8"));
+  await writeJson(path, { ...workspace, dataModelVersion: "11" });
+  await initializeGitWorkspace(root, { message: "Record existing model v11 operation" });
+  await writeJson(path, workspace);
+  await commitWorkspaceFiles(root, "Select model v12 for future cutovers");
+}

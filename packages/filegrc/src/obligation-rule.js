@@ -6,13 +6,15 @@ export function obligationRule(obligation, byId, options = {}) {
     : null;
   if (obligation?.scheduleMode !== "rule" && !proposedId) return null;
   let rule = byId.get(obligation.activeRuleId || proposedId);
-  if (rule?.status === "active" && rule.effectiveAt && options.now && new Date(rule.effectiveAt) > new Date(options.now)) {
-    const prior = byId.get(rule.supersedesId);
-    return prior?.type === "obligation-rule"
-      && prior.obligationId === obligation.id
-      && ["active", "retired"].includes(prior.status)
-      ? prior
-      : null;
+  if (rule?.status === "active" && options.now) {
+    const seen = new Set();
+    while (rule?.type === "obligation-rule" && rule.obligationId === obligation.id
+      && ["active", "retired"].includes(rule.status) && !seen.has(rule.id)) {
+      seen.add(rule.id);
+      if (rule.effectiveAt && new Date(rule.effectiveAt) <= new Date(options.now)) return rule;
+      rule = byId.get(rule.supersedesId);
+    }
+    return null;
   }
   return rule?.type === "obligation-rule"
     && rule.obligationId === obligation.id

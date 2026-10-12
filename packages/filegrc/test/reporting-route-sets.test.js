@@ -1,3 +1,5 @@
+import { loadModel } from "../model/index.js";
+import { reportingCutoverIssues, requireReportingCutover } from "../src/activation-readiness.js";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -236,7 +238,7 @@ test("requires a real committed Reporting Channel Set proposal in Step 1", async
     .find(({ id }) => id === "security-reporting-route-set");
   assert.equal(item.status, "action");
   assert.deepEqual(item.unpreparedPurposeKeys, ["security-reporting"]);
-  assert.deepEqual(item.progressUnits.map(({ status }) => status), ["action", "later"]);
+  assert.deepEqual(item.progressUnits.map(({ status }) => status), ["action", "action"]);
   await assert.rejects(() => proposeReportingRouteSet(root, { routeSetId: route.id }), /real fallback reporting destination/);
 
   await writeRecord(root, "reporting-route-sets", { ...route, status: "proposed" });
@@ -446,11 +448,17 @@ test("requires a real committed Reporting Channel Set proposal in Step 1", async
   readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
   item = readiness.stages.find(({ id }) => id === "scope").items
     .find(({ id }) => id === "security-reporting-route-set");
-  assert.equal(item.status, "complete");
-  assert.deepEqual(item.unpreparedPurposeKeys, []);
-  assert.deepEqual(item.progressUnits.map(({ status }) => status), ["complete", "later"]);
-  assert.match(item.message, /committed Reporting Channel Set proposal/);
+  assert.equal(item.status, "action");
+  assert.deepEqual(item.unpreparedPurposeKeys, ["security-reporting"]);
+  assert.deepEqual(item.progressUnits.map(({ status }) => status), ["complete", "action"]);
+  assert.match(item.message, /independently approve the exact committed/);
 
+  const originalProposalCommit = (await git(root, "rev-parse", "HEAD")).trim();
+  await writeFile(join(root, "review-note.txt"), "Generic approval review note.\n");
+  await git(root, "add", "review-note.txt");
+  await gitCommitAt(root, "2026-08-30T13:00:00Z", "Record an unrelated review note");
+  const proposalAssessment = await assessReportingRouteSets(root, { programId: program.id, at: "2026-08-31T00:00:00Z" });
+  assert.equal(proposalAssessment.routeSets.find(({ record }) => record.id === route.id).proposalCommit, originalProposalCommit);
   const committedProposal = (await loadWorkspace(root)).resources.find(({ id }) => id === route.id);
   await writeRecord(root, "reporting-route-sets", { ...committedProposal, title: "Future-dated proposal commit" });
   await git(root, "add", `data/reporting-route-sets/${route.id}.json`);
@@ -505,7 +513,7 @@ test("requires a new proposal when proposed requirements outgrow a committed rou
   let readiness = await assessProgramReadiness(root, { asOf: "2026-08-31" });
   let item = readiness.stages.find(({ id }) => id === "scope").items
     .find(({ id }) => id === "security-reporting-route-set");
-  assert.equal(item.status, "complete");
+  assert.equal(item.status, "action");
 
   await writeRecord(root, "policies", {
     ...policy,
@@ -883,6 +891,26 @@ test("commits an exact Route Set proposal before managed approval becomes effect
   assert.ok(missingApprovalEvidence.diagnostics.some(({ code }) => code === "missing-reporting-route-event-evidence"));
   assert.ok(missingApprovalEvidence.diagnostics.some(({ code }) => code === "rewritten-finalized-attachment"));
   await writeFile(approvalEvidenceAttachment, "Retained reporting-route decision record.\n");
+});
+
+test("cutover requires the exact committed approval effective at the intended date", async (context) => {
+  const { root } = await cloneApprovedRouteWorkspace(context, "filegrc-route-cutover-");
+  const loaded = await loadWorkspace(root);
+  loaded.model = loadModel("12");
+  const policy = loaded.resources.find(({ id }) => id === "policy-example");
+  const route = loaded.resources.find(({ type, status }) => type === "reporting-route-set" && status === "approved");
+  const update = { ...policy, status: "active", effectiveOn: "2021-09-01" };
+  assert.deepEqual(await reportingCutoverIssues(loaded, [update]), []);
+  const missing = { ...loaded, resources: loaded.resources.filter(({ id }) => id !== route.id) };
+  assert.ok((await reportingCutoverIssues(missing, [update])).some(({ code }) => code === "uncovered-reporting-route-interval"));
+  const future = { ...loaded, resources: loaded.resources.map((record) => record.id === route.id ? {
+    ...record, approval: { ...record.approval, effectiveAt: "2099-01-01T00:00:00Z" }
+  } : record) };
+  assert.ok((await reportingCutoverIssues(future, [update])).length);
+  const stale = { ...loaded, resources: loaded.resources.map((record) => record.id === route.id ? {
+    ...record, primaryLane: { ...record.primaryLane, destination: "changed@example.test" }
+  } : record) };
+  assert.ok((await reportingCutoverIssues(stale, [update])).some(({ code }) => code === "changed-reporting-route-proposal"));
 });
 
 test("rejects unsupported backfilled route decisions", async (context) => {
@@ -1833,6 +1861,33 @@ async function writeBogusRenderedRouteEvidence(root, source, id, subjectId, date
 async function git(root, ...args) {
   return (await execute("git", args, { cwd: root })).stdout;
 }
+
+test("approved reporting requirements accept their first effective date and preserve it afterward", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-first-reporting-effective-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { records } = await makeComprehensiveWorkspace(root);
+  const policy = records.find(({ id }) => id === "policy-example");
+  policy.status = "approved";
+  delete policy.effectiveOn;
+  policy.reportingRouteRequirements = [{ purposeKey: "security-reporting", programScope: "all-programs", requiredLanes: ["primary"], effectiveAt: "2020-01-01T00:00:00Z", timezone: "UTC" }];
+  await writeRecord(root, "policies", policy);
+  await git(root, "init", "--initial-branch=main");
+  await git(root, "config", "user.name", "Test User");
+  await git(root, "config", "user.email", "test@example.test");
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Approve reporting requirements before cutover");
+  const approvedWorkspace = await loadWorkspace(root);
+  const active = { ...policy, status: "active", effectiveOn: "2026-12-01" };
+  await writeRecord(root, "policies", active);
+  let result = await validateWorkspace(root);
+  assert.equal(result.diagnostics.some(({ message }) => /changed the effective date/.test(message)), false);
+  await assert.rejects(requireReportingCutover({ ...approvedWorkspace, model: loadModel("12") }, [active]), { code: "FILEGRC_ACTIVATION_NOT_READY" });
+  await git(root, "add", ".");
+  await git(root, "commit", "-m", "Record original effective interval");
+  await writeRecord(root, "policies", { ...active, effectiveOn: "2026-12-02" });
+  result = await validateWorkspace(root);
+  assert.ok(result.diagnostics.some(({ message }) => /changed the effective date/.test(message)));
+});
 
 async function gitCommitAt(root, date, message) {
   return (await execute("git", ["commit", "-m", message], {

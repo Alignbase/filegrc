@@ -1,3 +1,4 @@
+import { requireReportingCutover, requireScheduleCutover } from "./activation-readiness.js";
 import { applyResourceBatch, contentRevision } from "./files.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { assessProgramReadiness } from "./program-readiness.js";
@@ -51,6 +52,7 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
   const update = policyIds.map((policyId) => {
     const entry = entryById.get(policyId);
     if (!entry || entry.record.type !== "policy") throw new Error(`Policy "${policyId}" was not found.`);
+    if (modelSupports(loaded.model, "program-scope") && !readiness.policyActivations.some((candidate) => candidate.policyId === policyId)) throw new Error(`Policy "${policyId}" is not selected for this Program. Scoped activation cannot use another Program’s review.`);
     if (entry.record.status !== "approved") {
       throw new Error(`Policy "${policyId}" must be approved and inactive before the Step 3 cutover.`);
     }
@@ -61,6 +63,8 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
     delete record.proposedEffectiveOn;
     return record;
   });
+  await requireReportingCutover(loaded, update);
+  await requireScheduleCutover(loaded, update, { programId: options.programId });
   return {
     operation: "policy-activation",
     policyIds,
@@ -78,6 +82,7 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
 
 function controlOversightComplete(loaded, readiness) {
   if (!modelSupports(loaded.model, "control-collection-oversight") || !readiness.scope.controlIds.length) return true;
+  if (modelSupports(loaded.model, "schedule-set-review") && readiness.stages.find(({ id }) => id === "controls")?.items.find(({ id }) => id === "collection-review-obligation")?.status !== "complete") return false;
   return readiness.stages.find(({ id }) => id === "controls")?.items
     .find(({ id }) => id === "collection-review-control")?.status === "complete";
 }

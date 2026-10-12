@@ -752,7 +752,7 @@ test("requires an explicit v5 workflow scope for a Document used by both the pro
 
 test("keeps current migration help aligned with all supported model versions", async () => {
   const { stdout } = await execute(process.execPath, [cli, "migrate", "--help"]);
-  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9\|10\|11>/);
+  assert.match(stdout, /--to-model <2\|3\|4\|5\|6\|7\|8\|9\|10\|11\|12>/);
   assert.match(stdout, /documentScopes/);
   assert.match(stdout, /model v5/i);
 });

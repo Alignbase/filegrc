@@ -1,3 +1,5 @@
+import { reportingCutoverIssues } from "./activation-readiness.js";
+import { recordBelongsToProgram } from "./program.js";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./applicability-scope.js";
@@ -162,7 +164,8 @@ export async function assessProgramReadiness(input, options = {}) {
   };
 
   const policyStage = await policiesStage(scope, records, byId, readMarkdown, loaded.model);
-  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model, loaded.root, asOfTime);
+  const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model, loaded.root, asOfTime, collectionReviews.find(({ resourceType }) => resourceType === "obligation"));
+  controlStage.items.unshift(...collectionReviews.filter(({ resourceType }) => resourceType === "obligation").map(collectionReviewReadinessItem));
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
     .map(collectionReviewReadinessItem));
@@ -220,6 +223,17 @@ export async function assessProgramReadiness(input, options = {}) {
       ? item
       : { ...item, status: "blocked", message: `Complete the Control collection review before activation. ${item.message}` };
   }));
+  if (modelSupports(loaded.model, "schedule-set-review")) {
+    const content = [...requiredPolicies(scope, byId), ...requiredGovernedDocuments(scope, records, byId, loaded.model)]
+      .filter(({ status }) => ["approved", "active"].includes(status))
+      .map((record) => ({ ...record, status: "active", effectiveOn: record.effectiveOn || record.proposedEffectiveOn || asOf }));
+    const issues = await reportingCutoverIssues(loaded, content);
+    if (content.some((record) => record.reportingRouteRequirements?.length)) controlStage.items.push(item(
+      "reporting-channel-cutover", issues.length ? "action" : "complete", "Verify reporting channels at cutover",
+      issues[0]?.message || "The committed approved channels are usable and cover the intended content effective date.",
+      { type: "reporting-route-set" }, { issues, commands: ["npx filegrc reporting-route-sets --json", "npx filegrc activate-content --scaffold"] }
+    ));
+  }
   controlStage.description = `Each implemented Control needs an owner, actual procedure, scope, operation pattern, mappings, an implementation date, enabled Obligations for scheduled or event work, and complete authoritative source ${modelSupports(loaded.model, "component-sources") ? "Components" : "Systems"}. When implementation is ready, perform one review of the implemented Control collection. Management then activates the unchanged approved program content as the Step 3 cutover.`;
   const scopeReadinessStage = scopeStage(
       program,
@@ -651,6 +665,7 @@ function scopeStage(workspace, scope, records, byId, model, collectionReviews = 
 }
 
 export function reportingRouteSetItem(assessment) {
+  const setupIssues = assessment.issues.filter(({ code }) => !["uncovered-reporting-route-interval", "overlapping-reporting-route-sets"].includes(code));
   const current = assessment.routeSets.find(({ effective, canceled }) => effective && !canceled);
   const draft = assessment.routeSets.find(({ record }) => ["draft", "proposed"].includes(record.status));
   const required = assessment.requirements.length > 0;
@@ -659,11 +674,12 @@ export function reportingRouteSetItem(assessment) {
     .map(({ purposeKey }) => purposeKey)
     .filter(Boolean))];
   const preparedPurposeKeys = new Set(assessment.routeSets
-    .filter(({ record, committed, effective, canceled, proposedRequirementIssues }) => (
-      (["proposed", "approved"].includes(record.status) || effective)
+    .filter(({ record, committed, effective, canceled, proposedRequirementIssues, issues = [] }) => (
+      (record.status === "approved" || effective)
       && committed
       && !canceled
       && proposedRequirementIssues.length === 0
+      && issues.length === 0
     ))
     .map(({ record }) => record.purposeKey));
   const requiredPurposeKeys = new Set(assessment.requirements.map(({ purposeKey }) => purposeKey).filter(Boolean));
@@ -671,32 +687,31 @@ export function reportingRouteSetItem(assessment) {
     ...requiredPurposeKeys,
     ...proposedPurposeKeys
   ])];
-  const unpreparedPurposeKeys = proposedPurposeKeys.filter((purposeKey) => !preparedPurposeKeys.has(purposeKey));
-  const ready = assessment.issues.length === 0
-    && (!required || Boolean(current))
+  const unpreparedPurposeKeys = purposeKeys.filter((purposeKey) => !preparedPurposeKeys.has(purposeKey));
+  const ready = setupIssues.length === 0
     && unpreparedPurposeKeys.length === 0;
-  const needsAction = assessment.issues.length > 0 || unpreparedPurposeKeys.length > 0;
+  const needsAction = setupIssues.length > 0 || unpreparedPurposeKeys.length > 0;
   const target = current?.record || draft?.record || { type: "reporting-route-set" };
   let message;
-  if (assessment.issues.length) {
-    message = assessment.issues[0].message;
+  if (setupIssues.length) {
+    message = setupIssues[0].message;
   } else if (unpreparedPurposeKeys.length) {
-    message = `Complete and commit a Reporting Channel Set proposal for ${unpreparedPurposeKeys.join(", ")} before Step 1 is complete. Approval and effectiveness remain part of the later implementation cutover.`;
-  } else if (required && ready && current) {
-    message = `${current.record.title} is committed, effective, and has a current responsible Appointment. Assignments bind its Git commit.`;
+    message = `Review and independently approve the exact committed Reporting Channel Set proposal for ${unpreparedPurposeKeys.join(", ")} before Step 1 is complete. Effectiveness remains part of the Step 3 cutover.`;
+  } else if (required && ready) {
+    message = "The required Reporting Channel Sets have committed independent approvals. Verify their effective intervals and operational usability at Step 3 cutover.";
   } else if (!required && proposed) {
-    message = "Every reporting-channel requirement in proposed program content has a committed Reporting Channel Set proposal. Approve the exact proposal before its governing content becomes active.";
+    message = "Every reporting-channel requirement in proposed program content has an independently approved, committed Reporting Channel Set. Verify effectiveness and usability at the Step 3 cutover.";
   } else if (!required && draft) {
     message = "No approved rule currently requires these reporting channels. Keep the draft for review or remove it; it is not a readiness gate.";
   } else if (!required) {
     message = "No active Policy, Document, Commitment, or Risk decision currently requires these reporting channels.";
   } else {
-    message = assessment.issues[0]?.message || "Set the normal and fallback reporting channels, commit the proposal, approve it, and commit the approval.";
+    message = setupIssues[0]?.message || "Set the normal and fallback reporting channels, commit the proposal, approve it, and commit the approval.";
   }
   return item(
     "security-reporting-route-set",
     needsAction ? "action" : required ? ready ? "complete" : "action" : proposed ? "complete" : "info",
-    needsAction ? "Prepare required reporting channels" : required ? "Approve required reporting channels" : proposed ? "Reporting channel proposals are ready" : "Reporting channels are not currently required",
+    needsAction ? "Prepare required reporting channels" : required ? "Approve required reporting channels" : proposed ? "Reporting channel approvals are ready" : "Reporting channels are not currently required",
     message,
     target,
     {
@@ -704,18 +719,18 @@ export function reportingRouteSetItem(assessment) {
       proposedRequirements: assessment.proposedRequirements,
       proposedRequirementIssues: assessment.routeSets.flatMap(({ proposedRequirementIssues }) => proposedRequirementIssues),
       unpreparedPurposeKeys,
-      issues: assessment.issues,
+      issues: setupIssues,
       progressUnits: purposeKeys.flatMap((purposeKey) => {
         const purposeResourceIds = new Set([
           ...assessment.routeSets.filter(({ record }) => record.purposeKey === purposeKey).map(({ record }) => record.id),
           ...assessment.requirements.filter((requirement) => requirement.purposeKey === purposeKey).map(({ sourceId }) => sourceId),
           ...assessment.proposedRequirements.filter((requirement) => requirement.purposeKey === purposeKey).map(({ sourceId }) => sourceId)
         ].filter(Boolean));
-        const purposeIssues = assessment.issues.filter(({ resourceId }) => (
+        const purposeIssues = setupIssues.filter(({ resourceId }) => (
           resourceId === assessment.programId || purposeResourceIds.has(resourceId)
         ));
-        const approvedSet = assessment.routeSets.find(({ record, effective, canceled }) => (
-          record.purposeKey === purposeKey && effective && !canceled
+        const approvedSet = assessment.routeSets.find(({ record, committed, effective, canceled, issues = [] }) => (
+          record.purposeKey === purposeKey && (record.status === "approved" || effective) && !canceled && committed && issues.length === 0
         ));
         const proposedSet = assessment.routeSets.find(({ record, effective, canceled }) => (
           record.purposeKey === purposeKey
@@ -736,7 +751,7 @@ export function reportingRouteSetItem(assessment) {
             id: `reporting-route-approval-${purposeKey}`,
             status: approvedSet && purposeIssues.length === 0
               ? "complete"
-              : requiredPurposeKeys.has(purposeKey) ? "action" : "later",
+              : "action",
             title: `${proposedSet?.record.title || purposeKey} approval`
           }
         ];
@@ -879,6 +894,7 @@ export function collectionReviewReadinessItem(assessment) {
 }
 
 function collectionApprovalIssueAction(assessment) {
+  if (assessment.resourceType === "obligation") return null;
   const issue = assessment.approvalIssues?.[0];
   if (!issue || issue.code === "invalid-retention-schedule-approval-binding") return null;
   const rows = assessment.records || [];
@@ -1270,7 +1286,7 @@ function requiredGovernedDocuments(scope, records, byId, model) {
   const selectedControlIds = new Set(scope.controls.map(({ id }) => id));
   const linkedDocumentIds = new Set(requiredPolicies(scope, byId).flatMap((policy) => policy.relatedDocumentIds || []));
   const obligationDocumentIds = new Set(records
-    .filter((record) => record.type === "obligation" && record.status !== "retired")
+    .filter((record) => record.type === "obligation" && record.status !== "retired" && recordBelongsToProgram(record, scope.program, byId, model))
     .flatMap((record) => [
       ...(record.scopeResourceIds || []),
       ...(record.templateResourceId ? [record.templateResourceId] : [])
@@ -1297,7 +1313,7 @@ function requiredGovernedDocuments(scope, records, byId, model) {
 
 async function governedContentItems(scope, records, byId, readMarkdown, asOf, model, asOfTime) {
   const enabledObligations = records.filter((record) => (
-    record.type === "obligation" && obligationIsEnabled(record)
+    record.type === "obligation" && obligationIsEnabled(record) && recordBelongsToProgram(record, scope.program, byId, model)
   ));
   const operatingSchedules = enabledObligations.filter((record) => obligationRuleIsEnabled(record, byId, asOfTime));
   const requiredGovernedIds = new Set(enabledObligations.flatMap((record) => [
@@ -1682,7 +1698,7 @@ function legacyPolicyLibraryProposals(records) {
   }];
 }
 
-async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null, asOfTime) {
+async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null, asOfTime, scheduleReview = null) {
   const items = [];
   const families = selectedControlFamilies(scope.controls, model);
   if (!scope.controls.length) {
@@ -1718,6 +1734,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null
         applicability: control.applicabilityReview?.decision === "applicable"
           && applicabilityReviewIsCurrent(control.applicabilityReview, control, scope.program, [...byId.values()], model, root)
       } : {}),
+      ...(modelSupports(model, "schedule-set-review") ? { scheduleSetReviewed: scheduleReview?.complete === true } : {}),
       implemented: control.status === "implemented",
       owner: (control.ownerIds || []).length > 0,
       procedure: substantiveMarkdown(source) && openPlaceholderCount(source) === 0,
@@ -2136,6 +2153,7 @@ function controlCheckLabel(name) {
     procedureEffective: "procedure effective date",
     policyMapping: "policy mapping",
     criteriaMapping: "criteria mapping",
+    scheduleSetReviewed: "complete independently approved Obligation schedule set",
     workQueue: "enabled Obligation rules (work starts after cutover)"
   })[name] || name;
 }

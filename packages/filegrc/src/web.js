@@ -1299,8 +1299,8 @@ function collectionReviewPanel(type, force = false) {
   if (!assessment || (!force && !collectionReviewVisible(type))) return "";
   const configuration = assessment.configuration;
   const current = assessment.status === "current";
-  const scheduleReview = type === "retention-schedule-item" && modelSupports("retention-schedule-approval");
-  const scheduleBlocker = scheduleReview ? retentionScheduleApprovalBlocker() : null;
+  const scheduleReview = type === "retention-schedule-item" && modelSupports("retention-schedule-approval") || type === "obligation" && modelSupports("schedule-set-review");
+  const scheduleBlocker = type === "retention-schedule-item" && scheduleReview ? retentionScheduleApprovalBlocker() : null;
   const proposalBlocker = !current && assessment.incompleteRecordProposals?.length
     ? "Complete " + assessment.incompleteRecordProposals.length + " record " + (assessment.incompleteRecordProposals.length === 1 ? "proposal" : "proposals") + " before the collection review."
     : null;
@@ -1531,22 +1531,32 @@ function openCollectionReviewDialog(type) {
   const decisions = allowedDecisions.map((decision) => (
     '<option value="' + esc(decision) + '" ' + (defaultDecision === decision ? "selected" : "") + '>' + esc(properCase(decision)) + '</option>'
   )).join("");
+  const scheduleRecords = (assessment.recordIds || []).map((id) => state.resources.find(({ record }) => record.id === id)?.record).filter(Boolean);
+  const obligationReview = type === "obligation" && modelSupports("schedule-set-review");
+  const scheduleDecisionsHtml = obligationReview ? '<section class="schedule-decisions"><h3>Schedule decisions</h3>' + scheduleRecords.map((record, index) => {
+    const prior = assessment.review?.scheduleDecisions?.find((decision) => decision.obligationId === record.id);
+    const rules = resourcesOfType("obligation-rule").filter(({ record: rule }) => rule.obligationId === record.id);
+    const choices = ["adopted", "replaced", "retired", "inapplicable"];
+    return '<fieldset data-schedule-index="' + index + '"><legend>' + esc(record.title) + ' (' + esc(record.status) + ')</legend><p>Review the rule, event coverage, population, owner, and deadline. ' + (record.activeRuleId ? 'Selected rule: ' + esc(record.activeRuleId) : 'No active rule.') + '</p><label><span>Disposition</span><select name="scheduleDisposition' + index + '" required><option value="">Select</option>' + choices.map((choice) => '<option value="' + choice + '" ' + (prior?.disposition === choice ? 'selected' : '') + '>' + esc(properCase(choice)) + '</option>').join('') + '</select></label><label><span>Adopted replacements, when replacing</span><select name="scheduleReplacements' + index + '" multiple>' + scheduleRecords.filter(({ id }) => id !== record.id).map((replacement) => '<option value="' + esc(replacement.id) + '" ' + (prior?.replacementObligationIds?.includes(replacement.id) ? 'selected' : '') + '>' + esc(replacement.title) + '</option>').join('') + '</select></label>' + rules.filter(({ record: rule }) => ["proposed", "approved"].includes(rule.status)).map(({ record: rule }) => '<label><input type="checkbox" name="excludeRule' + index + '" value="' + esc(rule.id) + '" ' + (prior?.excludedRuleIds?.includes(rule.id) ? 'checked' : '') + '>Exclude unused proposal ' + esc(rule.title) + '</label>').join('') + '<label><span>Decision rationale</span><textarea name="scheduleRationale' + index + '" required rows="2">' + esc(prior?.rationale || '') + '</textarea></label></fieldset>';
+  }).join('') + '</section>' : '';
   const dialog = document.createElement("dialog");
   dialog.className = "commit-dialog event-dialog collection-review-dialog";
   dialog.setAttribute("aria-labelledby", "collection-review-dialog-title");
   const reviewerHelp = eligibleReviewerIds && !people.length
     ? '<p class="policy-activation-warning">No eligible reviewer is configured. Add an active Person who does not own ' + (scheduleReview ? 'the governing document or any included schedule row.' : 'these Controls or their enabled Obligations.') + '</p>'
     : "";
-  const dialogKicker = scheduleReview ? "Schedule approval" : "Scope confirmation";
-  const dialogTitle = scheduleReview ? "Review and approve Data Retention Schedule" : "Confirm " + configuration.title.toLowerCase();
-  const checklistLabel = scheduleReview ? "Before approving" : "Before confirming";
-  const saveDescription = scheduleReview
+  const dialogKicker = scheduleReview || obligationReview ? "Schedule approval" : "Scope confirmation";
+  const dialogTitle = obligationReview ? "Review and approve Obligation schedule set" : scheduleReview ? "Review and approve Data Retention Schedule" : "Confirm " + configuration.title.toLowerCase();
+  const checklistLabel = scheduleReview || obligationReview ? "Before approving" : "Before confirming";
+  const saveDescription = obligationReview
+    ? "Approve this Program’s complete schedule set and explicit dispositions at the displayed revision. Changes to its schedules, rules, or governing design require another review before activation."
+    : scheduleReview
     ? 'Approve the governing document and ' + assessment.recordCount + ' current ' + pluralize("schedule row", assessment.recordCount) + ' as one revision. A later document, row, or material scope change requires another approval.'
     : 'Confirm ' + assessment.recordCount + ' current ' + pluralize("record", assessment.recordCount) + '. If the collection or material scope changes, FileGRC will ask for another review.';
   const changes = collectionReviewChangesHtml(assessment.changesSinceReview);
   const confirmSubmit = '<button type="submit" class="button primary">Confirm and save</button>';
-  const submit = scheduleReview ? '<button type="submit" class="button primary">Approve schedule</button>' : confirmSubmit;
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + dialogKicker + '</p><h2 id="collection-review-dialog-title">' + esc(dialogTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p>' + changes + '<section class="event-dialog-steps collection-review-checks"><strong>' + checklistLabel + '</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>' + reviewerHelp + '<div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (preservedAuthoritativeSourceId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>' + esc(saveDescription) + '</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button>' + submit + '</div></form>';
+  const submit = scheduleReview || obligationReview ? '<button type="submit" class="button primary">Approve schedule</button>' : confirmSubmit;
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + dialogKicker + '</p><h2 id="collection-review-dialog-title">' + esc(dialogTitle) + '</h2></div><button type="button" class="icon-button" aria-label="Close">×</button></div><p>' + esc(configuration.description) + '</p>' + changes + '<section class="event-dialog-steps collection-review-checks"><strong>' + checklistLabel + '</strong><ul>' + configuration.reviewPoints.map((point) => '<li>' + esc(point) + '</li>').join("") + '</ul></section>' + reviewerHelp + scheduleDecisionsHtml + '<div class="form-grid"><label><span>Conclusion</span><select name="decision" required>' + decisions + '</select></label><label><span>Reviewer</span><select name="reviewerId" required><option value="">Select</option>' + people.map(({ record }) => '<option value="' + esc(record.id) + '" ' + ((assessment.review?.reviewedByIds || []).includes(record.id) ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label><span>Reviewed on</span><input name="reviewedOn" type="date" required value="' + esc(currentDate()) + '"></label><label data-authoritative-system><span>Authoritative ' + (v4 ? "Component" : "System") + '</span><select name="authoritativeSourceId"><option value="">Select</option>' + systems.map(({ record }) => '<option value="' + esc(record.id) + '" ' + (preservedAuthoritativeSourceId === record.id ? "selected" : "") + '>' + esc(record.title) + '</option>').join("") + '</select></label><label class="full"><span>Review notes</span><textarea name="rationale" rows="3" required placeholder="Note what you confirmed and any scope decision that needs context.">' + esc(assessment.review?.rationale || "") + '</textarea></label></div><div class="workflow-preview"><strong>What this saves</strong><p>' + esc(saveDescription) + '</p></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status review-save-status" role="status" aria-live="polite"></span><button type="button" class="button" data-event="cancel">Cancel</button>' + submit + '</div></form>';
   document.body.append(dialog);
   dialog.showModal();
   const form = dialog.querySelector("form");
@@ -1579,6 +1589,13 @@ function openCollectionReviewDialog(type) {
       scopeRevision: state.git?.commit || undefined,
       [v4 ? "authoritativeComponentId" : "authoritativeSystemId"]: form.elements.authoritativeSourceId.value || undefined,
       expectedRevision: assessment.reviewRevision || undefined,
+      ...(obligationReview ? { scheduleDecisions: scheduleRecords.map((record, index) => ({
+        obligationId: record.id, disposition: form.elements["scheduleDisposition" + index].value,
+        ...(record.activeRuleId ? { ruleId: record.activeRuleId } : {}),
+        replacementObligationIds: [...form.elements["scheduleReplacements" + index].selectedOptions].map((option) => option.value),
+        excludedRuleIds: [...form.querySelectorAll('input[name="excludeRule' + index + '"]:checked')].map((input) => input.value),
+        rationale: form.elements["scheduleRationale" + index].value.trim()
+      })) } : {}),
       expectedCollectionRevision: assessment.collectionRevision
     };
     form.querySelectorAll("button,input,select,textarea").forEach((control) => { control.disabled = true; });
@@ -4366,6 +4383,8 @@ function checkedFormValues(form, name) {
 }
 
 function openReportingRouteApproval(entry) {
+  const proposalCommit = entry.proposalCommit;
+  if (!proposalCommit) { showError("Commit the exact Reporting Channel Set proposal, then reload its review before approval."); return; }
   const appointments = reportingRouteAppointmentOptions(entry);
   const predecessor = entry.record.predecessorId
     ? state.resources.find(({ record }) => record.id === entry.record.predecessorId && record.type === "reporting-route-set" && record.status === "approved")
@@ -4381,7 +4400,7 @@ function openReportingRouteApproval(entry) {
     : "Approve (commit required)";
   const dialog = document.createElement("dialog");
   dialog.className = "editor";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Reporting channel approval</p><h2>' + esc(approvalActionLabel) + '</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Approve the exact normal and fallback channels proposed at <code>' + esc(state.git.shortCommit) + '</code>. FileGRC records the actual approval and effective times; Git records when this approval is committed.</p><div class="form-grid"><label class="field-group full"><span>Approval authority <span class="required-mark">Required</span></span><select name="approvalAppointmentId" required><option value="">Select an Appointment</option>' + appointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(entry.record.id, "evidenceIds", "Approval evidence") + '<label class="field-group"><span>Approved at <span class="required-mark">Required</span></span><input name="approvedAt" type="datetime-local" step="1" required value="' + esc(nowLocal) + '"></label><label class="field-group"><span>Effective at <span class="required-mark">Required</span></span><input name="effectiveAt" type="datetime-local" step="1" required value="' + esc(defaultEffective) + '"></label>' + (predecessor ? '<div class="field-group full"><span>Predecessor cutover</span><p class="field-help">Approving this successor also cancels ' + esc(predecessor.record.title) + ' at the effective time.</p></div><label class="field-group full"><span>Predecessor cancellation authority <span class="required-mark">Required</span></span><select name="predecessorCancellationAppointmentId" required><option value="">Select an Appointment</option>' + predecessorAppointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(predecessor.record.id, "predecessorCancellationEvidenceIds", "Predecessor cancellation evidence") : "") + '<label class="field-group full confirmation"><input type="checkbox" name="confirm" required><span>I reviewed this proposal and confirm these are the actual approval and effective times in ' + esc(state.workspace.timezone) + '.</span></label></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status"></span><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">' + esc(approvalActionLabel) + '</button></div></form>';
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Reporting channel approval</p><h2>' + esc(approvalActionLabel) + '</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Approve the exact normal and fallback channels proposed at <code>' + esc(proposalCommit.slice(0, 8)) + '</code>. FileGRC records the actual approval and effective times; Git records when this approval is committed.</p><div class="form-grid"><label class="field-group full"><span>Approval authority <span class="required-mark">Required</span></span><select name="approvalAppointmentId" required><option value="">Select an Appointment</option>' + appointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(entry.record.id, "evidenceIds", "Approval evidence") + '<label class="field-group"><span>Approved at <span class="required-mark">Required</span></span><input name="approvedAt" type="datetime-local" step="1" required value="' + esc(nowLocal) + '"></label><label class="field-group"><span>Effective at <span class="required-mark">Required</span></span><input name="effectiveAt" type="datetime-local" step="1" required value="' + esc(defaultEffective) + '"></label>' + (predecessor ? '<div class="field-group full"><span>Predecessor cutover</span><p class="field-help">Approving this successor also cancels ' + esc(predecessor.record.title) + ' at the effective time.</p></div><label class="field-group full"><span>Predecessor cancellation authority <span class="required-mark">Required</span></span><select name="predecessorCancellationAppointmentId" required><option value="">Select an Appointment</option>' + predecessorAppointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label>' + reportingRouteEvidenceField(predecessor.record.id, "predecessorCancellationEvidenceIds", "Predecessor cancellation evidence") : "") + '<label class="field-group full confirmation"><input type="checkbox" name="confirm" required><span>I reviewed this proposal and confirm these are the actual approval and effective times in ' + esc(state.workspace.timezone) + '.</span></label></div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status"></span><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">' + esc(approvalActionLabel) + '</button></div></form>';
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelectorAll("[data-dismiss]").forEach((button) => button.addEventListener("click", () => dialog.close()));
@@ -4396,21 +4415,23 @@ function openReportingRouteApproval(entry) {
       form.querySelector(".dialog-error").textContent = "Select fixed, verified Evidence for each approval or cancellation event.";
       return;
     }
-    mutateReportingRouteSet("approve", {
-      routeSetId: entry.record.id,
-      proposalCommit: state.git.commit,
-      approvalAppointmentId: form.elements.approvalAppointmentId.value,
-      evidenceIds,
-      approvedAt: zonedTimestampFromLocal(form.elements.approvedAt.value, state.workspace.timezone),
-      effectiveAt: zonedTimestampFromLocal(form.elements.effectiveAt.value, state.workspace.timezone),
-      timezone: state.workspace.timezone,
-      expectedRevision: entry.revision,
-      ...(predecessor ? {
-        predecessorCancellationAppointmentId: form.elements.predecessorCancellationAppointmentId.value,
-        predecessorCancellationEvidenceIds: predecessorEvidenceIds,
-        predecessorExpectedRevision: predecessor.revision
-      } : {})
-    }, dialog);
+    try {
+      mutateReportingRouteSet("approve", {
+        routeSetId: entry.record.id,
+        proposalCommit,
+        approvalAppointmentId: form.elements.approvalAppointmentId.value,
+        evidenceIds,
+        approvedAt: zonedTimestampFromLocal(form.elements.approvedAt.value, state.workspace.timezone),
+        effectiveAt: zonedTimestampFromLocal(form.elements.effectiveAt.value, state.workspace.timezone),
+        timezone: state.workspace.timezone,
+        expectedRevision: entry.revision,
+        ...(predecessor ? {
+          predecessorCancellationAppointmentId: form.elements.predecessorCancellationAppointmentId.value,
+          predecessorCancellationEvidenceIds: predecessorEvidenceIds,
+          predecessorExpectedRevision: predecessor.revision
+        } : {})
+      }, dialog);
+    } catch (error) { form.querySelector(".dialog-error").textContent = error.message; }
   });
 }
 
@@ -4432,15 +4453,17 @@ function openReportingRouteCancellation(entry) {
       form.querySelector(".dialog-error").textContent = "Select fixed, verified Evidence for the cancellation event.";
       return;
     }
-    mutateReportingRouteSet("cancel", {
-      routeSetId: entry.record.id,
-      approvalAppointmentId: form.elements.approvalAppointmentId.value,
-      evidenceIds,
-      canceledAt: zonedTimestampFromLocal(form.elements.canceledAt.value, state.workspace.timezone),
-      timezone: state.workspace.timezone,
-      reason: form.elements.reason.value,
-      expectedRevision: entry.revision
-    }, dialog);
+    try {
+      mutateReportingRouteSet("cancel", {
+        routeSetId: entry.record.id,
+        approvalAppointmentId: form.elements.approvalAppointmentId.value,
+        evidenceIds,
+        canceledAt: zonedTimestampFromLocal(form.elements.canceledAt.value, state.workspace.timezone),
+        timezone: state.workspace.timezone,
+        reason: form.elements.reason.value,
+        expectedRevision: entry.revision
+      }, dialog);
+    } catch (error) { form.querySelector(".dialog-error").textContent = error.message; }
   });
 }
 
@@ -4459,6 +4482,7 @@ function localDateTimeInput(date, timezone, midnight = false) {
 }
 
 function zonedTimestampFromLocal(value, timezone) {
+  value = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$/.test(value) ? value + ":00" : value;
   const desired = new Date(value + "Z");
   if (Number.isNaN(desired.getTime())) throw new Error("A valid local date and time is required.");
   let instant = desired;
@@ -6326,6 +6350,9 @@ function formatObjectArray(items, objectType, compact = false) {
   }).join("") + '</div>';
 }
 function workQueueScheduleStatus(obligation) {
+  const scheduleReview = state.collectionReviews?.obligation;
+  const disposition = scheduleReview?.complete && scheduleReview.review?.scheduleDecisions?.find(({ obligationId }) => obligationId === obligation.id)?.disposition;
+  if (["replaced", "retired", "inapplicable"].includes(disposition)) return disposition;
   if (obligation.status === "proposed") {
     const pendingRules = resourcesOfType("obligation-rule")
       .map(({ record }) => record)
@@ -6340,12 +6367,7 @@ function workQueueScheduleStatus(obligation) {
   if (obligation.scheduleMode === "rule" && rule?.status !== "active") {
     return "proposed";
   }
-  if (rule?.effectiveAt && new Date(rule.effectiveAt) > new Date()) {
-    const prior = state.resources.find(({ record }) => record.id === rule.supersedesId)?.record;
-    if (prior?.obligationId !== obligation.id || !["active", "retired"].includes(prior.status)) {
-      return "waiting-schedule-effective";
-    }
-  }
+  if (obligation.scheduleMode === "rule" && state.obligations?.effectiveRuleIds && !state.obligations.effectiveRuleIds[obligation.id]) return "waiting-schedule-effective";
   const asOf = state.obligations?.asOf || new Date().toISOString().slice(0, 10);
   const policies = (obligation.policyIds || []).map((id) => state.resources.find(({ record }) => record.id === id)?.record);
   if (policies.some((policy) => policy?.type !== "policy" || !["approved", "active"].includes(policy.status))) return "waiting-policy-approval";
@@ -6358,6 +6380,7 @@ function workQueueScheduleStatus(obligation) {
 }
 function obligationWorkQueueStatus(obligation) {
   const status = workQueueScheduleStatus(obligation);
+  if (["replaced", "retired", "inapplicable"].includes(status)) return '<span class="operation-tracking"><strong>' + esc(properCase(status)) + '</strong><small>Approved Program schedule decision</small></span>';
   if (status === "proposed") return '<span class="operation-tracking"><strong>Proposed</strong><small>Review schedule before activation</small></span>';
   if (status === "approved") return '<span class="operation-tracking"><strong>Approved</strong><small>Activate schedule before operation</small></span>';
   if (status === "running") return '<span class="operation-tracking running"><strong>Running</strong><small>Enabled and policy effective</small></span>';
@@ -6737,7 +6760,7 @@ html,body{height:100%;overflow:hidden}.shell{grid-template-columns:248px minmax(
 .collection-review-panel{margin:16px 0 22px}.collection-review-panel.required{border-color:#d8bd78}.collection-review-panel.current{border-color:#b9dac6}.collection-review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}.collection-review-head h3{margin:4px 0 6px}.collection-review-head p:not(.kicker){max-width:900px;margin:0;color:var(--muted);font-size:11px;line-height:1.5}.collection-review-panel details{margin-top:13px;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-panel summary{cursor:pointer;font-size:11px;font-weight:750}.collection-review-panel ul,.collection-review-checks ul{margin:9px 0 0;padding-left:20px;color:var(--muted);font-size:10.4px;line-height:1.55}.collection-review-foot{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:13px}.collection-review-result{display:flex;align-items:baseline;gap:8px;margin:0}.collection-review-result strong{font-size:11px}.collection-review-result span{color:var(--muted);font-size:10.4px}.collection-review-checks{margin:13px 0;padding:11px 13px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-checks>strong{font-size:11px}.event-dialog-steps.collection-review-checks{margin:15px 0 0;padding:10px;border:0}.collection-review-dialog textarea{box-sizing:border-box;width:100%;resize:vertical}.review-save-status{margin-right:auto;color:var(--muted);font-size:11px}.resource-review-criteria{margin:16px 0 22px;padding:13px 15px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.resource-review-criteria>strong{font-size:11px}.resource-review-criteria ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 28px;margin:9px 0 0;padding-left:20px;color:var(--muted);font-size:10.4px;line-height:1.5}.commit-dialog .resource-review-criteria{margin:12px 0;background:var(--surface-soft)}.record-workflow-action{display:grid;grid-template-columns:auto minmax(140px,1fr);gap:7px;align-items:start;min-width:240px;text-decoration:none}.record-workflow-action strong,.record-workflow-action small{display:block}.record-workflow-action strong{font-size:10.4px}.record-workflow-action small{margin-top:2px;color:var(--muted);font-size:9.2px;line-height:1.35}.record-workflow-clear{color:var(--muted);font-size:10px;white-space:nowrap}.workflow-guidance{margin:16px 0 22px}.workflow-guidance .panel-head{align-items:flex-start;margin-bottom:12px}.workflow-guidance .panel-head h3{margin:4px 0}.workflow-guidance .panel-head p:not(.kicker){margin:4px 0 0;color:var(--muted);font-size:11px}.workflow-findings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.workflow-findings>a,.workflow-findings>div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 11px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft);text-decoration:none}.workflow-findings strong,.workflow-findings small{display:block}.workflow-findings strong{font-size:11px}.workflow-findings small{margin-top:3px;color:var(--muted);font-size:9.6px;line-height:1.4}.workflow-finding-status{min-width:62px;padding:3px 5px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:8.4px;font-weight:750;text-align:center;text-transform:uppercase;letter-spacing:.04em}.workflow-finding-status.overdue,.workflow-finding-status.blocked{background:#f5ded9;color:#8d352c}.workflow-finding-status.ready,.workflow-finding-status.due,.workflow-finding-status.open{background:#f7e9cf;color:#855717}.workflow-finding-status.complete{background:#ddefe5;color:#176143}.workflow-guidance-more{margin:10px 0 0;color:var(--muted);font-size:9.6px}.workflow-guidance-more>summary{cursor:pointer;font-weight:750}.workflow-findings-more{margin-top:9px}.workflow-guidance-more>p{margin:8px 0 0}.context-workflow{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:-8px 0 18px;padding:17px 19px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:10px}.context-workflow h3{font-size:16px;margin:4px 0 5px}.context-workflow p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.5;margin:0;max-width:850px}.context-workflow .button{white-space:nowrap}.policy-lifecycle-note{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr);gap:24px;margin-top:18px}.policy-lifecycle-note h3{margin:5px 0 8px}.policy-lifecycle-note p:not(.kicker),.policy-library-proposals p{color:var(--muted);font-size:11px;line-height:1.55}.policy-library-proposals{display:grid;gap:8px}.policy-library-proposals article{padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}.policy-library-proposals p{margin:5px 0 8px}.policy-activation{display:grid;gap:12px;margin-top:22px}.policy-activation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.policy-activation-card{padding:17px 18px;border:1px solid #d8bd78;border-radius:10px;background:var(--panel)}.policy-activation-card.active-and-operating{border-color:#b9dac6}.policy-activation-card h3{margin:7px 0 0}.policy-activation-gaps{display:grid;gap:9px;margin-top:13px}.policy-activation-gaps>div{padding-top:8px;border-top:1px solid var(--line)}.policy-activation-gaps small{display:block;margin-bottom:6px;color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.policy-activation-warning{margin:11px 0 0;padding:9px 10px;border-radius:7px;background:#f7e9cf;color:#6d4917;font-size:10.4px;line-height:1.45}.evidence-map{display:grid;gap:12px;margin-top:18px}.evidence-map-head{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 22px;background:var(--accent-soft);border:1px solid #cbd3ff;border-radius:11px}.evidence-map-head>div:first-child{max-width:760px}.evidence-map-head h2{font:500 24px Georgia,serif;margin:5px 0 7px}.evidence-map-head p:not(.kicker){color:var(--muted);font-size:12px;line-height:1.55;margin:0}.evidence-map-actions{display:flex;gap:8px}.evidence-map-card{padding:18px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.evidence-map-card.complete{border-color:#b9dac6}.evidence-map-card-head{display:flex;align-items:start;justify-content:space-between;gap:20px}.evidence-map-card-head h3{font-size:16px;margin:7px 0 0}.evidence-map-card-head>small{color:var(--muted);font-size:10px;text-align:right}.evidence-map-card>p{color:var(--muted);font-size:12px;line-height:1.55;margin:12px 0}.evidence-map-expectation{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:11px;line-height:1.5}.evidence-map-expectation strong{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.06em}.evidence-map-expectation code{background:var(--paper);border-radius:4px;padding:2px 5px}.evidence-map-links{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,1.2fr);gap:20px;margin-top:13px;padding-top:13px;border-top:1px solid var(--line)}.evidence-map-links>div>small{display:block;color:var(--muted);font-size:9.6px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}.evidence-map-references,.evidence-map-sources{display:flex;flex-wrap:wrap;gap:5px}.evidence-map-source{display:flex;align-items:center;gap:7px;padding:7px 9px;background:var(--paper);border:1px solid var(--line);border-radius:7px;font-size:11px;text-decoration:none}.evidence-map-source.complete{border-color:#b9dac6;background:#edf7f1}.evidence-map-source small{color:var(--muted);font-size:9px}.evidence-map-status{padding:9px 11px;background:var(--paper);border-radius:7px}.evidence-map-empty{padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:10px}.evidence-map-empty h3{margin:6px 0}.evidence-map-empty p:not(.kicker){color:var(--muted);font-size:12px;margin:0 0 14px}.stage-pages{margin-top:24px}.stage-page-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-page-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(21,40,33,.025);transition:border-color .15s,box-shadow .15s}.stage-page-card:hover{border-color:var(--accent-light);box-shadow:0 5px 16px rgba(21,40,33,.07)}.stage-page-card.complete{border-color:#b9dac6}.stage-page-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px}.stage-page-card-head h3{font-size:15.6px;line-height:1.35;margin:4px 0 0}.stage-page-card-head>div>small{display:block;color:var(--accent);font-size:9.6px;font-weight:700}.stage-page-card>p{color:var(--muted);font-size:12px;line-height:1.5;margin:13px 0 0}.stage-page-tasks{position:relative;z-index:2;display:grid;gap:6px;margin-top:13px}.stage-page-tasks>a{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft);text-decoration:none}.stage-page-tasks>a:hover{border-color:var(--accent-light)}.stage-page-tasks strong,.stage-page-tasks small{display:block}.stage-page-tasks strong{font-size:10.8px}.stage-page-tasks small{margin-top:2px;color:var(--muted);font-size:9.4px;line-height:1.35}.stage-page-tasks-more{color:var(--muted);font-size:9.4px}.stage-page-rollup{display:flex;flex:0 0 104px;flex-direction:column;justify-content:center;text-align:right}.stage-page-rollup strong,.stage-page-rollup small{display:block}.stage-page-rollup strong{font:500 24px Georgia,serif}.stage-page-rollup small{color:var(--muted);font-size:9.6px;line-height:1.35;margin-top:2px}.stage-page-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:15px}.stage-page-completion-state{color:var(--muted);font-size:10.8px}.stage-page-completion-state.complete{color:#176143;font-weight:700}.stage-page-open{color:var(--accent);font-size:12px;font-weight:700}.work-queue-section{margin-top:28px}.work-queue-section>.section-head{align-items:end}
 .stage-page-card-actions{display:flex;align-items:center;gap:10px}.stage-page-card-actions .stage-page-open{white-space:nowrap}.stage-page-open::after{content:"";position:absolute;inset:0;z-index:1;border-radius:10px}.stage-page-open:focus-visible::after{outline:2px solid var(--focus);outline-offset:2px}.stage-page-open>span{position:relative;z-index:2}
 .workflow-findings>a:hover{border-color:var(--accent-light);box-shadow:0 3px 9px rgba(21,40,33,.05)}.workflow-findings>a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.stage-page-card-head{align-items:flex-start}.stage-page-completion-state{flex:0 0 auto;max-width:150px;padding:5px 8px;border-radius:99px;background:#f7e9cf;color:#855717;font-size:9.6px;font-weight:750;line-height:1.25;text-align:right}.stage-page-completion-state.complete{background:#ddefe5;color:#176143}.obligation-card.workflow-target{outline:2px solid var(--focus);outline-offset:3px}.obligation-card-foot{flex-wrap:wrap}.obligation-card-foot .obligation-links{flex:1 1 120px}
-.collection-review-panel.current details{margin-top:8px}.collection-review-detail-content{margin-top:10px}.collection-review-complete-summary{display:flex;align-items:baseline;gap:10px}.collection-review-complete-summary>.kicker{margin:0;white-space:nowrap}.collection-review-panel.current .collection-review-foot{justify-content:flex-end;margin-top:8px}
+.schedule-decisions{display:grid;gap:14px;margin:18px 0}.schedule-decisions fieldset{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:8px}.schedule-decisions legend{font-weight:700;font-size:13px}.schedule-decisions label{display:grid;gap:5px}.schedule-decisions select,.schedule-decisions textarea{width:100%}.schedule-decisions p{font-size:11px;color:var(--muted);margin:0}.collection-review-panel.current details{margin-top:8px}.collection-review-detail-content{margin-top:10px}.collection-review-complete-summary{display:flex;align-items:baseline;gap:10px}.collection-review-complete-summary>.kicker{margin:0;white-space:nowrap}.collection-review-panel.current .collection-review-foot{justify-content:flex-end;margin-top:8px}
 .collection-review-change-list{margin:14px 0;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-change-list>strong{font-size:11px}.collection-review-change-list p{margin:7px 0 0;color:var(--muted);font-size:11px;line-height:1.5}.collection-review-change-list ul{max-height:180px;overflow:auto;margin:9px 0 0;padding-left:20px;font-size:11px;line-height:1.55}.collection-review-change-list li+li{margin-top:5px}.collection-review-change-list li span{color:var(--muted)}
 .collection-review-current-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.collection-review-panel.current .collection-review-details{flex:0 0 auto;margin:0;padding:0;border:0;background:transparent}.collection-review-panel.current .collection-review-details>summary{color:var(--accent);white-space:nowrap}.collection-review-panel.current .collection-review-details[open]{flex-basis:100%;order:3;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.collection-review-panel.current .collection-review-details[open]>summary{margin-bottom:10px}.collection-review-panel.current .collection-review-details[open] .collection-review-detail-content{margin-top:0}.collection-review-panel.current .button{margin-left:auto}
 @media(max-width:520px){.collection-review-complete-summary{flex:1 1 180px;min-width:0;flex-wrap:wrap}.collection-review-complete-summary .collection-review-result{min-width:0;flex-wrap:wrap}.collection-review-complete-summary .collection-review-result span{overflow-wrap:anywhere}.collection-review-panel.current .button{margin-left:0}}

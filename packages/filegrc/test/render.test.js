@@ -2071,8 +2071,10 @@ test("obligation schedule labels distinguish proposal, approval, and policy cuto
   obligation.status = "active";
   obligation.ruleIds = [rule.id];
   obligation.activeRuleId = rule.id;
+  state.obligations.effectiveRuleIds = { [obligation.id]: null };
   assert.match(label(), /Waiting for schedule start/);
   rule.effectiveAt = "2000-01-01T00:00:00Z";
+  state.obligations.effectiveRuleIds[obligation.id] = rule.id;
   assert.match(label(), /Waiting for policy activation/);
   assert.doesNotMatch(label(), /Waiting for policy approval/);
   policy.status = "active";
@@ -2944,4 +2946,13 @@ test("Step 3 combines activation into one box while preserving unavailable conte
   state.readOnly = false;
   state.resources = [];
   assert.match(context.renderProgramActivation(), /data-review-program-activation disabled/);
+});
+
+test("reporting approval accepts minute-precision local inputs and keeps DST checks", () => {
+  const start = APP_SCRIPT.indexOf("function localDateTimeInput(");
+  const end = APP_SCRIPT.indexOf("function resourceGuide(", start);
+  const convert = vm.runInNewContext(APP_SCRIPT.slice(start, end) + "\nzonedTimestampFromLocal", { Date, Intl });
+  assert.equal(convert("2026-10-13T00:00", "America/Chicago"), "2026-10-13T00:00:00-05:00");
+  assert.equal(convert("2026-10-12T12:04:32", "America/Chicago"), "2026-10-12T12:04:32-05:00");
+  assert.throws(() => convert("2026-03-08T02:30", "America/Chicago"), /does not exist/);
 });

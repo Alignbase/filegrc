@@ -1,3 +1,4 @@
+import { requireReportingCutover, requireScheduleCutover } from "./activation-readiness.js";
 import { applyDocumentActivationBatch, applyGovernedContentActivationBatch, contentRevision } from "./files.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { modelSupports } from "../model/index.js";
@@ -114,6 +115,8 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
     delete record.proposedEffectiveOn;
     return record;
   });
+  await requireReportingCutover(loaded, update);
+  await requireScheduleCutover(loaded, update, { programId: options.programId });
   return {
     operation: governedContentOperation ? "governed-content-activation" : "document-activation",
     workflowScope,
@@ -134,6 +137,7 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
 
 function controlOversightComplete(loaded, readiness) {
   if (!modelSupports(loaded.model, "control-collection-oversight") || !readiness.scope.controlIds.length) return true;
+  if (modelSupports(loaded.model, "schedule-set-review") && readiness.stages.find(({ id }) => id === "controls")?.items.find(({ id }) => id === "collection-review-obligation")?.status !== "complete") return false;
   return readiness.stages.find(({ id }) => id === "controls")?.items
     .find(({ id }) => id === "collection-review-control")?.status === "complete";
 }

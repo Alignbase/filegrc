@@ -44,7 +44,7 @@ npx filegrc policy-library
 
 The command shows an exact diff only when the current text still matches the prior starter default. It skips customized, approved, active, superseded, and retired Policy content. Accept one named proposal revision only with the command printed by the review, which includes `--accept`, `--proposal-revision`, and `--yes`. Acceptance fails if the proposal changed after review. It changes only the listed defaults and does not approve a Policy, activate it, or mark a Control implemented.
 
-The normal runtime uses data model v11. Existing model v10 workspaces start with a read-only preview:
+The normal runtime uses data model v12. Model v11 adds Control oversight; existing model v10 workspaces start with a read-only preview:
 
 ```sh
 npx filegrc migrate --to-model 11 --preview --json
@@ -66,7 +66,7 @@ A model v1 workspace must migrate to v2 first:
 npx filegrc migrate --to-model 2 --preview --json
 ```
 
-Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then migrate one model version at a time through model v11.
+Follow the [model v2 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v2.md), then migrate one model version at a time through model v12.
 
 `filegrc serve --help` prints bind, port, environment, and safety options without starting the server. The editable server prefers `127.0.0.1:8787` and chooses another available port when that port is occupied. Set `FILEGRC_HOST`, `FILEGRC_PORT`, or the matching flags when needed. In trunk mode, browser saves synchronize, commit, and push from the authoritative branch. Use `--allow-non-authoritative-writes` for local development in a task checkout; the override never commits or pushes.
 
@@ -117,3 +117,5 @@ Version 1 accepts exactly these fields. The ID contains 1–128 ASCII letters, d
 Core builds dashboard links as `https://app.filegrc.com/connections/<encoded connectionId>?repository=<encoded owner/repo>`. It derives the optional repository hint from one supported GitHub `origin` URL without contacting GitHub, omitting it when unavailable or ambiguous. The hint grants no authorization. Invalid or unsupported markers produce warnings and leave local workflows available; Core never rewrites the marker.
 
 Track this file in Git. Existing repositories that ignore `.filegrc/` should use `.filegrc/*` and add `!.filegrc/hosted-automation.json`. Person mappings and delivery policy remain separate files.
+
+Model v12 requires a complete Program Obligation schedule-set review before activation. Use `npx filegrc review-collection obligation --program PROGRAM_ID --scaffold`, record adopted rules, replacements, retired duplicates, and intentionally inapplicable proposals, then preview and save the exact revision with an independent reviewer. Reporting Channel Sets need independent approval in Step 1; Step 3 verifies their effective coverage and usability at cutover. Existing model v11 workspaces preview `npx filegrc migrate --to-model 12 --preview --json`. See the [model v12 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v12.md).

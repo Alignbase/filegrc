@@ -104,7 +104,8 @@ const STATUS_OVERRIDES = {
   "audit-request": "submitted",
 };
 
-export async function makeComprehensiveWorkspace(root, version) {
+// The compatibility baseline contains already operating records. New cutover tests select v12 explicitly.
+export async function makeComprehensiveWorkspace(root, version = "11") {
   const key = version == null ? "active" : String(version);
   let fixturePromise = comprehensiveFixtures.get(key);
   if (!fixturePromise) {

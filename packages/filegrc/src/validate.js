@@ -1,3 +1,5 @@
+import { reportingCutoverIssues, scheduleCutoverIssues, historicalContentCutover } from "./activation-readiness.js";
+import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
@@ -270,6 +272,21 @@ async function validateWorkspaceUnmeasured(input) {
   }
   if (modelSupports(loaded.model, "reporting-route-sets")) {
     validateReportingRouteSets(loaded, byId, pathById, diagnostics);
+    for (const issue of await reportingCutoverIssues(loaded, loaded.resources.filter((record) => ["active", "open", "monitoring"].includes(record.status)))) {
+      const source = byId.get(issue.sourceId);
+      diagnostics.push((contentCutoverChanged(loaded, source, pathById.get(source?.id)) || historicalContentCutover(loaded, source) ? error : warning)(issue.code, pathById.get(issue.sourceId), issue.message));
+    }
+  }
+  if (modelSupports(loaded.model, "schedule-set-review")) {
+    const newCutovers = loaded.resources.filter((record) => record.status === "active" && record.effectiveOn
+      && ["policy", "document", "training"].includes(record.type)
+      && contentCutoverChanged(loaded, record, pathById.get(record.id)));
+    for (const issue of await scheduleCutoverIssues(loaded, newCutovers)) diagnostics.push(error(issue.code, pathById.get(issue.sourceId), issue.message));
+    for (const record of loaded.resources.filter((record) => record.status === "active" && record.effectiveOn && ["policy", "document", "training"].includes(record.type) && !newCutovers.includes(record))) {
+      const cutover = historicalContentCutover(loaded, record);
+      if (!cutover) continue;
+      for (const issue of await scheduleCutoverIssues(cutover.snapshot, [cutover.record])) diagnostics.push(error(issue.code, pathById.get(record.id), `Committed activation lacked its required approval: ${issue.message}`));
+    }
   }
   if (modelSupports(loaded.model, "temporal-collection-reviews")) {
     validateCollectionReviewSet(loaded.resources, pathById, diagnostics);
@@ -1305,6 +1322,11 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       currentRevision
     }
   );
+  if (current && record.resourceType === "obligation") {
+    for (const issue of scheduleSetIssues(loaded, program, record)) diagnostics.push(error(issue.code, path, issue.message));
+    const conflicts = scheduleReviewerConflicts(loaded, program);
+    if ((record.reviewedByIds || []).some((id) => conflicts.includes(id))) diagnostics.push(error("conflicted-schedule-set-reviewer", path, "Schedule-set approval requires an independent reviewer."));
+  }
   const originalPopulationCurrent = current && revisionsMatch("collection", record.collectionRevision, currentRevision);
   if (current && workspaceWideRetentionReview && !sameStringIds(record.scopeResourceIds, retentionScope.programIds)) {
     diagnostics.push(error(
@@ -2884,4 +2906,16 @@ function error(code, path, message) {
 
 function warning(code, path, message) {
   return { severity: "warning", code, path, message };
+}
+
+function contentCutoverChanged(loaded, record, path) {
+  if (!record || !path) return true;
+  const head = getGitSummary(loaded.root).commit;
+  const source = head ? getFileBufferAtRevision(loaded.root, head, path) : null;
+  if (!source) return true;
+  try {
+    const prior = JSON.parse(source.toString("utf8"));
+    return prior.status !== record.status || prior.effectiveOn !== record.effectiveOn || prior.activatedOn !== record.activatedOn
+      || JSON.stringify(prior.reportingRouteRequirements || []) !== JSON.stringify(record.reportingRouteRequirements || []);
+  } catch { return true; }
 }
