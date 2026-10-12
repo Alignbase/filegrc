@@ -45,6 +45,7 @@ export function reviewHistoricalWorkspace(context, commit) {
   if (context.index?.available) return indexedHistoricalWorkspace(context, commit);
   if (context.workspacesByCommit.has(commit)) return context.workspacesByCommit.get(commit);
   const loaded = historicalWorkspace(context, commit);
+  if (loaded) loaded.historicalCommit = commit;
   context.workspacesByCommit.set(commit, loaded);
   if (context.workspacesByCommit.size > 128) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);
   return loaded;
@@ -121,7 +122,7 @@ export function indexedHistoricalWorkspace(context, commit) {
   try {
     const loaded = {
       root, entries, resources, workspace, model: historicalModel(context, workspace.dataModelVersion),
-      historicalFiles: state, byId: new Map(resources.map((record) => [record.id, record]))
+      historicalCommit: commit, historicalFiles: state, byId: new Map(resources.map((record) => [record.id, record]))
     };
     context.workspacesByCommit.set(commit, loaded);
     if (context.workspacesByCommit.size > cacheLimit) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);

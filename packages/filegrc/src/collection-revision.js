@@ -25,6 +25,7 @@ export function legacyCollectionRevision(loaded, resourceType, options = {}) {
 
 export function collectionRevisionMatches(loaded, resourceType, storedRevision, options = {}) {
   if (!storedRevision) return false;
+  if (resourceType === "obligation") return revisionsMatch("collection", storedRevision, options.currentRevision || collectionRevision(loaded, resourceType, options));
   const currentRevision = options.currentRevision
     || collectionRevision(loaded, resourceType, options);
   // Accept both the pre-0.16 scope: input and the digest-only input used by
@@ -61,6 +62,15 @@ export function collectionRevisionMatches(loaded, resourceType, storedRevision, 
 // Retention Schedule is an approval of exact content and keeps its binding.
 export function collectionReviewDecisionMatches(loaded, resourceType, review, records, options = {}) {
   if (!review) return false;
+  if (resourceType === "obligation") {
+    if (!Array.isArray(review.populationResourceIds)) return false;
+    if (!collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options)) return false;
+    if (JSON.stringify([...(review.populationResourceIds || [])].sort()) !== JSON.stringify(records.map(({ id }) => id).sort())) return false;
+    if (!loaded.root || !review.scopeRevision) return false;
+    const historical = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
+    const program = historical?.resources.find((record) => record.type === "program" && record.id === review.scopeResourceIds?.[0]);
+    return Boolean(program && revisionsMatch("collection", review.collectionRevision, collectionRevision(historical, "obligation", { program, historicalCommit: review.scopeRevision })));
+  }
   if (resourceType === "retention-schedule-item" || Number(loaded.model.modelVersion) < 11) {
     return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
   }
@@ -230,7 +240,7 @@ function calculateCollectionRevision(loaded, resourceType, options, legacy, scop
             ? loaded.historicalFiles
               ? loaded.historicalFiles.get(`data/${path}`) ?? null
               : getFileAtRevision(loaded.root, options.historicalCommit, `data/${path}`)
-            : readFileSync(resolveDataPath(loaded.root, path), "utf8");
+            : loaded.historicalFiles ? loaded.historicalFiles.get(`data/${path}`) ?? null : loaded.historicalCommit ? getFileAtRevision(loaded.root, loaded.historicalCommit, `data/${path}`) : readFileSync(resolveDataPath(loaded.root, path), "utf8");
           if (content === null) return [];
           return [{ path, revision: createHash("sha256").update(content).digest("hex") }];
         } catch (error) {

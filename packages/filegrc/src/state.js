@@ -1,3 +1,4 @@
+import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessCollectionReviews } from "./collection-review.js";
@@ -368,6 +369,7 @@ function serializeCollectionReviewAssessment(assessment) {
     resourceType: assessment.resourceType,
     configuration: assessment.configuration,
     recordCount: assessment.recordCount,
+    ...(assessment.resourceType === "obligation" ? { recordIds: assessment.records.map(({ id }) => id) } : {}),
     review: assessment.review,
     reviewRevision: assessment.reviewRevision,
     collectionRevision: assessment.collectionRevision,
@@ -430,6 +432,8 @@ function createResourceHistoryFromLoaded(loaded, type, id, options) {
 
 async function createStateEntry(loaded, entry, options) {
   const record = structuredClone(entry.record);
+  const routeAssessment = options.includeDetails && record.type === "reporting-route-set" && record.status === "proposed"
+    ? (await assessReportingRouteSets(loaded, { programId: record.programId })).routeSets.find((candidate) => candidate.record.id === record.id) : null;
   const content = {};
   if (loaded.model.resources[record.type]) {
     for (const item of markdownEntries(loaded.model, record)) {
@@ -449,6 +453,7 @@ async function createStateEntry(loaded, entry, options) {
   }
   return {
     record,
+    ...(routeAssessment ? { proposalCommit: routeAssessment.proposalCommit } : {}),
     relativePath: `data/${entry.relativePath}`,
     revision: contentRevision(entry.source),
     content,

@@ -30,12 +30,13 @@ import {
   createResource,
   createResources,
   loadWorkspace,
+  scaffoldCollectionReview,
   scaffoldPolicyActivation,
   serveWorkspace,
   updateResource,
   validateWorkspace
 } from "../src/index.js";
-import { commitWorkspaceFiles, executeCli, initializeGitWorkspace, makeWorkspace } from "./helpers.js";
+import { commitWorkspaceFiles, executeCli, initializeExistingModel12Workspace, initializeGitWorkspace, makeWorkspace } from "./helpers.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { baselineRecordFiles } from "../../create-filegrc/src/defaults.js";
 import { resolveWorkflowDestination } from "../src/web.js";
@@ -604,6 +605,31 @@ test("rolls collection proposals into one preparation unit and one review unit",
   assert.deepEqual(existingReview.destination, { kind: "collection-review", resourceType: "retention-schedule-item" });
 });
 
+test("requires committed independent channel approval before completing proposed scope", () => {
+  const base = {
+    requirements: [],
+    proposedRequirements: [{ purposeKey: "security-reporting", sourceId: "policy-security" }],
+    issues: []
+  };
+  const route = {
+    record: { id: "channels", type: "reporting-route-set", status: "proposed", purposeKey: "security-reporting" },
+    committed: true,
+    effective: false,
+    canceled: false,
+    proposedRequirementIssues: [],
+    issues: []
+  };
+  const proposed = reportingRouteSetItem({ ...base, routeSets: [route] });
+  assert.equal(proposed.status, "action");
+  assert.deepEqual(proposed.progressUnits.map(({ status }) => status), ["complete", "action"]);
+  const approved = { ...route, record: { ...route.record, status: "approved" } };
+  assert.equal(reportingRouteSetItem({ ...base, routeSets: [approved] }).status, "complete");
+  assert.equal(reportingRouteSetItem({ ...base, routeSets: [{ ...approved, committed: false }] }).status, "action");
+  assert.equal(reportingRouteSetItem({ ...base, routeSets: [{
+    ...approved, issues: [{ code: "changed-reporting-route-proposal", message: "Approval is stale." }]
+  }] }).status, "action");
+});
+
 test("does not count a canceled optional Reporting Channel Set as setup work", () => {
   const item = reportingRouteSetItem({
     routeSets: [{
@@ -967,10 +993,10 @@ test("gives a planned Control plain Step 3 actions in readiness and workflow", a
   assert.deepEqual(getFinding.nextSteps, persistedItem.nextSteps);
 });
 
-test("moves a fresh model v11 workspace from Control launch through cutover to its first event", async (context) => {
+for (const modelVersion of ["11", "12"]) test(`moves a fresh model v${modelVersion} workspace from Control launch through cutover to its first event`, async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-first-operating-event-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-  await makeComprehensiveWorkspace(root, "11");
+  await makeComprehensiveWorkspace(root, modelVersion);
   let loaded = await loadWorkspace(root);
   const today = currentCalendarDate(loaded.workspace.timezone);
   const controlEntry = loaded.entries.find(({ record }) => record.id === "control-example");
@@ -1016,11 +1042,12 @@ test("moves a fresh model v11 workspace from Control launch through cutover to i
     obligationId: "obligation-training-launch",
     recurrence: { mode: "event", eventType: "person-started" }
   }, null, 2)}\n`);
-  await initializeGitWorkspace(root);
+  if (modelVersion === "12") await initializeExistingModel12Workspace(root);
+  else await initializeGitWorkspace(root);
 
   const before = await assessProgramReadiness(root, { asOf: today });
   const beforeControls = before.stages.find(({ id }) => id === "controls").items;
-  assert.equal(beforeControls.find(({ id }) => id === "control-control-example").implementationState, "ready-to-implement");
+  assert.equal(beforeControls.find(({ id }) => id === "control-control-example").implementationState, modelVersion === "12" ? "planned" : "ready-to-implement");
   assert.equal(beforeControls.find(({ id }) => id === "source-family-control-sec").status, "complete");
   await assert.rejects(createObligationEvent(root, {
     eventType: "person-role-changed", occurredOn: today, subjectResourceIds: ["person-example"]
@@ -1037,6 +1064,16 @@ test("moves a fresh model v11 workspace from Control launch through cutover to i
     reviewedByIds: ["person-independent-approver-example"], reviewedOn: today, confirmed: true
   });
   await commitWorkspaceFiles(root, "Review customer responsibilities");
+  if (modelVersion === "12") {
+    const beforeScheduleReview = await assessProgramReadiness(root);
+    assert.equal(beforeScheduleReview.stages.find(({ id }) => id === "controls").items.find(({ id }) => id === "control-control-example").checks.scheduleSetReviewed, false);
+    const scheduleScaffold = await scaffoldCollectionReview(root, { resourceType: "obligation", programId: program.id });
+    await applyCollectionReview(root, { ...scheduleScaffold,
+      scheduleDecisions: scheduleScaffold.scheduleDecisions.map((decision) => ({ ...decision, disposition: "adopted", rationale: "Required operation and training coverage." })),
+      rationale: "Reviewed the complete schedule set before cutover.", reviewedByIds: ["person-independent-approver-example"], reviewedOn: today, confirmed: true
+    });
+    await commitWorkspaceFiles(root, "Approve the exact schedule set");
+  }
   await applyCollectionReview(root, {
     resourceType: "control", programId: program.id, decision: "complete",
     rationale: "Reviewed the implemented Control and its launch conditions.",

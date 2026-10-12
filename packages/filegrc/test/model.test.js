@@ -13,7 +13,8 @@ import {
 
 test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "11");
+  assert.equal(model.modelVersion, "12");
+  assert.ok(model.resources.appointment.fields.scopeResourceIds.relation.includes("program"));
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
   assert.deepEqual(model.policyEvents["person-started"].subjectRules, [
@@ -38,13 +39,13 @@ test("active model exposes the complete resource registry", () => {
     "rationale"
   ]);
   assert.ok(model.relationGroups["event-subject"].includes("exception"));
-  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item", "control"]);
+  assert.deepEqual(Object.keys(model.collectionReviews), ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item", "control", "obligation"]);
   assert.equal(model.resources["collection-review"].fields.resourceType.registry, "collectionReviews");
   assert.deepEqual(
     model.resources["collection-review"].fields.populationResourceIds.relation,
     Object.keys(model.collectionReviews)
   );
-  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item", "control"]) {
+  for (const type of ["person", "framework", "vendor", "system", "complementary-control", "component", "classification", "information-type", "retention-schedule-item", "control", "obligation"]) {
     assert.ok(model.collectionReviews[type].description.length >= 60);
     assert.ok(model.collectionReviews[type].reviewPoints.length >= 2);
     assert.ok(model.collectionReviews[type].reviewPoints.length <= 3);
@@ -341,7 +342,7 @@ test("active model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "11");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "12");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");
@@ -430,7 +431,9 @@ test("published model files remain byte-for-byte frozen", async () => {
     6: "d5ed8888b4526d9866c2355f3120c8bbd4e5ba18549b5d5280a6e33cdf9fdd2f",
     7: "ba3342bd08d62c163bdaac497af6377a2ad715ef30bf4f929ea3b6b59142dc78",
     8: "4513bf03b8b8040af87cf5a85d28267706c526f2da1d6d570d44b3ff82578df2",
-    9: "9af966f140331e25e094950a1705082c978b7898e70071eb30e64d88788dcd08"
+    9: "9af966f140331e25e094950a1705082c978b7898e70071eb30e64d88788dcd08",
+    10: "8f8d28a4e32b98c39196456ccc3fa0082a9b9a0ce4f6d30b942184d2eff5d47b",
+    11: "3155cc9e5e470f35a44450a567197c294e45cbefee06c412f00da7ee9e3ebf61"
   };
   for (const [version, digest] of Object.entries(expected)) {
     const source = await readFile(new URL(`../model/v${version}.json`, import.meta.url));

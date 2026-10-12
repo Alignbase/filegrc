@@ -225,11 +225,10 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
         }
       }
     }
-    if (
-      Array.isArray(first.record.reportingRouteRequirements)
-      && first.record.reportingRouteRequirements.length
-      && !sameJson(first.record.effectiveOn, entry.record.effectiveOn)
-    ) {
+    const firstEffectiveRequirement = protectedVersions.find(({ record }) => (
+      Array.isArray(record.reportingRouteRequirements) && record.reportingRouteRequirements.length && record.effectiveOn
+    ));
+    if (firstEffectiveRequirement && !sameJson(firstEffectiveRequirement.record.effectiveOn, entry.record.effectiveOn)) {
       diagnostics.push(integrityError(
         entry,
         `${entry.record.type} "${entry.record.id}" changed the effective date governing its structured Reporting Route requirements. Preserve the original interval and create a successor decision.`

@@ -590,10 +590,9 @@ function assessRouteSet(record, loaded, at, repository) {
     && /^[a-f0-9]{40}$/i.test(String(record.proposalCommit || ""))
     ? reportingRouteRecordAtRevision(loaded, proposalEntry, record.proposalCommit)
     : null;
+  const proposalHistory = record.status === "proposed" && committed && repository.commit
+    ? reportingRouteExactHistoryEntry(loaded, record, repository.commit) : null;
   if (record.status === "proposed") {
-    const proposalHistory = committed && repository.commit
-      ? reportingRouteExactHistoryEntry(loaded, record, repository.commit)
-      : null;
     const proposalRecords = proposalHistory ? recordsAtRevision(loaded, proposalHistory.commit) : loaded.resources;
     const proposalRecord = proposalHistory
       ? proposalRecords.find(({ id }) => id === record.id) || record
@@ -705,6 +704,7 @@ function assessRouteSet(record, loaded, at, repository) {
     authorities,
     approvalAssertionTiming,
     cancellationAssertionTiming,
+    proposalCommit: proposalHistory?.commit || record.proposalCommit || null,
     issues,
     state
   };

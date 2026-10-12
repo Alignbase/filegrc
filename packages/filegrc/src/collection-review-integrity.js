@@ -22,7 +22,8 @@ export function collectionReviewRevision(record) {
     populationResourceIds: record.populationResourceIds,
     scopeResourceIds: record.scopeResourceIds,
     authoritativeComponentId: record.authoritativeComponentId,
-    supersedesId: record.supersedesId
+    supersedesId: record.supersedesId,
+    ...(record.resourceType === "obligation" ? { scheduleDecisions: record.scheduleDecisions } : {})
   };
   return calculateRevision("collection-review", JSON.stringify(canonicalRevisionValue(reviewedFacts)));
 }

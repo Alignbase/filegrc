@@ -1,3 +1,4 @@
+import { getGitSummary } from "./git.js";
 import { createResourceId } from "./id.js";
 import { applyModelMigrationBatch, applyResourceBatch, contentRevision } from "./files.js";
 import { loadWorkspace } from "./workspace.js";
@@ -902,7 +903,7 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
                 : sourceVersion === "7" ? "8"
                   : sourceVersion === "8" ? "9"
                     : sourceVersion === "9" ? "10"
-                      : ACTIVE_MODEL_VERSION;
+                      : sourceVersion === "10" ? "11" : ACTIVE_MODEL_VERSION;
   if (sourceVersion === requestedTarget) return emptyPlan(sourceVersion, requestedTarget);
   if (sourceVersion === "1" && requestedTarget === "2") {
     return planV1ToV2Migration(input, options);
@@ -931,9 +932,10 @@ export async function planModelMigration(input = process.cwd(), options = {}) {
   if (sourceVersion === "9" && requestedTarget === "10") {
     return planV9ToV10Migration(loaded);
   }
-  if (sourceVersion === "10" && requestedTarget === ACTIVE_MODEL_VERSION) {
+  if (sourceVersion === "10" && requestedTarget === "11") {
     return planV10ToV11Migration(loaded);
   }
+  if (sourceVersion === "11" && requestedTarget === "12") return planV11ToV12Migration(loaded);
   if (sourceVersion === "1" && requestedTarget === ACTIVE_MODEL_VERSION) {
     throw new Error(
       "Model v1 workspaces must migrate to model v2 first. "
@@ -3558,4 +3560,24 @@ function migrationValueMissing(value) {
     || value === null
     || (typeof value === "string" && value.trim() === "")
     || (Array.isArray(value) && value.length === 0);
+}
+
+async function planV11ToV12Migration(loaded) {
+  const hasOperatingContent = loaded.resources.some((record) => ["policy", "document", "training"].includes(record.type) && record.status === "active");
+  const git = hasOperatingContent ? getGitSummary(loaded.root) : null;
+  const unsupported = hasOperatingContent && (!git?.available || !git?.commit || !git?.clean)
+    ? [classifiedChange("unsupported", loaded.workspace.id, "scopeRevision", "Commit the current model v11 workspace before migration so existing activation history remains retrievable.")]
+    : [];
+  const workspace = { ...loaded.workspace, dataModelVersion: "12" };
+  const entry = loaded.entries.find(({ record }) => record.id === workspace.id);
+  const reviews = loaded.resources.filter(({ type, status }) => type === "program" && status !== "retired").map((program) => classifiedChange("review-required", program.id, "scheduleDecisions", "Review the complete Obligation schedule set and reporting approvals before the next activation. Existing operation and decisions are preserved."));
+  return {
+    schemaVersion: 2, sourceModelVersion: "11", targetModelVersion: "12", ready: unsupported.length === 0,
+    missing: [], conflicts: [], manualActions: [],
+    classifications: { automatic: [classifiedChange("automatic", workspace.id, "dataModelVersion", "Select model v12 without changing program records.")], reviewRequired: reviews, unsupported },
+    notes: ["Existing content and operating rules remain unchanged. No adoption, replacement, or exclusion decision is inferred.", "New activation requires an exact Program schedule-set review and approved reporting channels covering cutover."],
+    migrationReport: {}, summary: { create: 0, update: 1, automatic: 1, reviewRequired: reviews.length, unsupported: unsupported.length },
+    fileDiff: { create: [], update: [{ type: "workspace", id: workspace.id, before: loaded.workspace, after: workspace }] },
+    changes: { create: [], update: [workspace], expectedRevisions: { [workspace.id]: contentRevision(entry.source) }, validateWholeWorkspace: true, targetModelVersion: "12" }
+  };
 }

@@ -1,3 +1,4 @@
+import { scheduleSetRecords, scheduleSetInputs } from "./schedule-set.js";
 import { modelSupports } from "../model/index.js";
 import { programComponents, selectedRequirementIds } from "./program.js";
 import { resourceReviewRevisionsSync, retentionReviewResourceIds, retentionSystemUses, retentionUses } from "./retention.js";
@@ -12,6 +13,7 @@ export function scopedCollectionRecords(loaded, resourceType, program) {
       record.type === resourceType && !["retired", "superseded"].includes(record.status)
     ));
   }
+  if (resourceType === "obligation") return scheduleSetRecords(loaded, program);
   if (resourceType === "person") {
     return scopedProgramPeople(loaded, program);
   }
@@ -201,6 +203,7 @@ function scopedProgramPeople(loaded, program = {}) {
 }
 
 export function collectionRevisionInputs(loaded, resourceType, program, options = {}) {
+  if (resourceType === "obligation") return scheduleSetInputs(loaded, program);
   const legacy = options.legacy === true;
   const currentModel = modelSupports(loaded.model, "retention-schedule-approval");
   const reviewed = scopedCollectionRecords(loaded, resourceType, program);
@@ -411,6 +414,7 @@ function retentionScheduleDocumentProposalValue(record) {
 }
 
 export function collectionScopeRevisionFacts(loaded, resourceType, program, options = {}) {
+  if (resourceType === "obligation") return { programId: program?.id, controlIds: sorted(program?.controlIds), systemIds: sorted(program?.systemIds), policyIds: sorted(program?.policyIds) };
   if (!modelSupports(loaded.model, "program-scope")) {
     const common = { programId: program?.id ?? null };
     if (resourceType === "framework") {

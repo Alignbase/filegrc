@@ -254,3 +254,5 @@ After substantive edits:
 5. Run `npm run build` when producing a read-only audit view.
 
 Do not loosen validation to make a bad record pass. Fix the record or update the installed engine through its normal versioned model process.
+
+Model v12 requires a complete Program Obligation schedule-set review before activation. Use `npx filegrc review-collection obligation --program PROGRAM_ID --scaffold`, record adopted rules, replacements, retired duplicates, and intentionally inapplicable proposals, then preview and save the exact revision with an independent reviewer. Reporting Channel Sets need independent approval in Step 1; Step 3 verifies their effective coverage and usability at cutover. Existing model v11 workspaces preview `npx filegrc migrate --to-model 12 --preview --json`. See the [model v12 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v12.md).
