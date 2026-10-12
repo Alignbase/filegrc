@@ -1,3 +1,5 @@
+import { resourceIndex } from "./resource-index.js";
+import { calculationMemo } from "./calculation-cache.js";
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
 import { reviewCommitsChangingTypes, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { loadModel } from "../model/index.js";
@@ -45,6 +47,7 @@ const legacyApplicabilityDecisionFields = {
 // mutable current records between calculations. Preserve duplicates for exact
 // hash compatibility even when structural validation will reject them.
 export function createApplicabilityScopeIndex(resources, program) {
+  const index = resourceIndex(resources);
   const group = (values, key) => {
     const result = new Map();
     for (const value of values) {
@@ -55,8 +58,8 @@ export function createApplicabilityScopeIndex(resources, program) {
     return result;
   };
   return {
-    requirements: group(resources.filter(({ type }) => type === "requirement"), ({ id }) => id),
-    frameworks: group(resources.filter(({ type }) => type === "framework"), ({ id }) => id),
+    requirements: index.idsOfType("requirement"),
+    frameworks: index.idsOfType("framework"),
     programIds: Object.fromEntries(["systemIds", "frameworkIds", "requirementIds"].map((field) => [
       field, group((program?.[field] || []).map((id, position) => ({ id, position })), ({ id }) => id)
     ])),
@@ -72,6 +75,14 @@ const historicalScopeIndexes = new WeakMap();
 let compatibleModel11;
 
 export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
+  const { scopeIndex, ...modes } = options;
+  return calculationMemo(resources, "applicability-scope", [record, program, model, JSON.stringify(modes)], () =>
+    applicabilityScopeRevisionUncached(record, program, resources, model, {
+      ...options, scopeIndex: scopeIndex || calculationMemo(resources, "scope-index", [program], () => createApplicabilityScopeIndex(resources, program))
+    }));
+}
+
+function applicabilityScopeRevisionUncached(record, program, resources, model, options) {
   if (Number(model.modelVersion) >= 11 && !options.legacyDecisionScope) {
     const index = options.scopeIndex;
     const linkedRequirements = index
@@ -111,6 +122,7 @@ export function applicabilityScopeRevision(record, program, resources, model, op
     };
     return calculateRevision("applicability-scope", stableJson(facts));
   }
+  const index = resourceIndex(resources);
   const scopedResource = ["commitment", "control", "complementary-control"].includes(record?.type)
     && !options.legacyBroadScope && !options.legacyBroadCommitment;
   const linkedRequirementIds = new Set(record?.requirementIds || []);
@@ -123,22 +135,17 @@ export function applicabilityScopeRevision(record, program, resources, model, op
     !scopedResource || !(record.systemIds || []).length || record.systemIds.includes(id)
   )));
   const selectedFrameworkIds = new Set((program?.frameworkIds || []).filter((id) => (
-    !scopedResource || !linkedRequirementIds.size || resources.some((candidate) => (
-      candidate.type === "requirement" && candidate.frameworkId === id && linkedRequirementIds.has(candidate.id)
-    ))
+    !scopedResource || !linkedRequirementIds.size || index.related("requirement", "frameworkId", [id]).some((candidate) => linkedRequirementIds.has(candidate.id))
   )));
   const selectedControlIds = new Set((program?.controlIds || []).filter((id) => (
     !scopedResource || !linkedControlIds.length || linkedControlIds.includes(id)
   )));
-  const selectedComponents = resources.filter(({ type, status, systemUses, id }) => (
-    type === "component"
-    && status !== "retired"
-    && (systemUses || []).some(({ systemId }) => selectedSystemIds.has(systemId))
+  const selectedComponents = index.related("component", "systemUses.systemId", selectedSystemIds).filter(({ status, id }) => (
+    status !== "retired"
     && (!scopedResource || !(record.componentIds || []).length || record.componentIds.includes(id))
   ));
   const selectedVendorIds = new Set(selectedComponents.map(({ vendorId }) => vendorId).filter(Boolean));
-  const selectedPolicyIds = new Set(resources
-    .filter(({ type, id }) => type === "control" && selectedControlIds.has(id))
+  const selectedPolicyIds = new Set(index.matchingIds("control", selectedControlIds)
     .flatMap(({ policyIds }) => policyIds || []));
   for (const policyId of record.policyIds || []) selectedPolicyIds.add(policyId);
   const facts = {
@@ -167,8 +174,7 @@ export function applicabilityScopeRevision(record, program, resources, model, op
       })
     },
     resource: applicabilityResourceFacts(record, model, options),
-    systems: resources
-      .filter(({ type, id }) => type === "system" && selectedSystemIds.has(id))
+    systems: index.matchingIds("system", selectedSystemIds)
       .sort(compareRecordIds)
       .map((system) => pick(system, [
         "id",
@@ -181,8 +187,7 @@ export function applicabilityScopeRevision(record, program, resources, model, op
         "classificationId",
         "internetExposed"
       ], model)),
-    frameworks: resources
-      .filter(({ type, id }) => type === "framework" && selectedFrameworkIds.has(id))
+    frameworks: index.matchingIds("framework", selectedFrameworkIds)
       .sort(compareRecordIds)
       .map((framework) => pick(framework, [
         "id",
@@ -210,8 +215,7 @@ export function applicabilityScopeRevision(record, program, resources, model, op
         "classificationId",
         "continuityObjectives"
       ], model)),
-    vendors: resources
-      .filter(({ type, id }) => type === "vendor" && selectedVendorIds.has(id))
+    vendors: index.matchingIds("vendor", selectedVendorIds)
       .sort(compareRecordIds)
       .map((vendor) => pick(vendor, [
         "id",
@@ -226,8 +230,7 @@ export function applicabilityScopeRevision(record, program, resources, model, op
         "informationTypeIds",
         "classificationId"
       ], model)),
-    policies: resources
-      .filter(({ type, id }) => type === "policy" && selectedPolicyIds.has(id))
+    policies: index.matchingIds("policy", selectedPolicyIds)
       .sort(compareRecordIds)
       .map((policy) => options.legacyPolicyStatus || options.legacyPolicyOverrides
         ? pick({
@@ -245,16 +248,13 @@ export function applicabilityScopeRevision(record, program, resources, model, op
             "relatedDocumentIds", "approvedContentRevisions"
           ], model)
         : pick(policy, ["id", "requirementIds"], model)),
-    requirements: resources
-      .filter(({ type, frameworkId, id }) => type === "requirement" && selectedFrameworkIds.has(frameworkId)
-        && (!scopedResource || !linkedRequirementIds.size || linkedRequirementIds.has(id)))
+    requirements: index.related("requirement", "frameworkId", selectedFrameworkIds)
+      .filter(({ id }) => !scopedResource || !linkedRequirementIds.size || linkedRequirementIds.has(id))
       .sort(compareRecordIds)
       .map((requirement) => pick(requirement, ["id", "frameworkId", "reference", "description", "parentRequirementId"], model)),
-    commitments: resources
-      .filter(({ type, status, systemIds, controlIds, id }) => (
-        type === "commitment"
-        && !["retired", "superseded"].includes(status)
-        && (systemIds || []).some((id) => selectedSystemIds.has(id))
+    commitments: index.related("commitment", "systemIds", selectedSystemIds)
+      .filter(({ status, controlIds, id }) => (
+        !["retired", "superseded"].includes(status)
         && (!scopedResource
           || record.type === "commitment" && id === record.id
           || record.type === "control" && (controlIds || []).includes(record.id)
@@ -279,6 +279,11 @@ function compareRecordIds(left, right) {
 }
 
 function applicabilityResourceFacts(record, model, options) {
+  return calculationMemo(record, "scope-resource-projection", [model, Boolean(options.legacyDecisionScope), Boolean(options.legacyResourceProjection)], () =>
+    applicabilityResourceFactsUncached(record, model, options));
+}
+
+function applicabilityResourceFactsUncached(record, model, options) {
   const fields = Number(model.modelVersion) >= 11 && !options.legacyResourceProjection
     ? (options.legacyDecisionScope ? legacyApplicabilityDecisionFields : applicabilityDecisionFields)[record.type] : null;
   if (!fields) return canonicalObject(model, record.type, Object.fromEntries(Object.entries(record)
@@ -290,6 +295,11 @@ function applicabilityResourceFacts(record, model, options) {
 }
 
 export function applicabilityReviewIsCurrent(review, record, program, resources, model, root = null, scopeIndex = null) {
+  return calculationMemo(resources, "applicability-current", [JSON.stringify(review), record, program, model, root], () =>
+    applicabilityReviewIsCurrentUncached(review, record, program, resources, model, root, scopeIndex));
+}
+
+function applicabilityReviewIsCurrentUncached(review, record, program, resources, model, root, scopeIndex) {
   if (
     review?.scopeRevision
     && !review.scopeRevision.startsWith("scope:")
@@ -338,12 +348,12 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
       }
     }
   }
+  const index = resourceIndex(resources);
   const selectedControlIds = new Set(program?.controlIds || []);
-  const selectedPolicyIds = new Set(resources
-    .filter(({ type, id }) => type === "control" && selectedControlIds.has(id))
+  const selectedPolicyIds = new Set(index.matchingIds("control", selectedControlIds)
     .flatMap(({ policyIds }) => policyIds || []));
   for (const id of record.policyIds || []) selectedPolicyIds.add(id);
-  const policies = resources.filter(({ type, id }) => type === "policy" && selectedPolicyIds.has(id));
+  const policies = index.matchingIds("policy", selectedPolicyIds);
   // One Policy may advance while the others retain different approval states.
   // Reconstruct that Policy's former lifecycle fields without changing any
   // material scope fact or searching combinations of unrelated Policies.
@@ -384,6 +394,10 @@ function historicalScopedReviewMatches(stored, record, program, resources, model
       || historicalResources.find(({ id }) => id === program?.id);
     if (!historicalRecord || !historicalProgram) continue;
     const historicalModel = snapshot.model;
+    // Every applicability hash includes modelVersion. Cross-version review
+    // equivalence uses the explicit compatibility bridge above; a projection
+    // from another version cannot match this current-version scope.
+    if (historicalModel.modelVersion !== model.modelVersion) continue;
     let indexes = historicalScopeIndexes.get(snapshot);
     if (!indexes) historicalScopeIndexes.set(snapshot, indexes = new Map());
     if (!indexes.has(historicalProgram)) indexes.set(historicalProgram,
@@ -420,18 +434,26 @@ function legacyPolicyAlternatives(policy) {
 }
 
 function pick(record, fields, model, objectType = null) {
+  return calculationMemo(record, "scope-field-projection", [model, objectType, fields.join(",")], () => pickUncached(record, fields, model, objectType));
+}
+
+function pickUncached(record, fields, model, objectType) {
   return canonicalObject(model, objectType || record.type, Object.fromEntries(fields
     .filter((field) => record?.[field] !== undefined)
     .map((field) => [field, record[field]])));
 }
 
+const canonicalScopeValues = new WeakSet();
+
 function canonicalObject(model, type, value, revisionMap = false) {
   const resource = model.resources?.[type];
   const fields = resource?.fields || model.objectTypes?.[type]?.properties || {};
-  return Object.fromEntries(Object.keys(value).sort().map((name) => [
+  const canonical = Object.fromEntries(Object.keys(value).sort().map((name) => [
     name,
     canonicalFieldValue(model, value[name], fields[name] ?? (resource ? model.commonFields?.[name] : undefined), name, revisionMap)
   ]));
+  canonicalScopeValues.add(canonical);
+  return canonical;
 }
 
 function canonicalFieldValue(model, value, field, name, revisionMap = false) {
@@ -455,6 +477,15 @@ function canonicalFieldValue(model, value, field, name, revisionMap = false) {
 }
 
 function stableJson(value) {
+  // Shared canonical projections are immutable inside a read snapshot. Reuse
+  // their exact serialized bytes across different scope and history checks.
+  // Fresh aggregate containers are deliberately not retained here.
+  return value && typeof value === "object" && canonicalScopeValues.has(value)
+    ? calculationMemo(value, "serialized-scope-projection", [], () => stableJsonUncached(value))
+    : stableJsonUncached(value);
+}
+
+function stableJsonUncached(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;

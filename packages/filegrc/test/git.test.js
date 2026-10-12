@@ -157,9 +157,10 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   context.after(restore);
 
   // Each live repository signature also reads effective configuration and the
-  // attributes-file location; those safety reads remain outside the cache.
+  // attributes-file location and in-tree attribute inputs; those safety reads
+  // remain outside the cache (seven subprocesses per verification).
   const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 14, `expected at most 14 Git subprocesses for bootstrap, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const coldDetail = await fetch(`${served.url}/api/resource/person/person-owner?history=false&token=${encodeURIComponent(bootstrap.stateToken)}`);
@@ -175,7 +176,7 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   const coldHistoryBody = await coldHistory.json();
   assert.equal(coldHistoryBody.historyLoaded, true);
   assert.ok(Array.isArray(coldHistoryBody.history));
-  assert.ok(calls.length <= 16, `expected at most 16 Git subprocesses for deferred history, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 14, `expected at most 14 Git subprocesses for deferred history, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const workflowDetailBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
@@ -186,20 +187,20 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
 
   calls = [];
   const sectionBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 14, `expected at most 14 Git subprocesses for section bootstrap, received ${calls.length}: ${calls.join(", ")}`);
   calls = [];
   const firstProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
   assert.equal(firstProgram.status, 200);
-  assert.ok(calls.length <= 12, `expected at most 12 Git calls for an uncached program section, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 14, `expected at most 14 Git calls for an uncached program section, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const cachedProgram = await fetch(`${served.url}/api/state/program?token=${encodeURIComponent(sectionBootstrap.stateToken)}`);
   assert.equal(cachedProgram.status, 200);
-  assert.ok(calls.length <= 6, `expected at most 6 Git calls for a cached program section, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 7, `expected at most 7 Git calls for a cached program section, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   const homeBootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
-  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 14, `expected at most 14 Git subprocesses for home bootstrap, received ${calls.length}: ${calls.join(", ")}`);
   const homeSections = ["repository", "program", "obligations", "workflow"];
   calls = [];
   const coldHome = await Promise.all(homeSections.map((section) => (
@@ -213,7 +214,7 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
     fetch(`${served.url}/api/state/${section}?token=${encodeURIComponent(homeBootstrap.stateToken)}`)
   )));
   assert.equal(warmHome.every(({ status }) => status === 200), true);
-  assert.ok(calls.length <= 12, `expected at most 12 Git subprocesses for a warm home navigation, received ${calls.length}: ${calls.join(", ")}`);
+  assert.ok(calls.length <= 14, `expected at most 14 Git subprocesses for a warm home navigation, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
   assert.deepEqual(getFilesAtRevisions(root, [{ revision, relativePath: "data/budget-history.txt" }]), ["Historical budget fixture.\n"]);
@@ -306,8 +307,8 @@ test("repository sections reject revision-read deadlines and recover on retry", 
   const bootstrap = await (await fetch(`${served.url}/api/state/bootstrap`)).json();
 
   let failRevisionRead = true;
-  const restore = setHistoricalRevisionReadObserverForTests(() => {
-    if (!failRevisionRead) return;
+  const restore = setGitCommandInterceptorForTests(({ args, run }) => {
+    if (!failRevisionRead || args[0] !== "rev-parse" || !args.includes("--verify")) return run();
     failRevisionRead = false;
     const error = new Error("repository revision-read deadline");
     error.code = "FILEGRC_GIT_DEADLINE";

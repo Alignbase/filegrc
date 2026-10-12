@@ -1,3 +1,5 @@
+import { createStateCalculator } from "./state-calculator.js";
+import { withCalculationCache } from "./calculation-cache.js";
 import { createServer as createHttpServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -96,7 +98,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
   let stateInvalidationGeneration = 0;
   let activeStateMutations = 0;
   let stateMutationWaiters = [];
-  return createHttpServer(async (request, response) => {
+  const calculator = createStateCalculator();
+  const server = createHttpServer(async (request, response) => {
     const requestStarted = performance.now();
     if (timingEnabled()) {
       response.once("finish", () => {
@@ -183,7 +186,10 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
               fingerprint: snapshot.fingerprint,
               repositorySignature,
               loaded: snapshot.loaded,
-              commands: new Map()
+              id: randomUUID(),
+              calculator,
+              commands: new Map(),
+              calculations: new WeakMap()
             };
           }
           const loaded = verifiedGitCache.loaded;
@@ -782,6 +788,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       json(response, status, { error: publicErrorMessage(error, status) });
     }
   });
+  server.once("close", () => calculator.close());
+  return server;
 }
 
 async function stableStateSnapshot(input, options) {
@@ -965,22 +973,33 @@ async function loadStateSessionSection(session, section, serverOptions, programI
         ? Promise.all([loadStateSessionSection(session, "program", serverOptions, programId, sharedVerification, deadlineAt)])
         : Promise.resolve([]);
     calculationEntry = { promise: null, completedAt: null, deadlineAt };
-    calculationEntry.promise = dependencies.then((results) => {
+    calculationEntry.promise = dependencies.then(async (results) => {
       const repository = section === "workflow" ? results[0] : null;
       const program = section === "workflow" ? results[1] : section === "audits" ? results[0] : null;
       const obligations = section === "workflow" ? results[2] : null;
       const audits = section === "workflow" ? results[3] : null;
-      return measureTiming(`state-section-${section}`, () => withGitCommandCache(session.gitCommandCache, () => createAppStateSection(session.loaded, section, {
+      const [validation, repositorySnapshot] = section === "repository"
+        ? await Promise.all([
+            measureTiming("state-validation", () => session.calculationCache.calculator.calculate(session.calculationCache.id, session.loaded, "validation", {}, deadlineAt)),
+            withCalculationCache(session.calculationCache.calculations, () => withGitCommandCache(session.gitCommandCache, () => getRepositorySnapshot(session.loaded.root)))
+          ])
+        : [repository?.validation, null];
+      const calculationOptions = {
         allowNonAuthoritativeWrites: serverOptions.allowNonAuthoritativeWrites,
+        repositorySnapshot,
         generatedAt: session.generatedAt,
         programReadiness: program?.programReadiness,
         auditPreparations: audits?.auditPreparations,
         obligations: obligations?.obligations,
         git: repository?.git,
-        validation: repository?.validation,
+        validation,
         strictHistory: repository?.git?.available === true,
         programId: selectedProgramId || programId
-      })));
+      };
+      return measureTiming(`state-section-${section}`, () => section === "repository"
+        ? withCalculationCache(session.calculationCache.calculations, () => withGitCommandCache(session.gitCommandCache, () =>
+            createAppStateSection(session.loaded, section, calculationOptions)))
+        : session.calculationCache.calculator.calculate(session.calculationCache.id, session.loaded, section, calculationOptions, deadlineAt));
     }).then((state) => {
       calculationEntry.completedAt = performance.now();
       return state;

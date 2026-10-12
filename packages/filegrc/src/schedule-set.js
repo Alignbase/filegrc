@@ -1,3 +1,5 @@
+import { resourceIndex } from "./resource-index.js";
+import { calculationMemo } from "./calculation-cache.js";
 import { personWasActiveOn } from "./soc2.js";
 import { currentCalendarDate } from "./time.js";
 import { modelSupports } from "../model/index.js";
@@ -6,24 +8,25 @@ import { currentPartyPeople, queueOwnerPeople } from "./parties.js";
 import { obligationRule } from "./obligation-rule.js";
 
 export function scheduleSetRecords(loaded, program) {
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  return loaded.resources.filter((record) => record.type === "obligation"
-    && recordBelongsToProgram(record, program, byId, loaded.model));
+  return calculationMemo(loaded, "schedule-set-records", [program], () => {
+    const index = resourceIndex(loaded.resources);
+    return index.ofType("obligation").filter((record) => recordBelongsToProgram(record, program, index.byId, loaded.model));
+  });
 }
 
 export function scheduleSetInputs(loaded, program) {
   const obligations = scheduleSetRecords(loaded, program);
   const ids = new Set(obligations.flatMap((record) => [record.id, ...(record.ruleIds || []),
     ...(record.controlIds || []), ...(record.policyIds || []), ...(record.scopeResourceIds || []), record.templateResourceId]).filter(Boolean));
-  for (const rule of loaded.resources.filter((record) => record.type === "obligation-rule" && obligations.some(({ id }) => id === record.obligationId))) {
+  for (const rule of resourceIndex(loaded.resources).related("obligation-rule", "obligationId", obligations.map(({ id }) => id))) {
     ids.add(rule.id);
     for (const id of rule.sourceResourceIds || []) ids.add(id);
   }
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const byId = resourceIndex(loaded.resources).byId;
   const pending = [...ids];
   const seen = new Set();
-  while (pending.length) {
-    const id = pending.shift();
+  for (let position = 0; position < pending.length; position += 1) {
+    const id = pending[position];
     if (seen.has(id)) continue;
     seen.add(id);
     const record = byId.get(id);
@@ -45,8 +48,8 @@ export function scheduleSetInputs(loaded, program) {
 }
 
 export function scheduleReviewerConflicts(loaded, program) {
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const controls = loaded.resources.filter((record) => record.type === "control" && program?.controlIds?.includes(record.id));
+  const byId = resourceIndex(loaded.resources).byId;
+  const controls = resourceIndex(loaded.resources).matchingIds("control", program?.controlIds || []);
   // Review the whole schedule population, including proposals. Queue Team
   // membership identifies notification recipients, not individual operators.
   // Control ownership and named schedule assignments still establish conflicts.
@@ -60,7 +63,7 @@ export function scheduleSetIssues(loaded, program, review, options = {}) {
   if (!modelSupports(loaded.model, "schedule-set-review")) return [];
   if (!review) return [{ code: "schedule-set-approval-required", resourceId: program?.id, message: "Review and independently approve the complete Program schedule set before activation." }];
   const obligations = scheduleSetRecords(loaded, program);
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const byId = resourceIndex(loaded.resources).byId;
   const rawDecisions = review?.scheduleDecisions;
   const decisions = Array.isArray(rawDecisions) ? rawDecisions.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [];
   const issues = [];
@@ -75,7 +78,7 @@ export function scheduleSetIssues(loaded, program, review, options = {}) {
     const obligation = byId.get(decision.obligationId);
     if (!population.has(decision.obligationId)) continue;
     if (typeof decision.rationale !== "string" || !decision.rationale.trim()) add(obligation.id, `${obligation.title} needs a schedule disposition rationale.`);
-    const rules = loaded.resources.filter((record) => record.type === "obligation-rule" && record.obligationId === obligation.id);
+    const rules = rulesFor(obligation, loaded);
     if (decision.disposition === "adopted") {
       const rule = options.at ? obligationRule(obligation, byId, { now: options.at }) : byId.get(obligation.activeRuleId);
       if (obligation.status !== "active" || (obligation.scheduleMode === "rule"
@@ -131,7 +134,7 @@ export function scheduleSetIssues(loaded, program, review, options = {}) {
 }
 
 function rulesFor(obligation, loaded) {
-  return loaded.resources.filter((record) => record.type === "obligation-rule" && record.obligationId === obligation?.id);
+  return resourceIndex(loaded.resources).related("obligation-rule", "obligationId", [obligation?.id]);
 }
 
 function reviewedRuleChainContains(obligation, headId, targetId, byId) {

@@ -1,4 +1,6 @@
+import { resourceIndex } from "./resource-index.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
+import { calculationMemo } from "./calculation-cache.js";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import {
@@ -34,6 +36,11 @@ export function assessCollectionReviews(input, options = {}) {
 }
 
 export function assessCollectionReview(loaded, resourceType, options = {}) {
+  return calculationMemo(loaded, "collection-review", [resourceType, options.programId], () =>
+    assessCollectionReviewUncached(loaded, resourceType, options));
+}
+
+function assessCollectionReviewUncached(loaded, resourceType, options) {
   const configuration = loaded.model.collectionReviews?.[resourceType];
   if (!configuration) return null;
   const program = resolveProgram(loaded, options.programId);
@@ -88,8 +95,10 @@ export function assessCollectionReview(loaded, resourceType, options = {}) {
       currentRevision
     }
   );
+  const scheduleConflicts = resourceType === "obligation" ? scheduleReviewerConflicts(loaded, program) : [];
+  const scheduleConflictIds = new Set(scheduleConflicts);
   const reviewerEligibility = resourceType === "obligation"
-    ? { reviewerConflictIds: scheduleReviewerConflicts(loaded, program), eligibleReviewerIds: loaded.resources.filter(({ type, status }) => type === "person" && status === "active").map(({ id }) => id).filter((id) => !scheduleReviewerConflicts(loaded, program).includes(id)) }
+    ? { reviewerConflictIds: scheduleConflicts, eligibleReviewerIds: resourceIndex(loaded.resources).ofType("person").filter(({ status }) => status === "active").map(({ id }) => id).filter((id) => !scheduleConflictIds.has(id)) }
     : resourceType === "control"
     ? assessControlReviewers(loaded, records)
     : resourceType === "retention-schedule-item" && modelSupports(loaded.model, "retention-schedule-approval")
@@ -472,7 +481,7 @@ async function requireRetentionScheduleReady(loaded, resourceType, program, rete
 
 function assessControlReviewers(loaded, controls) {
   const conflictIds = new Set(controlReviewerConflictIds(loaded, controls));
-  const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
+  const people = resourceIndex(loaded.resources).ofType("person").filter(({ status }) => status === "active");
   return {
     eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),
     reviewerConflictIds: [...conflictIds].sort()
@@ -480,18 +489,17 @@ function assessControlReviewers(loaded, controls) {
 }
 
 function assessRetentionScheduleReviewers(loaded, rows) {
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const byId = resourceIndex(loaded.resources).byId;
   const conflictIds = new Set();
-  const schedules = loaded.resources.filter((record) => (
-    record.type === "document"
-    && record.documentKind === "schedule"
+  const schedules = resourceIndex(loaded.resources).ofType("document").filter((record) => (
+    record.documentKind === "schedule"
     && record.workflowScope === "program"
     && !["superseded", "retired"].includes(record.status)
   ));
   for (const record of [...schedules, ...rows]) {
     for (const id of currentPartyPeople(record.ownerIds || [], byId)) conflictIds.add(id);
   }
-  const people = loaded.resources.filter(({ type, status }) => type === "person" && status === "active");
+  const people = resourceIndex(loaded.resources).ofType("person").filter(({ status }) => status === "active");
   return {
     eligibleReviewerIds: people.map(({ id }) => id).filter((id) => !conflictIds.has(id)),
     reviewerConflictIds: [...conflictIds].sort()

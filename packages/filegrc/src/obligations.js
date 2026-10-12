@@ -1,3 +1,4 @@
+import { resourceIndex } from "./resource-index.js";
 import { scaffoldResourceMutation } from "./agent.js";
 import { createResourceId } from "./id.js";
 import {
@@ -654,7 +655,7 @@ export async function scaffoldObligationCompletion(input, options = {}) {
   const type = item.completionType || preferredCompletionType(activity, {
     ...obligation,
     subjectResourceIds: item.subjectResourceIds || []
-  }, new Map(loaded.resources.map((record) => [record.id, record])));
+  }, resourceIndex(loaded.resources).byId);
   if (!type) throw new Error(`Obligation "${obligation.id}" has no configured completion resource type.`);
 
   const mutation = scaffoldResourceMutation(
@@ -1239,7 +1240,7 @@ function assertExpectedCompletionType(obligation, record, model) {
 
 function assertAttestationCompletionScope(obligation, record, resources, event = null) {
   if (record?.type !== "attestation") return;
-  const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
+  const byId = resourceIndex(resources).byId;
   const eventPeople = (event?.subjectResourceIds || []).filter((id) => byId.get(id)?.type === "person");
   const expectedPeople = eventPeople.length
     ? eventPeople
@@ -1293,7 +1294,7 @@ function plannedActionForScaffold(loaded, action, completedOn, programId) {
 
 function applyCompletionScaffoldDefaults(record, context) {
   const { loaded, item, obligation, completedOn, activity, program } = context;
-  const byId = new Map(loaded.resources.map((candidate) => [candidate.id, candidate]));
+  const byId = resourceIndex(loaded.resources).byId;
   const responsiblePeople = currentPeopleForParties(loaded.resources, item.ownerIds || []);
   if (!responsiblePeople.length) {
     throw new Error(`Obligation "${obligation.id}" needs an active owner whose Appointment or Team resolves to a current Person.`);
@@ -1516,7 +1517,7 @@ function applyCompletionScaffoldDefaults(record, context) {
 }
 
 function currentPeopleForParties(resources, ids = [], seen = new Set()) {
-  const byId = new Map(resources.map((record) => [record.id, record]));
+  const byId = resourceIndex(resources).byId;
   const people = [];
   for (const id of ids) {
     if (seen.has(id)) continue;
