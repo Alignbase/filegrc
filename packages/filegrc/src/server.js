@@ -88,7 +88,7 @@ const RESOURCE_DETAIL_GIT_DEADLINE_MS = 10_000;
 const STATE_SECTION_GIT_DEADLINE_MS = 10_000;
 
 export function createFilegrcServer(input = process.cwd(), options = {}) {
-  assertWorkspaceEngineVersion(input);
+  assertWorkspaceEngineVersion(input, { allowModelDiagnostics: true });
   const stateSessions = new Map();
   const fileDigestCache = new Map();
   let bootstrapSnapshotPromise = null;

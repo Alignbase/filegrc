@@ -125,7 +125,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   const targetRoot = ["serve", "build", "validate"].includes(command)
     ? positionals[0] ?? root
     : root;
-  assertWorkspaceEngineVersion(targetRoot);
+  assertWorkspaceEngineVersion(targetRoot, {
+    allowModelMigration: command === "migrate",
+    allowModelDiagnostics: ["validate", "build", "serve"].includes(command)
+  });
 
   if (command === "automation") {
     const result = await assessHostedAutomation(resolveWorkspaceRoot(root));

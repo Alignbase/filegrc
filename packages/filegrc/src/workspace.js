@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
+import { assessWorkspaceRuntimeCompatibility } from "./runtime-version.js";
 import { loadModel } from "../model/index.js";
 import { resolveWorkspaceRoot } from "./paths.js";
 import { assessHostedAutomation } from "./hosted-automation.js";
@@ -12,7 +13,8 @@ export async function loadWorkspace(input = process.cwd()) {
 async function loadWorkspaceUnmeasured(input) {
   const root = resolveWorkspaceRoot(input);
   const dataRoot = join(root, "data");
-  const diagnostics = [];
+  const compatibility = assessWorkspaceRuntimeCompatibility(root);
+  const diagnostics = compatibility.compatible || compatibility.reason === "unsupported-workspace-model" ? [] : [{ severity: "error", code: "runtime-compatibility", path: "package-lock.json", message: compatibility.message }];
   const files = await collectJsonFiles(dataRoot);
   const resources = [];
   const sourceEntries = [];
@@ -69,6 +71,7 @@ async function loadWorkspaceUnmeasured(input) {
   diagnostics.push(...hostedAutomationConnection.diagnostics);
 
   return {
+    runtimeCompatibility: compatibility,
     hostedAutomationConnection,
     root,
     dataRoot,
