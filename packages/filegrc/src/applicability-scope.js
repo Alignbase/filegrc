@@ -1,5 +1,6 @@
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
 import { reviewCommitsChangingTypes, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
+import { loadModel } from "../model/index.js";
 
 const scopeSourceTypes = new Set([
   "workspace", "program", "commitment", "control", "complementary-control",
@@ -68,6 +69,7 @@ function indexedValues(index, ids) {
 }
 
 const historicalScopeIndexes = new WeakMap();
+let compatibleModel11;
 
 export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
   if (Number(model.modelVersion) >= 11 && !options.legacyDecisionScope) {
@@ -302,6 +304,13 @@ export function applicabilityReviewIsCurrent(review, record, program, resources,
   const current = revision();
   const matches = (revision) => revisionsMatch("applicability-scope", review.scopeRevision, revision);
   if (matches(current)) return true;
+  // Model 12 adds schedule-set approval, but leaves applicability facts and
+  // decision semantics unchanged. Re-evaluate the current facts with the
+  // published v11 calculation, including its historical recovery paths.
+  // Keep this bridge explicit: future models must establish equivalence before
+  // accepting reviews from another version. Never rewrite the stored review.
+  if (String(model.modelVersion) === "12" && applicabilityDecisionFields[record?.type]
+    && applicabilityReviewIsCurrent(review, record, program, resources, compatibleModel11 ||= loadModel("11"), root, scopeIndex)) return true;
   if (Number(model.modelVersion) >= 11 && matches(revision({
     legacyDecisionScope: true
   }))) return true;

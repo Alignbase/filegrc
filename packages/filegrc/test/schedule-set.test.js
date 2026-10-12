@@ -9,6 +9,7 @@ import test from "node:test";
 import { loadModel } from "../model/index.js";
 import { scheduleSetIssues, scheduleSetRecords } from "../src/schedule-set.js";
 import { collectionRevision } from "../src/collection-revision.js";
+import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "../src/applicability-scope.js";
 const scheduleSetRevision = (loaded, program) => collectionRevision(loaded, "obligation", { program });
 import { obligationRule } from "../src/obligation-rule.js";
 import { assessCollectionReview, scaffoldCollectionReview, planCollectionReview, applyCollectionReview } from "../src/collection-review.js";
@@ -16,6 +17,7 @@ import { loadWorkspace } from "../src/workspace.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { initializeGitWorkspace, initializeExistingModel12Workspace, commitWorkspaceFiles, writeJson, executeCli } from "./helpers.js";
 import { runCli } from "../src/cli.js";
+import { createAppStateSection } from "../src/state.js";
 import { currentCalendarDate } from "../src/time.js";
 import { fileURLToPath } from "node:url";
 
@@ -120,6 +122,24 @@ test("v12 migration preserves operating records and leaves schedule decisions pe
   const root = await mkdtemp(join(tmpdir(), "filegrc-v12-migration-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "11");
+  const reviewed = await loadWorkspace(root);
+  const reviewedProgram = reviewed.resources.find(({ type }) => type === "program");
+  const reviewBindings = new Map();
+  for (const entry of reviewed.entries.filter(({ record }) => ["control", "commitment", "complementary-control"].includes(record.type))) {
+    entry.record.applicabilityReview = {
+      decision: "applicable", rationale: "Required in the selected scope.",
+      reviewedByIds: ["person-independent-approver-example"], reviewedOn: currentCalendarDate("UTC"),
+      scopeRevision: applicabilityScopeRevision(entry.record, reviewedProgram, reviewed.resources, reviewed.model)
+    };
+    reviewBindings.set(entry.record.id, entry.record.applicabilityReview);
+    await writeJson(entry.path, entry.record);
+  }
+  for (const decision of reviewedProgram.requirementApplicability || []) {
+    const requirement = reviewed.resources.find(({ id }) => id === decision.requirementId);
+    decision.scopeRevision = applicabilityScopeRevision(requirement, reviewedProgram, reviewed.resources, reviewed.model);
+    reviewBindings.set(requirement.id, decision);
+  }
+  await writeJson(reviewed.entries.find(({ record }) => record.id === reviewedProgram.id).path, reviewedProgram);
   await initializeGitWorkspace(root);
   const before = await loadWorkspace(root);
   const preview = await planModelMigration(root, { targetModelVersion: "12" });
@@ -131,6 +151,22 @@ test("v12 migration preserves operating records and leaves schedule decisions pe
   const after = await loadWorkspace(root);
   assert.equal(after.workspace.dataModelVersion, "12");
   assert.deepEqual(after.resources.filter(({ type }) => type !== "workspace"), before.resources.filter(({ type }) => type !== "workspace"));
+  const program = after.resources.find(({ id }) => id === reviewedProgram.id);
+  for (const [id, review] of reviewBindings) {
+    assert.equal(applicabilityReviewIsCurrent(review, after.resources.find((r) => r.id === id), program, after.resources, after.model, root), true, id);
+  }
+  const browser = await createAppStateSection(after, "program", { programId: program.id });
+  const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+  const output = await executeCli(runCli, process.execPath, [cli, "program-readiness", "--program", program.id, "--json", "--root", root]);
+  const { generatedAt: cliGeneratedAt, ...cliReadiness } = JSON.parse(output.stdout);
+  const { generatedAt: browserGeneratedAt, ...browserReadiness } = browser.programReadiness;
+  assert.ok(cliGeneratedAt && browserGeneratedAt);
+  assert.deepEqual(cliReadiness, browserReadiness);
+  for (const id of reviewBindings.keys()) assert.equal(browser.applicabilityReviewStatuses[id], "current", id);
+  for (const resourceType of Object.keys(before.model.collectionReviews)) {
+    assert.equal(collectionRevision(after, resourceType, { program }), collectionRevision(before, resourceType, { program: reviewedProgram }), resourceType);
+    assert.equal(assessCollectionReview(after, resourceType).complete, assessCollectionReview(before, resourceType).complete, resourceType);
+  }
   assert.equal(assessCollectionReview(after, "obligation").complete, false);
   assert.equal((await planModelMigration(root, { targetModelVersion: "12" })).summary.update, 0);
 });

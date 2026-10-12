@@ -13,6 +13,34 @@ import { createAppStateSection } from "../src/state.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
+test("model 12 preserves model 11 applicability semantics without accepting material changes", () => {
+  const requirement = { id: "requirement-one", type: "requirement", frameworkId: "framework-one", description: "Criterion", reference: "CC1.1" };
+  const framework = { id: "framework-one", type: "framework", version: "1", status: "active" };
+  const program = { id: "program-one", type: "program", assuranceGoal: "soc-2-type-2", systemIds: ["system-one"], frameworkIds: [framework.id], requirementIds: [requirement.id], requirementApplicability: [{ requirementId: requirement.id, decision: "applicable" }] };
+  for (const type of ["requirement", "control", "commitment", "complementary-control"]) {
+    const record = type === "requirement" ? requirement : {
+      id: `${type}-one`, type, status: "active", statement: "Required work", systemIds: ["system-one"], requirementIds: [requirement.id], responsibleParty: "customer"
+    };
+    const resources = [requirement, framework, record];
+    const review = { decision: "applicable", reviewedOn: "2026-09-01", scopeRevision: applicabilityScopeRevision(record, program, resources, loadModel("11")) };
+    const unchanged = structuredClone(review);
+    const current = (candidate = record, selected = program, facts = resources) => applicabilityReviewIsCurrent(review, candidate, selected, facts, loadModel("12"));
+    assert.equal(current(), true, type);
+    assert.deepEqual(review, unchanged);
+    assert.equal(current({ ...record, [type === "requirement" ? "description" : "statement"]: "Changed" }), false, type);
+    assert.equal(current(record, { ...program, assuranceGoal: "soc-2-type-1" }), false, type);
+    assert.equal(current(record, program, resources.map((r) => r.type === "framework" ? { ...r, version: "2" } : r)), false, type);
+    assert.equal(current({ ...record, status: "retired" }), false, type);
+    if (type !== "requirement") {
+      assert.equal(current({ ...record, systemIds: ["system-other"] }), false, type);
+      assert.equal(current(record, { ...program, requirementApplicability: [{ requirementId: requirement.id, decision: "not-applicable" }] }), false, type);
+      assert.equal(current(record, program, resources.map((r) => r.type === "requirement" ? { ...r, description: "Changed" } : r)), false, type);
+    }
+    if (type === "control") assert.equal(current({ ...record, status: "not-applicable" }), false);
+    assert.equal(applicabilityReviewIsCurrent(review, record, program, resources, { ...loadModel("12"), modelVersion: "13" }), false, "future versions need their own compatibility decision");
+  }
+});
+
 test("model v7 rejects legacy applicability revisions and binds dependent reviews to requirement decisions", () => {
   const requirement = { id: "requirement-one", type: "requirement", frameworkId: "framework-one", reference: "CC1.1" };
   const control = { id: "control-one", type: "control", title: "Control one", policyIds: ["policy-one"] };
