@@ -6,9 +6,9 @@ const mutationQueues = new Map();
 const activeMutation = new AsyncLocalStorage();
 const deferredValidation = new AsyncLocalStorage();
 
-export function serializeWorkspaceMutation(input, task) {
+export function serializeWorkspaceMutation(input, task, options = {}) {
   const root = resolveWorkspaceRoot(input);
-  assertWorkspaceEngineVersion(root);
+  assertWorkspaceEngineVersion(root, options);
   if (activeMutation.getStore() === root) return task(root);
   const previous = mutationQueues.get(root) ?? Promise.resolve();
   const run = previous.catch(() => {}).then(() => activeMutation.run(root, () => task(root)));

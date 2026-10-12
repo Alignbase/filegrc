@@ -244,7 +244,7 @@ export async function applyRetentionScheduleReviewBatch(input, changes) {
 export async function applyModelMigrationBatch(input, changes) {
   return serializeWorkspaceMutation(input, (root) => (
     applyResourceBatchUnlocked(root, changes, "model-migration")
-  ));
+  ), { allowModelMigration: true });
 }
 
 async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperation = null) {

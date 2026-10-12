@@ -35,7 +35,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
     options.programId ?? null
   ]);
   if (!options.validationProof && appStatePromises.has(key)) return appStatePromises.get(key);
-  const promise = serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options)).finally(() => {
+  const promise = serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options), { allowModelDiagnostics: true }).finally(() => {
     if (appStatePromises.get(key) === promise) appStatePromises.delete(key);
   });
   if (!options.validationProof) appStatePromises.set(key, promise);
@@ -390,7 +390,7 @@ export async function createResourceDetail(input, type, id, options = {}) {
   return serializeWorkspaceMutation(input, async (root) => {
     const validation = await validateWorkspace(root);
     return createResourceDetailFromLoaded(validation.loaded, type, id, options);
-  });
+  }, { allowModelDiagnostics: true });
 }
 
 async function createResourceDetailFromLoaded(loaded, type, id, options) {
@@ -415,7 +415,7 @@ export async function createResourceHistory(input, type, id, options = {}) {
   return serializeWorkspaceMutation(input, async (root) => {
     const validation = await validateWorkspace(root);
     return createResourceHistoryFromLoaded(validation.loaded, type, id, options);
-  });
+  }, { allowModelDiagnostics: true });
 }
 
 function createResourceHistoryFromLoaded(loaded, type, id, options) {

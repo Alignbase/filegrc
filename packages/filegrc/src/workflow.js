@@ -1,3 +1,4 @@
+import { assertWorkspaceEngineVersion } from "./runtime-version.js";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -266,6 +267,7 @@ function contextualAction(item, loaded) {
 }
 
 export async function previewWorkflowMutation(input, mutation) {
+  assertWorkspaceEngineVersion(input);
   const loaded = await loadWorkspace(input);
   const previewCheckout = await mkdtemp(join(tmpdir(), "filegrc-workflow-preview-"));
   try {
@@ -299,6 +301,13 @@ export async function previewWorkflowMutation(input, mutation) {
       const marker = join(previewRoot, "preview-source-dirty.marker");
       await writeFile(marker, "The source workspace has uncommitted files.\n");
       runGitCommandSync(loaded.root, ["-C", previewRoot, "add", "-N", "-f", "--", "preview-source-dirty.marker"]);
+    }
+    // Preview current version files alongside current data, including uncommitted
+    // dependency repairs. The clone may contain older committed metadata.
+    for (const name of ["package.json", "package-lock.json"]) {
+      await rm(join(previewRoot, name), { force: true });
+      try { await cp(join(loaded.root, name), join(previewRoot, name)); }
+      catch (error) { if (error.code !== "ENOENT") throw error; }
     }
     const before = await assessWorkflow(loaded.root, mutation?.assessment || {});
     const record = mutation?.record;

@@ -227,7 +227,7 @@ test("previews and atomically migrates every model v1 compatibility field", asyn
   await writeJson(personPath, changedPerson);
   await assert.rejects(
     applyResourceBatch(root, preview.changes),
-    /Resource "person-example" changed after you opened it/
+    /Workspace model 1 is unsupported.*migrate --to-model 2/
   );
 
   const result = await migrateModel(root, { startsOn: "2026-08-02" });
