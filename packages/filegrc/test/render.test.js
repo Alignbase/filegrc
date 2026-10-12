@@ -1984,7 +1984,7 @@ test("keeps operation status explicit and stage instructions available on demand
   assert.match(APP_SCRIPT, /scheduled or external/);
   assert.match(APP_SCRIPT, /missingType[\s\S]*destinationHref\(\{ kind: "collection", resourceType: missingType, create: !state\.readOnly \}\)/);
   assert.match(APP_SCRIPT, /params\.get\("review"\) === "1"/);
-  assert.doesNotMatch(listSource, /workflowGuidance\(/);
+  assert.match(listSource, /type === "control" \? workflowGuidance\(\{ type, title: "Next steps" \}\)/);
   assert.match(listSource, /collectionReviewPanel\(type\)/);
   assert.match(listSource, /<th>Next action<\/th>/);
   assert.match(APP_SCRIPT, /function recordWorkflowCell\(type, entry, detailContext = ""\)/);

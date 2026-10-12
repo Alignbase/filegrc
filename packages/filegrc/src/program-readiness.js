@@ -165,12 +165,22 @@ export async function assessProgramReadiness(input, options = {}) {
 
   const policyStage = await policiesStage(scope, records, byId, readMarkdown, loaded.model);
   const controlStage = await controlsStage(scope, byId, readMarkdown, asOf, loaded.model, loaded.root, asOfTime, collectionReviews.find(({ resourceType }) => resourceType === "obligation"));
-  controlStage.items.unshift(...collectionReviews.filter(({ resourceType }) => resourceType === "obligation").map(collectionReviewReadinessItem));
+  controlStage.items.unshift(...collectionReviews.filter(({ resourceType }) => resourceType === "obligation").map((assessment) => ({
+    ...collectionReviewReadinessItem(assessment),
+    title: "Approve the Program schedule set",
+    programId: program.id,
+    commands: [
+      `npx filegrc review-collection obligation --program ${shellArgument(program.id)} --scaffold > REVIEW.json`,
+      `npx filegrc review-collection obligation --program ${shellArgument(program.id)} REVIEW.json --preview --json`,
+      `npx filegrc review-collection obligation --program ${shellArgument(program.id)} REVIEW.json --yes --json`
+    ]
+  })));
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
     .map(collectionReviewReadinessItem));
   const sourceStage = await evidenceSourcesStage(scope, byId, loaded.model, readMarkdown);
   controlStage.items.push(...sourceStage.items);
+  bindSharedReadinessPrerequisites(controlStage.items, program.id);
   const retentionScheduleReview = collectionReviews.find(({ resourceType }) => resourceType === "retention-schedule-item");
   const retentionItems = await assessRetentionReadiness(loaded, program, {
     informationTypesReviewed: collectionReviews.find(({ resourceType }) => resourceType === "information-type")?.complete === true,
@@ -397,7 +407,7 @@ export async function assessEvidenceMap(input, options = {}) {
   const evidenceItems = readiness.stages
     .find((stage) => stage.id === "controls")
     ?.items.filter((current) => current.id.startsWith("source-family-")) || [];
-  const counts = countStatuses(evidenceItems);
+  const counts = countStatuses(evidenceItems, true);
   return {
     schemaVersion: 1,
     generatedAt: readiness.generatedAt,
@@ -1700,6 +1710,7 @@ function legacyPolicyLibraryProposals(records) {
 
 async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null, asOfTime, scheduleReview = null) {
   const items = [];
+  const sourcePrerequisites = new Map();
   const families = selectedControlFamilies(scope.controls, model);
   if (!scope.controls.length) {
     items.push(item("control-scope", "action", "Select the program controls", "No controls are selected for the management program.", { type: "control" }));
@@ -1756,17 +1767,44 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null
           && queueSchedules.some((obligation) => obligationRuleIsEnabled(obligation, byId, asOfTime))
       } : {})
     };
+    const sharedChecks = modelSupports(model, "schedule-set-review") ? { scheduleSetReviewed: "collection-review-obligation" } : {};
+    const mappedMissingSourceFamilies = missingSourceFamilies.filter((family) => sourceDetails.some(({ record }) => (
+      !record.evidenceSourceKinds?.length
+      || !family.sourceKinds.length || family.sourceKinds.some((kind) => record.evidenceSourceKinds.includes(kind))
+    )));
+    const individualMissingSourceFamilies = missingSourceFamilies.filter((family) => !mappedMissingSourceFamilies.includes(family));
+    let sourcePrerequisiteIds = [];
+    // Mapping a Control to the right source remains an individual task. Once
+    // that mapping exists, missing source access or retrieval setup is one
+    // source task shared by all Controls that use it.
+    if (checks.evidenceSourceReady === false) {
+      sourcePrerequisiteIds = sourceDetails.filter(({ record, instructions }) => (
+        mappedMissingSourceFamilies.some((family) => !record.evidenceSourceKinds?.length || !family.sourceKinds.length || family.sourceKinds.some((kind) => record.evidenceSourceKinds.includes(kind)))
+        && (record.status !== "active" || !record.evidenceSourceKinds?.length || !record.evidenceOwnerIds?.length || !substantiveMarkdown(instructions) || openPlaceholderCount(instructions) > 0)
+      )).map(({ record }) => {
+        const id = `source-readiness-${record.id}`;
+        sourcePrerequisites.set(id, item(id, "action", `Prepare ${record.title} as an evidence source`,
+          "Make the source active, assign its evidence roles, name the people who can obtain evidence, and document complete retrieval instructions. This source setup is shared by its dependent Controls.", record,
+          { commands: [`npx filegrc get ${shellArgument(record.id)} --mutation`] }));
+        return id;
+      });
+      if (sourcePrerequisiteIds.length && !individualMissingSourceFamilies.length) sharedChecks.evidenceSourceReady = sourcePrerequisiteIds;
+    }
+    const individualChecks = Object.fromEntries(Object.entries(checks).filter(([name]) => !Object.hasOwn(sharedChecks, name)));
+    const sharedPrerequisiteIds = [...new Set([...Object.entries(sharedChecks).filter(([name]) => !checks[name]).flatMap(([, ids]) => ids), ...sourcePrerequisiteIds])];
     const launchChecks = Object.fromEntries(Object.entries(checks).filter(([name]) => ![
       "implemented", "implementationDate"
     ].includes(name)));
     const launchReady = Object.values(launchChecks).every(Boolean);
     const implementationState = control.status === "implemented"
-      ? Object.values(checks).every(Boolean) ? "implemented" : "implemented-with-gaps"
+      ? Object.values(individualChecks).every(Boolean)
+        ? sharedPrerequisiteIds.length ? "implemented-awaiting-prerequisites" : "implemented"
+        : "implemented-with-gaps"
       : control.status === "partially-implemented" ? "partial"
         : launchReady ? "ready-to-implement" : "planned";
-    const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
-    const nextSteps = controlImplementationSteps(control, checks, {
-      missingSourceFamilies,
+    const missing = Object.entries(individualChecks).filter(([, value]) => !value).map(([name]) => controlCheckLabel(name));
+    const nextSteps = controlImplementationSteps(control, individualChecks, {
+      missingSourceFamilies: sourcePrerequisiteIds.length ? individualMissingSourceFamilies : missingSourceFamilies,
       targets: [...new Set([
         ...(control.systemIds || []),
         ...(control.componentIds || [])
@@ -1774,14 +1812,21 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null
     });
     items.push(item(
       `control-${control.id}`,
-      missing.length ? "action" : "complete",
+      missing.length ? "action" : sharedPrerequisiteIds.length ? "blocked" : "complete",
       `${control.code ? `${control.code}: ` : ""}${control.title}`,
       missing.length
         ? nextSteps[0] || `Complete the remaining Control checks: ${missing.join(", ")}.`
+        : sharedPrerequisiteIds.length ? "Individual implementation checks pass. Resolve the shared Program prerequisites before treating this Control as ready."
         : `Implemented ${control.effectiveOn}; owned, scoped, scheduled, documented, mapped, and tied to ${sourceSystems.length} authoritative ${sourceSystems.length === 1 ? "source" : "sources"}.`,
       control,
       {
         checks,
+        programId: scope.program.id,
+        individualChecks,
+        sharedPrerequisiteIds,
+        prerequisiteIds: [...new Set([...Object.values(sharedChecks).flat(), ...sourcePrerequisiteIds])],
+        sharedOnly: !missing.length && sharedPrerequisiteIds.length > 0,
+        progressUnits: [{ id: `control-${control.id}`, status: missing.length ? "action" : "complete", title: control.title }],
         launchChecks,
         implementationState,
         implementationAssertion: "Implemented means the stated control works for the named Systems, its owner and procedure match current practice, and its evidence sources can produce proof. Scheduled or event-driven Controls have at least one enabled linked Obligation. It does not assert that a scheduled cycle or event has already occurred. Record dated operating proof when it does.",
@@ -1795,6 +1840,7 @@ async function controlsStage(scope, byId, readMarkdown, asOf, model, root = null
       }
     ));
   }
+  items.push(...sourcePrerequisites.values());
   return stage("controls", "Implement Controls", "Put each selected Control in place. Check its launch conditions, then mark it Implemented when it is working. Dated proof follows during operation.", items);
 }
 
@@ -1875,6 +1921,7 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
       completeSources[0] || selectedSources[0] || { type: sourceType },
       {
         progressUnit: false,
+        rollupOnly: componentSources,
         familyId: family.id,
         sourceKinds: family.sourceKinds,
         controlIds: family.controls.map((control) => control.id),
@@ -2253,6 +2300,16 @@ function stage(id, title, description, items) {
   return { id, title, description, items };
 }
 
+function bindSharedReadinessPrerequisites(items, programId) {
+  for (const prerequisite of items) {
+    const dependents = items.filter((candidate) => candidate.prerequisiteIds?.includes(prerequisite.id));
+    if (!dependents.length) continue;
+    prerequisite.programId = programId;
+    prerequisite.dependentResources = dependents.map(({ resourceType: type, resourceId: id, title }) => ({ type, id, title }));
+    prerequisite.message += ` ${dependents.length} selected ${dependents.length === 1 ? "Control depends" : "Controls depend"} on this shared prerequisite.`;
+  }
+}
+
 function finalizeStage(current) {
   current.counts = countStatuses(current.items);
   current.status = current.counts.action ? "action" : current.counts.later ? "later" : "complete";
@@ -2321,9 +2378,12 @@ function shellArgument(value) {
     : `'${text.replaceAll("'", "'\\''")}'`;
 }
 
-function countStatuses(items) {
+function countStatuses(items, includeRollups = false) {
   const counts = { complete: 0, action: 0, later: 0, info: 0 };
-  for (const current of items) counts[current.status] = (counts[current.status] || 0) + 1;
+  for (const current of items) {
+    if (current.rollupOnly && current.status !== "complete" && !includeRollups) continue;
+    counts[current.status] = (counts[current.status] || 0) + 1;
+  }
   return counts;
 }
 

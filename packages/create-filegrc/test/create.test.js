@@ -730,12 +730,15 @@ test("creates a complete generic repository with one dependency", async (context
     const sourceFinding = workflow.findings.find(({ key }) => (
       key === `program.controls.source-family-${familyId}`
     ));
-    assert.equal(sourceFinding.state, "ready", familyId);
-    assert.equal(
-      sourceFinding.actions.some(({ command }) => /scaffold system/.test(command)),
-      false,
-      familyId
-    );
+    assert.equal(sourceFinding, undefined, "source-family rollups must not duplicate mapping actions");
+    const sourceRollup = programReadiness.stages.find(({ id }) => id === "controls").items
+      .find(({ id }) => id === `source-family-${familyId}`);
+    assert.equal(sourceRollup.status, "action", familyId);
+    for (const mapping of sourceRollup.controlMappings.filter(({ complete }) => !complete)) {
+      const controlFinding = workflow.findings.find(({ key }) => key === `program.controls.control-${mapping.controlId}`);
+      assert.equal(controlFinding.state, "ready", mapping.controlId);
+      assert.equal(controlFinding.actions.some(({ command }) => /scaffold system/.test(command)), false);
+    }
     assert.equal(
       workflow.findings.find(({ key }) => key === `evidence-source.${familyId}.coverage`).state,
       "ready",
