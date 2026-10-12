@@ -52,6 +52,14 @@ export function currentPartyPeople(ids = [], byId) {
   });
 }
 
+// A Team owns a work queue, but membership and chairing do not prove that a
+// person performs its work. Personal and Appointment assignments do name them.
+// Use this only for Obligation queue ownership, never for governed content or
+// Control implementation ownership.
+export function queueOwnerPeople(ids = [], byId) {
+  return currentPartyPeople(ids.filter((id) => byId.get(id)?.type !== "team"), byId);
+}
+
 export function partiesIndependent(ownerIds = [], approverIds = [], byId) {
   const owners = partyPeople(ownerIds, byId);
   const approvers = partyPeople(approverIds, byId);
