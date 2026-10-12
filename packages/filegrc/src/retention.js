@@ -1,3 +1,4 @@
+import { calculationMemo, hasCalculationCache } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { contentRevision } from "./files.js";
@@ -157,6 +158,9 @@ export async function resourceReviewRevision(loaded, resourceId) {
 }
 
 export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "legacy", reviewer = null) {
+  if (hasCalculationCache() && !loaded.historicalFiles) {
+    return resourceReviewRevisionsSync(loaded, ids, scopeHashInput, false, null, reviewer);
+  }
   const wanted = new Set(ids);
   const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const revisions = new Map();
@@ -184,7 +188,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
         if (error.code !== "ENOENT") throw error;
       }
     }
-    if (!matchedSection) { reviewing.delete(key); return null; }
+    if (!matchedSection) { reviewing.delete(key); revisions.set(key, null); return null; }
     let missingDependency = false;
     for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
       const revision = await review(sourceId, sourceHeading(entry.record, sourceId));
@@ -192,7 +196,7 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
       else missingDependency = true;
     }
     reviewing.delete(key);
-    if (missingDependency) return null;
+    if (missingDependency) { revisions.set(key, null); return null; }
     const revision = contentRevision(parts.join("\n"));
     revisions.set(key, revision);
     return revision;
@@ -204,10 +208,28 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
   return new Map([...selected].filter(([, revision]) => revision));
 }
 
+function reviewerSourceKey(reviewer) {
+  // These are the only reviewer facts used by source projection and section
+  // selection. Rows with the same review basis can share their source graph.
+  return JSON.stringify([reviewer?.type || null, reviewer?.sourceSectionHeadings || null]);
+}
+
+const historicalMarkdownSnapshot = Symbol("historical Markdown snapshot");
+
+function reviewMarkdownSource(loaded, path, commit = null, files = null) {
+  return calculationMemo(loaded, "review-markdown-source", [path, commit], () => {
+    if (commit === historicalMarkdownSnapshot) return loaded.historicalFiles?.get(`data/${path}`) ?? null;
+    if (commit) return loaded.historicalFiles?.get(`data/${path}`)
+      ?? files?.get(`data/${path}`) ?? getFileAtRevision(loaded.root, commit, `data/${path}`);
+    try { return readFileSync(resolveDataPath(loaded.root, path), "utf8"); }
+    catch (error) { if (error.code === "ENOENT") return null; throw error; }
+  });
+}
+
 export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy", legacySource = false, historicalCommit = null, reviewer = null, lifecycleNeutral = true) {
   const wanted = new Set(ids);
-  const entries = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
-  const revisions = new Map();
+  const entries = calculationMemo(loaded, "review-entry-index", [], () => new Map(loaded.entries.map((entry) => [entry.record.id, entry])));
+  const revisions = calculationMemo(loaded, "review-graph", [scopeHashInput, legacySource, historicalCommit, reviewerSourceKey(reviewer), lifecycleNeutral], () => new Map());
   const reviewing = new Set();
   const review = (id, heading = null) => {
     const key = `${id}\0${heading || ""}`;
@@ -220,11 +242,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
     let matchedSection = !decisionHeading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, legacySource, reviewer)) {
       try {
-        const source = (historicalCommit || entry.reviewCommit)
-          ? loaded.historicalFiles?.get(`data/${markdown.path}`)
-            ?? entry.reviewFiles?.get(`data/${markdown.path}`)
-            ?? getFileAtRevision(loaded.root, historicalCommit || entry.reviewCommit, `data/${markdown.path}`)
-          : readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8");
+        const source = reviewMarkdownSource(loaded, markdown.path, historicalCommit || entry.reviewCommit, entry.reviewFiles);
         if (source !== null) {
           const section = legacySource ? source : reviewedMarkdownSection(source, decisionHeading);
           if (section !== null) { parts.push(section); matchedSection = true; }
@@ -233,7 +251,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
         if (error.code !== "ENOENT") throw error;
       }
     }
-    if (!matchedSection) { reviewing.delete(key); return null; }
+    if (!matchedSection) { reviewing.delete(key); revisions.set(key, null); return null; }
     let missingDependency = false;
     for (const sourceId of [...new Set(entry.record.sourceResourceIds || [])].sort()) {
       const revision = review(sourceId, sourceHeading(entry.record, sourceId));
@@ -241,7 +259,7 @@ export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legac
       else missingDependency = true;
     }
     reviewing.delete(key);
-    if (missingDependency) return null;
+    if (missingDependency) { revisions.set(key, null); return null; }
     const revision = contentRevision(parts.join("\n"));
     revisions.set(key, revision);
     return revision;
@@ -274,6 +292,11 @@ export function resourceReviewRevisionMatches(loaded, revisions, id, stored, rev
 // semantic source graph must still equal today's graph, including linked
 // records and Markdown, before the old approval is treated as current.
 function historicallyEquivalentReviewSource(loaded, id, stored, current, reviewer = null) {
+  return calculationMemo(loaded, "historical-review-equivalence", [id, stored, current, reviewerSourceKey(reviewer)], () =>
+    historicallyEquivalentReviewSourceUncached(loaded, id, stored, current, reviewer));
+}
+
+function historicallyEquivalentReviewSourceUncached(loaded, id, stored, current, reviewer) {
   if (!loaded.root) return false;
   const context = reviewHistoryContext(loaded.root, loaded);
   const { index } = context;
@@ -420,37 +443,43 @@ function approvedReviewContentMatches(loaded, entry, commit = null) {
   const bindings = entry.record.approvedContentRevisions || entry.record.effectiveContentRevisions;
   if (!bindings) return true;
   for (const markdown of reviewMarkdownEntries(loaded, entry, false)) {
-    const source = commit
-      ? loaded.historicalFiles?.get(`data/${markdown.path}`)
-        ?? getFileAtRevision(loaded.root, commit, `data/${markdown.path}`)
-      : (() => {
-        try { return readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8"); }
-        catch (error) { if (error.code === "ENOENT") return null; throw error; }
-      })();
+    const source = reviewMarkdownSource(loaded, markdown.path, commit);
     if (!source || !revisionsMatch("content", bindings[markdown.path], contentRevision(source))) return false;
   }
   return true;
 }
 
 export function reviewedMarkdownSection(source, heading) {
-  if (!heading) return source;
-  const lines = source.split("\n");
-  const wanted = heading.trim().replace(/^#{1,6}\s+/, "").toLowerCase();
-  const headings = [];
-  const fencedLines = new Set();
-  let fence = null;
-  for (const [index, line] of lines.entries()) {
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (fence) {
-      fencedLines.add(index);
-      if (marker?.[0] === fence[0] && marker.length >= fence.length
-        && /^\s*$/.test(line.slice(line.indexOf(marker) + marker.length))) fence = null;
-      continue;
+  return calculationMemo(reviewedMarkdownSection, "markdown-section", [source, heading], () =>
+    reviewedMarkdownSectionUncached(source, heading));
+}
+
+function parseReviewMarkdown(source) {
+  return calculationMemo(parseReviewMarkdown, "parsed-markdown", [source], () => {
+    const lines = source.split("\n");
+    const headings = [];
+    const fencedLines = new Set();
+    let fence = null;
+    for (const [index, line] of lines.entries()) {
+      const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      if (fence) {
+        fencedLines.add(index);
+        if (marker?.[0] === fence[0] && marker.length >= fence.length
+          && /^\s*$/.test(line.slice(line.indexOf(marker) + marker.length))) fence = null;
+        continue;
+      }
+      if (marker) { fence = marker; fencedLines.add(index); continue; }
+      const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+      if (match) headings.push({ index, level: match[1].length, title: match[2].trim().toLowerCase() });
     }
-    if (marker) { fence = marker; fencedLines.add(index); continue; }
-    const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (match) headings.push({ index, level: match[1].length, title: match[2].trim().toLowerCase() });
-  }
+    return { lines, headings, fencedLines };
+  });
+}
+
+function reviewedMarkdownSectionUncached(source, heading) {
+  if (!heading) return source;
+  const wanted = heading.trim().replace(/^#{1,6}\s+/, "").toLowerCase();
+  const { lines, headings, fencedLines } = parseReviewMarkdown(source);
   const matches = headings.filter(({ title }) => title === wanted);
   if (matches.length !== 1) return null;
   const selected = matches[0];
@@ -474,6 +503,11 @@ function sourceHeading(record, sourceId) {
 }
 
 function retentionPolicyHeading(loaded, entry, reviewer) {
+  return calculationMemo(loaded, "retention-heading", [entry, reviewer?.type], () =>
+    retentionPolicyHeadingUncached(loaded, entry, reviewer));
+}
+
+function retentionPolicyHeadingUncached(loaded, entry, reviewer) {
   if (reviewer?.type !== "retention-schedule-item" || entry.record.type !== "policy") return null;
   // Older rows often bind a whole Policy. A single retention section gives
   // that decision a narrower basis while an explicit heading still wins.
@@ -481,11 +515,7 @@ function retentionPolicyHeading(loaded, entry, reviewer) {
   for (const markdown of markdownEntries(loaded.model, entry.record)) {
     let source;
     try {
-      source = loaded.historicalFiles?.get(`data/${markdown.path}`)
-        ?? (entry.reviewCommit
-          ? entry.reviewFiles?.get(`data/${markdown.path}`)
-            ?? getFileAtRevision(loaded.root, entry.reviewCommit, `data/${markdown.path}`)
-          : readFileSync(resolveDataPath(loaded.root, markdown.path), "utf8"));
+      source = reviewMarkdownSource(loaded, markdown.path, entry.reviewCommit || (loaded.historicalFiles ? historicalMarkdownSnapshot : null), entry.reviewFiles);
     } catch (error) {
       if (error.code === "ENOENT") continue;
       throw error;

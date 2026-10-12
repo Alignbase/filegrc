@@ -1,8 +1,10 @@
 import { modelSupports } from "../model/index.js";
+import { calculationMemo } from "./calculation-cache.js";
+import { resourceIndex } from "./resource-index.js";
 
 export function resolveProgram(loaded, requestedId) {
   if (!modelSupports(loaded.model, "program-scope")) return loaded.workspace;
-  const programs = loaded.resources.filter((record) => record.type === "program" && record.status !== "retired");
+  const programs = resourceIndex(loaded.resources).ofType("program").filter((record) => record.status !== "retired");
   if (requestedId) {
     const program = programs.find(({ id }) => id === requestedId);
     if (requestedId === "program-unconfigured" && !programs.length) {
@@ -46,16 +48,17 @@ export function selectedRequirementIds(program, model) {
 export function programComponents(loaded, program) {
   if (!modelSupports(loaded.model, "program-scope")) return [];
   const systemIds = new Set(program.systemIds || []);
-  return loaded.resources.filter((record) => (
-    record.type === "component"
-    && record.status !== "retired"
-    && (record.systemUses || []).some(({ systemId }) => systemIds.has(systemId))
-  ));
+  return resourceIndex(loaded.resources).related("component", "systemUses.systemId", systemIds)
+    .filter((record) => record.status !== "retired");
 }
 
 // Follow authority/source relationships, not owners, evidence, or completion
 // records: those links must not make unrelated work enter a Program.
 export function recordProgramRelationships(record, byId) {
+  return calculationMemo(byId, "program-relationships", [record], () => recordProgramRelationshipsUncached(record, byId));
+}
+
+function recordProgramRelationshipsUncached(record, byId) {
   const result = { programIds: new Set(), controlIds: new Set(), policyIds: new Set(), systemIds: new Set(), scopeResourceIds: new Set() };
   const seen = new Set();
   const pending = [record];
@@ -83,15 +86,17 @@ export function recordBelongsToProgram(record, program, byId, model) {
   if (!program || !modelSupports(model, "program-scope") || program.type !== "program") return true;
   if (!record) return false;
   const relationships = recordProgramRelationships(record, byId);
-  const selectedPolicies = new Set([
-    ...(program.policyIds || []),
-    ...(program.controlIds || []).flatMap((id) => byId.get(id)?.policyIds || [])
-  ]);
   // Narrower authority wins: a shared Policy or System cannot pull a Control
   // or an engagement owned by another Program into this queue.
   if (relationships.programIds.length) return relationships.programIds.includes(program.id);
-  if (relationships.controlIds.length) return relationships.controlIds.some((id) => (program.controlIds || []).includes(id));
-  if (relationships.systemIds.length) return relationships.systemIds.some((id) => (program.systemIds || []).includes(id));
-  if (relationships.policyIds.length) return relationships.policyIds.some((id) => selectedPolicies.has(id));
+  const selected = calculationMemo(byId, "program-membership-selection", [program], () => ({
+    controls: new Set(program.controlIds || []),
+    systems: new Set(program.systemIds || []),
+    policies: new Set([...(program.policyIds || []),
+      ...(program.controlIds || []).flatMap((id) => byId.get(id)?.policyIds || [])])
+  }));
+  if (relationships.controlIds.length) return relationships.controlIds.some((id) => selected.controls.has(id));
+  if (relationships.systemIds.length) return relationships.systemIds.some((id) => selected.systems.has(id));
+  if (relationships.policyIds.length) return relationships.policyIds.some((id) => selected.policies.has(id));
   return relationships.scopeResourceIds.length === 0;
 }

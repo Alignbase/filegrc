@@ -1,3 +1,4 @@
+import { resourceIndex } from "./resource-index.js";
 import { assertWorkspaceEngineVersion } from "./runtime-version.js";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -536,7 +537,7 @@ function recordIncompleteReason(record, loaded, program) {
   if (!messages[record.status]) return null;
   const requiredness = recordFinalizationRequiredness(record, loaded, program);
   if (record.status === "blocked") {
-    const byId = new Map(loaded.resources.map((resource) => [resource.id, resource]));
+    const byId = resourceIndex(loaded.resources).byId;
     return {
       state: "blocked",
       requiredness,
@@ -803,7 +804,7 @@ async function assessPeriodHealth(loaded, options) {
   }
 
   const findings = [];
-  const recordById = new Map(loaded.resources.map((record) => [record.id, record]));
+  const recordById = resourceIndex(loaded.resources).byId;
   const relevantEntries = loaded.entries.filter(({ record }) => [
     "appointment",
     "control",
@@ -985,7 +986,7 @@ async function assessPeriodHealth(loaded, options) {
 async function auditLifecycleFindings(loaded, audits, program) {
   if (!modelSupports(loaded.model, "guided-workflow")) return [];
   const target = program || resolveProgram(loaded);
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const byId = resourceIndex(loaded.resources).byId;
   const retentionRules = loaded.resources.filter((record) => record.type === "retention-schedule-item");
   const retentionRevisions = await resourceReviewRevisions(loaded, retentionRules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
   const retentionScheduleApproved = retentionScheduleIsAuthoritative(loaded, target);

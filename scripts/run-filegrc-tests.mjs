@@ -13,6 +13,7 @@ const unitFiles = new Set([
   "model.test.js",
   "parties.test.js",
   "recurrence.test.js",
+  "resource-index.test.js",
   "source-coverage.test.js",
   "time.test.js",
 ]);

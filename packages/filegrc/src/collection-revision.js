@@ -1,3 +1,5 @@
+import { resourceIndex } from "./resource-index.js";
+import { calculationMemo } from "./calculation-cache.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { modelSupports } from "../model/index.js";
@@ -142,18 +144,16 @@ export function reviewedControlConflictIds(loaded, review) {
   }
   const controls = scopedCollectionRecords(source, "control", program);
   const controlIds = new Set(controls.map(({ id }) => id));
-  const byId = new Map(source.resources.map((record) => [record.id, record]));
+  const byId = resourceIndex(source.resources).byId;
   return controlReviewerConflictIds(source, controls, byId, controlIds);
 }
 
-export function controlReviewerConflictIds(loaded, controls, byId = new Map(loaded.resources.map((record) => [record.id, record])), controlIds = new Set(controls.map(({ id }) => id))) {
+export function controlReviewerConflictIds(loaded, controls, byId = resourceIndex(loaded.resources).byId, controlIds = new Set(controls.map(({ id }) => id))) {
   const conflicts = new Set();
   for (const control of controls) {
     for (const id of currentPartyPeople(control.ownerIds || [], byId)) conflicts.add(id);
   }
-  for (const obligation of loaded.resources.filter((record) => record.type === "obligation"
-    && record.status === "active"
-    && (record.controlIds || []).some((id) => controlIds.has(id)))) {
+  for (const obligation of resourceIndex(loaded.resources).related("obligation", "controlIds", controlIds).filter((record) => record.status === "active")) {
     // A team owns the work queue, but membership alone does not mean each member
     // performed its work. Named people and appointment holders remain conflicts.
     for (const id of queueOwnerPeople(obligation.ownerIds || [], byId)) conflicts.add(id);
@@ -162,6 +162,11 @@ export function controlReviewerConflictIds(loaded, controls, byId = new Map(load
 }
 
 function historicallyEquivalentCollection(loaded, resourceType, stored, options, current) {
+  return calculationMemo(loaded, "historical-collection-equivalence", [resourceType, stored, JSON.stringify(options), current], () =>
+    historicallyEquivalentCollectionUncached(loaded, resourceType, stored, options, current));
+}
+
+function historicallyEquivalentCollectionUncached(loaded, resourceType, stored, options, current) {
   if (!loaded.root) return false;
   const context = reviewHistoryContext(loaded.root, loaded);
   for (const commit of [...reviewHistoryCommits(context)].reverse()) {
@@ -201,6 +206,11 @@ function historicallyEquivalentCollection(loaded, resourceType, stored, options,
 }
 
 function calculateCollectionRevision(loaded, resourceType, options, legacy, scopeHashInput = "legacy", scopeFactsInput = "legacy") {
+  return calculationMemo(loaded, "collection-revision", [resourceType, JSON.stringify(options), legacy, scopeHashInput, scopeFactsInput], () =>
+    calculateCollectionRevisionUncached(loaded, resourceType, options, legacy, scopeHashInput, scopeFactsInput));
+}
+
+function calculateCollectionRevisionUncached(loaded, resourceType, options, legacy, scopeHashInput, scopeFactsInput) {
   const workspaceWideRetentionReview = resourceType === "retention-schedule-item"
     && modelSupports(loaded.model, "retention-schedule-approval")
     && !legacy;

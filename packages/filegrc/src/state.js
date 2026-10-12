@@ -118,8 +118,8 @@ export async function createAppStateSection(input, section, options = {}) {
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   if (section === "repository") {
     const [validation, snapshot] = await Promise.all([
-      validateWorkspace(loaded),
-      measureTiming("state-repository-snapshot", () => getRepositorySnapshot(loaded.root))
+      options.validation ?? validateWorkspace(loaded),
+      measureTiming("state-repository-snapshot", () => options.repositorySnapshot ?? getRepositorySnapshot(loaded.root))
     ]);
     const reconciliation = validation.reconciliation
       ?? await measureTiming("state-reconciliation", () => planReconciliation(loaded));

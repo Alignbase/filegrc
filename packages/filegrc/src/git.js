@@ -1,3 +1,4 @@
+import { calculationMemo, hasCalculationCache } from "./calculation-cache.js";
 import { execFileSync, spawn } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
@@ -1480,6 +1481,7 @@ export async function getRepositoryStateSignature(
   const timeout = { timeoutMs: options.timeoutMs };
   let status;
   let gitDirectory;
+  let topLevel;
   let refs;
   let remotes;
   try {
@@ -1489,7 +1491,7 @@ export async function getRepositoryStateSignature(
         ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
         { ...timeout, operation: "verify repository state" },
       ),
-      runGitCommand(root, ["rev-parse", "--absolute-git-dir"], {
+      runGitCommand(root, ["rev-parse", "--absolute-git-dir", "--show-toplevel"], {
         ...timeout,
         operation: "locate repository state",
       }),
@@ -1512,6 +1514,7 @@ export async function getRepositoryStateSignature(
     refs = "";
     remotes = "";
   }
+  [gitDirectory, topLevel] = gitDirectory.trim().split("\n");
   const background = backgroundSynchronizations.get(root);
   const backgroundState = background
     ? {
@@ -1532,7 +1535,7 @@ export async function getRepositoryStateSignature(
     .update("\0")
     .update(repositoryOperationFromDirectory(gitDirectory.trim()) || "")
     .update("\0")
-    .update(await repositoryCalculationConfiguration(root, gitDirectory.trim()))
+    .update(await repositoryCalculationConfiguration(root, gitDirectory.trim(), topLevel))
     .update("\0")
     .update(JSON.stringify(backgroundState))
     .update("\0")
@@ -1540,7 +1543,7 @@ export async function getRepositoryStateSignature(
     .digest("hex");
 }
 
-async function repositoryCalculationConfiguration(root, gitDirectory) {
+async function repositoryCalculationConfiguration(root, gitDirectory, topLevel) {
   if (!gitDirectory) return "";
   const source = async (path) => {
     try { return await readFile(path, "utf8"); }
@@ -1554,9 +1557,45 @@ async function repositoryCalculationConfiguration(root, gitDirectory) {
   }
   // Config and shallow-history changes can affect repository and approval checks
   // without moving HEAD or changing porcelain status. Never log their contents.
-  const attributesFile = await tryGitAsync(root, ["config", "--path", "--get", "core.attributesfile"], "read Git attributes configuration");
-  return JSON.stringify(await Promise.all([
+  const [variables, effectiveConfiguration, listed] = await Promise.all([
+    tryGitAsync(root, ["var", "-l"], "read Git attribute locations"),
     tryGitAsync(root, ["config", "--null", "--list", "--show-origin"], "read effective Git configuration"),
+    tryGitAsync(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."], "locate attribute inputs")
+  ]);
+  const variable = (name) => variables.split("\n").find((line) => line.startsWith(`${name}=`))?.slice(name.length + 1);
+  const systemAttributes = variable("GIT_ATTR_SYSTEM");
+  const attributesFile = variable("GIT_ATTR_GLOBAL")
+    || await tryGitAsync(root, ["config", "--path", "--get", "core.attributesfile"], "read Git attributes configuration");
+  // Git variables include current author/committer timestamps. Read config
+  // separately with unambiguous NUL delimiters and hash only attribute paths.
+  const legacyAttributes = [];
+  if (!systemAttributes) {
+    // Older Git cannot locate its system attributes. Fingerprint the effective
+    // attributes instead, and propagate failures rather than reuse an
+    // unverifiable repository snapshot.
+    const paths = nulFields(listed);
+    for (let offset = 0; offset < paths.length; offset += 256) {
+      legacyAttributes.push(await runGitCommand(root,
+        ["check-attr", "-z", "--all", "--", ...paths.slice(offset, offset + 256)],
+        { operation: "verify effective Git attributes" }));
+    }
+  }
+  const attributePaths = new Set();
+  const boundary = resolve(topLevel || root);
+  for (const path of ["workspace.json", ...nulFields(listed)]) {
+    let directory = resolve(root, path, "..");
+    while (directory === boundary || directory.startsWith(`${boundary}${sep}`)) {
+      attributePaths.add(resolve(directory, ".gitattributes"));
+      if (directory === boundary) break;
+      directory = resolve(directory, "..");
+    }
+  }
+  return JSON.stringify(await Promise.all([
+    Promise.all([...attributePaths].sort().map(async (path) => [path, await source(path)])),
+    listed,
+    effectiveConfiguration,
+    [systemAttributes || null, attributesFile || null],
+    systemAttributes ? source(systemAttributes) : legacyAttributes,
     source(resolve(commonDirectory, "info", "attributes")),
     source(attributesFile ? resolve(root, attributesFile) : resolve(process.env.XDG_CONFIG_HOME || resolve(homedir(), ".config"), "git", "attributes")),
     source(resolve(commonDirectory, "config")),
@@ -3883,6 +3922,10 @@ export function withGitCommandAdapterForTests(adapter, callback) {
   return gitCommandAdapters.run(adapter, callback);
 }
 
+export function reportCalculationSubprocess(event) {
+  gitSubprocessObserver?.(event);
+}
+
 export function setGitSubprocessObserverForTests(observer) {
   if (observer !== null && typeof observer !== "function") {
     throw new TypeError(
@@ -4131,7 +4174,7 @@ function tryGitRaw(cwd, args) {
 }
 
 function gitRaw(cwd, args, options = {}) {
-  return cachedGitCommand("raw", cwd, args, options, () => {
+  const run = () => cachedGitCommand("raw", cwd, args, options, () => {
     return executeGitSync(cwd, args, {
       cwd,
       encoding: "utf8",
@@ -4143,6 +4186,12 @@ function gitRaw(cwd, args, options = {}) {
       ),
     });
   });
+  // Attribute reuse is limited to verified read calculations, never writes.
+  // Older Git releases cannot report their system attribute file. Keep their
+  // checks uncached rather than retaining an unverifiable attribute result.
+  return args[0] === "check-attr" && hasCalculationCache() && tryGit(cwd, ["var", "GIT_ATTR_SYSTEM"])
+    ? calculationMemo(gitRaw, "attributes", [resolve(cwd), JSON.stringify(args), options.gitIndexFile || null], run)
+    : run();
 }
 
 function cachedGitCommand(outputKind, cwd, args, options, run) {
