@@ -11,7 +11,7 @@ import { resolveDataPath } from "./paths.js";
 import { getFileAtRevision } from "./git.js";
 import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
-import { currentPartyPeople } from "./parties.js";
+import { currentPartyPeople, queueOwnerPeople } from "./parties.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionDigest, revisionsMatch } from "./revisions.js";
 
@@ -156,8 +156,7 @@ export function controlReviewerConflictIds(loaded, controls, byId = new Map(load
     && (record.controlIds || []).some((id) => controlIds.has(id)))) {
     // A team owns the work queue, but membership alone does not mean each member
     // performed its work. Named people and appointment holders remain conflicts.
-    const namedOwners = (obligation.ownerIds || []).filter((id) => byId.get(id)?.type !== "team");
-    for (const id of currentPartyPeople(namedOwners, byId)) conflicts.add(id);
+    for (const id of queueOwnerPeople(obligation.ownerIds || [], byId)) conflicts.add(id);
   }
   return [...conflicts].sort();
 }

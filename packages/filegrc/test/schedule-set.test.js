@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadModel } from "../model/index.js";
-import { scheduleSetIssues, scheduleSetRecords } from "../src/schedule-set.js";
+import { scheduleSetIssues, scheduleSetRecords, scheduleReviewerConflicts } from "../src/schedule-set.js";
+import { controlReviewerConflictIds } from "../src/collection-revision.js";
+import { partiesIndependent } from "../src/parties.js";
 import { collectionRevision } from "../src/collection-revision.js";
 import { applicabilityReviewIsCurrent, applicabilityScopeRevision } from "../src/applicability-scope.js";
 const scheduleSetRevision = (loaded, program) => collectionRevision(loaded, "obligation", { program });
@@ -31,6 +33,36 @@ function fixture() {
   ];
   return { loaded: { resources: records, model: loadModel("12"), root: null }, program };
 }
+
+test("queue ownership separates independent oversight from operational assignments", () => {
+  const owner = { id: "person-owner", type: "person", status: "active" };
+  const reviewer = { id: "person-reviewer", type: "person", status: "active" };
+  const operator = { id: "person-operator", type: "person", status: "active" };
+  const chair = { id: "appointment-chair", type: "appointment", status: "active", holderId: reviewer.id };
+  const team = { id: "team-oversight", type: "team", status: "active", memberIds: [owner.id, reviewer.id, operator.id], chairIds: [chair.id] };
+  const control = { id: "control-one", type: "control", status: "implemented", ownerIds: [owner.id] };
+  const obligation = { id: "obligation-review", type: "obligation", status: "active", ownerIds: [team.id], controlIds: [control.id] };
+  const program = { id: "program-one", type: "program", controlIds: [control.id] };
+  const loaded = { model: loadModel("12"), resources: [owner, reviewer, operator, chair, team, control, obligation] };
+  assert.deepEqual(scheduleReviewerConflicts(loaded, program), [owner.id]);
+  assert.deepEqual(controlReviewerConflictIds(loaded, [control]), [owner.id]);
+  // A mixed-role Team can contain an operator without making its chair one.
+  obligation.ownerIds.push(operator.id);
+  assert.deepEqual(scheduleReviewerConflicts(loaded, program), [operator.id, owner.id].sort());
+  obligation.ownerIds = [team.id, chair.id];
+  assert.deepEqual(scheduleReviewerConflicts(loaded, program), [owner.id, reviewer.id].sort());
+  obligation.ownerIds = [team.id];
+  control.ownerIds.push(reviewer.id);
+  assert.deepEqual(scheduleReviewerConflicts(loaded, program), [owner.id, reviewer.id].sort());
+  control.ownerIds = [team.id];
+  assert.deepEqual(scheduleReviewerConflicts(loaded, program), [owner.id, reviewer.id, operator.id].sort());
+  assert.equal(partiesIndependent([team.id], [reviewer.id], new Map(loaded.resources.map((r) => [r.id, r]))), false,
+    "governed content owned by a Team still cannot be approved by its member");
+  control.ownerIds = [owner.id];
+  obligation.status = "proposed";
+  obligation.ownerIds = [reviewer.id];
+  assert.ok(scheduleReviewerConflicts(loaded, program).includes(reviewer.id), "personal proposal assignments still conflict");
+});
 const adopted = { obligationId: "calendar", disposition: "adopted", ruleId: "rule-calendar", rationale: "Required periodic review." };
 const exclusion = { obligationId: "event", disposition: "inapplicable", rationale: "This proposal duplicates the separately reviewed incident checklist." };
 
@@ -78,6 +110,14 @@ test("schedule-set review is exact, independent, and available through the CLI",
   const root = await mkdtemp(join(tmpdir(), "filegrc-schedule-review-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "12");
+  const initial = await loadWorkspace(root);
+  const team = initial.entries.find(({ record }) => record.type === "team");
+  team.record.memberIds = ["person-example", "person-independent-approver-example"];
+  team.record.chairIds = ["person-independent-approver-example"];
+  await writeJson(team.path, team.record);
+  const ownedSchedule = initial.entries.find(({ record }) => record.type === "obligation");
+  ownedSchedule.record.ownerIds = [team.record.id];
+  await writeJson(ownedSchedule.path, ownedSchedule.record);
   await initializeExistingModel12Workspace(root);
   let loaded = await loadWorkspace(root);
   const program = loaded.resources.find(({ type }) => type === "program");
@@ -90,6 +130,14 @@ test("schedule-set review is exact, independent, and available through the CLI",
   await assert.rejects(planCollectionReview(root, { ...payload, reviewedByIds: ["person-example"] }), /independent/);
   const plan = await planCollectionReview(root, payload);
   assert.deepEqual(plan.changes.create[0].scheduleDecisions, payload.scheduleDecisions);
+  const browser = await createAppStateSection(loaded, "program", { programId: program.id });
+  assert.ok(browser.collectionReviews.obligation.eligibleReviewerIds.includes("person-independent-approver-example"));
+  const payloadPath = `${root}-schedule-review.json`;
+  context.after(() => rm(payloadPath, { force: true }));
+  await writeJson(payloadPath, payload);
+  const preview = await executeCli(runCli, process.execPath, [cli, "review-collection", "obligation", payloadPath, "--program", program.id, "--root", root, "--preview", "--json"]);
+  const stableChanges = (changes) => JSON.parse(JSON.stringify(changes, (key, value) => key === "knowledgeCutoffAt" ? undefined : value));
+  assert.deepEqual(stableChanges(JSON.parse(preview.stdout).changes), stableChanges(plan.changes));
   await applyCollectionReview(root, { ...payload, confirmed: true });
   loaded = await loadWorkspace(root);
   assert.equal(assessCollectionReview(loaded, "obligation", { programId: program.id }).complete, true);

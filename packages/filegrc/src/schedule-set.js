@@ -2,7 +2,7 @@ import { personWasActiveOn } from "./soc2.js";
 import { currentCalendarDate } from "./time.js";
 import { modelSupports } from "../model/index.js";
 import { recordBelongsToProgram } from "./program.js";
-import { currentPartyPeople } from "./parties.js";
+import { currentPartyPeople, queueOwnerPeople } from "./parties.js";
 import { obligationRule } from "./obligation-rule.js";
 
 export function scheduleSetRecords(loaded, program) {
@@ -47,8 +47,13 @@ export function scheduleSetInputs(loaded, program) {
 export function scheduleReviewerConflicts(loaded, program) {
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const controls = loaded.resources.filter((record) => record.type === "control" && program?.controlIds?.includes(record.id));
-  return [...new Set([...controls, ...scheduleSetRecords(loaded, program)]
-    .flatMap((record) => [...currentPartyPeople(record.ownerIds || [], byId)]))].sort();
+  // Review the whole schedule population, including proposals. Queue Team
+  // membership identifies notification recipients, not individual operators.
+  // Control ownership and named schedule assignments still establish conflicts.
+  return [...new Set([
+    ...controls.flatMap((record) => [...currentPartyPeople(record.ownerIds || [], byId)]),
+    ...scheduleSetRecords(loaded, program).flatMap((record) => [...queueOwnerPeople(record.ownerIds || [], byId)])
+  ])].sort();
 }
 
 export function scheduleSetIssues(loaded, program, review, options = {}) {
