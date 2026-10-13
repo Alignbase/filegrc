@@ -1,3 +1,4 @@
+import { assessOperatingPreparation, firstOperatingTasks } from "./operating-preparation.js";
 import { reportingCutoverIssues } from "./activation-readiness.js";
 import { recordBelongsToProgram } from "./program.js";
 import { readFile } from "node:fs/promises";
@@ -205,6 +206,27 @@ export async function assessProgramReadiness(input, options = {}) {
   } else {
     controlStage.items.push(...retentionItems, ...retentionReviewItems);
   }
+  let preparation = null;
+  if (modelSupports(loaded.model, "operating-preparation")) {
+    preparation = await assessOperatingPreparation(loaded, program, scope.controls, asOf);
+    const phase = preparation.active ? "current-remediation" : "pre-activation";
+    const makeGroup = (id, title, checks, type) => {
+      const remaining = checks.filter(({ complete }) => !complete);
+      return item(id, remaining.length ? "action" : "complete", title,
+        remaining.length ? `${remaining.length} concrete ${remaining.length === 1 ? "check remains" : "checks remain"}. ${preparation.active ? "Keep operating with the recorded activation dates. Perform missing work now; existing historical oversight remains recorded." : "Finish these checks before activation and before recommending observation start."}`
+          : "The current records satisfy these preparation checks; no new approval or fictional operating event is created.",
+        type === "program" ? program : { type }, {
+          programId: program.id, preparationPhase: phase, preparationChecks: checks,
+          nextSteps: remaining.flatMap(({ work, instructions = [], approval }) => [work, ...instructions, ...(approval ? [approval] : [])]),
+          commands: unique(remaining.flatMap(({ commands }) => commands)),
+          destination: remaining[0]?.destination || { kind: "record", resourceType: "program", resourceId: program.id }
+        });
+    };
+    controlStage.items.push(makeGroup("prepare-baseline-evidence", "Prepare baseline and evidence collection", preparation.baseline, "source-coverage"),
+      makeGroup("confirm-operating-ownership", "Confirm operating ownership", preparation.ownership.preparationChecks, "program"));
+    const reviewItem = controlStage.items.find(({ id }) => id === "collection-review-obligation");
+    if (reviewItem) reviewItem.firstOperatingTasks = firstOperatingTasks(loaded, program, { effectiveOn: asOf });
+  }
   const governedContent = await governedContentItems(scope, records, byId, readMarkdown, asOf, loaded.model, asOfTime);
   const policyActivations = await assessPolicyActivations(
     requiredPolicies(scope, byId),
@@ -219,11 +241,12 @@ export async function assessProgramReadiness(input, options = {}) {
   );
   const controlOversight = collectionReviews.find(({ resourceType }) => resourceType === "control");
   const controlReviewPrerequisiteIds = controlStage.items.map(({ id }) => id);
+  const existingOperatingReview = preparation?.active && controlOversight?.complete === true;
   const oversightEligible = Boolean(controlOversight && controlOversightEligible(controlStage.items));
-  if (oversightEligible) {
+  if (oversightEligible || existingOperatingReview) {
     controlStage.items.push(collectionReviewReadinessItem(controlOversight));
   }
-  const oversightCurrent = oversightEligible && controlOversight.complete === true;
+  const oversightCurrent = (oversightEligible || existingOperatingReview) && controlOversight.complete === true;
   controlStage.items.push(...governedContent.items.map((item) => oversightCurrent || item.status === "complete"
     ? item
     : { ...item, status: "blocked", message: `Complete the Control collection review before activation. ${item.message}` }));
@@ -374,7 +397,8 @@ export async function assessProgramReadiness(input, options = {}) {
       missingContactIds,
       cutoverComplete: controlStage.counts.action === 0
     }),
-    controlReviewReady: oversightEligible,
+    controlReviewReady: oversightEligible || Boolean(existingOperatingReview),
+    ...(preparation ? { preparationReady: preparation.baseline.every(({ complete }) => complete) && preparation.ownership.complete, preparationPhase: preparation.active ? "current-remediation" : "pre-activation" } : {}),
     controlReviewPrerequisiteIds,
     documentActivations: governedContent.documentActivations,
     trainingActivations: governedContent.trainingActivations,
@@ -1943,7 +1967,9 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
 
 async function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model, progressWindow = null) {
   const goal = workspace?.assuranceGoal || "none";
-  if (!evidenceReady) {
+  const alreadyOperating = modelSupports(model, "operating-preparation") && (records.some((record) => record.type === "policy" && record.status === "active"
+    && scope.controls.some((control) => control.policyIds?.includes(record.id))) || Boolean(progressWindow?.start));
+  if (!evidenceReady && !alreadyOperating) {
     return stage("operation", "Operate the Program", "Run the controls and preserve dated evidence after the Evidence Ready gate passes.", [
       item(
         "operation-later",
@@ -2004,7 +2030,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
         : "Add the management target end when useful. Starting reliable evidence collection is the immediate milestone.",
       workspace
     ),
-    item(
+    ...(!modelSupports(model, "operating-preparation") ? [item(
       "source-readiness-tests",
       !start ? "later" : incompleteSourceCoverage.length ? "action" : "complete",
       "Pass the evidence-source retrieval dry runs",
@@ -2023,7 +2049,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
           "npx filegrc program-readiness --json"
         ]
       }
-    ),
+    )] : []),
     item(
       "ongoing-obligations",
       obligations.counts.overdue || obligations.counts.blocked ? "action" : "complete",
@@ -2370,6 +2396,8 @@ function item(id, status, title, message, resource = {}, details = {}) {
     ...details
   };
 }
+
+function unique(values) { return [...new Set(values)]; }
 
 function shellArgument(value) {
   const text = String(value);

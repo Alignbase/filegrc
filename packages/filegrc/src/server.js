@@ -1,3 +1,4 @@
+import { firstOperatingTasks } from "./operating-preparation.js";
 import { createStateCalculator } from "./state-calculator.js";
 import { withCalculationCache } from "./calculation-cache.js";
 import { createServer as createHttpServer } from "node:http";
@@ -577,6 +578,11 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           }, () => setupWorkspace(input, payload));
         };
         return json(response, 200, await completeSetup());
+      }
+      if (request.method === "POST" && url.pathname === "/api/operating-preview") {
+        const payload = await readJson(request);
+        const loaded = await loadWorkspace(input);
+        return json(response, 200, firstOperatingTasks(loaded, resolveProgram(loaded, payload.programId), payload));
       }
       if (request.method === "POST" && url.pathname === "/api/policy-activations") {
         const payload = await readJson(request);

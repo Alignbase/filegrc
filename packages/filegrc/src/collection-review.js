@@ -1,3 +1,4 @@
+import { firstOperatingTasks } from "./operating-preparation.js";
 import { resourceIndex } from "./resource-index.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
 import { calculationMemo } from "./calculation-cache.js";
@@ -216,7 +217,7 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
     : null;
   return {
     resourceType,
-    ...(resourceType === "obligation" ? { programId: program.id } : {}),
+    ...(resourceType === "obligation" ? { programId: program.id, firstOperatingTasks: firstOperatingTasks(loaded, program) } : {}),
     ...(resourceType === "obligation" ? { scheduleDecisions: assessment.records.map((record) => ({ obligationId: record.id, disposition: null, ...(record.activeRuleId ? { ruleId: record.activeRuleId } : {}), rationale: null })) } : {}),
     ...(assessment.changesSinceReview ? { changesSinceReview: assessment.changesSinceReview } : {}),
     decision: priorDecisionStillValid ? priorReview.decision : (assessment.records.length
@@ -430,6 +431,7 @@ export async function planCollectionReview(input = process.cwd(), options = {}) 
   }
   return {
     operation: "collection-review",
+    ...(resourceType === "obligation" ? { firstOperatingTasks: firstOperatingTasks(loaded, program) } : {}),
     resourceType,
     assessment,
     changes: {

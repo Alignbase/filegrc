@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { ACTIVE_MODEL_VERSION, loadModel, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
+import { ACTIVE_MODEL_VERSION, loadModel, modelSupports, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
 import { buildAgentGuide, findResourceReferences, listResourceTypes, scaffoldResourceMutation } from "./agent.js";
 import { buildActionContext } from "./action-context.js";
 import { assessAuditPreparation, prepareAuditWorkspace } from "./audit-preparation.js";
@@ -304,9 +304,18 @@ export async function runCli(argv = process.argv.slice(2)) {
       else printAgentOverview(result);
       return result;
     }
-    const result = buildAgentGuide(loaded, type, { id: flags.id, programId: flags.program });
+    const programs = loaded.resources.filter(({ type, status }) => type === "program" && status !== "retired");
+    const activePrograms = programs.filter(({ status }) => status === "active");
+    const preparationProgramAvailable = flags.program || activePrograms.length === 1 || activePrograms.length === 0 && programs.length <= 1;
+    const preparationChecks = preparationProgramAvailable && modelSupports(loaded.model, "operating-preparation")
+      ? (await assessProgramReadiness(loaded, { programId: flags.program })).stages.flatMap(({ items }) => items)
+        .flatMap(({ preparationChecks = [] }) => preparationChecks)
+        .filter((check) => check.resourceType === type || check.sourceId && type === "component"
+          || check.evidenceIds?.length && type === "evidence")
+      : undefined;
+    const result = buildAgentGuide(loaded, type, { id: flags.id, programId: flags.program, preparationChecks });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else printAgentGuide(result);
+    else { printAgentGuide(result); printPreparationChecks(result.preparationChecks); }
     return result;
   }
   if (command === "program-path") {
@@ -526,6 +535,8 @@ export async function runCli(argv = process.argv.slice(2)) {
         for (const item of stage.items) {
           console.log(`${item.status.toUpperCase()}\t${item.title}${item.nextSteps?.length ? "" : `\t${item.message}`}`);
           printGuidanceSteps(item);
+          printPreparationChecks(item.preparationChecks);
+          printOperatingPreview(item.firstOperatingTasks);
         }
       }
       if (result.policyActivations.length) {
@@ -797,7 +808,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ? await planCollectionReview(root, options)
       : await withWorkflowDelta(root, () => applyCollectionReview(root, options));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else if (flags.preview) console.log(`Collection review preview: ${result.assessment.configuration.title}.`);
+    else if (flags.preview) { console.log(`Collection review preview: ${result.assessment.configuration.title}.`); printOperatingPreview(result.firstOperatingTasks); }
     else console.log(`Confirmed ${result.assessment.configuration.title}.`);
     return result;
   }
@@ -818,7 +829,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ? await planPolicyActivation(root, options)
       : await withWorkflowDelta(root, () => activatePolicies(root, options));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else if (flags.preview) console.log(`Policy activation preview: ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
+    else if (flags.preview) { console.log(`Policy activation preview: ${result.policyIds.length} Policies effective ${result.effectiveOn}.`); printOperatingPreview(result.firstOperatingTasks); }
     else console.log(`Activated ${result.policyIds.length} Policies effective ${result.effectiveOn}.`);
     return result;
   }
@@ -843,7 +854,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ? await planDocumentActivation(root, options)
       : await withWorkflowDelta(root, () => activateDocuments(root, options));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else if (flags.preview) console.log(`Document activation preview: ${result.documentIds.length} governed Documents effective ${result.effectiveOn}.`);
+    else if (flags.preview) { console.log(`Document activation preview: ${result.documentIds.length} governed Documents effective ${result.effectiveOn}.`); printOperatingPreview(result.firstOperatingTasks); }
     else console.log(`Activated ${result.documentIds.length} governed Documents effective ${result.effectiveOn}.`);
     return result;
   }
@@ -867,7 +878,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       ? await planGovernedContentActivation(root, options)
       : await withWorkflowDelta(root, () => activateGovernedContent(root, options));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else if (flags.preview) console.log(`Governed-content activation preview: ${result.resourceIds.length} records effective ${result.effectiveOn}.`);
+    else if (flags.preview) { console.log(`Governed-content activation preview: ${result.resourceIds.length} records effective ${result.effectiveOn}.`); printOperatingPreview(result.firstOperatingTasks); }
     else console.log(`Activated ${result.resourceIds.length} governed-content records effective ${result.effectiveOn}.`);
     return result;
   }
@@ -1929,6 +1940,34 @@ function buildProgramPathResult(model, readiness, auditReadiness) {
   };
 }
 
+function printPreparationChecks(checks) {
+  for (const check of checks || []) {
+    console.log(`  ${check.status.toUpperCase()}: ${check.title}`);
+    console.log(`    ${check.work}`);
+    for (const instruction of check.instructions || []) console.log(`    ${instruction}`);
+    console.log(`    Complete when: ${check.acceptance}`);
+    if (check.approval) console.log(`    ${check.approval}`);
+    if (check.candidateIds?.length) console.log(`    Existing records: ${check.candidateIds.join(", ")}`);
+    for (const command of check.commands || []) console.log(`    ${command}`);
+  }
+}
+
+function printOperatingPreview(preview) {
+  if (!preview) return;
+  console.log("\nFirst eligible work and proof");
+  console.log(preview.guidance);
+  for (const task of preview.tasks) {
+    console.log(`${task.title}: ${task.preparationPurpose === "applicability-review" ? "applicability and cadence review" : task.executionRequired ? "required test execution" : "review or operating work"}`);
+    console.log(`  Owners: ${task.ownerIds.join(", ") || "unassigned"}. Population: ${task.expectedMemberIds.join(", ") || "zero members, reconciliation required"}.`);
+    console.log(`  Proof: ${task.completionResourceTypes.join(", ")}. Allowed dates: ${task.dueWindowStart} through ${task.dueWindowEnd}; overdue ${task.overdueOn}.`);
+    console.log(`  Deadline basis: ${task.deadlineBasis} ${task.baselineReuse}`);
+    if (task.initialCycleNotice) console.log(`  ${task.initialCycleNotice}`);
+  }
+  for (const event of preview.events) for (const task of event.steps) {
+    console.log(`${event.title}: ${task.title}. Owners: ${task.ownerIds.join(", ") || "unassigned"}. Population: ${(task.population?.subjectRules || []).map((rule) => rule.resourceType + " event subject").join(", ") || "declared scope"}. Proof: ${task.completionResourceTypes.join(", ")}. Due ${task.window.dueAfter ?? "unconfigured"} ${task.window.precision === "timestamp" ? "hours" : "days"} after the event. ${task.deadlineBasis || ""}`);
+  }
+}
+
 function printGuidanceSteps(item) {
   item.nextSteps?.forEach((step, index) => console.log(`  ${index + 1}. ${step}`));
 }
@@ -2049,6 +2088,7 @@ function summarizePathAction(action) {
     title: action.title,
     message: action.message,
     ...(action.nextSteps?.length ? { nextSteps: action.nextSteps } : {}),
+    ...(action.preparationChecks ? { preparationPhase: action.preparationPhase, nextCheck: action.preparationChecks.find(({ complete }) => !complete) || null } : {}),
     ...(action.resourceType ? { resourceType: action.resourceType } : {}),
     ...(action.resourceId ? { resourceId: action.resourceId } : {})
   };

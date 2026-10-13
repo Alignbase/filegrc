@@ -37,7 +37,7 @@ test("model 12 preserves model 11 applicability semantics without accepting mate
       assert.equal(current(record, program, resources.map((r) => r.type === "requirement" ? { ...r, description: "Changed" } : r)), false, type);
     }
     if (type === "control") assert.equal(current({ ...record, status: "not-applicable" }), false);
-    assert.equal(applicabilityReviewIsCurrent(review, record, program, resources, { ...loadModel("12"), modelVersion: "13" }), false, "future versions need their own compatibility decision");
+    assert.equal(applicabilityReviewIsCurrent(review, record, program, resources, { ...loadModel("12"), modelVersion: "14" }), false, "future versions need their own compatibility decision");
   }
 });
 

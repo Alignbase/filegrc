@@ -8,6 +8,9 @@ import { createResource } from "../src/files.js";
 import { createFilegrcServer } from "../src/server.js";
 import { makeWorkspace } from "./helpers.js";
 
+const currentVersion = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
+const incompatibleVersion = "99.0.0";
+
 test("CLI, server, and direct writes reject an installed engine that differs from the lockfile", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-version-drift-"));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -74,7 +77,7 @@ test("stable runtime compatibility lines use minor before 1.0 and major thereaft
     assert.equal(assessRuntimeCompatibility("0.17.0", version).reason, "invalid-repository-version");
   }
   assert.equal(assessRuntimeCompatibility("0.17.0-beta", "0.17.0").reason, "invalid-runtime-version");
-  assert.equal(assessRuntimeCompatibility("0.17.0", "0.17.2", { dataModelVersion: "13" }).reason, "unsupported-workspace-model");
+  assert.equal(assessRuntimeCompatibility("0.17.0", "0.17.2", { dataModelVersion: "14" }).reason, "unsupported-workspace-model");
   assert.equal(assessRuntimeCompatibility("0.17.0", "0.17.2", { requiredApiContractVersion: 2 }).reason, "unsupported-api-contract");
 });
 
@@ -131,7 +134,7 @@ test("compatibility failures reach evaluations, previews, and guarded mutations"
   const root = await mkdtemp(join(tmpdir(), "filegrc-incompatible-runtime-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await eventWorkspace(root);
-  for (const version of ["0.18.0", "0.17.2-beta", "garbage"]) {
+  for (const version of [incompatibleVersion, `${currentVersion}-beta`, "garbage"]) {
     await lockWorkspace(root, version);
     const result = assessWorkspaceRuntimeCompatibility(root);
     assert.equal(result.compatible, false);
@@ -145,12 +148,12 @@ test("compatibility failures reach evaluations, previews, and guarded mutations"
       () => applyResourceBatch(root, [])
     ]) await assert.rejects(async () => operation(), error => error.code === "FILEGRC_VERSION_DRIFT" && error.compatibility.reason === result.reason);
   }
-  await lockWorkspace(root, "0.17.2");
+  await lockWorkspace(root, currentVersion);
   const workspacePath = join(root, "data/workspace.json");
   const workspace = JSON.parse(await readFile(workspacePath));
-  await writeFile(workspacePath, JSON.stringify({ ...workspace, dataModelVersion: "13" }));
+  await writeFile(workspacePath, JSON.stringify({ ...workspace, dataModelVersion: "14" }));
   assert.equal(assessWorkspaceRuntimeCompatibility(root).reason, "unsupported-workspace-model");
-  assert.throws(() => assertWorkspaceEngineVersion(root), /Workspace model 13 is unsupported/);
+  assert.throws(() => assertWorkspaceEngineVersion(root), /Workspace model 14 is unsupported/);
 });
 
 test("linked dependencies resolve their target version and cannot fall back around a broken link", async (context) => {
@@ -190,7 +193,7 @@ test("previews use current version files after an uncommitted dependency repair"
   await eventWorkspace(root);
   await lockWorkspace(root, "0.16.0");
   await initializeGitWorkspace(root);
-  await lockWorkspace(root, "0.17.2");
+  await lockWorkspace(root, currentVersion);
   const before = await readFile(join(root, "package-lock.json"), "utf8");
   await previewWorkflowMutation(root, { operation: "trigger-event", eventType: "person-started", occurredOn: "2026-07-01", subjectResourceIds: ["person-owner"] });
   assert.equal(await readFile(join(root, "package-lock.json"), "utf8"), before);
@@ -203,7 +206,7 @@ test("diagnostic CLI and server reads preserve model recovery while mutations re
   const root = await mkdtemp(join(tmpdir(), "filegrc-model-recovery-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeWorkspace(root);
-  await lockWorkspace(root, "0.17.2");
+  await lockWorkspace(root, currentVersion);
   await writeFile(join(root, "data/workspace.json"), "{");
   const server = createFilegrcServer(root);
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -221,7 +224,7 @@ test("diagnostic CLI and server reads preserve model recovery while mutations re
   const build = await captureCli(runCli, ["build", root]);
   assert.equal(build.exitCode, 0);
   await assert.rejects(createResource(root, { id: "person-recovery", type: "person", title: "Recovery person" }), /Cannot read data\/workspace.json/);
-  await lockWorkspace(root, "0.18.0");
+  await lockWorkspace(root, incompatibleVersion);
   assert.throws(() => createFilegrcServer(root), /unsupported-compatibility-line/);
   await assert.rejects(captureCli(runCli, ["validate", root, "--json"]), /unsupported-compatibility-line/);
 });

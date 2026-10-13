@@ -1,3 +1,5 @@
+import { firstOperatingTasks, activationPrerequisiteMessage } from "./operating-preparation.js";
+import { resolveProgram } from "./program.js";
 import { requireReportingCutover, requireScheduleCutover } from "./activation-readiness.js";
 import { applyResourceBatch, contentRevision } from "./files.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -18,7 +20,7 @@ export async function scaffoldPolicyActivation(input = process.cwd(), options = 
   return {
     available: approved.length > 0,
     message: !oversightReady
-      ? "Complete the current Control collection review before Program Content Activation."
+      ? activationPrerequisiteMessage(readiness)
       : approved.length
       ? `${approved.length} approved ${approved.length === 1 ? "Policy is" : "Policies are"} available for the Step 3 cutover.`
       : "No Policy is ready for activation. Finish Step 2 approval, then resolve its Step 3 implementation gaps.",
@@ -34,7 +36,7 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
   const loaded = await loadWorkspace(input);
   const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
   if (!controlOversightComplete(loaded, readiness)) {
-    throw new Error("Complete the current Control collection review before Program Content Activation.");
+    throw new Error(activationPrerequisiteMessage(readiness));
   }
   const policyIds = [...new Set((options.policyIds || []).map(String))];
   if (!policyIds.length) throw new Error("Policy activation needs at least one approved Policy.");
@@ -66,6 +68,7 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
   await requireReportingCutover(loaded, update);
   await requireScheduleCutover(loaded, update, { programId: options.programId });
   return {
+    firstOperatingTasks: firstOperatingTasks(loaded, resolveProgram(loaded, options.programId), { effectiveOn, resourceIds: policyIds }),
     operation: "policy-activation",
     policyIds,
     effectiveOn,
@@ -81,6 +84,7 @@ export async function planPolicyActivation(input = process.cwd(), options = {}) 
 }
 
 function controlOversightComplete(loaded, readiness) {
+  if (readiness.preparationReady === false) return false;
   if (!modelSupports(loaded.model, "control-collection-oversight") || !readiness.scope.controlIds.length) return true;
   if (modelSupports(loaded.model, "schedule-set-review") && readiness.stages.find(({ id }) => id === "controls")?.items.find(({ id }) => id === "collection-review-obligation")?.status !== "complete") return false;
   return readiness.stages.find(({ id }) => id === "controls")?.items

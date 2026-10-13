@@ -1137,6 +1137,8 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
       : obligation.recurrence,
     ...(obligation.window ? { window: obligation.window } : {}),
     ...(starterObligationSelector(obligation.id) ? { selector: starterObligationSelector(obligation.id) } : {}),
+    ...(obligation.id === "obligation-annual-penetration-test" ? { preparationPurpose: "applicability-review" }
+      : ["backup-test", "exercise", "penetration-test", "vulnerability-scan", "security-scan", "alert-path-test"].includes(obligation.activityType) ? { preparationPurpose: "test-execution" } : {}),
     rationale: starterObligationRationale(obligation.id),
     sourceResourceIds: [...(obligation.policyIds || [])]
   }));

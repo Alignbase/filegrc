@@ -1196,6 +1196,7 @@ function normalizeFinding(code, item, context) {
     message: item.message,
     ...(item.dependentResources ? { dependentResources: item.dependentResources, programId: item.programId } : {}),
     ...(item.nextSteps?.length ? { nextSteps: item.nextSteps } : {}),
+    ...(item.preparationChecks ? { preparationChecks: item.preparationChecks, preparationPhase: item.preparationPhase } : {}),
     ...(item.implementationState ? {
       implementationState: item.implementationState,
       launchChecks: item.launchChecks,

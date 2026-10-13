@@ -2168,7 +2168,7 @@ test("renders five navigable stage pages with progressive guidance and honest pr
   assert.equal(PROGRAM_PATH[0].summary, "A reviewed Program scope with owners, criteria, Systems, and material providers.");
   assert.match(PROGRAM_PATH[0].sections[1].steps[0], /tentative timing/);
   assert.doesNotMatch(PROGRAM_PATH[0].sections[1].steps[0], /candidate period/);
-  assert.equal(PROGRAM_PATH[2].summary, "Implemented Controls with ready evidence sources and enabled work schedules.");
+  assert.equal(PROGRAM_PATH[2].summary, "Implemented Controls, rehearsed evidence retrieval, reviewed schedules and named operating owners.");
   assert.equal(PROGRAM_PATH[3].summary, "Dated operating records and linked proof for work actually performed.");
   assert.ok(PROGRAM_PATH.every(({ summary }) => summary.length <= 120));
   assert.deepEqual(PROGRAM_PATH[0].sections[0].types, ["person", "appointment", "team", "reporting-route-set"]);
