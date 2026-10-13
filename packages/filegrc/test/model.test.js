@@ -13,7 +13,7 @@ import {
 
 test("active model exposes the complete resource registry", () => {
   const model = loadModel();
-  assert.equal(model.modelVersion, "12");
+  assert.equal(model.modelVersion, "13");
   assert.ok(model.resources.appointment.fields.scopeResourceIds.relation.includes("program"));
   assert.equal(PROGRAM_PATH.length, 5);
   assert.equal(model.policyEvents["person-started"].title, "New Worker");
@@ -342,7 +342,7 @@ test("active model exposes the complete resource registry", () => {
     "authoritativeBranch",
     "repositoryRemote"
   ]);
-  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "12");
+  assert.equal(model.resources.workspace.fields.dataModelVersion.const, "13");
   assert.ok(model.resources["source-coverage"]);
   assert.ok(model.resources["control-activity"]);
   assert.equal(model.obligationActivities["inventory-review"].completionType, "control-activity");
@@ -433,7 +433,8 @@ test("published model files remain byte-for-byte frozen", async () => {
     8: "4513bf03b8b8040af87cf5a85d28267706c526f2da1d6d570d44b3ff82578df2",
     9: "9af966f140331e25e094950a1705082c978b7898e70071eb30e64d88788dcd08",
     10: "8f8d28a4e32b98c39196456ccc3fa0082a9b9a0ce4f6d30b942184d2eff5d47b",
-    11: "3155cc9e5e470f35a44450a567197c294e45cbefee06c412f00da7ee9e3ebf61"
+    11: "3155cc9e5e470f35a44450a567197c294e45cbefee06c412f00da7ee9e3ebf61",
+    12: "d2f05ca593d1dc1d5c02bc7ab705632b8b74e12527c87c3ca5f9c144e709dbbd"
   };
   for (const [version, digest] of Object.entries(expected)) {
     const source = await readFile(new URL(`../model/v${version}.json`, import.meta.url));

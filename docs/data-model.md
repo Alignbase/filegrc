@@ -1,8 +1,8 @@
 # GRC Data Model
 
-<!-- Generated from packages/filegrc/model/v12.json. Do not edit by hand. -->
+<!-- Generated from packages/filegrc/model/v13.json. Do not edit by hand. -->
 
-Model version: `12`
+Model version: `13`
 
 Model v11 lets Control owners record implementation directly and moves Control oversight into periodic, Git-bound collection reviews. Independent Policy, Document, and Training approvals remain unchanged.
 
@@ -68,7 +68,7 @@ Headless commands:
 
 ### Step 3. Implement Controls
 
-Implemented Controls with ready evidence sources and enabled work schedules.
+Implemented Controls, rehearsed evidence retrieval, reviewed schedules and named operating owners.
 
 - **Controls** (`control`): Open this Control’s next steps and inspect linked Policy, Obligations, Components, and operating records. Reuse existing workflows; fill only the implementation gap, and mark it Implemented when it works. Record actual operation separately.
 - **Complementary controls** (`complementary-control`): Record each real customer or carved-out provider dependency, or confirm that the current scope has none.
@@ -675,6 +675,18 @@ Key format: `namespace`.
 | `excludedRuleIds` | array of id | No | References: `obligation-rule` |
 | `rationale` | string | Yes |  |
 
+### `operating-ownership`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `eventOwnerIds` | array of id | No | Event discovery and triggering owners References: `person`, `team`, `appointment` |
+| `eventSourceComponentIds` | array of id | No | Event discovery sources References: `component` |
+| `queueOwnerIds` | array of id | No | Queue and escalation owners References: `person`, `team`, `appointment` |
+| `queueCheckCadence` | string | No | Queue check cadence |
+| `reconciliationCadence` | string | No | Source event reconciliation cadence |
+| `procedureDocumentId` | id | No | Discovery, triggering, reconciliation and escalation procedure References: `document` |
+| `rehearsalEvidenceIds` | array of id | No | Operating handoff rehearsal proof References: `evidence` |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -1045,7 +1057,7 @@ When reviewing:
 
 - Select only the bounded Systems governed or examined by this Program.
 - Record Requirement applicability against this Program's current scope.
-- Keep unrelated corporate inventory outside this Program.
+- Keep unrelated inventory outside the Program. Assign source-event discovery, triggering, reconciliation, queue checks and escalation; link existing procedures and dated rehearsal proof without backdating activation.
 
 Path: `data/programs/<id>.json`
 
@@ -1064,6 +1076,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `candidateCoverage` | object (`coverage-period`) | No | Candidate period |
 | `description` | string | No |  |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
+| `operatingOwnership` | object (`operating-ownership`) | No | Operating ownership |
 
 ### Governance
 
@@ -2332,6 +2345,7 @@ Markdown companions:
 | `retrievalResult` | enum | No | Retrieval result Values: `passed`, `failed`, `partial` |
 | `sourceComponentId` | id | Conditional | Source Component References: `component` Required when `sourceKind` is `component` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `component`, `rendered-page`. |
 | `componentIds` | array of id | No | Components References: `component` |
+| `operatingResult` | outcome | No | Reported operating result |
 
 At least one of **content Markdown** is required when `sourceKind` is `authored-record` and `status` is one of `collected`, `verified`, `expired`, `withdrawn`.
 
@@ -2347,9 +2361,9 @@ Timing: Review before an evidence period, after a source or retrieval change, an
 
 When reviewing:
 
-- Decide whether this source family applies to the current scope and audit period.
-- Confirm the chosen source can produce the complete population or evidence needed.
-- Use "Not Applicable" or "Zero Population" only when it is true.
+- Decide whether this source family applies to the current scope. A current inapplicability decision does not need a fictional retrieval test.
+- Use the source's real export or query instructions to retrieve a safe scoped example or a checked zero-result export. Record the actual source, family, scope, collector, date, access and retrieval result.
+- Set collection frequency before source expiry and link the approved preservation rule for necessary Control proof. Do not retain all logs or deleted customer content by default.
 
 Path: `data/source-coverage/<id>.json`
 
@@ -2374,6 +2388,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
 | `componentId` | id | Conditional | Authoritative Component References: `component` Required when `coverageKind` is `external-component` and `status` is `active`. |
+| `retrievalMethodKey` | string (id) | No | Retrieval method key |
 
 #### `control-activity`
 
@@ -2455,6 +2470,7 @@ Markdown companions:
 | `window` | object (`obligation-window`) | No | Allowed when `scheduleMode` is `legacy`. |
 | `startsOn` | date | No | Allowed when `scheduleMode` is `legacy`. |
 | `endsOn` | date | No | Allowed when `scheduleMode` is `legacy`. |
+| `preparationPurpose` | enum | No | Preparation purpose Values: `operation`, `applicability-review`, `test-execution` |
 
 #### `obligation-event`
 
@@ -2579,6 +2595,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `cutoverDecision` | enum | No | Values: `new-windows-only`, `supersede-open-window`, `keep-open-window` |
 | `supersedesId` | id | No | References: `obligation-rule` |
 | `retiredOn` | date | Conditional | Required when `status` is `retired`. |
+| `preparationPurpose` | enum | No | Preparation purpose Values: `operation`, `applicability-review`, `test-execution` |
 
 #### `obligation-occurrence`
 

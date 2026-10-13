@@ -1,3 +1,5 @@
+import { firstOperatingTasks, activationPrerequisiteMessage } from "./operating-preparation.js";
+import { resolveProgram } from "./program.js";
 import { requireReportingCutover, requireScheduleCutover } from "./activation-readiness.js";
 import { applyDocumentActivationBatch, applyGovernedContentActivationBatch, contentRevision } from "./files.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -23,7 +25,7 @@ export async function scaffoldDocumentActivation(input = process.cwd(), options 
   return {
     available: candidates.length > 0,
     message: !oversightReady
-      ? "Complete the current Control collection review before Program Content Activation."
+      ? activationPrerequisiteMessage(readiness)
       : candidates.length
       ? `${candidates.length} approved ${candidates.length === 1 ? "Document is" : "Documents are"} ready to activate.`
       : `No ${options.auditId ? "engagement Document" : "program Document"} is ready to activate. Review the current readiness actions first.`,
@@ -46,7 +48,7 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
   if (!options.auditId && modelSupports(loaded.model, "control-collection-oversight")) {
     const readiness = await assessProgramReadiness(loaded, { programId: options.programId });
     if (!controlOversightComplete(loaded, readiness)) {
-      throw new Error("Complete the current Control collection review before Program Content Activation.");
+      throw new Error(activationPrerequisiteMessage(readiness));
     }
   }
   const resourceIds = [...new Set((options.resourceIds || options.documentIds || []).map(String))];
@@ -118,6 +120,7 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
   await requireReportingCutover(loaded, update);
   await requireScheduleCutover(loaded, update, { programId: options.programId });
   return {
+    ...(!options.auditId ? { firstOperatingTasks: firstOperatingTasks(loaded, resolveProgram(loaded, options.programId), { effectiveOn, activatedOn, activatedByIds, resourceIds }) } : {}),
     operation: governedContentOperation ? "governed-content-activation" : "document-activation",
     workflowScope,
     ...(options.auditId ? { auditId: options.auditId } : {}),
@@ -136,6 +139,7 @@ export async function planDocumentActivation(input = process.cwd(), options = {}
 }
 
 function controlOversightComplete(loaded, readiness) {
+  if (readiness.preparationReady === false) return false;
   if (!modelSupports(loaded.model, "control-collection-oversight") || !readiness.scope.controlIds.length) return true;
   if (modelSupports(loaded.model, "schedule-set-review") && readiness.stages.find(({ id }) => id === "controls")?.items.find(({ id }) => id === "collection-review-obligation")?.status !== "complete") return false;
   return readiness.stages.find(({ id }) => id === "controls")?.items
@@ -188,7 +192,7 @@ export async function scaffoldGovernedContentActivation(input = process.cwd(), o
   return {
     available: count > 0,
     message: !oversightReady
-      ? "Complete the current Control collection review before Program Content Activation."
+      ? activationPrerequisiteMessage(readiness)
       : count
       ? `${count} approved program content ${count === 1 ? "record is" : "records are"} available to activate. Review any Policy gaps before confirming.`
       : "No approved program content is available to activate. Review the current readiness actions first.",
@@ -227,9 +231,11 @@ export async function planGovernedContentActivation(input = process.cwd(), optio
     plans.push(await planPolicyActivation(input, { ...options, policyIds }));
   }
   if (resourceIds.length) plans.push(await planDocumentActivation(input, { ...options, resourceIds }));
+  const loaded = await loadWorkspace(input);
   return {
     operation: "governed-content-activation",
     workflowScope: "program",
+    firstOperatingTasks: firstOperatingTasks(loaded, resolveProgram(loaded, options.programId), { effectiveOn: options.effectiveOn, activatedOn: options.activatedOn, activatedByIds: options.activatedByIds, resourceIds: [...policyIds, ...resourceIds] }),
     policyIds,
     resourceIds: [...policyIds, ...resourceIds],
     documentIds: plans.flatMap((plan) => plan.documentIds || []),

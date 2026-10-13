@@ -80,6 +80,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
 
   return {
     type,
+    ...(options.preparationChecks ? { preparationChecks: options.preparationChecks } : {}),
     title: definition.title,
     pluralTitle: definition.pluralTitle,
     instructions: RESOURCE_INSTRUCTIONS[type] || definition.description,

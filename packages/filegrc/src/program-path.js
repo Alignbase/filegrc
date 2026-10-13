@@ -184,7 +184,7 @@ export const PROGRAM_PATH = [
     title: "Implement Controls",
     recommendations: [HOSTED_AUTOMATION],
     description: "Implement and prepare to operate",
-    summary: "Implemented Controls with ready evidence sources and enabled work schedules.",
+    summary: "Implemented Controls, rehearsed evidence retrieval, reviewed schedules and named operating owners.",
     sections: [
       { id: "controls", title: "Controls", description: "Put each selected Control into use and record its working design. Dated operating proof follows when work occurs.", steps: ["Open each Control, linked records, and current missing checks; do the setup that can be established from those sources.", "Configure the activity and record its procedure, Systems, owner, evidence sources, and any work rules its operation pattern requires.", "Mark it Implemented with its real start date when it works. Record later cycles and events separately with dated proof."], types: ["control"], defaultOpen: true },
       { id: "complementary-controls", title: "Complementary Controls", description: "Record customer or provider responsibilities that form part of the implementation boundary, or confirm there are none.", steps: ["Identify any customer or carved-out provider action an in-scope Control depends on.", "Record each dependency, or confirm that the current scope has none."], types: ["complementary-control"], defaultOpen: true },

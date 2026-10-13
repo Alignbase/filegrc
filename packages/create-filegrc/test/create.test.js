@@ -18,6 +18,8 @@ import {
 import { runCli } from "../src/cli.js";
 import { createFilegrc } from "../src/index.js";
 
+const currentEngineVersion = JSON.parse(await readFile(new URL("../../filegrc/package.json", import.meta.url), "utf8")).version;
+
 test("creates a complete generic repository with one dependency", async (context) => {
   const parent = await mkdtemp(join(tmpdir(), "create-filegrc-"));
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(parent, { recursive: true, force: true })));
@@ -30,11 +32,11 @@ test("creates a complete generic repository with one dependency", async (context
     policyOwnerEmail: "owner@example.test",
     securityContactEmail: "security@example.test",
     timezone: "America/Chicago",
-    filegrcVersion: "0.17.2",
+    filegrcVersion: currentEngineVersion,
     install: false,
     effectiveDate: "2026-07-25"
   });
-  assert.equal(result.engineVersion, "0.17.2");
+  assert.equal(result.engineVersion, currentEngineVersion);
   assert.deepEqual(result.resourceCounts, {
     total: 224,
     byType: {
@@ -72,12 +74,12 @@ test("creates a complete generic repository with one dependency", async (context
   assert.ok(proposedWork.triggers.length > 0);
   assert.equal(proposedWork.items.every(({ status }) => status === "proposed"), true);
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
-  assert.deepEqual(packageJson.dependencies, { filegrc: "^0.17.2" });
+  assert.deepEqual(packageJson.dependencies, { filegrc: `^${currentEngineVersion}` });
   assert.equal(packageJson.private, true);
   const readme = await readFile(join(target, "README.md"), "utf8");
   assert.equal(readme.includes("{{"), false);
   assert.match(readme, /# Example "Engineering" SOC 2 Program/);
-  assert.match(readme, /FileGRC 0\.17\.2/);
+  assert.ok(readme.includes(`FileGRC ${currentEngineVersion}`));
   assert.match(readme, /npx filegrc setup/);
   assert.match(readme, /npx filegrc program-path --next --json/);
   assert.match(readme, /finish Step 1 by adding the real reviewers and operators, finishing the oversight team/);
@@ -114,7 +116,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(result.gitMode, "initialized");
   assert.equal(result.gitBranch, "main");
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
-  assert.equal(workspace.dataModelVersion, "12");
+  assert.equal(workspace.dataModelVersion, "13");
   const generatedJson = (await collectTextFiles(join(target, "data"))).filter((path) => path.endsWith(".json"));
   const generatedRecords = await Promise.all(generatedJson.map(async (path) => (
     JSON.parse(await readFile(path, "utf8"))
@@ -501,8 +503,8 @@ test("creates a complete generic repository with one dependency", async (context
   });
   const cutoverPlan = planObligations(cutoverRecords, { model: loaded.model, asOf: "2026-08-08", through: "2026-09-08", now: "2026-08-08T12:00:00Z" });
   const firstCutoverReview = cutoverPlan.items.find(({ obligationId }) => obligationId === "obligation-annual-critical-vendor-review");
-  assert.equal(firstCutoverReview.dueWindowStart, "2026-08-01");
-  assert.equal(firstCutoverReview.dueWindowEnd, "2026-08-31");
+  assert.equal(firstCutoverReview.dueWindowStart, "2026-08-08");
+  assert.equal(firstCutoverReview.dueWindowEnd, "2026-09-07");
   assert.equal(obligations.every(({ id, scheduleMode, ruleIds }) => (
     scheduleMode === "rule" && ruleIds.length === 1 && ruleIds[0] === rulesByObligationId.get(id)?.id
   )), true);
@@ -631,7 +633,7 @@ test("creates a complete generic repository with one dependency", async (context
   assert.equal(incomplete.diagnostics.some(({ code }) => code === "runtime-compatibility"), true);
   const installedLockPath = join(target, "package-lock.json");
   const installedLock = JSON.parse(await readFile(installedLockPath, "utf8"));
-  installedLock.packages["node_modules/filegrc"] = { version: "0.17.2" };
+  installedLock.packages["node_modules/filegrc"] = { version: currentEngineVersion };
   await writeFile(installedLockPath, JSON.stringify(installedLock));
   const validation = await validateWorkspace(target);
   assert.deepEqual(validation.counts, { resources: 224, errors: 0, warnings: 3 });
@@ -826,7 +828,7 @@ test("creates a thirteen-record foundation without selecting a framework", async
     target,
     yes: true,
     starter: "foundation",
-    filegrcVersion: "0.17.2",
+    filegrcVersion: currentEngineVersion,
     install: false
   });
   assert.equal(result.starter, "foundation");
@@ -860,7 +862,7 @@ test("creates a thirteen-record foundation without selecting a framework", async
   assert.equal((await validateWorkspace(target)).ok, false, "skipped installation leaves an unresolved engine lock");
   const lockPath = join(target, "package-lock.json");
   const lock = JSON.parse(await readFile(lockPath, "utf8"));
-  lock.packages["node_modules/filegrc"] = { version: "0.17.2" };
+  lock.packages["node_modules/filegrc"] = { version: currentEngineVersion };
   await writeFile(lockPath, JSON.stringify(lock));
   assert.equal((await validateWorkspace(target)).ok, true);
   assert.equal(

@@ -48,7 +48,8 @@ export function buildActionContext(loaded, item) {
     .filter(([, passed]) => passed === false)
     .map(([name]) => name);
   return {
-    workPhase: actionPhase(item),
+    workPhase: item.preparationPhase === "current-remediation" ? "operation" : actionPhase(item),
+    ...(item.preparationChecks ? { preparationChecks: item.preparationChecks } : {}),
     operation: item.createResourceType
       ? sameType.length ? "inspect-before-create" : "check-before-create"
       : subject ? "inspect-existing" : sameType.length ? "inspect-before-create" : "check-before-create",

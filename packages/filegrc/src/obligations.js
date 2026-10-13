@@ -1,3 +1,6 @@
+import { preparationEvidenceIssues } from "./preparation-evidence.js";
+import { assertHistoricalRecordValid } from "./validate.js";
+import { resourceDataPath } from "./resource-markdown.js";
 import { resourceIndex } from "./resource-index.js";
 import { scaffoldResourceMutation } from "./agent.js";
 import { createResourceId } from "./id.js";
@@ -173,7 +176,10 @@ export function planObligations(resources, options = {}) {
     }
 
     const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
-    const ruleActivationDate = obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC");
+    const ruleActivationDate = !modelSupports(model, "operating-preparation")
+      ? obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC")
+      : [obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC"),
+      obligationActivationDate(obligation, byId, model, workspace?.timezone || "UTC")].filter(Boolean).sort().at(-1);
     const activationDate = ruleActivationDate;
     const recurrence = {
       ...(rule ? obligationRuleRecurrence(rule, workspace?.timezone || "UTC") : schedule.recurrence || {}),
@@ -199,7 +205,17 @@ export function planObligations(resources, options = {}) {
       const window = scanCalendarWindow(recurrence, schedule.window, index);
       if (!window || window.dueWindowStart > through) break;
       if (schedule.endsOn && window.dueWindowStart > schedule.endsOn) break;
-      if (rule && activationDate && window.dueWindowStart < activationDate) continue;
+      if (rule && activationDate && window.dueWindowStart < activationDate) {
+        if (!modelSupports(model, "operating-preparation")) continue;
+        const originalKey = `${program?.id || workspace?.id || "workspace"}:${obligation.id}:${window.dueWindowStart}`;
+        // A frozen occurrence remains authoritative. The historical-occurrence
+        // pass below preserves it instead of creating a second initial cycle.
+        if (currentOccurrence(records, originalKey, obligation.id, rule?.id, window)) continue;
+        // Preserve the eligible remainder of an initial cycle at cutover.
+        // Never allow pre-activation proof to satisfy that partial cycle.
+        if (window.dueWindowEnd < activationDate) continue;
+        window.dueWindowStart = activationDate;
+      }
       if (window.overdueOn <= from) continue;
       const occurrenceKey = `${program?.id || workspace?.id || "workspace"}:${obligation.id}:${window.dueWindowStart}`;
       const reconciliation = currentOccurrence(records, occurrenceKey, obligation.id, rule?.id, window);
@@ -208,7 +224,7 @@ export function planObligations(resources, options = {}) {
           .map((id) => byId.get(id))
           .filter((record) => (
             record
-            && completionFallsInWindow(record, window, workspace?.timezone || "UTC")
+            && completionFallsInWindow(record, window, workspace?.timezone || "UTC", model)
             && completionTypeMatches(record, expectedCompletionTypes)
           ))
         : [];
@@ -232,9 +248,9 @@ export function planObligations(resources, options = {}) {
         .filter((member) => occurrenceMemberIsResolved(member, reconciliation, byId, (completionId) => {
           const completion = byId.get(completionId);
           return completionTypeMatches(completion, expectedCompletionTypes)
-            && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId)
-            && completionFallsInWindow(completion, window, rule?.timezone || workspace?.timezone || "UTC")
-            && completionPassesActivity(completion, activity);
+            && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId, model, byId)
+            && completionFallsInWindow(completion, window, rule?.timezone || workspace?.timezone || "UTC", reconciliation?.status === "reconciled" ? undefined : model)
+            && completionPassesActivity(completion, activity, model, byId, occurrenceProofDate(reconciliation, asOf, workspace?.timezone), workspace?.timezone);
         }))
         .map((member) => member.resourceId));
       const resolutionsComplete = membershipFinal
@@ -254,6 +270,12 @@ export function planObligations(resources, options = {}) {
       calendarItems.push({
         key: `${obligation.id}:${window.dueWindowStart}`,
         kind: "calendar",
+        activationOn: activationDate || null,
+        configuredAnchor: configuredAnchor || null,
+        initialCycleNotice: activationDate && window.dueWindowStart > activationDate
+          ? `The first eligible cycle starts ${window.dueWindowStart}, after activation ${activationDate}. Check whether the approved rule needs a separate initial deadline; do not silently treat earlier cycles as completed.`
+          : activationDate && configuredAnchor && configuredAnchor < activationDate
+            ? `Cutover ${activationDate} limits the initial cycle; earlier proof cannot satisfy its eligible remainder.` : null,
         obligationId: obligation.id,
         ruleId: rule?.id || null,
         ruleStatus: rule?.status || null,
@@ -290,6 +312,7 @@ export function planObligations(resources, options = {}) {
         ...relativeTiming(window, asOf)
       });
       plannedOccurrenceKeys.add(occurrenceKey);
+      if (options.firstOnly) break;
     }
   }
 
@@ -317,9 +340,9 @@ export function planObligations(resources, options = {}) {
       .filter((member) => occurrenceMemberIsResolved(member, occurrence, byId, (completionId) => {
         const completion = byId.get(completionId);
         return completionTypeMatches(completion, activity.completionResourceTypes)
-          && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId)
+          && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId, model, byId)
           && completionFallsInWindow(completion, window, rule.timezone || workspace?.timezone || "UTC")
-          && completionPassesActivity(completion, activity);
+          && completionPassesActivity(completion, activity, model, byId, occurrenceProofDate(occurrence, asOf, workspace?.timezone), workspace?.timezone);
       }))
       .map(({ resourceId }) => resourceId);
     const resolutionsComplete = (occurrence.members || []).every(({ resourceId }) => resolvedMemberIds.includes(resourceId));
@@ -792,10 +815,10 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
     const prior = existingMembers.get(resourceId) || {};
     const matching = loaded.resources.filter((record) => (
       activity.completionResourceTypes.includes(record.type)
-      && completionFallsInWindow(record, item, loaded.workspace.timezone)
-      && completionMatchesMember(record, completionMemberField, resourceId)
+      && completionFallsInWindow(record, item, loaded.workspace.timezone, existing?.record.status === "reconciled" ? undefined : loaded.model)
+      && completionMatchesMember(record, completionMemberField, resourceId, loaded.model, byId)
     ));
-    const accepted = matching.filter((record) => completionPassesActivity(record, activity));
+    const accepted = matching.filter((record) => completionPassesActivity(record, activity, loaded.model, byId, undefined, loaded.workspace.timezone));
     return {
       ...prior,
       resourceId,
@@ -1143,8 +1166,28 @@ export async function activateObligationRule(input, options = {}) {
   });
 }
 
-function completionPassesActivity(record, activity) {
+function occurrenceProofDate(occurrence, asOf, timezone = "UTC") {
+  if (occurrence?.status !== "reconciled") return asOf;
+  const date = completionDate({ completedAt: occurrence.reconciledAt }, timezone);
+  return date && date <= asOf ? date : asOf;
+}
+
+function completionPassesActivity(record, activity, model, byId, asOf, timezone = "UTC") {
+  const assessmentDate = asOf || currentCalendarDate(timezone);
+  if (model && modelSupports(model, "operating-preparation") && model.operatingPreparation?.completionRecords?.[record.type]) {
+    const spec = model.operatingPreparation.completionRecords[record.type];
+    if (byId && (record.type === "evidence"
+      ? preparationEvidenceIssues(record, byId, assessmentDate).length
+      : (record.evidenceIds || []).some((id) => preparationEvidenceIssues(byId.get(id), byId, assessmentDate).length))) return false;
+    try { assertHistoricalRecordValid(record, model, resourceDataPath(model, record)); } catch { return false; }
+    if (executionDate(record, model, timezone) > assessmentDate) return false;
+    if (spec.reviewDateField && record[spec.reviewDateField] > assessmentDate) return false;
+    if (spec.externalOperationProof && (record.readinessTest === true || record.artifactSubtype !== activity.activityType || !record.businessEventAt)) return false;
+    if (!spec.statuses.includes(record.status) || spec.resultField && !spec.passingResults.includes(record[spec.resultField])) return false;
+    if (activity.completionProfile && record.profileId !== activity.completionProfile) return false;
+  }
   const aggregate = activity.aggregate;
+  if (model?.operatingPreparation?.completionRecords?.[record.type]?.externalOperationProof) return true;
   if (!aggregate) return true;
   if (aggregate.passingStatuses?.length && !aggregate.passingStatuses.includes(record.status)) return false;
   if (aggregate.passingResults?.length) {
@@ -1154,10 +1197,15 @@ function completionPassesActivity(record, activity) {
   return true;
 }
 
-function completionMatchesMember(record, field, resourceId) {
-  if (!field) return false;
-  const value = record[field];
-  return Array.isArray(value) ? value.includes(resourceId) : value === resourceId;
+function completionMatchesMember(record, field, resourceId, model, byId) {
+  const includes = (value) => Array.isArray(value) ? value.includes(resourceId) : value === resourceId;
+  if (field && includes(record[field])) return true;
+  const spec = modelSupports(model, "operating-preparation") && model?.operatingPreparation?.completionRecords?.[record.type];
+  if (!spec) return false;
+  if (spec.scopeFields.some((name) => includes(record[name]))) return true;
+  const proofFields = ["sourceResourceIds", ...model.operatingPreparation.completionRecords.evidence.scopeFields];
+  return spec.allowProofScope === true && (record.evidenceIds || []).some((id) =>
+    proofFields.some((name) => includes(byId?.get(id)?.[name])));
 }
 
 export async function completeObligationAction(input, options) {
@@ -1866,9 +1914,24 @@ function plannedCompletionWindow(window) {
   };
 }
 
-function completionFallsInWindow(record, window, timezone = "UTC") {
-  const date = completionDate(record, timezone);
+function completionFallsInWindow(record, window, timezone = "UTC", model) {
+  const date = executionDate(record, model, timezone);
   return Boolean(date && date >= window.dueWindowStart && date <= window.dueWindowEnd);
+}
+
+export function assessCompletionForObligation(record, obligation, loaded, options = {}) {
+  const activity = obligationActivity(loaded.model, obligation);
+  const byId = new Map(loaded.resources.map((current) => [current.id, current]));
+  const date = executionDate(record, loaded.model, loaded.workspace?.timezone || "UTC");
+  const issues = [];
+  if (!completionTypeMatches(record, activity.completionResourceTypes)) issues.push("Use the completion record type required by the adopted activity.");
+  if (!completionPassesActivity(record, activity, loaded.model, byId, options.asOf, loaded.workspace?.timezone)) issues.push("Finish the model-required actors, actual result, completion time, review and proof fields; a planned record or applicability decision is not test execution.");
+  if (!date || options.asOf && date > options.asOf || options.notBefore && date < options.notBefore) issues.push("The actual completion date must cover the current implementation and cannot be in the future.");
+  if (options.window && !completionFallsInWindow(record, options.window, loaded.workspace?.timezone || "UTC", loaded.model)) issues.push("This result falls outside the adopted occurrence's allowed completion dates.");
+  const memberIds = options.memberIds || [];
+  const missingMemberIds = memberIds.filter((id) => !completionMatchesMember(record, activity.aggregate?.completionMemberField, id, loaded.model, byId));
+  if (missingMemberIds.length) issues.push("This result does not cover every requested population member.");
+  return { complete: !issues.length, date, issues, missingMemberIds };
 }
 
 function normalizedEventWindow(configuredWindow) {
@@ -1881,7 +1944,15 @@ function completionTypeMatches(record, expectedTypes = []) {
   return Boolean(record && (expectedTypes.length === 0 || expectedTypes.includes(record.type)));
 }
 
-function completionDate(record, timezone = "UTC") {
+function executionDate(record, model, timezone = "UTC") {
+  const field = model?.operatingPreparation?.completionRecords?.[record.type]?.executionDateField;
+  if (!field) return completionDate(record, timezone);
+  const value = record[field];
+  return isRfc3339Timestamp(value) ? currentCalendarDate(timezone, new Date(value)) : parseCalendarDate(value) ? value : null;
+}
+
+export function completionDate(record, timezone = "UTC") {
+  if (record.type === "evidence" && record.operatingResult && isRfc3339Timestamp(record.businessEventAt)) return currentCalendarDate(timezone, new Date(record.businessEventAt));
   const coverageDate = coverageEnd(record.coverage);
   if (parseCalendarDate(coverageDate)) return coverageDate;
   for (const field of COMPLETION_TIMESTAMP_FIELDS) {
@@ -1913,7 +1984,7 @@ function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC
     .map((policy) => policy.effectiveOn)
     .filter(Boolean);
   const governedContentDates = obligationGovernedContent(obligation, byId, model)
-    .map((record) => record.effectiveOn)
+    .flatMap((record) => modelSupports(model, "operating-preparation") ? [record.effectiveOn, record.activatedOn] : [record.effectiveOn])
     .filter(Boolean);
   return [...policyDates, ...governedContentDates].sort().at(-1) || null;
 }
@@ -1973,9 +2044,10 @@ function obligationActivity(model, obligation) {
   const activityType = typeof obligation === "string" ? obligation : obligation?.activityType;
   const activity = model.obligationActivities?.[activityType];
   if (!activity) throw new Error(`Unknown obligation activity type "${activityType ?? ""}".`);
-  if (activityType !== "custom") return activity;
+  if (activityType !== "custom") return { ...activity, activityType };
   return {
     ...activity,
+    activityType: obligation.activityType,
     ...(obligation?.customActivity || {}),
     completionType: obligation?.customActivity?.completionResourceTypes?.[0] || activity.completionType
   };

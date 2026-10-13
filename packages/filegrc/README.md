@@ -44,7 +44,7 @@ npx filegrc policy-library
 
 The command shows an exact diff only when the current text still matches the prior starter default. It skips customized, approved, active, superseded, and retired Policy content. Accept one named proposal revision only with the command printed by the review, which includes `--accept`, `--proposal-revision`, and `--yes`. Acceptance fails if the proposal changed after review. It changes only the listed defaults and does not approve a Policy, activate it, or mark a Control implemented.
 
-The normal runtime uses data model v12. Model v11 adds Control oversight; existing model v10 workspaces start with a read-only preview:
+The normal runtime uses data model v13. Model v11 adds Control oversight; existing model v10 workspaces start with a read-only preview:
 
 ```sh
 npx filegrc migrate --to-model 11 --preview --json
@@ -129,3 +129,5 @@ Use `assessWorkspaceRuntimeCompatibility(root, { requiredApiContractVersion: 1 }
 Choose a tested runtime in the repository's line that supports its model and the adapter's API contract. For a local installation mismatch, run `npm ci`. Repair missing or malformed package files through normal dependency installation. Preview explicit migrations for unsupported older workspace models. Do not rewrite customer manifests, lockfiles, or workspace versions to bypass the guard. Published runtimes predating this policy retain their original exact-version mutation guard, so hosted adapters must deploy a runtime containing this change.
 
 Patch releases must preserve readable records and generated records across their compatibility line. An incompatible record format, model requirement, or API contract needs a new compatibility line and an explicit upgrade path, rather than relaxed validation.
+
+Model v13 adds scoped source retrieval, proof preservation, baseline execution and operating ownership checks. Existing v12 programs explicitly preview `npx filegrc migrate --to-model 13 --preview --json` before applying the upgrade. Use `npx filegrc program-readiness --json` for the missing facts, existing records, tangible checks and read/scaffold/preview/save commands shared with the browser. Active programs repair current gaps using actual dates and preserve historical activation and Control oversight. Reuse unchanged approvals; new or changed governed content, schedules and retention decisions use their existing independent reviews. See the [model v13 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v13.md).

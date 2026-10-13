@@ -73,6 +73,7 @@ function indexedValues(index, ids) {
 
 const historicalScopeIndexes = new WeakMap();
 let compatibleModel11;
+let compatibleModel12;
 
 export function applicabilityScopeRevision(record, program, resources, model, options = {}) {
   const { scopeIndex, ...modes } = options;
@@ -319,6 +320,8 @@ function applicabilityReviewIsCurrentUncached(review, record, program, resources
   // published v11 calculation, including its historical recovery paths.
   // Keep this bridge explicit: future models must establish equivalence before
   // accepting reviews from another version. Never rewrite the stored review.
+  if (String(model.modelVersion) === "13" && applicabilityDecisionFields[record?.type]
+    && applicabilityReviewIsCurrent(review, record, program, resources, compatibleModel12 ||= loadModel("12"), root, scopeIndex)) return true;
   if (String(model.modelVersion) === "12" && applicabilityDecisionFields[record?.type]
     && applicabilityReviewIsCurrent(review, record, program, resources, compatibleModel11 ||= loadModel("11"), root, scopeIndex)) return true;
   if (Number(model.modelVersion) >= 11 && matches(revision({
