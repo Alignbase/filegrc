@@ -931,6 +931,9 @@ test("legacy source recovery stays within a request deadline on a 365-record, 11
   const ids = clones.map(({ record }) => record.id);
   const oldBindings = resourceReviewRevisionsSync(reviewed, ids, "legacy", true);
   execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  // Keep background maintenance from racing the fixture's rapid commit loop.
+  execFileSync("git", ["config", "maintenance.auto", "false"], { cwd: root });
+  execFileSync("git", ["config", "gc.auto", "0"], { cwd: root });
   execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
   execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
   execFileSync("git", ["add", "data"], { cwd: root });
@@ -1015,6 +1018,9 @@ test("collection and applicability recovery reuse snapshots beyond 128 commits",
     programId: program.id, historicalReviewMetadata: true
   });
   execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  // Keep background maintenance from racing the fixture's rapid commit loop.
+  execFileSync("git", ["config", "maintenance.auto", "false"], { cwd: root });
+  execFileSync("git", ["config", "gc.auto", "0"], { cwd: root });
   execFileSync("git", ["config", "user.name", "FileGRC Test"], { cwd: root });
   execFileSync("git", ["config", "user.email", "filegrc@example.test"], { cwd: root });
   execFileSync("git", ["add", "data"], { cwd: root });

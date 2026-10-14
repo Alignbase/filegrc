@@ -730,6 +730,8 @@ Package versions stay unchanged during normal development and move together when
 
 Repository protection requires a pull request and the GitHub Actions `clean-install` check on current `main`. It requires no human approval because the sole maintainer cannot approve their own PR. Agent review stays in the PR conversation. PR validation also checks package contents and runs a short compatibility matrix on Node 20, 22, and 24 across Linux and macOS, plus Windows CLI and domain smoke tests. Release tags matching `v*` cannot be updated or deleted. Both release publication and manual Publish dispatch require an existing `vX.Y.Z` tag whose commit is on `main` and whose version matches all package manifests. Manual dispatch must target that tag as its Git ref, for example `gh workflow run publish.yml --ref vX.Y.Z -f tag=vX.Y.Z`. Publish keeps npm OIDC trusted publishing. Inline jobs in Validate and Publish send results and run links to Slack through the `SLACK_WEBHOOK_URL` repository secret. Failure messages mention the channel; successful Publish runs send a message without a mention.
 
+Validation assigns each check to its purpose. PRs run the supported-platform matrix and package-content checks. Main pushes run full Node 24 validation and generated-file checks against the landed commit. Compatibility jobs run unit and development-script tests; generated model documentation and README assets are checked once in the full validation job. Release publishing keeps independent full validation and package inspection at the tagged commit. No passing test result is reused across commits.
+
 ## Delivery state
 
 Implemented:

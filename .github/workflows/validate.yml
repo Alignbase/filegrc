@@ -41,12 +41,15 @@ jobs:
         run: git diff --exit-code
 
       - name: Check package contents
+        if: github.event_name == 'pull_request'
         run: |
           npm pack --dry-run --workspace filegrc
           npm pack --dry-run --workspace create-filegrc
 
   compatibility:
     name: compatibility-${{ matrix.os }}-node-${{ matrix.node }}
+    # PRs cover supported platforms; main still validates the landed commit.
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -75,7 +78,10 @@ jobs:
 
       - name: Run compatibility tests
         if: runner.os != 'Windows'
-        run: npm run validate:fast
+        # Generated docs and README assets are checked once by clean-install.
+        run: |
+          npm run test:unit
+          node --test scripts/*.test.mjs
         env:
           CI: true
 
