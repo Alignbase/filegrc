@@ -464,7 +464,7 @@ test("sends complete Reporting Channel Set lifecycle payloads", () => {
   assert.match(APP_SCRIPT, /const defaultEffective = predecessor\s+\? nowLocal/);
   assert.doesNotMatch(APP_SCRIPT, /state\.repository\?\.developmentOverride \|\| !state\.git\.clean/);
   assert.match(APP_SCRIPT, /record\.sourceKind === "file" && record\.filePaths\?\.length/);
-  assert.match(APP_SCRIPT, /FileGRC checks retained material and event-date coverage when you submit/);
+  assert.match(APP_SCRIPT, /Approval can use independently reviewed configuration proof collected earlier/);
 });
 
 test("static and editable navigation receive the same program readiness progress", async (context) => {

@@ -9,6 +9,7 @@ import {
   reportingRouteEventAuthorityIssueAtCommit,
   reportingRouteExactHistoryEntry,
   reportingRouteFixedEvidence,
+  reportingRouteApprovalEvidence,
   reportingRouteLanesIndependent,
   reportingRouteOngoingAuthorities,
   reportingRouteProposalIssues,
@@ -412,15 +413,8 @@ export async function approveReportingRouteSet(input, options = {}) {
   if (cutoverIssues.length) throw new Error(cutoverIssues[0].message);
   const authority = approvalAuthority(loaded, entry.record, options, approvedAt, timezone);
   const approvalEvidenceIds = [...new Set(options.evidenceIds || [])];
-  if (!reportingRouteFixedEvidence(
-    loaded.resources,
-    entry.record.id,
-    approvalEvidenceIds,
-    approvedAt,
-    timezone,
-    { root: loaded.root }
-  ).length) {
-    throw new Error("Reporting Route approval requires linked verified, fixed Evidence covering the approval event.");
+  if (!reportingRouteApprovalEvidence(loaded, { ...entry.record, proposalCommit }, approvalEvidenceIds, approvedAt, timezone).length) {
+    throw new Error("Required Reporting Route approval support is missing: link verified, fixed approval-event Evidence or independently reviewed configuration proof available at approval.");
   }
   const next = {
     ...entry.record,
@@ -455,9 +449,9 @@ export async function approveReportingRouteSet(input, options = {}) {
       predecessorEvidenceIds,
       effectiveAt,
       timezone,
-      { root: loaded.root }
+      { root: loaded.root, eventProof: true }
     ).length) {
-      throw new Error("Replacing an approved Reporting Route Set requires linked verified, fixed Evidence covering the predecessor cancellation event.");
+      throw new Error("Linked verified, fixed Evidence covering the predecessor cancellation event is required to replace an approved Reporting Route Set.");
     }
     const predecessor = {
       ...predecessorEntry.record,
@@ -512,9 +506,9 @@ export async function cancelReportingRouteSet(input, options = {}) {
     evidenceIds,
     canceledAt,
     timezone,
-    { root: loaded.root }
+    { root: loaded.root, eventProof: true }
   ).length) {
-    throw new Error("Reporting Route cancellation requires linked verified, fixed Evidence covering the cancellation event.");
+    throw new Error("Linked verified, fixed Evidence covering the cancellation event is required for Reporting Route cancellation.");
   }
   const result = await updateResource(loaded.root, entry.record.type, entry.record.id, {
     ...entry.record,
@@ -598,7 +592,7 @@ function assessRouteSet(record, loaded, at, repository) {
       ? proposalRecords.find(({ id }) => id === record.id) || record
       : record;
     const proposalAssessmentAt = proposalHistory
-      ? reportingRouteProposalAssessmentTime(proposalHistory.timestamp, at)
+      ? reportingRouteProposalAssessmentTime(proposalHistory.timestamp)
       : at;
     if (proposalHistory && !proposalAssessmentAt) {
       issues.push(issue("invalid-reporting-route-proposal-time", record.id, "The proposal commit time is too far in the future to establish a reliable proposal."));
@@ -613,7 +607,7 @@ function assessRouteSet(record, loaded, at, repository) {
     const proposalRecords = recordsAtRevision(loaded, record.proposalCommit);
     const proposalTimestamp = reportingRouteCommitTimestamp(loaded, record.id, record.proposalCommit);
     const proposalAssessmentAt = proposalTimestamp
-      ? reportingRouteProposalAssessmentTime(proposalTimestamp, at)
+      ? reportingRouteProposalAssessmentTime(proposalTimestamp)
       : null;
     if (!proposalTimestamp) {
       issues.push(issue("invalid-reporting-route-proposal", record.id, "The proposal commit must be an exact Reporting Channel Set history entry."));
@@ -721,7 +715,7 @@ function proposedRequirementAssessment(record, loaded, repository, requirements,
       record,
       records,
       {
-        at: history ? reportingRouteProposalAssessmentTime(history.timestamp, at) || at : at,
+        at: history ? reportingRouteProposalAssessmentTime(history.timestamp) || at : at,
         timezone,
         root: loaded.root,
         commit: history?.commit
@@ -761,16 +755,9 @@ function reportingRouteLifecycleIssues(loaded, record) {
   const approvalAuthorityIssue = reportingRouteEventAuthorityIssueAtCommit(loaded, record, "approval");
   if (approvalAuthorityIssue) issues.push(issue(approvalAuthorityIssue.code, record.id, approvalAuthorityIssue.message));
   if (
-    !reportingRouteFixedEvidence(
-      loaded.resources,
-      record.id,
-      record.approval?.evidenceIds,
-      record.approval?.approvedAt,
-      record.approval?.timezone,
-      { root: loaded.root }
-    ).length
+    !reportingRouteApprovalEvidence(loaded, record, record.approval?.evidenceIds, record.approval?.approvedAt, record.approval?.timezone).length
   ) {
-    issues.push(issue("missing-reporting-route-event-evidence", record.id, "Reporting Route approval needs linked verified, fixed Evidence covering the approval event."));
+    issues.push(issue("missing-reporting-route-event-evidence", record.id, "Reporting Route approval needs linked verified, fixed approval-event Evidence or independently reviewed configuration proof available at approval."));
   }
   if (record.status === "canceled") {
     const cancellationCommit = reportingRouteEventCommit(loaded, record, "cancellation");
@@ -795,7 +782,7 @@ function reportingRouteLifecycleIssues(loaded, record) {
         record.cancellation?.evidenceIds,
         record.cancellation?.canceledAt,
         record.approval?.timezone,
-        { root: loaded.root }
+        { root: loaded.root, eventProof: true }
       ).length
     ) {
       issues.push(issue("missing-reporting-route-event-evidence", record.id, "Reporting Route cancellation needs linked verified, fixed Evidence covering the cancellation event."));

@@ -4435,7 +4435,7 @@ function reportingRouteEvidenceField(subjectId, name, label) {
   if (!evidence.length) {
     return '<div class="field-group full"><span>' + esc(label) + ' <span class="required-mark">Required</span></span><p class="field-help">Add verified, fixed Evidence linked to this channel set before recording the event.</p><a class="button" href="#/resources/evidence">Open Evidence</a></div>';
   }
-  return '<fieldset class="field-group full"><legend>' + esc(label) + ' <span class="required-mark">Required</span></legend>' + evidence.map(({ record }) => '<label class="confirmation"><input type="checkbox" name="' + esc(name) + '" value="' + esc(record.id) + '"><span>' + esc(record.title) + '</span></label>').join("") + '<p class="field-help">Only likely candidates are shown. FileGRC checks retained material and event-date coverage when you submit.</p></fieldset>';
+  return '<fieldset class="field-group full"><legend>' + esc(label) + ' <span class="required-mark">Required</span></legend>' + evidence.map(({ record }) => '<label class="confirmation"><input type="checkbox" name="' + esc(name) + '" value="' + esc(record.id) + '"><span>' + esc(record.title) + '</span></label>').join("") + '<p class="field-help">Only likely candidates are shown. FileGRC checks retained material and dates when you submit. Approval can use independently reviewed configuration proof collected earlier. Cancellation needs proof of the cancellation event.</p></fieldset>';
 }
 
 function checkedFormValues(form, name) {
